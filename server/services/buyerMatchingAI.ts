@@ -16,6 +16,11 @@ import {
 import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+// Audit Wave 1 (residential_wholesaler beta→core): tpl_buyer_match_found never
+// ran because nothing emitted buyer.match_created. Fire it ONLY on the
+// fresh-insert branch below (never on the update-existing branch, or a re-run
+// re-fires) — see services/buyerEvents.ts.
+import { emitBuyerMatchCreated } from "./buyerEvents";
 
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
@@ -154,6 +159,31 @@ export class BuyerMatchingAIService {
     return updated;
   }
 
+  /**
+   * Resolve the real buyer contact for a match from buyer_profiles.leadId →
+   * leads. Returns all-null when the profile has no linked lead (or the lead is
+   * gone) — never a fabricated recipient/name. Feeds the buyer.match_created
+   * payload (tpl_buyer_match_found's {{buyerEmail}}/{{buyerName}}/{{buyerFirstName}}).
+   */
+  private async resolveBuyerContact(
+    buyerProfile: BuyerProfile | undefined
+  ): Promise<{ buyerEmail: string | null; buyerName: string | null; buyerFirstName: string | null }> {
+    const empty = { buyerEmail: null, buyerName: null, buyerFirstName: null };
+    if (!buyerProfile?.leadId) return empty;
+    try {
+      const [lead] = await db.select().from(leads).where(eq(leads.id, buyerProfile.leadId));
+      if (!lead) return empty;
+      const fullName = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
+      return {
+        buyerEmail: lead.email ?? null,
+        buyerName: fullName || null,
+        buyerFirstName: lead.firstName ?? null,
+      };
+    } catch {
+      return empty; // contact resolution is best-effort; never fail the match write
+    }
+  }
+
   async matchBuyerToProperties(
     organizationId: number,
     buyerProfileId: number
@@ -195,6 +225,11 @@ export class BuyerMatchingAIService {
 
     matchResults.sort((a, b) => b.matchScore - a.matchScore);
 
+    // Resolve the buyer contact once (the buyer is fixed for this matcher) and
+    // index the loaded properties for the fresh-insert emit below.
+    const buyerContact = await this.resolveBuyerContact(buyerProfile);
+    const propertiesById = new Map(availableProperties.map((p) => [p.id, p]));
+
     const createdMatches: BuyerPropertyMatch[] = [];
 
     for (const result of matchResults) {
@@ -233,6 +268,14 @@ export class BuyerMatchingAIService {
           .values(match)
           .returning();
         createdMatches.push(inserted);
+        // Fresh-insert branch ONLY: a genuinely NEW match fires
+        // buyer.match_created. The update-existing branch above deliberately
+        // does not, so a re-run of the matcher never re-fires.
+        const matchedProperty = propertiesById.get(result.propertyId);
+        emitBuyerMatchCreated(inserted, {
+          propertyAddress: matchedProperty?.address ?? null,
+          ...buyerContact,
+        });
       }
     }
 
@@ -289,6 +332,10 @@ export class BuyerMatchingAIService {
 
     matchResults.sort((a, b) => b.matchScore - a.matchScore);
 
+    // Index the loaded buyer profiles so the fresh-insert emit below can resolve
+    // each matched buyer's contact (buyer_profiles.leadId → leads).
+    const buyersById = new Map(activeBuyers.map((b) => [b.id, b]));
+
     const createdMatches: BuyerPropertyMatch[] = [];
 
     for (const result of matchResults) {
@@ -327,6 +374,15 @@ export class BuyerMatchingAIService {
           .values(match)
           .returning();
         createdMatches.push(inserted);
+        // Fresh-insert branch ONLY: a genuinely NEW match fires
+        // buyer.match_created. The update-existing branch above deliberately
+        // does not, so a re-run of the matcher never re-fires.
+        const matchedBuyer = buyersById.get(result.buyerProfileId);
+        const contact = await this.resolveBuyerContact(matchedBuyer);
+        emitBuyerMatchCreated(inserted, {
+          propertyAddress: property.address ?? null,
+          ...contact,
+        });
       }
     }
 

@@ -1370,14 +1370,24 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "When a wholesaler signs a contract, auto-create the buyer broadcast task and queue the deal for blast to the org's cash-buyer list. Surfaces Ari + Jen + Pia's biggest gap on day one.",
     category: "deals",
     trigger: { event: "deal.contract_signed" },
+    // audit Wave 1 (beta→core): the original broadcast task interpolated
+    // {{askingPrice}}, {{assignmentFee}} and {{compArv}} — none of which a deal
+    // holds at contract-signing time (a wholesaler has NO ATTOM/comps plane, and
+    // the assignment fee lives on a contract_assignments row that may not exist
+    // yet). Mirroring the fix_and_flip comp correction (refuse-not-fabricate),
+    // those were dropped: the task now binds the real deal fields the
+    // wholesaleEvents.ts emitter actually sends (contractPrice = the accepted
+    // purchase price, closingDate) and PROMPTS the operator to pull fresh comps
+    // on the real comps surface before setting buyer pricing, rather than
+    // rendering an invented number.
     actions: [
       {
         id: "action_buyer_broadcast_task",
         type: "create_task",
         config: {
-          title: "Broadcast deal to buyer list — {{propertyAddress}} ({{contractPrice}})",
+          title: "Broadcast deal to buyer list — {{propertyAddress}} (${{contractPrice}})",
           description:
-            "Contract signed {{contractDate}}. Asking ${{askingPrice}} (assignment fee ${{assignmentFee}}). Comp ARV ${{compArv}}. Send to cash-buyer list via /buyer-blasts, then follow up individually with top 5 buyers whose criteria match.",
+            "Contract signed {{contractDate}} — deal is in escrow (contract price ${{contractPrice}}, target close {{closingDate}}). Pull fresh comps on the comps surface before you set buyer pricing, then send to your cash-buyer list via /buyer-blasts and follow up individually with the top 5 buyers whose criteria match.",
           priority: "high",
           dueInDays: 2,
         },
@@ -1400,6 +1410,15 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "When an assignment is pending, surface the timeline + draft the assignment paperwork. Closes Gus + Iyer's per-state paperwork question by templating early.",
     category: "deals",
     trigger: { event: "deal.assignment_pending" },
+    // audit Wave 1 (beta→core): the original paperwork task interpolated
+    // {{buyerEntity}} and {{buyerPrice}} — no contract_assignments column
+    // supplies either (an end buyer is a free-text endBuyerName or a linked
+    // buyer profile; there is no per-buyer committed-price column). Both were
+    // dropped (refuse-not-fabricate). The task now binds ONLY real
+    // contract_assignments columns the wholesaleEvents.ts emitter sends
+    // (assignmentFee = assignment_fee_cents, buyerName = end_buyer_name,
+    // originalContractDate) plus the property address/state resolved from the
+    // joined deal→property.
     actions: [
       {
         id: "action_assignment_paperwork_task",
@@ -1407,7 +1426,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Assignment paperwork — {{propertyAddress}} (fee ${{assignmentFee}})",
           description:
-            "Buyer {{buyerName}} ({{buyerEntity}}) committed at ${{buyerPrice}}. Assignment fee {{assignmentFee}}. Confirm state-specific assignment-of-contract template ({{state}}) is on file; collect buyer earnest money; coordinate closing.",
+            "End buyer {{buyerName}} committed. Assignment fee ${{assignmentFee}}. Original purchase contract dated {{originalContractDate}}. Confirm the state-specific assignment-of-contract template ({{state}}) is on file; collect buyer earnest money; coordinate closing.",
           priority: "high",
           dueInDays: 7,
         },
@@ -1418,7 +1437,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           notificationType: "info",
           message:
-            "Assignment pending: {{propertyAddress}} to {{buyerName}} — closing in {{daysToClose}}d.",
+            "Assignment pending: {{propertyAddress}} to {{buyerName}} — assignment fee ${{assignmentFee}}.",
         },
       },
     ],
@@ -1777,7 +1796,7 @@ export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;
   entityId: number;
-  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab" | "cert";
+  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab" | "cert" | "buyer";
   data: Record<string, any>;
   previousData?: Record<string, any>;
 };
@@ -2788,6 +2807,49 @@ export function emitSubdivisionEvent(event: "plat.submitted" | "subdivision.vend
     organizationId,
     entityId,
     entityType: "property",
+    data,
+  });
+}
+
+// emitWholesaleDealEvent — the residential-wholesaler deal lifecycle emitter
+// (audit Wave 1, beta→core). Mirrors emitSubdivisionEvent. A wholesaler's deal
+// diverges from a land flip at two moments the engine could never see fire: the
+// purchase agreement is signed (the deal genuinely enters escrow) and the
+// assignment is sent for signature. Both hang off a real deal, so entityType is
+// "deal" and entityId is the deals.id. The third wholesaler template
+// (tpl_wholesaler_occupied_cash_for_keys, event deal.occupied) is deliberately
+// NOT wired here: no occupancy/occupant/cash-for-keys column or table exists on
+// the deal/property path, so it cannot be made honest — it stays installable but
+// honestly badged "not live" until an occupancy schema ships. Register both
+// live events in shared/workflow-live-triggers.ts in the SAME change
+// (workflowActionHonesty pins the call-site ↔ list relationship). The event
+// union MUST stay on one physical line — the honesty ratchet's derivation regex
+// stops at the first newline after `event:`.
+export function emitWholesaleDealEvent(event: "deal.contract_signed" | "deal.assignment_pending", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "deal",
+    data,
+  });
+}
+
+// emitBuyerEvent — the buyer-match lifecycle emitter (audit Wave 1, beta→core).
+// Mirrors emitWholesaleDealEvent. buyer.match_created fires when the AI matcher
+// inserts a NEW buyer↔property match (never on the update-existing branch, so a
+// re-run never re-fires). entityType is "buyer" and entityId is the
+// buyer_profiles.id the match belongs to (the buyer is the subject of the
+// event). Register the event in shared/workflow-live-triggers.ts in the SAME
+// change (workflowActionHonesty pins the call-site ↔ list relationship). The
+// event union MUST stay on one physical line — the honesty ratchet's derivation
+// regex stops at the first newline after `event:`.
+export function emitBuyerEvent(event: "buyer.match_created", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "buyer",
     data,
   });
 }

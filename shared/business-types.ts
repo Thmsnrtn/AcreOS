@@ -184,16 +184,28 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "residential_wholesaler",
     label: "Residential wholesaler",
     shortDescription: "Assign contracts to investor buyers.",
-    maturity: "beta",
+    // 2026-08 audit Wave 1: beta → core. Three of the four wholesaler templates
+    // are now LIVE — deal.contract_signed + deal.assignment_pending fire from the
+    // deal/assignment write-paths (wholesaleEvents.ts) and buyer.match_created
+    // fires from the AI matcher's fresh-insert branch (buyerEvents.ts); all three
+    // are registered in shared/workflow-live-triggers.ts and pinned by
+    // workflowActionHonesty. The vertical passes the honesty bar for core.
+    maturity: "core",
     // 2026-07-29 truth pass: the wholesaler build was real but undeclared
     // here. Wholesale sidebar module (businessTypeOnly
     // residential_wholesaler): buyer blasts, /buyer-analytics,
-    // /earnest-money, /double-close, /wholesaler-state-rules. All four
-    // template ids exist in workflow-engine.ts.
+    // /earnest-money, /double-close, /wholesaler-state-rules.
+    //
+    // 2026-08 audit Wave 1: tpl_wholesaler_occupied_cash_for_keys was REMOVED
+    // from this advertised list. Its event (deal.occupied) has ZERO schema
+    // backing — no occupancy/occupant/cash-for-keys column or table exists on the
+    // deal/property path, so it cannot be made honest. The template object stays
+    // in workflow-engine.ts (pinned by PRE_EXISTING_IDS, still installable) but
+    // honestly badged "not live" — it is no longer advertised as part of the core
+    // wholesaler pack. The remaining three are the live ones.
     workflowTemplateIds: [
       "tpl_wholesaler_contract_signed_buyer_broadcast",
       "tpl_wholesaler_assignment_pending",
-      "tpl_wholesaler_occupied_cash_for_keys",
       "tpl_buyer_match_found",
     ],
     spotlightModules: [
@@ -205,7 +217,13 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "double-close",
       "wholesaler-state-rules",
     ],
-    integrations: ["stripe"],
+    // 2026-08 audit Wave 1: corrected ["stripe"] → []. No wholesaler surface uses
+    // Stripe — earnest-money and double-close are pure record tables, and the
+    // money-custody hard-stop (founder ruling 2026-07-29) FORBIDS customer EMD /
+    // assignment funds transiting AcreOS's own account, so there is no platform
+    // payment rail here to name. Subscription payments TO AcreOS are billing, not
+    // a vertical integration.
+    integrations: [],
   },
   buy_and_hold: {
     id: "buy_and_hold",

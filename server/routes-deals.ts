@@ -33,6 +33,11 @@ import {
 // deal.created / deal.stage_changed. Both emitters are fire-and-forget and
 // no-op unless the status genuinely changed — see services/dealEvents.ts.
 import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
+// Audit Wave 1 (residential_wholesaler beta→core): the wholesaler contract and
+// assignment templates never ran because nothing emitted deal.contract_signed /
+// deal.assignment_pending. Both emitters are fire-and-forget and no-op unless the
+// status genuinely transitions — see services/wholesaleEvents.ts.
+import { emitContractSigned, emitAssignmentPending } from "./services/wholesaleEvents";
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve
 // `(itemId, orgId) → item` only when the item's parent property belongs to
@@ -395,12 +400,43 @@ export function registerDealRoutes(app: Express): void {
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
+      // Capture the pre-image status BEFORE the update — it is the pre-image for
+      // the deal.assignment_pending transition below (audit Wave 1, wholesaler
+      // beta→core). Org-scoped so a cross-tenant guess reads nothing.
+      const [beforeAssignment] = await db
+        .select({ status: contractAssignments.status })
+        .from(contractAssignments)
+        .where(and(eq(contractAssignments.id, id), eq(contractAssignments.organizationId, org.id)));
+
       const [updated] = await db
         .update(contractAssignments)
         .set({ ...parsed.data, updatedAt: new Date() })
         .where(and(eq(contractAssignments.id, id), eq(contractAssignments.organizationId, org.id)))
         .returning();
       if (!updated) return Errors.notFound(res, "Assignment");
+
+      // Audit Wave 1 (wholesaler beta→core) — deal.assignment_pending. An
+      // assignment genuinely reaching "sent_for_signature" is the pending-signature
+      // moment the template handles. Resolve the deal→property join for the honest
+      // address/state, then fire. Wrapped so a lookup failure never fails the
+      // assignment write; the emitter also no-ops unless the transition is genuine.
+      if (beforeAssignment && beforeAssignment.status !== "sent_for_signature" && updated.status === "sent_for_signature") {
+        try {
+          const deal = await storage.getDeal(org.id, updated.dealId);
+          const property = deal?.propertyId
+            ? await storage.getProperty(org.id, deal.propertyId)
+            : null;
+          emitAssignmentPending(beforeAssignment.status, updated, {
+            propertyAddress: property?.address ?? null,
+            state: property?.state ?? null,
+          });
+        } catch (err) {
+          logger.warn("deal.assignment_pending emit failed (non-fatal)", {
+            metadata: { assignmentId: id, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       Errors.internal(res, err);
@@ -564,6 +600,27 @@ export function registerDealRoutes(app: Express): void {
       // previousData carries the honest prior stage. No-ops emit nothing: the
       // helper compares statuses and returns early when they match.
       emitDealStageChanged(org.id, existingDeal, deal);
+
+      // Audit Wave 1 (wholesaler beta→core) — deal.contract_signed. A deal
+      // genuinely entering escrow (accepted → in_escrow, the only path in per
+      // DEAL_STATUS_TRANSITIONS) is a signed purchase agreement. Resolve the
+      // property for the honest address, then fire. The whole block is wrapped so
+      // a property-lookup failure never fails the deal write that just committed;
+      // the emitter itself also no-ops unless the transition is genuine.
+      if (existingDeal.status !== "in_escrow" && deal.status === "in_escrow") {
+        try {
+          const property = deal.propertyId
+            ? await storage.getProperty(org.id, deal.propertyId)
+            : null;
+          emitContractSigned(existingDeal.status, deal, {
+            propertyAddress: property?.address ?? null,
+          });
+        } catch (err) {
+          logger.warn("deal.contract_signed emit failed (non-fatal)", {
+            metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
 
       // Outcome loop (S2c): a deal reaching a terminal status feeds the LCS
       // calibration loop automatically. This was previously reachable only

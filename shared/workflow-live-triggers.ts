@@ -54,6 +54,23 @@
 //       /api/plans/:planId fires plat.submitted on plan→"county_submitted" and
 //       subdivision.phase_recorded on plan→"recorded"). entityType "property"
 //       (entityId = parent parcel's properties.id).
+//   deal.contract_signed / deal.assignment_pending (audit Wave 1, residential
+//   wholesaler)
+//       server/services/wholesaleEvents.ts → emitWholesaleDealEvent, called from
+//       server/routes-deals.ts. emitContractSigned fires deal.contract_signed on
+//       a genuine deal→"in_escrow" transition (PUT /api/deals/:id — a signed
+//       purchase agreement IS the deal entering escrow); emitAssignmentPending
+//       fires deal.assignment_pending on a genuine contract_assignments row →
+//       "sent_for_signature" transition (PATCH /api/deals/:dealId/assignments/:id).
+//       entityType "deal". deal.occupied (the third wholesaler template's event)
+//       is deliberately ABSENT — no occupancy schema exists, so it cannot be made
+//       honest and stays badged "not live".
+//   buyer.match_created (audit Wave 1, residential wholesaler)
+//       server/services/buyerEvents.ts → emitBuyerEvent, called from
+//       server/services/buyerMatchingAI.ts on the FRESH-INSERT branch of both
+//       matchPropertyToBuyers and matchBuyerToProperties (never the
+//       update-existing branch, so a re-run never re-fires). entityType "buyer"
+//       (entityId = buyer_profiles.id).
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -93,6 +110,9 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "plat.submitted",
   "subdivision.vendor_milestone",
   "subdivision.phase_recorded",
+  "deal.contract_signed",
+  "deal.assignment_pending",
+  "buyer.match_created",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

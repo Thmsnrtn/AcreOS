@@ -97,6 +97,23 @@ describe("vertical pack purchasability", () => {
     expect(packVerticalIds).not.toContain("creative_finance");
   });
 
+  it("residential_wholesaler is core and no longer claims a Stripe integration (audit Wave 1)", () => {
+    // 2026-08 audit Wave 1: residential_wholesaler beta→core once three of its
+    // four templates went live (deal.contract_signed + deal.assignment_pending
+    // via wholesaleEvents.ts; buyer.match_created via buyerEvents.ts). The
+    // registry's integrations were corrected ["stripe"]→[]: no wholesaler surface
+    // uses Stripe, and the money-custody hard-stop forbids EMD/assignment funds
+    // transiting AcreOS. Pinned so a silent re-introduction fails loudly.
+    const wholesaler = getBusinessType("residential_wholesaler");
+    expect(wholesaler?.maturity).toBe("core");
+    expect(wholesaler?.integrations ?? []).not.toContain("stripe");
+    // The occupied cash-for-keys template is no longer advertised (no occupancy
+    // schema — cannot be made honest).
+    expect(wholesaler?.workflowTemplateIds).not.toContain(
+      "tpl_wholesaler_occupied_cash_for_keys",
+    );
+  });
+
   it("unknown pack key is not purchasable", () => {
     expect(isVerticalPackPurchasable("nonexistent" as VerticalPackKey)).toBe(false);
   });

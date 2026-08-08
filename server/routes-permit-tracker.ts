@@ -25,7 +25,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, isNull, sql, lte, asc, gt } from "drizzle-orm";
+import { and, eq, sql, lte, asc, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   permitChecklists,

@@ -9154,6 +9154,12 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "deal.contract_signed",
   "deal.assignment_pending",
   "deal.occupied",
+  // Buyer-match lifecycle. tpl_buyer_match_found triggered on this event via
+  // the engine's local ExtendedTriggerEvent escape hatch; audit Wave 1
+  // (wholesaler beta→core) wired a real emitter (buyerEvents.ts → emitBuyerEvent,
+  // from buyerMatchingAI's fresh-insert branch), so it graduates into the shared
+  // union here and out of the legacy escape hatch.
+  "buyer.match_created",
   // Pillar N — subdivider lifecycle. See
   // pillar-n-subdividers-25-personas.md.
   "plat.submitted",

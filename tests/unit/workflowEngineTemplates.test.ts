@@ -111,7 +111,10 @@ const WAVE_V3_IDS = [
 // surface). Grandfathered, pinned: this set may only shrink. Anything NEW
 // outside the shared union fails the ratchet below.
 const LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS = new Set([
-  "tpl_buyer_match_found", // buyer.match_created
+  // tpl_buyer_match_found (buyer.match_created) GRADUATED out of the escape hatch
+  // in audit Wave 1 (wholesaler beta→core): buyer.match_created is now a declared
+  // member of the shared WORKFLOW_TRIGGER_EVENTS union with a real emitter
+  // (buyerEvents.ts → emitBuyerEvent). The set may only shrink — this is a shrink.
   "tpl_payment_received", // payment.confirmed
   "tpl_delinquency_escalation", // note.delinquent_60d
   "tpl_property_listed", // property.listed
@@ -413,5 +416,89 @@ describe("subdivision templates interpolate only real emitted payload fields", (
     }
     expect(phaseUsed.has("phaseNumber")).toBe(false);
     expect(phaseUsed.has("planName")).toBe(true); // the real replacement is present
+  });
+});
+
+describe("wholesaler templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (residential_wholesaler beta→core): two of the wholesaler
+  // templates are now LIVE — wholesaleEvents.ts → emitWholesaleDealEvent fires
+  // them on genuine operator transitions (deal → in_escrow; contract_assignments
+  // → sent_for_signature). Each template may only interpolate fields its emitter
+  // actually sends — a reintroduced {{compArv}}/{{askingPrice}} (dropped: no
+  // comps plane) or {{buyerEntity}}/{{buyerPrice}} (dropped: no such column)
+  // would render as a literal placeholder, i.e. fabricated-looking output.
+  // Refuse-not-fabricate applies to template plumbing too. These sets are the
+  // payloads in server/services/wholesaleEvents.ts.
+  const WHOLESALER_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // emitContractSigned → deal.contract_signed
+    tpl_wholesaler_contract_signed_buyer_broadcast: new Set([
+      "dealId",
+      "propertyAddress",
+      "contractPrice",
+      "closingDate",
+      "contractDate",
+    ]),
+    // emitAssignmentPending → deal.assignment_pending
+    tpl_wholesaler_assignment_pending: new Set([
+      "assignmentId",
+      "dealId",
+      "propertyAddress",
+      "state",
+      "assignmentFee",
+      "buyerName",
+      "originalContractDate",
+    ]),
+  };
+
+  it.each(Object.keys(WHOLESALER_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = WHOLESALER_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitWholesaleDealEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (compArv/askingPrice; buyerEntity/buyerPrice)", () => {
+    const broadcastUsed = new Set<string>();
+    for (const a of templateById.get("tpl_wholesaler_contract_signed_buyer_broadcast")!.actions) {
+      extractPlaceholders(a.config, broadcastUsed);
+    }
+    expect(broadcastUsed.has("compArv")).toBe(false);
+    expect(broadcastUsed.has("askingPrice")).toBe(false);
+    expect(broadcastUsed.has("assignmentFee")).toBe(false); // no assignment fee at contract-signing
+    expect(broadcastUsed.has("contractPrice")).toBe(true); // the real replacement is present
+
+    const assignmentUsed = new Set<string>();
+    for (const a of templateById.get("tpl_wholesaler_assignment_pending")!.actions) {
+      extractPlaceholders(a.config, assignmentUsed);
+    }
+    expect(assignmentUsed.has("buyerEntity")).toBe(false);
+    expect(assignmentUsed.has("buyerPrice")).toBe(false);
+    expect(assignmentUsed.has("buyerName")).toBe(true); // real end_buyer_name
+    expect(assignmentUsed.has("assignmentFee")).toBe(true); // real assignment_fee_cents
+  });
+
+  it("tpl_wholesaler_occupied_cash_for_keys stays installable but its event (deal.occupied) is NOT live", async () => {
+    // The occupied template is pinned by PRE_EXISTING_IDS so it stays in the
+    // engine array (still installable), but deal.occupied has ZERO schema
+    // backing, so it must NOT be wired live. Guard both facts here.
+    expect(templateById.has("tpl_wholesaler_occupied_cash_for_keys")).toBe(true);
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).not.toContain("deal.occupied");
+    // …while the two wired wholesaler events ARE live.
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.contract_signed");
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.assignment_pending");
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("buyer.match_created");
   });
 });
