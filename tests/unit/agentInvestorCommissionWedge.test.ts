@@ -27,7 +27,6 @@ import path from "path";
 import { getBusinessType } from "../../shared/business-types";
 
 const ROOT = path.resolve(__dirname, "../..");
-const CLIENT = path.join(ROOT, "client/src");
 const SERVER = path.join(ROOT, "server");
 
 function read(rel: string): string {
