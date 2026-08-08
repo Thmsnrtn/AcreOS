@@ -325,24 +325,32 @@ describe("multi_family — deepened to production (wave V4 of ruling #11)", () =
     expect(flat).not.toMatch(/units are labels on leases/i);
   });
 
-  it("does NOT promise the platform's REMAINING gaps — building rollups, T-12 surfaces", () => {
-    // business-types.ts multifamily entry, post-0219: the occupancy snapshot
-    // is ORG-WIDE with no per-building breakdown, there is no NOI-per-building
-    // surface, and there is no T-12/underwriting workspace. Both gaps genuinely
-    // stand — the voice must state them, not promise the feature.
+  it("offers the measured NOI + T-12 capability with honest, data-dependent labelling (Wave 3 core)", () => {
+    // REWRITTEN (Wave 3, beta → core, NOT deleted). This used to pin the two
+    // beta-era gaps — an ASSUMED 40% op-ex the voice had to disclose, and NO
+    // T-12 workspace. Wave 3 closed both: property_expenses gives a MEASURED
+    // per-building NOI (summarizeMeasuredOpEx) and shared/rental/t12.ts + the
+    // /leases T-12 tab give the underwriting grid. The invariant survives in a
+    // new form: the voice must OFFER the capability while labelling it honestly
+    // (measured only where recorded; "(est.)" when unrecorded, "(N/12 mo)" when
+    // thin) — never presenting a thin/absent ledger as a full year's books, and
+    // still naming the residual DSCR gap. The appendix is hard-wrapped prose, so
+    // match against a whitespace-flattened copy.
     const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
-    expect(p.systemPromptAppendix).toContain("no building-level");
-    // CORRECTED 2026-07-31. This used to assert the voice said there is "no
-    // building-level NOI roll-up". There IS one — GET /api/properties/:id/
-    // analytics — and the assertion was pinning our own overstatement. The
-    // real gap is narrower and worse: that NOI rests on an ASSUMED 40%
-    // expense ratio, because AcreOS holds no property-expense records. The
-    // voice must name the assumption rather than deny the surface, so a
-    // customer is never handed a cap rate whose expenses nobody measured.
-    expect(flat).toMatch(/assumed 40% expense ratio/i);
-    expect(flat).toMatch(/never quote that NOI as though the expenses behind it were measured/i);
-    expect(flat).toMatch(/no T-12 underwriting workspace/i);
-    expect(p.systemPromptAppendix).toContain("never imply those exist");
+    // Offers the measured NOI + the T-12.
+    expect(flat).toMatch(/built from the operator's OWN recorded operating expenses/);
+    expect(flat).toMatch(/where they've recorded costs/i);
+    expect(flat).toMatch(/T-12 underwriting workspace/i);
+    // Labels it honestly — measured only where recorded, disclosed otherwise.
+    expect(flat).toMatch(/marked "\(est\.\)"/);
+    expect(flat).toMatch(/\(N\/12 mo\)/);
+    expect(flat).toMatch(/never present a building-level number the platform didn't compute/i);
+    // Keeps the residual DSCR caveat and refuses to overclaim complete books.
+    expect(flat).toMatch(/DSCR needs the operator's own/);
+    expect(flat).toMatch(/never a made-up number/i);
+    expect(flat).toMatch(/Never quote a measured NOI as though a thin or absent expense ledger were a full year's books/);
+    // The beta-era "no T-12" gap claim must not come back.
+    expect(flat).not.toMatch(/no T-12 underwriting workspace/i);
   });
 });
 

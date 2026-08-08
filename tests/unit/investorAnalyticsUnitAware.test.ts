@@ -144,35 +144,54 @@ describe("the assumed expense ratio is labelled as one", () => {
   });
 });
 
-describe("the gap prose matches the code", () => {
-  it("the registry no longer denies the surface exists", () => {
+describe("the gap prose matches the code (Wave 3 — core-closed truth)", () => {
+  // REWRITTEN (Wave 3, beta → core, NOT deleted): the beta-era pins asserted
+  // multifamily's op-ex was an assumption the voice disclosed and the maturity
+  // read "beta". Wave 3 closed the two gaps — MEASURED operating expenses (the
+  // property_expenses ledger → summarizeMeasuredOpEx), per-building occupancy,
+  // and the T-12 workspace — so these assertions move to the new truth: the
+  // registry and the voice now state the measured capability with its honest
+  // data-dependent labelling, and the maturity reads "core".
+
+  it("the registry states the measured-expense + T-12 capability, not a bare assumption", () => {
     const registry = read("shared/business-types.ts");
-    expect(
-      registry,
-      "the first draft said there is no NOI-per-building surface; there is one",
-    ).not.toContain("there is no NOI-per-building surface at");
-    // And it names the real defect instead.
-    expect(flat(registry)).toMatch(/40%-of-collected \/\/ rule of thumb/);
+    // Never re-denies the per-building NOI surface (an old, corrected draft did).
+    expect(registry).not.toContain("there is no NOI-per-building surface at");
+    // Names the CLOSED capabilities.
+    expect(flat(registry)).toMatch(/MEASURED operating expenses/);
+    expect(flat(registry)).toMatch(/T-12 UNDERWRITING WORKSPACE/);
+    expect(flat(registry)).toMatch(/PER-BUILDING occupancy/);
+    // Keeps the honest labelling: the flat 40% survives ONLY as a disclosed
+    // fallback — it is not gone, it is demoted, so an unmeasured property still
+    // reads as an estimate.
+    expect(flat(registry)).toMatch(/40% ratio survives ONLY as/);
   });
 
-  it("the multifamily persona names the assumption instead of denying the surface", () => {
+  it("the multifamily persona offers the measured NOI + T-12 with honest labelling", () => {
     const personas = read("server/services/pax/personas.ts");
-    expect(personas).toMatch(/ASSUMED 40% expense ratio/);
-    expect(flat(personas)).toMatch(/never quote that NOI as though the expenses behind it were measured/);
+    // States the capability exists now — measured from the operator's own
+    // recorded expenses, plus the T-12 workspace.
+    expect(flat(personas)).toMatch(/built from the operator's OWN recorded operating expenses/);
+    expect(personas).toMatch(/T-12 underwriting workspace/);
+    // No longer asserts the beta-era "no T-12" / assumed-only state.
+    expect(personas).not.toContain("there is no T-12 underwriting");
+    // Keeps the labelling honesty AND the residual DSCR caveat — a measured NOI
+    // is never quoted as complete books off a thin/absent ledger.
+    expect(flat(personas)).toMatch(
+      /Never quote a measured NOI as though a thin or absent expense ledger were a full year's books/,
+    );
+    expect(personas).toMatch(/DSCR needs the operator's own/);
   });
 
-  it("multifamily is now beta (2026-08 audit Wave 2) — because the assumption is DISCLOSED, not because it was measured", () => {
-    // The op-ex fix in this file does not, on its own, move the maturity — a
-    // labelled assumption is still an assumption. What the 2026-08 audit ruled
-    // is that an HONEST beta only requires the number to be presented as an
-    // estimate (opExBasis "assumed_ratio" server-side, "(est.)" on the client
-    // tiles, and the Pax voice naming it), which the assertions above pin. The
-    // real property-expense axis and the T-12 workspace remain the CORE goal —
-    // core is still roadmap-for-core until that expense model ships. This
-    // assertion is rewritten (not deleted) to the new truth: the registry entry
-    // reads beta, and its op-ex is still labelled an assumption downstream.
+  it("multifamily is now CORE (Wave 3) — the assumption is CLOSED, not just disclosed", () => {
+    // The move to core is backed by real capability, not a flag flip: measured
+    // operating expenses (this file's route pins), per-building occupancy
+    // (perBuildingOccupancy.test.ts), and the T-12 workspace (t12Workspace.test.ts
+    // + the wiring gate in multifamilyCore.test.ts). The registry entry reads
+    // core, and the flat 40% is now only a disclosed fallback rather than the
+    // headline op-ex.
     const registry = read("shared/business-types.ts");
     const mf = registry.slice(registry.indexOf("multifamily: {"));
-    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "beta"');
+    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "core"');
   });
 });

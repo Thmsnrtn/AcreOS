@@ -32,6 +32,7 @@ import { properties, rentalLeases, rentCharges, rentPayments, propertyExpenses }
 import { rentalUnits } from "@shared/schema/rental";
 import type { PropertyExpenseCategory } from "@shared/rental/propertyExpense";
 import { summarizeMeasuredOpEx, isMeasuredCoverageComplete } from "@shared/rental/noi";
+import { buildT12Grid, summarizeT12, T12_MONTHS, type T12IncomeRow, type T12MonthRow, type T12Totals } from "@shared/rental/t12";
 import { computeOccupancySnapshot, type OccupancySnapshot } from "./routes-rentals";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
@@ -315,7 +316,106 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
   };
 }
 
+interface T12Response {
+  propertyId: number;
+  /** The first month of the trailing-12 window (YYYY-MM). */
+  windowStartMonth: string;
+  /**
+   * "cash" — income is rent RECEIVED (rent_payments) and expense is money SPENT
+   * (property_expenses), both bucketed by the month the cash moved. Named on the
+   * payload so a reader never mistakes it for an accrual (charged/incurred-basis)
+   * grid; the two disagree exactly when a tenant pays late, and the T-12 is the
+   * collected-cash check on a seller's pro-forma.
+   */
+  basis: "cash";
+  /** EXACTLY twelve zero-filled month rows (see buildT12Grid). */
+  months: T12MonthRow[];
+  /** Window totals — the "Total" column, a sum of the visible month cells. */
+  totals: T12Totals;
+}
+
+/**
+ * The trailing-12 grid for one property.
+ *
+ * Income is cash-basis rent RECEIVED — rent_payments summed by receivedAt month,
+ * scoped to the org's leases at this property (a join on lease_id, org-scoped on
+ * both tables). Expense is the property_expenses ledger over the same window;
+ * buildT12Grid keeps only the OPERATING rows for NOI, so mortgage_interest and
+ * depreciation never enter the grid. This route never touches maintenance_tickets
+ * — a maintenance invoice reaches the T-12 only once it has been rolled INTO the
+ * expense ledger, so reading the tickets table here would double-count it.
+ *
+ * Both axes are fetched over the SAME twelve-month window and handed to the pure
+ * buildT12Grid, which zero-fills to exactly twelve rows: a month with no rent and
+ * no spend is a present row of zeros, never an omitted one.
+ */
+async function t12ForProperty(orgId: number, propId: number): Promise<T12Response> {
+  const [prop] = await db.select({ id: properties.id }).from(properties)
+    .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+  if (!prop) throw new Error("Property not found");
+
+  // The trailing-12 window: the current month and the eleven before it. Computed
+  // in UTC so a month boundary never shifts under a server timezone.
+  const now = new Date();
+  const windowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (T12_MONTHS - 1), 1));
+  const windowStartMonth = windowStart.toISOString().slice(0, 7); // YYYY-MM
+  const windowStartDate = windowStart.toISOString().slice(0, 10); // YYYY-MM-01
+
+  // Income — cash basis. rent_payments joined to its lease, kept to this org's
+  // leases at this property. amountCents is the money received; receivedAt is the
+  // month it lands in.
+  const paymentRows = await db
+    .select({ receivedAt: rentPayments.receivedAt, amountCents: rentPayments.amountCents })
+    .from(rentPayments)
+    .innerJoin(rentalLeases, eq(rentPayments.leaseId, rentalLeases.id))
+    .where(and(
+      eq(rentPayments.organizationId, orgId),
+      eq(rentalLeases.organizationId, orgId),
+      eq(rentalLeases.propertyId, propId),
+      gte(rentPayments.receivedAt, windowStartDate),
+    ));
+  const incomeRows: T12IncomeRow[] = paymentRows.map((p) => ({
+    receivedAt: p.receivedAt,
+    amountCents: Number(p.amountCents),
+  }));
+
+  // Operating expense — the property_expenses ledger over the same window.
+  // buildT12Grid filters on the STORED is_operating flag, so the two
+  // non-operating Schedule-E lines stay out of NOI.
+  const expenseRows = await db
+    .select({
+      category: propertyExpenses.category,
+      amountCents: propertyExpenses.amountCents,
+      isOperating: propertyExpenses.isOperating,
+      incurredOn: propertyExpenses.incurredOn,
+    })
+    .from(propertyExpenses)
+    .where(and(
+      eq(propertyExpenses.organizationId, orgId),
+      eq(propertyExpenses.propertyId, propId),
+      gte(propertyExpenses.incurredOn, windowStartDate),
+    ));
+
+  const months = buildT12Grid(incomeRows, expenseRows, windowStartMonth);
+  const totals = summarizeT12(months);
+
+  return { propertyId: propId, windowStartMonth, basis: "cash", months, totals };
+}
+
 export function registerInvestorAnalyticsRoutes(app: Express): void {
+  app.get("/api/properties/:id/t12", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid property id");
+      const t12 = await t12ForProperty(orgId, propId);
+      return res.json(t12);
+    } catch (err) {
+      if (err instanceof Error && err.message === "Property not found") return Errors.notFound(res, "Property");
+      return Errors.internal(res, err);
+    }
+  });
+
   app.get("/api/properties/:id/analytics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);

@@ -5,8 +5,10 @@
  * them must land in a truthful app built from surfaces that already shipped,
  * not a land-shaped default. Their MATURITY, however, is no longer uniform.
  * short_term_rental STAYS roadmap (the honesty bar for beta is not met — STR
- * needs a nightly-booking model). multifamily and mobile_home were promoted
- * roadmap → beta in the 2026-08 audit (Wave 2), commercial was promoted
+ * needs a nightly-booking model). mobile_home was promoted roadmap → beta in
+ * the 2026-08 audit (Wave 2); multifamily was promoted roadmap → beta in that
+ * same audit and then beta → CORE in Wave 3 once the measured-expense axis,
+ * per-building occupancy, and the T-12 workspace shipped. commercial was promoted
  * roadmap → beta in Wave 2 pass B once entity/company tenants shipped and the
  * residential-statute late-fee fabrication was gated out for commercial orgs,
  * and agent_investor was promoted roadmap → beta in Wave 2 pass C once a real
@@ -29,8 +31,8 @@
  *      real land sourcing surfaces, and the businessType axis hides
  *      nothing (full land surface, like land_flipper).
  *   3. registry truth for all five entries — maturity matches each entry's
- *      honest tier (two roadmap, commercial + multifamily + mobile_home beta),
- *      every workflowTemplateId names a template that exists in
+ *      honest tier (one roadmap STR, commercial + mobile_home beta, multifamily
+ *      core), every workflowTemplateId names a template that exists in
  *      workflow-engine.ts RIGHT NOW, and every spotlightModules slug
  *      resolves to a real routed surface.
  *
@@ -230,16 +232,19 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("each entry sits at its honest tier — one roadmap (STR), agent_investor + commercial + multifamily + mobile_home beta (2026-08 audits Wave 2 + passes B/C)", () => {
+  it("each entry sits at its honest tier — one roadmap (STR), agent_investor + commercial + mobile_home beta, multifamily CORE (Wave 3)", () => {
     // 2026-08 audits promoted four of the five roadmap → beta on the honest
-    // tier definition (templates all fire, gaps disclosed not fabricated), so
-    // the old blanket "all five stay roadmap" assertion is a per-vertical map:
-    //   - multifamily → beta (Wave 2): 0219's real `rental_units` inventory
-    //     closed the unit-model gap and occupancy is computed over it; the two
-    //     remaining gaps (building-level roll-ups, the T-12 workspace) are
-    //     DISCLOSED and the assumed 40% op-ex is labelled an estimate everywhere
-    //     it surfaces, so beta is honest and core still waits on the real
-    //     expense axis.
+    // tier definition (templates all fire, gaps disclosed not fabricated), and
+    // Wave 3 then promoted multifamily beta → core, so the per-vertical map is:
+    //   - multifamily → CORE (Wave 3): the two beta gaps CLOSED, honestly —
+    //     MEASURED operating expenses (the property_expenses ledger →
+    //     summarizeMeasuredOpEx → measured per-building NOI / cap rate, with a
+    //     thin ledger marked "(N/12 mo)" and the flat 40% surviving only as a
+    //     disclosed "(est.)" fallback), PER-BUILDING occupancy (the `occupancy`
+    //     block + `byProperty` array), and the T-12 underwriting workspace
+    //     (shared/rental/t12.ts + GET /api/properties/:id/t12 + the /leases T-12
+    //     tab). DSCR (operator-supplied debt service) and residential comps stay
+    //     the disclosed residual — core, not omniscient.
     //   - mobile_home → beta (Wave 2): three write paths now populate
     //     `rental_units.kind='pad'`, so pad inventory is real and lot-lease
     //     operations are honest; the home side (chattel titles, home-vs-lot
@@ -266,7 +271,13 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
       commercial: "beta",
       agent_investor: "beta",
       short_term_rental: "roadmap",
-      multifamily: "beta",
+      // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured
+      // operating expenses (property_expenses → measured NOI/cap rate, thin
+      // coverage marked "(N/12 mo)", assumed 40% only as a disclosed fallback),
+      // per-building occupancy, and the T-12 underwriting workspace. See the
+      // core-closed prose pins in investorAnalyticsUnitAware.test.ts and the
+      // capability gate in multifamilyCore.test.ts.
+      multifamily: "core",
       mobile_home: "beta",
     };
     for (const bt of TAIL_VERTICALS) {
