@@ -597,3 +597,67 @@ describe("landlord + cross-vertical templates interpolate only real emitted payl
     expect(live).toContain("lease.expiring_60d");
   });
 });
+
+describe("balloon templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (creative_finance beta→core): note.balloon_approaching is now
+  // LIVE — noteEvents.ts → emitNoteEvent fires it from the daily
+  // notePaymentDueDetector scan (the balloon scan folded into
+  // runNotePaymentDueScan, no new job) for an ACTIVE note ~90 days from maturity
+  // with a positive balance. BOTH templates on the event
+  // (tpl_balloon_approaching / tpl_note_balloon_approaching_extended) may only
+  // interpolate fields the emitter actually sends. The critical correction: the
+  // fabricated {{balloonAmount}} (a precise balloon payoff no row holds — it
+  // lives in the amortization schedule) was replaced by {{outstandingBalance}}
+  // (notes.currentBalance), honest ONLY as the approximate outstanding figure. A
+  // reintroduced {{balloonAmount}} would render as a literal {{placeholder}},
+  // i.e. fabricated-looking output. This set is the payload buildBalloonPayload
+  // sends in server/services/noteEvents.ts.
+  const BALLOON_FIELDS = new Set([
+    "noteId", "borrowerName", "borrowerFirstName", "borrowerEmail",
+    "balloonDate", "daysToBalloon", "outstandingBalance", "orgName",
+  ]);
+  const BALLOON_TEMPLATE_IDS = [
+    "tpl_balloon_approaching",
+    "tpl_note_balloon_approaching_extended",
+  ];
+
+  it.each(BALLOON_TEMPLATE_IDS)(
+    "%s uses only fields emitNoteEvent sends for note.balloon_approaching",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      for (const field of used) {
+        expect(
+          BALLOON_FIELDS.has(field),
+          `${id} interpolates {{${field}}}, which noteEvents.ts never sends for note.balloon_approaching`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the fabricated precise balloon amount stays gone (outstanding balance only)", () => {
+    for (const id of BALLOON_TEMPLATE_IDS) {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      // The invented precise payoff must never come back.
+      expect(used.has("balloonAmount"), `${id} must not fabricate a precise balloon amount`).toBe(false);
+      // The honest, approximate outstanding figure is what both templates carry.
+      expect(used.has("outstandingBalance"), `${id} keeps the real outstanding balance`).toBe(true);
+    }
+  });
+
+  it("both balloon templates trigger on note.balloon_approaching", () => {
+    for (const id of BALLOON_TEMPLATE_IDS) {
+      expect(templateById.get(id)!.trigger.event).toBe("note.balloon_approaching");
+    }
+  });
+
+  it("note.balloon_approaching is live (noteEvents.ts + notePaymentDueDetector fold-in)", async () => {
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("note.balloon_approaching");
+  });
+});

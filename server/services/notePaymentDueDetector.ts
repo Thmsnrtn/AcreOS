@@ -20,16 +20,29 @@
  * Observe-only: events + senses. No actions, no direct notifications beyond
  * what the existing notification-router already does with priority.
  */
-import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { eventMeshEvents, notes } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
 import { eventMeshPublisher } from "./eventMeshPublisher";
 import { emitPaymentEvent } from "./workflow-engine";
+import {
+  BALLOON_WINDOW_DAYS,
+  emitNoteBalloonApproaching,
+  type NoteBalloonRow,
+} from "./noteEvents";
 
 export const NOTE_PAYMENT_CHANNEL = "note:payments";
 export const DUE_SOON_WINDOW_DAYS = 7;
+
+// audit Wave 1 (creative_finance beta→core): the balloon-approaching lane is
+// folded into THIS daily scan — no new job, no new scheduler line (the
+// run-scheduled-jobs line ratchet only shrinks). A separate mesh channel keeps
+// its dedupe ledger distinct from the payment-due findings. Module-private (used
+// only inside this scan) so it never adds an unreached export to the reachability
+// ratchet — mirrors how the channel is consumed nowhere but here.
+const NOTE_BALLOON_CHANNEL = "note:balloons";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -132,6 +145,10 @@ export interface NotePaymentScanResult {
   overdue: number;
   published: number;
   errors: number;
+  // Balloon-approaching lane (audit Wave 1, creative_finance beta→core), folded
+  // into this scan: notes ~90 days from maturity with a positive balance.
+  balloonApproaching: number;
+  balloonPublished: number;
 }
 
 /**
@@ -141,7 +158,15 @@ export interface NotePaymentScanResult {
  * degrades to fewer signals, never to a crash or an invented value.
  */
 export async function runNotePaymentDueScan(now: Date = new Date()): Promise<NotePaymentScanResult> {
-  const result: NotePaymentScanResult = { scanned: 0, dueSoon: 0, overdue: 0, published: 0, errors: 0 };
+  const result: NotePaymentScanResult = {
+    scanned: 0,
+    dueSoon: 0,
+    overdue: 0,
+    published: 0,
+    errors: 0,
+    balloonApproaching: 0,
+    balloonPublished: 0,
+  };
 
   let findings: PaymentDueFinding[] = [];
   try {
@@ -240,6 +265,113 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
   }
   if (result.overdue > 0) {
     void recordSense("note_payment_overdue", result.overdue, { newFindings: result.published });
+  }
+
+  // ── Balloon-approaching lane (audit Wave 1, creative_finance beta→core) ──────
+  // Folded into this daily scan (no new job / no new scheduler line): active
+  // notes whose maturityDate is within the next ~90 days with a positive
+  // outstanding balance. Same mesh-ledger dedupe shape as the payment sweep
+  // above — one emit per (note, maturityDate), a rerun re-reads the ledger and
+  // skips — and no migration. emitNoteBalloonApproaching (noteEvents.ts) is
+  // self-guarding and fire-and-forget, so a workflow fault never fails the scan.
+  let balloonRows: NoteBalloonRow[] = [];
+  try {
+    const balloonHorizon = new Date(now.getTime() + BALLOON_WINDOW_DAYS * DAY_MS);
+    balloonRows = await db
+      .select({
+        id: notes.id,
+        organizationId: notes.organizationId,
+        propertyId: notes.propertyId,
+        borrowerId: notes.borrowerId,
+        status: notes.status,
+        maturityDate: notes.maturityDate,
+        currentBalance: notes.currentBalance,
+      })
+      .from(notes)
+      .where(
+        and(
+          eq(notes.status, "active"),
+          isNull(notes.deletedAt),
+          gte(notes.maturityDate, now),
+          lte(notes.maturityDate, balloonHorizon),
+          sql`${notes.currentBalance} > 0`,
+        ),
+      );
+  } catch (err) {
+    result.errors += 1;
+    logger.warn(
+      "[notePaymentDueDetector] balloon notes read failed; balloon lane degraded to none",
+      err instanceof Error ? err : undefined,
+    );
+    balloonRows = [];
+  }
+
+  result.balloonApproaching = balloonRows.length;
+
+  if (balloonRows.length > 0) {
+    const balloonKey = (r: NoteBalloonRow): string =>
+      `note-balloon:${r.id}:${r.maturityDate ? isoDay(r.maturityDate) : "none"}`;
+
+    // Ledger dedupe: the mesh event IS the durable record of what already
+    // emitted, so a note that fired once for this maturityDate is old news on
+    // every later run.
+    let alreadyBallooned = new Set<string>();
+    try {
+      const keys = balloonRows.map(balloonKey);
+      const existing = await db
+        .select({ key: sql<string>`${eventMeshEvents.payload} ->> 'dedupeKey'` })
+        .from(eventMeshEvents)
+        .where(
+          and(
+            eq(eventMeshEvents.channel, NOTE_BALLOON_CHANNEL),
+            sql`${eventMeshEvents.payload} ->> 'dedupeKey' IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
+          ),
+        );
+      alreadyBallooned = new Set(existing.map((r) => r.key));
+    } catch (err) {
+      result.errors += 1;
+      // Fail CLOSED (skip all) rather than risk re-emitting every day the ledger
+      // read is broken.
+      alreadyBallooned = new Set(balloonRows.map(balloonKey));
+      logger.warn(
+        "[notePaymentDueDetector] balloon dedupe ledger read failed; skipping balloon emits this run",
+        err instanceof Error ? err : undefined,
+      );
+    }
+
+    for (const r of balloonRows) {
+      const dedupeKey = balloonKey(r);
+      if (alreadyBallooned.has(dedupeKey)) continue;
+      try {
+        await eventMeshPublisher.publish(
+          NOTE_BALLOON_CHANNEL,
+          "note:balloon_approaching",
+          {
+            noteId: r.id,
+            maturityDate: r.maturityDate ? isoDay(r.maturityDate) : null,
+            dedupeKey,
+          },
+          {
+            publisher: "note-balloon-detector",
+            priority: 4,
+            orgId: r.organizationId,
+          },
+        );
+        result.balloonPublished += 1;
+
+        // The mesh event just published is the ledger entry that makes this note
+        // "old news" next run, so emitting HERE — after a SUCCESSFUL publish —
+        // gives the engine exactly one note.balloon_approaching per (note,
+        // maturityDate), however many times the job runs.
+        emitNoteBalloonApproaching(r, now);
+      } catch (err) {
+        result.errors += 1;
+        logger.warn(
+          `[notePaymentDueDetector] balloon publish failed for ${dedupeKey} (swallowed)`,
+          err instanceof Error ? err : undefined,
+        );
+      }
+    }
   }
 
   return result;

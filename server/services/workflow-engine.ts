@@ -378,11 +378,16 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     trigger: { event: "note.balloon_approaching" },
     actions: [
       {
+        // audit Wave 1 (creative_finance beta→core): {{balloonAmount}} was
+        // fabricated — no row holds the exact balloon figure (it lives in the
+        // amortization schedule). noteEvents.ts sends {{outstandingBalance}}
+        // (notes.currentBalance) instead, honest ONLY as the approximate
+        // current outstanding balance, never a precise payment amount.
         id: "action_balloon_notify",
         type: "send_notification",
         config: {
           notificationType: "warning",
-          message: "Balloon payment approaching for note #{{noteId}} — {{borrowerName}} owes {{balloonAmount}} in 90 days",
+          message: "Balloon approaching on note #{{noteId}} — {{borrowerName}}, approx. outstanding balance {{outstandingBalance}}, matures {{balloonDate}}",
         },
       },
       {
@@ -400,7 +405,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           to: "{{borrowerEmail}}",
           subject: "Important: Upcoming balloon payment on your land note",
-          body: "Hi {{borrowerFirstName}}, your balloon payment of {{balloonAmount}} is due on {{balloonDate}}...",
+          body: "Hi {{borrowerFirstName}}, the balloon payment on your land note is approaching — the note matures on {{balloonDate}}, with an approximate outstanding balance of {{outstandingBalance}}. The exact payoff figure will be confirmed from your amortization schedule; please reach out so we can review your options.",
         },
       },
     ],
@@ -1618,13 +1623,18 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     category: "notes",
     trigger: { event: "note.balloon_approaching" },
     actions: [
+      // audit Wave 1 (creative_finance beta→core): every ${{balloonAmount}} was
+      // fabricated (no row holds the exact balloon payment — it lives in the
+      // amortization schedule). Rebound to {{outstandingBalance}}
+      // (notes.currentBalance, sent by noteEvents.ts), presented honestly as the
+      // approximate current outstanding balance, never a precise payoff figure.
       {
         id: "action_balloon_review_task",
         type: "create_task",
         config: {
-          title: "Balloon coming up — Note #{{noteId}} ({{borrowerName}}) due {{balloonDate}} (${{balloonAmount}})",
+          title: "Balloon coming up — Note #{{noteId}} ({{borrowerName}}) matures {{balloonDate}}, approx. outstanding balance ${{outstandingBalance}}",
           description:
-            "Reach out to borrower {{daysToBalloon}} days before balloon date. Confirm payoff source, offer refinance terms if appropriate, or schedule property valuation if collateral may be reclaimed.",
+            "Reach out to borrower {{daysToBalloon}} days before the balloon date. Confirm payoff source, offer refinance terms if appropriate, or schedule property valuation if collateral may be reclaimed. Pull the exact balloon payoff from the amortization schedule before you quote a figure.",
           priority: "high",
           dueInDays: 7,
         },
@@ -1636,7 +1646,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           to: "{{borrowerEmail}}",
           subject: "Balloon payment notice — Note #{{noteId}}",
           body:
-            "Hi {{borrowerName}},\n\nThis is a reminder that the balloon payment of ${{balloonAmount}} on your note is due {{balloonDate}} ({{daysToBalloon}} days from today). If you'd like to discuss refinancing, an extension, or coordinating payoff, please reply or call us. We're happy to walk through options.\n\n{{orgName}}",
+            "Hi {{borrowerName}},\n\nThis is a reminder that a balloon payment on your note is approaching — the note matures on {{balloonDate}} ({{daysToBalloon}} days from today), with an approximate outstanding balance of ${{outstandingBalance}}. The exact payoff amount will be confirmed from your amortization schedule. If you'd like to discuss refinancing, an extension, or coordinating payoff, please reply or call us. We're happy to walk through options.\n\n{{orgName}}",
         },
       },
       {
@@ -1644,7 +1654,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "warning",
-          message: "Balloon in {{daysToBalloon}}d — Note #{{noteId}}, ${{balloonAmount}} due {{balloonDate}}.",
+          message: "Balloon in {{daysToBalloon}}d — Note #{{noteId}}, approx. outstanding balance ${{outstandingBalance}}, matures {{balloonDate}}.",
         },
       },
     ],
@@ -1836,7 +1846,12 @@ export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;
   entityId: number;
-  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab" | "cert" | "buyer";
+  // "note" — the creative-finance / note-investor entity (audit Wave 1,
+  // creative_finance beta→core). A note.balloon_approaching event's subject is
+  // the serviced note itself; its numeric handle is the note's propertyId when
+  // attached, else the note's own numeric id (notes.id is a serial). See
+  // emitNoteEvent below.
+  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab" | "cert" | "buyer" | "note";
   data: Record<string, any>;
   previousData?: Record<string, any>;
 };
@@ -2917,6 +2932,35 @@ export function emitRentalEvent(event: "rent.received" | "maintenance.request_re
     organizationId,
     entityId,
     entityType: "property",
+    data,
+  });
+}
+
+// emitNoteEvent — the creative-finance balloon lifecycle emitter (audit Wave 1,
+// beta→core). Mirrors emitRentalEvent. Until this shipped,
+// note.balloon_approaching had ZERO emit call sites, so its two templates
+// (tpl_balloon_approaching / tpl_note_balloon_approaching_extended) sat idle
+// forever — the balloon lane, a hallmark of wrap/owner-carry paper, was dead.
+// The daily notePaymentDueDetector scan is now its emit site (a note whose
+// maturityDate is inside the ~90-day window with a positive balance); see
+// server/services/noteEvents.ts.
+//
+// entityType/entityId: a note's numeric handle is its propertyId when a parcel
+// is attached (notes.propertyId → properties.id, nullable), else the note's own
+// numeric id (notes.id is a serial — always a real number), so entityId is
+// `propertyId ?? id`. entityType is the new "note" member (the note IS the
+// subject; falling back to "property" would be dishonest when the handle is a
+// note id). The note id + template fields ride in `data`. Register the event in
+// shared/workflow-live-triggers.ts in the SAME change (workflowActionHonesty
+// pins the call-site ↔ list relationship). The event union MUST stay on one
+// physical line — the honesty ratchet's derivation regex stops at the first
+// newline after `event:`.
+export function emitNoteEvent(event: "note.balloon_approaching", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "note",
     data,
   });
 }

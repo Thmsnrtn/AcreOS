@@ -95,15 +95,21 @@ describe("vertical pack purchasability", () => {
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("buy_and_hold");
   });
 
-  it("creative_finance is beta (ruling #11, wave V2) yet still has no pack — nothing to sell", () => {
+  it("creative_finance is core (audit Wave 1) yet still has no pack — nothing to sell", () => {
     // 2026-07-29 wave V2: creative_finance flipped roadmap → beta because a
     // real surface now exists (Creative finance sidebar module + /today
     // cluster + the Close & Carry deal→note bridge + Dodd-Frank/Reg-Z
-    // compliance stack — see the registry entry's evidence comment). There
-    // is still deliberately NO vertical pack for it: adding one is a
-    // pricing decision (founder hard-stop), not a maturity side effect —
-    // pinned here so a pack can't appear silently.
-    expect(getBusinessType("creative_finance")?.maturity).toBe("beta");
+    // compliance stack — see the registry entry's evidence comment).
+    //
+    // 2026-08 audit Wave 1: beta → core — the vertical's ONLY genuinely-dead
+    // template lane went live (note.balloon_approaching emitted from the daily
+    // notePaymentDueDetector scan; noteEvents.ts + workflowActionHonesty pin it),
+    // and the two balloon templates were de-fabricated ({{balloonAmount}} →
+    // approximate {{outstandingBalance}}). There is still deliberately NO vertical
+    // pack for it: adding one is a pricing decision (founder hard-stop), not a
+    // maturity side effect — pinned here so a pack can't appear silently, and so a
+    // silent re-demotion of the vertical fails loudly.
+    expect(getBusinessType("creative_finance")?.maturity).toBe("core");
     const packVerticalIds = Object.values(VERTICAL_PACKS).map((p) => p.businessTypeId);
     expect(packVerticalIds).not.toContain("creative_finance");
   });

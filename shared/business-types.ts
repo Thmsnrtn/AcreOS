@@ -381,7 +381,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // note rails and does NOT touch the residential-comps data plane, so the
     // "no residential comps before its revenue trigger" hard-stop is
     // unaffected (fix_and_flip stays roadmap for exactly that reason).
-    maturity: "beta",
+    // 2026-08 audit Wave 1: beta → core. The balloon lane is now LIVE —
+    // note.balloon_approaching is emitted from the daily notePaymentDueDetector
+    // scan (server/services/noteEvents.ts → emitNoteEvent; the balloon scan
+    // folded into runNotePaymentDueScan, no new job), deduped per (note,
+    // maturityDate) on the mesh ledger, and its two templates were de-fabricated
+    // in the same change (the invented {{balloonAmount}} → the honest,
+    // approximate {{outstandingBalance}} = notes.currentBalance; the exact
+    // balloon lives in the amortization schedule, never claimed). This was
+    // creative_finance's ONLY genuinely-dead template lane — the deal→note bridge
+    // (tpl_deal_closed / tpl_note_setup) and payment.missed dunning already fire —
+    // so the vertical now passes the honesty bar for core. rentalEvents.ts +
+    // noteEvents.ts + workflowActionHonesty pin the live-trigger relationship.
+    maturity: "core",
     // All four exist in workflow-engine.ts: deal close (with the
     // seller-financed note-setup task), owner-finance note setup, missed-
     // payment dunning, and the balloon 90-day countdown (balloons being a

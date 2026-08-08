@@ -84,6 +84,17 @@
 //       the mesh ledger). entityType "property" (entityId = the lease/ticket's
 //       properties.id). rent.received also drives the mobile_home lot-rent
 //       receipt and lease.renewal_countdown_60d the multifamily unit-turn.
+//   note.balloon_approaching (audit Wave 1, creative_finance)
+//       server/services/noteEvents.ts → emitNoteEvent, called from the EXISTING
+//       daily server/services/notePaymentDueDetector.ts (the balloon scan folded
+//       into runNotePaymentDueScan — no new job): an ACTIVE note whose
+//       maturityDate is within ~90 days with a positive currentBalance, deduped
+//       per (noteId, maturityDate) on the note:balloons mesh channel. entityType
+//       "note" (entityId = the note's propertyId, else its own numeric id). Drives
+//       BOTH tpl_balloon_approaching and tpl_note_balloon_approaching_extended,
+//       whose fabricated {{balloonAmount}} was corrected to {{outstandingBalance}}
+//       (an approximate outstanding figure — the exact balloon lives in the
+//       amortization schedule) in the same change.
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -130,6 +141,7 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "maintenance.request_received",
   "lease.renewal_countdown_60d",
   "lease.expiring_60d",
+  "note.balloon_approaching",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =
