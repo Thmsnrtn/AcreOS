@@ -216,6 +216,7 @@ import { registerBidEstimateRoutes } from "./routes-bid-estimates";
 import { registerConstructionDrawRoutes } from "./routes-construction-draws";
 import { registerRentalRoutes } from "./routes-rentals";
 import { registerRentLedgerRoutes } from "./routes-rent-ledger";
+import { registerPropertyExpenseRoutes } from "./routes-property-expenses";
 import { registerAccountSecurityRoutes } from "./routes-account-security";
 import { registerFounderLetterRoutes } from "./routes-founder-letters";
 import { registerFeedbackRoutes } from "./routes-feedback";
@@ -2283,6 +2284,10 @@ export async function registerRoutes(
   registerRentalRoutes(app);
   // Buy-and-hold vertical BH-3 — rent ledger + state late-fee engine.
   registerRentLedgerRoutes(app);
+  // Wave 3 (multifamily → core) — property-expense ledger (the operating-cost
+  // axis NOI needs). Write paths only; the NOI wiring that reads it is a later
+  // stage.
+  registerPropertyExpenseRoutes(app);
   // RS-4 (post-may1-resweep): customer-side /account/security surface.
   registerAccountSecurityRoutes(app);
   // FW-DIEGO-1 (push-forward 2026-05-08): founder-letter infrastructure.

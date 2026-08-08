@@ -25,6 +25,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { organizations, properties } from "../schema";
+import type { PropertyExpenseCategory, PropertyExpenseSource } from "../rental/propertyExpense";
 
 // ============================================================================
 // BUY-AND-HOLD VERTICAL — BH-1 schema foundation (Imelda)
@@ -931,4 +932,115 @@ export const securityDeposits = pgTable(
 
 export type SecurityDeposit = typeof securityDeposits.$inferSelect;
 export type InsertSecurityDeposit = typeof securityDeposits.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// PROPERTY EXPENSES — the operating-cost ledger the vertical never had.
+// ----------------------------------------------------------------------------
+// Net operating income needs two axes: income (rent, which the ledger holds)
+// and operating expense (which it did NOT). With no expense store, NOI was
+// ASSUMED — the standing shortcut baked a flat ~40%-of-rent expense guess into
+// every projection, so a building with a new roof and one with a failing roof
+// computed the same NOI and the operator could not see the difference the
+// product claims to manage. A guessed expense ratio is a fabricated number in a
+// plausible costume; this table replaces it with what the operator actually
+// spent.
+//
+// SCHEDULE-E SHAPE. `category` is one of shared/rental/propertyExpense.ts's
+// PROPERTY_EXPENSE_CATEGORIES — IRS Schedule E (Form 1040) rental line items,
+// the vocabulary the operator already keeps their books in. Two of those lines
+// (mortgage_interest, depreciation) are STORED for Schedule-E completeness but
+// are NON-operating and must never enter NOI; `isOperating` is that flag,
+// derived SERVER-SIDE from isOperatingCategory(category) and never client-set,
+// so a client cannot slip a financing cost into the operating number.
+//
+// THE DEDUP GUARD. A completed maintenance ticket carries an invoice
+// (maintenance_tickets.invoiceCents). Rolling those into the expense ledger is
+// how a repair invoice reaches NOI — but the roll-in must be re-runnable without
+// double-charging, so `source`/`sourceRef` records WHICH ticket a rolled row
+// came from and the partial UNIQUE (organization_id, source, source_ref) WHERE
+// source_ref IS NOT NULL makes a second roll-in of the same ticket lose the
+// INSERT instead of posting the expense twice. Manual rows carry a null
+// source_ref and the partial index leaves them alone — an operator may legitimately
+// enter two $80 supply runs in a month, and only the maintenance-derived rows
+// need the guard.
+//
+// MONEY POSTURE (founder ruling "be the rail, not the provider"): this is a
+// LEDGER of money the operator ALREADY spent, on their own account, elsewhere.
+// Nothing here moves, holds, collects or charges a cent. `amountCents` is a
+// recorded fact, not a balance and not an instruction to pay.
+// ----------------------------------------------------------------------------
+export const propertyExpenses = pgTable(
+  "property_expenses",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    /**
+     * The rentable slot this expense is attributable to, when it is unit-level
+     * (a repair in 3B) rather than building-level (the master insurance policy).
+     * Nullable — most operating costs are the building's, not a unit's — and ON
+     * DELETE SET NULL so retiring a unit never deletes the money already spent
+     * on it: the expense outlives the slot, the same posture as a lease.
+     */
+    unitId: varchar("unit_id").references(() => rentalUnits.id, { onDelete: "set null" }),
+
+    /** One of PROPERTY_EXPENSE_CATEGORIES (Schedule-E line items). */
+    category: text("category").$type<PropertyExpenseCategory>().notNull(),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    /**
+     * The month bucket key. NOI is a monthly figure, so an expense is filed to
+     * the month it was incurred; a date (not a timestamp) because the operator
+     * knows the day it was spent, not a clock time, and inventing a time would
+     * be a fabricated precision.
+     */
+    incurredOn: date("incurred_on").notNull(),
+
+    /**
+     * Whether this row counts toward NOI. Derived SERVER-SIDE from
+     * isOperatingCategory(category) at write time and never accepted from the
+     * client — false for mortgage_interest and depreciation, true otherwise.
+     * Stored (rather than recomputed on every read) so a later reclassification
+     * of a category cannot silently rewrite the operating status of history.
+     */
+    isOperating: boolean("is_operating").notNull().default(true),
+
+    /**
+     * 'manual' — operator-entered; 'maintenance_invoice' — a completed
+     * maintenance ticket's invoice rolled in. See PROPERTY_EXPENSE_SOURCES.
+     */
+    source: text("source").$type<PropertyExpenseSource>().notNull().default("manual"),
+    /**
+     * The maintenance_tickets.id a rolled-in row came from; null for manual
+     * rows. Half of the (org, source, source_ref) dedup key — the roll-in's
+     * double-post guard.
+     */
+    sourceRef: varchar("source_ref"),
+
+    description: text("description"),
+    vendor: text("vendor"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING composite (L3 shard-readiness, scripts/check-org-leading-index.mjs)
+    // + the dominant read: "every expense on this property, by month" — the NOI
+    // build and the property P&L.
+    index("property_expenses_org_property_month_idx").on(table.organizationId, table.propertyId, table.incurredOn),
+    // The org-wide monthly read: "everything I spent across the portfolio this
+    // month".
+    index("property_expenses_org_month_idx").on(table.organizationId, table.incurredOn),
+    // The maintenance roll-in dedup guard. Partial so it binds ONLY rolled-in
+    // rows (source_ref IS NOT NULL): a re-run of import-maintenance loses the
+    // INSERT via onConflictDoNothing instead of posting a repair twice, while
+    // manual rows (null source_ref) are unconstrained — two like-amounts in a
+    // month are a real thing an operator enters.
+    uniqueIndex("property_expenses_org_source_ref_uk")
+      .on(table.organizationId, table.source, table.sourceRef)
+      .where(sql`source_ref IS NOT NULL`),
+  ],
+);
+
+export type PropertyExpense = typeof propertyExpenses.$inferSelect;
+export type InsertPropertyExpense = typeof propertyExpenses.$inferInsert;
 

@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { UnitsPanel } from "@/components/rentals/units-panel";
+import { ExpensesPanel } from "@/components/rentals/expenses-panel";
 import { UNIT_KIND_OPTIONS, unitVocabulary } from "@shared/rental/unitInventory";
 import type { RentalUnitKind } from "@shared/schema";
 
@@ -206,10 +207,17 @@ export default function LeasesPage() {
           {/* The rentable-slot inventory. A tab, never a nav entry — the five
               customer doors are fixed and new surfaces hang off existing ones. */}
           <TabsTrigger value="units" data-testid="tab-units">Units</TabsTrigger>
+          {/* The operating-expense ledger (Wave 3). Also a tab behind the
+              existing Finance door — no new top-level nav (standing hard-stop). */}
+          <TabsTrigger value="expenses" data-testid="tab-expenses">Expenses</TabsTrigger>
         </TabsList>
 
         <TabsContent value="units" className="mt-0">
           <UnitsPanel />
+        </TabsContent>
+
+        <TabsContent value="expenses" className="mt-0">
+          <ExpensesPanel />
         </TabsContent>
 
         <TabsContent value="leases" className="mt-0">

@@ -8604,6 +8604,67 @@ const STATEMENTS = [
   `DROP TABLE IF EXISTS "satellite_analysis"`,
   `DROP TABLE IF EXISTS "satellite_snapshots"`,
   `DROP TABLE IF EXISTS "sessions"`,
+
+  // ── 0221 property expenses: the operating-cost ledger (multifamily → core) ──
+  // NOI needs two axes — income (rent, held by the rent ledger) and operating
+  // EXPENSE, which had no store. So NOI was ASSUMED: a flat ~40%-of-rent expense
+  // guess baked into every projection, under which a new roof and a failing roof
+  // produce the same NOI. A guessed expense ratio is a fabricated number in a
+  // plausible costume; this table replaces it with what the operator ACTUALLY
+  // spent.
+  //
+  // Schedule-E shape: `category` is one of the fourteen IRS Schedule E (Form
+  // 1040) rental line items in shared/rental/propertyExpense.ts. Two of them
+  // (mortgage_interest, depreciation) are stored for completeness but are
+  // NON-operating and must never enter NOI — `is_operating` carries that, derived
+  // SERVER-SIDE from isOperatingCategory(category) and never client-set, and
+  // stored (not recomputed on read) so a later reclassification can't rewrite
+  // history's operating status.
+  //
+  // Dedup guard: a completed maintenance ticket's invoice
+  // (maintenance_tickets.invoice_cents) is rolled into this ledger by
+  // POST .../expenses/import-maintenance. `source`/`source_ref` record which
+  // ticket a rolled row came from, and the PARTIAL UNIQUE
+  // (organization_id, source, source_ref) WHERE source_ref IS NOT NULL makes a
+  // re-run lose the INSERT (onConflictDoNothing) instead of posting the repair
+  // twice. Partial on purpose: manual rows (null source_ref) are unconstrained —
+  // two like-amounts in a month are a real entry.
+  //
+  // No backfill: there is no prior expense data to migrate, and seeding the 40%
+  // guess as fake rows would be the exact fabrication this table ends. Ships
+  // empty; fills from real entry + the operator-invoked roll-in.
+  //
+  // Money posture (founder ruling "be the rail, not the provider"): a LEDGER of
+  // money already spent elsewhere on the operator's own account. Nothing here
+  // moves, holds, collects or charges a cent.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 748 -> 749.
+  // Mirrors migrations/0221_property_expenses.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "property_expenses" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL,
+    "category" text NOT NULL,
+    "amount_cents" bigint NOT NULL,
+    "incurred_on" date NOT NULL,
+    "is_operating" boolean NOT NULL DEFAULT true,
+    "source" text NOT NULL DEFAULT 'manual',
+    "source_ref" varchar,
+    "description" text,
+    "vendor" text,
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING (L3 shard-readiness) + the dominant read: "every expense on this
+  // property, by month" — the NOI build and the property P&L.
+  `CREATE INDEX IF NOT EXISTS "property_expenses_org_property_month_idx" ON "property_expenses" ("organization_id", "property_id", "incurred_on")`,
+  // The org-wide monthly read: "everything I spent across the portfolio this month".
+  `CREATE INDEX IF NOT EXISTS "property_expenses_org_month_idx" ON "property_expenses" ("organization_id", "incurred_on")`,
+  // The maintenance roll-in dedup guard. PARTIAL so it binds ONLY rolled-in rows;
+  // manual rows (null source_ref) stay unconstrained.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "property_expenses_org_source_ref_uk" ON "property_expenses" ("organization_id", "source", "source_ref") WHERE "source_ref" IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -254,6 +254,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-prompt-versions.ts", mountPath: null, kind: "register", export: "registerPromptVersionsRoutes" },
   { file: "routes-properties.ts", mountPath: null, kind: "register", export: "registerPropertyRoutes" },
   { file: "routes-property-enrichment.ts", mountPath: "/api/properties", kind: "router", export: "default" },
+  { file: "routes-property-expenses.ts", mountPath: null, kind: "register", export: "registerPropertyExpenseRoutes" },
   { file: "routes-property-tax.ts", mountPath: "/api/property-tax", kind: "router", export: "default" },
   { file: "routes-public-parcel-check.ts", mountPath: "/api/public/parcel-check", kind: "router", export: "default" },
   { file: "routes-public-parcel-report.ts", mountPath: null, kind: "register", export: "registerPublicParcelReportPages" },
