@@ -69,6 +69,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -247,6 +248,19 @@ export default function RentRollPage() {
   const [selectedLeaseId, setSelectedLeaseId] = useState<string | null>(null);
   const [feeChargeId, setFeeChargeId] = useState<string | null>(null);
 
+  // Commercial orgs run the SAME rent ledger, but the state statutory late-fee
+  // surface is residential-only: a commercial late fee is contractual (set by
+  // the lease), not statutory. Showing residential caps + citations as the
+  // binding rule for a commercial lease is wrong-domain data presented as real,
+  // so the whole late-fee surface (the rules table, the per-charge actions, and
+  // the proposal dialog) is hidden for commercial and replaced with an honest
+  // note. The backend refuses the residential late-fee endpoints for these orgs
+  // too (server/routes-rent-ledger.ts). (Wave 2 pass B.)
+  const { data: org } = useOrganization();
+  // businessType is stored on onboardingData (same read the sidebar uses), not a
+  // top-level org column.
+  const isCommercial = (org?.onboardingData as { businessType?: string } | null)?.businessType === "commercial";
+
   const aging = useQuery<AgingResponse>({
     queryKey: ["/api/rent/aging"],
     queryFn: async () => {
@@ -267,6 +281,9 @@ export default function RentRollPage() {
 
   const rules = useQuery<{ rules: LateFeeRuleRow[] }>({
     queryKey: ["/api/late-fee-rules"],
+    // Not fetched for commercial orgs — the endpoint refuses them (409), and the
+    // residential statute table is not shown to them at all.
+    enabled: !isCommercial,
     queryFn: async () => {
       const res = await fetch("/api/late-fee-rules", { credentials: "include" });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
@@ -442,14 +459,16 @@ export default function RentRollPage() {
                           >
                             Open ledger
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => setFeeChargeId(c.id)}
-                          >
-                            Late fee…
-                          </Button>
+                          {!isCommercial && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => setFeeChargeId(c.id)}
+                            >
+                              Late fee…
+                            </Button>
+                          )}
                         </div>
                       </motion.li>
                     ))}
@@ -504,15 +523,17 @@ export default function RentRollPage() {
                               >
                                 Open ledger
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs"
-                                onClick={() => setFeeChargeId(c.id)}
-                                data-testid={`button-propose-fee-${c.id}`}
-                              >
-                                Late fee…
-                              </Button>
+                              {!isCommercial && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  onClick={() => setFeeChargeId(c.id)}
+                                  data-testid={`button-propose-fee-${c.id}`}
+                                >
+                                  Late fee…
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -537,7 +558,27 @@ export default function RentRollPage() {
       {/* Security-deposit statutory clock. */}
       <DepositClockSection leases={leases} isLoading={leasesQuery.isLoading} />
 
-      {/* Late-fee rule reference */}
+      {/* Late-fee rule reference — residential ONLY. Commercial late fees are
+          contractual (set by the lease), not statutory, so the residential
+          statute table is replaced with an honest note rather than shown as if
+          it bound a commercial lease. */}
+      {isCommercial ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="w-4 h-4" aria-hidden="true" /> Late fees
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground max-w-3xl" data-testid="commercial-late-fee-note">
+              Commercial late fees are set by the lease, not by state statute — the residential
+              statutory late-fee rules do not apply to a commercial tenancy. Enter a late fee as a
+              manual charge at the figure your lease specifies. AcreOS will not propose one from a
+              residential statute here.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -603,8 +644,11 @@ export default function RentRollPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {feeCharge && (
+      {/* Residential-only. Never mounted for a commercial org: its late-fee
+          actions are hidden and feeChargeId can never be set there. */}
+      {!isCommercial && feeCharge && (
         <LateFeeProposalDialog
           open={feeChargeId !== null}
           onOpenChange={(v) => setFeeChargeId(v ? feeChargeId : null)}

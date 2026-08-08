@@ -70,9 +70,21 @@ import { logger } from "./utils/logger";
 // Validation
 // ----------------------------------------------------------------------------
 
-const tenantSchema = z.object({
-  firstName: z.string().min(1).max(120),
-  lastName: z.string().min(1).max(120),
+// Base tenant fields. firstName/lastName are OPTIONAL at the field level so an
+// entity (company) tenant can omit them; the person-vs-entity requirement is
+// enforced by the refinement below on CREATE. companyName + isEntity add the
+// commercial-beta entity support (Wave 2 pass B).
+const tenantBase = z.object({
+  firstName: z.string().min(1).max(120).optional(),
+  lastName: z.string().min(1).max(120).optional(),
+  // Company/organization tenant. Deliberately NOT `.default(false)`: under the
+  // UPDATE schema's `.partial()`, a default would survive and an unrelated PATCH
+  // (say, editing an email) would write isEntity=false, silently flipping a
+  // stored entity tenant back to a person. Left optional here — CREATE coalesces
+  // an absent value to false (person), and the refinement treats undefined as a
+  // person. An entity tenant sends isEntity=true + companyName explicitly.
+  isEntity: z.boolean().optional(),
+  companyName: z.string().min(1).max(200).optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   smsConsent: z.boolean().default(false),
@@ -89,7 +101,43 @@ const tenantSchema = z.object({
   notes: z.string().optional(),
 });
 
-const tenantUpdateSchema = tenantSchema.partial();
+// CREATE: an entity tenant needs a companyName; a person tenant needs BOTH
+// first and last name. This keeps person tenants exactly as strict as before
+// (isEntity defaults false → first/last required) while letting a company be
+// entered under its own name instead of a fabricated placeholder.
+const tenantSchema = tenantBase.superRefine((data, ctx) => {
+  if (data.isEntity) {
+    if (!data.companyName || data.companyName.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["companyName"],
+        message: "An organization / entity tenant needs a company name.",
+      });
+    }
+  } else {
+    if (!data.firstName || data.firstName.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["firstName"],
+        message: "First name is required for a person tenant.",
+      });
+    }
+    if (!data.lastName || data.lastName.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["lastName"],
+        message: "Last name is required for a person tenant.",
+      });
+    }
+  }
+});
+
+// UPDATE: fully partial. `.partial()` wraps each field (incl. the isEntity
+// default) in optional(), so an absent field parses to undefined and the PATCH
+// loop never writes it — a partial update never flips a stored entity tenant
+// back to a person. Cross-field name/company requirements are enforced on
+// CREATE; a PATCH writes only the keys it is given.
+const tenantUpdateSchema = tenantBase.partial();
 
 const leaseSchema = z.object({
   propertyId: z.coerce.number().int().positive(),
@@ -598,8 +646,13 @@ export function registerRentalRoutes(app: Express): void {
 
       const [created] = await db.insert(tenants).values({
         organizationId: orgId,
-        firstName: parsed.data.firstName,
-        lastName: parsed.data.lastName,
+        // Person names are nullable now (entity tenants omit them); the schema
+        // refinement above guarantees a person tenant supplied both and an
+        // entity tenant supplied a companyName, so nothing here is fabricated.
+        firstName: parsed.data.firstName ?? null,
+        lastName: parsed.data.lastName ?? null,
+        isEntity: parsed.data.isEntity ?? false,
+        companyName: parsed.data.companyName ?? null,
         email: parsed.data.email || null,
         phone: parsed.data.phone ?? null,
         smsConsent: parsed.data.smsConsent,

@@ -304,22 +304,33 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "commercial",
     label: "Commercial real estate",
     shortDescription: "Retail, office, industrial assets.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today: a schema audit of
-    // shared/schema/rental.ts found the core loop lease-generic (term
-    // leases, base-rent charges/payments, maintenance→contractor dispatch,
-    // security deposits; Section 8 / FCRA / lead-paint fields optional and
-    // default off), so the Rentals sidebar module gate now includes
-    // commercial, the dashboard routes commercial to the real landlord
-    // dashboard (wave V2, type-specific-widgets.tsx), and /today gets a
-    // commercial cluster (rentals stack + /deals + /properties). What's
-    // MISSING for beta: entity tenants (the tenants table is person-shaped
-    // — required first/last name, no company field), CAM / NNN
+    // 2026-08 (Wave 2 pass B, roadmap → beta): the founder promoted commercial
+    // to a BASE-RENT TERM-LEASE beta on the honest tier definition. What makes
+    // it defensible, verified against the tree:
+    //   - the core loop is lease-generic and real — term leases, base-rent
+    //     charges/payments, maintenance→contractor dispatch, security deposits
+    //     (Section 8 / FCRA / lead-paint fields optional and default off), the
+    //     Rentals sidebar module gate includes commercial, the dashboard routes
+    //     commercial to the real landlord dashboard (type-specific-widgets.tsx),
+    //     and /today gets a commercial cluster (rentals stack + /deals +
+    //     /properties);
+    //   - ENTITY / COMPANY TENANTS now exist — the tenants table gained
+    //     `is_entity` + `company_name` (migration 0220), the create/update path
+    //     requires a company name for an entity and person names for a person,
+    //     and the workflow name resolvers prefer the company name honestly. A
+    //     commercial operator can finally enter a tenant that is an LLC, which
+    //     was the concrete beta blocker.
+    //   - the residential-statute FABRICATION is FIXED, not shipped: the state
+    //     late-fee surface (residential statutory caps + citations) is now gated
+    //     OUT for commercial orgs, front and back (rent-roll.tsx +
+    //     routes-rent-ledger.ts refuse it), because a commercial late fee is
+    //     CONTRACTUAL, set by the lease, not by statute.
+    // What is explicitly NOT included and STAYS roadmap-for-core: CAM / NNN
     // pass-through reconciliation, percentage rent, escalation schedules,
-    // per-square-foot metrics, and the state late-fee rules table encodes
-    // RESIDENTIAL statutes (operator-initiated; wrong-domain for a
-    // commercial lease — a commercial operator should skip that endpoint).
-    maturity: "roadmap",
+    // per-square-foot metrics, and residential-statute late fees. Beta is scoped
+    // to the base-rent term-lease operations the shipped stack genuinely runs.
+    // 2026-08 founder promote decision.
+    maturity: "beta",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and
     // the plain lease-expiring renewal task. tpl_landlord_lease_renewal_

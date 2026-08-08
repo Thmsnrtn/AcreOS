@@ -160,7 +160,10 @@ export default function InvestorAnalyticsPage() {
               NOI uses a 40%-of-rent op-ex rule of thumb until expense
               categorization ships — an estimate, not your books. DSCR needs
               your actual debt service, which AcreOS doesn't track yet, so it
-              shows "—" instead of a made-up number.
+              shows "—" instead of a made-up number. On a commercial NNN lease
+              this op-ex rule of thumb is residential-shaped and understates NOI:
+              op-ex passes through to the tenant, so the real operating expense
+              you carry is lower than 40% of rent.
             </p>
           </div>
 

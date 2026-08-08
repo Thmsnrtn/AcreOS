@@ -580,10 +580,10 @@ const SEEDS: PersonaSeed[] = [
   // ── GATED / early verticals (collapse to a base persona's surface). These
   //    test that a vertical with a limited or shared surface degrades
   //    gracefully, never crashes. The set is no longer uniformly roadmap:
-  //    the 2026-08 audit (Wave 2) promoted developer, multifamily and
-  //    mobile_home roadmap → beta on the honest tier definition (their
-  //    surfaces are real and their gaps disclosed), so their display-name
-  //    tags below read "(beta)". short_term_rental, commercial and
+  //    the 2026-08 audits promoted developer, multifamily and mobile_home
+  //    (Wave 2) and commercial (Wave 2 pass B) roadmap → beta on the honest
+  //    tier definition (their surfaces are real and their gaps disclosed), so
+  //    their display-name tags below read "(beta)". short_term_rental and
   //    agent_investor stay roadmap ("(waitlist)") until their beta bars are
   //    met. The display-name tags are pinned to registry maturity by
   //    tests/unit/customerPersonas.test.ts. The landlord family here reaches
@@ -607,12 +607,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "commercial-investor",
-    displayName: "Cora — commercial RE (waitlist)",
+    displayName: "Cora — commercial RE (beta)",
     experience: "intermediate",
     device: "desktop-ultrawide",
     tier: "pro",
     businessType: "commercial",
-    narrative: "Roadmap vertical → land_investor base; the broadest desktop with a suppressed vertical.",
+    narrative: "Beta base-rent term-lease operator on the broadest desktop; commercial runs the shared Rentals stack (leases, base-rent ledger, maintenance) and can now enter company/entity tenants. The residential statutory late-fee surface is correctly hidden — commercial late fees are contractual, not statutory.",
     goals: ["Land on the land_investor surface", "Confirm Finance loads", "No blank pages"],
     expect: {
       financeHero: null,
