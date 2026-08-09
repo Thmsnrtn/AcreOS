@@ -84,6 +84,14 @@
 //       the mesh ledger). entityType "property" (entityId = the lease/ticket's
 //       properties.id). rent.received also drives the mobile_home lot-rent
 //       receipt and lease.renewal_countdown_60d the multifamily unit-turn.
+//   reservation.checkout (STR Wave A, short_term_rental)
+//       server/services/strEvents.ts → emitStrEvent, called from
+//       server/routes-rent-ledger.ts (PATCH /api/reservations/:id/status fires
+//       reservation.checkout on a genuine status→"checked_out" transition — the
+//       real production seam). entityType "property" (entityId = the
+//       reservation's properties.id). Drives tpl_str_turnover_cleaning; there is
+//       NO guest mail on the platform sender (the template creates a turnover
+//       task + notification only).
 //   note.balloon_approaching (audit Wave 1, creative_finance)
 //       server/services/noteEvents.ts → emitNoteEvent, called from the EXISTING
 //       daily server/services/notePaymentDueDetector.ts (the balloon scan folded
@@ -141,6 +149,7 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "maintenance.request_received",
   "lease.renewal_countdown_60d",
   "lease.expiring_60d",
+  "reservation.checkout",
   "note.balloon_approaching",
 ] as const;
 

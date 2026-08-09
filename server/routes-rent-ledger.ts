@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -59,8 +59,26 @@ import {
   commercialSalesReports,
   leaseRentSchedule,
   propertyExpenses,
+  meterReads,
+  utilityBills,
+  reservations,
+  maintenanceTickets,
+  RESERVATION_CHANNELS,
+  RESERVATION_STATUSES,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
+import {
+  computeStrMetrics,
+  windowNights,
+  computeNightlyRateExpectation,
+  type StrReservationInput,
+} from "@shared/rental/strMetrics";
+import {
+  computeStayPnl,
+  allocateStayOperatingExpense,
+  stayNightsBetween,
+  type StayPnlReservationInput,
+} from "@shared/rental/stayPnl";
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
@@ -93,6 +111,17 @@ import {
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
+import {
+  computeLotRentSplit,
+  type LotRentLeaseInput,
+} from "@shared/rental/lotRentSplit";
+import {
+  computeUtilityBillback,
+  renderUtilityBillbackStatement,
+  type UtilityKind,
+  type SubmeterPadInput,
+  type RubsPadInput,
+} from "@shared/rental/utilityBillback";
 import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
 import { computePerSqftMetrics } from "@shared/rental/perSqft";
 import type { AuthenticatedRequest } from "./types/request";
@@ -108,6 +137,10 @@ import { emitPaymentEvent } from "./services/workflow-engine";
 // generic money lane vs. the landlord receipt lane). Fire-and-forget — see
 // services/rentalEvents.ts.
 import { emitRentReceived } from "./services/rentalEvents";
+// STR Wave A: a reservation's status→"checked_out" transition fires
+// reservation.checkout on the PATCH /api/reservations/:id/status seam below.
+// Fire-and-forget — see services/strEvents.ts.
+import { emitReservationCheckout } from "./services/strEvents";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -283,6 +316,148 @@ const rentScheduleStepSchema = z
     (s) => s.stepType !== "cpi" || (s.cpiIndexBase != null && s.cpiIndexCurrent != null),
     { message: "cpi step requires cpiIndexBase and cpiIndexCurrent", path: ["cpiIndexBase"] },
   );
+
+// ----------------------------------------------------------------------------
+// Mobile-home core (Stage 2) — operator data-entry + compute-only schemas.
+// ----------------------------------------------------------------------------
+// Every field is an OPERATOR-SUPPLIED fact. Nothing here fabricates a POH/TOH
+// flag, a meter read, a utility rate or an allocation — the split/billback
+// engines refuse rather than guess. Money posture (be the rail, not the
+// provider): the billback route COMPUTES and FREEZES a proposed statement; it
+// posts no rent_charge and moves no money.
+const utilityKindEnum = z.enum(["water", "sewer", "trash", "electric", "gas"]);
+
+/** The chattel-title RECORD path — operator-asserted, no registry verification implied. */
+const mobileHomeUnitSchema = z.object({
+  homeOwnership: z.enum(["park_owned", "tenant_owned"]).nullable().optional(),
+  chattelTitleType: z.enum(["dmv_vin", "real_property"]).nullable().optional(),
+  chattelVin: z.string().max(64).nullable().optional(),
+  chattelTitleStatus: z.string().max(120).nullable().optional(),
+  chattelTitleNotes: z.string().max(2000).nullable().optional(),
+});
+
+/** A submeter reading for a pad — a recorded meter face, never inferred. */
+const meterReadSchema = z.object({
+  utilityKind: utilityKindEnum,
+  readOn: isoDate,
+  reading: z.number().finite().nonnegative(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * A utility pass-through billback to compute + freeze. SUBMETER needs a rate and
+ * reads the pads' meter_reads; RUBS needs a master bill and a basis (occupants
+ * supplied per-pad, sqft from the unit record, equal trivial). Refuse-not-
+ * fabricate is enforced by the engine; the route writes nothing on refusal.
+ */
+const utilityBillbackSchema = z
+  .object({
+    utilityKind: utilityKindEnum,
+    periodStart: isoDate,
+    periodEnd: isoDate,
+    method: z.enum(["submeter", "rubs"]),
+    // submeter
+    ratePerUnitCents: z.number().int().min(0).nullable().optional(),
+    // rubs
+    masterBillCents: z.number().int().min(0).nullable().optional(),
+    basis: z.enum(["equal", "occupants", "sqft"]).nullable().optional(),
+    occupantsByUnitId: z.record(z.string(), z.number().int().min(0)).optional(),
+  })
+  .refine((b) => b.method !== "submeter" || b.ratePerUnitCents != null, {
+    message: "submeter billback requires ratePerUnitCents",
+    path: ["ratePerUnitCents"],
+  })
+  .refine((b) => b.method !== "rubs" || b.masterBillCents != null, {
+    message: "rubs billback requires masterBillCents",
+    path: ["masterBillCents"],
+  })
+  .refine((b) => b.method !== "rubs" || b.basis != null, {
+    message: "rubs billback requires a basis",
+    path: ["basis"],
+  });
+
+// ----------------------------------------------------------------------------
+// Short-term-rental (STR) — nightly-stay reservations (STR Wave A).
+// ----------------------------------------------------------------------------
+// RECORD-ONLY. Every money field below is a figure the operator RECORDS off
+// their OWN channel payout (or their own CSV export) — never collected here.
+// `channel` is a recorded LABEL, not a live OTA sync. There is no
+// market/dynamic suggested nightly rate (residential-comps hard-stop + no
+// vendor). Cents fields are nullable — an unrecorded amount stays unset, never
+// a fabricated 0.
+const reservationChannelEnum = z.enum(RESERVATION_CHANNELS);
+const reservationStatusEnum = z.enum(RESERVATION_STATUSES);
+const strCentsField = z.coerce.number().int().min(0).nullable().optional();
+
+/** Record one STR stay by hand (the writer). */
+const reservationRecordSchema = z.object({
+  unitId: z.string().uuid().nullable().optional(),
+  guestName: z.string().max(200).nullable().optional(),
+  channel: reservationChannelEnum.nullable().optional(),
+  checkIn: isoDate,
+  checkOut: isoDate,
+  grossBookingCents: strCentsField,
+  channelFeeCents: strCentsField,
+  cleaningFeeCents: strCentsField,
+  taxesCents: strCentsField,
+  payoutCents: strCentsField,
+  // The operator's OWN set nightly rate (STR Wave B) — recorded, never a
+  // market/suggested rate. Nullable: an unset rate makes the pricing helper
+  // refuse (null), never a back-filled comp.
+  nightlyRateCents: strCentsField,
+  status: reservationStatusEnum.optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * One row of an operator's OWN Airbnb/VRBO CSV export, parsed CLIENT-SIDE and
+ * posted as JSON (the same posture as the rent-roll importer — no vendor API).
+ * The assumed CSV columns map to these fields: guest name, check-in, check-out,
+ * (optional) listing/unit label, gross/earnings, host/channel fee, cleaning fee,
+ * taxes and net payout — all money in integer cents. Unmapped columns are simply
+ * absent, and an absent amount stays null (never a fabricated 0).
+ */
+const reservationImportRowSchema = z.object({
+  guestName: z.string().max(200).nullable().optional(),
+  /** An operator's listing/unit label; resolved to an EXISTING rental_units row, else left null (no unit is invented). */
+  unitLabel: z.string().max(64).nullable().optional(),
+  channel: reservationChannelEnum.nullable().optional(),
+  checkIn: isoDate,
+  checkOut: isoDate,
+  grossBookingCents: strCentsField,
+  channelFeeCents: strCentsField,
+  cleaningFeeCents: strCentsField,
+  taxesCents: strCentsField,
+  payoutCents: strCentsField,
+  /** The operator's OWN set nightly rate (STR Wave B) — recorded, nullable. */
+  nightlyRateCents: strCentsField,
+});
+
+const reservationImportSchema = z.object({
+  /** The channel this export came from — applies to any row that omits its own. */
+  channel: reservationChannelEnum.default("other"),
+  rows: z.array(reservationImportRowSchema).min(1).max(500),
+});
+
+const reservationStatusUpdateSchema = z.object({
+  status: reservationStatusEnum,
+});
+
+/** The STR metrics window — [windowStart, windowEnd), both YYYY-MM-DD. */
+const strMetricsQuerySchema = z.object({
+  windowStart: isoDate,
+  windowEnd: isoDate,
+});
+
+/**
+ * Turnover generation (STR Wave B) — no external input; deterministic off the
+ * property's recorded reservations. `statuses` optionally narrows which stays
+ * get a turnover (default: every non-cancelled stay — a cancelled booking earns
+ * no checkout, hence no turnover). Empty body is valid.
+ */
+const turnoverGenerateSchema = z.object({
+  statuses: z.array(reservationStatusEnum).nonempty().optional(),
+});
 
 // ----------------------------------------------------------------------------
 // Workflow payment events (Wave B — "wire the engine")
@@ -2370,6 +2545,916 @@ export function registerRentLedgerRoutes(app: Express): void {
         camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
       });
       return res.json({ perSqft: metrics });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ==========================================================================
+  // MOBILE-HOME CORE (Stage 2) — lot-vs-home rent split + utility billback.
+  //
+  // Two home-side capabilities the lot-lease beta lacked, wired behind the
+  // existing Rentals doors (no new nav, no new route file). Every handler stores
+  // or reads OPERATOR-SUPPLIED facts, or COMPUTES from them with a refuse-not-
+  // fabricate engine. Money posture (founder ruling "be the rail, not the
+  // provider"): the billback route computes + FREEZES a proposed statement and
+  // posts NO rent_charge — the operator bills on their own rails, elsewhere.
+  // No residential comps: the split's conversion-trade delta compares the
+  // operator's OWN recorded POH/TOH rents, never a submarket comp.
+  // ==========================================================================
+
+  // ── A property's lot-vs-home split + POH/TOH mix ───────────────────────────
+  // Reads the property's pads (for the recorded POH/TOH flag) and their active
+  // leases' rent_charges (the operator-supplied lot/home components, taken from
+  // the latest month a component was charged), then calls the pure engine. A
+  // lease whose split is not recorded is REFUSED per-lease, never inferred.
+  app.get("/api/properties/:propertyId/mobile-home/lot-rent-split", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // The pads and their recorded ownership. A pad with no recorded POH/TOH
+      // flag surfaces as unclassified — the engine refuses it, never guesses.
+      const pads = await db
+        .select({
+          id: rentalUnits.id,
+          label: rentalUnits.label,
+          homeOwnership: rentalUnits.homeOwnership,
+        })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propertyId),
+          eq(rentalUnits.kind, "pad"),
+        ));
+      const padById = new Map(pads.map((p) => [p.id, p]));
+
+      // The active leases sitting on those pads.
+      const activeLeases = pads.length
+        ? await db
+            .select({ id: rentalLeases.id, unitId: rentalLeases.unitId })
+            .from(rentalLeases)
+            .where(and(
+              eq(rentalLeases.organizationId, orgId),
+              eq(rentalLeases.propertyId, propertyId),
+              eq(rentalLeases.status, "active"),
+              inArray(rentalLeases.unitId, pads.map((p) => p.id)),
+            ))
+        : [];
+
+      // The operator-supplied lot/home components: the amount of the latest month
+      // each component was charged for each lease. Null when not recorded → the
+      // engine refuses that lease's split rather than infer it.
+      const leaseIds = activeLeases.map((l) => l.id);
+      const componentCharges = leaseIds.length
+        ? await db
+            .select({
+              leaseId: rentCharges.leaseId,
+              rentComponent: rentCharges.rentComponent,
+              amountCents: rentCharges.amountCents,
+              chargedForMonth: rentCharges.chargedForMonth,
+            })
+            .from(rentCharges)
+            .where(and(
+              eq(rentCharges.organizationId, orgId),
+              inArray(rentCharges.leaseId, leaseIds),
+              inArray(rentCharges.rentComponent, ["lot", "home"]),
+            ))
+        : [];
+
+      // Reduce to the latest-month lot and home amount per lease.
+      type Comp = { cents: number; month: string };
+      const byLease = new Map<string, { lot?: Comp; home?: Comp }>();
+      for (const c of componentCharges) {
+        if (c.rentComponent !== "lot" && c.rentComponent !== "home") continue;
+        const month = String(c.chargedForMonth);
+        const slot = byLease.get(c.leaseId) ?? {};
+        const key = c.rentComponent;
+        const existing = slot[key];
+        if (!existing || month > existing.month) {
+          slot[key] = { cents: Number(c.amountCents), month };
+        }
+        byLease.set(c.leaseId, slot);
+      }
+
+      const inputs: LotRentLeaseInput[] = activeLeases.map((l) => {
+        const pad = l.unitId ? padById.get(l.unitId) : undefined;
+        const comp = byLease.get(l.id) ?? {};
+        return {
+          ref: pad?.label ?? l.id,
+          homeOwnership: pad?.homeOwnership ?? null,
+          lotRentCents: comp.lot?.cents ?? null,
+          homeRentCents: comp.home?.cents ?? null,
+        };
+      });
+
+      const summary = computeLotRentSplit(inputs);
+      return res.json({ propertyId, padCount: pads.length, leaseCount: activeLeases.length, summary });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Meter reads — the submeter billback input (writer) ─────────────────────
+  // A reading is an operator-asserted meter face. Re-recording the same
+  // (pad, utility, date) UPSERTs (a correction) rather than double-listing it.
+  app.post("/api/rentals/units/:id/meter-reads", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = meterReadSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+      if (!unit) return Errors.notFound(res, "Rental unit");
+
+      const [saved] = await db.insert(meterReads).values({
+        organizationId: orgId,
+        unitId: unit.id,
+        utilityKind: parsed.data.utilityKind,
+        readOn: parsed.data.readOn,
+        reading: String(parsed.data.reading),
+        notes: parsed.data.notes ?? null,
+      })
+        .onConflictDoUpdate({
+          target: [meterReads.unitId, meterReads.utilityKind, meterReads.readOn],
+          set: {
+            reading: String(parsed.data.reading),
+            notes: parsed.data.notes ?? null,
+          },
+        })
+        .returning();
+
+      logger.info("[MH] meter read recorded", {
+        orgId, unitId: unit.id, utilityKind: parsed.data.utilityKind, readId: saved?.id,
+      });
+      return res.json({ meterRead: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Meter reads — list for a unit (reader), optionally by utility ──────────
+  app.get("/api/rentals/units/:id/meter-reads", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+      if (!unit) return Errors.notFound(res, "Rental unit");
+
+      const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
+      const reads = await db.select().from(meterReads)
+        .where(and(
+          eq(meterReads.organizationId, orgId),
+          eq(meterReads.unitId, unit.id),
+          ...(utilityFilter.success ? [eq(meterReads.utilityKind, utilityFilter.data)] : []),
+        ))
+        .orderBy(desc(meterReads.readOn));
+      return res.json({ reads, count: reads.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Generate a utility billback — compute + FREEZE, propose per-pad charges ─
+  // SUBMETER pairs each pad's two latest meter_reads; RUBS allocates the master
+  // bill by a recorded basis (occupants supplied per-pad, sqft from the unit
+  // record, equal trivial). Refuses (400, writes nothing) when the WHOLE
+  // computation is not producible. On success it FREEZES one utility_bills row
+  // per BILLED pad (the exhibit) and RETURNS the proposed per-pad charge lines —
+  // it posts NO rent_charge and moves no money (be the rail, not the provider).
+  app.post("/api/properties/:propertyId/utility-billback/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = utilityBillbackSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.periodEnd < parsed.data.periodStart) {
+        return Errors.badRequest(res, "periodEnd must not precede periodStart");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const pads = await db
+        .select({ id: rentalUnits.id, label: rentalUnits.label, squareFeet: rentalUnits.squareFeet })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propertyId),
+          eq(rentalUnits.kind, "pad"),
+        ));
+      if (pads.length === 0) return Errors.badRequest(res, "This property has no pads to bill");
+
+      const utilityKind = parsed.data.utilityKind as UtilityKind;
+      let result;
+      if (parsed.data.method === "submeter") {
+        // Each pad's latest two reads (read_on ≤ periodEnd): current = newest,
+        // prior = the one before. Fewer than two → the engine refuses that pad.
+        const submeterPads: SubmeterPadInput[] = [];
+        for (const pad of pads) {
+          const reads = await db
+            .select({ reading: meterReads.reading, readOn: meterReads.readOn })
+            .from(meterReads)
+            .where(and(
+              eq(meterReads.organizationId, orgId),
+              eq(meterReads.unitId, pad.id),
+              eq(meterReads.utilityKind, utilityKind),
+              lte(meterReads.readOn, parsed.data.periodEnd),
+            ))
+            .orderBy(desc(meterReads.readOn))
+            .limit(2);
+          submeterPads.push({
+            unitId: pad.id,
+            currentReading: reads[0] != null ? Number(reads[0].reading) : null,
+            priorReading: reads[1] != null ? Number(reads[1].reading) : null,
+          });
+        }
+        result = computeUtilityBillback({
+          method: "submeter",
+          ratePerUnitCents: parsed.data.ratePerUnitCents ?? null,
+          pads: submeterPads,
+        });
+      } else {
+        const basis = parsed.data.basis ?? null;
+        const rubsPads: RubsPadInput[] = pads.map((pad) => {
+          let basisValue: number | null = null;
+          if (basis === "sqft") basisValue = pad.squareFeet ?? null;
+          else if (basis === "occupants") basisValue = parsed.data.occupantsByUnitId?.[pad.id] ?? null;
+          return { unitId: pad.id, basisValue };
+        });
+        result = computeUtilityBillback({
+          method: "rubs",
+          masterBillCents: parsed.data.masterBillCents ?? null,
+          basis,
+          pads: rubsPads,
+        });
+      }
+
+      // Honest whole-refusal — write nothing, say exactly why.
+      if (result.refusedReason) {
+        return Errors.badRequest(res, result.refusedReason);
+      }
+
+      const statementMarkdown = renderUtilityBillbackStatement(result, {
+        utilityKind,
+        periodStart: parsed.data.periodStart,
+        periodEnd: parsed.data.periodEnd,
+      });
+
+      // Freeze one row per BILLED pad (a refused pad has no bill to freeze — it is
+      // still returned in the response so the operator sees why). Re-generating
+      // UPSERTs the snapshot rather than double-billing the pad.
+      const generatedAt = new Date();
+      const billedLines = result.perPad.filter((p) => p.refusedReason == null && p.allocatedCents != null);
+      const labelById = new Map(pads.map((p) => [p.id, p.label]));
+      const frozen = [];
+      for (const line of billedLines) {
+        const [saved] = await db.insert(utilityBills).values({
+          organizationId: orgId,
+          propertyId,
+          unitId: line.unitId,
+          utilityKind,
+          periodStart: parsed.data.periodStart,
+          periodEnd: parsed.data.periodEnd,
+          method: result.method,
+          masterBillCents: result.masterBillCents,
+          allocatedCents: line.allocatedCents,
+          basis: result.basis,
+          coverageComplete: result.coverageComplete,
+          statementMarkdown,
+          generatedAt,
+        })
+          .onConflictDoUpdate({
+            target: [
+              utilityBills.unitId,
+              utilityBills.utilityKind,
+              utilityBills.periodStart,
+              utilityBills.periodEnd,
+            ],
+            set: {
+              method: result.method,
+              masterBillCents: result.masterBillCents,
+              allocatedCents: line.allocatedCents,
+              basis: result.basis,
+              coverageComplete: result.coverageComplete,
+              statementMarkdown,
+              generatedAt,
+            },
+          })
+          .returning();
+        if (saved) frozen.push(saved);
+      }
+
+      logger.info("[MH] utility billback generated", {
+        orgId, propertyId, utilityKind, method: result.method,
+        billedPads: billedLines.length, coverageComplete: result.coverageComplete,
+      });
+      return res.json({
+        billback: result,
+        statementMarkdown,
+        proposedLines: result.perPad.map((p) => ({ ...p, label: labelById.get(p.unitId) ?? null })),
+        frozenCount: frozen.length,
+        // Compute-only: no rent_charge is posted; the operator bills on their own rails.
+        posted: false,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Utility bills — list a property's frozen billback statements (reader) ──
+  app.get("/api/properties/:propertyId/utility-bills", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+
+      const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
+      const bills = await db.select().from(utilityBills)
+        .where(and(
+          eq(utilityBills.organizationId, orgId),
+          eq(utilityBills.propertyId, propertyId),
+          ...(utilityFilter.success ? [eq(utilityBills.utilityKind, utilityFilter.data)] : []),
+        ))
+        .orderBy(desc(utilityBills.periodStart));
+      return res.json({ bills, count: bills.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Chattel-title RECORD path — operator-asserted, verification-free ───────
+  // Writes the pad's home_ownership (POH/TOH) + chattel-title columns. RECORD
+  // ONLY: it stores what the operator asserts and NOTHING more — no DMV/registry
+  // verification, no lienholder assertion, no title signing is implied or
+  // performed. A partial update; only sent keys are written.
+  app.patch("/api/rentals/units/:id/mobile-home", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = mobileHomeUnitSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (parsed.data.homeOwnership !== undefined) updates.homeOwnership = parsed.data.homeOwnership;
+      if (parsed.data.chattelTitleType !== undefined) updates.chattelTitleType = parsed.data.chattelTitleType;
+      if (parsed.data.chattelVin !== undefined) updates.chattelVin = parsed.data.chattelVin;
+      if (parsed.data.chattelTitleStatus !== undefined) updates.chattelTitleStatus = parsed.data.chattelTitleStatus;
+      if (parsed.data.chattelTitleNotes !== undefined) updates.chattelTitleNotes = parsed.data.chattelTitleNotes;
+
+      const [updated] = await db.update(rentalUnits).set(updates)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Rental unit");
+
+      logger.info("[MH] mobile-home unit record updated", {
+        orgId, unitId: updated.id, fields: Object.keys(parsed.data),
+      });
+      return res.json({
+        unit: updated,
+        // Stated on the wire so no client can imply otherwise.
+        record:
+          "This records what you asserted about the home's ownership and title. AcreOS does not verify " +
+          "the title with any DMV or registry and asserts no lien — it is your record, not a registration.",
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHORT-TERM RENTAL (STR) — nightly-stay reservations (STR Wave A).
+  // ----------------------------------------------------------------------------
+  //   POST  /api/properties/:propertyId/reservations         — record a stay (writer)
+  //   GET   /api/properties/:propertyId/reservations         — list a property's stays (reader)
+  //   POST  /api/properties/:propertyId/reservations/import  — import an operator's OWN channel CSV
+  //   GET   /api/properties/:propertyId/str-metrics          — occupancy / ADR / RevPAR (engine call site)
+  //   PATCH /api/reservations/:id/status                     — status transition; fires reservation.checkout
+  //   GET   /api/reservations/:id/pnl                        — per-stay P&L (Wave B; refuse-not-fabricate)
+  //   GET   /api/reservations/:id/pricing                    — operator-set nightly-rate expectation (Wave B)
+  //   POST  /api/properties/:propertyId/turnovers/generate   — create a cleaning ticket per checkout (Wave B, idempotent)
+  //   GET   /api/properties/:propertyId/turnovers            — list a property's turnover tasks (Wave B)
+  //
+  // RECORD-ONLY (be the rail, not the provider): nothing here moves money — the
+  // per-stay P&L TOTALS recorded facts and a nightly rate is the operator's OWN
+  // recorded figure. NO OTA vendor API and NO market/dynamic suggested nightly
+  // rate — every number comes ONLY from the operator's own recorded amounts, and
+  // a missing input REFUSES (null / unavailable line) rather than fabricating.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Record a reservation (writer) ─────────────────────────────────────────
+  app.post("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = reservationRecordSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.checkOut <= parsed.data.checkIn) {
+        return Errors.badRequest(res, "checkOut must be after checkIn");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // A supplied unitId must belong to this property in this org — never trust it blindly.
+      if (parsed.data.unitId) {
+        const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+          .where(and(
+            eq(rentalUnits.id, parsed.data.unitId),
+            eq(rentalUnits.organizationId, orgId),
+            eq(rentalUnits.propertyId, propId),
+          ));
+        if (!unit) return Errors.badRequest(res, "unitId does not belong to this property");
+      }
+
+      const nights = windowNights(parsed.data.checkIn, parsed.data.checkOut);
+      const [saved] = await db.insert(reservations).values({
+        organizationId: orgId,
+        propertyId: propId,
+        unitId: parsed.data.unitId ?? null,
+        guestName: parsed.data.guestName ?? null,
+        channel: parsed.data.channel ?? null,
+        checkIn: parsed.data.checkIn,
+        checkOut: parsed.data.checkOut,
+        nights: nights ?? null,
+        grossBookingCents: parsed.data.grossBookingCents ?? null,
+        channelFeeCents: parsed.data.channelFeeCents ?? null,
+        cleaningFeeCents: parsed.data.cleaningFeeCents ?? null,
+        taxesCents: parsed.data.taxesCents ?? null,
+        payoutCents: parsed.data.payoutCents ?? null,
+        nightlyRateCents: parsed.data.nightlyRateCents ?? null,
+        status: parsed.data.status ?? "booked",
+        notes: parsed.data.notes ?? null,
+      })
+        // The (org, unit, check_in, channel) unique index is the importer's guard;
+        // for a hand-recorded stay a conflict means the same stay already exists.
+        .onConflictDoNothing()
+        .returning();
+      if (!saved) {
+        return Errors.badRequest(res, "A reservation for this unit, check-in date and channel already exists");
+      }
+
+      logger.info("[STR] reservation recorded", {
+        orgId, propId, reservationId: saved.id, channel: saved.channel, status: saved.status,
+      });
+      return res.json({ reservation: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── List a property's reservations (reader) ───────────────────────────────
+  app.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const statusFilter = reservationStatusEnum.safeParse(req.query.status);
+      const rows = await db.select().from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+          ...(statusFilter.success ? [eq(reservations.status, statusFilter.data)] : []),
+        ))
+        .orderBy(desc(reservations.checkIn));
+      return res.json({ reservations: rows, count: rows.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Import an operator's OWN Airbnb/VRBO CSV export (parsed client-side) ────
+  // Mirrors routes-rent-roll-import: every row is accounted for. NO vendor API —
+  // this consumes the operator's own export. Idempotent on the (org, unit,
+  // check_in, channel) key AND on an in-app natural-key check (so null-unit rows,
+  // which most channel exports are, still dedupe). Returns a created-vs-duplicate
+  // report whose numbers add up to rowsSubmitted.
+  app.post("/api/properties/:propertyId/reservations/import", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = reservationImportSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const summary = await db.transaction(async (tx) => {
+        let createdCount = 0;
+        let duplicateCount = 0;
+        const skippedRows: Array<{ row: number; reason: string; message: string }> = [];
+
+        for (let i = 0; i < parsed.data.rows.length; i++) {
+          const row = parsed.data.rows[i];
+          if (row.checkOut <= row.checkIn) {
+            skippedRows.push({
+              row: i + 1,
+              reason: "invalid_dates",
+              message: "check-out is not after check-in, so no stay was recorded for this row.",
+            });
+            continue;
+          }
+          const channel = row.channel ?? parsed.data.channel;
+
+          // Resolve an operator's listing/unit label to an EXISTING unit only —
+          // a stay's listing name is not a slot, so we never invent a unit here.
+          let unitId: string | null = null;
+          const label = row.unitLabel?.trim();
+          if (label) {
+            const [unit] = await tx.select({ id: rentalUnits.id }).from(rentalUnits)
+              .where(and(
+                eq(rentalUnits.organizationId, orgId),
+                eq(rentalUnits.propertyId, propId),
+                eq(rentalUnits.label, label),
+              ));
+            unitId = unit?.id ?? null;
+          }
+
+          const guestName = row.guestName?.trim() || null;
+
+          // Natural-key dedupe (works even when unit_id is null): a stay is the
+          // same stay if it shares property + dates + channel + guest.
+          const [existing] = await tx.select({ id: reservations.id }).from(reservations)
+            .where(and(
+              eq(reservations.organizationId, orgId),
+              eq(reservations.propertyId, propId),
+              eq(reservations.checkIn, row.checkIn),
+              eq(reservations.checkOut, row.checkOut),
+              eq(reservations.channel, channel),
+              guestName == null ? isNull(reservations.guestName) : eq(reservations.guestName, guestName),
+            ));
+          if (existing) {
+            duplicateCount++;
+            continue;
+          }
+
+          const nights = windowNights(row.checkIn, row.checkOut);
+          const inserted = await tx.insert(reservations).values({
+            organizationId: orgId,
+            propertyId: propId,
+            unitId,
+            guestName,
+            channel,
+            checkIn: row.checkIn,
+            checkOut: row.checkOut,
+            nights: nights ?? null,
+            grossBookingCents: row.grossBookingCents ?? null,
+            channelFeeCents: row.channelFeeCents ?? null,
+            cleaningFeeCents: row.cleaningFeeCents ?? null,
+            taxesCents: row.taxesCents ?? null,
+            payoutCents: row.payoutCents ?? null,
+            nightlyRateCents: row.nightlyRateCents ?? null,
+            status: "booked",
+            notes: "Imported from operator's channel CSV export.",
+          })
+            // Belt for the unit-keyed unique index (the app check above handles null-unit rows).
+            .onConflictDoNothing()
+            .returning({ id: reservations.id });
+          if (inserted.length > 0) createdCount++;
+          else duplicateCount++;
+        }
+
+        return { createdCount, duplicateCount, skippedRows };
+      });
+
+      logger.info("[STR] reservations imported", {
+        orgId, propId,
+        rowsSubmitted: parsed.data.rows.length,
+        createdCount: summary.createdCount,
+        duplicateCount: summary.duplicateCount,
+        skippedRowCount: summary.skippedRows.length,
+      });
+      // created + duplicate + skipped must equal rowsSubmitted — the caller can check.
+      return res.json({
+        ...summary,
+        skippedRowCount: summary.skippedRows.length,
+        rowsSubmitted: parsed.data.rows.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── STR performance metrics — the engine's production call site (reader) ───
+  // availableUnitNights is derived from the property's ACTIVE rental_units count
+  // × the window's nights. When the property has no units on record (or the
+  // window is empty), the denominator is not derivable and the engine REFUSES
+  // occupancy + RevPAR (null) rather than fabricate one. ADR refuses (null) when
+  // nothing was booked. Never a market/suggested rate — the operator's own
+  // recorded amounts only.
+  app.get("/api/properties/:propertyId/str-metrics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const q = strMetricsQuerySchema.safeParse(req.query);
+      if (!q.success) return Errors.validationFailed(res, q.error.issues);
+      if (q.data.windowEnd <= q.data.windowStart) {
+        return Errors.badRequest(res, "windowEnd must be after windowStart");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const [{ unitCount }] = await db
+        .select({ unitCount: sql<number>`count(*)::int` })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propId),
+          eq(rentalUnits.status, "active"),
+        ));
+
+      const wn = windowNights(q.data.windowStart, q.data.windowEnd);
+      // Refuse the denominator honestly: no units on record, or an empty window.
+      const availableUnitNights = unitCount > 0 && wn != null ? unitCount * wn : null;
+
+      const rows = await db
+        .select({
+          checkIn: reservations.checkIn,
+          checkOut: reservations.checkOut,
+          status: reservations.status,
+          grossBookingCents: reservations.grossBookingCents,
+          cleaningFeeCents: reservations.cleaningFeeCents,
+          taxesCents: reservations.taxesCents,
+        })
+        .from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+        ));
+
+      const engineRows: StrReservationInput[] = rows.map((r) => ({
+        checkIn: String(r.checkIn),
+        checkOut: String(r.checkOut),
+        status: r.status,
+        grossBookingCents: r.grossBookingCents ?? null,
+        cleaningFeeCents: r.cleaningFeeCents ?? null,
+        taxesCents: r.taxesCents ?? null,
+      }));
+
+      const metrics = computeStrMetrics({
+        reservations: engineRows,
+        windowStart: q.data.windowStart,
+        windowEnd: q.data.windowEnd,
+        availableUnitNights,
+      });
+
+      return res.json({
+        metrics,
+        window: { start: q.data.windowStart, end: q.data.windowEnd, nights: wn },
+        activeUnitCount: unitCount,
+        availableUnitNights,
+        reservationCount: rows.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Reservation status transition (writer) — fires reservation.checkout ────
+  // A genuine transition INTO 'checked_out' (from any other status) is the real
+  // production seam that fires the STR turnover-cleaning workflow. Fire-and-
+  // forget after the write commits — a workflow failure never fails the update.
+  app.patch("/api/reservations/:id/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = reservationStatusUpdateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [current] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!current) return Errors.notFound(res, "Reservation");
+
+      const [updated] = await db.update(reservations)
+        .set({ status: parsed.data.status, updatedAt: new Date() })
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)))
+        .returning();
+
+      // Emit ONLY on a genuine transition into checked_out (not a re-save of an
+      // already-checked-out stay), so a turnover fires once per checkout.
+      if (parsed.data.status === "checked_out" && current.status !== "checked_out") {
+        emitReservationCheckout({
+          organizationId: orgId,
+          reservationId: updated.id,
+          propertyId: updated.propertyId,
+          unitId: updated.unitId ?? null,
+          guestName: updated.guestName ?? null,
+          checkOut: String(updated.checkOut),
+          channel: updated.channel ?? null,
+        });
+      }
+
+      logger.info("[STR] reservation status updated", {
+        orgId, reservationId: updated.id, from: current.status, to: updated.status,
+      });
+      return res.json({ reservation: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Per-stay P&L (reader, STR Wave B) ──────────────────────────────────────
+  // net = gross − channelFee − cleaningFee − taxes − allocatedOperatingExpense.
+  // Loads the reservation + the property's OPERATING property_expenses (noi.ts's
+  // isOperating rule — never mortgage_interest/depreciation), allocates them to
+  // the stay's nights over the expense window, and hands both to the pure engine
+  // (shared/rental/stayPnl.ts). REFUSE-NOT-FABRICATE: an unrecorded fee omits its
+  // line and the net refuses (null); no measured op-ex leaves the op-ex line
+  // unavailable (disclosed) rather than a guessed 40%-of-revenue ratio. RECORD-
+  // ONLY: nothing here moves money.
+  app.get("/api/reservations/:id/pnl", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [reservation] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!reservation) return Errors.notFound(res, "Reservation");
+
+      // The property's expense rows; the engine filters to OPERATING via noi.ts.
+      const expenseRows = await db
+        .select({
+          category: propertyExpenses.category,
+          amountCents: propertyExpenses.amountCents,
+          isOperating: propertyExpenses.isOperating,
+          incurredOn: propertyExpenses.incurredOn,
+        })
+        .from(propertyExpenses)
+        .where(and(
+          eq(propertyExpenses.organizationId, orgId),
+          eq(propertyExpenses.propertyId, reservation.propertyId),
+        ));
+
+      const stayNights =
+        stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut)) ?? 0;
+      const allocation = allocateStayOperatingExpense({
+        expenseRows: expenseRows.map((r) => ({
+          category: r.category,
+          amountCents: Number(r.amountCents),
+          isOperating: r.isOperating,
+          incurredOn: String(r.incurredOn),
+        })),
+        stayNights,
+      });
+
+      const pnlReservation: StayPnlReservationInput = {
+        grossBookingCents: reservation.grossBookingCents ?? null,
+        channelFeeCents: reservation.channelFeeCents ?? null,
+        cleaningFeeCents: reservation.cleaningFeeCents ?? null,
+        taxesCents: reservation.taxesCents ?? null,
+      };
+      const pnl = computeStayPnl({
+        reservation: pnlReservation,
+        allocatedOperatingExpenseCents: allocation.allocatedOperatingExpenseCents,
+      });
+
+      return res.json({ reservationId: reservation.id, stayNights, pnl, allocation });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Operator-set nightly-rate expectation (reader, STR Wave B) ─────────────
+  // expectedRevenue = the operator's OWN set nightly rate × the stay's nights,
+  // and its variance vs the recorded gross booking. NOT a market/dynamic
+  // suggested rate (residential-comps hard-stop + no vendor). REFUSES (null) when
+  // the operator has not set a rate — never a back-filled comp.
+  app.get("/api/reservations/:id/pricing", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [reservation] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!reservation) return Errors.notFound(res, "Reservation");
+
+      const nights = stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut));
+      const pricing = computeNightlyRateExpectation({
+        nightlyRateCents: reservation.nightlyRateCents ?? null,
+        nights,
+        grossBookingCents: reservation.grossBookingCents ?? null,
+      });
+
+      return res.json({ reservationId: reservation.id, pricing });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Turnover / cleaning scheduling (writer, STR Wave B) ────────────────────
+  // Creates ONE cleaning maintenance_ticket per checkout, REUSING the existing
+  // maintenance_tickets table (category 'cleaning') — no new table. IDEMPOTENT:
+  // keyed on the ticket's reservation_id via the partial unique index, so a
+  // re-run never double-creates a turnover for a checkout already turned into a
+  // ticket. Deterministic off recorded checkout dates — no external data, no
+  // money movement (a turnover is a task, not a payment).
+  app.post("/api/properties/:propertyId/turnovers/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = turnoverGenerateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // Default: every non-cancelled stay (a cancelled booking earns no checkout,
+      // hence no turnover). An explicit statuses filter narrows further.
+      const statuses = parsed.data.statuses ?? RESERVATION_STATUSES.filter((s) => s !== "cancelled");
+      const stays = await db.select().from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+          inArray(reservations.status, statuses),
+        ))
+        .orderBy(desc(reservations.checkOut));
+
+      const summary = await db.transaction(async (tx) => {
+        let createdCount = 0;
+        let existingCount = 0;
+        const createdTicketIds: string[] = [];
+        for (const stay of stays) {
+          // Idempotent: a reservation already turned into a turnover is skipped.
+          const [existing] = await tx.select({ id: maintenanceTickets.id }).from(maintenanceTickets)
+            .where(and(
+              eq(maintenanceTickets.organizationId, orgId),
+              eq(maintenanceTickets.reservationId, stay.id),
+            ));
+          if (existing) { existingCount++; continue; }
+
+          const checkOut = String(stay.checkOut);
+          const description = stay.guestName
+            ? `Auto-generated turnover cleaning for the stay ending ${checkOut} (guest ${stay.guestName}).`
+            : `Auto-generated turnover cleaning for the stay ending ${checkOut}.`;
+          const inserted = await tx.insert(maintenanceTickets).values({
+            organizationId: orgId,
+            propertyId: propId,
+            reservationId: stay.id,
+            title: `Turnover cleaning — checkout ${checkOut}`,
+            description,
+            category: "cleaning",
+            severity: "standard",
+            status: "open",
+          })
+            // Belt for the (org, reservation_id) partial unique index: a
+            // concurrent generate loses the INSERT rather than double-creating.
+            .onConflictDoNothing()
+            .returning({ id: maintenanceTickets.id });
+          if (inserted.length > 0) { createdCount++; createdTicketIds.push(inserted[0].id); }
+          else existingCount++;
+        }
+        return { createdCount, existingCount, createdTicketIds };
+      });
+
+      logger.info("[STR] turnovers generated", {
+        orgId, propId,
+        candidateCount: stays.length,
+        createdCount: summary.createdCount,
+        existingCount: summary.existingCount,
+      });
+      return res.json({ ...summary, candidateCount: stays.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── List a property's turnover tasks (reader, STR Wave B) ──────────────────
+  // The turnover tickets are exactly the maintenance_tickets carrying a
+  // reservation_id (the turnover marker) — ordinary tickets have none.
+  app.get("/api/properties/:propertyId/turnovers", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const rows = await db.select().from(maintenanceTickets)
+        .where(and(
+          eq(maintenanceTickets.organizationId, orgId),
+          eq(maintenanceTickets.propertyId, propId),
+          isNotNull(maintenanceTickets.reservationId),
+        ))
+        .orderBy(desc(maintenanceTickets.createdAt));
+      return res.json({ turnovers: rows, count: rows.length });
     } catch (err) {
       return Errors.internal(res, err);
     }

@@ -14,9 +14,10 @@
  * summaries, with honest empty/zero states when nothing is configured. We do
  * NOT widen the founder-only /commissions surface or the admin write scope.
  *
- * The honest-partial disclosure below names what is live (commission tracking)
- * and what stays roadmap-for-core (MLS, client-vs-own-book, dual-agency) so the
- * beta is never oversold.
+ * The disclosure below names what is live: commission tracking + the measured
+ * split/cap/GCI economics, client-vs-own-book, the record-only dual-agency
+ * tracker, and MLS/CMA via the ATTOM seam (BYO key, honest-unavailable when
+ * unkeyed). agent_investor is core (Wave 5); nothing here is oversold.
  */
 import { AlertTriangle } from "lucide-react";
 import CommissionsPage from "@/pages/commissions";
@@ -42,13 +43,26 @@ function CommissionRoadmapDisclosure() {
             Live now: tiered commission tracking, YTD summaries, and per-agent
             statements, with a commission recorded automatically when a deal
             closes (only once you've configured your tiers — never a made-up
-            number before then).
+            number before then). Now also live: net-of-split economics (your
+            agent split, an annual company-dollar cap, and per-transaction and
+            franchise fees), a pipeline GCI forecast over your under-contract
+            deals, tagging each deal as a client transaction vs. your own
+            investment (only client deals earn a commission — your own book is
+            your P&L, never a commission), and a record-only dual-agency
+            tracker. Every one of these refuses rather than fabricates: with no
+            split saved you see no split, not an assumed one.
           </p>
           <p className="text-muted-foreground">
-            Still on the roadmap, deliberately not built yet: MLS integration
-            (this is a land workspace — MLS comps are residential), separating
-            client deals from your own book, and dual-agency disclosure
-            paperwork. We'd rather show you nothing than fake these.
+            The dual-agency tracker is record-only: it stores which side you
+            represented, an acknowledgement date, and a link to a disclosure you
+            produced elsewhere. It will never generate, send, or e-sign a
+            disclosure for you — legal signing stays a human decision.
+          </p>
+          <p className="text-muted-foreground">
+            MLS / CMA is here: comps and valuation run through the ATTOM data
+            seam, pay-per-call on your own connected ATTOM/MLS key. Without a
+            connected key you see an honest "unavailable", never a faked comp —
+            we'd rather show you nothing than invent it.
           </p>
         </div>
       </div>

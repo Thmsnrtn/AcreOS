@@ -240,7 +240,7 @@ export interface IStorage {
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
   // Paginated Deals
-  getDealsPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>>;
+  getDealsPaginated(orgId: number, options: PaginationOptions, filters?: { book?: "client" | "own_investment" }): Promise<PaginatedResult<Deal>>;
 
   // Notes (Financing)
   getNotes(orgId: number): Promise<Note[]>;

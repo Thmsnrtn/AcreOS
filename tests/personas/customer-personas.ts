@@ -31,8 +31,8 @@
  * fix_and_flip is roadmap (demoted 2026-07-11 pending a residential data
  * plane — existing orgs keep their Flip surfaces); the landlord family
  * (short_term_rental / multifamily / mobile_home) reaches the shared Rentals
- * module — short_term_rental's own vertical stays waitlisted, mobile_home is
- * beta, and multifamily is now CORE (Wave 3). A unit test pins
+ * module — short_term_rental, multifamily and mobile_home are all now CORE
+ * (Wave 5 took STR roadmap → beta → core). A unit test pins
  * "(beta)"/"(waitlist)" display-name tags to registry maturity so these
  * labels can't silently go stale again.
  */
@@ -588,19 +588,20 @@ const SEEDS: PersonaSeed[] = [
   //    "(beta)". multifamily went further — promoted roadmap → beta (Wave 2)
   //    then beta → CORE (Wave 3) once the measured-expense axis, per-building
   //    occupancy and the T-12 workspace shipped — so its row carries NO tag
-  //    (core, like the land/notes rows). short_term_rental stays roadmap
-  //    ("(waitlist)") until its beta bar is met. The display-name tags are
+  //    (core, like the land/notes rows). short_term_rental is now CORE (Wave 5
+  //    shipped the nightly-stay model + per-stay P&L), so its row carries no tag
+  //    either. The display-name tags are
   //    pinned to registry maturity by tests/unit/customerPersonas.test.ts. The
   //    landlord family here reaches the shared Rentals module and developer
   //    reaches the Subdivision module.
   {
     slug: "str-operator",
-    displayName: "Sky — short-term rental operator (waitlist)",
+    displayName: "Sky — short-term rental operator",
     experience: "brand_new",
     device: "ipad-portrait",
     tier: "free",
     businessType: "short_term_rental",
-    narrative: "Airbnb operator exploring; her own vertical is waitlisted but she lands on the shared landlord surface — Rentals module reachable, honest framing, no breakage.",
+    narrative: "Airbnb operator; STR is now CORE — a reservations ledger (record + channel-CSV import), occupancy/ADR/RevPAR, per-stay P&L off the measured expense axis, idempotent turnover-cleaning tasks on the reservation.checkout emitter, and operator-set nightly pricing — every number refusing rather than fabricating (ADR null with zero booked nights, opex line null without measured expenses, expected revenue null without a set rate), all behind the Rentals doors' Bookings tab. OTA channel sync and dynamic/market pricing are disclosed out of scope.",
     goals: ["Reach Today + Finance", "See honest roadmap framing", "Reach the shared Rentals module", "No crash on suppressed modules"],
     expect: {
       financeHero: "projectPnl",
@@ -629,12 +630,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "developer-builder",
-    displayName: "Dev — developer / entitlements (beta)",
+    displayName: "Dev — developer / entitlements",
     experience: "power_user",
     device: "desktop-1280",
     tier: "scale",
     businessType: "developer",
-    narrative: "Beta → subdivider surface; developer collapses to the subdivider persona, so the Subdivision module (permits, county timelines, lot pricing, CC&Rs) and its three live subdivision templates are this vertical's real workspace. The old 'new construction' framing was removed — no ground-up construction product exists.",
+    narrative: "Core → the subdivider entitlement surface; developer collapses to the subdivider persona, so the Subdivision module (permits, county timelines, lot pricing, CC&Rs) and its three live subdivision templates are this vertical's real workspace, now with the Wave 5 core build — pure tested engines for lot pricing, basis allocation, and carry cost, plus a project pro-forma (proceeds/COGS/carry/net margin) that refuses per line rather than fabricating. Core does not claim draw disbursement (money-custody) or ground-up construction management.",
     goals: ["Confirm subdivider surfacing", "Open the Subdivision module", "Finance + deals usable"],
     expect: {
       financeHero: "lotEconomics",
@@ -663,12 +664,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "mobilehome-operator",
-    displayName: "Milo — mobile-home park operator (beta)",
+    displayName: "Milo — mobile-home park operator",
     experience: "brand_new",
     device: "iphone-se",
     tier: "free",
     businessType: "mobile_home",
-    narrative: "Beta → landlord; smallest iPhone — a lot-lease-only beta on the shared Rentals stack with real pad inventory. The home-as-chattel (titles, home-vs-lot rent) and utilities pass-through gaps stay disclosed, not fabricated.",
+    narrative: "Core → landlord; smallest iPhone — the shared Rentals stack with real pad inventory, plus the Wave 5 home-side build: home-vs-lot rent split + POH/TOH mix and submeter/RUBS utility billback, each a pure tested engine that refuses rather than fabricates, and record-only chattel titles. Core does not claim DMV/VIN title verification, submarket lot-rent comps, or autonomous park-owned-home sale execution.",
     goals: ["Land somewhere usable", "No crash", "Understand it's early"],
     expect: {
       financeHero: "projectPnl",
@@ -680,12 +681,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "agent-investor",
-    displayName: "Aggie — licensed agent who also invests (beta)",
+    displayName: "Aggie — licensed agent who also invests",
     experience: "skeptic",
     device: "desktop-chrome",
     tier: "starter",
     businessType: "agent_investor",
-    narrative: "Beta → land_investor base with the commission-tracking wedge live behind the Finance door; a skeptic agent checking the product is honest — commissions real, MLS/client-vs-own-book/dual-agency disclosed as roadmap, nothing oversold.",
+    narrative: "Core → the land_investor base plus the full agent economics behind the Finance/Deals doors: commission split/cap/fees, client-vs-own-book, pipeline GCI forecast, a record-only dual-agency tracker, and MLS/CMA via the ATTOM seam (BYO key, honest 'unavailable' when unkeyed — never a faked comp). A skeptic agent checking the product is honest: every number refuses rather than fabricates, and dual-agency paperwork signing stays a human decision.",
     goals: ["Confirm land_investor base surface", "Reach commissions behind Finance", "Honest roadmap messaging on the gaps", "Nothing oversold"],
     expect: {
       financeHero: null,

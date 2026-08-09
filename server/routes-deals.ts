@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS } from "@shared/lifecycle/pipeline-status";
 import { insertDealSchema } from "@shared/schema";
-import type { DueDiligenceChecklistItem } from "@shared/schema";
+import type { DueDiligenceChecklistItem, InsertDeal } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
@@ -21,7 +21,7 @@ import {
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { type AuthenticatedRequest, getOrganizationId } from "./types/request";
+import { type AuthenticatedRequest, getOrganization, getOrganizationId } from "./types/request";
 import {
   getAllHandoffs,
   getHandoffsForDeal,
@@ -130,6 +130,10 @@ const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   sortBy: z.string().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  // agent_investor pipeline filter (migration 0226). 'client' matches client-book
+  // AND legacy-null deals (a null book was always a client deal); 'own_investment'
+  // matches only the explicitly tagged own-book deals. Omitted = no book filter.
+  book: z.enum(["client", "own_investment"]).optional(),
 });
 
 export function registerDealRoutes(app: Express): void {
@@ -145,9 +149,9 @@ export function registerDealRoutes(app: Express): void {
     if (!pagination.success) {
       return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
-    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+    const { page, pageSize, sortBy, sortOrder, book } = pagination.data;
 
-    const result = await storage.getDealsPaginated(org.id, { page, pageSize, sortBy, sortOrder });
+    const result = await storage.getDealsPaginated(org.id, { page, pageSize, sortBy, sortOrder }, { book });
 
     res.json({
       data: result.data,
@@ -303,6 +307,157 @@ export function registerDealRoutes(app: Express): void {
       res.json(merged);
     } catch (err) {
       Errors.internal(res, err);
+    }
+  });
+
+  // ── CMA (Comparative Market Analysis) — agent_investor only ───────────────
+  // GET /api/deals/:id/cma — the licensed-agent CMA over the deal's SUBJECT
+  // property: sold house comps + an AVM, pulled through the EXISTING ATTOM
+  // residential seam (server/services/residentialComps.ts). This is capability
+  // wiring, not a data plane — no new vendor, no bulk ingest, no new table.
+  //
+  // Gating: agent_investor's subject is residential (2026-08 founder decision
+  // reclassifying agent_investor as residential-routed; see
+  // RESIDENTIAL_BUSINESS_TYPES in shared/models/persona-mapping.ts). Any other
+  // persona 404s here — a CMA is an agent deliverable and land verticals keep
+  // the parcel plane.
+  //
+  // HONESTY (refuse-not-fabricate): when the org has no ATTOM connection
+  // (platform key or BYOK), the seam returns { status: "unavailable",
+  // reason: "attom_not_connected" }; this route surfaces that verbatim with
+  // empty comps and a null valuation — a land comp is NEVER substituted and no
+  // AVM/CMA number is invented. A deal with no resolvable subject address
+  // refuses honestly rather than guessing a location. Mirrors the honest
+  // ATTOM-routed pattern in server/routes-flip-analyzer.ts (/api/flip-analyzer/comps).
+  api.get("/api/deals/:id/cma", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const org = getOrganization(req);
+
+      // Persona gate: CMA is the agent_investor surface. Refuse (404) rather
+      // than confirm the resource exists for personas that shouldn't reach it.
+      const businessType = org.onboardingData?.businessType ?? null;
+      if (businessType !== "agent_investor") {
+        return Errors.notFound(res, "CMA");
+      }
+
+      const dealId = Number(req.params.id);
+      if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
+
+      const deal = await storage.getDeal(orgId, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+      if (!deal.propertyId) {
+        // Refuse honestly: a CMA needs a subject property. Never fabricate one.
+        return res.json({
+          status: "unavailable",
+          reason: "no_subject_property",
+          message:
+            "This deal has no linked property, so there's no subject to run a CMA on. Link a property to this deal first.",
+          comps: [],
+          valuation: null,
+          subject: null,
+        });
+      }
+
+      const property = await storage.getProperty(orgId, deal.propertyId);
+      if (!property) return Errors.notFound(res, "Property");
+
+      const lat = property.latitude !== null && property.latitude !== undefined ? Number(property.latitude) : NaN;
+      const lng = property.longitude !== null && property.longitude !== undefined ? Number(property.longitude) : NaN;
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+      const hasAddress = !!(property.address && property.city && property.state && property.zip);
+
+      const subject = {
+        propertyId: property.id,
+        address: property.address ?? null,
+        city: property.city ?? null,
+        state: property.state ?? null,
+        zip: property.zip ?? null,
+        latitude: hasCoords ? lat : null,
+        longitude: hasCoords ? lng : null,
+      };
+
+      if (!hasCoords && !hasAddress) {
+        // Refuse rather than guess a location: a CMA pulled for the wrong
+        // subject is worse than no CMA.
+        return res.json({
+          status: "unavailable",
+          reason: "subject_not_locatable",
+          message:
+            "This property has no coordinates and no complete street address, so a CMA can't be pulled for it. Add the address (or geocode the parcel) first.",
+          comps: [],
+          valuation: null,
+          subject,
+        });
+      }
+
+      const {
+        getResidentialComps,
+        getResidentialValuation,
+        extractResidentialComps,
+        extractResidentialAvm,
+      } = await import("./services/residentialComps");
+
+      const residentialSubject = hasCoords
+        ? ({ kind: "coordinates", latitude: lat, longitude: lng } as const)
+        : ({
+            kind: "address",
+            street: property.address as string,
+            city: property.city as string,
+            state: property.state as string,
+            zip: property.zip as string,
+          } as const);
+
+      const compsOutcome = await getResidentialComps(orgId, residentialSubject);
+
+      // ATTOM not connected (or the platform pool can't cover the lookup):
+      // surface the seam's honest unavailable state verbatim. Substitute
+      // nothing — no land comps, no invented AVM.
+      if (compsOutcome.status !== "ok") {
+        return res.json({
+          status: compsOutcome.status,
+          reason: compsOutcome.status === "unavailable" ? compsOutcome.reason : "no_data",
+          message: compsOutcome.message,
+          comps: [],
+          valuation: null,
+          subject,
+        });
+      }
+
+      const comps = extractResidentialComps(compsOutcome.result.data);
+
+      // The AVM is the CMA's headline number. It rides the same ATTOM seam, so
+      // it only runs when comps succeeded (ATTOM is connected). Anything other
+      // than an "ok" outcome yields a null valuation — never a fabricated one.
+      const valuationOutcome = await getResidentialValuation(orgId, residentialSubject);
+      const valuation =
+        valuationOutcome.status === "ok"
+          ? extractResidentialAvm(valuationOutcome.result.data)
+          : null;
+
+      logger.info("[deals/cma] residential CMA pulled for agent_investor", {
+        source: "routes-deals",
+        metadata: {
+          organizationId: orgId,
+          dealId,
+          propertyId: property.id,
+          comps: comps.length,
+          hasValuation: valuation !== null,
+          byok: compsOutcome.byok,
+        },
+      });
+
+      return res.json({
+        status: "ok",
+        comps,
+        valuation,
+        subject,
+        credentialSource: compsOutcome.byok ? "organization" : "platform",
+        provenance:
+          "Sold comparables and AVM from ATTOM Data via the residential seam. ATTOM does not report post-rehab condition — adjust per comp yourself.",
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
     }
   });
 
@@ -839,6 +994,14 @@ export function registerDealRoutes(app: Express): void {
             void (async () => {
               try {
                 const { hasCommissionConfig, recordDealCommission } = await import("./services/commissionService");
+                // STAGE 1 (migration 0226) — client vs own book: an
+                // 'own_investment' deal is the agent's OWN P&L, never a brokerage
+                // commission. Skip it the same way we skip an unconfigured org —
+                // recording a commission on the operator's own buy/sell would
+                // fabricate a number with no client behind it. NULL book = client
+                // (what a deal always was), so only the explicit own_investment
+                // tag short-circuits here.
+                if (deal.dealBook === "own_investment") return;
                 if (!(await hasCommissionConfig(org.id))) return; // no config → skip, never fabricate
                 await recordDealCommission(
                   org.id,
@@ -2604,6 +2767,90 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json({ deal, previousStatus: currentStatus, nextStatus });
     } catch (err) {
       return Errors.internal(res, err as Error);
+    }
+  });
+
+  // =========================================================================
+  // Dual-agency disclosure TRACKER (STAGE 3 — record-only, migration 0226)
+  // -------------------------------------------------------------------------
+  // Behind the existing Deals door. This RECORDS what the operator asserts and
+  // uploads — it NEVER generates, sends, or e-signs a disclosure. Legal-signing
+  // is a founder-only hard-stop, so there is deliberately no document generation,
+  // no counterparty send, and no e-signature path here. `disclosureDocRef` is a
+  // reference to a document the OPERATOR uploaded ELSEWHERE; it is stored, not
+  // produced. Every response echoes recordOnly:true to make this explicit.
+  // =========================================================================
+  const RECORD_ONLY_NOTICE =
+    "Record only. AcreOS does not generate, send, or e-sign dual-agency disclosures — " +
+    "legal signing is founder-restricted. This tracks a disclosure you produced and handled elsewhere.";
+
+  // GET /api/deals/:id/dual-agency — read the recorded tracker for a deal.
+  api.get("/api/deals/:id/dual-agency", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const dealId = parseInt(req.params.id, 10);
+      if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
+      const deal = await storage.getDeal(orgId, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+      res.json({
+        dealId: deal.id,
+        dualAgencySide: deal.dualAgencySide ?? null,
+        disclosureAcknowledgedAt: deal.disclosureAcknowledgedAt ?? null,
+        disclosureDocRef: deal.disclosureDocRef ?? null,
+        recordOnly: true,
+        notice: RECORD_ONLY_NOTICE,
+      });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // PUT /api/deals/:id/dual-agency — record (human-initiated) the tracker.
+  // Only writes operator-provided values; performs no generation or signing.
+  const dualAgencySchema = z.object({
+    dualAgencySide: z.enum(["seller", "buyer", "dual"]).nullable().optional(),
+    // Convenience: true stamps the acknowledgement at "now", false clears it.
+    disclosureAcknowledged: z.boolean().optional(),
+    // Or set an explicit acknowledgement date the operator is recording.
+    disclosureAcknowledgedAt: z.string().datetime().nullable().optional(),
+    // A reference (URL/id) to a document the OPERATOR uploaded elsewhere.
+    disclosureDocRef: z.string().max(2048).nullable().optional(),
+  });
+
+  api.put("/api/deals/:id/dual-agency", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const dealId = parseInt(req.params.id, 10);
+      if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
+      const parsed = dualAgencySchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const deal = await storage.getDeal(orgId, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const body = parsed.data;
+      const updates: Partial<InsertDeal> = {};
+      if (body.dualAgencySide !== undefined) updates.dualAgencySide = body.dualAgencySide;
+      if (body.disclosureDocRef !== undefined) updates.disclosureDocRef = body.disclosureDocRef;
+      // Explicit date wins; otherwise the boolean toggles the acknowledgement.
+      if (body.disclosureAcknowledgedAt !== undefined) {
+        updates.disclosureAcknowledgedAt = body.disclosureAcknowledgedAt
+          ? new Date(body.disclosureAcknowledgedAt)
+          : null;
+      } else if (body.disclosureAcknowledged !== undefined) {
+        updates.disclosureAcknowledgedAt = body.disclosureAcknowledged ? new Date() : null;
+      }
+
+      const updated = await storage.updateDeal(dealId, updates, undefined, orgId);
+      res.json({
+        dealId: updated.id,
+        dualAgencySide: updated.dualAgencySide ?? null,
+        disclosureAcknowledgedAt: updated.disclosureAcknowledgedAt ?? null,
+        disclosureDocRef: updated.disclosureDocRef ?? null,
+        recordOnly: true,
+        notice: RECORD_ONLY_NOTICE,
+      });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 

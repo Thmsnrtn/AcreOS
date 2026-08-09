@@ -276,24 +276,35 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "short_term_rental",
     label: "Short-term rentals",
     shortDescription: "Airbnb / VRBO operators.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today (V1 widened the landlord
-    // family): the Rentals sidebar module (rent roll, tenants, leases,
-    // maintenance, analytics), the landlord Today lede + surfaces cluster,
-    // and the real landlord dashboard. What's MISSING for beta: everything
-    // STR-specific — no channel manager / booking-calendar sync (Airbnb,
-    // VRBO), no nightly-rate pricing, no turnover/cleaning scheduling; the
-    // rentals stack models monthly term leases, not nightly stays.
-    maturity: "roadmap",
-    // Only the landlord templates whose mechanics genuinely apply to the
-    // nightly-booking model: maintenance triage (property upkeep is
-    // universal) and the rent-received receipt (fires when the operator
-    // runs mid-term stays through the rent ledger). The lease-renewal /
-    // lease-expiring templates are deliberately EXCLUDED — nightly bookings
-    // have no 60-day renewal moment.
+    // 2026-08 (Wave 5 / Wave B, beta → CORE): the three capabilities the beta
+    // registry reserved for core now ship, each a pure tested engine that refuses
+    // rather than fabricate:
+    //   - per-stay P&L (shared/rental/stayPnl.ts): gross − channel/cleaning/tax
+    //     fees − the stay's allocated OPERATING property_expenses (noi.ts's
+    //     isOperating rule); a line whose input is unknown is omitted, never a
+    //     guessed fee, and the opex line is null when the property has no measured
+    //     operating expenses.
+    //   - turnover/cleaning scheduling (reuses maintenance_tickets, category
+    //     'cleaning'): a turnover task per recorded checkout, idempotent — a
+    //     deterministic function of checkout dates, no external data.
+    //   - operator-set nightly pricing (reservations.nightly_rate_cents): the
+    //     operator's OWN nightly rate and the expected-vs-actual variance; null
+    //     when unset — NEVER a market/suggested rate.
+    // Plus Wave A's reservations ledger, occupancy/ADR/RevPAR, and the live
+    // reservation.checkout emitter/template. Behind the existing Rentals doors,
+    // record-only money, integrations []. Core does NOT claim OTA channel-manager
+    // sync (external vendor) or market/dynamic nightly pricing (residential-comps
+    // hard-stop + no nightly-rate vendor). 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
+    // The landlord templates that apply to nightly stays (maintenance triage,
+    // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
+    // which fires live on the reservation.checkout emitter (workflowActionHonesty
+    // derives the live set from real emitter call sites). Lease-renewal /
+    // lease-expiring stay EXCLUDED — nightly bookings have no 60-day renewal.
     workflowTemplateIds: [
       "tpl_landlord_maintenance_request_triage",
       "tpl_landlord_rent_received_receipt",
+      "tpl_str_turnover_cleaning",
     ],
     // The real Rentals surfaces this businessType reaches (V1 gate; same
     // children as buy_and_hold in layout-sidebar.tsx).
@@ -430,26 +441,31 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "developer",
     label: "Developer / entitlements",
     shortDescription: "Entitle land: permits, county timelines, lot pricing, plats.",
-    // 2026-08 (audit Wave 2, roadmap → beta): "developer" is really the
-    // subdivider / entitlement workspace under a mislabeled name.
-    // persona-mapping.ts collapses developer → subdivider, and the Subdivision
-    // sidebar module already gates businessTypeOnly ["subdivider","developer"],
-    // so the lots / permits / plats / county-timeline model is this vertical's
-    // REAL surface — it was always live for these signups, just described
-    // wrong. The over-promise was the framing, not the build: the "New
-    // construction projects." shortDescription (and the onboarding "and new
-    // construction" clause) advertised a ground-up construction product that
-    // does not exist; both were removed in this change. The three subdivision
-    // templates below are ALREADY LIVE for subdivider —
-    // tpl_subdivision_plat_submitted / _vendor_milestone / _phase_recorded fire
-    // on genuine entity transitions via subdivisionEvents.ts (plat.submitted,
-    // subdivision.vendor_milestone, subdivision.phase_recorded are all in
-    // shared/workflow-live-triggers.ts, pinned by workflowActionHonesty) — so
-    // adopting them here is ZERO emitter work and honestly live for developer
-    // too (same collapsed persona/surface). With the real entitlement surface,
-    // three live templates, and the construction promise removed, the vertical
-    // passes the honesty bar for beta. 2026-08 founder decision to promote.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE): developer IS the subdivider entitlement
+    // workspace (persona-mapping collapses developer → subdivider; the
+    // Subdivision module gates businessTypeOnly ["subdivider","developer"]), and
+    // subdivider is already core. Developer earns the same bar the Wave 3/4 way —
+    // the three economics that make the vertical real are now PURE, behaviourally-
+    // tested engines that refuse rather than fabricate, plus a unifying project
+    // pro-forma (the subdivider's T-12 analogue):
+    //   - lot pricing (shared/subdivision/lotPricing.ts) — a premium grid over a
+    //     base derived from the parent's OWN AVM/acre or an operator fixed rate,
+    //     never residential comps; refuses when the base can't be derived.
+    //   - basis allocation (shared/subdivision/basisAllocation.ts) — the parent's
+    //     purchase-price basis allocated across lots (acreage/frontage/appraisal/
+    //     override), cent-conserving, refusing on no basis / zero denominator /
+    //     override shares ≠ 1.0.
+    //   - carry cost (shared/subdivision/carryCost.ts) — p50/p90 holding/debt/
+    //     opportunity carry over the county lead-time, null when no timeline.
+    //   - project pro-forma (shared/subdivision/proForma.ts, GET
+    //     /api/parcels/:id/pro-forma behind the Subdivision tab) — projected
+    //     proceeds/COGS/carry/net margin, REFUSING PER LINE on missing inputs.
+    // The three subdivision templates already fire live (zero emitter work). Core
+    // does NOT claim draw DISBURSEMENT (money-custody — any draw ledger is
+    // record-only) or ground-up construction management (correctly de-scoped in
+    // Wave 2, never re-asserted). No comps, no vendor, no new nav, no money
+    // movement. 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
     // The three subdivision templates, adopted verbatim from subdivider — the
     // same LIVE emitters serve both (developer collapses to the subdivider
     // persona/surface, so no re-wiring is required).
@@ -622,19 +638,30 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // A park's pads are therefore an inventory an operator has, and occupancy
     // over them is computable.
     //
-    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted mobile_home
-    // to a LOT-LEASE-ONLY beta. What makes it defensible: the lot-lease
-    // operations are honest and live — pad inventory is REAL (three write paths
-    // set rental_units.kind='pad', occupancy is computed over the pads) and all
-    // five templates FIRE (the four landlord templates + the
-    // tpl_mobile_home_lot_rent_receipt on the real rent.received trigger, per
-    // shared/workflow-live-triggers.ts + workflowActionHonesty). The home side
-    // is NOT in beta scope, and it is DISCLOSED, never fabricated: no
-    // home-as-chattel handling (titles, home-vs-lot rent split), no utilities
-    // pass-through billing. Those are the CORE build — until they ship the
-    // persona voice must keep saying both, and beta stays scoped to the lot
-    // lease the shipped stack genuinely runs.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE): the LOT-LEASE beta is extended with the
+    // two home-side capabilities that were its named core gap — each a pure,
+    // behaviourally-tested engine that computes from the operator's OWN recorded
+    // data and REFUSES rather than fabricate:
+    //   - home-vs-lot rent SPLIT + POH/TOH mix (shared/rental/lotRentSplit.ts):
+    //     per-lease lot-vs-home split, park POH/TOH mix, and the conversion-trade
+    //     delta from the operator's own recorded rents — refusing per-lease when
+    //     the split (or ownership) isn't recorded, never inferring one, and never
+    //     reaching for a submarket lot-rent comp.
+    //   - utility pass-through billback (shared/rental/utilityBillback.ts):
+    //     submeter ((current−prior)×rate, refusing on missing/non-monotonic
+    //     reads) and RUBS (a master bill allocated by a recorded basis with a
+    //     deterministic rounding remainder, refusing without a bill or basis and
+    //     disclosing partial coverage). It writes a FROZEN utility_bills statement
+    //     and PROPOSES per-pad lines — it posts no charge and moves no money.
+    //   - chattel-title RECORD fields (home_ownership + chattel_* on
+    //     rental_units) — record-only; core does NOT claim DMV/VIN VERIFICATION,
+    //     a lienholder assertion, or any title signing.
+    // All behind the existing Rentals doors — no new nav, no money movement.
+    // Core does NOT claim submarket lot-rent comps (residential-comps hard-stop →
+    // operator-supplied/dash) or autonomous POH-to-resident financed-sale
+    // execution (legal-signing/Reg-Z, routed through the existing chokepoint +
+    // counsel). 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on
@@ -669,13 +696,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // gated on an explicit saved tier config — honest empty/zero states, never
     // a fabricated commission when nothing is configured).
     //
-    // What stays ROADMAP-for-core, and WHY (each is a standing hard-stop, not a
-    // backlog item): MLS integration (residential-comps hard-stop — this is a
-    // LAND persona; MLS comps are residential comps); client-deals vs. own-book
-    // separation (needs a deals-schema field + migration, out of this wedge);
-    // dual-agency disclosure workflows (legal-signing is founder-only). These
-    // remain disclosed in the persona voice, not fabricated.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE — founder promote decision): the three
+    // roadmap-for-core gaps are now closed.
+    //   (1) Measured commission ECONOMICS — the split/cap/fees engine
+    //       (shared/commission/split.ts), client-vs-own-book (deals.deal_book,
+    //       migration 0226), and the pipeline GCI forecast
+    //       (shared/commission/forecast.ts) — all from the operator's OWN saved
+    //       config + closed deals, refusing when unconfigured.
+    //   (2) MLS / CMA — the founder explicitly LIFTED the "agent_investor is a
+    //       land, not-residential persona" ruling, so agent_investor is now
+    //       residential-routed (RESIDENTIAL_BUSINESS_TYPES) and its comps +
+    //       valuation run through the EXISTING provider-registry ATTOM seam
+    //       (server/services/residentialComps.ts), pay-per-call / BYO the org's
+    //       ATTOM key. NO residential-comps DATA PLANE is built — the hard-stop
+    //       bars only that — and the CMA (GET /api/deals/:id/cma + the deal-detail
+    //       CMA panel) surfaces an honest "unavailable" when ATTOM isn't
+    //       connected, never a fabricated comp.
+    //   (3) Dual-agency — a record-only tracker (no generation, sending, or
+    //       e-signature; legal-signing stays founder-only).
+    // Behind the existing Finance/Deals doors, no new nav, no money movement.
+    maturity: "core",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.

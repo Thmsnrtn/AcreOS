@@ -8817,6 +8817,155 @@ const STATEMENTS = [
   `ALTER TABLE "rent_charges" ADD COLUMN IF NOT EXISTS "charge_type" text NOT NULL DEFAULT 'base_rent'`,
   `DROP INDEX IF EXISTS "rent_charges_lease_month_uk"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "rent_charges_lease_month_uk" ON "rent_charges" ("lease_id", "charged_for_month", "charge_type")`,
+
+  // ── 0223 mobile-home core: the two home-side capabilities the lot-lease ─────
+  // beta lacked. MOBILE_HOME shipped as a bare ground lease (a pad is a
+  // rental_units row with kind='pad'); two home-side facts of a real park had no
+  // home in that model, each the input to a Stage-1 engine:
+  //   1. lot-vs-home rent SPLIT + POH/TOH mix — additive NULLABLE columns:
+  //      rental_units.home_ownership ('park_owned'|'tenant_owned') + chattel-title
+  //      RECORD columns (chattel_title_type 'dmv_vin'|'real_property', chattel_vin,
+  //      chattel_title_status, chattel_title_notes — operator-asserted only, no
+  //      DMV/registry verification or title signing implied), and
+  //      rent_charges.rent_component ('lot'|'home') — the lot-vs-home
+  //      discriminator, ADDITIONAL to and orthogonal to 0222's charge_type.
+  //   2. utility PASS-THROUGH billback — two new tables: meter_reads (a submeter
+  //      reading per pad+utility+date; consumption = current − prior) and
+  //      utility_bills (the FROZEN billback statement per pad+period+utility).
+  // Money posture ("be the rail, not the provider"): neither table moves, holds,
+  // collects or charges a cent — a recorded reading / a computed frozen
+  // statement; every *_cents column is a recorded or derived fact, never a
+  // balance. No residential comps (the split engine compares the operator's OWN
+  // recorded POH/TOH rents, never a submarket comp). NO backfill — the columns
+  // are nullable and null for every existing row; the two tables ship empty.
+  //
+  // TWO new tables — scripts/ratchets/table-count.json 753 -> 755.
+  // Mirrors migrations/0223_mobile_home_core.sql + shared/schema/rental.ts.
+
+  // 1. rental_units — home_ownership (POH/TOH) + chattel-title RECORD columns.
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "home_ownership" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_type" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_vin" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_status" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_notes" text`,
+
+  // 2. rent_charges — rent_component ('lot'|'home'), additional to charge_type.
+  `ALTER TABLE "rent_charges" ADD COLUMN IF NOT EXISTS "rent_component" text`,
+
+  // 3. meter_reads — a submeter reading per pad + utility + date.
+  `CREATE TABLE IF NOT EXISTS "meter_reads" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "unit_id" varchar NOT NULL REFERENCES "rental_units"("id") ON DELETE CASCADE,
+    "utility_kind" text NOT NULL,
+    "read_on" date NOT NULL,
+    "reading" numeric NOT NULL,
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a pad's reads, newest first.
+  `CREATE INDEX IF NOT EXISTS "meter_reads_org_unit_read_idx" ON "meter_reads" ("organization_id", "unit_id", "read_on")`,
+  // One reading per (pad, utility, date): a re-record UPSERTs (a correction).
+  `CREATE UNIQUE INDEX IF NOT EXISTS "meter_reads_unit_utility_read_uk" ON "meter_reads" ("unit_id", "utility_kind", "read_on")`,
+
+  // 4. utility_bills — the frozen billback statement per pad + period + utility.
+  `CREATE TABLE IF NOT EXISTS "utility_bills" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL,
+    "utility_kind" text NOT NULL,
+    "period_start" date,
+    "period_end" date,
+    "method" text NOT NULL,
+    "master_bill_cents" bigint,
+    "allocated_cents" bigint,
+    "basis" text,
+    "coverage_complete" boolean,
+    "statement_markdown" text,
+    "generated_at" timestamptz,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: this property's billbacks, by period.
+  `CREATE INDEX IF NOT EXISTS "utility_bills_org_property_period_idx" ON "utility_bills" ("organization_id", "property_id", "period_start")`,
+  // One frozen bill per (pad, utility, period): re-generating UPSERTs the snapshot.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "utility_bills_unit_utility_period_uk" ON "utility_bills" ("unit_id", "utility_kind", "period_start", "period_end")`,
+
+  // ── 0224 STR reservations: the nightly-stay primitive SHORT_TERM_RENTAL ─────
+  // never had. STR shipped riding the MONTHLY-lease stack (a "rental" was a
+  // rental_leases row with monthly_rent_cents + a charged_for_month grain); a
+  // nightly stay's unit of account is a GUEST STAY with a check-in/check-out and
+  // per-booking revenue net of channel + cleaning fees, and the metric is
+  // occupancy / ADR / RevPAR — none of which the monthly ledger can express.
+  // reservations is that primitive (one row per booked stay), the input to the
+  // pure metrics engine shared/rental/strMetrics.ts.
+  // Money posture ("be the rail, not the provider"): RECORD-ONLY — every
+  // *_cents column is a figure recorded off the operator's OWN channel payout,
+  // never a balance and never money that moves here. channel is a recorded LABEL
+  // (no OTA API, integrations stays []); there is NO market/dynamic suggested
+  // nightly rate (residential-comps hard-stop + no vendor). NO backfill — ships
+  // empty, fills only from real operator entry or the operator's own channel CSV.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 755 -> 756.
+  // Mirrors migrations/0224_str_reservations.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "reservations" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL,
+    "guest_name" text,
+    "channel" text,
+    "check_in" date NOT NULL,
+    "check_out" date NOT NULL,
+    "nights" integer,
+    "gross_booking_cents" bigint,
+    "channel_fee_cents" bigint,
+    "cleaning_fee_cents" bigint,
+    "taxes_cents" bigint,
+    "payout_cents" bigint,
+    "status" text NOT NULL DEFAULT 'booked',
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a property's stays by check-in.
+  `CREATE INDEX IF NOT EXISTS "reservations_org_property_check_in_idx" ON "reservations" ("organization_id", "property_id", "check_in")`,
+  // The channel-CSV importer's idempotency guard: a re-upload loses the INSERT.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "reservations_org_unit_check_in_channel_uk" ON "reservations" ("organization_id", "unit_id", "check_in", "channel")`,
+
+  // ── 0225 STR Wave B: per-stay P&L, turnover scheduling, operator-set pricing ─
+  // ADDITIVE only — NO new table (table-count stays 756), just nullable columns
+  // + one partial index. Mirrors migrations/0225_str_wave_b.sql + rental.ts.
+  //   • reservations.nightly_rate_cents — the operator's OWN set nightly rate
+  //     (B3). RECORD-ONLY, never a market/suggested rate (residential-comps
+  //     hard-stop + no vendor). The pricing helper derives expected revenue and
+  //     variance and REFUSES (null) when unset.
+  //   • maintenance_tickets.reservation_id — the turnover link (B2). Turnovers
+  //     REUSE maintenance_tickets (category 'cleaning'), so no new table; this
+  //     nullable column + the partial unique index below make generation
+  //     idempotent (one turnover per reservation checkout).
+  `ALTER TABLE "reservations" ADD COLUMN IF NOT EXISTS "nightly_rate_cents" bigint`,
+  `ALTER TABLE "maintenance_tickets" ADD COLUMN IF NOT EXISTS "reservation_id" varchar`,
+  // Org-LEADING + PARTIAL: at most ONE turnover-cleaning ticket per reservation.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "maintenance_tickets_org_reservation_uk" ON "maintenance_tickets" ("organization_id", "reservation_id") WHERE "reservation_id" IS NOT NULL`,
+
+  // ── 0226 agent_investor: client-vs-own-book + dual-agency disclosure tracker ─
+  // COLUMNS ONLY on `deals` — NO new table (table-count stays 756), reachability
+  // FLAT (47/59). All nullable. Mirrors migrations/0226_agent_investor_commission_book.sql
+  // + shared/schema.ts (deals).
+  //   • deal_book ('client' | 'own_investment' | null) — only client deals earn a
+  //     commission; an own_investment deal is the agent's own P&L. NULL = client
+  //     (what a deal always was). The deal-close auto-record SKIPS own_investment.
+  //   • dual_agency_side / disclosure_acknowledged_at / disclosure_doc_ref — a
+  //     RECORD-ONLY dual-agency tracker. AcreOS never generates, sends, or e-signs
+  //     a disclosure (legal-signing is founder-only); these store what the operator
+  //     asserts and uploads elsewhere.
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "deal_book" text`,
+  // Org-LEADING pipeline filter: "my client deals under contract" reads by (org, book).
+  `CREATE INDEX IF NOT EXISTS "deals_org_book_idx" ON "deals" ("organization_id", "deal_book")`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "dual_agency_side" text`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_acknowledged_at" timestamp`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_doc_ref" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

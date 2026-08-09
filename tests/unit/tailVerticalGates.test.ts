@@ -4,8 +4,10 @@
  * These five verticals share one coherence contract: a signup choosing any of
  * them must land in a truthful app built from surfaces that already shipped,
  * not a land-shaped default. Their MATURITY, however, is no longer uniform.
- * short_term_rental STAYS roadmap (the honesty bar for beta is not met — STR
- * needs a nightly-booking model). mobile_home was promoted roadmap → beta in
+ * short_term_rental was promoted roadmap → beta → CORE in Wave 5: its
+ * nightly-booking model shipped (a reservations ledger + occupancy/ADR/RevPAR +
+ * a live checkout emitter), then per-stay P&L + turnovers + operator pricing.
+ * mobile_home was promoted roadmap → beta in
  * the 2026-08 audit (Wave 2); multifamily was promoted roadmap → beta in that
  * same audit and then beta → CORE in Wave 3 once the measured-expense axis,
  * per-building occupancy, and the T-12 workspace shipped. commercial was promoted
@@ -205,6 +207,11 @@ describe("agent_investor — the land default is deliberate (wave V3)", () => {
     const cluster = clusters.find((c) => c.id === "agent-investor");
     expect(cluster, "agent-investor cluster must resolve").toBeTruthy();
     expect(cluster!.links.map((l) => l.href)).toEqual(AGENT_INVESTOR_CLUSTER_HREFS);
+    // Wave 5: the description must NOT call the agent tooling "roadmap" — it's
+    // core now (commissions + MLS/CMA). Pin the prose so it can't silently go
+    // stale if this registry is ever wired into a live /today surface.
+    expect(cluster!.description).not.toMatch(/roadmap/i);
+    expect(cluster!.description).toMatch(/commissions|CMA/i);
   });
 
   it("every agent-investor cluster link is a real, unfrozen, un-hidden route", () => {
@@ -232,7 +239,7 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("each entry sits at its honest tier — one roadmap (STR), agent_investor + commercial + mobile_home beta, multifamily CORE (Wave 3)", () => {
+  it("each entry sits at its honest tier — all five tail verticals (agent_investor, commercial, multifamily, mobile_home, STR) are CORE", () => {
     // 2026-08 audits promoted four of the five roadmap → beta on the honest
     // tier definition (templates all fire, gaps disclosed not fabricated), and
     // Wave 3 then promoted multifamily beta → core, so the per-vertical map is:
@@ -261,16 +268,23 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     (agent_investor-gated) reading the org's own records + YTD summaries,
     //     plus auto-recording the closing agent's commission on deal close
     //     (gated on an explicit saved tier config — honest empty/zero states,
-    //     never a fabricated number). MLS (residential-comps hard-stop),
-    //     client-vs-own-book (needs a schema field + migration) and dual-agency
-    //     disclosures (legal-signing is founder-only) stay roadmap-for-core and
-    //     DISCLOSED in the persona voice.
-    //   - short_term_rental → still roadmap: its beta bar (a real
-    //     nightly-booking model) is genuinely unmet.
+    //     never a fabricated number). Wave 5 took it to CORE: the measured
+    //     economics (split/cap/fees engine, client-vs-own-book deal_book /
+    //     migration 0226, pipeline GCI forecast), a record-only dual-agency
+    //     tracker (no signing), AND MLS/CMA — the founder lifted the
+    //     land-persona ruling, so agent_investor is now residential-routed and
+    //     its comps/valuation run through the existing ATTOM seam (BYO key,
+    //     honest "unavailable" when unkeyed; no data plane). Dual-agency
+    //     paperwork generation/e-sign (legal-signing) stays founder-only.
+    //   - short_term_rental → CORE (Wave 5): Wave A shipped the reservations
+    //     ledger + occupancy/ADR/RevPAR + a live reservation.checkout emitter;
+    //     Wave B added per-stay P&L (off the measured property_expenses axis),
+    //     idempotent turnover scheduling, and operator-set nightly pricing. OTA
+    //     channel sync + dynamic pricing stay disclosed-out-of-scope.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
       commercial: "core",
-      agent_investor: "beta",
-      short_term_rental: "roadmap",
+      agent_investor: "core",
+      short_term_rental: "core",
       // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured
       // operating expenses (property_expenses → measured NOI/cap rate, thin
       // coverage marked "(N/12 mo)", assumed 40% only as a disclosed fallback),
@@ -278,7 +292,7 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
       // core-closed prose pins in investorAnalyticsUnitAware.test.ts and the
       // capability gate in multifamilyCore.test.ts.
       multifamily: "core",
-      mobile_home: "beta",
+      mobile_home: "core",
     };
     for (const bt of TAIL_VERTICALS) {
       expect(getBusinessType(bt)?.maturity, bt).toBe(EXPECTED_MATURITY[bt]);

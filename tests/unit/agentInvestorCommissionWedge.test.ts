@@ -1,7 +1,8 @@
 /**
- * agent_investor commission wedge (Wave 2 pass C).
+ * agent_investor commission wedge (Wave 2 pass C) → CORE (Wave 5).
  *
- * Pins the honest-partial promotion of agent_investor roadmap → beta:
+ * Pins the wedge that promoted agent_investor roadmap → beta, now kept current
+ * through the Wave 5 beta → core flip:
  *
  *   1. The commission surface is reachable by an agent_investor org BEHIND the
  *      Finance door — a persona-gated child of the money module + a
@@ -15,8 +16,11 @@
  *      only when an explicit config exists (never fabricate).
  *   4. The duplicate standalone /api/commissions router is gone — one source of
  *      truth.
- *   5. The MLS / client-vs-own-book / dual-agency hard-stops stay roadmap and
- *      disclosed.
+ *   5. MLS / CMA is now LIVE via the ATTOM seam (the founder lifted the
+ *      land-persona ruling; BYO key, honest-unavailable when unkeyed, no data
+ *      plane), client-vs-own-book (deal_book, migration 0226) is LIVE, and
+ *      dual-agency is a RECORD-ONLY tracker (never generated, sent, or signed) —
+ *      all disclosed honestly in the persona voice.
  *
  * Source-shape assertions (node env, no DOM) — same pattern as
  * tailVerticalGates.test.ts.
@@ -33,9 +37,14 @@ function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf-8");
 }
 
-describe("agent_investor is beta (honest-partial commission wedge)", () => {
-  it("the registry entry is beta", () => {
-    expect(getBusinessType("agent_investor")?.maturity).toBe("beta");
+describe("agent_investor is CORE (Wave 5 — measured economics + MLS/CMA via ATTOM)", () => {
+  it("the registry entry is core", () => {
+    // REWRITTEN at the Wave 5 core flip (not deleted): the wedge shipped in beta;
+    // Wave 5 added the measured commission economics (split/cap/GCI, client-vs-
+    // own-book), a record-only dual-agency tracker, AND MLS/CMA — the founder
+    // lifted the land-persona ruling so comps route through the ATTOM seam (BYO
+    // key, honest-unavailable when unkeyed). agent_investor is now core.
+    expect(getBusinessType("agent_investor")?.maturity).toBe("core");
   });
 });
 
@@ -95,10 +104,22 @@ describe("the customer commission page gates + stays honest", () => {
     expect(page).toContain("CommissionsPage");
   });
 
-  it("discloses the roadmap hard-stops in the persona voice (not fabricated)", () => {
+  it("describes the now-live MLS/CMA (ATTOM seam, honest-unavailable), book split, and record-only dual-agency honestly", () => {
+    // REWRITTEN at the Wave 5 core flip (not deleted): MLS/CMA is no longer the
+    // NOT-built hard-stop — the founder lifted the land-persona ruling and comps
+    // now route through the ATTOM seam (BYO key), so the page describes it as
+    // available with an honest "unavailable" degradation, never a faked comp.
     expect(page).toMatch(/MLS/);
-    expect(page).toMatch(/own book/i);
+    expect(page).toMatch(/ATTOM/);
+    expect(page).toMatch(/unavailable|never (a )?faked|honest/i);
+    // Client-vs-own-book is live (deal_book, migration 0226).
+    expect(page).toMatch(/own book|own investment/i);
+    // Dual-agency present AND explicitly record-only (legal-signing hard-stop).
     expect(page).toMatch(/dual-agency/i);
+    expect(page).toMatch(/record-only|never (generate|sign|send)/i);
+    // Refuse-not-fabricate is disclosed for the split/forecast surfaces.
+    expect(page).toMatch(/split/i);
+    expect(page).toMatch(/refuse|never .*(assumed|made-up|invent|fabricat|fake)/i);
   });
 
   it("the underlying page renders honest empty/zero states, never an invented number", () => {

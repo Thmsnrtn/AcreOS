@@ -51,6 +51,7 @@ import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { UnitsPanel } from "@/components/rentals/units-panel";
 import { ExpensesPanel } from "@/components/rentals/expenses-panel";
 import { T12Workspace } from "@/components/rentals/t12-workspace";
+import { BookingsPanel } from "@/components/rentals/bookings-panel";
 import { UNIT_KIND_OPTIONS, unitVocabulary } from "@shared/rental/unitInventory";
 import type { RentalUnitKind } from "@shared/schema";
 
@@ -214,6 +215,9 @@ export default function LeasesPage() {
           {/* The trailing-twelve underwriting grid (Wave 3, stage 5). Same
               discipline — a tab behind the Rentals module, never a nav entry. */}
           <TabsTrigger value="t12" data-testid="tab-t12">T-12</TabsTrigger>
+          {/* Short-term-rental nightly stays (STR Wave A). A tab behind the
+              Rentals module — no new door, no new route (standing hard-stop). */}
+          <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="units" className="mt-0">
@@ -226,6 +230,10 @@ export default function LeasesPage() {
 
         <TabsContent value="t12" className="mt-0">
           <T12Workspace />
+        </TabsContent>
+
+        <TabsContent value="bookings" className="mt-0">
+          <BookingsPanel />
         </TabsContent>
 
         <TabsContent value="leases" className="mt-0">

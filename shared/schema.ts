@@ -1370,6 +1370,28 @@ export const deals = pgTable("deals", {
   
   notes: text("notes"),
   assignedTo: integer("assigned_to"),
+
+  // ── agent_investor: client vs. own book (migration 0226) ──────────────────
+  // 'client' = a brokerage transaction that earns a commission; 'own_investment'
+  // = the agent's OWN buy/sell, which is their own P&L and NEVER a commission.
+  // NULL (the default, and every pre-0226 row) is treated as 'client' — that is
+  // what a deal always was — so the presence of 'own_investment' is the only
+  // signal, and nothing is inferred from absence.
+  dealBook: text("deal_book"), // 'client' | 'own_investment' | null
+
+  // ── agent_investor: dual-agency disclosure TRACKER (migration 0226) ───────
+  // RECORD-ONLY. These columns store what the operator asserts and uploads —
+  // AcreOS does not generate, send, or e-sign any disclosure (legal-signing is
+  // founder-only). `dualAgencySide` is which side the agent represented
+  // ('seller' | 'buyer' | 'dual'); `disclosureAcknowledgedAt` is a recorded
+  // acknowledgement date (operator-set, not a signature); `disclosureDocRef` is
+  // a reference (URL/id) to a document the OPERATOR uploaded elsewhere — never
+  // generated here. All nullable; a deal carries at most one such record, so
+  // these are columns, not a table.
+  dualAgencySide: text("dual_agency_side"), // 'seller' | 'buyer' | 'dual' | null
+  disclosureAcknowledgedAt: timestamp("disclosure_acknowledged_at"),
+  disclosureDocRef: text("disclosure_doc_ref"),
+
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1378,6 +1400,9 @@ export const deals = pgTable("deals", {
   index("deals_org_idx").on(table.organizationId),
   index("deals_status_idx").on(table.status),
   index("deals_created_at_idx").on(table.createdAt),
+  // agent_investor pipeline filter: "my client deals under contract" reads by
+  // (org, book). Org-LEADING per the shard-readiness invariant.
+  index("deals_org_book_idx").on(table.organizationId, table.dealBook),
 ]);
 
 // ============================================
@@ -9181,6 +9206,12 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // the shared union here and tpl_lease_expiring left
   // LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS in the same change.
   "lease.expiring_60d",
+  // Short-term-rental (STR) lifecycle. reservation.checkout fires when an STR
+  // reservation transitions to 'checked_out' (the real production seam in
+  // server/routes-rent-ledger.ts PATCH /api/reservations/:id/status →
+  // server/services/strEvents.ts → emitStrEvent). Drives the turnover-cleaning
+  // template. See shared/schema/rental.ts (reservations) + strMetrics.ts.
+  "reservation.checkout",
   // Iyari (Chief of Future) #5 — Owner-change & tax-status delta detector.
   // Derived FREE from the append-only parcel_observations log (migration 0121)
   // by a scheduled diff job (server/services/parcelDeltaDetector.ts). Fires when

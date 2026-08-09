@@ -25,6 +25,10 @@ import { z } from "zod";
 import { and, eq, asc } from "drizzle-orm";
 import { db } from "./db";
 import { lotPricingRules, properties } from "@shared/schema";
+import {
+  deriveBasePerAcreCents as deriveBasePerAcreCentsPure,
+  computeLotPricingGrid,
+} from "@shared/subdivision/lotPricing";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -95,40 +99,21 @@ async function loadChildFacts(orgId: number, parentId: number): Promise<ChildFac
   });
 }
 
-function evaluateRules(
-  rules: Array<{ attribute: string; operator: string; threshold?: any; premiumPct: number }>,
-  facts: Record<string, any>,
-): { totalPremiumPct: number; matched: Array<{ attribute: string; premiumPct: number }> } {
-  let total = 0;
-  const matched: Array<{ attribute: string; premiumPct: number }> = [];
-  for (const r of rules) {
-    const f = facts[r.attribute];
-    if (f === undefined) continue;
-    let ok = false;
-    switch (r.operator) {
-      case "==": ok = f === r.threshold; break;
-      case ">":  ok = typeof f === "number" && typeof r.threshold === "number" && f > r.threshold; break;
-      case "<":  ok = typeof f === "number" && typeof r.threshold === "number" && f < r.threshold; break;
-      case ">=": ok = typeof f === "number" && typeof r.threshold === "number" && f >= r.threshold; break;
-      case "<=": ok = typeof f === "number" && typeof r.threshold === "number" && f <= r.threshold; break;
-    }
-    if (ok) {
-      total += r.premiumPct;
-      matched.push({ attribute: r.attribute, premiumPct: r.premiumPct });
-    }
-  }
-  return { totalPremiumPct: total, matched };
-}
+// evaluateRules + the premium-grid math + the base-per-acre derivation now live
+// in the pure, behaviourally-tested engine (@shared/subdivision/lotPricing).
+// This route DELEGATES to it; the DB loads stay here.
 
 async function deriveBasePerAcreCents(
   orgId: number,
   parentId: number,
   rules: { basePriceSource: string; fixedPerAcreCents: number | null },
 ): Promise<number | null> {
+  // Fixed-rate base needs no parent load — short-circuit before the DB hit.
   if (rules.basePriceSource === "fixed_per_acre" && rules.fixedPerAcreCents) {
     return rules.fixedPerAcreCents;
   }
-  // Pull parent and use marketValue OR purchasePrice / acres as a base proxy.
+  // Pull the parent and let the pure engine derive — or REFUSE — the base off the
+  // parent's OWN market value / purchase price ÷ acreage. Never a residential comp.
   const [p] = await db
     .select({
       marketValue: properties.marketValue,
@@ -139,11 +124,13 @@ async function deriveBasePerAcreCents(
     .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
   if (!p) return null;
 
-  const acres = parseFloat(p.sizeAcres ?? "0") || 0;
-  if (acres <= 0) return null;
-  const mv = parseFloat(p.marketValue ?? "0") || parseFloat(p.purchasePrice ?? "0") || 0;
-  if (mv <= 0) return null;
-  return Math.round((mv * 100) / acres);
+  return deriveBasePerAcreCentsPure({
+    source: rules.basePriceSource,
+    fixedPerAcreCents: rules.fixedPerAcreCents,
+    marketValueCents: Math.round((parseFloat(p.marketValue ?? "0") || 0) * 100),
+    purchasePriceCents: Math.round((parseFloat(p.purchasePrice ?? "0") || 0) * 100),
+    acres: parseFloat(p.sizeAcres ?? "0") || 0,
+  });
 }
 
 export function registerLotPricingRoutes(app: Express): void {
@@ -260,23 +247,7 @@ export function registerLotPricingRoutes(app: Express): void {
         }
 
         const facts = await loadChildFacts(orgId, parentId);
-        const grid = facts.map((c) => {
-          const baseCents = Math.round(basePerAcre * c.sizeAcres);
-          const { totalPremiumPct, matched } = evaluateRules(
-            (rules.rules as any) ?? [],
-            c.attributes,
-          );
-          const askingCents = Math.round(baseCents * (1 + totalPremiumPct));
-          return {
-            childParcelId: c.id,
-            childLotNumber: c.childLotNumber,
-            sizeAcres: c.sizeAcres,
-            basePriceCents: baseCents,
-            premiumPct: totalPremiumPct,
-            askingPriceCents: askingCents,
-            matchedRules: matched,
-          };
-        });
+        const grid = computeLotPricingGrid(basePerAcre, facts, rules.rules ?? []);
 
         return res.json({
           basePerAcreCents: basePerAcre,
@@ -317,16 +288,15 @@ export function registerLotPricingRoutes(app: Express): void {
         if (basePerAcre === null) return Errors.badRequest(res, "Cannot derive base price");
 
         const facts = await loadChildFacts(orgId, parentId);
-        const lockedGrid = facts.map((c) => {
-          const baseCents = Math.round(basePerAcre * c.sizeAcres);
-          const { totalPremiumPct } = evaluateRules((rules.rules as any) ?? [], c.attributes);
-          const calc = Math.round(baseCents * (1 + totalPremiumPct));
-          const override = overrides[String(c.id)];
+        const lockedGrid = computeLotPricingGrid(basePerAcre, facts, rules.rules ?? []).map((row) => {
+          // The engine computes the rules-derived asking price; an operator override
+          // (if supplied for this lot) wins at lock time.
+          const override = overrides[String(row.childParcelId)];
           return {
-            childParcelId: c.id,
-            basePriceCents: baseCents,
-            premiumPct: totalPremiumPct,
-            askingPriceCents: typeof override === "number" ? override : calc,
+            childParcelId: row.childParcelId,
+            basePriceCents: row.basePriceCents,
+            premiumPct: row.premiumPct,
+            askingPriceCents: typeof override === "number" ? override : row.askingPriceCents,
             override: typeof override === "number",
           };
         });

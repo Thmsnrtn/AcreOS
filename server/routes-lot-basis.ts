@@ -25,10 +25,19 @@ import { and, eq, sql, asc } from "drizzle-orm";
 import { db } from "./db";
 import {
   lotBasisAllocations,
+  lotPricingRules,
+  countySubdivisionTimelines,
   properties,
   subdivisionPlans,
   BASIS_ALLOCATION_METHODS,
 } from "@shared/schema";
+import {
+  allocateBasis,
+  realizeCogs,
+  type BasisAllocationChild,
+} from "@shared/subdivision/basisAllocation";
+import { projectCarryCost } from "@shared/subdivision/carryCost";
+import { computeProForma, type ProFormaLockedGridRow } from "@shared/subdivision/proForma";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -49,6 +58,16 @@ const allocateSchema = z.object({
 const realizeCogsSchema = z.object({
   salePriceCents: z.coerce.number().int().nonnegative(),
   closingDate: z.string().optional(),  // ISO date
+});
+
+// Carry inputs for the pro-forma arrive as optional query params (this is a
+// GET). Without a monthly holding cost the carry line refuses rather than
+// project a $0 carry — never an assumed number.
+const proFormaQuerySchema = z.object({
+  holdingCostMonthlyCents: z.coerce.number().int().nonnegative().optional(),
+  debtPrincipalCents: z.coerce.number().int().nonnegative().optional(),
+  debtRateBps: z.coerce.number().int().nonnegative().optional(),
+  opportunityCostBps: z.coerce.number().int().nonnegative().optional(),
 });
 
 export function registerLotBasisRoutes(app: Express): void {
@@ -119,48 +138,37 @@ export function registerLotBasisRoutes(app: Express): void {
           ));
         if (children.length === 0) return Errors.badRequest(res, "Parent has no child lots to allocate to");
 
-        // Build per-child numerator + denominator per method.
+        // Resolve each child's numerator for the chosen method (the request-shape
+        // guards — a method needs its per-child map — stay here; the allocation
+        // math + its refusals live in the pure engine).
         const method = parsed.data.method;
-        const childNumerators = new Map<number, number>();
-        let denominator = 0;
-
+        let allocChildren: BasisAllocationChild[];
         if (method === "acreage") {
-          for (const c of children) {
+          allocChildren = children.map((c) => {
             const a = parseFloat(c.sizeAcres ?? "0");
-            childNumerators.set(c.id, Number.isFinite(a) ? a : 0);
-            denominator += Number.isFinite(a) ? a : 0;
-          }
+            return { id: c.id, numerator: Number.isFinite(a) ? a : 0 };
+          });
         } else if (method === "frontage") {
           if (!parsed.data.frontages) return Errors.badRequest(res, "Frontage method requires per-child frontages");
-          for (const c of children) {
-            const f = parsed.data.frontages[String(c.id)] ?? 0;
-            childNumerators.set(c.id, f);
-            denominator += f;
-          }
+          const frontages = parsed.data.frontages;
+          allocChildren = children.map((c) => ({ id: c.id, numerator: frontages[String(c.id)] ?? 0 }));
         } else if (method === "appraisal") {
           if (!parsed.data.appraisals) return Errors.badRequest(res, "Appraisal method requires per-child appraisals");
-          for (const c of children) {
-            const v = parsed.data.appraisals[String(c.id)] ?? 0;
-            childNumerators.set(c.id, v);
-            denominator += v;
-          }
-        } else if (method === "override") {
+          const appraisals = parsed.data.appraisals;
+          allocChildren = children.map((c) => ({ id: c.id, numerator: appraisals[String(c.id)] ?? 0 }));
+        } else {
           if (!parsed.data.overrides) return Errors.badRequest(res, "Override method requires per-child shares");
-          let sum = 0;
-          for (const c of children) {
-            const s = parsed.data.overrides[String(c.id)] ?? 0;
-            childNumerators.set(c.id, s);
-            sum += s;
-          }
-          if (Math.abs(sum - 1.0) > 0.001) {
-            return Errors.badRequest(res, `Override shares must sum to 1.0; got ${sum.toFixed(4)}`);
-          }
-          denominator = 1.0;
+          const overrides = parsed.data.overrides;
+          allocChildren = children.map((c) => ({ id: c.id, numerator: overrides[String(c.id)] ?? 0 }));
         }
 
-        if (denominator <= 0) {
-          return Errors.badRequest(res, "Cannot allocate: total denominator is zero");
+        // Delegate the split (denominator, cent-conserving allocation, refusals)
+        // to the pure engine. A refusal is a 400 carrying the engine's reason.
+        const allocation = allocateBasis({ parentBasisCents, method, children: allocChildren });
+        if (allocation.refusedReason || !allocation.allocations) {
+          return Errors.badRequest(res, allocation.refusedReason ?? "Cannot allocate basis");
         }
+        const allocations = allocation.allocations;
 
         // Wipe + replace allocations atomically. (Sale realizations on the
         // old rows are intentionally lost on re-allocation — that's a
@@ -172,22 +180,17 @@ export function registerLotBasisRoutes(app: Express): void {
             eq(lotBasisAllocations.parentParcelId, parentId),
           ));
 
-          const inserts = children.map((c) => {
-            const num = childNumerators.get(c.id) ?? 0;
-            const share = num / denominator;
-            const allocated = Math.round(parentBasisCents * share);
-            return {
-              organizationId: orgId,
-              parentParcelId: parentId,
-              childParcelId: c.id,
-              method,
-              denominator: String(denominator),
-              numerator: String(num),
-              sharePct: String(share),
-              allocatedBasisCents: allocated,
-              overrideShare: method === "override" ? String(num) : null,
-            };
-          });
+          const inserts = allocations.map((a) => ({
+            organizationId: orgId,
+            parentParcelId: parentId,
+            childParcelId: a.childId,
+            method,
+            denominator: String(a.denominator),
+            numerator: String(a.numerator),
+            sharePct: String(a.sharePct),
+            allocatedBasisCents: a.allocatedBasisCents,
+            overrideShare: method === "override" ? String(a.numerator) : null,
+          }));
           if (inserts.length > 0) {
             await tx.insert(lotBasisAllocations).values(inserts);
           }
@@ -237,12 +240,19 @@ export function registerLotBasisRoutes(app: Express): void {
           ));
         if (!alloc) return Errors.notFound(res, "Basis allocation for this lot (run /basis-allocation first)");
 
+        // COGS = the lot's allocated basis (inventory, not depreciation); gain =
+        // sale − COGS. The pure engine owns this so the tax-time identity is tested.
+        const { cogsCents, gainCents } = realizeCogs({
+          allocatedBasisCents: alloc.allocatedBasisCents,
+          salePriceCents: parsed.data.salePriceCents,
+        });
+
         const [updated] = await db
           .update(lotBasisAllocations)
           .set({
             realizedAt: new Date(),
             realizedSalePriceCents: parsed.data.salePriceCents,
-            realizedCogsCents: alloc.allocatedBasisCents,
+            realizedCogsCents: cogsCents,
             updatedAt: new Date(),
           })
           .where(eq(lotBasisAllocations.id, alloc.id))
@@ -262,8 +272,8 @@ export function registerLotBasisRoutes(app: Express): void {
         logger.info("[SD-4] COGS realized", {
           orgId, userId, childId,
           salePriceCents: parsed.data.salePriceCents,
-          cogsCents: alloc.allocatedBasisCents,
-          gainCents: parsed.data.salePriceCents - alloc.allocatedBasisCents,
+          cogsCents,
+          gainCents,
         });
 
         return res.json({ allocation: updated });
@@ -319,6 +329,117 @@ export function registerLotBasisRoutes(app: Express): void {
           basisAllocatedCents: Number(agg.basisAllocatedCents),
           realizedSaleProceedsCents: Number(agg.realizedSaleProceedsCents),
           realizedCogsCents: Number(agg.realizedCogsCents),
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Project pro-forma (SD Stage 2) ─────────────────────────────────────────
+  // GET /api/parcels/:id/pro-forma — the subdivider's T-12 analogue: parent
+  // basis (COGS) + lot count + the LOCKED lot-pricing grid (gross proceeds) +
+  // carry over the county timeline → net project margin (p50/p90). Everything is
+  // read from REAL stored rows; the pure engine (@shared/subdivision/proForma)
+  // REFUSES PER LINE on any missing input rather than assume a number. Carry
+  // inputs (a monthly holding cost, optional debt/opportunity rates) arrive as
+  // query params; without them the carry line — and the carry-inclusive margin —
+  // is withheld, never fabricated. Org-scoped like the rest of this file.
+  app.get(
+    "/api/parcels/:id/pro-forma",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parentId = parseInt(req.params.id, 10);
+        if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
+
+        const parsedQuery = proFormaQuerySchema.safeParse(req.query);
+        if (!parsedQuery.success) return Errors.validationFailed(res, parsedQuery.error.issues);
+        const q = parsedQuery.data;
+
+        // Parent parcel — org-scoped. Its purchase price is the project basis/COGS.
+        const [parent] = await db
+          .select({
+            id: properties.id,
+            purchasePrice: properties.purchasePrice,
+            county: properties.county,
+            state: properties.state,
+          })
+          .from(properties)
+          .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
+        if (!parent) return Errors.notFound(res, "Parcel");
+
+        const parentPurchasePriceCents = parent.purchasePrice
+          ? Math.round(parseFloat(parent.purchasePrice) * 100)
+          : null;
+
+        // Lot count — org-scoped children of this parent.
+        const [{ lotCount = 0 } = {}] = await db
+          .select({ lotCount: sql<number>`COUNT(*)::int` })
+          .from(properties)
+          .where(and(
+            eq(properties.organizationId, orgId),
+            eq(properties.parentParcelId, parentId),
+          ));
+
+        // The LOCKED pricing grid — org+parent scoped. Null until the operator locks.
+        const [pricingRow] = await db
+          .select({ lockedGrid: lotPricingRules.lockedGrid })
+          .from(lotPricingRules)
+          .where(and(
+            eq(lotPricingRules.organizationId, orgId),
+            eq(lotPricingRules.parentParcelId, parentId),
+          ));
+        const lockedGrid: ProFormaLockedGridRow[] | null = pricingRow?.lockedGrid
+          ? pricingRow.lockedGrid.map((r) => ({
+              childParcelId: r.childParcelId,
+              askingPriceCents: r.askingPriceCents,
+            }))
+          : null;
+
+        // County subdivision timeline — reference data keyed by (state, county),
+        // not org-scoped (same as the carry-cost route).
+        const [tl] = await db
+          .select()
+          .from(countySubdivisionTimelines)
+          .where(and(
+            eq(countySubdivisionTimelines.state, (parent.state ?? "").toUpperCase()),
+            eq(countySubdivisionTimelines.countyName, parent.county),
+          ));
+
+        // Project carry only when a monthly holding cost was supplied; otherwise
+        // the carry line refuses (no assumed carry). timelineFound still reflects
+        // whether a timeline row exists at all.
+        const carry =
+          q.holdingCostMonthlyCents !== undefined
+            ? projectCarryCost({
+                p50TotalDays: tl?.p50TotalDays ?? null,
+                p90TotalDays: tl?.p90TotalDays ?? null,
+                inputs: {
+                  holdingCostMonthlyCents: q.holdingCostMonthlyCents,
+                  debtPrincipalCents: q.debtPrincipalCents ?? 0,
+                  debtRateBps: q.debtRateBps ?? 0,
+                  purchaseBasisCents: parentPurchasePriceCents ?? 0,
+                  opportunityCostBps: q.opportunityCostBps ?? 0,
+                },
+              })
+            : { timelineFound: !!tl, p50: null, p90: null };
+
+        const proForma = computeProForma({
+          parentPurchasePriceCents,
+          lotCount: Number(lotCount),
+          lockedGrid,
+          carry,
+        });
+
+        return res.json({
+          parcelId: parentId,
+          county: parent.county,
+          state: parent.state,
+          timelineFound: !!tl,
+          proForma,
         });
       } catch (err) {
         return Errors.internal(res, err);

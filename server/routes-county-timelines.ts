@@ -32,6 +32,7 @@ import { z } from "zod";
 import { and, eq, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import { countySubdivisionTimelines, properties } from "@shared/schema";
+import { projectCarryCost } from "@shared/subdivision/carryCost";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -119,40 +120,29 @@ export function registerCountyTimelineRoutes(app: Express): void {
             eq(countySubdivisionTimelines.countyName, parsed.data.county),
           ));
 
-        const p50Days = tl?.p50TotalDays ?? null;
-        const p90Days = tl?.p90TotalDays ?? null;
-        const p50Months = p50Days !== null ? p50Days / 30 : null;
-        const p90Months = p90Days !== null ? p90Days / 30 : null;
-
-        const debtPrincipal = parsed.data.debtPrincipalCents ?? 0;
-        const annualDebtCents = debtPrincipal * (parsed.data.debtRateBps ?? 0) / 10000;
         const purchaseBasis = parent.purchasePrice ? Math.round(parseFloat(parent.purchasePrice) * 100) : 0;
-        const annualOppCents = purchaseBasis * (parsed.data.opportunityCostBps ?? 0) / 10000;
 
-        function project(months: number | null) {
-          if (months === null) return null;
-          const holding = Math.round(carryData.holdingCostMonthlyCents * months);
-          const debt = Math.round((annualDebtCents / 12) * months);
-          const opp = Math.round((annualOppCents / 12) * months);
-          const total = holding + debt + opp;
-          return {
-            months: Math.round(months * 10) / 10,
-            holdingCostCents: holding,
-            debtInterestCents: debt,
-            opportunityCostCents: opp,
-            totalCarryCents: total,
-          };
-        }
-
-        const p50 = project(p50Months);
-        const p90 = project(p90Months);
+        // The p50/p90 carry projection over the county lead time is the pure,
+        // behaviourally-tested engine. Never assume a timeline: a null lead time
+        // yields a null projection for that percentile.
+        const carry = projectCarryCost({
+          p50TotalDays: tl?.p50TotalDays ?? null,
+          p90TotalDays: tl?.p90TotalDays ?? null,
+          inputs: {
+            holdingCostMonthlyCents: carryData.holdingCostMonthlyCents,
+            debtPrincipalCents: carryData.debtPrincipalCents ?? 0,
+            debtRateBps: carryData.debtRateBps ?? 0,
+            purchaseBasisCents: purchaseBasis,
+            opportunityCostBps: carryData.opportunityCostBps ?? 0,
+          },
+        });
 
         return res.json({
           county: parsed.data.county,
           state: parsed.data.state.toUpperCase(),
           timelineFound: !!tl,
-          p50,
-          p90,
+          p50: carry.p50,
+          p90: carry.p90,
           inputs: {
             purchaseBasisCents: purchaseBasis,
             holdingCostMonthlyCents: parsed.data.holdingCostMonthlyCents,

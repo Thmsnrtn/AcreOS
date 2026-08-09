@@ -16,25 +16,31 @@ import {
   deals,
   trustLedger,
 } from "@shared/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, sql } from "drizzle-orm";
 import { startOfYear, endOfYear, format } from "date-fns";
 import { logger } from "../utils/logger";
+// Tiered-commission types + tier resolution live in the pure, browser-safe
+// shared module now (so the forecast engine can use them without server code);
+// re-exported here so existing consumers keep importing from commissionService.
+import {
+  type CommissionTier,
+  type CommissionConfig,
+  resolveCommissionTier,
+} from "@shared/commission/tier-types";
+import {
+  computeCommissionSplit,
+  type CommissionSplitConfig,
+  type CommissionSplitResult,
+} from "@shared/commission/split";
+import { projectGci, type GciForecastResult, type PipelineDealInput } from "@shared/commission/forecast";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface CommissionTier {
-  minDeals: number;     // minimum closed deals in period to qualify for this tier
-  ratePercent: number;  // commission % of deal sale price
-  label: string;        // e.g. "Bronze", "Silver", "Gold"
-}
-
-export interface CommissionConfig {
-  tiers: CommissionTier[];          // sorted ascending by minDeals
-  baseFlatAmount?: number;          // flat per-deal bonus in cents (in addition to %)
-  trackingPeriod: "monthly" | "quarterly" | "annual"; // volume counting window
-}
+export {
+  type CommissionTier,
+  type CommissionConfig,
+  resolveCommissionTier,
+  type CommissionSplitConfig,
+  type CommissionSplitResult,
+};
 
 export interface CommissionRecord {
   id: string;
@@ -51,6 +57,21 @@ export interface CommissionRecord {
   status: "owed" | "partial" | "paid";
   createdAt: Date;
   updatedAt: Date;
+  // Net-of-split economics — present ONLY when the org has saved a split config
+  // (hasSplitConfig) at record time. Absent on records booked before the split
+  // config existed, so every field is optional and readers must treat absence
+  // as "no split applied", never as zero.
+  splitApplied?: boolean;
+  /** The agent's net after split, cap and flat fees, in cents. */
+  splitAgentNetCents?: number;
+  /** Company dollar the broker retained on this deal (after the annual cap), in cents. */
+  splitBrokerCents?: number;
+  /** Franchise/royalty fee taken off the top, in cents. */
+  splitFranchiseFeeCents?: number;
+  /** Flat per-transaction fee, in cents. */
+  splitTransactionFeeCents?: number;
+  /** Whether the annual company-dollar cap reduced the broker's take on this deal. */
+  splitCappedThisDeal?: boolean;
 }
 
 export interface AgentCommissionSummary {
@@ -64,6 +85,12 @@ export interface AgentCommissionSummary {
   ytdOutstandingCents: number;
   currentTier: CommissionTier | null;
   records: CommissionRecord[];
+  // Net-of-split YTD roll-up. Derived from the split fields on records; when no
+  // record carried a split (no split config was ever saved) ytdSplitApplied is
+  // false and ytdAgentNetCents stays 0 — an honest "no split to report", never
+  // a fabricated net.
+  ytdAgentNetCents: number;
+  ytdSplitApplied: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +195,98 @@ export async function saveCommissionConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Split config storage (JSON blob in organizationIntegrations)
+// ---------------------------------------------------------------------------
+//
+// The operator's OWN saved split arrangement. Same organizationIntegrations
+// blob pattern as commission_config, under a distinct provider key. There is NO
+// default: getSplitConfig returns null when unconfigured so the pure engine can
+// REFUSE — a split is never assumed. hasSplitConfig is the honest gate that the
+// deal-close net-of-split path checks before applying any split.
+
+/**
+ * Read the org's saved split config, or null when none is saved. Deliberately
+ * has NO default fallback (unlike getCommissionConfig): a split is a private,
+ * negotiated term, and returning a made-up default would let a fabricated net
+ * ship. Null ⇒ the split engine refuses.
+ */
+export async function getSplitConfig(
+  organizationId: number
+): Promise<CommissionSplitConfig | null> {
+  const [row] = await db
+    .select()
+    .from(organizationIntegrations)
+    .where(
+      and(
+        eq(organizationIntegrations.organizationId, organizationId),
+        eq(organizationIntegrations.provider, "commission_split_config")
+      )
+    )
+    .limit(1);
+
+  if (!row?.credentials) return null;
+  const creds = row.credentials as { encrypted?: string; config?: CommissionSplitConfig };
+  if (creds.encrypted) {
+    try {
+      const parsed = JSON.parse(creds.encrypted) as { config?: CommissionSplitConfig };
+      if (parsed.config) return parsed.config;
+    } catch { /* fall through */ }
+  }
+  return creds.config ?? null;
+}
+
+/**
+ * Whether the org has EXPLICITLY saved a split config. The net-of-split paths
+ * (deal-close record, the forecast) must NOT act without this — applying a
+ * split the operator never configured would fabricate an agent net.
+ */
+export async function hasSplitConfig(organizationId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: organizationIntegrations.id })
+    .from(organizationIntegrations)
+    .where(
+      and(
+        eq(organizationIntegrations.organizationId, organizationId),
+        eq(organizationIntegrations.provider, "commission_split_config")
+      )
+    )
+    .limit(1);
+  return !!row;
+}
+
+export async function saveSplitConfig(
+  organizationId: number,
+  config: CommissionSplitConfig
+): Promise<void> {
+  const [existing] = await db
+    .select()
+    .from(organizationIntegrations)
+    .where(
+      and(
+        eq(organizationIntegrations.organizationId, organizationId),
+        eq(organizationIntegrations.provider, "commission_split_config")
+      )
+    )
+    .limit(1);
+
+  const credentials = { encrypted: JSON.stringify({ config }) };
+
+  if (existing) {
+    await db
+      .update(organizationIntegrations)
+      .set({ credentials, updatedAt: new Date() })
+      .where(eq(organizationIntegrations.id, existing.id));
+  } else {
+    await db.insert(organizationIntegrations).values({
+      organizationId,
+      provider: "commission_split_config",
+      isEnabled: true,
+      credentials,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Commission records storage (also JSON blob — no dedicated table)
 // ---------------------------------------------------------------------------
 
@@ -237,25 +356,6 @@ async function saveCommissionRecordsStore(
 }
 
 // ---------------------------------------------------------------------------
-// Tier resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Given a config and the number of deals already closed this period by an
- * agent, determine which tier applies to the NEXT deal.
- */
-export function resolveCommissionTier(
-  config: CommissionConfig,
-  closedDealsInPeriod: number
-): CommissionTier {
-  // tiers sorted ascending by minDeals; pick highest eligible
-  const eligible = config.tiers
-    .filter((t) => closedDealsInPeriod >= t.minDeals)
-    .sort((a, b) => b.minDeals - a.minDeals);
-  return eligible[0] ?? config.tiers[0];
-}
-
-// ---------------------------------------------------------------------------
 // Core CRUD
 // ---------------------------------------------------------------------------
 
@@ -291,6 +391,48 @@ export async function recordDealCommission(
   const flatBonusCents = config.baseFlatAmount ?? 0;
   const totalOwedCents = commissionAmountCents + flatBonusCents;
 
+  // Net-of-split — ONLY when the org has explicitly saved a split config.
+  // hasSplitConfig is the honest gate (same shape as hasCommissionConfig): with
+  // no saved split we leave the record's split fields absent (unchanged
+  // behaviour), because applying a split the operator never configured would
+  // fabricate an agent net. The split is computed on the GROSS COMMISSION (the %
+  // of sale price), not on totalOwedCents — the flat bonus is an internal
+  // broker→agent bonus, not GCI to be split — so nothing is double-counted.
+  let splitFields: Partial<CommissionRecord> = {};
+  const splitConfig = (await hasSplitConfig(organizationId))
+    ? await getSplitConfig(organizationId)
+    : null;
+  if (splitConfig) {
+    // Company dollar the broker has already retained THIS YEAR for this agent —
+    // the cap runs off it. Summed from prior records' persisted splitBrokerCents.
+    const closedYear = closedAt.getFullYear();
+    const agentYtdCompanyDollarCents = records
+      .filter(
+        (r) =>
+          r.teamMemberId === teamMemberId &&
+          r.dealId !== dealId &&
+          r.dealClosedAt.getFullYear() === closedYear &&
+          typeof r.splitBrokerCents === "number"
+      )
+      .reduce((sum, r) => sum + (r.splitBrokerCents ?? 0), 0);
+
+    const split = computeCommissionSplit({
+      grossCommissionCents: commissionAmountCents,
+      config: splitConfig,
+      agentYtdCompanyDollarCents,
+    });
+    if (split.applicable && split.agentNetCents != null) {
+      splitFields = {
+        splitApplied: true,
+        splitAgentNetCents: split.agentNetCents,
+        splitBrokerCents: split.brokerCents ?? 0,
+        splitFranchiseFeeCents: split.franchiseFeeCents ?? 0,
+        splitTransactionFeeCents: split.transactionFeeCents ?? 0,
+        splitCappedThisDeal: split.cappedThisDeal,
+      };
+    }
+  }
+
   const record: CommissionRecord = {
     id: `comm_${dealId}_${teamMemberId}_${Date.now()}`,
     organizationId,
@@ -306,6 +448,7 @@ export async function recordDealCommission(
     status: "owed",
     createdAt: new Date(),
     updatedAt: new Date(),
+    ...splitFields,
   };
 
   // Remove any existing record for this deal (idempotent)
@@ -425,6 +568,14 @@ export async function getAgentCommissionSummaries(
       0
     );
     const currentTier = resolveCommissionTier(config, ytdDeals);
+    // Net-of-split YTD — derived from the persisted split fields. When no record
+    // carried a split (no split config was ever saved) this stays 0 and
+    // ytdSplitApplied is false: an honest "no split to report", never invented.
+    const splitRecords = agentRecords.filter((r) => r.splitApplied);
+    const ytdAgentNetCents = splitRecords.reduce(
+      (sum, r) => sum + (r.splitAgentNetCents ?? 0),
+      0
+    );
 
     return {
       teamMemberId: m.id,
@@ -437,6 +588,8 @@ export async function getAgentCommissionSummaries(
       ytdOutstandingCents: ytdOwedCents - ytdPaidCents,
       currentTier,
       records: agentRecords,
+      ytdAgentNetCents,
+      ytdSplitApplied: splitRecords.length > 0,
     };
   });
 }
@@ -470,6 +623,11 @@ export function generateCommissionStatement(
   lines.push(`Total Owed:           ${fmt(summary.ytdOwedCents)}`);
   lines.push(`Total Paid:           ${fmt(summary.ytdPaidCents)}`);
   lines.push(`Outstanding:          ${fmt(summary.ytdOutstandingCents)}`);
+  // Net-of-split line — only when a split was actually applied to these records.
+  // Absent otherwise (no fabricated net when the org never configured a split).
+  if (summary.ytdSplitApplied) {
+    lines.push(`Agent Net (of split): ${fmt(summary.ytdAgentNetCents)}`);
+  }
   lines.push(``);
   lines.push(`─`.repeat(60));
   lines.push(`DEAL DETAIL`);
@@ -520,4 +678,126 @@ function getPeriodStart(
     default:
       return new Date(d.getFullYear(), 0, 1);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Net-of-split summary + pipeline GCI forecast (read surfaces)
+// ---------------------------------------------------------------------------
+
+export interface SplitConfigSummary {
+  /** The org's saved split config, or null when unconfigured. */
+  config: CommissionSplitConfig | null;
+  /** True only when a real split config row exists (the honest gate). */
+  configured: boolean;
+  /** Per-agent YTD roll-up: GCI owed vs. agent net of split. */
+  perAgent: Array<{
+    teamMemberId: number;
+    displayName: string;
+    ytdOwedCents: number;
+    ytdAgentNetCents: number;
+    ytdSplitApplied: boolean;
+  }>;
+}
+
+/**
+ * The split config + a computed net-of-split YTD summary for the GET surface.
+ * When no split config is saved, `config` is null and `configured` is false —
+ * the caller renders an honest "not configured" state, never an assumed split.
+ */
+export async function getSplitConfigSummary(
+  organizationId: number,
+  year: number = new Date().getFullYear()
+): Promise<SplitConfigSummary> {
+  const [config, summaries] = await Promise.all([
+    getSplitConfig(organizationId),
+    getAgentCommissionSummaries(organizationId, year),
+  ]);
+  return {
+    config,
+    configured: config != null,
+    perAgent: summaries.map((s) => ({
+      teamMemberId: s.teamMemberId,
+      displayName: s.displayName,
+      ytdOwedCents: s.ytdOwedCents,
+      ytdAgentNetCents: s.ytdAgentNetCents,
+      ytdSplitApplied: s.ytdSplitApplied,
+    })),
+  };
+}
+
+/**
+ * Build a pipeline GCI forecast for the org from its OWN data:
+ *   - under-contract (accepted / in_escrow), client-book deals only,
+ *   - the tiered commission config (refuses when none saved),
+ *   - the split config (projects agent net only when saved),
+ *   - real YTD closed counts + company dollar per agent for honest tier + cap.
+ *
+ * All refusal/skip logic lives in the pure shared/commission/forecast.ts engine;
+ * this only assembles the org's recorded facts and hands them over.
+ */
+export async function getGciForecast(
+  organizationId: number,
+  year: number = new Date().getFullYear()
+): Promise<GciForecastResult> {
+  const [configured, commissionConfig, splitConfig] = await Promise.all([
+    hasCommissionConfig(organizationId),
+    getCommissionConfig(organizationId),
+    getSplitConfig(organizationId),
+  ]);
+
+  // Under-contract pipeline deals (exclude soft-deleted). acceptedAmount is a
+  // numeric dollar string; convert to cents. A missing/invalid amount stays
+  // null so the engine SKIPS it rather than invent a price.
+  const rows = await db
+    .select({
+      id: deals.id,
+      assignedTo: deals.assignedTo,
+      acceptedAmount: deals.acceptedAmount,
+      status: deals.status,
+      dealBook: deals.dealBook,
+    })
+    .from(deals)
+    .where(
+      and(
+        eq(deals.organizationId, organizationId),
+        inArray(deals.status, ["accepted", "in_escrow"]),
+        sql`${deals.status} != 'deleted'`
+      )
+    );
+
+  const pipelineDeals: PipelineDealInput[] = rows.map((r) => {
+    const amt = r.acceptedAmount != null ? parseFloat(String(r.acceptedAmount)) : NaN;
+    const salePriceCents = Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) : null;
+    return {
+      dealId: r.id,
+      teamMemberId: r.assignedTo ?? null,
+      salePriceCents,
+      status: r.status,
+      dealBook: r.dealBook ?? null,
+    };
+  });
+
+  // Real YTD closed counts + company dollar per agent, from recorded commissions.
+  const fromDate = startOfYear(new Date(year, 0, 1));
+  const toDate = endOfYear(new Date(year, 0, 1));
+  const ytdRecords = await getCommissionRecords(organizationId, { fromDate, toDate });
+  const ytdClosedByMember: Record<number, number> = {};
+  const ytdCompanyDollarByMember: Record<number, number> = {};
+  for (const r of ytdRecords) {
+    ytdClosedByMember[r.teamMemberId] = (ytdClosedByMember[r.teamMemberId] ?? 0) + 1;
+    if (typeof r.splitBrokerCents === "number") {
+      ytdCompanyDollarByMember[r.teamMemberId] =
+        (ytdCompanyDollarByMember[r.teamMemberId] ?? 0) + r.splitBrokerCents;
+    }
+  }
+
+  return projectGci({
+    pipelineDeals,
+    config: {
+      commissionConfig: configured ? commissionConfig : null,
+      splitConfig,
+      ytdClosedByMember,
+      ytdCompanyDollarByMember,
+    },
+  });
 }
