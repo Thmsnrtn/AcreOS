@@ -5550,8 +5550,10 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
   // Pax resolution agent the /pax-resolve route uses (resolveTicketWithPax):
   //   - high confidence → Pax posts the answer (labeled as Pax) + resolves;
   //   - low confidence  → Pax escalates to a human via the existing path.
-  // It routes through the normal support AI client (shared OpenRouter wrapper),
-  // so the platform's cost/ensemble gates apply. Fire-and-forget + best-effort:
+  // It uses the shared OpenRouter client wrapper and carries its own cost
+  // enforcement (assertAiSpendAllowed + recordExternalAiSpend inside
+  // resolveTicketWithPax — Wave 0.3; the wrapper itself carries no gates).
+  // Fire-and-forget + best-effort:
   // a failure here NEVER blocks (or fails) ticket creation. Bug-reporter and
   // other direct-insert paths are intentionally unaffected — only tickets minted
   // through createSupportTicket get the auto first-response.

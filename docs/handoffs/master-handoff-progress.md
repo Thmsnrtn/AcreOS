@@ -77,11 +77,45 @@ from this file, not from memory. Updated every working session.*
 - **Exit test:** the Ten's gates green at HEAD (evidence above) + zero un-routed
   stragglers. MET.
 
-### 0.3 — Router totality + `.chat.completions.create` allowlist lint (Pax/VA/support/Atlas/Solene) — pending
-Premises to verify: `openai-bypass` ratchet exists (baseline 89, down-only);
-the six direct-completions offenders; the 3-phase migration plan's eval-gating
-constraint (live keys). Exit: every AI call path routes via `aiRouter` or is
-allowlisted with a shrinking baseline.
+### 0.3 — Router totality + completions allowlist (Pax/VA/support/Atlas/Solene) — ✅ DONE (scope honest to the F-16 plan's key-gating)
+- **Premise verification re-scoped the item:** the allowlist lint already exists
+  (`openai-bypass` ratchet, baseline 89 down-only, tamper-pinned now). The F-16
+  plan gates Phases 2–3 (the actual migrations) on a KEYED environment + eval —
+  "reckless without" per the plan itself — so those are founder-queue, not this
+  wave. Executed here:
+  1. **F-16 Phase 1 — tool-aware `routeAITask`** (additive, opt-in): AITask gains
+     `tools`/`toolChoice` + tool/assistant-with-tool_calls messages; AIResponse
+     gains `toolCalls`/`finishReason` only when tools are used; incompatible
+     features (json responseFormat, confidence, extended thinking, both cache
+     layers, the cascade) explicitly disabled on the tools path with the choices
+     documented; ceiling/telemetry/tier paths shared and untouched. Pinned by
+     `aiRouterTools.test.ts` (8 tests, mocked client): pass-through, tool_calls
+     surfacing, multi-turn round-trip, byte-identical no-tools request
+     (regression pin), ceiling-before-client on the tools path, no-cache/
+     no-cascade with a non-vacuity leg. Honesty: plumbing is mocked-client
+     tested; NOT validated against live models (that is Phase 2's eval).
+  2. **Derived cost-coverage invariant** (`aiCostCoverage.test.ts`, 7 tests):
+     derives every tool-calling agent surface from source and asserts each
+     enforces ceiling+telemetry (routeAITask | aiSpendGuard pair | inline
+     ceiling+telemetry). A new unguarded agent surface fails CI. Plus a tamper
+     pin on the openai-bypass ratchet (direction/baseline/pattern).
+  3. **Finding CLOSED same-session:** `paxSupportResolver.resolveTicketWithPax`
+     was a WIRED, customer-triggered tool loop (fires on every ticket creation +
+     /pax-resolve) with ZERO cost enforcement, and the comment at its call site
+     claimed otherwise. Wired with the sibling aiSpendGuard pattern
+     (assertAiSpendAllowed + recordExternalAiSpend on both completion sites);
+     false comment corrected; its allowlist entry removed so the invariant
+     enforces it.
+- **Findings held in the dated, down-only KNOWN_GAPS allowlist (founder queue):**
+  Atlas main loop (`routes-founder-chat.ts` — own OpenRouter client, no ceiling/
+  telemetry; its TOOLS route via routeAITask), Solene (`solene/chat/turnRunner.ts`
+  — consults the ceiling + own caps but never writes aiTelemetryEvents, so the
+  ceiling can't see its spend), `decisionsInbox.createFromFeatureRequest`
+  (unguarded + likely unwired), `negotiationOrchestrator` (unguarded single-shots
+  wired via routes-core-ai; its 6-round agent loop has ZERO call sites —
+  built-but-unwired; fate decided at Wave 4.4's transplant/kill).
+- **Exit test:** aiRouterTools 8/8 + aiCostCoverage 7/7 + openai-bypass ≤89 +
+  full check/test green. MET (full-gate evidence in the commit).
 
 ### 0.4 — `resolveActionPolicy` enforcement at the pending-actions chokepoint + `autonomyEnforcement.test` — pending
 ### 0.5 — Guard totality (non-streaming + subagent recursion enveloped, depth/step budgets, injection eval lane) — pending
@@ -103,12 +137,24 @@ allowlisted with a shrinking baseline.
 2. **DR restore drill (F-13-2 / Wave O2):** founder/ops-run with
    `DB_BACKUP_S3_BUCKET` — the one Ten item whose execution is physically a
    founder action.
-3. *(anticipated)* **0.8 mail lanes** will enter this queue when built — it is a
+3. **F-16 Phases 2–3 (router migrations)** — need a KEYED environment + the eval
+   gate (the plan's own constraint). Decide when/where to run them; the tool-aware
+   router (Phase 1) is now built and baked, so Phase 2 can start the moment keys
+   exist.
+4. **Founder-side metering design (from 0.3's findings):** (a) Atlas's main loop
+   has no ceiling consult / telemetry — metering the founder's own cockpit has a
+   real tradeoff (a misconfigured ceiling could block Atlas mid-incident); (b)
+   Solene records spend to capitalTracker but not aiTelemetryEvents, so ceilings
+   can't see it. Both held in aiCostCoverage's dated KNOWN_GAPS allowlist pending
+   your call on the metering semantics for founder-org spend.
+5. *(anticipated)* **0.8 mail lanes** will enter this queue when built — it is a
    send-lane change (§A rule 5: propose, don't merge).
 
 ## Next item up
 
-- **0.3**: router totality + completions allowlist — verify premises at HEAD
-  (openai-bypass baseline, the six offenders, what is migratable without live
-  keys), state the exit test, execute. Then 0.4 → 0.9 in order. Waves G/O/F/X-B
-  may start in parallel once Wave 0 is green.
+- **0.4**: `resolveActionPolicy` — the autonomy matrix becomes enforcement at
+  the single chokepoint where `pending_actions` are written, + an
+  `autonomyEnforcement.test` pinning level-0 ⇒ zero auto actions (P2 P-1).
+  Verify premises at HEAD first (locate the pending-actions write chokepoint and
+  the matrix read sites). Then 0.5 → 0.9 in order. Waves G/O/F/X-B unlock in
+  parallel once Wave 0 is green.

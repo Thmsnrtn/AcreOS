@@ -75,6 +75,16 @@ vi.mock("../../server/services/customerSupportAutoResolver", () => ({
   },
 }));
 
+// Wave 0.3 wired the resolver under the aiSpendGuard pair (it was the one
+// customer-triggered tool loop with no cost enforcement). Stub the guard here —
+// the ceiling's real db reads are out of scope for the confidence-gate test —
+// but keep spies so the wiring itself stays pinned (see the guard test below).
+const spendGuardMocks = vi.hoisted(() => ({
+  assertAiSpendAllowed: vi.fn(async () => undefined),
+  recordExternalAiSpend: vi.fn(() => undefined),
+}));
+vi.mock("../../server/services/aiSpendGuard", () => spendGuardMocks);
+
 import { resolveTicketWithPax, getResolveConfidenceThreshold } from "../../server/ai/paxSupportResolver";
 import type { ChatCompletionFn } from "../../server/ai/paxSupportResolver";
 import type { Organization } from "@shared/schema";
@@ -201,5 +211,47 @@ describe("Pax-Support resolution variant — confidence gate", () => {
 
     expect(result.autoResolved).toBe(false);
     expect(result.escalated).toBe(true);
+  });
+
+  it("enforces the AI spend guard: ceiling consulted before the model, spend recorded per completion (Wave 0.3)", async () => {
+    mocks.setTicket({
+      id: 13,
+      organizationId: 1,
+      category: "general",
+      subject: "Guard wiring",
+      description: "Spend-guard pin.",
+      aiResolutionAttempts: 0,
+    });
+    await resolveTicketWithPax(13, ORG, {
+      createCompletion: modelDraftingConfidence(85),
+      tryGeniusOnEscalate: false,
+    });
+    // The ceiling is consulted once, for the ticket's org, before any model call.
+    expect(spendGuardMocks.assertAiSpendAllowed).toHaveBeenCalledTimes(1);
+    expect(spendGuardMocks.assertAiSpendAllowed).toHaveBeenCalledWith(ORG.id);
+    // Spend is recorded for every completion the loop made (≥1 — the drafting
+    // model here answers in one turn) with the resolver's task type.
+    expect(spendGuardMocks.recordExternalAiSpend).toHaveBeenCalled();
+    for (const call of spendGuardMocks.recordExternalAiSpend.mock.calls) {
+      expect(call[0]).toMatchObject({ orgId: ORG.id, taskType: "pax_support_resolve" });
+    }
+  });
+
+  it("a ceiling refusal stops the resolver BEFORE any model call (never a free completion)", async () => {
+    mocks.setTicket({
+      id: 14,
+      organizationId: 1,
+      category: "general",
+      subject: "Ceiling refusal",
+      description: "Refusal-order pin.",
+      aiResolutionAttempts: 0,
+    });
+    spendGuardMocks.assertAiSpendAllowed.mockRejectedValueOnce(new Error("AI cost ceiling reached"));
+    const completion = vi.fn(modelDraftingConfidence(85));
+    await expect(
+      resolveTicketWithPax(14, ORG, { createCompletion: completion, tryGeniusOnEscalate: false }),
+    ).rejects.toThrow(/ceiling/);
+    expect(completion).not.toHaveBeenCalled();
+    expect(spendGuardMocks.recordExternalAiSpend).not.toHaveBeenCalled();
   });
 });

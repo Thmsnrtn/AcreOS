@@ -433,6 +433,56 @@ export enum AIProvider {
   OPENAI = "openai",
 }
 
+// ============================================================================
+// F-16 Phase 1 (2026-08, Wave 0 item 0.3) — tool-aware router types.
+//
+// OpenAI-compatible function-tool wire shapes. The router acts as transport
+// for these: when a caller opts in via `task.tools` it forwards
+// `tools`/`tool_choice` on the request body and surfaces
+// `tool_calls`/`finish_reason` from the response — changing NOTHING else
+// about its pipeline. The cost ceiling, per-org quota, category budget, tier
+// selection, prompt caching, and telemetry all run identically on the tools
+// path; there is no second client and no bypass. Callers that never set
+// `task.tools` get byte-identical request and response shapes to the
+// pre-tool router (pinned by tests/unit/aiRouterTools.test.ts).
+//
+// Honesty note: the request/response PLUMBING here is unit-tested against a
+// MOCKED OpenAI-compatible client only. Tool routing has NOT been validated
+// against live models — the F-16 plan
+// (docs/audit-2026-08/F-16-router-tool-migration-plan.md) gates the actual
+// agent migrations (Phases 2–3) on a keyed environment plus the eval harness.
+// ============================================================================
+
+/** OpenAI-compatible function-tool definition (`tools` array entry). */
+export interface AIToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+  };
+}
+
+/** One tool invocation the model requested (OpenAI wire shape). */
+export interface AIToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+/**
+ * Router message shape. Widened for the tool loop (F-16 Phase 1):
+ *   - `assistant` messages may carry the `tool_calls` a prior response
+ *     returned (content is null on a pure tool-call turn), and
+ *   - `tool` messages feed a tool result back, keyed by `tool_call_id`.
+ * Plain system/user/assistant text messages are unchanged — every existing
+ * caller's message arrays remain assignable as-is.
+ */
+export type AIMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: AIToolCall[] }
+  | { role: "tool"; content: string; tool_call_id: string };
+
 export interface AITask {
   taskType?: string;
   complexity: TaskComplexity;
@@ -450,7 +500,22 @@ export interface AITask {
    * `messages` wins.
    */
   task?: string;
-  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  messages?: AIMessage[];
+  /**
+   * F-16 Phase 1 — opt-in tool calling. When set (non-empty), the definitions
+   * are forwarded on the request body verbatim and the response's
+   * `tool_calls` surface on `AIResponse.toolCalls`. Incompatible features
+   * (responseFormat "json", requestConfidence, useExtendedThinking) are
+   * force-disabled with a logged warning — see the normalization block at the
+   * top of routeAITask for why. When absent, the router's behavior is
+   * byte-identical to the pre-tool router.
+   */
+  tools?: AIToolDefinition[];
+  /** Forwarded as `tool_choice` when `tools` is set. Defaults to "auto". */
+  toolChoice?:
+    | "auto"
+    | "none"
+    | { type: "function"; function: { name: string } };
   maxTokens?: number;
   temperature?: number;
   responseFormat?: "text" | "json";
@@ -1015,6 +1080,17 @@ export interface AIResponse {
    * hand-coded Pax confidence constants.
    */
   confidence?: number | null;
+  /**
+   * F-16 Phase 1 — set ONLY when the caller passed `task.tools` (the fields
+   * are entirely absent otherwise, keeping the no-tools response shape
+   * byte-identical to the pre-tool router). `toolCalls` is the response
+   * message's `tool_calls` array, or undefined when the model answered with
+   * text; agent loops check `res.toolCalls?.length` and feed results back as
+   * `role: "tool"` messages on the next routeAITask call.
+   */
+  toolCalls?: AIToolCall[];
+  /** The response's finish_reason (e.g. "tool_calls" | "stop"). Tools mode only. */
+  finishReason?: string;
 }
 
 /**
@@ -1123,6 +1199,43 @@ export async function routeAITask(
     config = { ...config, skipQuota: true, skipBudget: true };
   }
 
+  // ── F-16 Phase 1 — tool-aware path (additive, opt-in) ──────────────────────
+  // `hasTools` gates every tool-specific branch below. When false (every
+  // pre-existing caller), the request body and response object are
+  // byte-identical to the pre-tool router — pinned by aiRouterTools.test.ts.
+  //
+  // Incompatibility handling (the plan flags this as where subtle breakage
+  // hides): forced-JSON output and the confidence-schema injection corrupt
+  // the model's tool-call decision, and extended thinking has no
+  // response_format and a different content shape — so all three are
+  // force-disabled when tools are present, loudly (a caller asking for both
+  // is a caller bug worth surfacing, not silently honoring one side of).
+  // Prompt caching (cache_control on the system message) is compatible with
+  // tools and is kept as-is.
+  const hasTools = !!(task.tools && task.tools.length > 0);
+  if (
+    hasTools &&
+    (task.responseFormat === "json" || task.requestConfidence || task.useExtendedThinking)
+  ) {
+    logger.warn(
+      "[AIRouter] task.tools is incompatible with responseFormat=json / requestConfidence / useExtendedThinking — disabling those for this call",
+      {
+        metadata: {
+          taskType: task.taskType,
+          responseFormat: task.responseFormat,
+          requestConfidence: task.requestConfidence,
+          useExtendedThinking: task.useExtendedThinking,
+        },
+      },
+    );
+    task = {
+      ...task,
+      responseFormat: undefined,
+      requestConfidence: false,
+      useExtendedThinking: false,
+    };
+  }
+
   // ── Phase 3 Week 9: per-org daily AI USD quota gate ─────────────────────────
   // Runs BEFORE the cache check so that even cached responses respect the cap
   // (a $0 cached call still counts as a call, but does not advance spend).
@@ -1211,7 +1324,13 @@ export async function routeAITask(
   }
 
   // ── Layer 1: Exact-match cache ───────────────────────────────────────────────
-  const isCacheable = task.complexity !== TaskComplexity.COMPLEX
+  // F-16 Phase 1: tool-calling turns are excluded from BOTH cache layers, read
+  // and write. The cache entry shape stores only text content, so a cache
+  // "hit" would strip the tool_calls an agent loop depends on — and tool-loop
+  // messages embed per-turn tool results that are not reusable across calls
+  // anyway. No-tools calls cache exactly as before.
+  const isCacheable = !hasTools
+    && task.complexity !== TaskComplexity.COMPLEX
     && task.complexity !== TaskComplexity.CRITICAL
     && (task.temperature ?? 0.7) <= 0.3;
   let cacheKey = '';
@@ -1315,6 +1434,9 @@ export async function routeAITask(
   let finalModel = model;
   let openrouterResponseId: string | null = null;
   let cachedInputTokens = 0;
+  // F-16 Phase 1 — populated only when task.tools was passed (see hasTools).
+  let responseToolCalls: AIToolCall[] | undefined;
+  let responseFinishReason: string | undefined;
   // Tracks whether the caller asked for model self-reported confidence AND we
   // were able to ask for it (extended thinking disables it). Confidence is
   // extracted from the FINAL content (post-cascade) below.
@@ -1393,6 +1515,10 @@ export async function routeAITask(
       // Confidence requests force JSON mode so the `confidence` field is parseable.
       ...((task.responseFormat === "json" || wantsConfidence) && !useThinking && { response_format: { type: "json_object" } }),
       ...(useThinking && { thinking: { type: "enabled", budget_tokens: thinkingBudget } }),
+      // F-16 Phase 1 — forward tool definitions on the SAME request, through
+      // the SAME client the gates above already cleared. Absent tools, these
+      // keys are not present at all (opt-in pin: aiRouterTools.test.ts).
+      ...(hasTools && { tools: task.tools, tool_choice: task.toolChoice ?? "auto" }),
     };
 
     const response = await client.chat.completions.create(requestBody);
@@ -1407,6 +1533,29 @@ export async function routeAITask(
       content = rawContent || "";
     }
     usage = response.usage;
+    // F-16 Phase 1 — surface the model's tool decision. A pure tool-call turn
+    // has null content (extracted above as ""), and finish_reason tells the
+    // agent loop whether to execute tools ("tool_calls") or stop ("stop").
+    // The SDK's tool_calls union also admits non-function ("custom") tool
+    // calls; the router's typed surface is function tools only, so map to the
+    // AIToolCall shape explicitly rather than widening the type.
+    if (hasTools) {
+      const rawToolCalls = response.choices[0]?.message?.tool_calls;
+      if (Array.isArray(rawToolCalls)) {
+        const fnCalls: AIToolCall[] = [];
+        for (const tc of rawToolCalls) {
+          if (tc && tc.type === "function" && tc.function) {
+            fnCalls.push({
+              id: tc.id,
+              type: "function",
+              function: { name: tc.function.name, arguments: tc.function.arguments },
+            });
+          }
+        }
+        responseToolCalls = fnCalls.length ? fnCalls : undefined;
+      }
+      responseFinishReason = response.choices[0]?.finish_reason ?? undefined;
+    }
     openrouterResponseId = (response as any).id ?? null;
     // OpenRouter passes Anthropic prompt-cache token counts through under
     // prompt_tokens_details.cached_tokens (OpenAI-compatible field).
@@ -1434,6 +1583,11 @@ export async function routeAITask(
   // hasn't explicitly pinned a model.  Skipped when CASCADE_ENABLED = false.
   if (
     isCascadeEnabled() &&
+    // F-16 Phase 1: never cascade a tool-calling turn. The quality checker
+    // scores prose, and the escalated re-ask does not carry `tools` — it
+    // would replace a tool_calls decision with a text answer, silently
+    // breaking the agent loop mid-turn.
+    !hasTools &&
     !config.byok && // Tier 1I: never spend the customer's key on platform re-asks
     task.complexity !== TaskComplexity.COMPLEX &&
     task.complexity !== TaskComplexity.CRITICAL && // already top tier
@@ -1541,6 +1695,15 @@ export async function routeAITask(
     estimatedCost: costEstimate,
     confidence: modelConfidence,
   };
+  // F-16 Phase 1 — the tool fields exist on the result ONLY when the caller
+  // opted in via task.tools; a no-tools response object has neither key, so
+  // existing callers see the exact pre-tool shape (pinned by
+  // aiRouterTools.test.ts). toolCalls may be undefined even in tools mode —
+  // that is the model answering with text (finishReason "stop").
+  if (hasTools) {
+    result.toolCalls = responseToolCalls;
+    result.finishReason = responseFinishReason;
+  }
 
   // ── Store in both cache layers ───────────────────────────────────────────────
   if (isCacheable && cacheKey && content) {

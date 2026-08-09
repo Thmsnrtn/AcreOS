@@ -38,6 +38,7 @@ import { db } from "../db";
 import type { Organization } from "@shared/schema";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import {
   getOpenAIClient,
   supportToolDefinitions,
@@ -186,6 +187,14 @@ export async function resolveTicketWithPax(
   const createCompletion = opts.createCompletion ?? defaultCompletionFn();
   const tryGenius = opts.tryGeniusOnEscalate ?? true;
 
+  // Audit F-16-1 / Wave 0.3: this tool-calling agent can't route through
+  // routeAITask yet (Phase 2 is eval-gated), so it enforces the platform cost
+  // ceiling directly and records its spend to telemetry so it counts toward
+  // that ceiling + COGS — the same guard its sibling agents carry. A ceiling
+  // refusal throws here and is absorbed by the callers' existing best-effort
+  // handling (ticket creation is never blocked; /pax-resolve surfaces the error).
+  await assertAiSpendAllowed(org.id);
+
   const ticket = await db.query.supportTickets.findFirst({
     where: eq(supportTickets.id, ticketId),
   });
@@ -235,6 +244,13 @@ export async function resolveTicketWithPax(
     messages: chatMessages,
     tools,
     tool_choice: "auto",
+  });
+  recordExternalAiSpend({
+    orgId: org.id,
+    taskType: "pax_support_resolve",
+    model: "gpt-4o",
+    promptTokens: response.usage?.prompt_tokens,
+    completionTokens: response.usage?.completion_tokens,
   });
   let assistantMessage = response.choices[0].message;
 
@@ -310,6 +326,13 @@ export async function resolveTicketWithPax(
       messages: chatMessages,
       tools,
       tool_choice: "auto",
+    });
+    recordExternalAiSpend({
+      orgId: org.id,
+      taskType: "pax_support_resolve",
+      model: "gpt-4o",
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
     });
     assistantMessage = response.choices[0].message;
   }
