@@ -143,11 +143,11 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
   // data today. Same pattern as subdivider (roadmap-maturity yet selectable).
   { value: "fix_and_flip", label: "Fix & Flip (waitlist)", icon: Hammer, description: "Renovate-and-resell tools are waitlisted — comps and valuations currently use land data, not residential." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
-  // STR is beta (Wave 5): AcreOS now models nightly stays — a reservations
-  // ledger with channel-CSV import and occupancy/ADR/RevPAR. The copy is honest
-  // about what stays out of scope: OTA channel sync (Airbnb, VRBO) and dynamic
-  // nightly pricing aren't built.
-  { value: "short_term_rental", label: "Short-Term Rental (beta)", icon: Palmtree, description: "Nightly-stay bookings, channel-CSV import, and occupancy/ADR/RevPAR are here. OTA channel sync (Airbnb, VRBO) and dynamic nightly pricing aren't built yet." },
+  // STR is core (Wave 5): AcreOS models nightly stays end-to-end — reservations
+  // ledger + channel-CSV import, occupancy/ADR/RevPAR, per-stay P&L, turnover
+  // scheduling, and operator-set nightly pricing. Honest about what stays out of
+  // scope: OTA channel sync (Airbnb, VRBO) and dynamic/market nightly pricing.
+  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Nightly-stay bookings, channel-CSV import, occupancy/ADR/RevPAR, per-stay P&L, turnovers, and your own nightly pricing. OTA channel sync (Airbnb, VRBO) and dynamic market pricing aren't built." },
   { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },

@@ -8932,6 +8932,22 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "reservations_org_property_check_in_idx" ON "reservations" ("organization_id", "property_id", "check_in")`,
   // The channel-CSV importer's idempotency guard: a re-upload loses the INSERT.
   `CREATE UNIQUE INDEX IF NOT EXISTS "reservations_org_unit_check_in_channel_uk" ON "reservations" ("organization_id", "unit_id", "check_in", "channel")`,
+
+  // ── 0225 STR Wave B: per-stay P&L, turnover scheduling, operator-set pricing ─
+  // ADDITIVE only — NO new table (table-count stays 756), just nullable columns
+  // + one partial index. Mirrors migrations/0225_str_wave_b.sql + rental.ts.
+  //   • reservations.nightly_rate_cents — the operator's OWN set nightly rate
+  //     (B3). RECORD-ONLY, never a market/suggested rate (residential-comps
+  //     hard-stop + no vendor). The pricing helper derives expected revenue and
+  //     variance and REFUSES (null) when unset.
+  //   • maintenance_tickets.reservation_id — the turnover link (B2). Turnovers
+  //     REUSE maintenance_tickets (category 'cleaning'), so no new table; this
+  //     nullable column + the partial unique index below make generation
+  //     idempotent (one turnover per reservation checkout).
+  `ALTER TABLE "reservations" ADD COLUMN IF NOT EXISTS "nightly_rate_cents" bigint`,
+  `ALTER TABLE "maintenance_tickets" ADD COLUMN IF NOT EXISTS "reservation_id" varchar`,
+  // Org-LEADING + PARTIAL: at most ONE turnover-cleaning ticket per reservation.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "maintenance_tickets_org_reservation_uk" ON "maintenance_tickets" ("organization_id", "reservation_id") WHERE "reservation_id" IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

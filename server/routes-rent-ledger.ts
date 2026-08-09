@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -62,11 +62,23 @@ import {
   meterReads,
   utilityBills,
   reservations,
+  maintenanceTickets,
   RESERVATION_CHANNELS,
   RESERVATION_STATUSES,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
-import { computeStrMetrics, windowNights, type StrReservationInput } from "@shared/rental/strMetrics";
+import {
+  computeStrMetrics,
+  windowNights,
+  computeNightlyRateExpectation,
+  type StrReservationInput,
+} from "@shared/rental/strMetrics";
+import {
+  computeStayPnl,
+  allocateStayOperatingExpense,
+  stayNightsBetween,
+  type StayPnlReservationInput,
+} from "@shared/rental/stayPnl";
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
@@ -389,6 +401,10 @@ const reservationRecordSchema = z.object({
   cleaningFeeCents: strCentsField,
   taxesCents: strCentsField,
   payoutCents: strCentsField,
+  // The operator's OWN set nightly rate (STR Wave B) — recorded, never a
+  // market/suggested rate. Nullable: an unset rate makes the pricing helper
+  // refuse (null), never a back-filled comp.
+  nightlyRateCents: strCentsField,
   status: reservationStatusEnum.optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
@@ -413,6 +429,8 @@ const reservationImportRowSchema = z.object({
   cleaningFeeCents: strCentsField,
   taxesCents: strCentsField,
   payoutCents: strCentsField,
+  /** The operator's OWN set nightly rate (STR Wave B) — recorded, nullable. */
+  nightlyRateCents: strCentsField,
 });
 
 const reservationImportSchema = z.object({
@@ -429,6 +447,16 @@ const reservationStatusUpdateSchema = z.object({
 const strMetricsQuerySchema = z.object({
   windowStart: isoDate,
   windowEnd: isoDate,
+});
+
+/**
+ * Turnover generation (STR Wave B) — no external input; deterministic off the
+ * property's recorded reservations. `statuses` optionally narrows which stays
+ * get a turnover (default: every non-cancelled stay — a cancelled booking earns
+ * no checkout, hence no turnover). Empty body is valid.
+ */
+const turnoverGenerateSchema = z.object({
+  statuses: z.array(reservationStatusEnum).nonempty().optional(),
 });
 
 // ----------------------------------------------------------------------------
@@ -2909,10 +2937,16 @@ export function registerRentLedgerRoutes(app: Express): void {
   //   POST  /api/properties/:propertyId/reservations/import  — import an operator's OWN channel CSV
   //   GET   /api/properties/:propertyId/str-metrics          — occupancy / ADR / RevPAR (engine call site)
   //   PATCH /api/reservations/:id/status                     — status transition; fires reservation.checkout
+  //   GET   /api/reservations/:id/pnl                        — per-stay P&L (Wave B; refuse-not-fabricate)
+  //   GET   /api/reservations/:id/pricing                    — operator-set nightly-rate expectation (Wave B)
+  //   POST  /api/properties/:propertyId/turnovers/generate   — create a cleaning ticket per checkout (Wave B, idempotent)
+  //   GET   /api/properties/:propertyId/turnovers            — list a property's turnover tasks (Wave B)
   //
-  // RECORD-ONLY (be the rail, not the provider): nothing here moves money. NO OTA
-  // vendor API and NO market/dynamic suggested nightly rate — ADR/RevPAR come
-  // ONLY from the operator's own recorded amounts.
+  // RECORD-ONLY (be the rail, not the provider): nothing here moves money — the
+  // per-stay P&L TOTALS recorded facts and a nightly rate is the operator's OWN
+  // recorded figure. NO OTA vendor API and NO market/dynamic suggested nightly
+  // rate — every number comes ONLY from the operator's own recorded amounts, and
+  // a missing input REFUSES (null / unavailable line) rather than fabricating.
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── Record a reservation (writer) ─────────────────────────────────────────
@@ -2957,6 +2991,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         cleaningFeeCents: parsed.data.cleaningFeeCents ?? null,
         taxesCents: parsed.data.taxesCents ?? null,
         payoutCents: parsed.data.payoutCents ?? null,
+        nightlyRateCents: parsed.data.nightlyRateCents ?? null,
         status: parsed.data.status ?? "booked",
         notes: parsed.data.notes ?? null,
       })
@@ -3084,6 +3119,7 @@ export function registerRentLedgerRoutes(app: Express): void {
             cleaningFeeCents: row.cleaningFeeCents ?? null,
             taxesCents: row.taxesCents ?? null,
             payoutCents: row.payoutCents ?? null,
+            nightlyRateCents: row.nightlyRateCents ?? null,
             status: "booked",
             notes: "Imported from operator's channel CSV export.",
           })
@@ -3230,6 +3266,195 @@ export function registerRentLedgerRoutes(app: Express): void {
         orgId, reservationId: updated.id, from: current.status, to: updated.status,
       });
       return res.json({ reservation: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Per-stay P&L (reader, STR Wave B) ──────────────────────────────────────
+  // net = gross − channelFee − cleaningFee − taxes − allocatedOperatingExpense.
+  // Loads the reservation + the property's OPERATING property_expenses (noi.ts's
+  // isOperating rule — never mortgage_interest/depreciation), allocates them to
+  // the stay's nights over the expense window, and hands both to the pure engine
+  // (shared/rental/stayPnl.ts). REFUSE-NOT-FABRICATE: an unrecorded fee omits its
+  // line and the net refuses (null); no measured op-ex leaves the op-ex line
+  // unavailable (disclosed) rather than a guessed 40%-of-revenue ratio. RECORD-
+  // ONLY: nothing here moves money.
+  app.get("/api/reservations/:id/pnl", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [reservation] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!reservation) return Errors.notFound(res, "Reservation");
+
+      // The property's expense rows; the engine filters to OPERATING via noi.ts.
+      const expenseRows = await db
+        .select({
+          category: propertyExpenses.category,
+          amountCents: propertyExpenses.amountCents,
+          isOperating: propertyExpenses.isOperating,
+          incurredOn: propertyExpenses.incurredOn,
+        })
+        .from(propertyExpenses)
+        .where(and(
+          eq(propertyExpenses.organizationId, orgId),
+          eq(propertyExpenses.propertyId, reservation.propertyId),
+        ));
+
+      const stayNights =
+        stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut)) ?? 0;
+      const allocation = allocateStayOperatingExpense({
+        expenseRows: expenseRows.map((r) => ({
+          category: r.category,
+          amountCents: Number(r.amountCents),
+          isOperating: r.isOperating,
+          incurredOn: String(r.incurredOn),
+        })),
+        stayNights,
+      });
+
+      const pnlReservation: StayPnlReservationInput = {
+        grossBookingCents: reservation.grossBookingCents ?? null,
+        channelFeeCents: reservation.channelFeeCents ?? null,
+        cleaningFeeCents: reservation.cleaningFeeCents ?? null,
+        taxesCents: reservation.taxesCents ?? null,
+      };
+      const pnl = computeStayPnl({
+        reservation: pnlReservation,
+        allocatedOperatingExpenseCents: allocation.allocatedOperatingExpenseCents,
+      });
+
+      return res.json({ reservationId: reservation.id, stayNights, pnl, allocation });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Operator-set nightly-rate expectation (reader, STR Wave B) ─────────────
+  // expectedRevenue = the operator's OWN set nightly rate × the stay's nights,
+  // and its variance vs the recorded gross booking. NOT a market/dynamic
+  // suggested rate (residential-comps hard-stop + no vendor). REFUSES (null) when
+  // the operator has not set a rate — never a back-filled comp.
+  app.get("/api/reservations/:id/pricing", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [reservation] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!reservation) return Errors.notFound(res, "Reservation");
+
+      const nights = stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut));
+      const pricing = computeNightlyRateExpectation({
+        nightlyRateCents: reservation.nightlyRateCents ?? null,
+        nights,
+        grossBookingCents: reservation.grossBookingCents ?? null,
+      });
+
+      return res.json({ reservationId: reservation.id, pricing });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Turnover / cleaning scheduling (writer, STR Wave B) ────────────────────
+  // Creates ONE cleaning maintenance_ticket per checkout, REUSING the existing
+  // maintenance_tickets table (category 'cleaning') — no new table. IDEMPOTENT:
+  // keyed on the ticket's reservation_id via the partial unique index, so a
+  // re-run never double-creates a turnover for a checkout already turned into a
+  // ticket. Deterministic off recorded checkout dates — no external data, no
+  // money movement (a turnover is a task, not a payment).
+  app.post("/api/properties/:propertyId/turnovers/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = turnoverGenerateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // Default: every non-cancelled stay (a cancelled booking earns no checkout,
+      // hence no turnover). An explicit statuses filter narrows further.
+      const statuses = parsed.data.statuses ?? RESERVATION_STATUSES.filter((s) => s !== "cancelled");
+      const stays = await db.select().from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+          inArray(reservations.status, statuses),
+        ))
+        .orderBy(desc(reservations.checkOut));
+
+      const summary = await db.transaction(async (tx) => {
+        let createdCount = 0;
+        let existingCount = 0;
+        const createdTicketIds: string[] = [];
+        for (const stay of stays) {
+          // Idempotent: a reservation already turned into a turnover is skipped.
+          const [existing] = await tx.select({ id: maintenanceTickets.id }).from(maintenanceTickets)
+            .where(and(
+              eq(maintenanceTickets.organizationId, orgId),
+              eq(maintenanceTickets.reservationId, stay.id),
+            ));
+          if (existing) { existingCount++; continue; }
+
+          const checkOut = String(stay.checkOut);
+          const description = stay.guestName
+            ? `Auto-generated turnover cleaning for the stay ending ${checkOut} (guest ${stay.guestName}).`
+            : `Auto-generated turnover cleaning for the stay ending ${checkOut}.`;
+          const inserted = await tx.insert(maintenanceTickets).values({
+            organizationId: orgId,
+            propertyId: propId,
+            reservationId: stay.id,
+            title: `Turnover cleaning — checkout ${checkOut}`,
+            description,
+            category: "cleaning",
+            severity: "standard",
+            status: "open",
+          })
+            // Belt for the (org, reservation_id) partial unique index: a
+            // concurrent generate loses the INSERT rather than double-creating.
+            .onConflictDoNothing()
+            .returning({ id: maintenanceTickets.id });
+          if (inserted.length > 0) { createdCount++; createdTicketIds.push(inserted[0].id); }
+          else existingCount++;
+        }
+        return { createdCount, existingCount, createdTicketIds };
+      });
+
+      logger.info("[STR] turnovers generated", {
+        orgId, propId,
+        candidateCount: stays.length,
+        createdCount: summary.createdCount,
+        existingCount: summary.existingCount,
+      });
+      return res.json({ ...summary, candidateCount: stays.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── List a property's turnover tasks (reader, STR Wave B) ──────────────────
+  // The turnover tickets are exactly the maintenance_tickets carrying a
+  // reservation_id (the turnover marker) — ordinary tickets have none.
+  app.get("/api/properties/:propertyId/turnovers", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const rows = await db.select().from(maintenanceTickets)
+        .where(and(
+          eq(maintenanceTickets.organizationId, orgId),
+          eq(maintenanceTickets.propertyId, propId),
+          isNotNull(maintenanceTickets.reservationId),
+        ))
+        .orderBy(desc(maintenanceTickets.createdAt));
+      return res.json({ turnovers: rows, count: rows.length });
     } catch (err) {
       return Errors.internal(res, err);
     }

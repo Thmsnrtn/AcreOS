@@ -193,3 +193,73 @@ export function windowNights(windowStart: string, windowEnd: string): number | n
   const n = nightsBetween(windowStart, windowEnd);
   return n != null && n > 0 ? n : null;
 }
+
+// ============================================================================
+// OPERATOR-SET NIGHTLY PRICING — NOT market pricing.
+// ----------------------------------------------------------------------------
+// The ONLY nightly rate this engine knows is the operator's OWN set rate for a
+// stay (reservations.nightly_rate_cents), a figure they recorded — never a
+// market/dynamic/"suggested" rate. A suggested rate would touch the
+// residential-comps data plane (a standing hard-stop) and require a vendor;
+// there is none here. From the operator's own rate we compute the expected
+// revenue for the stay and its variance against the gross booking they actually
+// recorded — a self-consistency check on their own book, nothing external.
+//
+// REFUSE, NEVER FABRICATE: when the operator has NOT set a nightly rate, the
+// expectation is UNKNOWN — expectedRevenue and variance are null, never a
+// back-filled market rate. This is the null-when-unset refusal the pricing test
+// pins.
+// ============================================================================
+
+export interface NightlyRateInput {
+  /** The operator's OWN set nightly rate for this stay, in cents. Null when unset. */
+  nightlyRateCents: number | null;
+  /** The stay's nights (derived from check-in/out by the caller). Null when not derivable. */
+  nights: number | null;
+  /** The gross booking the operator actually recorded, in cents. Null when unrecorded. */
+  grossBookingCents: number | null;
+}
+
+export interface NightlyRateExpectation {
+  nightlyRateCents: number | null;
+  nights: number | null;
+  /**
+   * nightlyRateCents × nights — the revenue the operator's OWN set rate implies.
+   * NULL when the rate is unset or the nights are not derivable (never a market
+   * rate substituted in). This is the null-when-unset refusal.
+   */
+  expectedRevenueCents: number | null;
+  /**
+   * grossBookingCents − expectedRevenueCents (positive = booked above the set
+   * rate, negative = below). NULL when either side is unknown — no variance is
+   * computed against a fabricated expectation.
+   */
+  varianceCents: number | null;
+}
+
+/**
+ * Turn the operator's OWN set nightly rate into an expected stay revenue and its
+ * variance against the recorded gross booking. Everything refuses (null) rather
+ * than substitute a market/suggested rate: no nightly rate set → no expectation,
+ * no variance. This is the operator's book checked against itself, never a
+ * comps-derived number.
+ */
+export function computeNightlyRateExpectation(input: NightlyRateInput): NightlyRateExpectation {
+  const nightlyRateCents =
+    input.nightlyRateCents != null ? Math.round(Number(input.nightlyRateCents)) : null;
+  const nights = input.nights != null && input.nights > 0 ? Math.round(input.nights) : null;
+  const grossBookingCents =
+    input.grossBookingCents != null ? Math.round(Number(input.grossBookingCents)) : null;
+
+  // Expected revenue needs BOTH the operator's own rate and a derivable nights.
+  const expectedRevenueCents =
+    nightlyRateCents != null && nights != null ? nightlyRateCents * nights : null;
+
+  // Variance needs the expectation AND a recorded gross — else refuse.
+  const varianceCents =
+    expectedRevenueCents != null && grossBookingCents != null
+      ? grossBookingCents - expectedRevenueCents
+      : null;
+
+  return { nightlyRateCents, nights, expectedRevenueCents, varianceCents };
+}

@@ -276,25 +276,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "short_term_rental",
     label: "Short-term rentals",
     shortDescription: "Airbnb / VRBO operators.",
-    // 2026-08 (Wave 5 / Wave A, roadmap → BETA): the STR-specific gap that pinned
-    // roadmap — no nightly-stay model at all — is closed. STR now has its own
-    // primitive and honest metrics, each measured from the operator's OWN records
-    // and REFUSING rather than fabricate:
-    //   - a reservations LEDGER (shared/schema/rental.ts reservations + record/
-    //     list endpoints + a channel-CSV importer that loads the operator's own
-    //     Airbnb/VRBO export — a recorded channel LABEL, never a live OTA sync).
-    //   - occupancy / ADR / RevPAR (shared/rental/strMetrics.ts): ADR is null when
-    //     booked nights are zero; occupancy/RevPAR refuse when the available
-    //     unit-nights aren't derivable — no divide-by-zero, no invented rate.
-    //   - a LIVE STR emitter (reservation.checkout) + a genuinely-STR template
-    //     (tpl_str_turnover_cleaning), pinned live by workflowActionHonesty.
-    // Behind the existing Rentals doors (a Bookings tab), record-only money,
-    // integrations []. What STAYS roadmap-for-core: per-stay P&L, turnover
-    // scheduling and operator-set nightly pricing (the Wave B core build); and,
-    // disclosed-out-of-scope, OTA channel-manager sync (external vendor) and
-    // market/dynamic nightly pricing (residential-comps hard-stop + no nightly-
-    // rate vendor). 2026-08 founder promote decision (Wave 5).
-    maturity: "beta",
+    // 2026-08 (Wave 5 / Wave B, beta → CORE): the three capabilities the beta
+    // registry reserved for core now ship, each a pure tested engine that refuses
+    // rather than fabricate:
+    //   - per-stay P&L (shared/rental/stayPnl.ts): gross − channel/cleaning/tax
+    //     fees − the stay's allocated OPERATING property_expenses (noi.ts's
+    //     isOperating rule); a line whose input is unknown is omitted, never a
+    //     guessed fee, and the opex line is null when the property has no measured
+    //     operating expenses.
+    //   - turnover/cleaning scheduling (reuses maintenance_tickets, category
+    //     'cleaning'): a turnover task per recorded checkout, idempotent — a
+    //     deterministic function of checkout dates, no external data.
+    //   - operator-set nightly pricing (reservations.nightly_rate_cents): the
+    //     operator's OWN nightly rate and the expected-vs-actual variance; null
+    //     when unset — NEVER a market/suggested rate.
+    // Plus Wave A's reservations ledger, occupancy/ADR/RevPAR, and the live
+    // reservation.checkout emitter/template. Behind the existing Rentals doors,
+    // record-only money, integrations []. Core does NOT claim OTA channel-manager
+    // sync (external vendor) or market/dynamic nightly pricing (residential-comps
+    // hard-stop + no nightly-rate vendor). 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
     // The landlord templates that apply to nightly stays (maintenance triage,
     // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
     // which fires live on the reservation.checkout emitter (workflowActionHonesty

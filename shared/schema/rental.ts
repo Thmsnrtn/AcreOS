@@ -897,6 +897,17 @@ export const maintenanceTickets = pgTable(
     leaseId: varchar("lease_id"),
     submittedByTenantId: varchar("submitted_by_tenant_id"),
 
+    /**
+     * The short-term-rental reservation whose checkout this ticket turns over
+     * (STR Wave B). Set ONLY on auto-generated turnover-cleaning tickets
+     * (category 'cleaning'); null for every ordinary maintenance ticket and every
+     * pre-STR row. It is the idempotency key for turnover generation — the
+     * partial unique index below means a reservation's checkout maps to at most
+     * ONE turnover ticket, so re-running generation never double-creates. Soft FK
+     * → reservations.id; a deleted reservation leaves the ticket, link cleared.
+     */
+    reservationId: varchar("reservation_id"),
+
     title: text("title").notNull(),
     description: text("description"),
     category: text("category"),  // 'plumbing' | 'hvac' | 'electrical' | 'appliance' | 'roof' | 'landscaping' | 'pest' | 'other'
@@ -922,6 +933,14 @@ export const maintenanceTickets = pgTable(
     index("maintenance_tickets_org_status_idx").on(table.organizationId, table.status, table.severity),
     index("maintenance_tickets_property_idx").on(table.propertyId, table.status),
     index("maintenance_tickets_contractor_idx").on(table.assignedContractorId),
+    // STR Wave B turnover idempotency: at most ONE turnover-cleaning ticket per
+    // reservation checkout. Org-LEADING (L3 shard-readiness) and PARTIAL so it
+    // binds only turnover rows (reservation_id IS NOT NULL) — ordinary tickets
+    // (null reservation_id) are unconstrained. A re-run of turnover generation
+    // loses the INSERT via onConflictDoNothing instead of double-creating.
+    uniqueIndex("maintenance_tickets_org_reservation_uk")
+      .on(table.organizationId, table.reservationId)
+      .where(sql`reservation_id IS NOT NULL`),
   ],
 );
 
@@ -1645,6 +1664,18 @@ export const reservations = pgTable(
     taxesCents: bigint("taxes_cents", { mode: "number" }),
     /** The net payout the operator actually received, in cents. Recorded, nullable. */
     payoutCents: bigint("payout_cents", { mode: "number" }),
+
+    /**
+     * The operator's OWN set nightly rate for this stay, in cents (STR Wave B).
+     * This is the rate the operator chose and RECORDED — never a market/dynamic
+     * "suggested" rate (that would touch the residential-comps data plane, a
+     * standing hard-stop, and require a vendor). From it the pricing helper
+     * (shared/rental/strMetrics.ts computeNightlyRateExpectation) derives an
+     * expected revenue (rate × nights) and its variance against grossBookingCents.
+     * Nullable: an unset rate makes the expectation null (refused), never a
+     * back-filled comp.
+     */
+    nightlyRateCents: bigint("nightly_rate_cents", { mode: "number" }),
 
     /** booked | checked_in | checked_out | cancelled. A cancelled stay is excluded from every metric. */
     status: text("status").$type<ReservationStatus>().notNull().default("booked"),
