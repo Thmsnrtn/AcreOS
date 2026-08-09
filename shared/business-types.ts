@@ -276,24 +276,34 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "short_term_rental",
     label: "Short-term rentals",
     shortDescription: "Airbnb / VRBO operators.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today (V1 widened the landlord
-    // family): the Rentals sidebar module (rent roll, tenants, leases,
-    // maintenance, analytics), the landlord Today lede + surfaces cluster,
-    // and the real landlord dashboard. What's MISSING for beta: everything
-    // STR-specific — no channel manager / booking-calendar sync (Airbnb,
-    // VRBO), no nightly-rate pricing, no turnover/cleaning scheduling; the
-    // rentals stack models monthly term leases, not nightly stays.
-    maturity: "roadmap",
-    // Only the landlord templates whose mechanics genuinely apply to the
-    // nightly-booking model: maintenance triage (property upkeep is
-    // universal) and the rent-received receipt (fires when the operator
-    // runs mid-term stays through the rent ledger). The lease-renewal /
-    // lease-expiring templates are deliberately EXCLUDED — nightly bookings
-    // have no 60-day renewal moment.
+    // 2026-08 (Wave 5 / Wave A, roadmap → BETA): the STR-specific gap that pinned
+    // roadmap — no nightly-stay model at all — is closed. STR now has its own
+    // primitive and honest metrics, each measured from the operator's OWN records
+    // and REFUSING rather than fabricate:
+    //   - a reservations LEDGER (shared/schema/rental.ts reservations + record/
+    //     list endpoints + a channel-CSV importer that loads the operator's own
+    //     Airbnb/VRBO export — a recorded channel LABEL, never a live OTA sync).
+    //   - occupancy / ADR / RevPAR (shared/rental/strMetrics.ts): ADR is null when
+    //     booked nights are zero; occupancy/RevPAR refuse when the available
+    //     unit-nights aren't derivable — no divide-by-zero, no invented rate.
+    //   - a LIVE STR emitter (reservation.checkout) + a genuinely-STR template
+    //     (tpl_str_turnover_cleaning), pinned live by workflowActionHonesty.
+    // Behind the existing Rentals doors (a Bookings tab), record-only money,
+    // integrations []. What STAYS roadmap-for-core: per-stay P&L, turnover
+    // scheduling and operator-set nightly pricing (the Wave B core build); and,
+    // disclosed-out-of-scope, OTA channel-manager sync (external vendor) and
+    // market/dynamic nightly pricing (residential-comps hard-stop + no nightly-
+    // rate vendor). 2026-08 founder promote decision (Wave 5).
+    maturity: "beta",
+    // The landlord templates that apply to nightly stays (maintenance triage,
+    // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
+    // which fires live on the reservation.checkout emitter (workflowActionHonesty
+    // derives the live set from real emitter call sites). Lease-renewal /
+    // lease-expiring stay EXCLUDED — nightly bookings have no 60-day renewal.
     workflowTemplateIds: [
       "tpl_landlord_maintenance_request_triage",
       "tpl_landlord_rent_received_receipt",
+      "tpl_str_turnover_cleaning",
     ],
     // The real Rentals surfaces this businessType reaches (V1 gate; same
     // children as buy_and_hold in layout-sidebar.tsx).

@@ -4,8 +4,9 @@
  * These five verticals share one coherence contract: a signup choosing any of
  * them must land in a truthful app built from surfaces that already shipped,
  * not a land-shaped default. Their MATURITY, however, is no longer uniform.
- * short_term_rental STAYS roadmap (the honesty bar for beta is not met — STR
- * needs a nightly-booking model). mobile_home was promoted roadmap → beta in
+ * short_term_rental was promoted roadmap → beta in Wave 5 once its
+ * nightly-booking model shipped (a reservations ledger + occupancy/ADR/RevPAR +
+ * a live checkout emitter). mobile_home was promoted roadmap → beta in
  * the 2026-08 audit (Wave 2); multifamily was promoted roadmap → beta in that
  * same audit and then beta → CORE in Wave 3 once the measured-expense axis,
  * per-building occupancy, and the T-12 workspace shipped. commercial was promoted
@@ -232,7 +233,7 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("each entry sits at its honest tier — one roadmap (STR), agent_investor beta, commercial + multifamily + mobile_home CORE", () => {
+  it("each entry sits at its honest tier — agent_investor + STR beta, commercial + multifamily + mobile_home CORE (no tail vertical remains roadmap)", () => {
     // 2026-08 audits promoted four of the five roadmap → beta on the honest
     // tier definition (templates all fire, gaps disclosed not fabricated), and
     // Wave 3 then promoted multifamily beta → core, so the per-vertical map is:
@@ -265,12 +266,15 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     client-vs-own-book (needs a schema field + migration) and dual-agency
     //     disclosures (legal-signing is founder-only) stay roadmap-for-core and
     //     DISCLOSED in the persona voice.
-    //   - short_term_rental → still roadmap: its beta bar (a real
-    //     nightly-booking model) is genuinely unmet.
+    //   - short_term_rental → beta (Wave 5): the beta bar (a real nightly-booking
+    //     model) is now met — reservations ledger + occupancy/ADR/RevPAR + a live
+    //     reservation.checkout emitter/template. Per-stay P&L / turnovers /
+    //     operator pricing are the Wave B core build; OTA sync + dynamic pricing
+    //     stay disclosed-out-of-scope.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
       commercial: "core",
       agent_investor: "beta",
-      short_term_rental: "roadmap",
+      short_term_rental: "beta",
       // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured
       // operating expenses (property_expenses → measured NOI/cap rate, thin
       // coverage marked "(N/12 mo)", assumed 40% only as a disclosed fallback),

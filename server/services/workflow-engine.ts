@@ -1863,6 +1863,45 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Short-term-rental (STR) — turnover on checkout ──────────────────────
+  // STR Wave A: reservation.checkout is now LIVE — strEvents.ts → emitStrEvent
+  // fires it on a genuine reservation status→"checked_out" transition (the
+  // rent-ledger PATCH seam). Every placeholder below binds a real field
+  // emitReservationCheckout sends (reservationId, propertyAddress, unitLabel,
+  // guestName, checkOutDate, channel, orgName) or null — no guest email, no
+  // market/suggested nightly rate (residential-comps hard-stop). A turnover is a
+  // TASK, not guest mail: there is deliberately no send_email action (guest mail
+  // requires the org's own connected identity, which STR does not wire here).
+  {
+    id: "tpl_str_turnover_cleaning",
+    name: "Short-Term Rental — Checkout → Turnover Cleaning",
+    description:
+      "When a guest checks out, create the turnover checklist (clean, restock, inspect, reset the listing) so the unit is ready for the next stay — the single most time-critical task in short-term rental operations.",
+    category: "deals",
+    trigger: { event: "reservation.checkout" },
+    actions: [
+      {
+        id: "action_str_turnover_task",
+        type: "create_task",
+        config: {
+          title: "Turnover clean — {{propertyAddress}} {{unitLabel}} (checkout {{checkOutDate}})",
+          description:
+            "Guest {{guestName}} checked out {{checkOutDate}} ({{channel}} booking). Turn the unit: clean and restock, inspect for damage, reset linens and amenities, and confirm the listing is open for the next stay. Same-day turns are the norm in short-term rental — do not let this slip.",
+          priority: "high",
+          dueInDays: 1,
+        },
+      },
+      {
+        id: "action_str_turnover_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Checkout: {{propertyAddress}} {{unitLabel}} — turnover cleaning needed before the next stay.",
+        },
+      },
+    ],
+  },
 ];
 
 export type WorkflowEventData = {
@@ -2984,6 +3023,31 @@ export function emitNoteEvent(event: "note.balloon_approaching", organizationId:
     organizationId,
     entityId,
     entityType: "note",
+    data,
+  });
+}
+
+// emitStrEvent — the short-term-rental lifecycle emitter (STR Wave A). Mirrors
+// emitNoteEvent. Until this shipped, the STR nightly-stay lane had no primitive
+// at all (STR rode the monthly-lease stack); now a reservation is its own row
+// (shared/schema/rental.ts) and reservation.checkout fires when a stay
+// transitions to 'checked_out' on the real production seam
+// (server/routes-rent-ledger.ts PATCH /api/reservations/:id/status), resolved
+// and dispatched by server/services/strEvents.ts. It drives
+// tpl_str_turnover_cleaning (turnover-cleaning task, no guest mail on the
+// platform sender). entityType/entityId: a reservation hangs off a real PROPERTY
+// (reservations.propertyId is a non-null FK to properties.id), so entityType is
+// "property" and entityId is that properties.id; the reservation id + template
+// fields ride in `data`. Register the event in shared/workflow-live-triggers.ts
+// in the SAME change (workflowActionHonesty pins the call-site ↔ list
+// relationship). The event union MUST stay on one physical line — the honesty
+// ratchet's derivation regex stops at the first newline after `event:`.
+export function emitStrEvent(event: "reservation.checkout", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "property",
     data,
   });
 }

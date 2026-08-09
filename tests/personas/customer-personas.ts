@@ -31,8 +31,8 @@
  * fix_and_flip is roadmap (demoted 2026-07-11 pending a residential data
  * plane — existing orgs keep their Flip surfaces); the landlord family
  * (short_term_rental / multifamily / mobile_home) reaches the shared Rentals
- * module — short_term_rental's own vertical stays waitlisted, mobile_home is
- * beta, and multifamily is now CORE (Wave 3). A unit test pins
+ * module — short_term_rental is now beta (Wave 5 nightly-stay model), and
+ * multifamily + mobile_home are CORE. A unit test pins
  * "(beta)"/"(waitlist)" display-name tags to registry maturity so these
  * labels can't silently go stale again.
  */
@@ -588,19 +588,19 @@ const SEEDS: PersonaSeed[] = [
   //    "(beta)". multifamily went further — promoted roadmap → beta (Wave 2)
   //    then beta → CORE (Wave 3) once the measured-expense axis, per-building
   //    occupancy and the T-12 workspace shipped — so its row carries NO tag
-  //    (core, like the land/notes rows). short_term_rental stays roadmap
-  //    ("(waitlist)") until its beta bar is met. The display-name tags are
+  //    (core, like the land/notes rows). short_term_rental is now beta
+  //    ("(beta)") since Wave 5 shipped its nightly-stay model. The display-name tags are
   //    pinned to registry maturity by tests/unit/customerPersonas.test.ts. The
   //    landlord family here reaches the shared Rentals module and developer
   //    reaches the Subdivision module.
   {
     slug: "str-operator",
-    displayName: "Sky — short-term rental operator (waitlist)",
+    displayName: "Sky — short-term rental operator (beta)",
     experience: "brand_new",
     device: "ipad-portrait",
     tier: "free",
     businessType: "short_term_rental",
-    narrative: "Airbnb operator exploring; her own vertical is waitlisted but she lands on the shared landlord surface — Rentals module reachable, honest framing, no breakage.",
+    narrative: "Airbnb operator; STR is now a beta with its own nightly-stay model — a reservations ledger (record + channel-CSV import), occupancy/ADR/RevPAR that refuse rather than fabricate (ADR null with zero booked nights, occupancy null without units on record), and a live turnover-cleaning template on the reservation.checkout emitter, all behind the Rentals doors' Bookings tab. Per-stay P&L, turnovers and operator pricing are the core build; OTA channel sync and dynamic pricing are disclosed out of scope.",
     goals: ["Reach Today + Finance", "See honest roadmap framing", "Reach the shared Rentals module", "No crash on suppressed modules"],
     expect: {
       financeHero: "projectPnl",

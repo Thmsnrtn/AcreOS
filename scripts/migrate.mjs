@@ -8890,6 +8890,48 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "utility_bills_org_property_period_idx" ON "utility_bills" ("organization_id", "property_id", "period_start")`,
   // One frozen bill per (pad, utility, period): re-generating UPSERTs the snapshot.
   `CREATE UNIQUE INDEX IF NOT EXISTS "utility_bills_unit_utility_period_uk" ON "utility_bills" ("unit_id", "utility_kind", "period_start", "period_end")`,
+
+  // ── 0224 STR reservations: the nightly-stay primitive SHORT_TERM_RENTAL ─────
+  // never had. STR shipped riding the MONTHLY-lease stack (a "rental" was a
+  // rental_leases row with monthly_rent_cents + a charged_for_month grain); a
+  // nightly stay's unit of account is a GUEST STAY with a check-in/check-out and
+  // per-booking revenue net of channel + cleaning fees, and the metric is
+  // occupancy / ADR / RevPAR — none of which the monthly ledger can express.
+  // reservations is that primitive (one row per booked stay), the input to the
+  // pure metrics engine shared/rental/strMetrics.ts.
+  // Money posture ("be the rail, not the provider"): RECORD-ONLY — every
+  // *_cents column is a figure recorded off the operator's OWN channel payout,
+  // never a balance and never money that moves here. channel is a recorded LABEL
+  // (no OTA API, integrations stays []); there is NO market/dynamic suggested
+  // nightly rate (residential-comps hard-stop + no vendor). NO backfill — ships
+  // empty, fills only from real operator entry or the operator's own channel CSV.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 755 -> 756.
+  // Mirrors migrations/0224_str_reservations.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "reservations" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL,
+    "guest_name" text,
+    "channel" text,
+    "check_in" date NOT NULL,
+    "check_out" date NOT NULL,
+    "nights" integer,
+    "gross_booking_cents" bigint,
+    "channel_fee_cents" bigint,
+    "cleaning_fee_cents" bigint,
+    "taxes_cents" bigint,
+    "payout_cents" bigint,
+    "status" text NOT NULL DEFAULT 'booked',
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a property's stays by check-in.
+  `CREATE INDEX IF NOT EXISTS "reservations_org_property_check_in_idx" ON "reservations" ("organization_id", "property_id", "check_in")`,
+  // The channel-CSV importer's idempotency guard: a re-upload loses the INSERT.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "reservations_org_unit_check_in_channel_uk" ON "reservations" ("organization_id", "unit_id", "check_in", "channel")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

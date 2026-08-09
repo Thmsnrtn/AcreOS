@@ -1536,3 +1536,141 @@ export const utilityBills = pgTable(
 export type UtilityBill = typeof utilityBills.$inferSelect;
 export type InsertUtilityBill = typeof utilityBills.$inferInsert;
 
+// ============================================================================
+// SHORT-TERM RENTAL (STR) — the nightly-stay primitive the vertical never had.
+// ----------------------------------------------------------------------------
+// SHORT_TERM_RENTAL shipped riding the MONTHLY-lease stack: a "rental" was a
+// `rental_leases` row with a `monthly_rent_cents` and a `charged_for_month`
+// grain. A nightly stay has neither — its unit of account is a GUEST STAY with a
+// check-in and a check-out, its revenue is a per-booking figure net of channel
+// and cleaning fees, and the metric an operator manages to is occupancy / ADR /
+// RevPAR, none of which the monthly ledger can express. Modelling a two-night
+// Airbnb booking as a one-twelfth-of-a-month lease charge is the same category
+// error the units table fixed for vacancy: the fact has nowhere honest to live.
+//
+// `reservations` is that missing primitive: one row per booked stay, keyed on
+// (check_in, check_out), attributable to a PROPERTY and optionally a unit/pad
+// (an operator with multiple listings at one property). It is the input to the
+// pure STR metrics engine (shared/rental/strMetrics.ts), which turns a window of
+// reservations into booked-nights / occupancy / room-revenue / ADR / RevPAR —
+// and REFUSES (null) rather than divide by zero or invent a rate.
+//
+// ── MONEY POSTURE (founder ruling "be the rail, not the provider") ──────────
+// RECORD-ONLY. Nothing here holds, moves, collects or charges a cent. Every
+// *_cents column is a figure the operator RECORDS off their OWN channel payout
+// (or their own CSV export) — gross booking, the channel's fee, the cleaning
+// fee, taxes, the net payout — never a balance and never an instruction to pay.
+// AcreOS is not a party to the guest's money; it moved on Airbnb/VRBO/the
+// operator's own processor, elsewhere.
+//
+// ── NO OTA VENDOR API, NO CHANNEL SYNC, NO SUGGESTED NIGHTLY RATE ────────────
+// `channel` is a recorded LABEL ('airbnb'|'vrbo'|'booking'|'direct'|'other'),
+// NOT a live integration — there is no OTA API here and integrations stays [].
+// And there is NO market/dynamic "suggested nightly rate": that would touch the
+// residential-comps data plane (a standing hard-stop) AND require a vendor.
+// ADR/RevPAR are computed ONLY from the operator's OWN recorded amounts.
+//
+// ── NO BACKFILL ─────────────────────────────────────────────────────────────
+// The table ships EMPTY and fills only from real operator entry (the record
+// endpoint) or the operator's OWN channel CSV export (the importer). Inventing a
+// seed stay — or computing occupancy from the seeded "82% / $189 ADR" prose — is
+// exactly the fabrication this table exists to prevent.
+// ============================================================================
+
+export const RESERVATION_CHANNELS = [
+  "airbnb",
+  "vrbo",
+  "booking",
+  "direct",
+  "other",
+] as const;
+export type ReservationChannel = typeof RESERVATION_CHANNELS[number];
+
+export const RESERVATION_STATUSES = [
+  "booked",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+] as const;
+export type ReservationStatus = typeof RESERVATION_STATUSES[number];
+
+export const reservations = pgTable(
+  "reservations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    /**
+     * The rentable slot the stay is FOR, when the operator runs more than one
+     * listing at a property (a duplex with both sides on Airbnb, a park pad).
+     * Nullable and ON DELETE SET NULL — most single-listing operators leave it
+     * blank, and a stay outlives a retired unit the same way a lease does. It
+     * reuses rental_units (kind unit|pad|suite); STR needs no new slot table.
+     */
+    unitId: varchar("unit_id").references(() => rentalUnits.id, { onDelete: "set null" }),
+
+    /** The guest's name as the operator recorded it. Nullable — a channel CSV may omit it. */
+    guestName: text("guest_name"),
+
+    /**
+     * Which channel the booking came through — a recorded LABEL, not a live
+     * sync. One of RESERVATION_CHANNELS. 'direct' is an operator's own booking;
+     * 'other' is an honest catch-all. There is no OTA API behind this column.
+     */
+    channel: text("channel").$type<ReservationChannel>(),
+
+    /** The night the stay begins (inclusive). The stay is [check_in, check_out). */
+    checkIn: date("check_in").notNull(),
+    /** The night the stay ends (exclusive) — the guest is gone by this date. */
+    checkOut: date("check_out").notNull(),
+    /**
+     * Nights recorded for the stay. Nullable — an operator/CSV may leave it
+     * blank, and the metrics engine derives nights from (check_out − check_in)
+     * regardless, so a blank here is an honest "not recorded", never inferred
+     * into the dates. When both are present they should agree.
+     */
+    nights: integer("nights"),
+
+    /**
+     * The gross booking value the guest paid, in cents — RECORDED off the
+     * channel payout, never collected here. Nullable: an unrecorded amount
+     * renders as unset, never a fabricated 0.
+     */
+    grossBookingCents: bigint("gross_booking_cents", { mode: "number" }),
+    /** The channel's host fee, in cents (deducted from the payout). Recorded, nullable. */
+    channelFeeCents: bigint("channel_fee_cents", { mode: "number" }),
+    /** The cleaning fee, in cents — a pass-through, excluded from room revenue. Recorded, nullable. */
+    cleaningFeeCents: bigint("cleaning_fee_cents", { mode: "number" }),
+    /** Occupancy/lodging taxes, in cents — a pass-through, excluded from room revenue. Recorded, nullable. */
+    taxesCents: bigint("taxes_cents", { mode: "number" }),
+    /** The net payout the operator actually received, in cents. Recorded, nullable. */
+    payoutCents: bigint("payout_cents", { mode: "number" }),
+
+    /** booked | checked_in | checked_out | cancelled. A cancelled stay is excluded from every metric. */
+    status: text("status").$type<ReservationStatus>().notNull().default("booked"),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING composite (L3 shard-readiness, scripts/check-org-leading-index.mjs)
+    // + the dominant read: "every stay at this property, by check-in" — the
+    // calendar, the occupancy window and the ADR/RevPAR math.
+    index("reservations_org_property_check_in_idx").on(table.organizationId, table.propertyId, table.checkIn),
+    // The idempotency guard for the channel-CSV importer: a re-upload of the same
+    // export loses the INSERT instead of double-listing a stay that would then be
+    // double-counted in every occupancy/revenue figure. (Null unit_id rows are
+    // additionally deduped in-app by the importer, since a NULL is distinct here.)
+    uniqueIndex("reservations_org_unit_check_in_channel_uk").on(
+      table.organizationId,
+      table.unitId,
+      table.checkIn,
+      table.channel,
+    ),
+  ],
+);
+
+export type Reservation = typeof reservations.$inferSelect;
+export type InsertReservation = typeof reservations.$inferInsert;
+

@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte, inArray } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -61,8 +61,12 @@ import {
   propertyExpenses,
   meterReads,
   utilityBills,
+  reservations,
+  RESERVATION_CHANNELS,
+  RESERVATION_STATUSES,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
+import { computeStrMetrics, windowNights, type StrReservationInput } from "@shared/rental/strMetrics";
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
@@ -121,6 +125,10 @@ import { emitPaymentEvent } from "./services/workflow-engine";
 // generic money lane vs. the landlord receipt lane). Fire-and-forget — see
 // services/rentalEvents.ts.
 import { emitRentReceived } from "./services/rentalEvents";
+// STR Wave A: a reservation's status→"checked_out" transition fires
+// reservation.checkout on the PATCH /api/reservations/:id/status seam below.
+// Fire-and-forget — see services/strEvents.ts.
+import { emitReservationCheckout } from "./services/strEvents";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -355,6 +363,73 @@ const utilityBillbackSchema = z
     message: "rubs billback requires a basis",
     path: ["basis"],
   });
+
+// ----------------------------------------------------------------------------
+// Short-term-rental (STR) — nightly-stay reservations (STR Wave A).
+// ----------------------------------------------------------------------------
+// RECORD-ONLY. Every money field below is a figure the operator RECORDS off
+// their OWN channel payout (or their own CSV export) — never collected here.
+// `channel` is a recorded LABEL, not a live OTA sync. There is no
+// market/dynamic suggested nightly rate (residential-comps hard-stop + no
+// vendor). Cents fields are nullable — an unrecorded amount stays unset, never
+// a fabricated 0.
+const reservationChannelEnum = z.enum(RESERVATION_CHANNELS);
+const reservationStatusEnum = z.enum(RESERVATION_STATUSES);
+const strCentsField = z.coerce.number().int().min(0).nullable().optional();
+
+/** Record one STR stay by hand (the writer). */
+const reservationRecordSchema = z.object({
+  unitId: z.string().uuid().nullable().optional(),
+  guestName: z.string().max(200).nullable().optional(),
+  channel: reservationChannelEnum.nullable().optional(),
+  checkIn: isoDate,
+  checkOut: isoDate,
+  grossBookingCents: strCentsField,
+  channelFeeCents: strCentsField,
+  cleaningFeeCents: strCentsField,
+  taxesCents: strCentsField,
+  payoutCents: strCentsField,
+  status: reservationStatusEnum.optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * One row of an operator's OWN Airbnb/VRBO CSV export, parsed CLIENT-SIDE and
+ * posted as JSON (the same posture as the rent-roll importer — no vendor API).
+ * The assumed CSV columns map to these fields: guest name, check-in, check-out,
+ * (optional) listing/unit label, gross/earnings, host/channel fee, cleaning fee,
+ * taxes and net payout — all money in integer cents. Unmapped columns are simply
+ * absent, and an absent amount stays null (never a fabricated 0).
+ */
+const reservationImportRowSchema = z.object({
+  guestName: z.string().max(200).nullable().optional(),
+  /** An operator's listing/unit label; resolved to an EXISTING rental_units row, else left null (no unit is invented). */
+  unitLabel: z.string().max(64).nullable().optional(),
+  channel: reservationChannelEnum.nullable().optional(),
+  checkIn: isoDate,
+  checkOut: isoDate,
+  grossBookingCents: strCentsField,
+  channelFeeCents: strCentsField,
+  cleaningFeeCents: strCentsField,
+  taxesCents: strCentsField,
+  payoutCents: strCentsField,
+});
+
+const reservationImportSchema = z.object({
+  /** The channel this export came from — applies to any row that omits its own. */
+  channel: reservationChannelEnum.default("other"),
+  rows: z.array(reservationImportRowSchema).min(1).max(500),
+});
+
+const reservationStatusUpdateSchema = z.object({
+  status: reservationStatusEnum,
+});
+
+/** The STR metrics window — [windowStart, windowEnd), both YYYY-MM-DD. */
+const strMetricsQuerySchema = z.object({
+  windowStart: isoDate,
+  windowEnd: isoDate,
+});
 
 // ----------------------------------------------------------------------------
 // Workflow payment events (Wave B — "wire the engine")
@@ -2821,6 +2896,340 @@ export function registerRentLedgerRoutes(app: Express): void {
           "This records what you asserted about the home's ownership and title. AcreOS does not verify " +
           "the title with any DMV or registry and asserts no lien — it is your record, not a registration.",
       });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHORT-TERM RENTAL (STR) — nightly-stay reservations (STR Wave A).
+  // ----------------------------------------------------------------------------
+  //   POST  /api/properties/:propertyId/reservations         — record a stay (writer)
+  //   GET   /api/properties/:propertyId/reservations         — list a property's stays (reader)
+  //   POST  /api/properties/:propertyId/reservations/import  — import an operator's OWN channel CSV
+  //   GET   /api/properties/:propertyId/str-metrics          — occupancy / ADR / RevPAR (engine call site)
+  //   PATCH /api/reservations/:id/status                     — status transition; fires reservation.checkout
+  //
+  // RECORD-ONLY (be the rail, not the provider): nothing here moves money. NO OTA
+  // vendor API and NO market/dynamic suggested nightly rate — ADR/RevPAR come
+  // ONLY from the operator's own recorded amounts.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Record a reservation (writer) ─────────────────────────────────────────
+  app.post("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = reservationRecordSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.checkOut <= parsed.data.checkIn) {
+        return Errors.badRequest(res, "checkOut must be after checkIn");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // A supplied unitId must belong to this property in this org — never trust it blindly.
+      if (parsed.data.unitId) {
+        const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+          .where(and(
+            eq(rentalUnits.id, parsed.data.unitId),
+            eq(rentalUnits.organizationId, orgId),
+            eq(rentalUnits.propertyId, propId),
+          ));
+        if (!unit) return Errors.badRequest(res, "unitId does not belong to this property");
+      }
+
+      const nights = windowNights(parsed.data.checkIn, parsed.data.checkOut);
+      const [saved] = await db.insert(reservations).values({
+        organizationId: orgId,
+        propertyId: propId,
+        unitId: parsed.data.unitId ?? null,
+        guestName: parsed.data.guestName ?? null,
+        channel: parsed.data.channel ?? null,
+        checkIn: parsed.data.checkIn,
+        checkOut: parsed.data.checkOut,
+        nights: nights ?? null,
+        grossBookingCents: parsed.data.grossBookingCents ?? null,
+        channelFeeCents: parsed.data.channelFeeCents ?? null,
+        cleaningFeeCents: parsed.data.cleaningFeeCents ?? null,
+        taxesCents: parsed.data.taxesCents ?? null,
+        payoutCents: parsed.data.payoutCents ?? null,
+        status: parsed.data.status ?? "booked",
+        notes: parsed.data.notes ?? null,
+      })
+        // The (org, unit, check_in, channel) unique index is the importer's guard;
+        // for a hand-recorded stay a conflict means the same stay already exists.
+        .onConflictDoNothing()
+        .returning();
+      if (!saved) {
+        return Errors.badRequest(res, "A reservation for this unit, check-in date and channel already exists");
+      }
+
+      logger.info("[STR] reservation recorded", {
+        orgId, propId, reservationId: saved.id, channel: saved.channel, status: saved.status,
+      });
+      return res.json({ reservation: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── List a property's reservations (reader) ───────────────────────────────
+  app.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const statusFilter = reservationStatusEnum.safeParse(req.query.status);
+      const rows = await db.select().from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+          ...(statusFilter.success ? [eq(reservations.status, statusFilter.data)] : []),
+        ))
+        .orderBy(desc(reservations.checkIn));
+      return res.json({ reservations: rows, count: rows.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Import an operator's OWN Airbnb/VRBO CSV export (parsed client-side) ────
+  // Mirrors routes-rent-roll-import: every row is accounted for. NO vendor API —
+  // this consumes the operator's own export. Idempotent on the (org, unit,
+  // check_in, channel) key AND on an in-app natural-key check (so null-unit rows,
+  // which most channel exports are, still dedupe). Returns a created-vs-duplicate
+  // report whose numbers add up to rowsSubmitted.
+  app.post("/api/properties/:propertyId/reservations/import", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = reservationImportSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const summary = await db.transaction(async (tx) => {
+        let createdCount = 0;
+        let duplicateCount = 0;
+        const skippedRows: Array<{ row: number; reason: string; message: string }> = [];
+
+        for (let i = 0; i < parsed.data.rows.length; i++) {
+          const row = parsed.data.rows[i];
+          if (row.checkOut <= row.checkIn) {
+            skippedRows.push({
+              row: i + 1,
+              reason: "invalid_dates",
+              message: "check-out is not after check-in, so no stay was recorded for this row.",
+            });
+            continue;
+          }
+          const channel = row.channel ?? parsed.data.channel;
+
+          // Resolve an operator's listing/unit label to an EXISTING unit only —
+          // a stay's listing name is not a slot, so we never invent a unit here.
+          let unitId: string | null = null;
+          const label = row.unitLabel?.trim();
+          if (label) {
+            const [unit] = await tx.select({ id: rentalUnits.id }).from(rentalUnits)
+              .where(and(
+                eq(rentalUnits.organizationId, orgId),
+                eq(rentalUnits.propertyId, propId),
+                eq(rentalUnits.label, label),
+              ));
+            unitId = unit?.id ?? null;
+          }
+
+          const guestName = row.guestName?.trim() || null;
+
+          // Natural-key dedupe (works even when unit_id is null): a stay is the
+          // same stay if it shares property + dates + channel + guest.
+          const [existing] = await tx.select({ id: reservations.id }).from(reservations)
+            .where(and(
+              eq(reservations.organizationId, orgId),
+              eq(reservations.propertyId, propId),
+              eq(reservations.checkIn, row.checkIn),
+              eq(reservations.checkOut, row.checkOut),
+              eq(reservations.channel, channel),
+              guestName == null ? isNull(reservations.guestName) : eq(reservations.guestName, guestName),
+            ));
+          if (existing) {
+            duplicateCount++;
+            continue;
+          }
+
+          const nights = windowNights(row.checkIn, row.checkOut);
+          const inserted = await tx.insert(reservations).values({
+            organizationId: orgId,
+            propertyId: propId,
+            unitId,
+            guestName,
+            channel,
+            checkIn: row.checkIn,
+            checkOut: row.checkOut,
+            nights: nights ?? null,
+            grossBookingCents: row.grossBookingCents ?? null,
+            channelFeeCents: row.channelFeeCents ?? null,
+            cleaningFeeCents: row.cleaningFeeCents ?? null,
+            taxesCents: row.taxesCents ?? null,
+            payoutCents: row.payoutCents ?? null,
+            status: "booked",
+            notes: "Imported from operator's channel CSV export.",
+          })
+            // Belt for the unit-keyed unique index (the app check above handles null-unit rows).
+            .onConflictDoNothing()
+            .returning({ id: reservations.id });
+          if (inserted.length > 0) createdCount++;
+          else duplicateCount++;
+        }
+
+        return { createdCount, duplicateCount, skippedRows };
+      });
+
+      logger.info("[STR] reservations imported", {
+        orgId, propId,
+        rowsSubmitted: parsed.data.rows.length,
+        createdCount: summary.createdCount,
+        duplicateCount: summary.duplicateCount,
+        skippedRowCount: summary.skippedRows.length,
+      });
+      // created + duplicate + skipped must equal rowsSubmitted — the caller can check.
+      return res.json({
+        ...summary,
+        skippedRowCount: summary.skippedRows.length,
+        rowsSubmitted: parsed.data.rows.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── STR performance metrics — the engine's production call site (reader) ───
+  // availableUnitNights is derived from the property's ACTIVE rental_units count
+  // × the window's nights. When the property has no units on record (or the
+  // window is empty), the denominator is not derivable and the engine REFUSES
+  // occupancy + RevPAR (null) rather than fabricate one. ADR refuses (null) when
+  // nothing was booked. Never a market/suggested rate — the operator's own
+  // recorded amounts only.
+  app.get("/api/properties/:propertyId/str-metrics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propId = Number(req.params.propertyId);
+      if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
+      const q = strMetricsQuerySchema.safeParse(req.query);
+      if (!q.success) return Errors.validationFailed(res, q.error.issues);
+      if (q.data.windowEnd <= q.data.windowStart) {
+        return Errors.badRequest(res, "windowEnd must be after windowStart");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const [{ unitCount }] = await db
+        .select({ unitCount: sql<number>`count(*)::int` })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propId),
+          eq(rentalUnits.status, "active"),
+        ));
+
+      const wn = windowNights(q.data.windowStart, q.data.windowEnd);
+      // Refuse the denominator honestly: no units on record, or an empty window.
+      const availableUnitNights = unitCount > 0 && wn != null ? unitCount * wn : null;
+
+      const rows = await db
+        .select({
+          checkIn: reservations.checkIn,
+          checkOut: reservations.checkOut,
+          status: reservations.status,
+          grossBookingCents: reservations.grossBookingCents,
+          cleaningFeeCents: reservations.cleaningFeeCents,
+          taxesCents: reservations.taxesCents,
+        })
+        .from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+        ));
+
+      const engineRows: StrReservationInput[] = rows.map((r) => ({
+        checkIn: String(r.checkIn),
+        checkOut: String(r.checkOut),
+        status: r.status,
+        grossBookingCents: r.grossBookingCents ?? null,
+        cleaningFeeCents: r.cleaningFeeCents ?? null,
+        taxesCents: r.taxesCents ?? null,
+      }));
+
+      const metrics = computeStrMetrics({
+        reservations: engineRows,
+        windowStart: q.data.windowStart,
+        windowEnd: q.data.windowEnd,
+        availableUnitNights,
+      });
+
+      return res.json({
+        metrics,
+        window: { start: q.data.windowStart, end: q.data.windowEnd, nights: wn },
+        activeUnitCount: unitCount,
+        availableUnitNights,
+        reservationCount: rows.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Reservation status transition (writer) — fires reservation.checkout ────
+  // A genuine transition INTO 'checked_out' (from any other status) is the real
+  // production seam that fires the STR turnover-cleaning workflow. Fire-and-
+  // forget after the write commits — a workflow failure never fails the update.
+  app.patch("/api/reservations/:id/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = reservationStatusUpdateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [current] = await db.select().from(reservations)
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+      if (!current) return Errors.notFound(res, "Reservation");
+
+      const [updated] = await db.update(reservations)
+        .set({ status: parsed.data.status, updatedAt: new Date() })
+        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)))
+        .returning();
+
+      // Emit ONLY on a genuine transition into checked_out (not a re-save of an
+      // already-checked-out stay), so a turnover fires once per checkout.
+      if (parsed.data.status === "checked_out" && current.status !== "checked_out") {
+        emitReservationCheckout({
+          organizationId: orgId,
+          reservationId: updated.id,
+          propertyId: updated.propertyId,
+          unitId: updated.unitId ?? null,
+          guestName: updated.guestName ?? null,
+          checkOut: String(updated.checkOut),
+          channel: updated.channel ?? null,
+        });
+      }
+
+      logger.info("[STR] reservation status updated", {
+        orgId, reservationId: updated.id, from: current.status, to: updated.status,
+      });
+      return res.json({ reservation: updated });
     } catch (err) {
       return Errors.internal(res, err);
     }

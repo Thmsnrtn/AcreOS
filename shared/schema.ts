@@ -9181,6 +9181,12 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // the shared union here and tpl_lease_expiring left
   // LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS in the same change.
   "lease.expiring_60d",
+  // Short-term-rental (STR) lifecycle. reservation.checkout fires when an STR
+  // reservation transitions to 'checked_out' (the real production seam in
+  // server/routes-rent-ledger.ts PATCH /api/reservations/:id/status →
+  // server/services/strEvents.ts → emitStrEvent). Drives the turnover-cleaning
+  // template. See shared/schema/rental.ts (reservations) + strMetrics.ts.
+  "reservation.checkout",
   // Iyari (Chief of Future) #5 — Owner-change & tax-status delta detector.
   // Derived FREE from the append-only parcel_observations log (migration 0121)
   // by a scheduled diff job (server/services/parcelDeltaDetector.ts). Fires when
