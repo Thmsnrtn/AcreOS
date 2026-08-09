@@ -663,12 +663,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "mobilehome-operator",
-    displayName: "Milo — mobile-home park operator (beta)",
+    displayName: "Milo — mobile-home park operator",
     experience: "brand_new",
     device: "iphone-se",
     tier: "free",
     businessType: "mobile_home",
-    narrative: "Beta → landlord; smallest iPhone — a lot-lease-only beta on the shared Rentals stack with real pad inventory. The home-as-chattel (titles, home-vs-lot rent) and utilities pass-through gaps stay disclosed, not fabricated.",
+    narrative: "Core → landlord; smallest iPhone — the shared Rentals stack with real pad inventory, plus the Wave 5 home-side build: home-vs-lot rent split + POH/TOH mix and submeter/RUBS utility billback, each a pure tested engine that refuses rather than fabricates, and record-only chattel titles. Core does not claim DMV/VIN title verification, submarket lot-rent comps, or autonomous park-owned-home sale execution.",
     goals: ["Land somewhere usable", "No crash", "Understand it's early"],
     expect: {
       financeHero: "projectPnl",

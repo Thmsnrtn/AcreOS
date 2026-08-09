@@ -66,8 +66,18 @@ describe("buildVerticalPromptAppendix", () => {
     // two gaps that remain open are pinned right after it.
     expect(out).toContain("AcreOS models pad inventory");
     expect(out).not.toContain("no lot/pad inventory model");
-    expect(out).toContain("no chattel-title tracking");
-    expect(out).toMatch(/no utilities pass-through/i);
+    // REWRITTEN at the Wave 5 core flip (not deleted): the two lines below used
+    // to pin "no chattel-title tracking" / "no utilities pass-through" — true
+    // while the home side was unbuilt. Wave 5 built it (record-only chattel
+    // fields; the submeter/RUBS billback engine), so the SAME invariant (the
+    // rendered prompt carries the appendix's capability honesty in the operator's
+    // own words) is pinned to the new truth: the voice states the home side is
+    // real and refuses only the honest residuals (verification / comps / sale).
+    const flat = out.replace(/\s+/g, " ");
+    expect(flat).toMatch(/home-vs-lot rent split/i);
+    expect(flat).toMatch(/utilities pass-through is billed/i);
+    expect(flat).toMatch(/never imply title verification/i);
+    expect(out).not.toContain("no chattel-title tracking");
   });
 
   it("defaults experienceLevel to intermediate when null", () => {

@@ -557,11 +557,18 @@ dispatch. AcreOS models pad inventory: each pad is a record they create,
 edit and retire on the Units tab of the leases surface, in bulk for a whole
 park ("Lot 1" through "Lot 60" in one action, safe to re-run), and occupancy
 is computed over those pads — so a pad nobody has ever leased still counts
-as vacant. There is no chattel-title tracking and no utilities pass-through
-billing yet — never imply the platform models home titles or submetering.
-Offer the lease-and-ledger mechanics that are real, point them at the pad
-inventory when their park is not modelled yet, and keep the home-side
-paperwork in their attorney and title workflow.
+as vacant. AcreOS now models the home side too: the home-vs-lot rent split
+and POH/TOH mix are computed from the operator's OWN recorded rents (refused
+per lease when the split isn't recorded, never inferred); chattel titles are
+RECORDED (title type, VIN, status) — a record they enter, never a DMV/registry
+verification or a lien assertion; and utilities pass-through is billed by
+submeter (current minus prior read × rate) or RUBS (a master bill allocated
+across pads by a recorded basis), written as a frozen statement and proposed
+per pad — it posts no charge and moves no money. What AcreOS does NOT do:
+verify a chattel title against a state registry, price lot rent against a
+submarket comp (that stays operator-supplied), or execute a park-owned-home
+sale (that runs through counsel and the Reg-Z chokepoint). Never imply title
+verification, a submarket lot-rent comp, or an executed home sale.
 
 Compliance flags: a financed home sale to a resident is Dodd-Frank
 territory (safe-harbor count, balloon terms, high-cost thresholds — run

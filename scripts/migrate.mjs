@@ -8817,6 +8817,79 @@ const STATEMENTS = [
   `ALTER TABLE "rent_charges" ADD COLUMN IF NOT EXISTS "charge_type" text NOT NULL DEFAULT 'base_rent'`,
   `DROP INDEX IF EXISTS "rent_charges_lease_month_uk"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "rent_charges_lease_month_uk" ON "rent_charges" ("lease_id", "charged_for_month", "charge_type")`,
+
+  // ── 0223 mobile-home core: the two home-side capabilities the lot-lease ─────
+  // beta lacked. MOBILE_HOME shipped as a bare ground lease (a pad is a
+  // rental_units row with kind='pad'); two home-side facts of a real park had no
+  // home in that model, each the input to a Stage-1 engine:
+  //   1. lot-vs-home rent SPLIT + POH/TOH mix — additive NULLABLE columns:
+  //      rental_units.home_ownership ('park_owned'|'tenant_owned') + chattel-title
+  //      RECORD columns (chattel_title_type 'dmv_vin'|'real_property', chattel_vin,
+  //      chattel_title_status, chattel_title_notes — operator-asserted only, no
+  //      DMV/registry verification or title signing implied), and
+  //      rent_charges.rent_component ('lot'|'home') — the lot-vs-home
+  //      discriminator, ADDITIONAL to and orthogonal to 0222's charge_type.
+  //   2. utility PASS-THROUGH billback — two new tables: meter_reads (a submeter
+  //      reading per pad+utility+date; consumption = current − prior) and
+  //      utility_bills (the FROZEN billback statement per pad+period+utility).
+  // Money posture ("be the rail, not the provider"): neither table moves, holds,
+  // collects or charges a cent — a recorded reading / a computed frozen
+  // statement; every *_cents column is a recorded or derived fact, never a
+  // balance. No residential comps (the split engine compares the operator's OWN
+  // recorded POH/TOH rents, never a submarket comp). NO backfill — the columns
+  // are nullable and null for every existing row; the two tables ship empty.
+  //
+  // TWO new tables — scripts/ratchets/table-count.json 753 -> 755.
+  // Mirrors migrations/0223_mobile_home_core.sql + shared/schema/rental.ts.
+
+  // 1. rental_units — home_ownership (POH/TOH) + chattel-title RECORD columns.
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "home_ownership" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_type" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_vin" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_status" text`,
+  `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "chattel_title_notes" text`,
+
+  // 2. rent_charges — rent_component ('lot'|'home'), additional to charge_type.
+  `ALTER TABLE "rent_charges" ADD COLUMN IF NOT EXISTS "rent_component" text`,
+
+  // 3. meter_reads — a submeter reading per pad + utility + date.
+  `CREATE TABLE IF NOT EXISTS "meter_reads" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "unit_id" varchar NOT NULL REFERENCES "rental_units"("id") ON DELETE CASCADE,
+    "utility_kind" text NOT NULL,
+    "read_on" date NOT NULL,
+    "reading" numeric NOT NULL,
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a pad's reads, newest first.
+  `CREATE INDEX IF NOT EXISTS "meter_reads_org_unit_read_idx" ON "meter_reads" ("organization_id", "unit_id", "read_on")`,
+  // One reading per (pad, utility, date): a re-record UPSERTs (a correction).
+  `CREATE UNIQUE INDEX IF NOT EXISTS "meter_reads_unit_utility_read_uk" ON "meter_reads" ("unit_id", "utility_kind", "read_on")`,
+
+  // 4. utility_bills — the frozen billback statement per pad + period + utility.
+  `CREATE TABLE IF NOT EXISTS "utility_bills" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL,
+    "utility_kind" text NOT NULL,
+    "period_start" date,
+    "period_end" date,
+    "method" text NOT NULL,
+    "master_bill_cents" bigint,
+    "allocated_cents" bigint,
+    "basis" text,
+    "coverage_complete" boolean,
+    "statement_markdown" text,
+    "generated_at" timestamptz,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: this property's billbacks, by period.
+  `CREATE INDEX IF NOT EXISTS "utility_bills_org_property_period_idx" ON "utility_bills" ("organization_id", "property_id", "period_start")`,
+  // One frozen bill per (pad, utility, period): re-generating UPSERTs the snapshot.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "utility_bills_unit_utility_period_uk" ON "utility_bills" ("unit_id", "utility_kind", "period_start", "period_end")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

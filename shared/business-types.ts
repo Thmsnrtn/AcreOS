@@ -627,19 +627,30 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // A park's pads are therefore an inventory an operator has, and occupancy
     // over them is computable.
     //
-    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted mobile_home
-    // to a LOT-LEASE-ONLY beta. What makes it defensible: the lot-lease
-    // operations are honest and live — pad inventory is REAL (three write paths
-    // set rental_units.kind='pad', occupancy is computed over the pads) and all
-    // five templates FIRE (the four landlord templates + the
-    // tpl_mobile_home_lot_rent_receipt on the real rent.received trigger, per
-    // shared/workflow-live-triggers.ts + workflowActionHonesty). The home side
-    // is NOT in beta scope, and it is DISCLOSED, never fabricated: no
-    // home-as-chattel handling (titles, home-vs-lot rent split), no utilities
-    // pass-through billing. Those are the CORE build — until they ship the
-    // persona voice must keep saying both, and beta stays scoped to the lot
-    // lease the shipped stack genuinely runs.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE): the LOT-LEASE beta is extended with the
+    // two home-side capabilities that were its named core gap — each a pure,
+    // behaviourally-tested engine that computes from the operator's OWN recorded
+    // data and REFUSES rather than fabricate:
+    //   - home-vs-lot rent SPLIT + POH/TOH mix (shared/rental/lotRentSplit.ts):
+    //     per-lease lot-vs-home split, park POH/TOH mix, and the conversion-trade
+    //     delta from the operator's own recorded rents — refusing per-lease when
+    //     the split (or ownership) isn't recorded, never inferring one, and never
+    //     reaching for a submarket lot-rent comp.
+    //   - utility pass-through billback (shared/rental/utilityBillback.ts):
+    //     submeter ((current−prior)×rate, refusing on missing/non-monotonic
+    //     reads) and RUBS (a master bill allocated by a recorded basis with a
+    //     deterministic rounding remainder, refusing without a bill or basis and
+    //     disclosing partial coverage). It writes a FROZEN utility_bills statement
+    //     and PROPOSES per-pad lines — it posts no charge and moves no money.
+    //   - chattel-title RECORD fields (home_ownership + chattel_* on
+    //     rental_units) — record-only; core does NOT claim DMV/VIN VERIFICATION,
+    //     a lienholder assertion, or any title signing.
+    // All behind the existing Rentals doors — no new nav, no money movement.
+    // Core does NOT claim submarket lot-rent comps (residential-comps hard-stop →
+    // operator-supplied/dash) or autonomous POH-to-resident financed-sale
+    // execution (legal-signing/Reg-Z, routed through the existing chokepoint +
+    // counsel). 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on

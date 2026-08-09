@@ -355,6 +355,28 @@ export const rentalUnits = pgTable(
      */
     status: text("status").$type<RentalUnitStatus>().notNull().default("active"),
 
+    // ── Mobile-home core (Wave / mobile_home Stage 0) ─────────────────────────
+    // A MOBILE_HOME park's pad has one fact no other rentable slot has: WHO owns
+    // the home standing on it. When the tenant owns it (TOH — tenant-owned-home)
+    // the operator rents only the ground; when the park owns it (POH —
+    // park-owned-home) the operator also collects a home rent. Every column below
+    // is ADDITIVE and NULLABLE and null for every existing unit (pad or not) — a
+    // blank is an honest "not recorded", never an inferred POH/TOH. No backfill.
+    /** 'park_owned' (POH) | 'tenant_owned' (TOH). The lot-rent-split discriminator. */
+    homeOwnership: text("home_ownership").$type<"park_owned" | "tenant_owned">(),
+    /**
+     * Chattel-title RECORD (operator-asserted only). A mobile home is titled
+     * either as vehicle/personal property at the DMV (a VIN'd chattel) or has
+     * been converted to REAL property (retired title, affixed to the land). These
+     * columns STORE WHAT THE OPERATOR ASSERTS and nothing more: recording a title
+     * here implies no DMV/registry verification, no lienholder assertion and no
+     * title signing — AcreOS is the record, not the registrar.
+     */
+    chattelTitleType: text("chattel_title_type").$type<"dmv_vin" | "real_property">(),
+    chattelVin: text("chattel_vin"),
+    chattelTitleStatus: text("chattel_title_status"),
+    chattelTitleNotes: text("chattel_title_notes"),
+
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -670,6 +692,16 @@ export const rentCharges = pgTable(
      * one lease-month.
      */
     chargeType: text("charge_type").notNull().default("base_rent"),
+
+    /**
+     * Mobile-home core (Stage 0): the lot-vs-home discriminator, ADDITIONAL to
+     * `chargeType` and orthogonal to it. A mobile-home lease can bill lot rent AND
+     * a separate home rent (a park-owned home), so a single lease-month carries a
+     * 'lot' charge and a 'home' charge that must be told apart. Null for every
+     * existing row and for any lease that does not split lot from home — the
+     * PRESENCE of 'lot'/'home' is the mobile-home split signal, never inferred.
+     */
+    rentComponent: text("rent_component").$type<"lot" | "home">(),
 
     // Updated as payments come in. balance_cents = amount_cents -
     // sum(payments).
@@ -1395,4 +1427,112 @@ export const leaseRentSchedule = pgTable(
 
 export type LeaseRentScheduleStep = typeof leaseRentSchedule.$inferSelect;
 export type InsertLeaseRentScheduleStep = typeof leaseRentSchedule.$inferInsert;
+
+// ============================================================================
+// MOBILE-HOME CORE (Stage 0) — utility pass-through billback + submeter reads.
+// ----------------------------------------------------------------------------
+// MOBILE_HOME is a lot-lease beta today (pads are rental_units kind='pad'). Its
+// two home-side capability gaps are the lot-vs-home rent SPLIT (columns above on
+// rental_units + rent_charges) and utility PASS-THROUGH billback — the two
+// tables here. A park buys a master utility and passes the cost to the pads
+// either by SUBMETER (each pad metered) or by RUBS (allocate the master bill by
+// a recorded basis). Both are computed by shared/rental/utilityBillback.ts.
+//
+// MONEY POSTURE (founder ruling "be the rail, not the provider"): neither table
+// moves, holds, collects or charges a cent. meter_reads RECORDS a reading;
+// utility_bills FREEZES a computed billback statement (the exhibit behind a
+// pad's proposed charge). Every *_cents column is a recorded or derived fact,
+// never a balance and never an instruction to pay — the actual charge lands on
+// the operator's OWN rails, elsewhere. NO backfill; both ship empty.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// METER READS — a submeter reading for one pad + utility on one date.
+// ----------------------------------------------------------------------------
+// The raw input to a submeter billback: a pad's consumption for a period is
+// (currentRead − priorRead), so the reads are RECORDED per date and the engine
+// pairs them. A reading is an operator-asserted fact; nothing here is inferred.
+// ----------------------------------------------------------------------------
+export const meterReads = pgTable(
+  "meter_reads",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    /** The pad this reading is for. Cascades with the unit — a read has no meaning without its meter. */
+    unitId: varchar("unit_id").references(() => rentalUnits.id, { onDelete: "cascade" }).notNull(),
+    /** 'water' | 'sewer' | 'trash' | 'electric' | 'gas'. */
+    utilityKind: text("utility_kind").$type<"water" | "sewer" | "trash" | "electric" | "gas">().notNull(),
+    /** The date the meter was read — a date, not a fabricated clock time. */
+    readOn: date("read_on").notNull(),
+    /** The meter face value. numeric — utility meters read in fractional units. */
+    reading: numeric("reading").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING composite (L3 shard-readiness) + the dominant read: "this pad's
+    // reads, newest first" — the pairing a submeter billback consumes.
+    index("meter_reads_org_unit_read_idx").on(table.organizationId, table.unitId, table.readOn),
+    // One reading per (pad, utility, date): re-recording the same read UPSERTs
+    // (a correction) rather than double-listing the same meter face.
+    uniqueIndex("meter_reads_unit_utility_read_uk").on(table.unitId, table.utilityKind, table.readOn),
+  ],
+);
+
+export type MeterRead = typeof meterReads.$inferSelect;
+export type InsertMeterRead = typeof meterReads.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// UTILITY BILLS — the FROZEN billback statement per pad + period + utility.
+// ----------------------------------------------------------------------------
+// One row per pad the billback proposed a charge for: the method, the master
+// bill (RUBS) or the metered usage (submeter), the pad's allocated share, the
+// basis, whether coverage was complete, and the rendered statement — snapshotted
+// at generation so a later edit to a read or a master bill cannot silently
+// rewrite a statement already handed to a tenant. The exhibit behind the charge.
+// ----------------------------------------------------------------------------
+export const utilityBills = pgTable(
+  "utility_bills",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    /** The pad this billback line is for. SET NULL — the frozen statement outlives a retired pad. */
+    unitId: varchar("unit_id").references(() => rentalUnits.id, { onDelete: "set null" }),
+    /** 'water' | 'sewer' | 'trash' | 'electric' | 'gas'. */
+    utilityKind: text("utility_kind").$type<"water" | "sewer" | "trash" | "electric" | "gas">().notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+    /** 'submeter' | 'rubs'. */
+    method: text("method").$type<"submeter" | "rubs">().notNull(),
+    /** The master utility bill allocated (RUBS); null for submeter. */
+    masterBillCents: bigint("master_bill_cents", { mode: "number" }),
+    /** This pad's allocated/metered share, in cents — a derived fact, not a balance. */
+    allocatedCents: bigint("allocated_cents", { mode: "number" }),
+    /** How the master bill was split (RUBS: 'equal'|'occupants'|'sqft'); null for submeter. */
+    basis: text("basis"),
+    /** False when some pads lacked a read/basis input — the partial-coverage marker. */
+    coverageComplete: boolean("coverage_complete"),
+    /** The rendered statement text, frozen with its inputs. */
+    statementMarkdown: text("statement_markdown"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING composite (L3 shard-readiness) + the dominant read: "this
+    // property's billbacks, by period".
+    index("utility_bills_org_property_period_idx").on(table.organizationId, table.propertyId, table.periodStart),
+    // One frozen bill per (pad, utility, period): re-generating UPSERTs the
+    // snapshot rather than double-billing a pad for the same utility-period.
+    uniqueIndex("utility_bills_unit_utility_period_uk").on(
+      table.unitId,
+      table.utilityKind,
+      table.periodStart,
+      table.periodEnd,
+    ),
+  ],
+);
+
+export type UtilityBill = typeof utilityBills.$inferSelect;
+export type InsertUtilityBill = typeof utilityBills.$inferInsert;
 

@@ -232,7 +232,7 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("each entry sits at its honest tier — one roadmap (STR), agent_investor + commercial + mobile_home beta, multifamily CORE (Wave 3)", () => {
+  it("each entry sits at its honest tier — one roadmap (STR), agent_investor beta, commercial + multifamily + mobile_home CORE", () => {
     // 2026-08 audits promoted four of the five roadmap → beta on the honest
     // tier definition (templates all fire, gaps disclosed not fabricated), and
     // Wave 3 then promoted multifamily beta → core, so the per-vertical map is:
@@ -278,7 +278,7 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
       // core-closed prose pins in investorAnalyticsUnitAware.test.ts and the
       // capability gate in multifamilyCore.test.ts.
       multifamily: "core",
-      mobile_home: "beta",
+      mobile_home: "core",
     };
     for (const bt of TAIL_VERTICALS) {
       expect(getBusinessType(bt)?.maturity, bt).toBe(EXPECTED_MATURITY[bt]);

@@ -387,43 +387,34 @@ describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () =
     expect(haystack).toMatch(/receipt/i);
   });
 
-  it("states pad inventory as REAL, and still does NOT promise chattel titles or submetering", () => {
-    // business-types.ts mobile_home entry, post-pad-inventory: TWO of the three
-    // park-specific gaps stand — no home-as-chattel handling, no utilities
-    // pass-through billing. Those two assertions are UNCHANGED below and must
-    // stay: the voice states the gap, it does not promise the feature.
-    expect(p.systemPromptAppendix).toContain("no chattel-title tracking");
-    expect(p.systemPromptAppendix).toMatch(/no utilities pass-through/i);
-
-    // The THIRD gap closed, so this assertion is REWRITTEN to the new truth
-    // rather than deleted (wave rule: when a wave makes a stubbed thing real,
-    // rewrite the assertion that pinned the stub so the invariant survives).
-    // It used to pin /no lot\/pad inventory model/ plus "nothing in AcreOS
-    // creates one today" and "treat the pad inventory as absent" — accurate
-    // then, because `rental_units.kind` enumerated 'pad' and NO write site in
-    // the product ever set it. Three now do: the units surface (Units tab of
-    // /leases), its bulk-create route, and the lease form's slot-kind picker
-    // feeding findOrCreateUnitId (plus the rent-roll importer's `unitKind`,
-    // which finally has a driver). The invariant is unchanged — the voice
-    // describes the pad model the platform actually has.
-    //
-    // Flattened — the appendix is hard-wrapped prose and these phrases
-    // straddle newlines.
+  it("states pad inventory AND the home side as REAL (Wave 5), refusing only verification / comps / sale", () => {
+    // REWRITTEN at the Wave 5 core flip (not deleted): the two home-side gaps
+    // this used to pin — no chattel-title tracking, no utilities pass-through —
+    // are now BUILT (record-only chattel fields; the submeter/RUBS billback
+    // engine), so the voice offers them. Per the wave rule, the assertions that
+    // pinned the stub are rewritten to the new truth so the invariant survives:
+    // the voice now states the home side is real and refuses only the honest
+    // residuals (verification, comps, executed sale).
     const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
+    expect(flat).toMatch(/home-vs-lot rent split/i);
+    expect(flat).toMatch(/utilities pass-through is billed/i);
+    expect(flat).toMatch(/chattel titles are RECORDED/i);
+
+    // Pad inventory prose is unchanged and must not regress.
     expect(flat).toMatch(/AcreOS models pad inventory/i);
     expect(flat).toMatch(/create, edit and retire/i);
     expect(flat).toMatch(/in bulk/i);
-    // Occupancy over pads is the whole point of modelling them: a pad nobody
-    // has ever leased is exactly the vacancy a lease-derived count cannot see.
     expect(flat).toMatch(/occupancy is computed over those pads/i);
-    // …and the retired claims must not come back.
     expect(flat).not.toMatch(/no lot\/pad inventory model/i);
     expect(flat).not.toMatch(/nothing in AcreOS creates one today/i);
     expect(flat).not.toMatch(/treat the pad inventory as absent/i);
-    // The enumeration that used to read "never imply the platform models pads,
-    // home titles, or submetering" drops PADS and keeps the other two.
-    expect(flat).toMatch(/never imply the platform models home titles or submetering/i);
+
+    // The never-imply enumeration now guards the residuals, not the home side.
+    expect(flat).toMatch(/never imply title verification/i);
     expect(flat).not.toMatch(/never imply the platform models pads/i);
+    // The home side is no longer disclosed as absent.
+    expect(flat).not.toMatch(/no chattel-title tracking/i);
+    expect(flat).not.toMatch(/no utilities pass-through billing yet/i);
   });
 });
 

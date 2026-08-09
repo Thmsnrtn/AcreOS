@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt, gte, lte, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -59,6 +59,8 @@ import {
   commercialSalesReports,
   leaseRentSchedule,
   propertyExpenses,
+  meterReads,
+  utilityBills,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
 import {
@@ -93,6 +95,17 @@ import {
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
+import {
+  computeLotRentSplit,
+  type LotRentLeaseInput,
+} from "@shared/rental/lotRentSplit";
+import {
+  computeUtilityBillback,
+  renderUtilityBillbackStatement,
+  type UtilityKind,
+  type SubmeterPadInput,
+  type RubsPadInput,
+} from "@shared/rental/utilityBillback";
 import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
 import { computePerSqftMetrics } from "@shared/rental/perSqft";
 import type { AuthenticatedRequest } from "./types/request";
@@ -283,6 +296,65 @@ const rentScheduleStepSchema = z
     (s) => s.stepType !== "cpi" || (s.cpiIndexBase != null && s.cpiIndexCurrent != null),
     { message: "cpi step requires cpiIndexBase and cpiIndexCurrent", path: ["cpiIndexBase"] },
   );
+
+// ----------------------------------------------------------------------------
+// Mobile-home core (Stage 2) — operator data-entry + compute-only schemas.
+// ----------------------------------------------------------------------------
+// Every field is an OPERATOR-SUPPLIED fact. Nothing here fabricates a POH/TOH
+// flag, a meter read, a utility rate or an allocation — the split/billback
+// engines refuse rather than guess. Money posture (be the rail, not the
+// provider): the billback route COMPUTES and FREEZES a proposed statement; it
+// posts no rent_charge and moves no money.
+const utilityKindEnum = z.enum(["water", "sewer", "trash", "electric", "gas"]);
+
+/** The chattel-title RECORD path — operator-asserted, no registry verification implied. */
+const mobileHomeUnitSchema = z.object({
+  homeOwnership: z.enum(["park_owned", "tenant_owned"]).nullable().optional(),
+  chattelTitleType: z.enum(["dmv_vin", "real_property"]).nullable().optional(),
+  chattelVin: z.string().max(64).nullable().optional(),
+  chattelTitleStatus: z.string().max(120).nullable().optional(),
+  chattelTitleNotes: z.string().max(2000).nullable().optional(),
+});
+
+/** A submeter reading for a pad — a recorded meter face, never inferred. */
+const meterReadSchema = z.object({
+  utilityKind: utilityKindEnum,
+  readOn: isoDate,
+  reading: z.number().finite().nonnegative(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * A utility pass-through billback to compute + freeze. SUBMETER needs a rate and
+ * reads the pads' meter_reads; RUBS needs a master bill and a basis (occupants
+ * supplied per-pad, sqft from the unit record, equal trivial). Refuse-not-
+ * fabricate is enforced by the engine; the route writes nothing on refusal.
+ */
+const utilityBillbackSchema = z
+  .object({
+    utilityKind: utilityKindEnum,
+    periodStart: isoDate,
+    periodEnd: isoDate,
+    method: z.enum(["submeter", "rubs"]),
+    // submeter
+    ratePerUnitCents: z.number().int().min(0).nullable().optional(),
+    // rubs
+    masterBillCents: z.number().int().min(0).nullable().optional(),
+    basis: z.enum(["equal", "occupants", "sqft"]).nullable().optional(),
+    occupantsByUnitId: z.record(z.string(), z.number().int().min(0)).optional(),
+  })
+  .refine((b) => b.method !== "submeter" || b.ratePerUnitCents != null, {
+    message: "submeter billback requires ratePerUnitCents",
+    path: ["ratePerUnitCents"],
+  })
+  .refine((b) => b.method !== "rubs" || b.masterBillCents != null, {
+    message: "rubs billback requires masterBillCents",
+    path: ["masterBillCents"],
+  })
+  .refine((b) => b.method !== "rubs" || b.basis != null, {
+    message: "rubs billback requires a basis",
+    path: ["basis"],
+  });
 
 // ----------------------------------------------------------------------------
 // Workflow payment events (Wave B — "wire the engine")
@@ -2370,6 +2442,385 @@ export function registerRentLedgerRoutes(app: Express): void {
         camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
       });
       return res.json({ perSqft: metrics });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ==========================================================================
+  // MOBILE-HOME CORE (Stage 2) — lot-vs-home rent split + utility billback.
+  //
+  // Two home-side capabilities the lot-lease beta lacked, wired behind the
+  // existing Rentals doors (no new nav, no new route file). Every handler stores
+  // or reads OPERATOR-SUPPLIED facts, or COMPUTES from them with a refuse-not-
+  // fabricate engine. Money posture (founder ruling "be the rail, not the
+  // provider"): the billback route computes + FREEZES a proposed statement and
+  // posts NO rent_charge — the operator bills on their own rails, elsewhere.
+  // No residential comps: the split's conversion-trade delta compares the
+  // operator's OWN recorded POH/TOH rents, never a submarket comp.
+  // ==========================================================================
+
+  // ── A property's lot-vs-home split + POH/TOH mix ───────────────────────────
+  // Reads the property's pads (for the recorded POH/TOH flag) and their active
+  // leases' rent_charges (the operator-supplied lot/home components, taken from
+  // the latest month a component was charged), then calls the pure engine. A
+  // lease whose split is not recorded is REFUSED per-lease, never inferred.
+  app.get("/api/properties/:propertyId/mobile-home/lot-rent-split", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // The pads and their recorded ownership. A pad with no recorded POH/TOH
+      // flag surfaces as unclassified — the engine refuses it, never guesses.
+      const pads = await db
+        .select({
+          id: rentalUnits.id,
+          label: rentalUnits.label,
+          homeOwnership: rentalUnits.homeOwnership,
+        })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propertyId),
+          eq(rentalUnits.kind, "pad"),
+        ));
+      const padById = new Map(pads.map((p) => [p.id, p]));
+
+      // The active leases sitting on those pads.
+      const activeLeases = pads.length
+        ? await db
+            .select({ id: rentalLeases.id, unitId: rentalLeases.unitId })
+            .from(rentalLeases)
+            .where(and(
+              eq(rentalLeases.organizationId, orgId),
+              eq(rentalLeases.propertyId, propertyId),
+              eq(rentalLeases.status, "active"),
+              inArray(rentalLeases.unitId, pads.map((p) => p.id)),
+            ))
+        : [];
+
+      // The operator-supplied lot/home components: the amount of the latest month
+      // each component was charged for each lease. Null when not recorded → the
+      // engine refuses that lease's split rather than infer it.
+      const leaseIds = activeLeases.map((l) => l.id);
+      const componentCharges = leaseIds.length
+        ? await db
+            .select({
+              leaseId: rentCharges.leaseId,
+              rentComponent: rentCharges.rentComponent,
+              amountCents: rentCharges.amountCents,
+              chargedForMonth: rentCharges.chargedForMonth,
+            })
+            .from(rentCharges)
+            .where(and(
+              eq(rentCharges.organizationId, orgId),
+              inArray(rentCharges.leaseId, leaseIds),
+              inArray(rentCharges.rentComponent, ["lot", "home"]),
+            ))
+        : [];
+
+      // Reduce to the latest-month lot and home amount per lease.
+      type Comp = { cents: number; month: string };
+      const byLease = new Map<string, { lot?: Comp; home?: Comp }>();
+      for (const c of componentCharges) {
+        if (c.rentComponent !== "lot" && c.rentComponent !== "home") continue;
+        const month = String(c.chargedForMonth);
+        const slot = byLease.get(c.leaseId) ?? {};
+        const key = c.rentComponent;
+        const existing = slot[key];
+        if (!existing || month > existing.month) {
+          slot[key] = { cents: Number(c.amountCents), month };
+        }
+        byLease.set(c.leaseId, slot);
+      }
+
+      const inputs: LotRentLeaseInput[] = activeLeases.map((l) => {
+        const pad = l.unitId ? padById.get(l.unitId) : undefined;
+        const comp = byLease.get(l.id) ?? {};
+        return {
+          ref: pad?.label ?? l.id,
+          homeOwnership: pad?.homeOwnership ?? null,
+          lotRentCents: comp.lot?.cents ?? null,
+          homeRentCents: comp.home?.cents ?? null,
+        };
+      });
+
+      const summary = computeLotRentSplit(inputs);
+      return res.json({ propertyId, padCount: pads.length, leaseCount: activeLeases.length, summary });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Meter reads — the submeter billback input (writer) ─────────────────────
+  // A reading is an operator-asserted meter face. Re-recording the same
+  // (pad, utility, date) UPSERTs (a correction) rather than double-listing it.
+  app.post("/api/rentals/units/:id/meter-reads", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = meterReadSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+      if (!unit) return Errors.notFound(res, "Rental unit");
+
+      const [saved] = await db.insert(meterReads).values({
+        organizationId: orgId,
+        unitId: unit.id,
+        utilityKind: parsed.data.utilityKind,
+        readOn: parsed.data.readOn,
+        reading: String(parsed.data.reading),
+        notes: parsed.data.notes ?? null,
+      })
+        .onConflictDoUpdate({
+          target: [meterReads.unitId, meterReads.utilityKind, meterReads.readOn],
+          set: {
+            reading: String(parsed.data.reading),
+            notes: parsed.data.notes ?? null,
+          },
+        })
+        .returning();
+
+      logger.info("[MH] meter read recorded", {
+        orgId, unitId: unit.id, utilityKind: parsed.data.utilityKind, readId: saved?.id,
+      });
+      return res.json({ meterRead: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Meter reads — list for a unit (reader), optionally by utility ──────────
+  app.get("/api/rentals/units/:id/meter-reads", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+      if (!unit) return Errors.notFound(res, "Rental unit");
+
+      const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
+      const reads = await db.select().from(meterReads)
+        .where(and(
+          eq(meterReads.organizationId, orgId),
+          eq(meterReads.unitId, unit.id),
+          ...(utilityFilter.success ? [eq(meterReads.utilityKind, utilityFilter.data)] : []),
+        ))
+        .orderBy(desc(meterReads.readOn));
+      return res.json({ reads, count: reads.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Generate a utility billback — compute + FREEZE, propose per-pad charges ─
+  // SUBMETER pairs each pad's two latest meter_reads; RUBS allocates the master
+  // bill by a recorded basis (occupants supplied per-pad, sqft from the unit
+  // record, equal trivial). Refuses (400, writes nothing) when the WHOLE
+  // computation is not producible. On success it FREEZES one utility_bills row
+  // per BILLED pad (the exhibit) and RETURNS the proposed per-pad charge lines —
+  // it posts NO rent_charge and moves no money (be the rail, not the provider).
+  app.post("/api/properties/:propertyId/utility-billback/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = utilityBillbackSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.periodEnd < parsed.data.periodStart) {
+        return Errors.badRequest(res, "periodEnd must not precede periodStart");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      const pads = await db
+        .select({ id: rentalUnits.id, label: rentalUnits.label, squareFeet: rentalUnits.squareFeet })
+        .from(rentalUnits)
+        .where(and(
+          eq(rentalUnits.organizationId, orgId),
+          eq(rentalUnits.propertyId, propertyId),
+          eq(rentalUnits.kind, "pad"),
+        ));
+      if (pads.length === 0) return Errors.badRequest(res, "This property has no pads to bill");
+
+      const utilityKind = parsed.data.utilityKind as UtilityKind;
+      let result;
+      if (parsed.data.method === "submeter") {
+        // Each pad's latest two reads (read_on ≤ periodEnd): current = newest,
+        // prior = the one before. Fewer than two → the engine refuses that pad.
+        const submeterPads: SubmeterPadInput[] = [];
+        for (const pad of pads) {
+          const reads = await db
+            .select({ reading: meterReads.reading, readOn: meterReads.readOn })
+            .from(meterReads)
+            .where(and(
+              eq(meterReads.organizationId, orgId),
+              eq(meterReads.unitId, pad.id),
+              eq(meterReads.utilityKind, utilityKind),
+              lte(meterReads.readOn, parsed.data.periodEnd),
+            ))
+            .orderBy(desc(meterReads.readOn))
+            .limit(2);
+          submeterPads.push({
+            unitId: pad.id,
+            currentReading: reads[0] != null ? Number(reads[0].reading) : null,
+            priorReading: reads[1] != null ? Number(reads[1].reading) : null,
+          });
+        }
+        result = computeUtilityBillback({
+          method: "submeter",
+          ratePerUnitCents: parsed.data.ratePerUnitCents ?? null,
+          pads: submeterPads,
+        });
+      } else {
+        const basis = parsed.data.basis ?? null;
+        const rubsPads: RubsPadInput[] = pads.map((pad) => {
+          let basisValue: number | null = null;
+          if (basis === "sqft") basisValue = pad.squareFeet ?? null;
+          else if (basis === "occupants") basisValue = parsed.data.occupantsByUnitId?.[pad.id] ?? null;
+          return { unitId: pad.id, basisValue };
+        });
+        result = computeUtilityBillback({
+          method: "rubs",
+          masterBillCents: parsed.data.masterBillCents ?? null,
+          basis,
+          pads: rubsPads,
+        });
+      }
+
+      // Honest whole-refusal — write nothing, say exactly why.
+      if (result.refusedReason) {
+        return Errors.badRequest(res, result.refusedReason);
+      }
+
+      const statementMarkdown = renderUtilityBillbackStatement(result, {
+        utilityKind,
+        periodStart: parsed.data.periodStart,
+        periodEnd: parsed.data.periodEnd,
+      });
+
+      // Freeze one row per BILLED pad (a refused pad has no bill to freeze — it is
+      // still returned in the response so the operator sees why). Re-generating
+      // UPSERTs the snapshot rather than double-billing the pad.
+      const generatedAt = new Date();
+      const billedLines = result.perPad.filter((p) => p.refusedReason == null && p.allocatedCents != null);
+      const labelById = new Map(pads.map((p) => [p.id, p.label]));
+      const frozen = [];
+      for (const line of billedLines) {
+        const [saved] = await db.insert(utilityBills).values({
+          organizationId: orgId,
+          propertyId,
+          unitId: line.unitId,
+          utilityKind,
+          periodStart: parsed.data.periodStart,
+          periodEnd: parsed.data.periodEnd,
+          method: result.method,
+          masterBillCents: result.masterBillCents,
+          allocatedCents: line.allocatedCents,
+          basis: result.basis,
+          coverageComplete: result.coverageComplete,
+          statementMarkdown,
+          generatedAt,
+        })
+          .onConflictDoUpdate({
+            target: [
+              utilityBills.unitId,
+              utilityBills.utilityKind,
+              utilityBills.periodStart,
+              utilityBills.periodEnd,
+            ],
+            set: {
+              method: result.method,
+              masterBillCents: result.masterBillCents,
+              allocatedCents: line.allocatedCents,
+              basis: result.basis,
+              coverageComplete: result.coverageComplete,
+              statementMarkdown,
+              generatedAt,
+            },
+          })
+          .returning();
+        if (saved) frozen.push(saved);
+      }
+
+      logger.info("[MH] utility billback generated", {
+        orgId, propertyId, utilityKind, method: result.method,
+        billedPads: billedLines.length, coverageComplete: result.coverageComplete,
+      });
+      return res.json({
+        billback: result,
+        statementMarkdown,
+        proposedLines: result.perPad.map((p) => ({ ...p, label: labelById.get(p.unitId) ?? null })),
+        frozenCount: frozen.length,
+        // Compute-only: no rent_charge is posted; the operator bills on their own rails.
+        posted: false,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Utility bills — list a property's frozen billback statements (reader) ──
+  app.get("/api/properties/:propertyId/utility-bills", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+
+      const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
+      const bills = await db.select().from(utilityBills)
+        .where(and(
+          eq(utilityBills.organizationId, orgId),
+          eq(utilityBills.propertyId, propertyId),
+          ...(utilityFilter.success ? [eq(utilityBills.utilityKind, utilityFilter.data)] : []),
+        ))
+        .orderBy(desc(utilityBills.periodStart));
+      return res.json({ bills, count: bills.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Chattel-title RECORD path — operator-asserted, verification-free ───────
+  // Writes the pad's home_ownership (POH/TOH) + chattel-title columns. RECORD
+  // ONLY: it stores what the operator asserts and NOTHING more — no DMV/registry
+  // verification, no lienholder assertion, no title signing is implied or
+  // performed. A partial update; only sent keys are written.
+  app.patch("/api/rentals/units/:id/mobile-home", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = mobileHomeUnitSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (parsed.data.homeOwnership !== undefined) updates.homeOwnership = parsed.data.homeOwnership;
+      if (parsed.data.chattelTitleType !== undefined) updates.chattelTitleType = parsed.data.chattelTitleType;
+      if (parsed.data.chattelVin !== undefined) updates.chattelVin = parsed.data.chattelVin;
+      if (parsed.data.chattelTitleStatus !== undefined) updates.chattelTitleStatus = parsed.data.chattelTitleStatus;
+      if (parsed.data.chattelTitleNotes !== undefined) updates.chattelTitleNotes = parsed.data.chattelTitleNotes;
+
+      const [updated] = await db.update(rentalUnits).set(updates)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Rental unit");
+
+      logger.info("[MH] mobile-home unit record updated", {
+        orgId, unitId: updated.id, fields: Object.keys(parsed.data),
+      });
+      return res.json({
+        unit: updated,
+        // Stated on the wire so no client can imply otherwise.
+        record:
+          "This records what you asserted about the home's ownership and title. AcreOS does not verify " +
+          "the title with any DMV or registry and asserts no lien — it is your record, not a registration.",
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }

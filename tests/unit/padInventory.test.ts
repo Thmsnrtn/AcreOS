@@ -555,21 +555,26 @@ describe("the mobile_home registry entry states the pad gap as CLOSED", () => {
     expect(flat).toMatch(/idempotent/i);
   });
 
-  it("keeps the two gaps that genuinely remain", () => {
-    expect(flat).toMatch(/no home-as-chattel handling/i);
-    expect(flat).toMatch(/no utilities pass-through billing/i);
+  it("the home side is now DELIVERED (Wave 5 core), disclosing only the genuine residuals", () => {
+    // REWRITTEN at the flip (not deleted): the two gaps this used to pin as
+    // out-of-scope — home-as-chattel handling and utilities pass-through — are
+    // now built (shared/rental/lotRentSplit.ts + utilityBillback.ts), so the
+    // registry NAMES them delivered and discloses only what an honest core cannot
+    // reach: submarket lot-rent comps and DMV/VIN title verification.
+    expect(flat).toMatch(/home-vs-lot rent SPLIT/i);
+    expect(flat).toMatch(/utility pass-through billback/i);
+    expect(flat).toMatch(/submarket lot-rent comps/i);
+    expect(flat).toMatch(/VERIFICATION/i);
   });
 
-  it("maturity is now beta (2026-08 audit Wave 2) — a lot-lease-only beta; the home-side gaps are DISCLOSED, not fabricated", () => {
-    // Rewritten to the new truth, not deleted: the founder promoted mobile_home
-    // roadmap → beta on the honest tier definition. Pad inventory is real
-    // (three write paths set rental_units.kind='pad', asserted above) and all
-    // five templates fire, so lot-lease operations are honest and live. The
-    // home side — chattel titles, home-vs-lot rent split, utilities pass-through
-    // — is out of beta scope and stays DISCLOSED in the persona voice (the two
-    // "keeps the two gaps" / persona assertions in this file still hold), so
-    // beta presents no stub as live. Those gaps are the CORE build.
-    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("beta");
+  it("maturity is now CORE (Wave 5) — the home-side engines are built, not disclosed as gaps", () => {
+    // REWRITTEN at the flip (not deleted): Wave 5 built the home-vs-lot rent
+    // split + POH/TOH mix engine and the submeter/RUBS utility-billback engine,
+    // each a pure tested engine that refuses rather than fabricates, so the two
+    // named core gaps are closed and calling mobile_home "core" is honest. Core
+    // still does NOT claim submarket lot-rent comps or DMV/VIN title
+    // verification — those residuals are disclosed, not fabricated.
+    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("core");
   });
 });
 
@@ -591,14 +596,21 @@ describe("the Pax mobile-homes voice matches what the product does", () => {
     expect(flat).not.toMatch(/treat the pad inventory as absent/i);
   });
 
-  it("the never-imply enumeration drops pads and KEEPS titles and submetering", () => {
-    expect(flat).toMatch(/never imply the platform models home titles or submetering/i);
+  it("the never-imply enumeration now guards VERIFICATION / comps / sale-execution, not the home side itself", () => {
+    // REWRITTEN at the flip: the platform now MODELS home titles (record-only)
+    // and submetering, so the voice no longer says "never imply titles or
+    // submetering" — it guards the honest residuals instead.
+    expect(flat).toMatch(/never imply title verification/i);
     expect(flat).not.toMatch(/never imply the platform models pads/i);
   });
 
-  it("still refuses to promise chattel titles or utilities pass-through", () => {
-    expect(p.systemPromptAppendix).toContain("no chattel-title tracking");
-    expect(p.systemPromptAppendix).toMatch(/no utilities pass-through/i);
+  it("offers the home side (split + billback) while refusing verification / comps / sale execution", () => {
+    // REWRITTEN at the flip: chattel titles and utilities pass-through are now
+    // real (record-only titles; submeter/RUBS billback), so the voice offers
+    // them and refuses only the honest residuals.
+    expect(flat).toMatch(/home-vs-lot rent split/i);
+    expect(flat).toMatch(/utilities pass-through is billed/i);
+    expect(flat).toMatch(/never imply title verification/i);
   });
 
   it("the appendix's pad claim is backed by a real write site, not just prose", () => {
