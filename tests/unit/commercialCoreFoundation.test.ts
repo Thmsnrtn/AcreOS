@@ -128,6 +128,7 @@ describe("honesty — Stage 1 stores facts, it does not fabricate the engines' n
     // ad-hoc money arithmetic in the handler. This is where a fabricated CAM bill
     // would sneak in, so it is pinned.
     expect(ledger).toContain("computeCamReconciliation(");
+    expect(ledger).toContain("computePercentageRent(");
     expect(ledger).toMatch(/if \(result\.refusedReason\)/);
     expect(ledger).toContain('generatedBy: "engine"');
     // No hand-rolled cap-rate / NOI arithmetic leaked into the route file.

@@ -91,6 +91,7 @@ import {
   renderCamStatementMarkdown,
   monthsInPeriod,
 } from "@shared/rental/camReconciliation";
+import { computePercentageRent } from "@shared/rental/percentageRent";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -2093,6 +2094,74 @@ export function registerRentLedgerRoutes(app: Express): void {
         ))
         .orderBy(desc(commercialSalesReports.periodStart));
       return res.json({ salesReports: reports, count: reports.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Percentage rent — compute the overage from REPORTED sales ──────────────
+  // Read-and-compute (persists nothing): the sales reports are the frozen facts,
+  // and the overage is a pure function of them + the lease terms, computed on
+  // demand. Refuses (400) when no sales are reported or a breakpoint input is
+  // missing — never bills on an assumed sales figure. Posting a charge for the
+  // overage stays a separate operator action (be the rail, not the provider).
+  app.post("/api/leases/:id/percentage-rent/compute", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = z
+        .object({ periodStart: isoDate, periodEnd: isoDate })
+        .safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.periodEnd < parsed.data.periodStart) {
+        return Errors.badRequest(res, "periodEnd must not precede periodStart");
+      }
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      // Sum the reported gross sales whose period falls inside the window. No
+      // report → grossSales stays null and the engine refuses (no assumed sales).
+      const salesRows = await db
+        .select({ grossSalesCents: commercialSalesReports.grossSalesCents })
+        .from(commercialSalesReports)
+        .where(and(
+          eq(commercialSalesReports.organizationId, orgId),
+          eq(commercialSalesReports.leaseId, lease.id),
+          gte(commercialSalesReports.periodStart, parsed.data.periodStart),
+          lte(commercialSalesReports.periodEnd, parsed.data.periodEnd),
+        ));
+      const grossSalesCents = salesRows.length
+        ? salesRows.reduce((s, r) => s + Number(r.grossSalesCents), 0)
+        : null;
+
+      // Period base rent = current monthly base rent × months in the window.
+      // Stage 4 (escalation-aware rent) refines this to the scheduled base.
+      const periodMonths = monthsInPeriod(parsed.data.periodStart, parsed.data.periodEnd);
+      const periodBaseRentCents =
+        lease.monthlyRentCents != null && periodMonths > 0
+          ? lease.monthlyRentCents * periodMonths
+          : null;
+
+      const result = computePercentageRent({
+        lease: {
+          pctRentBps: lease.pctRentBps,
+          pctRentBreakpointType: lease.pctRentBreakpointType as "natural" | "artificial" | null,
+          pctRentArtificialBreakpointCents: lease.pctRentArtificialBreakpointCents,
+          periodBaseRentCents,
+        },
+        grossSalesCents,
+      });
+
+      if (result.refusedReason) {
+        return Errors.badRequest(res, result.refusedReason);
+      }
+
+      return res.json({
+        percentageRent: result,
+        period: { start: parsed.data.periodStart, end: parsed.data.periodEnd, months: periodMonths },
+        salesReportCount: salesRows.length,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
