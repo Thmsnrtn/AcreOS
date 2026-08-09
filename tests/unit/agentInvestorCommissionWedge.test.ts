@@ -15,8 +15,10 @@
  *      only when an explicit config exists (never fabricate).
  *   4. The duplicate standalone /api/commissions router is gone — one source of
  *      truth.
- *   5. The MLS / client-vs-own-book / dual-agency hard-stops stay roadmap and
- *      disclosed.
+ *   5. MLS / residential-comps stays the deliberate roadmap hard-stop, while
+ *      client-vs-own-book (deal_book, migration 0226) is now LIVE and
+ *      dual-agency is a RECORD-ONLY tracker (never generated, sent, or signed) —
+ *      all disclosed honestly in the persona voice.
  *
  * Source-shape assertions (node env, no DOM) — same pattern as
  * tailVerticalGates.test.ts.
@@ -95,10 +97,19 @@ describe("the customer commission page gates + stays honest", () => {
     expect(page).toContain("CommissionsPage");
   });
 
-  it("discloses the roadmap hard-stops in the persona voice (not fabricated)", () => {
+  it("still discloses the MLS/comps hard-stop, and describes the now-live book split + record-only dual-agency honestly", () => {
+    // MLS / residential-comps stays the deliberate NOT-built hard-stop — a land
+    // workspace won't fake residential comps.
     expect(page).toMatch(/MLS/);
-    expect(page).toMatch(/own book/i);
+    // Client-vs-own-book is now LIVE (deal_book, migration 0226) — the page names it.
+    expect(page).toMatch(/own book|own investment/i);
+    // Dual-agency is present AND explicitly framed as record-only — never
+    // generating, sending, or e-signing anything (legal-signing hard-stop).
     expect(page).toMatch(/dual-agency/i);
+    expect(page).toMatch(/record-only|never (generate|sign|send)/i);
+    // Refuse-not-fabricate is disclosed for the new split/forecast surfaces.
+    expect(page).toMatch(/split/i);
+    expect(page).toMatch(/refuse|never .*(assumed|made-up|invent|fabricat)/i);
   });
 
   it("the underlying page renders honest empty/zero states, never an invented number", () => {

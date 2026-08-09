@@ -8948,6 +8948,24 @@ const STATEMENTS = [
   `ALTER TABLE "maintenance_tickets" ADD COLUMN IF NOT EXISTS "reservation_id" varchar`,
   // Org-LEADING + PARTIAL: at most ONE turnover-cleaning ticket per reservation.
   `CREATE UNIQUE INDEX IF NOT EXISTS "maintenance_tickets_org_reservation_uk" ON "maintenance_tickets" ("organization_id", "reservation_id") WHERE "reservation_id" IS NOT NULL`,
+
+  // ── 0226 agent_investor: client-vs-own-book + dual-agency disclosure tracker ─
+  // COLUMNS ONLY on `deals` — NO new table (table-count stays 756), reachability
+  // FLAT (47/59). All nullable. Mirrors migrations/0226_agent_investor_commission_book.sql
+  // + shared/schema.ts (deals).
+  //   • deal_book ('client' | 'own_investment' | null) — only client deals earn a
+  //     commission; an own_investment deal is the agent's own P&L. NULL = client
+  //     (what a deal always was). The deal-close auto-record SKIPS own_investment.
+  //   • dual_agency_side / disclosure_acknowledged_at / disclosure_doc_ref — a
+  //     RECORD-ONLY dual-agency tracker. AcreOS never generates, sends, or e-signs
+  //     a disclosure (legal-signing is founder-only); these store what the operator
+  //     asserts and uploads elsewhere.
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "deal_book" text`,
+  // Org-LEADING pipeline filter: "my client deals under contract" reads by (org, book).
+  `CREATE INDEX IF NOT EXISTS "deals_org_book_idx" ON "deals" ("organization_id", "deal_book")`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "dual_agency_side" text`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_acknowledged_at" timestamp`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_doc_ref" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

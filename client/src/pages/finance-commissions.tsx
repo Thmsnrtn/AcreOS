@@ -42,13 +42,25 @@ function CommissionRoadmapDisclosure() {
             Live now: tiered commission tracking, YTD summaries, and per-agent
             statements, with a commission recorded automatically when a deal
             closes (only once you've configured your tiers — never a made-up
-            number before then).
+            number before then). Now also live: net-of-split economics (your
+            agent split, an annual company-dollar cap, and per-transaction and
+            franchise fees), a pipeline GCI forecast over your under-contract
+            deals, tagging each deal as a client transaction vs. your own
+            investment (only client deals earn a commission — your own book is
+            your P&L, never a commission), and a record-only dual-agency
+            tracker. Every one of these refuses rather than fabricates: with no
+            split saved you see no split, not an assumed one.
           </p>
           <p className="text-muted-foreground">
-            Still on the roadmap, deliberately not built yet: MLS integration
-            (this is a land workspace — MLS comps are residential), separating
-            client deals from your own book, and dual-agency disclosure
-            paperwork. We'd rather show you nothing than fake these.
+            The dual-agency tracker is record-only: it stores which side you
+            represented, an acknowledgement date, and a link to a disclosure you
+            produced elsewhere. It will never generate, send, or e-sign a
+            disclosure for you — legal signing stays a human decision.
+          </p>
+          <p className="text-muted-foreground">
+            Still deliberately not built: MLS integration (this is a land
+            workspace — MLS comps are residential, and we won't fake them).
+            We'd rather show you nothing than invent it.
           </p>
         </div>
       </div>

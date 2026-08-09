@@ -23,8 +23,17 @@ export const dealRepo = {
     return capListRead(rows, LIST_READ_CAP, "getDeals", orgId);
   },
 
-  async getDealsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>> {
-    const whereClause = and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`);
+  async getDealsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions, filters?: { book?: "client" | "own_investment" }): Promise<PaginatedResult<Deal>> {
+    // agent_investor book filter (migration 0226). 'client' includes legacy-null
+    // rows (a null book was always a client deal); 'own_investment' matches only
+    // the explicitly tagged own-book deals.
+    const bookClause =
+      filters?.book === "own_investment"
+        ? sql`${deals.dealBook} = 'own_investment'`
+        : filters?.book === "client"
+        ? sql`(${deals.dealBook} = 'client' OR ${deals.dealBook} IS NULL)`
+        : undefined;
+    const whereClause = and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`, bookClause);
     const [{ count: total }] = await db.select({ count: count() }).from(deals).where(whereClause);
     const totalNum = Number(total);
     const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));

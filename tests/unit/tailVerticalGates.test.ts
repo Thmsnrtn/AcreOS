@@ -263,9 +263,12 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     (agent_investor-gated) reading the org's own records + YTD summaries,
     //     plus auto-recording the closing agent's commission on deal close
     //     (gated on an explicit saved tier config — honest empty/zero states,
-    //     never a fabricated number). MLS (residential-comps hard-stop),
-    //     client-vs-own-book (needs a schema field + migration) and dual-agency
-    //     disclosures (legal-signing is founder-only) stay roadmap-for-core and
+    //     never a fabricated number). Wave 5 added the measured economics —
+    //     commission split/cap/fees engine, client-vs-own-book (deal_book,
+    //     migration 0226), and a pipeline GCI forecast — plus a record-only
+    //     dual-agency tracker (no signing). ONLY MLS/CMA (residential-comps
+    //     hard-stop) still blocks core, so the flip awaits a founder decision;
+    //     dual-agency paperwork generation/e-sign (legal-signing) stays
     //     DISCLOSED in the persona voice.
     //   - short_term_rental → CORE (Wave 5): Wave A shipped the reservations
     //     ledger + occupancy/ADR/RevPAR + a live reservation.checkout emitter;

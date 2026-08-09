@@ -22,6 +22,9 @@ import {
   recordDealCommission,
   recordCommissionPayment,
   generateCommissionStatement,
+  getSplitConfigSummary,
+  saveSplitConfig,
+  getGciForecast,
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -2165,6 +2168,69 @@ export function registerOrganizationRoutes(app: Express): void {
       });
       res.json({ success: true });
     } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Commission SPLIT (agent net-of-split) — Stage 0
+  // -----------------------------------------------------------------------
+
+  // GET /api/commissions/split — the org's split config + a computed
+  // net-of-split YTD summary. Honest empty state: when nothing is configured
+  // `config` is null and `configured` is false — never an assumed split.
+  api.get("/api/commissions/split", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const summary = await getSplitConfigSummary(req.organization.id, year);
+      res.json(summary);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // PUT /api/commissions/split/config — save the org's OWN split arrangement.
+  // Admin-scoped like the tier-config PUT (requireAdminOrAbove), not widened.
+  const splitConfigSchema = z.object({
+    // Agent's share of the (franchise-adjusted) gross, in basis points.
+    agentSplitBps: z.number().int().min(0).max(10000),
+    // Annual company-dollar cap in cents; null/omitted = uncapped.
+    annualCapCents: z.number().int().min(0).nullable().optional(),
+    // Flat per-transaction fee in cents; null/omitted = none.
+    transactionFeeCents: z.number().int().min(0).nullable().optional(),
+    // Franchise/royalty fee in basis points; null/omitted = none.
+    franchiseFeeBps: z.number().int().min(0).max(10000).nullable().optional(),
+  });
+
+  api.put("/api/commissions/split/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+    try {
+      const parsed = splitConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      const body = parsed.data;
+      await saveSplitConfig(req.organization.id, {
+        agentSplitBps: body.agentSplitBps,
+        annualCapCents: body.annualCapCents ?? null,
+        transactionFeeCents: body.transactionFeeCents ?? null,
+        franchiseFeeBps: body.franchiseFeeBps ?? null,
+      });
+      res.json({ success: true });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // GET /api/commissions/forecast — pipeline GCI forecast (Stage 2). Projects
+  // gross commission over under-contract client-book deals, and agent net when a
+  // split is configured. REFUSES (applicable:false) when no commission config is
+  // saved — no assumed rate, no invented deals.
+  api.get("/api/commissions/forecast", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const forecast = await getGciForecast(req.organization.id, year);
+      res.json(forecast);
+    } catch (err) {
       Errors.internal(res, err);
     }
   });
