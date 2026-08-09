@@ -54,6 +54,10 @@ import {
   tenants,
   properties,
   organizations,
+  camExpensePools,
+  camReconciliations,
+  commercialSalesReports,
+  leaseRentSchedule,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
 import {
@@ -77,6 +81,10 @@ import {
 } from "./services/rental/depositDisposition";
 import { computeDepositDeadline, depositDeadlineCountdown } from "@shared/regulatory/depositReturnRules";
 import { tenantDisplayName } from "@shared/rental/tenantName";
+import {
+  PROPERTY_EXPENSE_CATEGORIES,
+  type PropertyExpenseCategory,
+} from "@shared/rental/propertyExpense";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -156,6 +164,115 @@ const dispositionLetterSchema = z.object({
   /** Tenant-supplied forwarding address, when one was recorded. */
   forwardingAddress: z.string().max(500).optional(),
 });
+
+// ----------------------------------------------------------------------------
+// Commercial → core (Wave 4) — operator data-entry schemas.
+// ----------------------------------------------------------------------------
+// Every field below is an OPERATOR-SUPPLIED fact. Nothing here computes a cap
+// rate, a CAM true-up or a percentage-rent overage — those are the later-stage
+// engines. Basis-point fields are bounded [0, 10000] (0–100%). Money is integer
+// cents. Dates are validated YYYY-MM-DD (isoDate), never coerced.
+const bpField = z.number().int().min(0).max(10000);
+const centsField = z.number().int().min(0);
+
+/** The additive commercial-term columns on a lease. All optional; explicit null clears. */
+const commercialTermsSchema = z.object({
+  rentableSqft: z.number().int().positive().nullable().optional(),
+  leaseType: z.enum(["gross", "nnn", "modified_gross"]).nullable().optional(),
+  camProRataBps: bpField.nullable().optional(),
+  camEstimateMonthlyCents: centsField.nullable().optional(),
+  camBaseYearStopCents: centsField.nullable().optional(),
+  pctRentBps: bpField.nullable().optional(),
+  pctRentBreakpointType: z.enum(["natural", "artificial"]).nullable().optional(),
+  pctRentArtificialBreakpointCents: centsField.nullable().optional(),
+  pctRentFrequency: z.enum(["monthly", "quarterly", "annual"]).nullable().optional(),
+  lateFeeType: z.enum(["flat", "pct_of_overdue", "per_diem", "none"]).nullable().optional(),
+  lateFeeFlatCents: centsField.nullable().optional(),
+  lateFeePctBps: bpField.nullable().optional(),
+  lateFeeGraceDays: z.number().int().min(0).max(365).nullable().optional(),
+  lateFeeMaxCents: centsField.nullable().optional(),
+  lateFeePerDayCents: centsField.nullable().optional(),
+});
+
+/** A CAM recoverable-pool definition (which Schedule-E categories, the gross-up, caps). */
+const camPoolSchema = z.object({
+  poolKind: z.enum(["cam", "property_tax", "insurance", "all_in"]),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  // The recoverable set is asserted against the canonical Schedule-E vocabulary —
+  // a category outside PROPERTY_EXPENSE_CATEGORIES is a client error, not silently kept.
+  recoverableCategories: z
+    .array(z.enum([...PROPERTY_EXPENSE_CATEGORIES] as [string, ...string[]]))
+    .min(1),
+  totalRentableSqft: z.number().int().positive().nullable().optional(),
+  adminFeeBps: bpField.nullable().optional(),
+  grossUpPct: z.number().min(0).max(100).nullable().optional(),
+  capNote: z.string().max(2000).nullable().optional(),
+  exclusionNote: z.string().max(2000).nullable().optional(),
+  status: z.enum(["draft", "reconciling", "reconciled"]).optional(),
+});
+
+/**
+ * A CAM reconciliation the operator RECORDS by hand (stage 1). The engine-computed
+ * snapshot (poolActual, recoverableShare, delta, statement) is filled by the
+ * later reconciliation engine — here, only operator-supplied figures are stored,
+ * and provenance is stamped `generatedBy: "operator_entered"` so nothing masquerades
+ * as an engine statement. Omitted money fields stay null (honest absence, not zero).
+ */
+const camReconciliationSchema = z.object({
+  leaseId: z.string().min(1),
+  periodStart: isoDate.nullable().optional(),
+  periodEnd: isoDate.nullable().optional(),
+  proRataBpsUsed: bpField.nullable().optional(),
+  proRataBasis: z.enum(["lease_fixed", "sqft"]).nullable().optional(),
+  leasedSqftUsed: z.number().int().min(0).nullable().optional(),
+  totalRentableSqftUsed: z.number().int().min(0).nullable().optional(),
+  poolActualCents: centsField.nullable().optional(),
+  recoverableShareCents: centsField.nullable().optional(),
+  estimatedBilledCents: centsField.nullable().optional(),
+  deltaCents: z.number().int().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/** The tenant's reported gross sales for a period — the percentage-rent input. */
+const salesReportSchema = z.object({
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  grossSalesCents: centsField,
+  reportedBy: z.string().max(200).nullable().optional(),
+  reportSource: z.enum(["tenant_statement", "operator_entered", "amended"]).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/** One rent-escalation step. The rent for a month is computed FROM the applicable step. */
+const rentScheduleStepSchema = z
+  .object({
+    effectiveMonth: isoDate,
+    stepType: z.enum(["fixed_amount", "fixed_pct", "cpi"]),
+    amountCents: centsField.nullable().optional(),
+    pctBps: bpField.nullable().optional(),
+    cpiIndexBase: z.number().positive().nullable().optional(),
+    cpiIndexCurrent: z.number().positive().nullable().optional(),
+    cpiIndexName: z.string().max(200).nullable().optional(),
+    cpiIndexPublishedOn: isoDate.nullable().optional(),
+    floorPctBps: bpField.nullable().optional(),
+    ceilingPctBps: bpField.nullable().optional(),
+  })
+  // The discriminating field for each step type must actually be present — a
+  // 'fixed_amount' step with no amount, or a 'fixed_pct' with no rate, is not a
+  // schedulable step. CPI needs both anchor values to index against.
+  .refine((s) => s.stepType !== "fixed_amount" || s.amountCents != null, {
+    message: "fixed_amount step requires amountCents",
+    path: ["amountCents"],
+  })
+  .refine((s) => s.stepType !== "fixed_pct" || s.pctBps != null, {
+    message: "fixed_pct step requires pctBps",
+    path: ["pctBps"],
+  })
+  .refine(
+    (s) => s.stepType !== "cpi" || (s.cpiIndexBase != null && s.cpiIndexCurrent != null),
+    { message: "cpi step requires cpiIndexBase and cpiIndexCurrent", path: ["cpiIndexBase"] },
+  );
 
 // ----------------------------------------------------------------------------
 // Workflow payment events (Wave B — "wire the engine")
@@ -1523,6 +1640,355 @@ export function registerRentLedgerRoutes(app: Express): void {
           "AcreOS does not send this letter. Deliver it on your own identity, then record how and " +
           "when you delivered it — nothing here claims it was sent.",
       });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ==========================================================================
+  // COMMERCIAL → CORE (Wave 4 Stage 1) — operator data-entry for the four
+  // commercial records + a lease's commercial terms.
+  //
+  // This is the WRITE+READ foundation the later-stage engines build on: the CAM
+  // reconciliation engine, the percentage-rent engine and the escalation-aware
+  // rent schedule are SEPARATE later stages. Every handler here stores or reads
+  // OPERATOR-SUPPLIED facts only — no computed cap rate, no fabricated CAM
+  // true-up, no invented sales figure; engine-computed columns stay null until
+  // their engine exists. Money posture (founder ruling "be the rail, not the
+  // provider"): none of these moves, holds or charges a cent — each *_cents is a
+  // recorded fact, and the actual rent/CAM charges land on the existing
+  // rent_charges ledger, on the operator's own account, elsewhere.
+  // ==========================================================================
+
+  // ── A lease's commercial terms (writer for the additive lease columns) ─────
+  // A partial update: only the keys the operator SENDS are written; an omitted
+  // key is left untouched, an explicit null clears it. Presence of a value is
+  // the commercial signal — there is no inferred `commercial` flag.
+  app.patch("/api/leases/:id/commercial-terms", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = commercialTermsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const updates: Partial<typeof rentalLeases.$inferInsert> = {
+        ...parsed.data,
+        updatedAt: new Date(),
+      };
+      const [updated] = await db.update(rentalLeases).set(updates)
+        .where(and(eq(rentalLeases.id, lease.id), eq(rentalLeases.organizationId, orgId)))
+        .returning();
+
+      logger.info("[W4] lease commercial terms updated", {
+        orgId, leaseId: lease.id, fields: Object.keys(parsed.data),
+      });
+      return res.json({ lease: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── CAM expense pools — the operator's recoverable-pool DEFINITION ─────────
+  app.post("/api/properties/:propertyId/cam-pools", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+      const parsed = camPoolSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.periodEnd < parsed.data.periodStart) {
+        return Errors.badRequest(res, "periodEnd must not precede periodStart");
+      }
+
+      const [property] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!property) return Errors.notFound(res, "Property");
+
+      // A pool of a given kind is unique per property+period — a second one is an
+      // operator error, refused honestly rather than 500'd on the DB constraint.
+      const [created] = await db.insert(camExpensePools).values({
+        organizationId: orgId,
+        propertyId,
+        poolKind: parsed.data.poolKind,
+        periodStart: parsed.data.periodStart,
+        periodEnd: parsed.data.periodEnd,
+        recoverableCategories: parsed.data.recoverableCategories as PropertyExpenseCategory[],
+        totalRentableSqft: parsed.data.totalRentableSqft ?? null,
+        adminFeeBps: parsed.data.adminFeeBps ?? null,
+        grossUpPct: parsed.data.grossUpPct != null ? String(parsed.data.grossUpPct) : null,
+        capNote: parsed.data.capNote ?? null,
+        exclusionNote: parsed.data.exclusionNote ?? null,
+        status: parsed.data.status ?? "draft",
+      }).onConflictDoNothing().returning();
+
+      if (!created) {
+        return Errors.badRequest(
+          res,
+          "A CAM pool of this kind already exists for this property and period",
+        );
+      }
+      logger.info("[W4] CAM expense pool created", {
+        orgId, propertyId, poolId: created.id, poolKind: created.poolKind,
+      });
+      return res.json({ pool: created });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.get("/api/properties/:propertyId/cam-pools", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = Number(req.params.propertyId);
+      if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
+      const pools = await db.select().from(camExpensePools)
+        .where(and(
+          eq(camExpensePools.organizationId, orgId),
+          eq(camExpensePools.propertyId, propertyId),
+        ))
+        .orderBy(desc(camExpensePools.periodStart));
+      return res.json({ pools, count: pools.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── CAM reconciliations — the per-lease true-up statement ──────────────────
+  // Stage-1 writer records an operator-entered reconciliation; the engine-
+  // computed snapshot columns (byCategory, coverage, statement) stay null until
+  // the reconciliation engine lands. Provenance is stamped so nothing here reads
+  // as an engine statement. Re-recording the same (pool, lease) UPSERTs.
+  app.post("/api/cam-pools/:poolId/reconciliations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = camReconciliationSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
+        .where(and(
+          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.organizationId, orgId),
+        ));
+      if (!pool) return Errors.notFound(res, "CAM pool");
+
+      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
+        .where(and(eq(rentalLeases.id, parsed.data.leaseId), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const [saved] = await db.insert(camReconciliations).values({
+        organizationId: orgId,
+        poolId: pool.id,
+        leaseId: lease.id,
+        periodStart: parsed.data.periodStart ?? null,
+        periodEnd: parsed.data.periodEnd ?? null,
+        proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
+        proRataBasis: parsed.data.proRataBasis ?? null,
+        leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
+        totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
+        poolActualCents: parsed.data.poolActualCents ?? null,
+        recoverableShareCents: parsed.data.recoverableShareCents ?? null,
+        estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
+        estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
+        deltaCents: parsed.data.deltaCents ?? null,
+        // Engine-only columns — left null until the reconciliation engine fills them.
+        byCategoryCents: null,
+        coverageMonths: null,
+        coverageComplete: null,
+        statementMarkdown: null,
+        statementVersion: null,
+        generatedAt: new Date(),
+        generatedBy: "operator_entered",
+      })
+        .onConflictDoUpdate({
+          target: [camReconciliations.poolId, camReconciliations.leaseId],
+          set: {
+            periodStart: parsed.data.periodStart ?? null,
+            periodEnd: parsed.data.periodEnd ?? null,
+            proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
+            proRataBasis: parsed.data.proRataBasis ?? null,
+            leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
+            totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
+            poolActualCents: parsed.data.poolActualCents ?? null,
+            recoverableShareCents: parsed.data.recoverableShareCents ?? null,
+            estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
+            estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
+            deltaCents: parsed.data.deltaCents ?? null,
+            generatedAt: new Date(),
+            generatedBy: "operator_entered",
+          },
+        })
+        .returning();
+
+      logger.info("[W4] CAM reconciliation recorded", {
+        orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: saved?.id,
+      });
+      return res.json({ reconciliation: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.get("/api/cam-pools/:poolId/reconciliations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
+        .where(and(
+          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.organizationId, orgId),
+        ));
+      if (!pool) return Errors.notFound(res, "CAM pool");
+
+      const reconciliations = await db.select().from(camReconciliations)
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.poolId, pool.id),
+        ));
+      return res.json({ reconciliations, count: reconciliations.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Commercial sales reports — the percentage-rent input ───────────────────
+  // Re-reporting the same (lease, period) UPSERTs (an amendment) rather than
+  // double-counting sales; the operator asserts the source, never inferred.
+  app.post("/api/leases/:id/sales-reports", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = salesReportSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (parsed.data.periodEnd < parsed.data.periodStart) {
+        return Errors.badRequest(res, "periodEnd must not precede periodStart");
+      }
+
+      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const [saved] = await db.insert(commercialSalesReports).values({
+        organizationId: orgId,
+        leaseId: lease.id,
+        periodStart: parsed.data.periodStart,
+        periodEnd: parsed.data.periodEnd,
+        grossSalesCents: parsed.data.grossSalesCents,
+        reportedBy: parsed.data.reportedBy ?? null,
+        reportSource: parsed.data.reportSource ?? null,
+        notes: parsed.data.notes ?? null,
+      })
+        .onConflictDoUpdate({
+          target: [
+            commercialSalesReports.leaseId,
+            commercialSalesReports.periodStart,
+            commercialSalesReports.periodEnd,
+          ],
+          set: {
+            grossSalesCents: parsed.data.grossSalesCents,
+            reportedBy: parsed.data.reportedBy ?? null,
+            // An amendment to an existing period is exactly that.
+            reportSource: parsed.data.reportSource ?? "amended",
+            notes: parsed.data.notes ?? null,
+          },
+        })
+        .returning();
+
+      logger.info("[W4] commercial sales report recorded", {
+        orgId, leaseId: lease.id, reportId: saved?.id,
+      });
+      return res.json({ salesReport: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.get("/api/leases/:id/sales-reports", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const reports = await db.select().from(commercialSalesReports)
+        .where(and(
+          eq(commercialSalesReports.organizationId, orgId),
+          eq(commercialSalesReports.leaseId, lease.id),
+        ))
+        .orderBy(desc(commercialSalesReports.periodStart));
+      return res.json({ salesReports: reports, count: reports.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Lease rent schedule — the escalation steps ─────────────────────────────
+  // Re-defining the same (lease, effectiveMonth) UPSERTs so the schedule stays
+  // unambiguous at every point in time. The rent for a month is COMPUTED from
+  // the applicable step by the later escalation engine, not stored here.
+  app.post("/api/leases/:id/rent-schedule", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = rentScheduleStepSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const [saved] = await db.insert(leaseRentSchedule).values({
+        organizationId: orgId,
+        leaseId: lease.id,
+        effectiveMonth: parsed.data.effectiveMonth,
+        stepType: parsed.data.stepType,
+        amountCents: parsed.data.amountCents ?? null,
+        pctBps: parsed.data.pctBps ?? null,
+        cpiIndexBase: parsed.data.cpiIndexBase != null ? String(parsed.data.cpiIndexBase) : null,
+        cpiIndexCurrent: parsed.data.cpiIndexCurrent != null ? String(parsed.data.cpiIndexCurrent) : null,
+        cpiIndexName: parsed.data.cpiIndexName ?? null,
+        cpiIndexPublishedOn: parsed.data.cpiIndexPublishedOn ?? null,
+        floorPctBps: parsed.data.floorPctBps ?? null,
+        ceilingPctBps: parsed.data.ceilingPctBps ?? null,
+      })
+        .onConflictDoUpdate({
+          target: [leaseRentSchedule.leaseId, leaseRentSchedule.effectiveMonth],
+          set: {
+            stepType: parsed.data.stepType,
+            amountCents: parsed.data.amountCents ?? null,
+            pctBps: parsed.data.pctBps ?? null,
+            cpiIndexBase: parsed.data.cpiIndexBase != null ? String(parsed.data.cpiIndexBase) : null,
+            cpiIndexCurrent: parsed.data.cpiIndexCurrent != null ? String(parsed.data.cpiIndexCurrent) : null,
+            cpiIndexName: parsed.data.cpiIndexName ?? null,
+            cpiIndexPublishedOn: parsed.data.cpiIndexPublishedOn ?? null,
+            floorPctBps: parsed.data.floorPctBps ?? null,
+            ceilingPctBps: parsed.data.ceilingPctBps ?? null,
+          },
+        })
+        .returning();
+
+      logger.info("[W4] rent schedule step recorded", {
+        orgId, leaseId: lease.id, stepId: saved?.id, stepType: saved?.stepType,
+      });
+      return res.json({ step: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.get("/api/leases/:id/rent-schedule", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const steps = await db.select().from(leaseRentSchedule)
+        .where(and(
+          eq(leaseRentSchedule.organizationId, orgId),
+          eq(leaseRentSchedule.leaseId, lease.id),
+        ))
+        .orderBy(asc(leaseRentSchedule.effectiveMonth));
+      return res.json({ steps, count: steps.length });
     } catch (err) {
       return Errors.internal(res, err);
     }

@@ -484,6 +484,78 @@ export const rentalLeases = pgTable(
     // audit row exists for each of them. Never inferred.
     executedAt: timestamp("executed_at", { withTimezone: true }),
 
+    // ── Commercial lease terms (Wave 4: commercial → core) ─────────────────
+    // Every column below is ADDITIVE and NULLABLE, and is null for every
+    // existing lease and every residential lease — a residential SFR/duplex
+    // lease carries no rentable area, no CAM pro-rata, no percentage rent and
+    // no per-diem late fee, so a `commercial` flag would be a lie inferred from
+    // absence. The presence of a value IS the commercial signal. Stage 1 wires
+    // a PATCH /api/leases/:id/commercial-terms writer for these columns; the
+    // derivation engines (CAM reconciliation, percentage rent, escalation-aware
+    // rent) and the UI arrive in later stages.
+    //
+    /**
+     * The tenant's rentable area, in square feet — the ONE shared commercial
+     * leased-area column. It is the numerator of the CAM pro-rata share
+     * (leased sqft ÷ the pool's total rentable sqft) AND the basis of any
+     * per-sqft rent, so a single column serves both rather than a `leasedSqft`
+     * that would immediately drift from a `proRataSqft`. Null on residential.
+     */
+    rentableSqft: integer("rentable_sqft"),
+    /**
+     * How operating costs are borne. 'gross' — landlord pays, rent is
+     * all-in; 'nnn' (triple-net) — tenant reimburses taxes, insurance and CAM
+     * on top of base rent; 'modified_gross' — a negotiated split (often a base
+     * year stop). Drives whether CAM reconciliation even applies to the lease.
+     */
+    leaseType: text("lease_type").$type<"gross" | "nnn" | "modified_gross">(),
+    /**
+     * The lease's CAM share in basis points (e.g. 1250 = 12.5%), when it is
+     * fixed by the lease rather than computed from rentableSqft ÷ pool sqft.
+     * Frozen here so a mid-year re-measure of the building cannot silently
+     * restate a share the lease document fixed in writing.
+     */
+    camProRataBps: integer("cam_pro_rata_bps"),
+    /** The monthly CAM estimate the tenant pays in advance, trued up at reconciliation. */
+    camEstimateMonthlyCents: bigint("cam_estimate_monthly_cents", { mode: "number" }),
+    /**
+     * The base-year expense stop (modified-gross): the landlord absorbs CAM up
+     * to this annual figure and the tenant reimburses only the excess. Null for
+     * a pure NNN lease (no stop) and for gross (no reimbursement at all).
+     */
+    camBaseYearStopCents: bigint("cam_base_year_stop_cents", { mode: "number" }),
+
+    /**
+     * Percentage rent: the tenant pays this share (basis points) of gross sales
+     * ABOVE a breakpoint. Retail-lease staple; null everywhere else.
+     */
+    pctRentBps: integer("pct_rent_bps"),
+    /**
+     * 'natural' — the breakpoint is base rent ÷ pctRent (the classic natural
+     * breakpoint); 'artificial' — a negotiated fixed sales figure carried in
+     * pctRentArtificialBreakpointCents.
+     */
+    pctRentBreakpointType: text("pct_rent_breakpoint_type"),
+    /** The negotiated sales breakpoint when pctRentBreakpointType = 'artificial'. */
+    pctRentArtificialBreakpointCents: bigint("pct_rent_artificial_breakpoint_cents", { mode: "number" }),
+    /** How often percentage rent is reconciled and billed: 'monthly' | 'quarterly' | 'annual'. */
+    pctRentFrequency: text("pct_rent_frequency"),
+
+    /**
+     * Commercial late-fee shape, distinct from the residential statutory-cap
+     * path (Tex. Prop. Code §92.019 et al.), which is a landlord-friendly
+     * negotiated term. 'flat' — a fixed fee; 'pct_of_overdue' — a share of the
+     * overdue balance; 'per_diem' — a daily accrual; 'none' — no late fee.
+     */
+    lateFeeType: text("late_fee_type").$type<"flat" | "pct_of_overdue" | "per_diem" | "none">(),
+    lateFeeFlatCents: bigint("late_fee_flat_cents", { mode: "number" }),
+    lateFeePctBps: integer("late_fee_pct_bps"),
+    lateFeeGraceDays: integer("late_fee_grace_days"),
+    /** A cap on the accrued late fee (typical on per-diem/percentage forms). */
+    lateFeeMaxCents: bigint("late_fee_max_cents", { mode: "number" }),
+    /** The per-day accrual amount when lateFeeType = 'per_diem'. */
+    lateFeePerDayCents: bigint("late_fee_per_day_cents", { mode: "number" }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -588,6 +660,17 @@ export const rentCharges = pgTable(
     hapPortionCents: bigint("hap_portion_cents", { mode: "number" }),
     tenantPortionCents: bigint("tenant_portion_cents", { mode: "number" }),
 
+    /**
+     * What KIND of charge this row is. Default 'base_rent' — the only kind that
+     * existed before commercial → core, so every historical row is base rent.
+     * Commercial leases add sibling charges in the same month — 'percentage_rent'
+     * (retail overage), 'cam' (operating-cost reimbursement/true-up), 'late_fee'
+     * — which is exactly why the month uniqueness below widened to include this
+     * column: a CAM charge and a base-rent charge must be able to coexist for
+     * one lease-month.
+     */
+    chargeType: text("charge_type").notNull().default("base_rent"),
+
     // Updated as payments come in. balance_cents = amount_cents -
     // sum(payments).
     paidCents: bigint("paid_cents", { mode: "number" }).notNull().default(0),
@@ -607,7 +690,12 @@ export const rentCharges = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("rent_charges_lease_month_uk").on(table.leaseId, table.chargedForMonth),
+    // Widened from (leaseId, chargedForMonth) to include chargeType so a
+    // commercial lease's percentage_rent / cam / late_fee charge can coexist
+    // with the SAME month's base_rent instead of colliding on the old 2-column
+    // key. Existing rows all carry the 'base_rent' default, so the widened key
+    // is identical for them — no historical collision, no backfill.
+    uniqueIndex("rent_charges_lease_month_uk").on(table.leaseId, table.chargedForMonth, table.chargeType),
     index("rent_charges_org_balance_idx").on(table.organizationId, table.balanceCents, table.dueDate),
   ],
 );
@@ -1043,4 +1131,268 @@ export const propertyExpenses = pgTable(
 
 export type PropertyExpense = typeof propertyExpenses.$inferSelect;
 export type InsertPropertyExpense = typeof propertyExpenses.$inferInsert;
+
+// ============================================================================
+// COMMERCIAL → CORE (Wave 4) — the four records the commercial vertical needs.
+// ----------------------------------------------------------------------------
+// The buy-and-hold schema modelled a RESIDENTIAL lease: one tenant, one flat
+// monthly rent, a statutory-cap late fee. A commercial lease is a different
+// animal and four of its facts have no home on rental_leases as rollup columns,
+// because each is a HISTORY or a SNAPSHOT, not a current value:
+//
+//   • cam_expense_pools         — the operator's DEFINITION of a recoverable
+//                                 expense pool for a property + period (which
+//                                 Schedule-E categories are recoverable, the
+//                                 gross-up, the admin fee, caps). A definition
+//                                 that outlives any single reconciliation, so it
+//                                 is a record, not a column on a lease.
+//   • cam_reconciliations       — the FROZEN year-end CAM true-up statement per
+//                                 lease: the pro-rata, the pool actuals, the
+//                                 recoverable share and the delta, snapshotted
+//                                 at generation. A tenant billed $4,200 is owed
+//                                 the exact inputs behind it; recomputing on
+//                                 read would let a later pool edit silently
+//                                 rewrite a statement already sent. Immutable.
+//   • commercial_sales_reports  — the tenant's reported gross sales per period,
+//                                 the input to percentage rent. Auditable
+//                                 per-period history (a tenant amends Q3 after
+//                                 the fact); a single "last sales" column cannot
+//                                 answer "what did they report, and when".
+//   • lease_rent_schedule       — the rent-escalation steps (fixed bumps, fixed
+//                                 %, CPI). A per-month schedule the rent for any
+//                                 month is COMPUTED from — not a single current
+//                                 rent, which cannot express "3% every year, CPI
+//                                 with a 2%/6% collar thereafter".
+//
+// MONEY POSTURE (founder ruling "be the rail, not the provider"): none of these
+// four holds, moves, collects or charges a cent. cam_expense_pools is a
+// DEFINITION; cam_reconciliations is a computed STATEMENT; commercial_sales_
+// reports is a RECORD of what a tenant reported; lease_rent_schedule is a
+// COMPUTABLE schedule. Every *_cents column is a recorded or derived fact, never
+// a balance and never an instruction to pay. The actual rent/CAM charges land on
+// the existing rent_charges ledger (now chargeType-tagged), on the operator's
+// own account, elsewhere.
+//
+// STAGE 1 = SCHEMA + OPERATOR-ENTRY FOUNDATION. These four ship WITH their
+// operator data-entry CRUD (server/routes-rent-ledger.ts) — each has a real
+// reader and writer, so reachability stays flat. What is NOT here yet are the
+// DERIVATION ENGINES (CAM reconciliation, percentage rent, escalation-aware
+// rent) and the UI — later stages of this wave; every engine-computed column
+// ships null until its engine lands. The tables ship empty and additive; no backfill.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// CAM EXPENSE POOLS — the operator's definition of a recoverable expense pool.
+// ----------------------------------------------------------------------------
+export const camExpensePools = pgTable(
+  "cam_expense_pools",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+    /**
+     * Which recovery this pool represents: 'cam' (common-area maintenance),
+     * 'property_tax', 'insurance', or 'all_in' (a single blended net pool).
+     * Part of the per-period uniqueness — one pool of each kind per property
+     * per period.
+     */
+    poolKind: text("pool_kind").$type<"cam" | "property_tax" | "insurance" | "all_in">().notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    /**
+     * The subset of PROPERTY_EXPENSE_CATEGORIES (shared/rental/propertyExpense.ts)
+     * the operator ASSERTS is recoverable into this pool. Reconciliation sums
+     * property_expenses in these categories for the period — so recoverability
+     * is the operator's explicit assertion, never inferred from the category.
+     */
+    recoverableCategories: jsonb("recoverable_categories").$type<PropertyExpenseCategory[]>().notNull(),
+    /** The building's total rentable area — the DENOMINATOR of every lease's pro-rata share. */
+    totalRentableSqft: integer("total_rentable_sqft"),
+    /** An administrative fee on the recovered total, in basis points (e.g. 1500 = 15%). */
+    adminFeeBps: integer("admin_fee_bps"),
+    /** Gross-up percentage for a partially-occupied building (variable costs grossed to full occupancy). */
+    grossUpPct: numeric("gross_up_pct"),
+    /** Free-text note on any expense cap the leases impose on this pool. */
+    capNote: text("cap_note"),
+    /** Free-text note on categories/line-items excluded from recovery. */
+    exclusionNote: text("exclusion_note"),
+    /**
+     * 'draft' — the operator is still defining the pool; 'reconciling' — actuals
+     * are being gathered; 'reconciled' — the year-end true-up has been generated.
+     */
+    status: text("status").$type<"draft" | "reconciling" | "reconciled">().notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING (L3 shard-readiness) + the dominant read: "every pool on this
+    // property, by period".
+    index("cam_expense_pools_org_property_period_idx").on(table.organizationId, table.propertyId, table.periodStart),
+    // One pool of a given kind per property per period — the operator cannot
+    // accidentally define two CAM pools for the same building and year.
+    uniqueIndex("cam_expense_pools_org_property_kind_period_uk").on(
+      table.organizationId,
+      table.propertyId,
+      table.poolKind,
+      table.periodStart,
+      table.periodEnd,
+    ),
+  ],
+);
+
+export type CamExpensePool = typeof camExpensePools.$inferSelect;
+export type InsertCamExpensePool = typeof camExpensePools.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// CAM RECONCILIATIONS — the frozen year-end CAM true-up statement, per lease.
+// ----------------------------------------------------------------------------
+// Every snapshot column is written ONCE at generation and never recomputed on
+// read: a tenant billed a delta is owed the exact inputs that produced it, and a
+// later edit to the pool (a re-measure, a re-categorisation) must not silently
+// rewrite a statement already sent. The statement is the exhibit.
+// ----------------------------------------------------------------------------
+export const camReconciliations = pgTable(
+  "cam_reconciliations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    poolId: varchar("pool_id").references(() => camExpensePools.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+
+    // ── Frozen snapshot (all written once at generation) ───────────────────
+    /** The pro-rata share applied, in basis points — snapshotted so a re-measure can't restate it. */
+    proRataBpsUsed: integer("pro_rata_bps_used"),
+    /** How the pro-rata was derived: 'lease_fixed' (camProRataBps) or 'sqft' (rentableSqft ÷ total). */
+    proRataBasis: text("pro_rata_basis"),
+    leasedSqftUsed: integer("leased_sqft_used"),
+    totalRentableSqftUsed: integer("total_rentable_sqft_used"),
+    /** The pool's actual recoverable spend for the period, at generation time. */
+    poolActualCents: bigint("pool_actual_cents", { mode: "number" }),
+    /** The per-category breakdown behind poolActualCents (category → cents). */
+    byCategoryCents: jsonb("by_category_cents").$type<Record<string, number>>(),
+    /** This lease's recoverable share = poolActual × proRata (+ admin fee, − caps). */
+    recoverableShareCents: bigint("recoverable_share_cents", { mode: "number" }),
+    /** What the tenant was actually billed in estimates over the period. */
+    estimatedBilledCents: bigint("estimated_billed_cents", { mode: "number" }),
+    /** How estimatedBilled was determined: 'from_charges' (summed rent_charges) or 'lease_estimate'. */
+    estimatedBilledBasis: text("estimated_billed_basis"),
+    /** recoverableShare − estimatedBilled: positive = tenant owes, negative = credit due. */
+    deltaCents: bigint("delta_cents", { mode: "number" }),
+    /** How many of the period's months had expense coverage — the honesty marker. */
+    coverageMonths: integer("coverage_months"),
+    /** True only when every month of the period had recorded expenses. */
+    coverageComplete: boolean("coverage_complete"),
+    /** The rendered statement text handed to the tenant, frozen with its inputs. */
+    statementMarkdown: text("statement_markdown"),
+    /** The statement generator version, so an old statement's provenance is legible. */
+    statementVersion: text("statement_version"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    generatedBy: text("generated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING + the dominant read: "every lease's reconciliation for this pool".
+    index("cam_reconciliations_org_pool_idx").on(table.organizationId, table.poolId),
+    // One reconciliation per (pool, lease): re-generating a statement UPSERTs
+    // rather than stacking duplicate true-ups for the same lease-period.
+    uniqueIndex("cam_reconciliations_pool_lease_uk").on(table.poolId, table.leaseId),
+  ],
+);
+
+export type CamReconciliation = typeof camReconciliations.$inferSelect;
+export type InsertCamReconciliation = typeof camReconciliations.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// COMMERCIAL SALES REPORTS — the tenant's reported gross sales, per period.
+// ----------------------------------------------------------------------------
+// The input to percentage rent. Kept as auditable per-period HISTORY (a tenant
+// amends a prior quarter; the operator enters a figure the tenant statement
+// omitted) — a single "last reported sales" column on the lease could not answer
+// "what did they report, from what source, and when".
+// ----------------------------------------------------------------------------
+export const commercialSalesReports = pgTable(
+  "commercial_sales_reports",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    grossSalesCents: bigint("gross_sales_cents", { mode: "number" }).notNull(),
+    reportedBy: text("reported_by"),
+    /**
+     * Provenance of the figure: 'tenant_statement' (the tenant reported it),
+     * 'operator_entered' (the operator keyed it), or 'amended' (a correction to
+     * a prior report). Never inferred — the operator asserts the source.
+     */
+    reportSource: text("report_source").$type<"tenant_statement" | "operator_entered" | "amended">(),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING + the dominant read: "this lease's sales history, by period".
+    index("commercial_sales_reports_org_lease_period_idx").on(table.organizationId, table.leaseId, table.periodStart),
+    // One report per (lease, period): a re-report for the same window UPSERTs
+    // (an amendment) rather than double-counting sales into percentage rent.
+    uniqueIndex("commercial_sales_reports_lease_period_uk").on(table.leaseId, table.periodStart, table.periodEnd),
+  ],
+);
+
+export type CommercialSalesReport = typeof commercialSalesReports.$inferSelect;
+export type InsertCommercialSalesReport = typeof commercialSalesReports.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// LEASE RENT SCHEDULE — the rent-escalation steps a commercial lease is billed on.
+// ----------------------------------------------------------------------------
+// The rent for any given month is COMPUTED from the applicable step, not stored
+// as a single current figure: a lease that is "3% every year, then CPI with a
+// 2%/6% collar" cannot be expressed as one monthlyRentCents. Each row is the
+// step that takes effect from `effectiveMonth` forward until the next.
+// ----------------------------------------------------------------------------
+export const leaseRentSchedule = pgTable(
+  "lease_rent_schedule",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    /** The month this step takes effect (always day 1) — the schedule key. */
+    effectiveMonth: date("effective_month").notNull(),
+    /**
+     * 'fixed_amount' — bill amountCents; 'fixed_pct' — raise the prior rent by
+     * pctBps; 'cpi' — index the prior rent to CPI (cpiIndex* columns), bounded
+     * by the floor/ceiling collar.
+     */
+    stepType: text("step_type").$type<"fixed_amount" | "fixed_pct" | "cpi">().notNull(),
+    /** The flat monthly rent when stepType = 'fixed_amount'. */
+    amountCents: bigint("amount_cents", { mode: "number" }),
+    /** The escalation, in basis points, when stepType = 'fixed_pct' (e.g. 300 = 3%). */
+    pctBps: integer("pct_bps"),
+    /** The CPI reference value at the lease/prior anchor (stepType = 'cpi'). */
+    cpiIndexBase: numeric("cpi_index_base"),
+    /** The CPI value at this step's publication (stepType = 'cpi'). */
+    cpiIndexCurrent: numeric("cpi_index_current"),
+    /** Which index (e.g. 'CPI-U US City Average') — the escalation must name its source, not assume one. */
+    cpiIndexName: text("cpi_index_name"),
+    /** The date the referenced CPI value was published — a date, not a fabricated timestamp. */
+    cpiIndexPublishedOn: date("cpi_index_published_on"),
+    /** The collar floor in basis points — the minimum CPI escalation applied. */
+    floorPctBps: integer("floor_pct_bps"),
+    /** The collar ceiling in basis points — the maximum CPI escalation applied. */
+    ceilingPctBps: integer("ceiling_pct_bps"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING + the dominant read: "this lease's steps in effective order".
+    index("lease_rent_schedule_org_lease_month_idx").on(table.organizationId, table.leaseId, table.effectiveMonth),
+    // One step per (lease, effectiveMonth): a step cannot be defined twice for
+    // the same month — the schedule is unambiguous at every point in time.
+    uniqueIndex("lease_rent_schedule_lease_month_uk").on(table.leaseId, table.effectiveMonth),
+  ],
+);
+
+export type LeaseRentScheduleStep = typeof leaseRentSchedule.$inferSelect;
+export type InsertLeaseRentScheduleStep = typeof leaseRentSchedule.$inferInsert;
 

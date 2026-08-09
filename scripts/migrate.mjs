@@ -8665,6 +8665,158 @@ const STATEMENTS = [
   // The maintenance roll-in dedup guard. PARTIAL so it binds ONLY rolled-in rows;
   // manual rows (null source_ref) stay unconstrained.
   `CREATE UNIQUE INDEX IF NOT EXISTS "property_expenses_org_source_ref_uk" ON "property_expenses" ("organization_id", "source", "source_ref") WHERE "source_ref" IS NOT NULL`,
+
+  // ── 0222 commercial → core: four records the commercial vertical lacked ────
+  // The buy-and-hold schema modelled a RESIDENTIAL lease (one tenant, one flat
+  // monthly rent, a statutory-cap late fee). Four commercial facts have no home
+  // on rental_leases as rollup columns because each is a HISTORY or a frozen
+  // SNAPSHOT, not a current value:
+  //   • cam_expense_pools        — the operator's DEFINITION of a recoverable
+  //     expense pool for a property+period (recoverable categories, gross-up,
+  //     admin fee, caps). A definition outliving any one reconciliation.
+  //   • cam_reconciliations      — the FROZEN year-end CAM true-up statement per
+  //     lease, snapshotted at generation so a later pool edit can't rewrite a
+  //     statement already sent. The exhibit.
+  //   • commercial_sales_reports — the tenant's reported gross sales per period
+  //     (the percentage-rent input) as auditable per-period HISTORY.
+  //   • lease_rent_schedule      — the rent-escalation steps (fixed / %, CPI
+  //     with a collar); month rent is COMPUTED from the step, not a single
+  //     current figure.
+  // Plus fifteen nullable commercial-term columns on rental_leases (null for
+  // every existing/residential lease — presence of a value IS the commercial
+  // signal), and rent_charges.charge_type with the widened month key so a
+  // commercial lease's percentage_rent/cam/late_fee charge can coexist with the
+  // same month's base_rent.
+  //
+  // Money posture ("be the rail, not the provider"): none of these four holds,
+  // moves, collects or charges a cent — definition / computed statement / record
+  // of a report / computable schedule. Every *_cents column is a recorded or
+  // derived fact, never a balance. NO backfill — the tables ship empty; Stage 1
+  // is the schema foundation only, nothing reads or writes them yet.
+  //
+  // FOUR new tables — scripts/ratchets/table-count.json 749 -> 753.
+  // Mirrors migrations/0222_commercial_core.sql + shared/schema/rental.ts.
+
+  // 1. cam_expense_pools — the recoverable-pool definition.
+  `CREATE TABLE IF NOT EXISTS "cam_expense_pools" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "pool_kind" text NOT NULL,
+    "period_start" date NOT NULL,
+    "period_end" date NOT NULL,
+    "recoverable_categories" jsonb NOT NULL,
+    "total_rentable_sqft" integer,
+    "admin_fee_bps" integer,
+    "gross_up_pct" numeric,
+    "cap_note" text,
+    "exclusion_note" text,
+    "status" text NOT NULL DEFAULT 'draft',
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING (L3 shard-readiness) + the dominant read: pools on a property, by period.
+  `CREATE INDEX IF NOT EXISTS "cam_expense_pools_org_property_period_idx" ON "cam_expense_pools" ("organization_id", "property_id", "period_start")`,
+  // One pool of a given kind per property per period.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "cam_expense_pools_org_property_kind_period_uk" ON "cam_expense_pools" ("organization_id", "property_id", "pool_kind", "period_start", "period_end")`,
+
+  // 2. cam_reconciliations — the frozen year-end CAM true-up statement. FK to
+  // cam_expense_pools above (created first so the reference resolves).
+  `CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
+    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "period_start" date,
+    "period_end" date,
+    "pro_rata_bps_used" integer,
+    "pro_rata_basis" text,
+    "leased_sqft_used" integer,
+    "total_rentable_sqft_used" integer,
+    "pool_actual_cents" bigint,
+    "by_category_cents" jsonb,
+    "recoverable_share_cents" bigint,
+    "estimated_billed_cents" bigint,
+    "estimated_billed_basis" text,
+    "delta_cents" bigint,
+    "coverage_months" integer,
+    "coverage_complete" boolean,
+    "statement_markdown" text,
+    "statement_version" text,
+    "generated_at" timestamptz,
+    "generated_by" text,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: every lease's reconciliation for a pool.
+  `CREATE INDEX IF NOT EXISTS "cam_reconciliations_org_pool_idx" ON "cam_reconciliations" ("organization_id", "pool_id")`,
+  // One reconciliation per (pool, lease): re-generating a statement UPSERTs.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "cam_reconciliations_pool_lease_uk" ON "cam_reconciliations" ("pool_id", "lease_id")`,
+
+  // 3. commercial_sales_reports — the tenant's reported gross sales, per period.
+  `CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "period_start" date NOT NULL,
+    "period_end" date NOT NULL,
+    "gross_sales_cents" bigint NOT NULL,
+    "reported_by" text,
+    "report_source" text,
+    "received_at" timestamptz,
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a lease's sales history, by period.
+  `CREATE INDEX IF NOT EXISTS "commercial_sales_reports_org_lease_period_idx" ON "commercial_sales_reports" ("organization_id", "lease_id", "period_start")`,
+  // One report per (lease, period): a re-report UPSERTs (an amendment).
+  `CREATE UNIQUE INDEX IF NOT EXISTS "commercial_sales_reports_lease_period_uk" ON "commercial_sales_reports" ("lease_id", "period_start", "period_end")`,
+
+  // 4. lease_rent_schedule — the rent-escalation steps.
+  `CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "effective_month" date NOT NULL,
+    "step_type" text NOT NULL,
+    "amount_cents" bigint,
+    "pct_bps" integer,
+    "cpi_index_base" numeric,
+    "cpi_index_current" numeric,
+    "cpi_index_name" text,
+    "cpi_index_published_on" date,
+    "floor_pct_bps" integer,
+    "ceiling_pct_bps" integer,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING + the dominant read: a lease's steps in effective order.
+  `CREATE INDEX IF NOT EXISTS "lease_rent_schedule_org_lease_month_idx" ON "lease_rent_schedule" ("organization_id", "lease_id", "effective_month")`,
+  // One step per (lease, effective_month): the schedule is unambiguous at every point in time.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "lease_rent_schedule_lease_month_uk" ON "lease_rent_schedule" ("lease_id", "effective_month")`,
+
+  // 5. rental_leases — fifteen nullable commercial-term columns. All null for
+  // existing/residential leases; no backfill.
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "rentable_sqft" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "lease_type" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "cam_pro_rata_bps" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "cam_estimate_monthly_cents" bigint`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "cam_base_year_stop_cents" bigint`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "pct_rent_bps" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "pct_rent_breakpoint_type" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "pct_rent_artificial_breakpoint_cents" bigint`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "pct_rent_frequency" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_type" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_flat_cents" bigint`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_pct_bps" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_grace_days" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_max_cents" bigint`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "late_fee_per_day_cents" bigint`,
+
+  // 6. rent_charges.charge_type + widened month uniqueness. Existing rows all
+  // carry 'base_rent', so the widened key is identical for them (no collision,
+  // no backfill). DROP + re-CREATE the same index name, both guarded.
+  `ALTER TABLE "rent_charges" ADD COLUMN IF NOT EXISTS "charge_type" text NOT NULL DEFAULT 'base_rent'`,
+  `DROP INDEX IF EXISTS "rent_charges_lease_month_uk"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rent_charges_lease_month_uk" ON "rent_charges" ("lease_id", "charged_for_month", "charge_type")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
