@@ -430,26 +430,31 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "developer",
     label: "Developer / entitlements",
     shortDescription: "Entitle land: permits, county timelines, lot pricing, plats.",
-    // 2026-08 (audit Wave 2, roadmap → beta): "developer" is really the
-    // subdivider / entitlement workspace under a mislabeled name.
-    // persona-mapping.ts collapses developer → subdivider, and the Subdivision
-    // sidebar module already gates businessTypeOnly ["subdivider","developer"],
-    // so the lots / permits / plats / county-timeline model is this vertical's
-    // REAL surface — it was always live for these signups, just described
-    // wrong. The over-promise was the framing, not the build: the "New
-    // construction projects." shortDescription (and the onboarding "and new
-    // construction" clause) advertised a ground-up construction product that
-    // does not exist; both were removed in this change. The three subdivision
-    // templates below are ALREADY LIVE for subdivider —
-    // tpl_subdivision_plat_submitted / _vendor_milestone / _phase_recorded fire
-    // on genuine entity transitions via subdivisionEvents.ts (plat.submitted,
-    // subdivision.vendor_milestone, subdivision.phase_recorded are all in
-    // shared/workflow-live-triggers.ts, pinned by workflowActionHonesty) — so
-    // adopting them here is ZERO emitter work and honestly live for developer
-    // too (same collapsed persona/surface). With the real entitlement surface,
-    // three live templates, and the construction promise removed, the vertical
-    // passes the honesty bar for beta. 2026-08 founder decision to promote.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE): developer IS the subdivider entitlement
+    // workspace (persona-mapping collapses developer → subdivider; the
+    // Subdivision module gates businessTypeOnly ["subdivider","developer"]), and
+    // subdivider is already core. Developer earns the same bar the Wave 3/4 way —
+    // the three economics that make the vertical real are now PURE, behaviourally-
+    // tested engines that refuse rather than fabricate, plus a unifying project
+    // pro-forma (the subdivider's T-12 analogue):
+    //   - lot pricing (shared/subdivision/lotPricing.ts) — a premium grid over a
+    //     base derived from the parent's OWN AVM/acre or an operator fixed rate,
+    //     never residential comps; refuses when the base can't be derived.
+    //   - basis allocation (shared/subdivision/basisAllocation.ts) — the parent's
+    //     purchase-price basis allocated across lots (acreage/frontage/appraisal/
+    //     override), cent-conserving, refusing on no basis / zero denominator /
+    //     override shares ≠ 1.0.
+    //   - carry cost (shared/subdivision/carryCost.ts) — p50/p90 holding/debt/
+    //     opportunity carry over the county lead-time, null when no timeline.
+    //   - project pro-forma (shared/subdivision/proForma.ts, GET
+    //     /api/parcels/:id/pro-forma behind the Subdivision tab) — projected
+    //     proceeds/COGS/carry/net margin, REFUSING PER LINE on missing inputs.
+    // The three subdivision templates already fire live (zero emitter work). Core
+    // does NOT claim draw DISBURSEMENT (money-custody — any draw ledger is
+    // record-only) or ground-up construction management (correctly de-scoped in
+    // Wave 2, never re-asserted). No comps, no vendor, no new nav, no money
+    // movement. 2026-08 founder promote decision (Wave 5).
+    maturity: "core",
     // The three subdivision templates, adopted verbatim from subdivider — the
     // same LIVE emitters serve both (developer collapses to the subdivider
     // persona/surface, so no re-wiring is required).

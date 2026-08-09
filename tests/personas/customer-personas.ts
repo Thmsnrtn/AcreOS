@@ -629,12 +629,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "developer-builder",
-    displayName: "Dev — developer / entitlements (beta)",
+    displayName: "Dev — developer / entitlements",
     experience: "power_user",
     device: "desktop-1280",
     tier: "scale",
     businessType: "developer",
-    narrative: "Beta → subdivider surface; developer collapses to the subdivider persona, so the Subdivision module (permits, county timelines, lot pricing, CC&Rs) and its three live subdivision templates are this vertical's real workspace. The old 'new construction' framing was removed — no ground-up construction product exists.",
+    narrative: "Core → the subdivider entitlement surface; developer collapses to the subdivider persona, so the Subdivision module (permits, county timelines, lot pricing, CC&Rs) and its three live subdivision templates are this vertical's real workspace, now with the Wave 5 core build — pure tested engines for lot pricing, basis allocation, and carry cost, plus a project pro-forma (proceeds/COGS/carry/net margin) that refuses per line rather than fabricating. Core does not claim draw disbursement (money-custody) or ground-up construction management.",
     goals: ["Confirm subdivider surfacing", "Open the Subdivision module", "Finance + deals usable"],
     expect: {
       financeHero: "lotEconomics",
