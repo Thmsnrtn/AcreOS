@@ -223,20 +223,24 @@ describe("the route wires the measured op-ex correctly", () => {
     expect(INV_CODE).not.toMatch(/invoice_cents|invoiceCents/);
   });
 
-  it("keeps the assumed 40% ONLY as the fallback, with the precedence measured > override > assumed", () => {
-    expect(INV_CODE).toMatch(/opExBps \?\? 4000/);
-    expect(INV_CODE).toMatch(/hasMeasured\s*\?\s*measuredOpExMonthly/);
-    expect(INV_CODE).toMatch(
-      /\(hasMeasured \|\| opExBps !== undefined\) \?\s*"operator_supplied" : "assumed_ratio"/,
-    );
-    expect(INV_CODE).toMatch(
-      /hasMeasured\s*\?\s*"measured_expenses" : \(opExBps !== undefined \? "ratio_override" : "assumed_ratio"\)/,
-    );
+  it("delegates op-ex precedence to the pure decideOperatingExpense — measured > override > assumed, with the commercial carve-out", () => {
+    // REWRITTEN (Wave 4, not deleted): the precedence used to be an inline ternary
+    // here. It was extracted to shared/rental/noi.ts:decideOperatingExpense so the
+    // commercial carve-out — an UNMEASURED commercial property gets NO assumed
+    // op-ex (null NOI/cap rate), never a 60%-of-rent invention — is testable
+    // without a DB. The behaviour is pinned in noiOpExDecision.test.ts.
+    expect(INV_CODE).toContain("decideOperatingExpense({");
+    expect(INV_CODE).toMatch(/isCommercial,/);
+    const NOI = read("shared/rental/noi.ts");
+    expect(NOI).toContain("ASSUMED_OPEX_BPS"); // the assumed 40% default lives with the helper
+    expect(NOI).toMatch(/opExSource: "commercial_unmeasured"/);
   });
 
-  it("cap rate is built from the resulting (now measured) NOI", () => {
-    expect(INV_CODE).toMatch(/noiMonthly = monthlyRentCollected - opExMonthly/);
-    expect(INV_CODE).toMatch(/noiAnnual = noiMonthly \* 12/);
+  it("cap rate is built from the resulting NOI, which is null when op-ex is unavailable", () => {
+    // NOI/cap rate fall away (null) rather than being fabricated when op-ex is
+    // unavailable — an unmeasured commercial property.
+    expect(INV_CODE).toMatch(/noiMonthly = opExMonthly !== null \? monthlyRentCollected - opExMonthly : null/);
+    expect(INV_CODE).toMatch(/noiAnnual = noiMonthly !== null \? noiMonthly \* 12 : null/);
     expect(INV_CODE).toMatch(/noiAnnual \/ marketValue/);
   });
 

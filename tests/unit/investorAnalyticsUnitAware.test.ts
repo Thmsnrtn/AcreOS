@@ -110,31 +110,27 @@ describe("the cost of a vacancy is finally representable", () => {
 
 describe("the assumed expense ratio is labelled as one", () => {
   it("the 40% default is still there — it is not the thing being fixed", () => {
-    // AcreOS holds no property-expense records; inventing them would be worse
-    // than an honest rule of thumb. What was missing is the label.
-    expect(CODE).toMatch(/opExBps \?\? 4000/);
+    // REWRITTEN (Wave 4, not deleted): AcreOS holds no property-expense records for
+    // a residential property; the honest 40% rule of thumb survives, but it moved
+    // from an inline `opExBps ?? 4000` in the route to the named ASSUMED_OPEX_BPS
+    // in the pure decideOperatingExpense helper (shared/rental/noi.ts).
+    const NOI = read("shared/rental/noi.ts");
+    expect(NOI).toContain("ASSUMED_OPEX_BPS = 4000");
+    expect(CODE).toContain("decideOperatingExpense({");
   });
 
-  it("basis is operator_supplied when measured OR overridden; assumed_ratio only when neither", () => {
-    // REWRITTEN (Wave 3 stage 3, not deleted): the op-ex is no longer always the
-    // assumed ratio. The new precedence is measured stored expenses > opExBps
-    // override > assumed 40%, so opExBasis is "operator_supplied" when EITHER a
-    // measured ledger exists OR an explicit ratio was supplied, and "assumed_ratio"
-    // survives only when NEITHER holds. The old assertion pinned
-    // `opExBps === undefined ? "assumed_ratio" : "operator_supplied"`, which is
-    // now the wrong truth — a measured property with no override must still read
-    // operator_supplied.
+  it("basis is operator_supplied when measured OR overridden; assumed_ratio only when neither; commercial-unmeasured has neither", () => {
+    // REWRITTEN (Wave 4, not deleted): the precedence (measured > override >
+    // assumed, with the commercial carve-out) is no longer an inline ternary — it
+    // was extracted to the pure decideOperatingExpense so it is DB-free testable
+    // (noiOpExDecision.test.ts). The route delegates to it and threads isCommercial.
     expect(SRC).toContain("opExBasis");
-    expect(CODE).toMatch(
-      /\(hasMeasured \|\| opExBps !== undefined\) \?\s*"operator_supplied" : "assumed_ratio"/,
-    );
-    // And the FINER provenance the client labels from: measured drops "(est.)";
-    // an override is operator_supplied but NOT measured; the flat default is the
-    // only assumed_ratio.
     expect(SRC).toContain("opExSource");
-    expect(CODE).toMatch(
-      /hasMeasured\s*\?\s*"measured_expenses" : \(opExBps !== undefined \? "ratio_override" : "assumed_ratio"\)/,
-    );
+    expect(CODE).toContain("decideOperatingExpense({");
+    expect(CODE).toMatch(/isCommercial,/);
+    // The finer provenance now includes the commercial carve-out value.
+    const NOI = read("shared/rental/noi.ts");
+    expect(NOI).toMatch(/opExSource: "commercial_unmeasured"/);
   });
 
   it("the comment names the consequence rather than just the constant", () => {

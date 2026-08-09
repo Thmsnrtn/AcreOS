@@ -49,24 +49,28 @@ interface PropertyAnalytics {
   vacantUnitCount: number;
   unitCount: number;
   vacancyRate: number;
-  opExMonthlyCents: number;
-  noiMonthlyCents: number;
-  noiAnnualCents: number;
+  /** Null for an unmeasured commercial property (opExSource "commercial_unmeasured"). */
+  opExMonthlyCents: number | null;
+  /** Null when op-ex is unavailable — NOI cannot be computed without it. */
+  noiMonthlyCents: number | null;
+  noiAnnualCents: number | null;
   capRatePct: number | null;
   dscr: number | null;
   averageTenureMonths: number | null;
   /**
    * Coarse op-ex provenance: "assumed_ratio" keeps the "(est.)" label,
-   * "operator_supplied" (measured ledger OR an explicit ratio override) drops it.
+   * "operator_supplied" (measured ledger OR an explicit ratio override) drops it,
+   * "unavailable" is a commercial property with no measured op-ex (no NOI at all).
    */
-  opExBasis: "operator_supplied" | "assumed_ratio";
+  opExBasis: "operator_supplied" | "assumed_ratio" | "unavailable";
   /**
    * Finer provenance used to label honestly: "measured_expenses" drops "(est.)"
    * entirely; "ratio_override" is an operator-supplied ratio, still an assumption
    * (labelled "(assumed ratio)"), not measured; "assumed_ratio" is the flat 40%
-   * default ("(est.)").
+   * default ("(est.)"); "commercial_unmeasured" is a commercial property whose
+   * residential ratio does not apply — NOI/cap rate are not shown at all.
    */
-  opExSource: "measured_expenses" | "ratio_override" | "assumed_ratio";
+  opExSource: "measured_expenses" | "ratio_override" | "assumed_ratio" | "commercial_unmeasured";
   /**
    * How many of the trailing-12 months carry a measured operating expense. Drives
    * the coverage qualifier: a measured NOI is shown bare only at full coverage;
@@ -81,8 +85,9 @@ interface PortfolioAnalyticsResponse {
   portfolio: {
     totalMonthlyRentCents: number;
     totalOpExMonthlyCents: number;
-    totalNoiMonthlyCents: number;
-    totalNoiAnnualCents: number;
+    /** Null when NO property has measurable op-ex (every one is commercial-unmeasured). */
+    totalNoiMonthlyCents: number | null;
+    totalNoiAnnualCents: number | null;
     totalMarketValueCents: number;
     portfolioCapRatePct: number | null;
     portfolioVacancyRate: number;
@@ -92,6 +97,8 @@ interface PortfolioAnalyticsResponse {
      * both keep the estimate label.
      */
     portfolioOpExBasis: "operator_supplied" | "assumed_ratio" | "mixed";
+    /** Commercial properties excluded from the NOI rollup because op-ex is unmeasured. */
+    excludedUnmeasuredCommercial: number;
   };
   properties: PropertyAnalytics[];
 }
@@ -127,7 +134,15 @@ function opExQualifier(source: PropertyAnalytics["opExSource"], monthsCovered: n
     return ` (${covered}/${TRAILING_12_WINDOW_MONTHS} mo)`;
   }
   if (source === "ratio_override") return " (assumed ratio)";
+  // A commercial property whose residential op-ex ratio does not apply: NOI/cap
+  // rate are not shown, and this labels why rather than a bare "—".
+  if (source === "commercial_unmeasured") return " (op-ex not measured)";
   return " (est.)";
+}
+
+/** NOI cents → display, honestly showing "—" when op-ex is unavailable (never a fabricated zero). */
+function fmtNoi(cents: number | null): string {
+  return cents !== null ? fmtUsd(cents) : "—";
 }
 
 export default function InvestorAnalyticsPage() {
@@ -201,8 +216,15 @@ export default function InvestorAnalyticsPage() {
                 {portfolio.data.portfolio.portfolioOpExBasis === "operator_supplied" ? "" : " (est.)"}
               </div>
               <div className="text-2xl font-semibold tabular-nums">
-                {fmtUsd(portfolio.data.portfolio.totalNoiMonthlyCents)}
+                {fmtNoi(portfolio.data.portfolio.totalNoiMonthlyCents)}
               </div>
+              {portfolio.data.portfolio.excludedUnmeasuredCommercial > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  excludes {portfolio.data.portfolio.excludedUnmeasuredCommercial} commercial{" "}
+                  {portfolio.data.portfolio.excludedUnmeasuredCommercial === 1 ? "property" : "properties"}
+                  {" "}(op-ex not measured)
+                </div>
+              )}
             </Card>
             <Card className="p-3">
               <div className="text-xs text-muted-foreground">
@@ -289,7 +311,7 @@ export default function InvestorAnalyticsPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-mono font-semibold tabular-nums">{fmtUsd(p.noiMonthlyCents)}</div>
+                        <div className="font-mono font-semibold tabular-nums">{fmtNoi(p.noiMonthlyCents)}</div>
                         <div className="text-xs text-muted-foreground">NOI / mo{opExQualifier(p.opExSource, p.opExMonthsCovered)}</div>
                       </div>
                     </div>
@@ -339,7 +361,7 @@ export default function InvestorAnalyticsPage() {
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">{fmtUsd(p.monthlyRentCollectedCents)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {fmtUsd(p.noiMonthlyCents)}
+                          {fmtNoi(p.noiMonthlyCents)}
                           {/* Empty span for measured AND full coverage; otherwise
                               the honest qualifier ("N/12 mo", "(assumed ratio)" or
                               "(est.)"). A thin measured op-ex never renders bare. */}
