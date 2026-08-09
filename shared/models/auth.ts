@@ -104,9 +104,15 @@ export type Persona =
  * per-action overrides and monetary thresholds where applicable.
  * Time guards apply to all agents.
  *
- * Server-side enforcement is wired progressively as Phase E surfaces
- * touch agent action paths — for now this stores the user's intent;
- * agents read it at action time and gate / ask / log accordingly.
+ * ENFORCED (P-1, 2026-08-09): this matrix is no longer a display-only
+ * preference. `resolveActionPolicy` (server/services/resolveActionPolicy.ts)
+ * consumes it — org-scoped, most-restrictive-human-wins, same fail-safe
+ * direction as paxPause — and is consulted at the SINGLE chokepoint where
+ * pending_actions are written (approvalKernel.proposePendingAction). The
+ * resolved decision + rule are stamped on every pending action, `forbid`
+ * refuses at the chokepoint, and nothing may execute without human approval
+ * unless a stamped `auto_with_receipt` grant exists (no such execution lane
+ * is built yet — see the Wave 6.5 seam note in resolveActionPolicy.ts).
  *
  * Phase D gates this UI behind feature.autonomy-matrix (founder-only)
  * until UX polish complete (design-system §8.4).
@@ -124,6 +130,48 @@ export interface AutonomyPreferences {
     pauseEndHour?: number;
     dailyActionLimit?: number;
   };
+}
+
+/** The three matrix agents. Keys of AutonomyPreferences (minus timeGuards). */
+export type AutonomyAgent = "atlas" | "pax" | "sophie";
+
+/**
+ * P-1 (master handoff Part 2 §7.2) — the resolved autonomy verdict for one
+ * action, produced by resolveActionPolicy from the stored matrix above:
+ *
+ *   suggest           — level 0 Observe: Pax may only surface the idea.
+ *   draft             — level 1 Draft: prepare the artifact; human reviews.
+ *   require_approval  — witnessed approval required (the default, and every
+ *                       downgrade lands here). Today's de-facto kernel
+ *                       behavior for all consequential actions.
+ *   auto_with_receipt — the matrix grants autonomous execution (level 2/3,
+ *                       under threshold, inside allowed hours, not paused).
+ *                       NOTE: no execution lane acts on this yet — actions so
+ *                       stamped still freeze for human approval; Wave 6.5
+ *                       adds the standing-instruction consent artifact that
+ *                       any future auto lane must additionally require.
+ *   forbid            — the matrix disallows the action outright; the
+ *                       chokepoint refuses and writes nothing.
+ */
+export type ActionPolicyDecision =
+  | "suggest"
+  | "draft"
+  | "require_approval"
+  | "auto_with_receipt"
+  | "forbid";
+
+/**
+ * Stamped onto every pending_actions row at proposal time (the `policy`
+ * column) so the ledger records WHICH matrix rule governed each action —
+ * the receipt half of "promise = behavior".
+ */
+export interface ActionPolicyStamp {
+  decision: ActionPolicyDecision;
+  /** The matrix rule that produced the decision, human-readable. */
+  reason: string;
+  agent: AutonomyAgent;
+  /** ISO-8601 instant the policy was resolved. */
+  resolvedAt: string;
 }
 
 // User storage table.

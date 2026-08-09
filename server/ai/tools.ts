@@ -26,6 +26,9 @@ import {
   proposePendingAction,
   pendingActionArtifact,
 } from "../services/approvalKernel";
+// Imported from the resolver module (not re-exported via approvalKernel) so
+// tests that mock approvalKernel wholesale keep a real class for instanceof.
+import { ActionPolicyForbiddenError } from "../services/resolveActionPolicy";
 import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
 // Wave B "Wire the engine" — a lead Pax creates is a lead like any other, and
 // a status Pax moves is a status change like any other. Both fire the same
@@ -1062,13 +1065,24 @@ export async function executeTool(
     // every caller — chat, streaming chat, vaService, app intents, future
     // surfaces — inherits witnessed-send by construction.
     if (kernelApprovalRequiredTools.has(toolName) && !trustedApproval) {
-      const pending = await proposePendingAction({
-        organizationId: org.id,
-        toolName,
-        args,
-        createdByUserId: options?.userId ?? null,
-      });
-      return { success: true, data: pendingActionArtifact(pending) };
+      // P-1 (2026-08-09): proposePendingAction consults resolveActionPolicy
+      // at the chokepoint and stamps the verdict on the frozen row. A
+      // `forbid` verdict throws — refuse honestly with the matrix rule
+      // instead of freezing an action the org's policy disallows.
+      try {
+        const pending = await proposePendingAction({
+          organizationId: org.id,
+          toolName,
+          args,
+          createdByUserId: options?.userId ?? null,
+        });
+        return { success: true, data: pendingActionArtifact(pending) };
+      } catch (err) {
+        if (err instanceof ActionPolicyForbiddenError) {
+          return { success: false, error: err.message };
+        }
+        throw err;
+      }
     }
 
     // ── Pax pause kill-switch gate (Workstream A honesty, 2026-07-29) ──────

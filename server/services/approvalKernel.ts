@@ -27,7 +27,17 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { pendingActions, paxSends, type PendingAction } from "@shared/schema";
+import type { ActionPolicyStamp, AutonomyAgent } from "@shared/models/auth";
+import {
+  ActionPolicyForbiddenError,
+  extractActionAmountCents,
+  resolveActionPolicy,
+} from "./resolveActionPolicy";
 import { logger } from "../utils/logger";
+
+// Re-exported so the chokepoint's callers (tools.ts) can catch the refusal
+// without importing the resolver module directly.
+export { ActionPolicyForbiddenError };
 
 /**
  * Tools that require an explicit human approval before execution
@@ -112,13 +122,63 @@ export function toolRecipientRef(toolName: string, args: Record<string, unknown>
  * identical live pending row (same org + tool + content hash) instead of
  * minting a new approval target every time the model re-proposes the same
  * action in one conversation.
+ *
+ * P-1 (2026-08-09): this is the SINGLE chokepoint where pending_actions are
+ * written (pinned by autonomyEnforcement.test.ts), so the autonomy matrix is
+ * consulted HERE via resolveActionPolicy and the verdict + rule are stamped
+ * on the row (`policy` column, migration 0227):
+ *   - `forbid` throws ActionPolicyForbiddenError — nothing is written; the
+ *     caller surfaces the reason to the user.
+ *   - every other decision (suggest / draft / require_approval /
+ *     auto_with_receipt) freezes exactly as before — a stamped
+ *     `auto_with_receipt` records that the matrix GRANTS autonomy, but no
+ *     execution lane consumes it yet: the only paths from a frozen row to
+ *     execution remain the two human-tap endpoints (approvePendingAction
+ *     below, and the T0-6 draft approve-and-send). Any future auto-execution
+ *     lane MUST require a stamped auto_with_receipt decision AND the Wave
+ *     6.5 standing-instruction consent artifact (see resolveActionPolicy.ts).
+ *   - a policy READ failure resolves to require_approval inside the resolver
+ *     (fail closed to witnessed — today's behavior), so proposal never
+ *     breaks on a policy-store blip.
+ *   - dedupe reuse returns the live row with its original stamp: the same
+ *     frozen action is the same approval target, and its policy was resolved
+ *     when it was born.
  */
 export async function proposePendingAction(params: {
   organizationId: number;
   toolName: string;
   args: Record<string, unknown>;
   createdByUserId?: string | null;
+  /** Matrix agent proposing the action; defaults to "pax" (all kernel tools today are Pax-lane comms/payment tools). */
+  agent?: AutonomyAgent;
 }): Promise<PendingAction> {
+  // P-1: resolve BEFORE the dedupe check so `forbid` binds re-proposals of an
+  // already-frozen action too.
+  const resolved = await resolveActionPolicy({
+    organizationId: params.organizationId,
+    agent: params.agent ?? "pax",
+    actionType: params.toolName,
+    amountCents: extractActionAmountCents(params.toolName, params.args),
+  });
+
+  if (resolved.decision === "forbid") {
+    logger.warn("[approvalKernel] Action refused by autonomy policy — nothing frozen", {
+      metadata: {
+        organizationId: params.organizationId,
+        toolName: params.toolName,
+        reason: resolved.reason,
+      },
+    });
+    throw new ActionPolicyForbiddenError(resolved);
+  }
+
+  const policy: ActionPolicyStamp = {
+    decision: resolved.decision,
+    reason: resolved.reason,
+    agent: resolved.agent,
+    resolvedAt: new Date().toISOString(),
+  };
+
   const contentHash = actionContentHash(params.toolName, params.args);
   const now = Date.now();
 
@@ -147,6 +207,7 @@ export async function proposePendingAction(params: {
       status: "pending",
       expiresAt: new Date(now + PENDING_ACTION_TTL_MS),
       createdByUserId: params.createdByUserId ?? null,
+      policy,
     })
     .returning();
 
@@ -155,6 +216,7 @@ export async function proposePendingAction(params: {
       pendingActionId: inserted[0].id,
       organizationId: params.organizationId,
       toolName: params.toolName,
+      policyDecision: policy.decision,
     },
   });
 
@@ -176,6 +238,10 @@ export function pendingActionArtifact(row: PendingAction): Record<string, unknow
     args: row.args,
     contentHash: row.contentHash,
     expiresAt: row.expiresAt,
+    // P-1: the stamped autonomy verdict (decision + which matrix rule), so
+    // the approval card can say WHY approval is required. Null on rows frozen
+    // before the stamp existed.
+    policy: row.policy ?? null,
     note: "Action prepared and held for approval. Nothing executes until the user taps Approve — tell the user to review and approve it in the chat.",
   };
 }

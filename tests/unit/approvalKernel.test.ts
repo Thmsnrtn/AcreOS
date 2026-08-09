@@ -52,6 +52,7 @@ vi.mock("../../server/db", async () => {
     approved_by_user_id: "approvedByUserId",
     executed_at: "executedAt",
     result_summary: "resultSummary",
+    policy: "policy",
     created_at: "createdAt",
     pending_action_id: "pendingActionId",
     channel: "channel",
@@ -81,6 +82,7 @@ vi.mock("../../server/db", async () => {
       approvedByUserId: null,
       executedAt: null,
       resultSummary: null,
+      policy: null,
     },
     pax_sends: { recipientRef: null },
   };
@@ -160,6 +162,25 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// P-1 (2026-08-09): proposePendingAction now consults resolveActionPolicy at
+// the chokepoint. This suite is about the kernel's freeze/approve/reject
+// state machine, so the resolver is pinned to the no-grant default
+// (require_approval — exactly today's witnessed behavior); the full matrix
+// semantics (levels, thresholds, time guards, forbid) are covered by
+// tests/unit/autonomyEnforcement.test.ts against the REAL resolver.
+vi.mock("../../server/services/resolveActionPolicy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/resolveActionPolicy")>();
+  return {
+    ...actual,
+    resolveActionPolicy: vi.fn(async (input: { agent?: string; actionType: string }) => ({
+      decision: "require_approval" as const,
+      reason: "No autonomy grant stored for pax — defaulting to witnessed approval.",
+      agent: input.agent ?? "pax",
+      actionType: input.actionType,
+    })),
+  };
+});
+
 import {
   APPROVAL_REQUIRED_TOOLS,
   actionContentHash,
@@ -226,6 +247,10 @@ describe("the kernel gate — approval-required without trustedApproval never ex
     expect(row.args).toEqual(emailArgs);
     expect(row.contentHash).toBe(actionContentHash("send_email", emailArgs));
     expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    // P-1: the autonomy verdict + rule are stamped on the frozen row.
+    expect(row.policy?.decision).toBe("require_approval");
+    expect(row.policy?.reason).toContain("witnessed approval");
+    expect(typeof row.policy?.resolvedAt).toBe("string");
     // Nothing executed, nothing audited.
     expect(sends()).toHaveLength(0);
 

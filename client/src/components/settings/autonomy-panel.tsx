@@ -22,10 +22,13 @@ import { cn } from "@/lib/utils";
  * guardrails section.
  *
  * Phase D will gate this surface behind `feature.autonomy-matrix:
- * founder-only` (design-system §8.4) until UX polish complete. For
- * now the route is reachable but the matrix exists as a preference,
- * not yet enforcement (agents read at action time progressively as
- * Phase E touches their action paths).
+ * founder-only` (design-system §8.4) until UX polish complete.
+ *
+ * ENFORCED (P-1, 2026-08-09): the matrix this panel edits is consumed by
+ * resolveActionPolicy (server/services/resolveActionPolicy.ts) at the
+ * pending-actions chokepoint — org-scoped, most-restrictive-human-wins.
+ * GET /api/me/autonomy/effective exposes the enforced verdict per agent ×
+ * action from that same function, for rendering promise-parity here.
  */
 
 const AUTONOMY_ENDPOINT = "/api/me/autonomy";

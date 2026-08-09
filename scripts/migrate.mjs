@@ -8966,6 +8966,14 @@ const STATEMENTS = [
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "dual_agency_side" text`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_acknowledged_at" timestamp`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_doc_ref" text`,
+
+  // ── 0227 P-1 autonomy enforcement-true: policy stamp on pending_actions ─────
+  // COLUMN ONLY on `pending_actions` — no new table. Nullable jsonb holding the
+  // autonomy-matrix verdict resolveActionPolicy produced when the action froze
+  // at the approval-kernel chokepoint: { decision, reason, agent, resolvedAt }.
+  // NULL = frozen before P-1 (never back-filled, never inferred). Mirrors
+  // migrations/0227_pending_actions_policy_stamp.sql + shared/schema.ts.
+  `ALTER TABLE "pending_actions" ADD COLUMN IF NOT EXISTS "policy" jsonb`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

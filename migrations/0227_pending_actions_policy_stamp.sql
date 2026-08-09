@@ -1,0 +1,27 @@
+-- ============================================================================
+-- 0227 — P-1 "autonomy enforcement-true": policy stamp on pending_actions
+--        (master handoff Part 2 §7.2 · Wave 0 item 0.4, 2026-08-09)
+-- ----------------------------------------------------------------------------
+-- COLUMN ONLY on the existing `pending_actions` table — no new table; the
+-- table already has readers and writers, so reachability stays flat.
+--
+-- `policy` records the autonomy-matrix verdict resolveActionPolicy produced
+-- at the moment the action was frozen at the approval-kernel chokepoint:
+--   { decision: suggest | draft | require_approval | auto_with_receipt
+--              | forbid,
+--     reason:  which matrix rule produced it,
+--     agent:   atlas | pax | sophie,
+--     resolvedAt: ISO-8601 }
+-- (`forbid` rows are never written — the chokepoint refuses instead — so the
+-- value never appears in this column; it is listed for the type's record.)
+--
+-- NULLABLE and additive: every pre-0227 row keeps working with NULL, which
+-- means exactly "frozen before P-1 enforcement existed" — nothing is
+-- back-filled or inferred. Deliberately NOT folded into content_hash: the
+-- hash binds a human approval to the frozen tool args; the stamp is ledger
+-- metadata about how the row was born.
+--
+-- MONEY POSTURE: records a decision about an action; moves nothing.
+-- ============================================================================
+
+ALTER TABLE "pending_actions" ADD COLUMN IF NOT EXISTS "policy" jsonb;

@@ -62,9 +62,14 @@ const preferencesSchema = z.object({
     z.enum(["rows", "cards", "expand-on-click"]),
   ).optional(),
   // Phase C.2 — global quiet hours. 0-23 hour values; window wraps midnight
-  // when startHour > endHour. Server enforces nothing yet — this is a
-  // user-visible preference; outbound channels read it at send time
-  // (wired progressively as Phase E surfaces touch the channel paths).
+  // when startHour > endHour. HONEST STATUS (P-1, 2026-08-09): this
+  // notification-quiet-hours block is still a display preference — outbound
+  // notification channels do NOT read it yet, and the old "wired
+  // progressively as Phase E" claim is retired rather than repeated. The
+  // AUTONOMY matrix's time guards are a different, now-ENFORCED lane:
+  // resolveActionPolicy applies them at the pending-actions chokepoint
+  // (server/services/resolveActionPolicy.ts). Wiring THESE quiet hours into
+  // notification channels remains open work.
   notificationQuietHours: z.object({
     enabled: z.boolean().optional(),
     startHour: z.number().int().min(0).max(23).optional(),

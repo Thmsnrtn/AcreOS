@@ -6,15 +6,25 @@
  * visual preference. Lives in its own column so theme writes can't trample
  * agent policy and agents have a narrow read surface at action time.
  *
- * GET    /api/me/autonomy   → current matrix (empty object if unset; client
- *                              fills defaults from settings/autonomy-panel)
- * PATCH  /api/me/autonomy   → merge partial update; level 0-3, threshold
- *                              cents are non-negative ints, time guards 0-23
+ * GET    /api/me/autonomy            → current matrix (empty object if unset;
+ *                                       client fills defaults from
+ *                                       settings/autonomy-panel)
+ * GET    /api/me/autonomy/effective  → the ENFORCED verdict per agent ×
+ *                                       action, from the same
+ *                                       resolveActionPolicy function the
+ *                                       approval-kernel chokepoint consults —
+ *                                       promise = behavior by construction
+ * PATCH  /api/me/autonomy            → merge partial update; level 0-3,
+ *                                       threshold cents are non-negative
+ *                                       ints, time guards 0-23
  *
- * Server-side enforcement (agents reading this at action time and gating /
- * asking / logging accordingly) is wired progressively as Phase E surfaces
- * touch agent action paths. pax.pausedUntil is fully enforced — see
- * server/services/paxPause.ts and the comment on the schema field below.
+ * ENFORCED (P-1, 2026-08-09): the matrix is consumed by resolveActionPolicy
+ * (server/services/resolveActionPolicy.ts) at the single chokepoint where
+ * pending_actions are written (approvalKernel.proposePendingAction); the
+ * verdict + matrix rule are stamped on every frozen action and `forbid`
+ * refuses outright. The old "wired progressively as Phase E surfaces" note
+ * is retired. pax.pausedUntil is additionally enforced at the tool/scheduler
+ * chokepoints — see server/services/paxPause.ts and the schema field below.
  */
 
 import { Router, type Response } from "express";
@@ -22,8 +32,17 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { users, type AutonomyPreferences } from "@shared/models/auth";
+import type { AutonomyAgent } from "@shared/models/auth";
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import {
+  KERNEL_ACTION_MATRIX_IDS,
+  MATRIX_ACTION_IDS,
+  loadOrgAutonomySnapshot,
+  resolvePolicyFromSnapshot,
+  type ResolvedActionPolicy,
+} from "./services/resolveActionPolicy";
 import type { AuthenticatedRequest } from "./types/request";
-import { getUserId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
@@ -71,6 +90,74 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       .limit(1);
 
     res.json((row?.autonomyPreferences ?? {}) as AutonomyPreferences);
+  } catch (error) {
+    Errors.internal(res, error);
+  }
+});
+
+// ── P-1 promise parity: what the kernel will actually do ────────────────────
+// Renders from resolveActionPolicy — the SAME function the approval-kernel
+// chokepoint consults — so the panel can display enforcement truth, not
+// stored intent. Org-scoped (getOrCreateOrg): the matrix is stored per-user
+// but enforced most-restrictive-human-wins across the org, so the verdict
+// here can be stricter than the caller's own stored preference.
+//
+// Without params: verdicts for every matrix action id per agent, plus the
+// five kernel-governed action types (the only ones the pending-actions
+// chokepoint sees today — verdicts for the rest are policy resolution, not
+// yet a chokepoint). Point query: ?agent=pax&actionType=send_email
+// [&amountCents=12345] for a single verdict (e.g. threshold previews).
+const effectiveQuerySchema = z.object({
+  agent: z.enum(["atlas", "pax", "sophie"]).optional(),
+  actionType: z.string().min(1).max(64).optional(),
+  amountCents: z.coerce.number().int().min(0).max(1_000_000_000).optional(),
+}).strict();
+
+router.get("/effective", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+
+    const parsed = effectiveQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.issues);
+    }
+    const { agent, actionType, amountCents } = parsed.data;
+
+    // One snapshot, many pure resolutions — no per-action query fan-out.
+    const snapshot = await loadOrgAutonomySnapshot(organizationId);
+    const when = new Date();
+    const verdict = (a: AutonomyAgent, action: string, cents?: number): ResolvedActionPolicy =>
+      resolvePolicyFromSnapshot(snapshot, {
+        organizationId,
+        agent: a,
+        actionType: action,
+        amountCents: cents ?? null,
+        when,
+      });
+
+    if (actionType) {
+      return res.json(verdict(agent ?? "pax", actionType, amountCents));
+    }
+
+    const agents: Partial<Record<AutonomyAgent, Record<string, ResolvedActionPolicy>>> = {};
+    for (const [agentId, actionIds] of Object.entries(MATRIX_ACTION_IDS)) {
+      const perAction: Record<string, ResolvedActionPolicy> = {};
+      for (const id of actionIds) perAction[id] = verdict(agentId as AutonomyAgent, id);
+      agents[agentId as AutonomyAgent] = perAction;
+    }
+
+    // The kernel-governed action types (all Pax-lane today). These are the
+    // verdicts the pending-actions chokepoint enforces verbatim.
+    const kernel: Record<string, ResolvedActionPolicy> = {};
+    for (const tool of Object.keys(KERNEL_ACTION_MATRIX_IDS)) kernel[tool] = verdict("pax", tool);
+
+    res.json({
+      organizationId,
+      resolvedAt: when.toISOString(),
+      enforcedAt: "approvalKernel.proposePendingAction (the pending_actions chokepoint)",
+      agents,
+      kernel,
+    });
   } catch (error) {
     Errors.internal(res, error);
   }

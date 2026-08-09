@@ -117,7 +117,38 @@ from this file, not from memory. Updated every working session.*
 - **Exit test:** aiRouterTools 8/8 + aiCostCoverage 7/7 + openai-bypass ≤89 +
   full check/test green. MET (full-gate evidence in the commit).
 
-### 0.4 — `resolveActionPolicy` enforcement at the pending-actions chokepoint + `autonomyEnforcement.test` — pending
+### 0.4 — `resolveActionPolicy` enforcement at the pending-actions chokepoint — ✅ DONE
+- **P-1 executed, enforcement-true without switching autonomy ON** (the
+  load-bearing property, verified against code): `resolveActionPolicy(...)` →
+  `suggest | draft | require_approval | auto_with_receipt | forbid` (+reason),
+  consulted inside `approvalKernel.proposePendingAction` (the verified SINGLE
+  `insert(pendingActions)` site) in resolve→forbid→stamp→insert order. `forbid`
+  throws with the rule surfaced; every other verdict — INCLUDING
+  `auto_with_receipt` — still lands frozen awaiting a human: the stamp records
+  that the matrix grants autonomy, but no execution lane consumes it (the two
+  `trustedApproval` human-tap endpoints are unchanged and pinned by a derived
+  test). Any future auto lane must require the stamp AND the Wave 6.5
+  standing-instruction consent artifact (seam documented, not built).
+- **Resolution precedence:** explicit dailyActionLimit=0 ⇒ forbid · org-effective
+  level = MIN across owner+expressing members (level 0 is a hard ceiling —
+  per-action overrides cannot raise it) · none stored ⇒ require_approval ·
+  $-threshold / money-bearing-with-no-ceiling / pausedUntil / time-guard window
+  (org IANA timezone) each downgrade a provisional grant · read failure fails
+  CLOSED to require_approval (never auto, never forbid).
+- **Stamp:** `pending_actions.policy` jsonb (migration 0227 — one nullable
+  column, mirrored; table-count unchanged 756). UI parity: `GET
+  /api/me/autonomy/effective` renders verdicts from the SAME function; the three
+  stale "wired progressively as Phase E" docstrings corrected.
+- **Model gaps recorded honestly (not invented around):** dailyActionLimit>0
+  count-capping deferred (stored model defines no counting unit/day boundary —
+  only explicit 0 enforces); kernel-tool↔panel-action ids bridged by an explicit
+  map (stricter wins; unmapped money-bearing tools can never go auto); legacy
+  `organizations.paxAutonomyLevel` second store deliberately NOT consulted
+  (never gated the kernel) — flag for consolidation at Wave 6.
+- **Exit test:** `autonomyEnforcement.test.ts` — level-0 ⇒ zero auto possible
+  (even with overrides), no-settings ⇒ require_approval, threshold/time
+  downgrades, forbid writes nothing, stamp present, chokepoint-uniqueness
+  derived pin. 49/49 with the kernel suite. MET.
 ### 0.5 — Guard totality (non-streaming + subagent recursion enveloped, depth/step budgets, injection eval lane) — pending
 ### 0.6 — Connectors `executor.ts` P0 disposition (org-scoping, SSRF guard, enveloped results) — pending
 ### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — pending
@@ -152,9 +183,10 @@ from this file, not from memory. Updated every working session.*
 
 ## Next item up
 
-- **0.4**: `resolveActionPolicy` — the autonomy matrix becomes enforcement at
-  the single chokepoint where `pending_actions` are written, + an
-  `autonomyEnforcement.test` pinning level-0 ⇒ zero auto actions (P2 P-1).
-  Verify premises at HEAD first (locate the pending-actions write chokepoint and
-  the matrix read sites). Then 0.5 → 0.9 in order. Waves G/O/F/X-B unlock in
-  parallel once Wave 0 is green.
+- **0.5**: guard totality — `finalizePaxOutput` on the non-streaming path +
+  SUBAGENT recursion (spawn_subagent outputs re-enter the parent inside the
+  untrusted envelope), depth/step budgets on recursion, injection eval lane in
+  CI (P2 P-2). Verify premises at HEAD first (F-08-1's non-streaming fix
+  shipped in the Ten — confirm whether it covers the subagent path; the audit
+  says a subagent can launder fabrication past the guard as a "tool result").
+  Then 0.6 → 0.9 in order.

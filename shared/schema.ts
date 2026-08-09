@@ -9,6 +9,7 @@ import { z } from "zod";
 // imports just resolve the forward-reference for the relations() calls.
 import { chartOfAccounts, accountLedgerEntries } from "./schema/accounting-ops";
 import { users } from "./models/auth";
+import type { ActionPolicyStamp } from "./models/auth";
 import { dealRooms } from "./schema/marketplace";
 
 /**
@@ -2588,6 +2589,13 @@ export const pendingActions = pgTable("pending_actions", {
   approvedByUserId: text("approved_by_user_id"),
   executedAt: timestamp("executed_at"),
   resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
+  // P-1 (2026-08-09, migration 0227): the autonomy-matrix verdict stamped at
+  // proposal time by resolveActionPolicy — { decision, reason, agent,
+  // resolvedAt }. NULL on pre-0227 rows (stamped only going forward; absence
+  // means "resolved before P-1", never inferred). Deliberately NOT part of
+  // content_hash: the hash binds the human's approval to the frozen tool
+  // args; the policy stamp is ledger metadata about how the row was born.
+  policy: jsonb("policy").$type<ActionPolicyStamp>(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => [
   index("pending_actions_org_status_idx").on(t.organizationId, t.status),
