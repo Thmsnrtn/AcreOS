@@ -244,9 +244,19 @@ export function formatCents(cents: number): string {
  * decided in a testable place and cannot be dropped at a call site. A refused
  * reconciliation renders its refusal, never a fabricated statement.
  */
+/** Human label for how the estimated-billed figure was determined. */
+function billedBasisLabel(basis: string | undefined): string {
+  switch (basis) {
+    case "from_charges": return " (from recorded CAM charges)";
+    case "lease_estimate": return " (from the lease's monthly CAM estimate)";
+    case "none": return " (none recorded)";
+    default: return "";
+  }
+}
+
 export function renderCamStatementMarkdown(
   result: CamReconciliationResult,
-  ctx: { periodStart: string; periodEnd: string; poolKind: string },
+  ctx: { periodStart: string; periodEnd: string; poolKind: string; estimatedBilledBasis?: string },
 ): string {
   if (result.refusedReason) {
     return (
@@ -267,7 +277,9 @@ export function renderCamStatementMarkdown(
     : " (fixed by lease)";
   lines.push(`- Your pro-rata share: ${((result.proRataBps ?? 0) / 100).toFixed(2)}%${basisNote}`);
   lines.push(`- Recoverable share: ${formatCents(result.recoverableShareCents ?? 0)}`);
-  lines.push(`- Estimated CAM billed over the period: ${formatCents(result.estimatedBilledCents)}`);
+  lines.push(
+    `- Estimated CAM billed over the period: ${formatCents(result.estimatedBilledCents)}${billedBasisLabel(ctx.estimatedBilledBasis)}`,
+  );
   const delta = result.deltaCents ?? 0;
   lines.push(
     `- **${delta >= 0 ? "Balance due" : "Credit due to tenant"}: ${formatCents(Math.abs(delta))}**`,

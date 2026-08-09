@@ -268,7 +268,7 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //   - short_term_rental → still roadmap: its beta bar (a real
     //     nightly-booking model) is genuinely unmet.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
-      commercial: "beta",
+      commercial: "core",
       agent_investor: "beta",
       short_term_rental: "roadmap",
       // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured

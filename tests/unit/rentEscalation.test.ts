@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   effectiveBaseRentForMonth,
+  sumEffectiveBaseRentOverPeriod,
   type RentScheduleStepInput,
 } from "../../shared/rental/rentEscalation";
 import { planRentCharges } from "../../shared/rental/rentSchedule";
@@ -128,6 +129,23 @@ describe("cpi — indexed with a collar", () => {
   it("a cpi step with no index anchor is a no-op", () => {
     const steps = [step({ stepType: "cpi", cpiIndexBase: null, cpiIndexCurrent: 105 })];
     expect(effectiveBaseRentForMonth(BASE, steps, "2027-06-01")).toBe(BASE);
+  });
+});
+
+describe("sumEffectiveBaseRentOverPeriod — the escalation-aware period base rent", () => {
+  it("equals base × months when there are no steps (backward compatible)", () => {
+    expect(sumEffectiveBaseRentOverPeriod(BASE, [], "2026-01-01", 12)).toBe(BASE * 12);
+  });
+
+  it("sums the escalated base month-by-month across a year boundary", () => {
+    // 100000 for 2026, then +10% from 2027-01. Window Nov 2026 – Feb 2027 (4 mo):
+    // Nov,Dec 2026 = 100000 each; Jan,Feb 2027 = 110000 each → 420000.
+    const steps = [step({ stepType: "fixed_pct", pctBps: 1000, effectiveMonth: "2027-01-01" })];
+    expect(sumEffectiveBaseRentOverPeriod(BASE, steps, "2026-11-01", 4)).toBe(420_000);
+  });
+
+  it("returns 0 for a non-positive month count", () => {
+    expect(sumEffectiveBaseRentOverPeriod(BASE, [], "2026-01-01", 0)).toBe(0);
   });
 });
 

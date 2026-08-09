@@ -92,6 +92,7 @@ import {
   monthsInPeriod,
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
+import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
 import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
 import { computePerSqftMetrics } from "@shared/rental/perSqft";
 import type { AuthenticatedRequest } from "./types/request";
@@ -1966,6 +1967,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         periodStart: pool.periodStart,
         periodEnd: pool.periodEnd,
         poolKind: pool.poolKind,
+        estimatedBilledBasis,
       });
 
       const frozen = {
@@ -2162,12 +2164,40 @@ export function registerRentLedgerRoutes(app: Express): void {
         ? salesRows.reduce((s, r) => s + Number(r.grossSalesCents), 0)
         : null;
 
-      // Period base rent = current monthly base rent × months in the window.
-      // Stage 4 (escalation-aware rent) refines this to the scheduled base.
+      // Period base rent = the ESCALATION-AWARE base summed across the window's
+      // months (a natural breakpoint is base rent ÷ rate, so it must track the
+      // lease's scheduled rent, not a flat approximation). With no escalation
+      // steps this equals monthlyRentCents × months, unchanged.
       const periodMonths = monthsInPeriod(parsed.data.periodStart, parsed.data.periodEnd);
+      const scheduleRows = await db
+        .select({
+          effectiveMonth: leaseRentSchedule.effectiveMonth,
+          stepType: leaseRentSchedule.stepType,
+          amountCents: leaseRentSchedule.amountCents,
+          pctBps: leaseRentSchedule.pctBps,
+          cpiIndexBase: leaseRentSchedule.cpiIndexBase,
+          cpiIndexCurrent: leaseRentSchedule.cpiIndexCurrent,
+          floorPctBps: leaseRentSchedule.floorPctBps,
+          ceilingPctBps: leaseRentSchedule.ceilingPctBps,
+        })
+        .from(leaseRentSchedule)
+        .where(and(
+          eq(leaseRentSchedule.organizationId, orgId),
+          eq(leaseRentSchedule.leaseId, lease.id),
+        ));
+      const steps = scheduleRows.map((r) => ({
+        effectiveMonth: String(r.effectiveMonth).slice(0, 10),
+        stepType: r.stepType,
+        amountCents: r.amountCents ?? null,
+        pctBps: r.pctBps ?? null,
+        cpiIndexBase: r.cpiIndexBase != null ? Number(r.cpiIndexBase) : null,
+        cpiIndexCurrent: r.cpiIndexCurrent != null ? Number(r.cpiIndexCurrent) : null,
+        floorPctBps: r.floorPctBps ?? null,
+        ceilingPctBps: r.ceilingPctBps ?? null,
+      }));
       const periodBaseRentCents =
         lease.monthlyRentCents != null && periodMonths > 0
-          ? lease.monthlyRentCents * periodMonths
+          ? sumEffectiveBaseRentOverPeriod(lease.monthlyRentCents, steps, parsed.data.periodStart, periodMonths)
           : null;
 
       const result = computePercentageRent({

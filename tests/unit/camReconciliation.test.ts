@@ -276,6 +276,21 @@ describe("renderCamStatementMarkdown", () => {
     expect(md).toContain("Balance due");
   });
 
+  it("surfaces how the estimated-billed figure was determined (provenance in the statement)", () => {
+    const r = computeCamReconciliation({
+      pool: pool(),
+      lease: lease({ rentableSqft: 2_000 }),
+      rows: twoOperatingRows,
+      estimatedBilledCents: 25_000,
+    });
+    const fromCharges = renderCamStatementMarkdown(r, { ...ctx, estimatedBilledBasis: "from_charges" });
+    expect(fromCharges).toContain("from recorded CAM charges");
+    const leaseEst = renderCamStatementMarkdown(r, { ...ctx, estimatedBilledBasis: "lease_estimate" });
+    expect(leaseEst).toContain("lease's monthly CAM estimate");
+    const none = renderCamStatementMarkdown(r, { ...ctx, estimatedBilledBasis: "none" });
+    expect(none).toContain("none recorded");
+  });
+
   it("renders a refusal, never a fabricated statement, when the engine refused", () => {
     const r = computeCamReconciliation({
       pool: pool({ totalRentableSqft: null }),

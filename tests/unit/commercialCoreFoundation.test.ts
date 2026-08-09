@@ -39,11 +39,14 @@ function read(rel: string): string {
 const ledger = read("server/routes-rent-ledger.ts");
 const schema = read("shared/schema/rental.ts");
 
-describe("commercial is still BETA at the end of Stage 1 (the flip is a later stage)", () => {
-  it("the registry entry has not been flipped to core yet", () => {
-    // Stage 1 is the foundation; flipping to core before the engines exist would
-    // be the stub-as-live lie this whole program refuses.
-    expect(getBusinessType("commercial")?.maturity).toBe("beta");
+describe("commercial is CORE — every roadmap-for-core capability is now delivered", () => {
+  it("the registry entry has been flipped to core (Wave 4 complete)", () => {
+    // REWRITTEN at the flip (not deleted): Stage 1 pinned "still beta" so the flag
+    // could not race ahead of the engines. Wave 4 built them all — CAM
+    // reconciliation, percentage rent, escalation, per-sqft, contractual late fees,
+    // commercial-correct NOI — each a pure, tested engine that refuses rather than
+    // fabricate, so calling commercial "core" is now honest.
+    expect(getBusinessType("commercial")?.maturity).toBe("core");
   });
 });
 

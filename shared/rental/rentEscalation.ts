@@ -90,3 +90,32 @@ export function effectiveBaseRentForMonth(
   for (const step of applicable) rent = applyStep(rent, step);
   return rent;
 }
+
+/**
+ * The escalation-aware base rent for a whole period — the sum of the effective
+ * base for each month in [periodStartMonth, +periodMonths). With no steps this is
+ * exactly baseRentCents × periodMonths (backward compatible), which is why a
+ * caller can use it unconditionally. Used e.g. as the numerator of a natural
+ * percentage-rent breakpoint so an escalated lease's breakpoint tracks its
+ * actual scheduled rent rather than a flat approximation.
+ */
+export function sumEffectiveBaseRentOverPeriod(
+  baseRentCents: number,
+  steps: readonly RentScheduleStepInput[],
+  periodStartMonth: string,
+  periodMonths: number,
+): number {
+  if (periodMonths <= 0) return 0;
+  const y = Number(String(periodStartMonth).slice(0, 4));
+  const m0 = Number(String(periodStartMonth).slice(5, 7));
+  if (!Number.isInteger(y) || !Number.isInteger(m0) || m0 < 1 || m0 > 12) return 0;
+  let total = 0;
+  for (let i = 0; i < periodMonths; i++) {
+    const idx = m0 - 1 + i;
+    const yy = y + Math.floor(idx / 12);
+    const mm = (idx % 12) + 1;
+    const key = `${yy}-${String(mm).padStart(2, "0")}-01`;
+    total += effectiveBaseRentForMonth(baseRentCents, steps, key);
+  }
+  return total;
+}
