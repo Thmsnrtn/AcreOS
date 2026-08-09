@@ -93,6 +93,7 @@ import {
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
+import { computePerSqftMetrics } from "@shared/rental/perSqft";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -2317,6 +2318,28 @@ export function registerRentLedgerRoutes(app: Express): void {
           daysLate,
         },
       });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Per-square-foot metrics — commercial rent quoted the commercial way ────
+  // Base rent $/sqft/yr and occupancy cost $/sqft/yr (base + CAM estimate),
+  // derived by the pure engine, which returns nulls (unavailable) rather than a
+  // fabricated figure when the lease has no recorded rentable area.
+  app.get("/api/leases/:id/per-sqft", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const metrics = computePerSqftMetrics({
+        monthlyRentCents: lease.monthlyRentCents,
+        rentableSqft: lease.rentableSqft,
+        camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
+      });
+      return res.json({ perSqft: metrics });
     } catch (err) {
       return Errors.internal(res, err);
     }
