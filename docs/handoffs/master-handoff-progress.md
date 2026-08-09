@@ -52,14 +52,30 @@ from this file, not from memory. Updated every working session.*
 - **Approval queue:** nothing — no gate/ratchet baseline changed, no hard-stop
   domain touched (a new derived test adds enforcement; it moves no baseline).
 
-### 0.1 — The Ten (REMEDIATION briefs): confirm state, finish stragglers — 🔍 NEXT UP
-Premise check from this session's reading: `REMEDIATION.md` records all 6 P0s +
-9 P1 groups fixed, the 9-item continuation batch shipped (incl. F-18-1), and an
-independent 6-dimension completeness pass that found + fixed 7 more defects.
-Known deliberate residue to verify/disposition: F-16-1 full router migration was
-PLANNED not shipped (`F-16-router-tool-migration-plan.md` — needs live API keys;
-the load-bearing cost gate shipped via `aiSpendGuard`); that is 0.3's scope.
-Exit test: each of the Ten's gates runs green at HEAD + no straggler brief open.
+### 0.1 — The Ten (REMEDIATION briefs): confirm state, finish stragglers — ✅ CONFIRMED at HEAD
+- **State:** `REMEDIATION.md` records all 6 P0s + 9 P1 groups fixed, the 9-item
+  continuation batch shipped (incl. F-18-1), and an independent 6-dimension
+  completeness pass that found + fixed 7 further defects (incl. 2 P1s introduced
+  by the remediation itself). This session re-verified against code, not the
+  report: full `npm run check` (tsc + all 21 lint gates + all ratchet families)
+  exit 0 and full `npm test` 792 files / 10,700 tests / 0 failures at this tree,
+  plus a dedicated clean-tree `npm run check` as 0.1's own gate-run evidence.
+- **Straggler disposition (all four deliberate deferrals are ROUTED, none open):**
+  1. `: any` bulk (~3,020 sites) — deferred by the audit's own design; frozen by
+     the down-only `colon-any` ratchet (3,018 at HEAD). Not a straggler.
+  2. Orphaned-table drops (`agent_improvement_plans`, `agent_synergy_map`) —
+     queued for the FOUNDER table-drop decision (customer-data deletion is a
+     hard-stop); schema defs preserved per reachability.json's note. → In the
+     approval queue below as a standing founder decision.
+  3. F-16-1 router migration Phase 2/3 — deferred pending a keyed environment +
+     eval; the cost chokepoint (`aiSpendGuard`) + `openai-bypass` ratchet
+     (baseline 89, down-only) shipped. → This IS item 0.3's scope; premise
+     verification there decides what is mechanically migratable without keys.
+  4. DR restore drill (F-13-2) — operational, founder/ops-run (needs
+     `DB_BACKUP_S3_BUCKET`); runbook + staleness surfacing shipped. → Wave O2;
+     the drill execution is a founder action.
+- **Exit test:** the Ten's gates green at HEAD (evidence above) + zero un-routed
+  stragglers. MET.
 
 ### 0.3 — Router totality + `.chat.completions.create` allowlist lint (Pax/VA/support/Atlas/Solene) — pending
 Premises to verify: `openai-bypass` ratchet exists (baseline 89, down-only);
@@ -78,9 +94,21 @@ allowlisted with a shrinking baseline.
 
 ## Approval queue for the founder
 
-*(empty — 0.8 will enter it when built, per §A rule 5)*
+1. **Standing table-drop decision (pre-existing, surfaced not created here):**
+   `agent_improvement_plans` + `agent_synergy_map` are orphaned (their sole
+   readers/writers were deleted in the founder-approved dead-facade KILL) and
+   queued in `reachability.json`'s note for an explicit DROP ruling. Customer-
+   data deletion is a hard-stop, so only the founder can rule. No urgency; they
+   sit inert in the reachability baseline until ruled on.
+2. **DR restore drill (F-13-2 / Wave O2):** founder/ops-run with
+   `DB_BACKUP_S3_BUCKET` — the one Ten item whose execution is physically a
+   founder action.
+3. *(anticipated)* **0.8 mail lanes** will enter this queue when built — it is a
+   send-lane change (§A rule 5: propose, don't merge).
 
 ## Next item up
 
-- **0.1**: run the Ten's gates at HEAD, verify no straggler, log. Then 0.3 → 0.9
-  in order. Waves G/O/F/X-B may start in parallel once Wave 0 is green.
+- **0.3**: router totality + completions allowlist — verify premises at HEAD
+  (openai-bypass baseline, the six offenders, what is migratable without live
+  keys), state the exit test, execute. Then 0.4 → 0.9 in order. Waves G/O/F/X-B
+  may start in parallel once Wave 0 is green.
