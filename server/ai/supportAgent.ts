@@ -16,6 +16,7 @@ import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { serializeToolResultForModel } from "./untrustedEnvelope";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -5353,10 +5354,14 @@ export async function processSupportChat(
           success: result.success
         });
 
+        // Guard totality (audit P-2 / Wave 0.5): support tool results carry
+        // customer-authored free text (ticket subject/description, message
+        // bodies) — route through the universal tool-result → model boundary
+        // so those fields re-enter the loop enveloped, not raw.
         toolResults.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
+          content: serializeToolResultForModel(toolCall.function.name, result)
         });
       }
     }

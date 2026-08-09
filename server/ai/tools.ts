@@ -20,6 +20,7 @@ import {
   recordAutonomousSend,
 } from "../services/autonomyGuardrails";
 import { logger } from "../utils/logger";
+import { wrapUntrusted } from "./untrustedEnvelope";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import {
   APPROVAL_REQUIRED_TOOLS as kernelApprovalRequiredTools,
@@ -2700,7 +2701,21 @@ export async function executeTool(
           agentRole: (args.role || "research") as any,
           subAgentDepth: currentDepth + 1,
         });
-        return { success: true, data: { response: subResult.response, conversationId: subResult.conversationId } };
+        // Guard totality (audit P-2 / Wave 0.5): a subagent's response is
+        // MODEL-PROCESSED text that may derive from external/untrusted content
+        // (web pages, customer notes, emails it read). `response` is not one of
+        // the envelope's UNTRUSTED_FIELD_KEYS, so without this explicit wrap it
+        // would re-enter the PARENT model raw — letting an injected instruction
+        // inside a subagent result read as trusted context. Wrap it at the
+        // source; the field-walk inside serializeToolResultForModel skips
+        // strings that are already enveloped, so this never double-wraps.
+        return {
+          success: true,
+          data: {
+            response: wrapUntrusted(subResult.response, "tool:spawn_subagent"),
+            conversationId: subResult.conversationId,
+          },
+        };
       }
 
       // ── Land-knowledge retrieval (Andrei E5) ───────────────────────────────────

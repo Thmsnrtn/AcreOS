@@ -39,6 +39,7 @@ import type { Organization } from "@shared/schema";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { serializeToolResultForModel } from "./untrustedEnvelope";
 import {
   getOpenAIClient,
   supportToolDefinitions,
@@ -308,10 +309,14 @@ export async function resolveTicketWithPax(
       }
 
       const result = await executeSupportTool(name, args, org, ticketId);
+      // Guard totality (audit P-2 / Wave 0.5): support tool results carry
+      // customer-authored free text (ticket subject/description, message
+      // bodies) — route through the universal tool-result → model boundary
+      // so those fields re-enter the loop enveloped, not raw.
       toolResults.push({
         role: "tool",
         tool_call_id: toolCall.id,
-        content: JSON.stringify(result),
+        content: serializeToolResultForModel(name, result),
       });
     }
 

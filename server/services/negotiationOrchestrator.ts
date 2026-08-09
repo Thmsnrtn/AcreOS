@@ -10,6 +10,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import OpenAI from "openai";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
@@ -805,7 +806,17 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
               orderBy: [desc(negotiationMoves.createdAt)],
               limit: 10,
             });
-            return JSON.stringify({ thread, moves });
+            // Guard totality (audit P-2 / Wave 0.5): `terms` is the one
+            // counterparty-authored free-text channel in a move (party can be
+            // "seller"), and "terms" is not one of the envelope's
+            // UNTRUSTED_FIELD_KEYS — wrap it here so an instruction planted in
+            // a counter-offer can't read as trusted context to the model.
+            const safeMoves = moves.map((m) =>
+              m.terms
+                ? { ...m, terms: wrapUntrusted(m.terms, "tool:get_negotiation_thread.terms") }
+                : m,
+            );
+            return JSON.stringify({ thread, moves: safeMoves });
           } catch {
             return JSON.stringify({ error: 'Thread lookup failed' });
           }

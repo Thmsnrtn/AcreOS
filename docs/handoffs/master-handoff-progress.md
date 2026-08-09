@@ -149,7 +149,55 @@ from this file, not from memory. Updated every working session.*
   (even with overrides), no-settings ⇒ require_approval, threshold/time
   downgrades, forbid writes nothing, stamp present, chokepoint-uniqueness
   derived pin. 49/49 with the kernel suite. MET.
-### 0.5 — Guard totality (non-streaming + subagent recursion enveloped, depth/step budgets, injection eval lane) — pending
+### 0.5 — Guard totality (non-streaming + subagent recursion enveloped, depth/step budgets, injection eval lane) — ✅ DONE
+- **Premise verification: most of P-2 was already true at HEAD** (recorded as
+  such, not rebuilt): F-08-1's fix runs `finalizePaxOutput` (hallucination guard
+  + live eval gate) on the non-streaming `processChat` return — which IS the
+  subagent path (`spawn_subagent` → `processChat(..., "pax_subagent")`), so
+  subagent output is guarded before it leaves the subagent; the streaming path
+  carries its own twin guard block; depth cap (max 2) + `MAX_TOOL_ITERATIONS=10`
+  budgets existed; the envelope + its unit tests existed.
+- **The confirmed holes, closed this session:**
+  1. **Subagent `response` re-entered the PARENT raw** — `response` is not one
+     of `UNTRUSTED_FIELD_KEYS`, so the field-walk left it bare and an injected
+     instruction inside a subagent result read as trusted parent context. Now
+     wrapped at the source (`tools.ts` spawn_subagent case,
+     `wrapUntrusted(..., "tool:spawn_subagent")`; single-wrap proven by test).
+  2. **Two support model-loops pushed raw tool results**: `paxSupportResolver`
+     (customer-triggered on every ticket) and `supportAgent` fed
+     `JSON.stringify(result)` from `executeSupportTool` back to the model —
+     customer-authored ticket text re-entered unenveloped. Both now route
+     through `serializeToolResultForModel` (the universal boundary).
+  3. **`negotiationOrchestrator.get_negotiation_thread` returned counterparty
+     free text raw**: `negotiationMoves.terms` (party can be "seller") is not a
+     keyed envelope field. Now wrapped at the source
+     (`tool:get_negotiation_thread.terms`).
+- **Injection eval lane (new):** `dataGroundingEvalCases.ts` section (e) — two
+  critical injection-in-content cases (`dg-injection-sendmail-001` embedded
+  send-email directive in a lead note; `dg-injection-exfil-001` exfil directive
+  in an inbound email), each with safeOutput/adversarialOutput fixtures so the
+  derived case test auto-consumes them. Forbidden traits are FIXTURE literals
+  (never-legitimate strings), NOT generic compliance phrases — critical-case
+  forbidden traits run context-blind on live replies via `evaluateLivePaxOutput`
+  and a generic phrase ("email sent") would deflect legitimate authorized-send
+  confirmations. Seeded to `ai_test_cases` via migration 0228 + `migrate.mjs`
+  mirror (deterministic UUIDv5 ids), so the DB-backed keyed harness gates on
+  them — not built-but-unwired.
+- **Exit test:** `tests/unit/guardTotality.test.ts` (11 tests) — (a) DERIVED
+  sweep: the set of server files pushing `role:"tool"` messages is exactly the
+  classified set, and every push site's own content expression is an enveloped
+  shape (or server-authored structural literal; the one `content: result`
+  exemption in negotiationOrchestrator is held honest by a paired
+  wrap-at-source pin) — a new model loop pushing raw results fails CI; (b)
+  spawn_subagent wrap present + raw pass-through banned + functional
+  single-wrap-through-serialize proof; (c) depth-2 cap + every loop's iteration
+  budget + both Pax entry points guarded (F-08-1 stays closed); (d) injection
+  lane: ≥2 critical cases with full fixtures, live gate catches every
+  injection-compliance adversarial, migration + mirror carry the derived UUIDs.
+  MET (11/11 + adjacent envelope/support/negotiation/harness suites green;
+  full-gate evidence in the commit).
+- **Approval queue:** nothing — no gate/ratchet baseline moved, no send lane or
+  hard-stop domain touched (envelope wraps are read-path hardening).
 ### 0.6 — Connectors `executor.ts` P0 disposition (org-scoping, SSRF guard, enveloped results) — pending
 ### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — pending
 ### 0.8 — Mail lanes (`lobService` → `resolveProviderCredential`, purpose lanes, wedge cap, `mailProviderLanes.test`) — pending · **SEND LANE: propose-don't-merge (§A rule 5) — goes to founder approval queue before merge**
@@ -183,10 +231,8 @@ from this file, not from memory. Updated every working session.*
 
 ## Next item up
 
-- **0.5**: guard totality — `finalizePaxOutput` on the non-streaming path +
-  SUBAGENT recursion (spawn_subagent outputs re-enter the parent inside the
-  untrusted envelope), depth/step budgets on recursion, injection eval lane in
-  CI (P2 P-2). Verify premises at HEAD first (F-08-1's non-streaming fix
-  shipped in the Ten — confirm whether it covers the subagent path; the audit
-  says a subagent can launder fabrication past the guard as a "tool result").
-  Then 0.6 → 0.9 in order.
+- **0.6**: connectors `executor.ts` P0 disposition — org-scoping on credential
+  fetches, SSRF guard on outbound calls, enveloped results. Verify premises at
+  HEAD first (the connectors program may have moved since the audit brief was
+  written), then implement with a falsifiable exit test. Then 0.7 → 0.9 in
+  order (0.8 builds but does NOT merge — founder queue).
