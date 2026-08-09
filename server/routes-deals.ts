@@ -21,7 +21,7 @@ import {
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { type AuthenticatedRequest, getOrganizationId } from "./types/request";
+import { type AuthenticatedRequest, getOrganization, getOrganizationId } from "./types/request";
 import {
   getAllHandoffs,
   getHandoffsForDeal,
@@ -307,6 +307,157 @@ export function registerDealRoutes(app: Express): void {
       res.json(merged);
     } catch (err) {
       Errors.internal(res, err);
+    }
+  });
+
+  // ── CMA (Comparative Market Analysis) — agent_investor only ───────────────
+  // GET /api/deals/:id/cma — the licensed-agent CMA over the deal's SUBJECT
+  // property: sold house comps + an AVM, pulled through the EXISTING ATTOM
+  // residential seam (server/services/residentialComps.ts). This is capability
+  // wiring, not a data plane — no new vendor, no bulk ingest, no new table.
+  //
+  // Gating: agent_investor's subject is residential (2026-08 founder decision
+  // reclassifying agent_investor as residential-routed; see
+  // RESIDENTIAL_BUSINESS_TYPES in shared/models/persona-mapping.ts). Any other
+  // persona 404s here — a CMA is an agent deliverable and land verticals keep
+  // the parcel plane.
+  //
+  // HONESTY (refuse-not-fabricate): when the org has no ATTOM connection
+  // (platform key or BYOK), the seam returns { status: "unavailable",
+  // reason: "attom_not_connected" }; this route surfaces that verbatim with
+  // empty comps and a null valuation — a land comp is NEVER substituted and no
+  // AVM/CMA number is invented. A deal with no resolvable subject address
+  // refuses honestly rather than guessing a location. Mirrors the honest
+  // ATTOM-routed pattern in server/routes-flip-analyzer.ts (/api/flip-analyzer/comps).
+  api.get("/api/deals/:id/cma", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const org = getOrganization(req);
+
+      // Persona gate: CMA is the agent_investor surface. Refuse (404) rather
+      // than confirm the resource exists for personas that shouldn't reach it.
+      const businessType = org.onboardingData?.businessType ?? null;
+      if (businessType !== "agent_investor") {
+        return Errors.notFound(res, "CMA");
+      }
+
+      const dealId = Number(req.params.id);
+      if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
+
+      const deal = await storage.getDeal(orgId, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+      if (!deal.propertyId) {
+        // Refuse honestly: a CMA needs a subject property. Never fabricate one.
+        return res.json({
+          status: "unavailable",
+          reason: "no_subject_property",
+          message:
+            "This deal has no linked property, so there's no subject to run a CMA on. Link a property to this deal first.",
+          comps: [],
+          valuation: null,
+          subject: null,
+        });
+      }
+
+      const property = await storage.getProperty(orgId, deal.propertyId);
+      if (!property) return Errors.notFound(res, "Property");
+
+      const lat = property.latitude !== null && property.latitude !== undefined ? Number(property.latitude) : NaN;
+      const lng = property.longitude !== null && property.longitude !== undefined ? Number(property.longitude) : NaN;
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+      const hasAddress = !!(property.address && property.city && property.state && property.zip);
+
+      const subject = {
+        propertyId: property.id,
+        address: property.address ?? null,
+        city: property.city ?? null,
+        state: property.state ?? null,
+        zip: property.zip ?? null,
+        latitude: hasCoords ? lat : null,
+        longitude: hasCoords ? lng : null,
+      };
+
+      if (!hasCoords && !hasAddress) {
+        // Refuse rather than guess a location: a CMA pulled for the wrong
+        // subject is worse than no CMA.
+        return res.json({
+          status: "unavailable",
+          reason: "subject_not_locatable",
+          message:
+            "This property has no coordinates and no complete street address, so a CMA can't be pulled for it. Add the address (or geocode the parcel) first.",
+          comps: [],
+          valuation: null,
+          subject,
+        });
+      }
+
+      const {
+        getResidentialComps,
+        getResidentialValuation,
+        extractResidentialComps,
+        extractResidentialAvm,
+      } = await import("./services/residentialComps");
+
+      const residentialSubject = hasCoords
+        ? ({ kind: "coordinates", latitude: lat, longitude: lng } as const)
+        : ({
+            kind: "address",
+            street: property.address as string,
+            city: property.city as string,
+            state: property.state as string,
+            zip: property.zip as string,
+          } as const);
+
+      const compsOutcome = await getResidentialComps(orgId, residentialSubject);
+
+      // ATTOM not connected (or the platform pool can't cover the lookup):
+      // surface the seam's honest unavailable state verbatim. Substitute
+      // nothing — no land comps, no invented AVM.
+      if (compsOutcome.status !== "ok") {
+        return res.json({
+          status: compsOutcome.status,
+          reason: compsOutcome.status === "unavailable" ? compsOutcome.reason : "no_data",
+          message: compsOutcome.message,
+          comps: [],
+          valuation: null,
+          subject,
+        });
+      }
+
+      const comps = extractResidentialComps(compsOutcome.result.data);
+
+      // The AVM is the CMA's headline number. It rides the same ATTOM seam, so
+      // it only runs when comps succeeded (ATTOM is connected). Anything other
+      // than an "ok" outcome yields a null valuation — never a fabricated one.
+      const valuationOutcome = await getResidentialValuation(orgId, residentialSubject);
+      const valuation =
+        valuationOutcome.status === "ok"
+          ? extractResidentialAvm(valuationOutcome.result.data)
+          : null;
+
+      logger.info("[deals/cma] residential CMA pulled for agent_investor", {
+        source: "routes-deals",
+        metadata: {
+          organizationId: orgId,
+          dealId,
+          propertyId: property.id,
+          comps: comps.length,
+          hasValuation: valuation !== null,
+          byok: compsOutcome.byok,
+        },
+      });
+
+      return res.json({
+        status: "ok",
+        comps,
+        valuation,
+        subject,
+        credentialSource: compsOutcome.byok ? "organization" : "platform",
+        provenance:
+          "Sold comparables and AVM from ATTOM Data via the residential seam. ATTOM does not report post-rehab condition — adjust per comp yourself.",
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
     }
   });
 

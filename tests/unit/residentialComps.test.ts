@@ -239,6 +239,7 @@ describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () =
     "short_term_rental",      // furnished house/unit nightly rentals
     "multifamily",            // units
     "mobile_home",            // homes / park lots
+    "agent_investor",         // licensed agent — subject is residential (MLS/CMA)
   ] as const;
 
   it("contains every house-subject vertical, and nothing else", () => {
@@ -255,6 +256,16 @@ describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () =
     expect(RESIDENTIAL_BUSINESS_TYPES.has("residential_wholesaler")).toBe(true);
   });
 
+  it("agent_investor is residential (2026-08 founder decision — a licensed agent's subject is residential: MLS/CMA)", () => {
+    // The founder reversed the earlier "agent_investor is a land, not-
+    // residential persona" ruling: a licensed agent works over residential
+    // real estate, so its comps/valuation route through the ATTOM residential
+    // seam (Comparative Market Analysis), NOT the land parcel plane. This is
+    // the comps-fork switch only — agent_investor's investorType stays "land".
+    expect(isResidentialBusinessType("agent_investor")).toBe(true);
+    expect(RESIDENTIAL_BUSINESS_TYPES.has("agent_investor")).toBe(true);
+  });
+
   it("every member is a real businessType", () => {
     for (const bt of RESIDENTIAL_BUSINESS_TYPES) {
       expect(BUSINESS_TYPES).toContain(bt);
@@ -264,8 +275,10 @@ describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () =
   it("land / notes / commercial verticals are NOT residential-routed", () => {
     // These verticals' subject property is raw land, a note, or commercial
     // real estate — the land/parcel data plane is the RIGHT source for them,
-    // so they must keep the land fork.
-    for (const bt of ["land_flipper", "note_investor", "hybrid", "commercial", "subdivider", "developer", "tax_lien_deed", "creative_finance", "agent_investor"]) {
+    // so they must keep the land fork. (agent_investor moved OUT of this list
+    // on the 2026-08 founder decision — a licensed agent's subject is
+    // residential; see the positive assertion above.)
+    for (const bt of ["land_flipper", "note_investor", "hybrid", "commercial", "subdivider", "developer", "tax_lien_deed", "creative_finance"]) {
       expect(isResidentialBusinessType(bt), bt).toBe(false);
     }
   });

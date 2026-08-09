@@ -1,7 +1,8 @@
 /**
- * agent_investor commission wedge (Wave 2 pass C).
+ * agent_investor commission wedge (Wave 2 pass C) → CORE (Wave 5).
  *
- * Pins the honest-partial promotion of agent_investor roadmap → beta:
+ * Pins the wedge that promoted agent_investor roadmap → beta, now kept current
+ * through the Wave 5 beta → core flip:
  *
  *   1. The commission surface is reachable by an agent_investor org BEHIND the
  *      Finance door — a persona-gated child of the money module + a
@@ -15,8 +16,9 @@
  *      only when an explicit config exists (never fabricate).
  *   4. The duplicate standalone /api/commissions router is gone — one source of
  *      truth.
- *   5. MLS / residential-comps stays the deliberate roadmap hard-stop, while
- *      client-vs-own-book (deal_book, migration 0226) is now LIVE and
+ *   5. MLS / CMA is now LIVE via the ATTOM seam (the founder lifted the
+ *      land-persona ruling; BYO key, honest-unavailable when unkeyed, no data
+ *      plane), client-vs-own-book (deal_book, migration 0226) is LIVE, and
  *      dual-agency is a RECORD-ONLY tracker (never generated, sent, or signed) —
  *      all disclosed honestly in the persona voice.
  *
@@ -35,9 +37,14 @@ function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf-8");
 }
 
-describe("agent_investor is beta (honest-partial commission wedge)", () => {
-  it("the registry entry is beta", () => {
-    expect(getBusinessType("agent_investor")?.maturity).toBe("beta");
+describe("agent_investor is CORE (Wave 5 — measured economics + MLS/CMA via ATTOM)", () => {
+  it("the registry entry is core", () => {
+    // REWRITTEN at the Wave 5 core flip (not deleted): the wedge shipped in beta;
+    // Wave 5 added the measured commission economics (split/cap/GCI, client-vs-
+    // own-book), a record-only dual-agency tracker, AND MLS/CMA — the founder
+    // lifted the land-persona ruling so comps route through the ATTOM seam (BYO
+    // key, honest-unavailable when unkeyed). agent_investor is now core.
+    expect(getBusinessType("agent_investor")?.maturity).toBe("core");
   });
 });
 
@@ -97,19 +104,22 @@ describe("the customer commission page gates + stays honest", () => {
     expect(page).toContain("CommissionsPage");
   });
 
-  it("still discloses the MLS/comps hard-stop, and describes the now-live book split + record-only dual-agency honestly", () => {
-    // MLS / residential-comps stays the deliberate NOT-built hard-stop — a land
-    // workspace won't fake residential comps.
+  it("describes the now-live MLS/CMA (ATTOM seam, honest-unavailable), book split, and record-only dual-agency honestly", () => {
+    // REWRITTEN at the Wave 5 core flip (not deleted): MLS/CMA is no longer the
+    // NOT-built hard-stop — the founder lifted the land-persona ruling and comps
+    // now route through the ATTOM seam (BYO key), so the page describes it as
+    // available with an honest "unavailable" degradation, never a faked comp.
     expect(page).toMatch(/MLS/);
-    // Client-vs-own-book is now LIVE (deal_book, migration 0226) — the page names it.
+    expect(page).toMatch(/ATTOM/);
+    expect(page).toMatch(/unavailable|never (a )?faked|honest/i);
+    // Client-vs-own-book is live (deal_book, migration 0226).
     expect(page).toMatch(/own book|own investment/i);
-    // Dual-agency is present AND explicitly framed as record-only — never
-    // generating, sending, or e-signing anything (legal-signing hard-stop).
+    // Dual-agency present AND explicitly record-only (legal-signing hard-stop).
     expect(page).toMatch(/dual-agency/i);
     expect(page).toMatch(/record-only|never (generate|sign|send)/i);
-    // Refuse-not-fabricate is disclosed for the new split/forecast surfaces.
+    // Refuse-not-fabricate is disclosed for the split/forecast surfaces.
     expect(page).toMatch(/split/i);
-    expect(page).toMatch(/refuse|never .*(assumed|made-up|invent|fabricat)/i);
+    expect(page).toMatch(/refuse|never .*(assumed|made-up|invent|fabricat|fake)/i);
   });
 
   it("the underlying page renders honest empty/zero states, never an invented number", () => {

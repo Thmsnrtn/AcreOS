@@ -30,6 +30,7 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
+import { CmaPanel } from "@/components/deals/CmaPanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
@@ -970,9 +971,14 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               )}
             </TabsContent>
 
-            <TabsContent value="analysis">
-              <DealCalculator 
-                deal={deal} 
+            <TabsContent value="analysis" className="space-y-4 md:space-y-6">
+              {/* CMA (agent_investor only) — self-gates, so it renders for
+                  licensed-agent orgs and is invisible to every other persona.
+                  Sits above the ROI calculator because the CMA's comps + AVM
+                  are the market context the offer math reasons from. */}
+              <CmaPanel dealId={deal.id} />
+              <DealCalculator
+                deal={deal}
                 property={deal.property}
                 onSave={handleSaveAnalysis}
                 isSaving={isSavingAnalysis}

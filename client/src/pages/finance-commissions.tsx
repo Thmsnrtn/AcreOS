@@ -14,9 +14,10 @@
  * summaries, with honest empty/zero states when nothing is configured. We do
  * NOT widen the founder-only /commissions surface or the admin write scope.
  *
- * The honest-partial disclosure below names what is live (commission tracking)
- * and what stays roadmap-for-core (MLS, client-vs-own-book, dual-agency) so the
- * beta is never oversold.
+ * The disclosure below names what is live: commission tracking + the measured
+ * split/cap/GCI economics, client-vs-own-book, the record-only dual-agency
+ * tracker, and MLS/CMA via the ATTOM seam (BYO key, honest-unavailable when
+ * unkeyed). agent_investor is core (Wave 5); nothing here is oversold.
  */
 import { AlertTriangle } from "lucide-react";
 import CommissionsPage from "@/pages/commissions";
@@ -58,9 +59,10 @@ function CommissionRoadmapDisclosure() {
             disclosure for you — legal signing stays a human decision.
           </p>
           <p className="text-muted-foreground">
-            Still deliberately not built: MLS integration (this is a land
-            workspace — MLS comps are residential, and we won't fake them).
-            We'd rather show you nothing than invent it.
+            MLS / CMA is here: comps and valuation run through the ATTOM data
+            seam, pay-per-call on your own connected ATTOM/MLS key. Without a
+            connected key you see an honest "unavailable", never a faked comp —
+            we'd rather show you nothing than invent it.
           </p>
         </div>
       </div>

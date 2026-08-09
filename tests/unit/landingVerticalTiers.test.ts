@@ -139,25 +139,36 @@ describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () =>
   });
 
   it("rejects an entry that does not actually demote (no-op or promote)", () => {
-    // No-op: demote a beta vertical "to" beta.
+    // REWRITTEN (Wave 5 — every live vertical is now core): a no-op/promote
+    // demotion is UNCONSTRUCTABLE from the live registry, because
+    // LandingDemotion.to is beta|roadmap and demoting any core vertical to either
+    // is a genuine DOWN move. deriveLandingTiers is a pure function of its
+    // registry arg, so the invariant is exercised on a SYNTHETIC registry (a real
+    // meta with its maturity overridden) — this holds regardless of the live
+    // maturity distribution, unlike the old assertion that assumed a beta/roadmap
+    // vertical always exists.
+    const asBeta = {
+      ...BUSINESS_TYPES,
+      commercial: { ...BUSINESS_TYPES.commercial, maturity: "beta" as const },
+    };
+    // No-op: a beta vertical demoted "to" beta.
+    expect(() =>
+      deriveLandingTiers(asBeta, { commercial: { to: "beta", reason: "stale" } }),
+    ).toThrow(/must move a vertical DOWN/);
+    const asRoadmap = {
+      ...BUSINESS_TYPES,
+      commercial: { ...BUSINESS_TYPES.commercial, maturity: "roadmap" as const },
+    };
+    // Promote: a roadmap vertical "demoted" to beta.
+    expect(() =>
+      deriveLandingTiers(asRoadmap, { commercial: { to: "beta", reason: "stale" } }),
+    ).toThrow(/must move a vertical DOWN/);
+    // And any still-live beta/roadmap vertical is likewise rejected on a no-op.
     const betaId = liveIdWithMaturity("beta");
     if (betaId) {
       expect(() =>
-        deriveLandingTiers(BUSINESS_TYPES, {
-          [betaId]: { to: "beta", reason: "stale" },
-        }),
+        deriveLandingTiers(BUSINESS_TYPES, { [betaId]: { to: "beta", reason: "stale" } }),
       ).toThrow(/must move a vertical DOWN/);
     }
-    // Promote: "demote" a roadmap vertical to beta.
-    const roadmapId = liveIdWithMaturity("roadmap");
-    if (roadmapId) {
-      expect(() =>
-        deriveLandingTiers(BUSINESS_TYPES, {
-          [roadmapId]: { to: "beta", reason: "stale" },
-        }),
-      ).toThrow(/must move a vertical DOWN/);
-    }
-    // The registry realistically always has at least one of the two.
-    expect(betaId ?? roadmapId).toBeDefined();
   });
 });

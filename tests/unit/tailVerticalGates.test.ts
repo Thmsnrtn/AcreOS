@@ -234,7 +234,7 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("each entry sits at its honest tier — agent_investor beta, commercial + multifamily + mobile_home + STR CORE (no tail vertical remains roadmap)", () => {
+  it("each entry sits at its honest tier — all five tail verticals (agent_investor, commercial, multifamily, mobile_home, STR) are CORE", () => {
     // 2026-08 audits promoted four of the five roadmap → beta on the honest
     // tier definition (templates all fire, gaps disclosed not fabricated), and
     // Wave 3 then promoted multifamily beta → core, so the per-vertical map is:
@@ -263,13 +263,14 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     (agent_investor-gated) reading the org's own records + YTD summaries,
     //     plus auto-recording the closing agent's commission on deal close
     //     (gated on an explicit saved tier config — honest empty/zero states,
-    //     never a fabricated number). Wave 5 added the measured economics —
-    //     commission split/cap/fees engine, client-vs-own-book (deal_book,
-    //     migration 0226), and a pipeline GCI forecast — plus a record-only
-    //     dual-agency tracker (no signing). ONLY MLS/CMA (residential-comps
-    //     hard-stop) still blocks core, so the flip awaits a founder decision;
-    //     dual-agency paperwork generation/e-sign (legal-signing) stays
-    //     DISCLOSED in the persona voice.
+    //     never a fabricated number). Wave 5 took it to CORE: the measured
+    //     economics (split/cap/fees engine, client-vs-own-book deal_book /
+    //     migration 0226, pipeline GCI forecast), a record-only dual-agency
+    //     tracker (no signing), AND MLS/CMA — the founder lifted the
+    //     land-persona ruling, so agent_investor is now residential-routed and
+    //     its comps/valuation run through the existing ATTOM seam (BYO key,
+    //     honest "unavailable" when unkeyed; no data plane). Dual-agency
+    //     paperwork generation/e-sign (legal-signing) stays founder-only.
     //   - short_term_rental → CORE (Wave 5): Wave A shipped the reservations
     //     ledger + occupancy/ADR/RevPAR + a live reservation.checkout emitter;
     //     Wave B added per-stay P&L (off the measured property_expenses axis),
@@ -277,7 +278,7 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     channel sync + dynamic pricing stay disclosed-out-of-scope.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
       commercial: "core",
-      agent_investor: "beta",
+      agent_investor: "core",
       short_term_rental: "core",
       // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured
       // operating expenses (property_expenses → measured NOI/cap rate, thin

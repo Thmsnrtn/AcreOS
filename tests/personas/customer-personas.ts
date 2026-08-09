@@ -681,12 +681,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "agent-investor",
-    displayName: "Aggie — licensed agent who also invests (beta)",
+    displayName: "Aggie — licensed agent who also invests",
     experience: "skeptic",
     device: "desktop-chrome",
     tier: "starter",
     businessType: "agent_investor",
-    narrative: "Beta → land_investor base with the commission-tracking wedge live behind the Finance door; a skeptic agent checking the product is honest — commissions real, MLS/client-vs-own-book/dual-agency disclosed as roadmap, nothing oversold.",
+    narrative: "Core → the land_investor base plus the full agent economics behind the Finance/Deals doors: commission split/cap/fees, client-vs-own-book, pipeline GCI forecast, a record-only dual-agency tracker, and MLS/CMA via the ATTOM seam (BYO key, honest 'unavailable' when unkeyed — never a faked comp). A skeptic agent checking the product is honest: every number refuses rather than fabricates, and dual-agency paperwork signing stays a human decision.",
     goals: ["Confirm land_investor base surface", "Reach commissions behind Finance", "Honest roadmap messaging on the gaps", "Nothing oversold"],
     expect: {
       financeHero: null,

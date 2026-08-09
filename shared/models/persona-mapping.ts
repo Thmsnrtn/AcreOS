@@ -147,6 +147,19 @@ export const BUSINESS_TYPE_TO_INVESTOR_TYPE: Record<BusinessType, InvestorType> 
 // its results (pricePerAcre is null on residential comps, and getPropertyComps
 // returns before calculateMarketValue / calculateOfferPrices / the land
 // desirability score).
+//
+// 2026-08: agent_investor ADDED (founder decision reversing the earlier
+// "agent_investor is a land, not-residential persona" ruling). A licensed
+// agent's SUBJECT PROPERTY is residential real estate — the job is MLS/CMA
+// (a Comparative Market Analysis over sold house comps + an AVM), so its
+// comps/valuation must route through the same residential seam, NOT the land
+// parcel plane. This is the comps-fork switch ONLY: agent_investor's
+// investorType stays "land" (BUSINESS_TYPE_TO_INVESTOR_TYPE unchanged) because
+// the notes/land MODULE fork is deliberately orthogonal to the data-plane
+// fork. No new data plane, vendor, or bulk ingest is introduced — the org
+// takes the identical ATTOM-via-registry path (or the explicit unavailable
+// state, never land data under a house label) that fix_and_flip and
+// residential_wholesaler already take.
 export const RESIDENTIAL_BUSINESS_TYPES: ReadonlySet<BusinessType> = new Set<BusinessType>([
   "fix_and_flip",
   "residential_wholesaler",
@@ -154,6 +167,7 @@ export const RESIDENTIAL_BUSINESS_TYPES: ReadonlySet<BusinessType> = new Set<Bus
   "short_term_rental",
   "multifamily",
   "mobile_home",
+  "agent_investor",
 ]);
 
 /** True when the (possibly unknown) businessType string is a residential vertical. */

@@ -696,13 +696,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // gated on an explicit saved tier config — honest empty/zero states, never
     // a fabricated commission when nothing is configured).
     //
-    // What stays ROADMAP-for-core, and WHY (each is a standing hard-stop, not a
-    // backlog item): MLS integration (residential-comps hard-stop — this is a
-    // LAND persona; MLS comps are residential comps); client-deals vs. own-book
-    // separation (needs a deals-schema field + migration, out of this wedge);
-    // dual-agency disclosure workflows (legal-signing is founder-only). These
-    // remain disclosed in the persona voice, not fabricated.
-    maturity: "beta",
+    // 2026-08 (Wave 5, beta → CORE — founder promote decision): the three
+    // roadmap-for-core gaps are now closed.
+    //   (1) Measured commission ECONOMICS — the split/cap/fees engine
+    //       (shared/commission/split.ts), client-vs-own-book (deals.deal_book,
+    //       migration 0226), and the pipeline GCI forecast
+    //       (shared/commission/forecast.ts) — all from the operator's OWN saved
+    //       config + closed deals, refusing when unconfigured.
+    //   (2) MLS / CMA — the founder explicitly LIFTED the "agent_investor is a
+    //       land, not-residential persona" ruling, so agent_investor is now
+    //       residential-routed (RESIDENTIAL_BUSINESS_TYPES) and its comps +
+    //       valuation run through the EXISTING provider-registry ATTOM seam
+    //       (server/services/residentialComps.ts), pay-per-call / BYO the org's
+    //       ATTOM key. NO residential-comps DATA PLANE is built — the hard-stop
+    //       bars only that — and the CMA (GET /api/deals/:id/cma + the deal-detail
+    //       CMA panel) surfaces an honest "unavailable" when ATTOM isn't
+    //       connected, never a fabricated comp.
+    //   (3) Dual-agency — a record-only tracker (no generation, sending, or
+    //       e-signature; legal-signing stays founder-only).
+    // Behind the existing Finance/Deals doors, no new nav, no money movement.
+    maturity: "core",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.
