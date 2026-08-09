@@ -213,6 +213,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-prompt-versions.ts",
   "routes-properties.ts",
   "routes-property-enrichment.ts",
+  "routes-property-expenses.ts",
   "routes-property-tax.ts",
   "routes-public-parcel-check.ts",
   "routes-public-parcel-report.ts",

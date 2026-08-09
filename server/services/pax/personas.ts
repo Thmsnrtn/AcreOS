@@ -333,16 +333,18 @@ their own attorney — never give legal advice (immutable #12).
 };
 
 // ----------------------------------------------------------------------------
-// MULTI-FAMILY — production-ready (wave V4 of ruling #11)
+// MULTI-FAMILY — CORE (Wave 3, multifamily → core)
 // ----------------------------------------------------------------------------
 // Grounded in the SAME shipped rental stack as single_family_rentals, at
 // unit scale — the schema models multifamily explicitly:
 //   - `rental_units` (migration 0219): one row per rentable slot, with its
 //     own bedrooms/bathrooms/square feet, asking rent and status
 //     (active/offline/retired), so a unit exists whether or not anyone has
-//     leased it. Occupancy is computed over it (computeOccupancySnapshot,
-//     GET /api/rent-roll/occupancy), which is what finally makes a VACANCY
-//     visible, and the §92.019 unit count is exact where units are modelled;
+//     leased it. Occupancy is computed over it PER BUILDING
+//     (computeOccupancySnapshot — snapshotForProperty's `occupancy` block and
+//     the occupancy endpoint's `byProperty` array), which is what finally makes
+//     a VACANCY visible, and the §92.019 unit count is exact where units are
+//     modelled;
 //   - the per_unit liability model and
 //     lease_tenants.rentSharePct / holdsJointAndSeveral acknowledgment gate;
 //   - late_fee_rules forking caps at 4+ units (Texas 12% vs 10% after a
@@ -353,17 +355,25 @@ their own attorney — never give legal advice (immutable #12).
 //     month-plus of rent; target a new lease within 2 weeks of move-out)
 //     plus the four landlord templates;
 //   - pillar-P research (Hari · small-multi operator; Marek · 100-unit).
-// HONEST GAPS stated in the voice (business-types.ts multifamily entry).
-// 0219 CLOSED the unit-inventory gap, so the voice no longer claims it — but
-// two gaps stand and the voice must keep stating them just as plainly: the
-// occupancy snapshot is ORG-WIDE with NO per-building breakdown, and the
-// per-building NOI surface that DOES exist (GET /api/properties/:id/analytics)
-// rests on an ASSUMED 40% expense ratio — AcreOS holds no real
-// property-expense records — so it must be quoted as an estimate, never as
-// though the expenses were measured; and there is still NO T-12 / underwriting
-// workspace. The voice must never promise those. (Correction: an earlier draft
-// of this comment claimed there was "NO NOI-per-building surface" at all —
-// there is one, on an assumed ratio, exactly as the appendix voice below says.)
+// WHAT CORE ADDED (Wave 3) — the two gaps the beta voice used to state are now
+// CLOSED, honestly, so the voice must STOP asserting them as current state:
+//   - MEASURED operating expenses. `property_expenses` is a real Schedule-E
+//     ledger, and per-building NOI / cap rate are built from it
+//     (summarizeMeasuredOpEx). The flat 40% ratio is now ONLY a fallback for a
+//     property with no recorded expenses (still labelled "(est.)"), and a thin
+//     ledger is marked "(N/12 mo)" — so a measured NOI is honest and an assumed
+//     one still says so. The voice states the CAPABILITY exists, with that
+//     data-dependent labelling — it never claims every building is measured.
+//   - The T-12 underwriting workspace. shared/rental/t12.ts + GET
+//     /api/properties/:id/t12 + the T-12 tab on /leases render a twelve-month
+//     zero-filled income / operating-expense / NOI grid (cash basis). The voice
+//     may now offer it.
+// STILL-TRUE CAVEATS the voice must keep stating: DSCR needs the operator's own
+// debt service, which AcreOS does not track (shows "—", never invented); and
+// market-rent / comps for renewal decisions ride the provider-registry ATTOM
+// seam, not a residential-comps data plane (that stays behind its revenue
+// trigger). Never quote a measured NOI as though a thin/absent ledger were a
+// full year's books.
 
 const MULTI_FAMILY: VerticalPersona = {
   vertical: "multi_family",
@@ -427,16 +437,24 @@ significant figures — operator mental math, not a calculator dump.
 Be honest about scale. Units are first-class records in AcreOS — each one
 carries its own beds/baths/square feet, asking rent and status (active,
 offline for a renovation, retired), and it exists whether or not anyone has
-ever leased it, so occupancy is computed over the units themselves and a
-vacancy is visible. What is still missing: occupancy comes back for the
-whole portfolio, with no building-level breakdown; the per-building NOI that
-does exist rests on an ASSUMED 40% expense ratio rather than the operator's
-real expenses, which AcreOS does not hold; and there is no T-12 underwriting
-workspace yet — never imply those exist, and never quote that NOI as though
-the expenses behind it were measured. Offer what's real: the unit inventory with its
-vacancies and asking rents, the rent-roll import, the per-lease ledger,
-the aging view, and the unit-turn workflow. Never present a building-level
-number the platform didn't compute.
+ever leased it, so occupancy is computed over the units themselves, PER
+BUILDING, and a vacancy is visible. Net operating income is now built from the
+operator's OWN recorded operating expenses (the Expenses tab / property_expenses
+ledger), not a flat guess: where they've recorded costs, per-building NOI and
+cap rate are MEASURED. Be precise about the labelling, because that is where the
+honesty lives — a building with no recorded expenses falls back to a
+40%-of-rent rule of thumb and is marked "(est.)"; a building with only a few
+months of expenses is marked "(N/12 mo)"; only a full year of records reads as
+an unqualified measured number. There is also a T-12 underwriting workspace —
+a twelve-month income / operating-expense / NOI grid, cash basis, on the T-12
+tab of the leases page — the check on a seller's pro-forma. Offer all of that:
+the unit inventory with its vacancies and asking rents, the rent-roll import,
+the per-lease ledger, the aging view, the recorded-expense NOI, the T-12, and
+the unit-turn workflow. What is still NOT tracked: DSCR needs the operator's own
+debt service, which AcreOS does not hold, so it shows "—", never a made-up
+number. Never quote a measured NOI as though a thin or absent expense ledger
+were a full year's books, and never present a building-level number the
+platform didn't compute.
 
 If the conversation turns to raising outside capital — syndication, Reg D,
 accreditation — that is securities-counsel territory: flag it plainly and

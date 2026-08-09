@@ -31,7 +31,8 @@
  * fix_and_flip is roadmap (demoted 2026-07-11 pending a residential data
  * plane — existing orgs keep their Flip surfaces); the landlord family
  * (short_term_rental / multifamily / mobile_home) reaches the shared Rentals
- * module even while their own verticals stay waitlisted. A unit test pins
+ * module — short_term_rental's own vertical stays waitlisted, mobile_home is
+ * beta, and multifamily is now CORE (Wave 3). A unit test pins
  * "(beta)"/"(waitlist)" display-name tags to registry maturity so these
  * labels can't silently go stale again.
  */
@@ -580,11 +581,14 @@ const SEEDS: PersonaSeed[] = [
   // ── GATED / early verticals (collapse to a base persona's surface). These
   //    test that a vertical with a limited or shared surface degrades
   //    gracefully, never crashes. The set is no longer uniformly roadmap:
-  //    the 2026-08 audits promoted developer, multifamily and mobile_home
-  //    (Wave 2), commercial (Wave 2 pass B) and agent_investor (Wave 2 pass C,
-  //    the commission-tracking wedge) roadmap → beta on the honest tier
-  //    definition (their surfaces are real and their gaps disclosed), so their
-  //    display-name tags below read "(beta)". short_term_rental stays roadmap
+  //    the 2026-08 audits promoted developer, mobile_home (Wave 2), commercial
+  //    (Wave 2 pass B) and agent_investor (Wave 2 pass C, the commission-tracking
+  //    wedge) roadmap → beta on the honest tier definition (their surfaces are
+  //    real and their gaps disclosed), so their display-name tags below read
+  //    "(beta)". multifamily went further — promoted roadmap → beta (Wave 2)
+  //    then beta → CORE (Wave 3) once the measured-expense axis, per-building
+  //    occupancy and the T-12 workspace shipped — so its row carries NO tag
+  //    (core, like the land/notes rows). short_term_rental stays roadmap
   //    ("(waitlist)") until its beta bar is met. The display-name tags are
   //    pinned to registry maturity by tests/unit/customerPersonas.test.ts. The
   //    landlord family here reaches the shared Rentals module and developer
@@ -642,12 +646,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "multifamily-investor",
-    displayName: "Mona — small multifamily (beta)",
+    displayName: "Mona — small multifamily",
     experience: "intermediate",
     device: "galaxy-s9",
     tier: "starter",
     businessType: "multifamily",
-    narrative: "Beta → landlord surface on mobile; multifamily runs the shared Rentals stack (rent roll, unit inventory, renewals, maintenance). Per-building NOI / cap rate carry an honest '(est.)' op-ex label — the real expense axis and T-12 workspace are the core build still ahead.",
+    narrative: "Core on mobile; multifamily runs the shared Rentals stack (rent roll, unit inventory, renewals, maintenance) plus the Wave 3 core build — measured per-building NOI / cap rate from the recorded property-expense ledger (thin coverage marked '(N/12 mo)', an unrecorded property still labelled '(est.)'), per-building occupancy, and the T-12 underwriting grid on the leases page. DSCR still shows '—' (no debt-service tracking).",
     goals: ["Reach all doors on mobile", "Finance loads", "No dead modules"],
     expect: {
       financeHero: "projectPnl",

@@ -522,64 +522,60 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "multifamily",
     label: "Multifamily",
     shortDescription: "Small + mid apartment buildings.",
-    // 2026-07-31 (migration 0219 — units): STILL roadmap, but one of the
-    // three named gaps has genuinely closed, so the prose moves with it.
-    // Leaving a closed gap asserted here would make this registry the exact
-    // kind of lie the honesty gate exists to prevent.
+    // 2026-08 (Wave 3, beta → CORE): the two gaps that held multifamily at beta
+    // are CLOSED — and closed HONESTLY, measured from records rather than
+    // fabricated. Leaving them asserted here would now make this registry the
+    // exact kind of lie the honesty gate exists to prevent.
     //
-    // What EXISTS today (V1 widened the landlord family): the full Rentals
-    // stack — per-unit liability, 4+ unit late-fee caps — plus the landlord
-    // Today lede + cluster and the real landlord dashboard. AND, as of 0219,
-    // a first-class unit inventory: `rental_units` (shared/schema/rental.ts)
-    // is one row per rentable slot with its own kind (unit/pad/suite),
-    // bedrooms, bathrooms, square feet, asking rent and status
-    // (active/offline/retired), so a unit exists whether or not anyone has
-    // ever leased it. Occupancy is now computed over that table
-    // (`computeOccupancySnapshot`, GET /api/rent-roll/occupancy — a vacancy
-    // is finally visible, and an unmeasurable ratio says so instead of
-    // reporting 100%); the rent-roll importer writes vacant rows instead of
-    // dropping them; and the §92.019 unit count is EXACT where units are
-    // modelled instead of a floor (`unitCountForProperty`,
-    // server/routes-rent-ledger.ts). There is deliberately no separate
-    // buildings table — `properties` IS the building.
+    // What EXISTS today: the full Rentals stack — per-unit liability, 4+ unit
+    // late-fee caps, the landlord Today lede + cluster and the real landlord
+    // dashboard — plus a first-class unit inventory (`rental_units`,
+    // shared/schema/rental.ts): one row per rentable slot with its own kind
+    // (unit/pad/suite), bedrooms, bathrooms, square feet, asking rent and status
+    // (active/offline/retired), so a unit exists whether or not anyone has ever
+    // leased it. There is deliberately no separate buildings table — `properties`
+    // IS the building. On top of that stack, Wave 3 closed the three documented
+    // core gaps:
     //
-    // What's still MISSING for beta — the two gaps that genuinely stand,
-    // stated precisely, because the first draft of this paragraph overstated
-    // one of them and an audit caught it:
+    //   * MEASURED operating expenses. `property_expenses` (shared/schema/
+    //     rental.ts) is a real Schedule-E-shaped ledger of what the operator
+    //     actually spent, and per-building NOI / cap rate are now built from it
+    //     (summarizeMeasuredOpEx, server/routes-investor-analytics.ts) — a
+    //     MEASURED op-ex, no longer a 40%-of-collected guess. The honesty is in
+    //     the labelling: a thin ledger reads as thin (the client marks partial
+    //     coverage "(N/12 mo)"), and the flat 40% ratio survives ONLY as the
+    //     fallback for a property with no recorded expenses, still disclosed
+    //     "(est.)" — an assumption is never shown as a measurement.
+    //   * PER-BUILDING occupancy. computeOccupancySnapshot runs per building —
+    //     snapshotForProperty returns an `occupancy` block and GET
+    //     /api/rent-roll/occupancy a `byProperty` array — so a single half-empty
+    //     or all-offline building reports on its own instead of being averaged
+    //     into one org-wide ratio (an unmeasurable building says so rather than
+    //     reporting a fabricated 100%). The rent-roll importer writes vacant rows
+    //     instead of dropping them, and the §92.019 unit count is EXACT where
+    //     units are modelled.
+    //   * The T-12 UNDERWRITING WORKSPACE. shared/rental/t12.ts + GET
+    //     /api/properties/:id/t12 + the T-12 tab on /leases render a twelve-month,
+    //     zero-filled income / operating-expense / NOI grid (cash basis) — the
+    //     check on a seller's pro-forma. A month with no activity shows $0
+    //     visibly, never omitted or inferred; NOI is operating-only, so
+    //     mortgage_interest and depreciation stay out of it.
     //
-    //   * Building-level rollups. A per-building NOI surface DOES exist
-    //     (GET /api/properties/:id/analytics and /api/portfolio/analytics,
-    //     server/routes-investor-analytics.ts) — saying otherwise was wrong.
-    //     What is missing is that its OPERATING EXPENSE is a 40%-of-collected
-    //     rule of thumb, overridable only by a query param and never stored,
-    //     because the platform holds no property-expense records at all
-    //     (maintenance invoices are the only expense-shaped number anywhere).
-    //     A cap rate computed off an assumed expense ratio is an assumption
-    //     wearing a number's clothes. The occupancy snapshot is also ORG-WIDE
-    //     with no per-building breakdown.
-    //   * The T-12 / underwriting workspace multifamily operators need at
-    //     scale. Nothing in the repo renders a monthly income/expense grid,
-    //     and it cannot be built honestly until the expense axis above exists
-    //     — a T-12 without expenses is just a rent report.
+    // What CORE does NOT claim (residual, still-true caveats — do not overstate):
+    //   - DSCR still needs the operator's actual debt service, which AcreOS does
+    //     not track; it renders "—", never an invented number.
+    //   - Market-rent / residential comps for renewal decisions ride the
+    //     provider-registry ATTOM seam (pay-per-call / BYOK, honest unkeyed
+    //     degradation) — NOT a residential-comps data plane, which stays behind
+    //     its revenue trigger (a standing hard-stop, untouched by this wave).
     //
-    // Two of three is not beta — the standard used through 2026-07.
-    //
-    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted multifamily
-    // to beta on the HONEST tier definition, not by closing those two gaps.
-    // What makes beta defensible: all five templates FIRE (the four landlord
-    // templates + tpl_multifamily_unit_turn — rent.received, lease
-    // renewal/expiry, maintenance all live per shared/workflow-live-triggers.ts,
-    // pinned by workflowActionHonesty), and the one number that rests on an
-    // assumption — the 40%-of-collected op-ex behind per-building NOI / cap rate
-    // — is DISCLOSED as an estimate everywhere it surfaces (opExBasis
-    // "assumed_ratio" at the server, "(est.)" on the client analytics tiles, and
-    // named in the Pax multifamily voice), so nothing presents an assumption as
-    // a measurement. The two gaps above do NOT vanish: the real
-    // property-expense axis and the T-12 / underwriting workspace remain the
-    // CORE goal (this stays roadmap-FOR-CORE until that expense model ships).
-    // Beta is scoped to the unit-scale rental operations the shipped stack
-    // genuinely runs today.
-    maturity: "beta",
+    // All five templates FIRE (the four landlord templates + tpl_multifamily_
+    // unit_turn — rent.received, lease renewal/expiry and maintenance all live
+    // per shared/workflow-live-triggers.ts, pinned by workflowActionHonesty).
+    // Core is the shipped rental stack PLUS the measured expense axis,
+    // per-building occupancy, and the T-12 workspace above — the operations a
+    // small/mid multifamily operator actually runs, all honest end to end.
+    maturity: "core",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
     // a rent ledger, maintenance dispatch). Wave V3 added the dedicated
