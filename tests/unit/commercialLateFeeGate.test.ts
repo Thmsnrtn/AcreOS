@@ -77,3 +77,38 @@ describe("commercial late-fee gate — frontend hiding (rent-roll.tsx)", () => {
     expect(rentRollSrc).toMatch(/set by the lease, not by state statute/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wave 4 Stage 5b — the SYMMETRIC other half. The residential gate above keeps
+// wrong-domain STATUTORY data away from a commercial org; this adds the path a
+// commercial org actually uses — a late fee computed from the lease's OWN
+// CONTRACTUAL terms — and gates it the other way (a residential lease must use
+// the statutory path, which enforces the legal cap). Both halves are pinned so
+// neither can be removed silently.
+// ---------------------------------------------------------------------------
+describe("commercial contractual late-fee path — the symmetric other half (Wave 4)", () => {
+  it("defines a symmetric guard that refuses a NON-commercial org from the contractual endpoint", () => {
+    expect(ledgerSrc).toContain("function refuseCommercialLateFeeForNonCommercial");
+    expect(ledgerSrc).toMatch(/businessType\s*!==\s*"commercial"/);
+    // A distinct 409 that points a residential lease back to the statutory path.
+    expect(ledgerSrc).toMatch(/sendError\(\s*res,\s*409,\s*"LATE_FEE_USE_STATUTORY_RESIDENTIAL"/);
+  });
+
+  it("registers the contractual late-fee endpoint, gated by that guard", () => {
+    expect(ledgerSrc).toContain('app.post("/api/rent-charges/:id/commercial-late-fee"');
+    expect(ledgerSrc).toMatch(/if \(refuseCommercialLateFeeForNonCommercial\(req, res\)\) return;/);
+  });
+
+  it("computes from the lease's own terms via the pure tested engine, refuses rather than fabricate, and only PROPOSES", () => {
+    expect(ledgerSrc).toContain("computeCommercialLateFee(");
+    // The engine's refusal is surfaced — no invented fee is returned as real.
+    expect(ledgerSrc).toMatch(/if \(result\.refusedReason\)/);
+    // Proposal only — it returns a proposal, it does not post a charge.
+    expect(ledgerSrc).toContain("proposal: result");
+  });
+
+  it("the two halves are symmetric: statutory refuses commercial, contractual refuses non-commercial", () => {
+    expect(ledgerSrc).toContain('"LATE_FEE_NOT_APPLICABLE_COMMERCIAL"');
+    expect(ledgerSrc).toContain('"LATE_FEE_USE_STATUTORY_RESIDENTIAL"');
+  });
+});

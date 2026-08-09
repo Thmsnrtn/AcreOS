@@ -92,6 +92,7 @@ import {
   monthsInPeriod,
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
+import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -751,6 +752,31 @@ function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: R
       "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
         "commercial late fee is set by the lease, not by statute. Enter it as a manual charge " +
         "instead of proposing one from the residential statute surface.",
+    );
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The symmetric other half of the residential gate above (Wave 4): the
+ * CONTRACTUAL late-fee surface is for a COMMERCIAL lease, whose late fee is set by
+ * the lease itself. A residential lease's late fee is bounded by STATUTE, so a
+ * non-commercial org must use the statutory proposal endpoint (which applies the
+ * legal cap) — routing it through the free-form contractual computation would
+ * strip that protection. Returns true (and has responded) when the org is NOT
+ * commercial; the handler must then stop.
+ */
+function refuseCommercialLateFeeForNonCommercial(req: AuthenticatedRequest, res: Response): boolean {
+  const businessType = getOrganization(req).onboardingData?.businessType;
+  if (businessType !== "commercial") {
+    sendError(
+      res,
+      409,
+      "LATE_FEE_USE_STATUTORY_RESIDENTIAL",
+      "Contractual late fees are for commercial leases. A residential lease's late fee is bounded by " +
+        "state statute — use the statutory proposal endpoint (/api/rent-charges/:id/late-fee-proposal), " +
+        "which applies the legal cap, rather than a free-form contractual fee.",
     );
     return true;
   }
@@ -2234,6 +2260,63 @@ export function registerRentLedgerRoutes(app: Express): void {
         ))
         .orderBy(asc(leaseRentSchedule.effectiveMonth));
       return res.json({ steps, count: steps.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Commercial contractual late fee — a PROPOSAL from the lease's own terms ─
+  // The symmetric counterpart to the residential statutory late-fee proposal:
+  // this computes a late fee from the lease's CONTRACTUAL terms (type, amount/
+  // rate, grace, cap), gated to commercial orgs (a residential lease must use the
+  // statutory endpoint, which enforces the legal cap). Refuses (400) when the
+  // lease has no contractual term or a shape is missing its parameter — it never
+  // invents a fee. Proposal only: it posts no charge (be the rail, not the provider).
+  app.post("/api/rent-charges/:id/commercial-late-fee", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (refuseCommercialLateFeeForNonCommercial(req, res)) return;
+      const orgId = getOrganizationId(req);
+      const parsed = z.object({ asOf: isoDate.optional() }).safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [charge] = await db.select().from(rentCharges)
+        .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)));
+      if (!charge) return Errors.notFound(res, "Rent charge");
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, charge.leaseId), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const asOf = parsed.data.asOf ? new Date(parsed.data.asOf) : new Date();
+      const daysLate = daysOverdue(charge.dueDate, asOf) ?? 0;
+
+      const result = computeCommercialLateFee({
+        lease: {
+          lateFeeType: lease.lateFeeType,
+          lateFeeFlatCents: lease.lateFeeFlatCents,
+          lateFeePctBps: lease.lateFeePctBps,
+          lateFeeGraceDays: lease.lateFeeGraceDays,
+          lateFeeMaxCents: lease.lateFeeMaxCents,
+          lateFeePerDayCents: lease.lateFeePerDayCents,
+        },
+        overdueBalanceCents: charge.balanceCents,
+        daysLate,
+      });
+
+      if (result.refusedReason) {
+        return Errors.badRequest(res, result.refusedReason);
+      }
+
+      // Proposal only — the operator posts the fee as its own charge if they choose.
+      return res.json({
+        proposal: result,
+        charge: {
+          id: charge.id,
+          balanceCents: charge.balanceCents,
+          dueDate: charge.dueDate,
+          daysLate,
+        },
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
