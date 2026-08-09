@@ -178,14 +178,15 @@ const REGISTRY: Array<{
     // businessType axis hides nothing — see sidebar-hidden-routes.ts).
     // This cluster confirms that choice with the real sourcing surfaces
     // rather than leaving the signup to wonder whether the land framing
-    // is a bug. Agent-specific features (commission tracking, client vs.
-    // own-book separation, MLS) remain roadmap — see the registry entry.
+    // is a bug. The agent-specific tooling is now CORE (Wave 5): commission
+    // split/cap/GCI economics, client-vs-own-book, a record-only dual-agency
+    // tracker, and MLS/CMA via the ATTOM seam — see the registry entry.
     match: (i) => i.businessType === "agent_investor",
     cluster: {
       id: "agent-investor",
       title: "Agent-investor surfaces",
       description:
-        "The land sourcing loop, deliberately: parcel map, seller leads, deal pipeline, owner skip tracing. Agent-side tooling (commissions, MLS) is roadmap.",
+        "The land sourcing loop plus the agent tooling: parcel map, seller leads, deal pipeline, owner skip tracing, and commissions + CMA behind the Finance/Deals doors.",
       priority: 58,
       links: [
         { label: "Parcel map", href: "/maps" },

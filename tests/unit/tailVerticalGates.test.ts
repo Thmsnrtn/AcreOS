@@ -207,6 +207,11 @@ describe("agent_investor — the land default is deliberate (wave V3)", () => {
     const cluster = clusters.find((c) => c.id === "agent-investor");
     expect(cluster, "agent-investor cluster must resolve").toBeTruthy();
     expect(cluster!.links.map((l) => l.href)).toEqual(AGENT_INVESTOR_CLUSTER_HREFS);
+    // Wave 5: the description must NOT call the agent tooling "roadmap" — it's
+    // core now (commissions + MLS/CMA). Pin the prose so it can't silently go
+    // stale if this registry is ever wired into a live /today surface.
+    expect(cluster!.description).not.toMatch(/roadmap/i);
+    expect(cluster!.description).toMatch(/commissions|CMA/i);
   });
 
   it("every agent-investor cluster link is a real, unfrozen, un-hidden route", () => {
