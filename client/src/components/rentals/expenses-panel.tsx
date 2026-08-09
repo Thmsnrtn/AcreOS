@@ -4,7 +4,7 @@
  *
  * WHERE THIS LIVES, AND WHY THERE
  * ───────────────────────────────
- * A TAB on `/leases`, behind the Finance door. It adds no route and no nav entry
+ * A TAB on `/leases`, behind the Rentals module. It adds no route and no nav entry
  * — the customer nav is exactly five doors and "no new top-level nav entries
  * EVER" is a standing founder hard-stop, so a new surface hangs off an existing
  * page. `/leases` is the right host: it is the rentals surface an operator is

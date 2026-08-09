@@ -77,7 +77,7 @@ describe("core capability 3 — the T-12 workspace is wired end to end", () => {
     expect(INV).toContain("buildT12Grid(");
   });
 
-  it("the /leases page mounts the T-12 tab behind the Finance door (no new nav)", () => {
+  it("the /leases page mounts the T-12 tab behind the Rentals module (no new nav)", () => {
     expect(LEASES).toContain("T12Workspace");
     expect(LEASES).toContain('value="t12"');
     expect(LEASES).toContain('data-testid="tab-t12"');

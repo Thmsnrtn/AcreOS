@@ -28,7 +28,7 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "./db";
-import { properties, rentalLeases, rentCharges, rentPayments, propertyExpenses } from "@shared/schema";
+import { properties, rentalLeases, rentPayments, propertyExpenses } from "@shared/schema";
 import { rentalUnits } from "@shared/schema/rental";
 import type { PropertyExpenseCategory } from "@shared/rental/propertyExpense";
 import { summarizeMeasuredOpEx, isMeasuredCoverageComplete } from "@shared/rental/noi";

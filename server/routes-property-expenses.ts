@@ -16,7 +16,7 @@
  *
  * These hang off the EXISTING property + rentals surfaces (no new top-level nav
  * — a standing founder hard-stop). The expenses UI is a TAB on /leases, behind
- * the Finance door.
+ * the Rentals module.
  *
  * MONEY POSTURE (founder ruling "be the rail, not the provider"): this is a
  * LEDGER of money the operator ALREADY spent, on their own account, elsewhere.

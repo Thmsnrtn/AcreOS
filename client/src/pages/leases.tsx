@@ -209,10 +209,10 @@ export default function LeasesPage() {
               customer doors are fixed and new surfaces hang off existing ones. */}
           <TabsTrigger value="units" data-testid="tab-units">Units</TabsTrigger>
           {/* The operating-expense ledger (Wave 3). Also a tab behind the
-              existing Finance door — no new top-level nav (standing hard-stop). */}
+              existing Rentals module — no new top-level nav (standing hard-stop). */}
           <TabsTrigger value="expenses" data-testid="tab-expenses">Expenses</TabsTrigger>
           {/* The trailing-twelve underwriting grid (Wave 3, stage 5). Same
-              discipline — a tab behind the Finance door, never a nav entry. */}
+              discipline — a tab behind the Rentals module, never a nav entry. */}
           <TabsTrigger value="t12" data-testid="tab-t12">T-12</TabsTrigger>
         </TabsList>
 
