@@ -39,7 +39,7 @@ import type { Organization } from "@shared/schema";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
-import { serializeToolResultForModel } from "./untrustedEnvelope";
+import { serializeToolResultForModel, wrapUntrusted } from "./untrustedEnvelope";
 import {
   getOpenAIClient,
   supportToolDefinitions,
@@ -221,12 +221,16 @@ export async function resolveTicketWithPax(
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: PAX_RESOLVER_SYSTEM_PROMPT },
     {
+      // Guard totality (audit P-2): subject/description are customer-authored
+      // free text embedded in an operator-authored instruction template —
+      // envelope them so an instruction planted in the ticket can't read as
+      // part of the resolver's task framing.
       role: "user",
       content:
         `Resolve support ticket #${ticketId}.\n` +
-        `Subject: ${ticket.subject ?? "(none)"}\n` +
+        `Subject: ${ticket.subject ? wrapUntrusted(ticket.subject, "ticket:subject") : "(none)"}\n` +
         `Category: ${category}\n` +
-        `Description: ${ticket.description ?? "(none)"}`,
+        `Description: ${ticket.description ? wrapUntrusted(ticket.description, "ticket:description") : "(none)"}`,
     },
   ];
   for (const msg of previousMessages) {

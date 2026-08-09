@@ -50,6 +50,7 @@ import {
   getDispatchToolSchemas,
   executeDispatchTool,
 } from "./dispatchToolExecutor";
+import { wrapUntrusted } from "../../ai/untrustedEnvelope";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 
 // ----------------------------------------------------------------------------
@@ -1031,7 +1032,15 @@ export async function runDispatch(
         toolResults.push({
           type: "tool_result",
           tool_use_id: tu.id,
-          content: exec.output.slice(0, 20_000),
+          // SECURITY (guard-totality audit P-2): tool output (bash stdout,
+          // file contents, inbox text) is untrusted data re-entering the
+          // model on the trusted tool_result channel — envelope it.
+          // maxLength 20_000 preserves the pre-envelope content budget.
+          content: exec.output
+            ? wrapUntrusted(exec.output, `tool:${tu.name}`, {
+                maxLength: 20_000,
+              })
+            : exec.output,
           is_error: !exec.success,
         });
       }

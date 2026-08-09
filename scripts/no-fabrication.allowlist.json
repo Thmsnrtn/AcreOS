@@ -159,7 +159,7 @@
     },
     {
       "file": "server/services/negotiationCopilot.ts",
-      "line": 117,
+      "line": 118,
       "category": "id",
       "note": "Objection id suffix \u2014 entropy for uniqueness."
     },

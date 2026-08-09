@@ -25,6 +25,7 @@ import type {
   ContentBlock,
   ToolResultContentBlock,
 } from "./openRouterClient";
+import { wrapUntrusted } from "../../../ai/untrustedEnvelope";
 import { logger } from "../../../utils/logger";
 
 // ============================================================================
@@ -257,11 +258,23 @@ export async function executeChatTool(
     outputBytes: result.output.length,
   });
 
+  // SECURITY (guard-totality audit P-2): executor output (file contents,
+  // git diffs, inbox text) is untrusted data re-entering the model on the
+  // trusted tool_result channel — envelope it. The executor already caps
+  // output size, so the envelope sanitizes + delimits without re-truncating.
+  // The server-authored BLOCKED / AWAITING_APPROVAL constants above stay
+  // unwrapped on purpose.
+  const outputText = result.output
+    ? wrapUntrusted(result.output, `tool:${input.toolName}`, {
+        maxLength: result.output.length,
+      })
+    : result.output;
+
   return {
     result: [
       {
         type: "text",
-        text: result.output,
+        text: outputText,
       },
     ],
     awaitingApproval: false,

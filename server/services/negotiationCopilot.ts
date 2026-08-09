@@ -18,6 +18,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { voiceLearningService } from "./voiceLearning";
 import { logger } from "../utils/logger";
 import { validateCompliance } from "./complianceValidator";
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 
 type ObjectionCategory = "price" | "timing" | "trust" | "emotional" | "competitive";
 type NegotiationStrategy = "empathy" | "logic" | "urgency" | "anchor" | "silence";
@@ -364,10 +365,15 @@ Keep responses:
 - Concise (2-3 sentences max)
 - Focused on moving the deal forward
 - Land deal specific when relevant${voiceBlock}`;
+      // Guard totality (audit P-2): objection.text is seller-authored —
+      // envelope it so an instruction planted in a seller reply reads as
+      // data, not directives. Reused below for the compliance validator.
+      const safeObjectionText = wrapUntrusted(objection.text, "counterparty:objection");
       const userPrompt = `Context:
 ${context}
 
-Seller's objection (${objection.category}): "${objection.text}"
+Seller's objection (${objection.category}):
+${safeObjectionText}
 
 Generate a response using the ${selectedStrategy} strategy.`;
 
@@ -401,7 +407,7 @@ Generate a response using the ${selectedStrategy} strategy.`;
         domain: "real_estate_offer",
         surface: "negotiation.copilot",
         organizationId: session.organizationId,
-        userPrompt: `Counter to objection: ${objection.text}`,
+        userPrompt: `Counter to objection: ${safeObjectionText}`,
       });
       const generatedResponse = compliance.response;
 

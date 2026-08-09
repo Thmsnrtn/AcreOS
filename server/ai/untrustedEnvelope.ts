@@ -125,6 +125,8 @@ export function unwrapUntrusted(text: string): string {
 //   text         — link text, table cells, generic free text
 //   fact         — recall_facts memories (derived from customer input)
 //   draft        — outreach drafts generated FROM customer notes
+//   tables       — browse_web scraped table rows (string[] of external page
+//                  text; the array-element wrap below exists for this shape)
 const UNTRUSTED_FIELD_KEYS = new Set([
   "notes",
   "description",
@@ -139,6 +141,7 @@ const UNTRUSTED_FIELD_KEYS = new Set([
   "text",
   "fact",
   "draft",
+  "tables",
 ]);
 
 const MAX_WALK_DEPTH = 10;
@@ -180,6 +183,15 @@ function walk(
         !isWrappedUntrusted(v)
       ) {
         out[k] = wrapUntrusted(v, `${source}.${k}`, opts);
+      } else if (Array.isArray(v) && UNTRUSTED_FIELD_KEYS.has(k)) {
+        // A keyed field holding a string ARRAY (browse_web `tables`): the
+        // elements carry the untrusted text but have no key of their own, so
+        // the plain array walk would return them verbatim (audit P-2 hole).
+        out[k] = v.map((el) =>
+          typeof el === "string" && el.trim().length > 0 && !isWrappedUntrusted(el)
+            ? wrapUntrusted(el, `${source}.${k}[]`, opts)
+            : walk(el, `${source}.${k}`, opts, depth + 1),
+        );
       } else {
         out[k] = walk(v, `${source}.${k}`, opts, depth + 1);
       }
@@ -204,9 +216,17 @@ export function serializeToolResultForModel(
     return JSON.stringify(result);
   }
   const r = result as { success?: boolean; data?: unknown };
-  if (r.data === undefined) return JSON.stringify(result);
+  const source = `tool:${sanitizeSourceLabel(toolName)}`;
+  // No `data` key: fail CLOSED by walking the whole object — a tool that
+  // returns keyed free text at the top level ({success, text}) must not
+  // bypass the envelope just because it skipped the {data} convention.
+  // Structural fields (success, error, message) are not keyed and pass
+  // through untouched either way.
+  if (r.data === undefined) {
+    return JSON.stringify(wrapUntrustedFields(result, source));
+  }
   return JSON.stringify({
     ...r,
-    data: wrapUntrustedFields(r.data, `tool:${sanitizeSourceLabel(toolName)}`),
+    data: wrapUntrustedFields(r.data, source),
   });
 }

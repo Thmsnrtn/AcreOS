@@ -64,6 +64,14 @@ class NegotiationOrchestrator {
     sellerCommunication: string[]
   ): Promise<SellerProfile> {
     try {
+      // Guard totality (audit P-2): these messages are seller-authored and
+      // enter a {role:'user'} prompt — envelope each one so an instruction
+      // planted in a seller email reads as data, not directives.
+      const safeCommunications = sellerCommunication
+        .filter((c) => typeof c === 'string' && c.trim().length > 0)
+        .map((c) => wrapUntrusted(c, 'counterparty:seller_communication'))
+        .join('\n\n');
+
       // Analyze communication patterns with GPT-4
       const analysisPrompt = `Analyze the following seller communications and determine:
 1. Motivation level (distressed/motivated/neutral/passive)
@@ -74,7 +82,7 @@ class NegotiationOrchestrator {
 6. Key pain points
 
 Seller communications:
-${sellerCommunication.join('\n\n')}
+${safeCommunications}
 
 Respond in JSON format.`;
 

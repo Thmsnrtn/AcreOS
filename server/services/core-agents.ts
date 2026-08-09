@@ -3,6 +3,8 @@ import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
 import { routeAITask, TaskComplexity, classifyTaskComplexity, MODEL_SIMPLE } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { logger } from "../utils/logger";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
@@ -843,9 +845,9 @@ Create:
     const lead = leadId ? await storage.getLead(context.organizationId, leadId) : null;
 
     const prompt = `Draft a response to this incoming ${channel || "message"}:
-"${incomingMessage}"
+${wrapUntrusted(incomingMessage, "counterparty:incoming_message")}
 
-Context: This is from ${lead ? `${lead.firstName} ${lead.lastName}` : "a landowner"} regarding potential property sale.
+Context: This is from ${lead ? sanitizePromptInline(`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim(), { maxLength: 120, source: "lead:name" }) : "a landowner"} regarding potential property sale.
 
 Write a helpful, professional response that:
 1. Acknowledges their message

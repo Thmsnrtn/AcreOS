@@ -35,6 +35,7 @@ import {
 } from "./aiRouter";
 import { executeAgentTask, type CoreAgentType } from "./core-agents";
 import type { AgentContext } from "./core-agents";
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -152,12 +153,20 @@ export class DirectorAgent {
             parameters: action.parameters,
             context: input.context,
           });
+          // Agent result data can carry model output derived from customer
+          // text (e.g. draft_response), and the observation is interpolated
+          // into every later reasoning/synthesis prompt — envelope it here so
+          // each downstream interpolation carries the boundary. The
+          // SUCCESS:/FAILED: prefix stays outside so the loop reads status.
+          // FAILED/ERROR messages are wrapped too: agent failure text can echo
+          // model-chosen params and external error bodies, and it flows into
+          // the same downstream prompts as SUCCESS data.
           observation = result.success
-            ? `SUCCESS: ${JSON.stringify(result.data).slice(0, 600)}`
-            : `FAILED: ${result.message}`;
+            ? `SUCCESS: ${wrapUntrusted(JSON.stringify(result.data), `agent:${action.agentType}.${action.action}`, { maxLength: 600 })}`
+            : `FAILED: ${wrapUntrusted(String(result.message ?? ""), `agent:${action.agentType}.${action.action}`, { maxLength: 600 })}`;
           totalCostEstimate += 0.005;
         } catch (err: any) {
-          observation = `ERROR: ${err.message}`;
+          observation = `ERROR: ${wrapUntrusted(String(err?.message ?? err), `agent:${action.agentType}.${action.action}`, { maxLength: 600 })}`;
         }
       } else {
         observation = `[PLAN_ONLY] Would execute: ${action.agentType}.${action.action}`;
@@ -267,7 +276,14 @@ What should the next action be? Reason through it, then specify the ACTION JSON.
 
     const stepsBlock = steps
       .filter(s => s.action)
-      .map(s => `• ${s.action!.agentType}.${s.action!.action}: ${s.observation.slice(0, 300)}`)
+      // Observations are bounded at construction, but the bound is applied
+      // BEFORE sanitizePrompt's redaction, which can EXPAND text up to ~10/6
+      // ("[INST]" → "[redacted]"): inner ≤600 pre-redaction can reach ~1000
+      // post, plus envelope overhead (~220 with an 80-char source label)
+      // ≈ 1220 worst case. The cap must exceed that or it amputates
+      // <<END_USER_DATA>> and leaves the synthesis prompt inside an unclosed
+      // untrusted region.
+      .map(s => `• ${s.action!.agentType}.${s.action!.action}: ${s.observation.slice(0, 1400)}`)
       .join("\n");
 
     const systemPrompt = `You are a synthesis AI that consolidates agent execution results into clear, actionable summaries.

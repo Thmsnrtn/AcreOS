@@ -128,10 +128,15 @@ describe("executeChatTool", () => {
     expect(LAST_DISPATCH_CALL?.toolName).toBe("file_read");
     expect(LAST_DISPATCH_CALL?.input).toEqual({ path: "package.json" });
     expect(r.result).toHaveLength(1);
-    expect(r.result[0]).toMatchObject({
-      type: "text",
-      text: "file content here",
-    });
+    expect(r.result[0].type).toBe("text");
+    if (r.result[0].type === "text") {
+      // Guard-totality audit P-2: executor output re-enters the model
+      // wrapped in the untrusted-data envelope, labeled with the tool.
+      expect(r.result[0].text).toContain("<<USER_DATA>>");
+      expect(r.result[0].text).toContain("[source: tool:file_read]");
+      expect(r.result[0].text).toContain("file content here");
+      expect(r.result[0].text).toContain("<<END_USER_DATA>>");
+    }
   });
 
   it("returns awaiting_approval (no dispatch call) for approval-required tools", async () => {
@@ -147,6 +152,8 @@ describe("executeChatTool", () => {
     expect(r.result[0]).toMatchObject({ type: "text" });
     if (r.result[0].type === "text") {
       expect(r.result[0].text).toContain("AWAITING_APPROVAL");
+      // Server-authored constant — must NOT get the untrusted envelope.
+      expect(r.result[0].text).not.toContain("<<USER_DATA>>");
     }
 
     // Pending entry should be retrievable + deletable.
@@ -186,6 +193,9 @@ describe("executeChatTool", () => {
     });
     if (r.result[0].type === "text") {
       expect(r.result[0].text).toContain("ENOENT");
+      // Failure outputs can carry external text (fs errors, stderr) — the
+      // envelope applies to them too.
+      expect(r.result[0].text).toContain("<<USER_DATA>>");
     }
   });
 });

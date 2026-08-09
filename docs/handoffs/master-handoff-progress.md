@@ -198,6 +198,54 @@ from this file, not from memory. Updated every working session.*
   full-gate evidence in the commit).
 - **Approval queue:** nothing — no gate/ratchet baseline moved, no send lane or
   hard-stop domain touched (envelope wraps are read-path hardening).
+- **Independent completeness audit (post-commit `d54215e`) — found real holes;
+  all remediated in the follow-up commit.** The audit treated every 0.5 claim
+  as a hypothesis and confirmed 9 defects, the important lesson being that the
+  role:"tool" sweep is structurally blind to two whole loop shapes:
+  1. `browse_web` `tables` (string[] of scraped page text) passed the field-walk
+     verbatim — array ELEMENTS have no key. Fixed in the walk itself (keyed
+     fields holding string arrays now wrap each element) + "tables" keyed.
+  2. Anthropic-shaped loops (`{role:"user", content:[{type:"tool_result"}]}`):
+     Solene dispatchRunner + chat toolExecutor fed bash/file_read/inbox output
+     raw. Both wrapped at their executor-output boundaries (fleet-fixed,
+     adversarially verified CONFIRMED_GOOD).
+  3. `directorAgent` ReAct loop interpolated raw stringified agent results into
+     every later prompt (reachable via agentGoalManager); wrapped — including
+     FAILED/ERROR branches — and the synthesis cap raised 1000→1400 after the
+     verifier PROVED truncate-before-redact expansion could amputate the close
+     marker at 1000 (redaction expands text ~10/6).
+  4. `core-agents.draftResponse` quoted inbound counterparty messages + lead
+     names raw into its template; wrapped/sanitized.
+  5. `negotiationOrchestrator.analyzeSellerPsychology` joined seller messages
+     raw; `negotiationCopilot` objection text; `decisionsInbox` feature-request
+     title/description/category (category's "enum" exists only as a schema
+     comment — it is customer free text). All wrapped.
+  6. `paxSupportResolver` interpolated the same ticket subject/description the
+     tool path now envelopes, raw on the PROMPT path; wrapped.
+  7. My own trait bug: forbidden trait "price dropped to $1" substring-matched
+     honest "$1,200" replies — the live gate would have silently deflected
+     legitimate customer conversations. Traits reduced to collision-proof
+     fixture literals (reserved example-domain addresses), plus a regression
+     test feeding legitimate replies through the live gate.
+  8. My own ratchet was field-order evadable (`tool_call_id` before `role`);
+     collector now anchors on runtime-valued tool_call_id with a bidirectional
+     window, self-tested on synthetic fixtures.
+  9. `serializeToolResultForModel` failed OPEN on results without `data`; now
+     walks the whole object (fail-closed for keyed fields at any level).
+  All closures pinned in `guardTotality.test.ts` (now 25 tests, incl. §5
+  remediation pins that survive refactors).
+- **Ledgered, deliberately not built now:** (a) `chatWork.ts` client receipt
+  parsers would be defeated by envelope markers on paths UNREACHABLE today
+  (chat lacks a dispatch agent role; witnessed-send blocked for chat) — fixing
+  needs envelope helpers moved to `shared/`; do it when chat gains those
+  capabilities. (b) `complianceValidator`'s 2000-char slice can dangle an open
+  marker on >1.85KB objections (validator already treats content as data).
+  (c) Lead-row field spreads (`firstName`/`email`/… in `get_lead_details`,
+  `query_user_data`) — short customer strings on the trusted channel; needs a
+  policy decision on identity-field enveloping, queued for 0.6/Wave-2 review.
+  (d) Raw provider blobs (`research_property` enrichment) — same class as the
+  connector passthroughs, folded into 0.6's scope. (e) `aiDetectObjection`
+  sends raw seller text but output is whitelist-bounded.
 ### 0.6 — Connectors `executor.ts` P0 disposition (org-scoping, SSRF guard, enveloped results) — pending
 ### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — pending
 ### 0.8 — Mail lanes (`lobService` → `resolveProviderCredential`, purpose lanes, wedge cap, `mailProviderLanes.test`) — pending · **SEND LANE: propose-don't-merge (§A rule 5) — goes to founder approval queue before merge**

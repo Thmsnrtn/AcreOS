@@ -14,6 +14,7 @@ import {
   type OutcomePrediction,
 } from "./outcomeLedger";
 import { logger } from "../utils/logger";
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 
 /**
  * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
@@ -353,10 +354,17 @@ export const decisionsInboxService = {
         content: "You are a B2B land investment tech product strategist. Evaluate feature requests for revenue impact.",
       }, {
         role: "user",
+        // Guard totality (audit P-2): title/description are customer-typed
+        // and this message drives an auto-surfacing function call — envelope
+        // them so planted instructions read as data, not directives.
+        // `category` is wrapped too: the schema's enum exists only as a
+        // comment (shared/schema.ts featureRequests.category is plain text
+        // and the insert schema does not constrain it), so it is
+        // customer-typed free text like the other two fields.
         content: JSON.stringify({
-          title: request.title,
-          description: request.description,
-          category: request.category,
+          title: wrapUntrusted(request.title, "customer:feature_request.title"),
+          description: wrapUntrusted(request.description, "customer:feature_request.description"),
+          category: wrapUntrusted(request.category, "customer:feature_request.category"),
         }),
       }],
       tools: [{
