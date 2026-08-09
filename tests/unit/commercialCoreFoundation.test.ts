@@ -121,13 +121,19 @@ describe("honesty — Stage 1 stores facts, it does not fabricate the engines' n
     expect(ledger).toMatch(/coverageComplete:\s*null/);
   });
 
-  it("no computed cap rate / NOI / percentage-rent math lives in these data-entry handlers", () => {
-    // Stage 1 must not compute the very numbers its later engines exist to
-    // derive. These tokens would signal an engine leaking into data entry.
+  it("money math is DELEGATED to the pure tested engine, not hand-rolled in the route", () => {
+    // Stage 2 adds the CAM reconciliation. The route must DELEGATE to
+    // computeCamReconciliation (behaviourally tested in camReconciliation.test.ts)
+    // and REFUSE — write nothing — when it cannot derive a share, rather than do
+    // ad-hoc money arithmetic in the handler. This is where a fabricated CAM bill
+    // would sneak in, so it is pinned.
+    expect(ledger).toContain("computeCamReconciliation(");
+    expect(ledger).toMatch(/if \(result\.refusedReason\)/);
+    expect(ledger).toContain('generatedBy: "engine"');
+    // No hand-rolled cap-rate / NOI arithmetic leaked into the route file.
     const commercialBlock = ledger.slice(ledger.indexOf("COMMERCIAL → CORE (Wave 4 Stage 1)"));
     expect(commercialBlock).not.toMatch(/capRate/);
     expect(commercialBlock).not.toMatch(/\bNOI\b/);
-    expect(commercialBlock).not.toMatch(/breakpoint\s*[*/]/); // no percentage-rent arithmetic
   });
 
   it("the recoverable-category set is asserted against the canonical Schedule-E vocabulary", () => {

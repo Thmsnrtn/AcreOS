@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -58,6 +58,7 @@ import {
   camReconciliations,
   commercialSalesReports,
   leaseRentSchedule,
+  propertyExpenses,
 } from "@shared/schema";
 import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
 import {
@@ -85,6 +86,11 @@ import {
   PROPERTY_EXPENSE_CATEGORIES,
   type PropertyExpenseCategory,
 } from "@shared/rental/propertyExpense";
+import {
+  computeCamReconciliation,
+  renderCamStatementMarkdown,
+  monthsInPeriod,
+} from "@shared/rental/camReconciliation";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -1826,6 +1832,176 @@ export function registerRentLedgerRoutes(app: Express): void {
         orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: saved?.id,
       });
       return res.json({ reconciliation: saved });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Engine-generated reconciliation: computes the frozen true-up from the pool's
+  // recoverable property_expenses × the lease's pro-rata and FREEZES it. Refuses
+  // (400, writes nothing) when the pro-rata share cannot be derived — a CAM bill
+  // on a fabricated share is never produced. Provenance: generatedBy "engine".
+  app.post("/api/cam-pools/:poolId/reconciliations/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = z.object({ leaseId: z.string().min(1) }).safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [pool] = await db.select().from(camExpensePools)
+        .where(and(
+          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.organizationId, orgId),
+        ));
+      if (!pool) return Errors.notFound(res, "CAM pool");
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, parsed.data.leaseId), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+      if (lease.propertyId !== pool.propertyId) {
+        return Errors.badRequest(res, "This lease is not on the pool's property");
+      }
+
+      // The pool actual: recoverable OPERATING spend on the pool's property over
+      // the period. The engine re-filters to operating + recoverable categories;
+      // we hand it every row in the window.
+      const expenseRows = await db
+        .select({
+          category: propertyExpenses.category,
+          amountCents: propertyExpenses.amountCents,
+          isOperating: propertyExpenses.isOperating,
+          incurredOn: propertyExpenses.incurredOn,
+        })
+        .from(propertyExpenses)
+        .where(and(
+          eq(propertyExpenses.organizationId, orgId),
+          eq(propertyExpenses.propertyId, pool.propertyId),
+          gte(propertyExpenses.incurredOn, pool.periodStart),
+          lte(propertyExpenses.incurredOn, pool.periodEnd),
+        ));
+
+      // What the tenant was actually billed in CAM estimates over the period —
+      // the real charges first, the lease's monthly estimate only as a fallback,
+      // and an honest zero (basis "none") when neither exists.
+      const camCharges = await db
+        .select({ amountCents: rentCharges.amountCents })
+        .from(rentCharges)
+        .where(and(
+          eq(rentCharges.organizationId, orgId),
+          eq(rentCharges.leaseId, lease.id),
+          eq(rentCharges.chargeType, "cam"),
+          gte(rentCharges.chargedForMonth, pool.periodStart),
+          lte(rentCharges.chargedForMonth, pool.periodEnd),
+        ));
+      const periodMonths = monthsInPeriod(pool.periodStart, pool.periodEnd);
+      let estimatedBilledCents = camCharges.reduce((s, c) => s + Number(c.amountCents), 0);
+      let estimatedBilledBasis = "from_charges";
+      if (camCharges.length === 0) {
+        if (lease.camEstimateMonthlyCents != null && periodMonths > 0) {
+          estimatedBilledCents = lease.camEstimateMonthlyCents * periodMonths;
+          estimatedBilledBasis = "lease_estimate";
+        } else {
+          estimatedBilledCents = 0;
+          estimatedBilledBasis = "none";
+        }
+      }
+
+      const result = computeCamReconciliation({
+        pool: {
+          recoverableCategories: pool.recoverableCategories,
+          totalRentableSqft: pool.totalRentableSqft,
+          adminFeeBps: pool.adminFeeBps,
+          grossUpPct: pool.grossUpPct != null ? Number(pool.grossUpPct) : null,
+          periodStart: pool.periodStart,
+          periodEnd: pool.periodEnd,
+        },
+        lease: {
+          camProRataBps: lease.camProRataBps,
+          rentableSqft: lease.rentableSqft,
+          camBaseYearStopCents: lease.camBaseYearStopCents,
+          leaseType: lease.leaseType,
+        },
+        rows: expenseRows.map((r) => ({
+          category: r.category,
+          amountCents: Number(r.amountCents),
+          isOperating: r.isOperating,
+          incurredOn: r.incurredOn,
+        })),
+        estimatedBilledCents,
+      });
+
+      // Honest refusal — write nothing, say exactly why.
+      if (result.refusedReason) {
+        return Errors.badRequest(res, result.refusedReason);
+      }
+
+      const statementMarkdown = renderCamStatementMarkdown(result, {
+        periodStart: pool.periodStart,
+        periodEnd: pool.periodEnd,
+        poolKind: pool.poolKind,
+      });
+
+      const frozen = {
+        organizationId: orgId,
+        poolId: pool.id,
+        leaseId: lease.id,
+        periodStart: pool.periodStart,
+        periodEnd: pool.periodEnd,
+        proRataBpsUsed: result.proRataBps,
+        proRataBasis: result.proRataBasis,
+        leasedSqftUsed: result.leasedSqftUsed,
+        totalRentableSqftUsed: result.totalRentableSqftUsed,
+        poolActualCents: result.poolActualCents,
+        byCategoryCents: result.byCategoryCents as Record<string, number>,
+        recoverableShareCents: result.recoverableShareCents,
+        estimatedBilledCents: result.estimatedBilledCents,
+        estimatedBilledBasis,
+        deltaCents: result.deltaCents,
+        coverageMonths: result.coverageMonths,
+        coverageComplete: result.coverageComplete,
+        statementMarkdown,
+        statementVersion: "cam-v1",
+        generatedAt: new Date(),
+        generatedBy: "engine",
+      };
+
+      const [saved] = await db.insert(camReconciliations).values(frozen)
+        .onConflictDoUpdate({
+          target: [camReconciliations.poolId, camReconciliations.leaseId],
+          set: {
+            periodStart: frozen.periodStart,
+            periodEnd: frozen.periodEnd,
+            proRataBpsUsed: frozen.proRataBpsUsed,
+            proRataBasis: frozen.proRataBasis,
+            leasedSqftUsed: frozen.leasedSqftUsed,
+            totalRentableSqftUsed: frozen.totalRentableSqftUsed,
+            poolActualCents: frozen.poolActualCents,
+            byCategoryCents: frozen.byCategoryCents,
+            recoverableShareCents: frozen.recoverableShareCents,
+            estimatedBilledCents: frozen.estimatedBilledCents,
+            estimatedBilledBasis: frozen.estimatedBilledBasis,
+            deltaCents: frozen.deltaCents,
+            coverageMonths: frozen.coverageMonths,
+            coverageComplete: frozen.coverageComplete,
+            statementMarkdown: frozen.statementMarkdown,
+            statementVersion: frozen.statementVersion,
+            generatedAt: frozen.generatedAt,
+            generatedBy: frozen.generatedBy,
+          },
+        })
+        .returning();
+
+      logger.info("[W4] CAM reconciliation generated", {
+        orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: saved?.id,
+        deltaCents: result.deltaCents, coverageComplete: result.coverageComplete,
+      });
+      return res.json({
+        reconciliation: saved,
+        coverage: {
+          months: result.coverageMonths,
+          periodMonths: result.periodMonths,
+          complete: result.coverageComplete,
+        },
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
