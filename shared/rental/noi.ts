@@ -108,6 +108,59 @@ export interface MeasuredOpExSummary {
  * so downstream can tell a full year of records from a thin one- or two-month
  * slice and refuse to present the latter as complete books.
  */
+export type OpExSource =
+  | "measured_expenses"
+  | "ratio_override"
+  | "assumed_ratio"
+  | "commercial_unmeasured";
+export type OpExBasis = "operator_supplied" | "assumed_ratio" | "unavailable";
+
+export interface OpExDecision {
+  /** Null for an unmeasured commercial property — no assumed op-ex, hence no NOI. */
+  opExMonthlyCents: number | null;
+  opExBasis: OpExBasis;
+  opExSource: OpExSource;
+}
+
+/**
+ * Decide the monthly operating expense behind NOI, and label its provenance —
+ * the ONE place the op-ex precedence lives, pure so it is testable without a DB.
+ *
+ * Precedence: measured stored expenses > explicit opExBps override > (residential)
+ * the assumed 40%-of-collections ratio. The commercial carve-out is the honesty
+ * rule Wave 4 adds: a COMMERCIAL property with neither measured expenses nor an
+ * override gets NO assumed op-ex — the residential ratio is meaningless for a
+ * NNN/gross building, so op-ex is null (opExSource "commercial_unmeasured") and NOI/
+ * cap rate fall away rather than being fabricated from a 60%-of-rent guess.
+ */
+export function decideOperatingExpense(args: {
+  hasMeasured: boolean;
+  measuredOpExMonthlyCents: number;
+  opExBps: number | undefined;
+  isCommercial: boolean;
+  monthlyRentCollectedCents: number;
+}): OpExDecision {
+  const { hasMeasured, measuredOpExMonthlyCents, opExBps, isCommercial, monthlyRentCollectedCents } = args;
+  if (hasMeasured) {
+    return { opExMonthlyCents: measuredOpExMonthlyCents, opExBasis: "operator_supplied", opExSource: "measured_expenses" };
+  }
+  if (opExBps !== undefined) {
+    return {
+      opExMonthlyCents: Math.round((monthlyRentCollectedCents * opExBps) / 10000),
+      opExBasis: "operator_supplied",
+      opExSource: "ratio_override",
+    };
+  }
+  if (isCommercial) {
+    return { opExMonthlyCents: null, opExBasis: "unavailable", opExSource: "commercial_unmeasured" };
+  }
+  return {
+    opExMonthlyCents: Math.round((monthlyRentCollectedCents * ASSUMED_OPEX_BPS) / 10000),
+    opExBasis: "assumed_ratio",
+    opExSource: "assumed_ratio",
+  };
+}
+
 export function summarizeMeasuredOpEx(rows: MeasurableExpenseRow[]): MeasuredOpExSummary {
   const operating = rows.filter((r) => r.isOperating);
   const byCategoryCents: Partial<Record<PropertyExpenseCategory, number>> = {};

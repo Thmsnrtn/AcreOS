@@ -335,6 +335,12 @@ function captureRentPaymentHandler(): Handler {
   const app: any = {
     get: (path: string, ...args: unknown[]) => routes.push({ path, args }),
     post: (path: string, ...args: unknown[]) => routes.push({ path, args }),
+    // Wave 4 (commercial → core) added the file's first patch/put/delete verbs
+    // (commercial-term + reconciliation CRUD). This mock captures every verb the
+    // route file registers so registration doesn't throw on an unknown method.
+    patch: (path: string, ...args: unknown[]) => routes.push({ path, args }),
+    put: (path: string, ...args: unknown[]) => routes.push({ path, args }),
+    delete: (path: string, ...args: unknown[]) => routes.push({ path, args }),
   };
   registerRentLedgerRoutes(app);
   const route = routes.find((r) => r.path === "/api/leases/:id/payments");

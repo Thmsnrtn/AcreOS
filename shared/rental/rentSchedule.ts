@@ -29,6 +29,11 @@
  * clock, so the planner is deterministic and testable.
  */
 
+import {
+  effectiveBaseRentForMonth,
+  type RentScheduleStepInput,
+} from "./rentEscalation";
+
 export interface LeaseScheduleInput {
   /** YYYY-MM-DD, first day of the tenancy. */
   startDate: string;
@@ -36,8 +41,16 @@ export interface LeaseScheduleInput {
   endDate: string | null;
   /** 1-31; clamped to the last day of short months. */
   rentDueDayOfMonth: number;
-  /** Integer cents of full-period rent. */
+  /** Integer cents of full-period rent — the BASE before any escalation step. */
   monthlyRentCents: number;
+  /**
+   * Commercial rent-escalation steps (Wave 4). OPTIONAL and additive: omitted or
+   * empty for every residential lease and every commercial lease without defined
+   * escalation, in which case each period is billed the flat monthlyRentCents,
+   * unchanged. When present, the amount for each period is the escalated base for
+   * that month (see effectiveBaseRentForMonth).
+   */
+  scheduleSteps?: readonly RentScheduleStepInput[];
   /** Section 8 splits, carried onto the charge when present. */
   isSection8?: boolean;
   hapPortionCents?: number | null;
@@ -194,7 +207,13 @@ export function planRentCharges(args: {
     create.push({
       chargedForMonth: key,
       dueDate: dueDateForPeriod(key, lease.rentDueDayOfMonth),
-      amountCents: lease.monthlyRentCents,
+      // No steps ⇒ effectiveBaseRentForMonth returns monthlyRentCents unchanged
+      // (the residential invariant); steps ⇒ the escalated base for this month.
+      amountCents: effectiveBaseRentForMonth(
+        lease.monthlyRentCents,
+        lease.scheduleSteps ?? [],
+        key,
+      ),
       hapPortionCents: lease.isSection8 ? lease.hapPortionCents ?? null : null,
       tenantPortionCents: lease.isSection8 ? lease.tenantPortionCents ?? null : null,
     });

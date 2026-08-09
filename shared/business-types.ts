@@ -304,33 +304,39 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "commercial",
     label: "Commercial real estate",
     shortDescription: "Retail, office, industrial assets.",
-    // 2026-08 (Wave 2 pass B, roadmap → beta): the founder promoted commercial
-    // to a BASE-RENT TERM-LEASE beta on the honest tier definition. What makes
-    // it defensible, verified against the tree:
-    //   - the core loop is lease-generic and real — term leases, base-rent
-    //     charges/payments, maintenance→contractor dispatch, security deposits
-    //     (Section 8 / FCRA / lead-paint fields optional and default off), the
-    //     Rentals sidebar module gate includes commercial, the dashboard routes
-    //     commercial to the real landlord dashboard (type-specific-widgets.tsx),
-    //     and /today gets a commercial cluster (rentals stack + /deals +
-    //     /properties);
-    //   - ENTITY / COMPANY TENANTS now exist — the tenants table gained
-    //     `is_entity` + `company_name` (migration 0220), the create/update path
-    //     requires a company name for an entity and person names for a person,
-    //     and the workflow name resolvers prefer the company name honestly. A
-    //     commercial operator can finally enter a tenant that is an LLC, which
-    //     was the concrete beta blocker.
-    //   - the residential-statute FABRICATION is FIXED, not shipped: the state
-    //     late-fee surface (residential statutory caps + citations) is now gated
-    //     OUT for commercial orgs, front and back (rent-roll.tsx +
-    //     routes-rent-ledger.ts refuse it), because a commercial late fee is
-    //     CONTRACTUAL, set by the lease, not by statute.
-    // What is explicitly NOT included and STAYS roadmap-for-core: CAM / NNN
-    // pass-through reconciliation, percentage rent, escalation schedules,
-    // per-square-foot metrics, and residential-statute late fees. Beta is scoped
-    // to the base-rent term-lease operations the shipped stack genuinely runs.
-    // 2026-08 founder promote decision.
-    maturity: "beta",
+    // 2026-08 (Wave 4, beta → CORE): the base-rent term-lease beta (real term
+    // leases, base-rent charges/payments, maintenance dispatch, deposits, entity/
+    // company tenants, and the residential-statute late-fee fabrication gated out)
+    // was extended with the commercial-specific capability that was its
+    // roadmap-for-core — each built as a pure, behaviourally-tested engine that
+    // computes from the operator's OWN recorded data and REFUSES rather than
+    // fabricate:
+    //   - CAM / NNN reconciliation — cam_expense_pools + cam_reconciliations, the
+    //     true-up computed from recoverable OPERATING property_expenses × the
+    //     lease pro-rata (shared/rental/camReconciliation.ts + the generate
+    //     endpoint), refusing when the pro-rata share cannot be derived and
+    //     disclosing thin coverage rather than presenting a partial year as settled.
+    //   - percentage rent — the retail overage from REPORTED gross sales vs the
+    //     breakpoint (shared/rental/percentageRent.ts), refusing without a sales
+    //     report rather than assuming sales.
+    //   - escalation schedules — lease_rent_schedule steps (fixed / fixed %, CPI
+    //     with a collar) billed by the rent-charge generator
+    //     (shared/rental/rentEscalation.ts), backward-compatible: a lease with no
+    //     steps bills flat rent unchanged, so the residential rent roll is untouched.
+    //   - per-square-foot metrics — base rent and occupancy cost $/sqft/yr
+    //     (shared/rental/perSqft.ts), null when the rentable area is unknown.
+    //   - commercial late fees — CONTRACTUAL, computed from the lease's own terms
+    //     (shared/rental/commercialLateFee.ts), symmetric to the residential
+    //     statutory gate (each refuses the other's domain).
+    //   - commercial-correct NOI — an unmeasured commercial property yields NO
+    //     assumed op-ex (the residential 40% ratio is meaningless under NNN/gross),
+    //     so NOI/cap rate fall away rather than being fabricated
+    //     (shared/rental/noi.ts decideOperatingExpense).
+    // Residential-statute late fees remain N/A for commercial by design (a
+    // commercial late fee is contractual). All of it lives behind the existing
+    // Rentals doors — no new nav, no money movement (compute/record/propose only,
+    // never a posted charge on AcreOS's account). 2026-08 founder promote decision (Wave 4).
+    maturity: "core",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and
     // the plain lease-expiring renewal task. tpl_landlord_lease_renewal_

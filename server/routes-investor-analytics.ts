@@ -31,7 +31,7 @@ import { db } from "./db";
 import { properties, rentalLeases, rentPayments, propertyExpenses } from "@shared/schema";
 import { rentalUnits } from "@shared/schema/rental";
 import type { PropertyExpenseCategory } from "@shared/rental/propertyExpense";
-import { summarizeMeasuredOpEx, isMeasuredCoverageComplete } from "@shared/rental/noi";
+import { summarizeMeasuredOpEx, isMeasuredCoverageComplete, decideOperatingExpense } from "@shared/rental/noi";
 import { buildT12Grid, summarizeT12, T12_MONTHS, type T12IncomeRow, type T12MonthRow, type T12Totals } from "@shared/rental/t12";
 import { computeOccupancySnapshot, type OccupancySnapshot } from "./routes-rentals";
 import type { AuthenticatedRequest } from "./types/request";
@@ -49,9 +49,11 @@ interface PropertyAnalytics {
   vacantUnitCount: number;
   unitCount: number;
   vacancyRate: number;
-  opExMonthlyCents: number;
-  noiMonthlyCents: number;
-  noiAnnualCents: number;
+  /** Null for an UNMEASURED commercial property — the residential ratio does not apply (opExSource "commercial_unmeasured"). */
+  opExMonthlyCents: number | null;
+  /** Null when op-ex is unavailable (commercial_unmeasured): NOI cannot be computed without op-ex. */
+  noiMonthlyCents: number | null;
+  noiAnnualCents: number | null;
   capRatePct: number | null;
   dscr: number | null;
   averageTenureMonths: number | null;
@@ -66,7 +68,7 @@ interface PropertyAnalytics {
    * `opExSource` below is the finer distinction the client needs to label a
    * param override honestly (it is not "(est.)", but it is not measured either).
    */
-  opExBasis: "operator_supplied" | "assumed_ratio";
+  opExBasis: "operator_supplied" | "assumed_ratio" | "unavailable";
   /**
    * The finer provenance of the op-ex behind NOI:
    *   - "measured_expenses" — summed from real property_expenses OPERATING rows
@@ -76,8 +78,12 @@ interface PropertyAnalytics {
    *     explicit opExBps. Operator-supplied, but still a RATIO, not a measurement
    *     from records — labelled as an assumed ratio, never as measured.
    *   - "assumed_ratio"     — neither: the flat 40%-of-collections rule of thumb.
+   *   - "commercial_unmeasured" — a COMMERCIAL property with no measured op-ex and
+   *     no override. The residential 40% ratio is meaningless here, so op-ex/NOI/
+   *     cap rate are null rather than fabricated; the operator must record real
+   *     expenses (or a CAM pool) to get a cap rate.
    */
-  opExSource: "measured_expenses" | "ratio_override" | "assumed_ratio";
+  opExSource: "measured_expenses" | "ratio_override" | "assumed_ratio" | "commercial_unmeasured";
   /**
    * Count of OPERATING property_expenses rows in the trailing-12 window. Zero
    * means no measured expenses exist, so the property stays on the assumed ratio
@@ -225,24 +231,35 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
   // the finer one the client needs to keep an override from reading as measured.
   const hasMeasured = measuredRowCount > 0;
   const measuredOpExMonthly = Math.round(sumOperatingLast12 / 12);
-  const opExMonthly = hasMeasured
-    ? measuredOpExMonthly
-    : Math.round((monthlyRentCollected * (opExBps ?? 4000)) / 10000);
-  const opExBasis: "operator_supplied" | "assumed_ratio" =
-    (hasMeasured || opExBps !== undefined) ? "operator_supplied" : "assumed_ratio";
-  const opExSource: "measured_expenses" | "ratio_override" | "assumed_ratio" =
-    hasMeasured ? "measured_expenses" : (opExBps !== undefined ? "ratio_override" : "assumed_ratio");
+  // A COMMERCIAL building does not obey the residential 40%-of-collections op-ex
+  // rule of thumb (Wave 4): under a triple-net lease the tenant reimburses op-ex,
+  // under a gross lease it is bundled into rent — either way the ratio is
+  // meaningless, and a cap rate built on it is a fabricated number in a plausible
+  // costume. So an UNMEASURED commercial property (no stored operating expenses
+  // AND no explicit ratio override) yields NO assumed NOI: op-ex, NOI, cap rate
+  // and DSCR are null and opExSource says WHY, rather than a 60%-of-rent invention.
+  const isCommercial = prop.structureType === "commercial" || prop.structureType === "mixed_use";
+  const opExDecision = decideOperatingExpense({
+    hasMeasured,
+    measuredOpExMonthlyCents: measuredOpExMonthly,
+    opExBps,
+    isCommercial,
+    monthlyRentCollectedCents: monthlyRentCollected,
+  });
+  const opExMonthly = opExDecision.opExMonthlyCents;
+  const opExBasis = opExDecision.opExBasis;
+  const opExSource = opExDecision.opExSource;
 
-  const noiMonthly = monthlyRentCollected - opExMonthly;
-  const noiAnnual = noiMonthly * 12;
+  const noiMonthly = opExMonthly !== null ? monthlyRentCollected - opExMonthly : null;
+  const noiAnnual = noiMonthly !== null ? noiMonthly * 12 : null;
 
   const marketValue = prop.marketValue ? Math.round(parseFloat(prop.marketValue) * 100)
     : prop.assessedValue ? Math.round(parseFloat(prop.assessedValue) * 100)
       : null;
 
-  const capRate = marketValue && marketValue > 0 ? (noiAnnual / marketValue) : null;
+  const capRate = (noiAnnual !== null && marketValue && marketValue > 0) ? (noiAnnual / marketValue) : null;
 
-  const dscr = debtMonthlyCents && debtMonthlyCents > 0 ? (noiMonthly / debtMonthlyCents) : null;
+  const dscr = (noiMonthly !== null && debtMonthlyCents && debtMonthlyCents > 0) ? (noiMonthly / debtMonthlyCents) : null;
 
   // Average tenure = mean(end - start) for past leases.
   let averageTenureMonths: number | null = null;
@@ -445,12 +462,24 @@ export function registerInvestorAnalyticsRoutes(app: Express): void {
         snapshots.push(await snapshotForProperty(orgId, id));
       }
 
+      // NOI is summed ONLY over properties whose op-ex is known. A commercial
+      // property with unmeasured op-ex (noiMonthlyCents null) is EXCLUDED from the
+      // NOI/op-ex/cap-rate rollup — counting its rent while assuming zero op-ex
+      // would overstate portfolio NOI, the very fabrication the per-property change
+      // refuses. Its rent still shows in totalMonthlyRent (a real, measured figure);
+      // excludedUnmeasuredCommercial tells the client how many were left out.
+      const measurable = snapshots.filter((x) => x.noiMonthlyCents !== null);
+      const excludedUnmeasuredCommercial = snapshots.length - measurable.length;
       const totalMonthlyRent = snapshots.reduce((s, x) => s + x.monthlyRentCollectedCents, 0);
-      const totalOpEx = snapshots.reduce((s, x) => s + x.opExMonthlyCents, 0);
-      const totalNoiMonthly = totalMonthlyRent - totalOpEx;
-      const totalNoiAnnual = totalNoiMonthly * 12;
-      const totalMarketValue = snapshots.reduce((s, x) => s + (x.marketValueCents ?? 0), 0);
-      const portfolioCapRate = totalMarketValue > 0 ? (totalNoiAnnual / totalMarketValue) : null;
+      const totalOpEx = measurable.reduce((s, x) => s + (x.opExMonthlyCents ?? 0), 0);
+      const totalNoiMonthly = measurable.length > 0
+        ? measurable.reduce((s, x) => s + (x.noiMonthlyCents ?? 0), 0)
+        : null;
+      const totalNoiAnnual = totalNoiMonthly !== null ? totalNoiMonthly * 12 : null;
+      const totalMarketValue = measurable.reduce((s, x) => s + (x.marketValueCents ?? 0), 0);
+      const portfolioCapRate = (totalNoiAnnual !== null && totalMarketValue > 0)
+        ? (totalNoiAnnual / totalMarketValue)
+        : null;
       const portfolioVacancy = snapshots.length > 0
         ? snapshots.reduce((s, x) => s + x.vacancyRate, 0) / snapshots.length
         : 0;
@@ -489,6 +518,9 @@ export function registerInvestorAnalyticsRoutes(app: Express): void {
           portfolioCapRatePct: portfolioCapRate !== null ? Math.round(portfolioCapRate * 10000) / 100 : null,
           portfolioVacancyRate: Math.round(portfolioVacancy * 10000) / 10000,
           portfolioOpExBasis,
+          // Commercial properties left out of the NOI rollup because their op-ex
+          // is unmeasured — disclosed rather than silently folded in as zero.
+          excludedUnmeasuredCommercial,
         },
         properties: snapshots,
       });

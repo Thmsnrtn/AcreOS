@@ -612,12 +612,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "commercial-investor",
-    displayName: "Cora — commercial RE (beta)",
+    displayName: "Cora — commercial RE",
     experience: "intermediate",
     device: "desktop-ultrawide",
     tier: "pro",
     businessType: "commercial",
-    narrative: "Beta base-rent term-lease operator on the broadest desktop; commercial runs the shared Rentals stack (leases, base-rent ledger, maintenance) and can now enter company/entity tenants. The residential statutory late-fee surface is correctly hidden — commercial late fees are contractual, not statutory.",
+    narrative: "Core on the broadest desktop; commercial runs the shared Rentals stack (leases, base-rent ledger, maintenance, company/entity tenants) plus the Wave 4 core build — CAM/NNN reconciliation from the recoverable operating-expense ledger, percentage rent from reported sales, rent-escalation schedules, per-square-foot metrics, and commercial-correct NOI (an unmeasured commercial property shows no assumed cap rate). Late fees are contractual (the residential statutory surface is correctly hidden); every commercial number refuses rather than fabricates when its inputs are missing.",
     goals: ["Land on the land_investor surface", "Confirm Finance loads", "No blank pages"],
     expect: {
       financeHero: null,
