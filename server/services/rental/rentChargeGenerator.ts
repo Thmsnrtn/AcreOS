@@ -25,13 +25,14 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { rentCharges, rentalLeases } from "@shared/schema";
+import { rentCharges, rentalLeases, leaseRentSchedule } from "@shared/schema";
 import {
   planRentCharges,
   type PlannedRentCharge,
   type RentChargePlan,
   type SkippedRentPeriod,
 } from "@shared/rental/rentSchedule";
+import type { RentScheduleStepInput } from "@shared/rental/rentEscalation";
 import { logger } from "../../utils/logger";
 
 /** Leases whose rent should be on the ledger. */
@@ -81,9 +82,52 @@ export async function previewScheduledCharges(args: {
     existingByLease.set(row.leaseId, list);
   }
 
+  // Batch-load commercial escalation steps (Wave 4). Most leases have none, in
+  // which case they stay out of this map entirely and planForLease bills the flat
+  // monthly rent, exactly as before. Batched to avoid an N+1 across leases.
+  const scheduleRows = await db
+    .select({
+      leaseId: leaseRentSchedule.leaseId,
+      effectiveMonth: leaseRentSchedule.effectiveMonth,
+      stepType: leaseRentSchedule.stepType,
+      amountCents: leaseRentSchedule.amountCents,
+      pctBps: leaseRentSchedule.pctBps,
+      cpiIndexBase: leaseRentSchedule.cpiIndexBase,
+      cpiIndexCurrent: leaseRentSchedule.cpiIndexCurrent,
+      floorPctBps: leaseRentSchedule.floorPctBps,
+      ceilingPctBps: leaseRentSchedule.ceilingPctBps,
+    })
+    .from(leaseRentSchedule)
+    .where(and(
+      eq(leaseRentSchedule.organizationId, args.organizationId),
+      inArray(leaseRentSchedule.leaseId, leaseIds),
+    ));
+
+  const stepsByLease = new Map<string, RentScheduleStepInput[]>();
+  for (const row of scheduleRows) {
+    const list = stepsByLease.get(row.leaseId) ?? [];
+    list.push({
+      effectiveMonth: String(row.effectiveMonth).slice(0, 10),
+      stepType: row.stepType,
+      amountCents: row.amountCents ?? null,
+      pctBps: row.pctBps ?? null,
+      // numeric columns arrive as strings — normalise to number for the engine.
+      cpiIndexBase: row.cpiIndexBase != null ? Number(row.cpiIndexBase) : null,
+      cpiIndexCurrent: row.cpiIndexCurrent != null ? Number(row.cpiIndexCurrent) : null,
+      floorPctBps: row.floorPctBps ?? null,
+      ceilingPctBps: row.ceilingPctBps ?? null,
+    });
+    stepsByLease.set(row.leaseId, list);
+  }
+
   const views: LeaseChargePlanView[] = [];
   for (const lease of leases) {
-    const plan = planForLease(lease, existingByLease.get(lease.id) ?? [], args.throughDate);
+    const plan = planForLease(
+      lease,
+      existingByLease.get(lease.id) ?? [],
+      args.throughDate,
+      stepsByLease.get(lease.id) ?? [],
+    );
     if (plan.create.length === 0 && plan.skipped.every((s) => s.code === "already_on_ledger")) continue;
     views.push({
       leaseId: lease.id,
@@ -107,6 +151,7 @@ function planForLease(
   lease: typeof rentalLeases.$inferSelect,
   existingMonths: string[],
   throughDate: string,
+  scheduleSteps: readonly RentScheduleStepInput[] = [],
 ): RentChargePlan {
   return planRentCharges({
     lease: {
@@ -114,6 +159,7 @@ function planForLease(
       endDate: lease.endDate ? String(lease.endDate).slice(0, 10) : null,
       rentDueDayOfMonth: lease.rentDueDayOfMonth,
       monthlyRentCents: lease.monthlyRentCents,
+      scheduleSteps,
       isSection8: lease.isSection8,
       hapPortionCents: lease.hapPortionCents,
       tenantPortionCents: lease.tenantPortionCents,
