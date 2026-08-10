@@ -808,16 +808,23 @@ integration defects were all fixed centrally before commit:
   COMPLETE; sections above). Gate set is now check + test + **build** (slice
   3 proved the narrower set can pass on a broken build). Every fleet phase
   carries a fallback send_later timer (the silent-death lesson).
-- **In flight: FLEET 5** (workflow `wf_ae358df0-085`) building F2 slice 1
-  (two highest-value decision inflows merged into the decisions door +
-  reasons-on-disposition), W1.1 (invalidation registry + optimistic
-  create-lead exemplar toward the Wave-1 exit line), and the dead-token
-  sweep (bg-acr-success → acr-pos, ~12 files + derived deadTokens ratchet).
-  Same integration protocol; fallback timer armed.
-- **After fleet 5:** Wave 1 remaining (1.2 error states, 1.3 Today/Deals/
-  Inbox interactions, 1.4 EntityTable kit, 1.5 settings decomposition), F1
-  slice 3+, O4/O6/O7 buildable parts, X-A (now unblocked: Wave 0 ✓ + G1 ✓),
-  then Wave 2 per §D. G2/G3 wait on customers; founder queue unchanged.
+- **Slice 5 SHIPPED at `430db22`** (F2-s1 + W1.1 + dead-token sweep —
+  section above; both verifier catches fixed at the service/registry
+  altitude before commit).
+- **In flight: FLEET 6** (workflow `wf_65969346-088`) building 1.2 (error
+  states + stale-while-error primitive across the five doors), F1 slice 3
+  (next founder-route cluster toward the four-door end state; baseline
+  down from 53), and X-A slice 1 (orgTrustTier spine + portal link
+  expiry/rebind + report-this-page → native abuse_report queue item; ALL
+  send-chokepoint enforcement deferred to the founder queue with a
+  written proposal). Same protocol: exclusive file sets, adversarial
+  verifiers in isolated worktrees, central integration, manifest regen
+  last, full three gates before commit. Fallback timer armed.
+- **After fleet 6:** Wave 1 remaining (1.3 Today/Deals/Inbox
+  interactions, 1.4 EntityTable kit, 1.5 settings decomposition), F1
+  slice 4+, O4/O6/O7 buildable parts, X-A slice 2 (whatever the founder
+  approves from the caps proposal), then Wave 2 per §D. G2/G3 wait on
+  customers; founder queue unchanged.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
