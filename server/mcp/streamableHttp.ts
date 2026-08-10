@@ -32,10 +32,12 @@
  */
 
 import type { Request, Response } from "express";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gte, isNull, like, sql } from "drizzle-orm";
 import { db } from "../db";
-import { apiKeys, organizations, type Organization } from "@shared/schema";
+import { apiKeys, apiKeyUsage, organizations, type Organization } from "@shared/schema";
+import { Errors } from "../utils/errors";
 import { hashApiKey, verifyHash } from "../services/apiKeys";
+import { mcpEndpointDark, mcpOrgAllowed, parseOrgAllowlist } from "./auth";
 import { isWrappedUntrusted, unwrapUntrusted } from "../ai/untrustedEnvelope";
 import { getIntent, resolveInputSchema, type AppIntent } from "../services/appIntents";
 import {
@@ -60,6 +62,10 @@ const JSONRPC_INVALID_PARAMS = -32602;
 const JSONRPC_INTERNAL_ERROR = -32603;
 // Application-level: caller authenticated but not authorized for this tool.
 const MCP_FORBIDDEN = -32001;
+// Application-level: org exceeded the shared tool-call budget.
+const MCP_RATE_LIMITED = -32002;
+// JSON-RPC batch size cap (see the handler's batch guard).
+const MAX_BATCH_MESSAGES = 20;
 
 type JsonRpcId = string | number | null;
 
@@ -73,6 +79,8 @@ interface JsonRpcRequest {
 interface AuthedKey {
   organization: Organization;
   scopes: string[];
+  /** api_keys.id — receipts in api_key_usage are keyed to it. */
+  keyId: number;
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
@@ -110,7 +118,7 @@ async function authenticate(req: Request): Promise<AuthedKey | null> {
       .limit(1);
     if (!org) return null;
 
-    return { organization: org, scopes: Array.isArray(row.scopes) ? row.scopes : [] };
+    return { organization: org, scopes: Array.isArray(row.scopes) ? row.scopes : [], keyId: row.id };
   } catch (err) {
     logger.error("[mcp] api key lookup failed", err instanceof Error ? err : undefined);
     return null;
@@ -134,29 +142,42 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: unknown) 
 /**
  * Strip the internal untrusted-envelope markers before data leaves for an
  * EXTERNAL MCP client. The envelope exists to protect OUR model loops; an
- * external agent gets its org's own data back clean (audit P-2 / Wave 0.6:
- * wholesale-wrapped connector payloads would otherwise arrive as
- * marker-framed strings where objects used to be). When an unwrapped value
- * is itself a JSON document (the wholesale-wrap shape), parse it back so
- * the external shape matches the pre-envelope contract.
+ * external agent gets its org's own data back without our marker framing
+ * (audit P-2 / Wave 0.6). Honest limits: sanitizer effects INSIDE the
+ * envelope (8K truncation, injection-phrase redaction, edge trimming) are
+ * not reversible — external content is post-sanitization; and only a
+ * ROOT-position wrapped value is JSON-restored to an object (nested
+ * wholesale wraps, e.g. `enrichment`, arrive as JSON text — the safe
+ * direction, since parsing nested keyed free-text fields would flip a
+ * note's type from string to object whenever a customer typed JSON).
  */
-function externalizeToolData(value: unknown): unknown {
+function externalizeToolData(value: unknown, root = true): unknown {
   if (typeof value === "string" && isWrappedUntrusted(value)) {
     const inner = unwrapUntrusted(value);
-    const trimmed = inner.trim();
-    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        /* truncated or non-JSON — return the bare text */
+    // JSON-restore ONLY the root position — that is the wholesale-wrap shape
+    // (wrapUntrustedJson replaced the whole `data` object). A NESTED wrapped
+    // string is a keyed free-text field (a note, a file name); parsing one
+    // whose content happens to be JSON would silently change its external
+    // type from string to object.
+    if (root) {
+      const trimmed = inner.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          /* truncated or non-JSON — return the bare text */
+        }
       }
     }
     return inner;
   }
-  if (Array.isArray(value)) return value.map(externalizeToolData);
+  if (Array.isArray(value)) return value.map((v) => externalizeToolData(v, false));
   if (value && typeof value === "object" && !(value instanceof Date)) {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, externalizeToolData(v)]),
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        externalizeToolData(v, false),
+      ]),
     );
   }
   return value;
@@ -168,6 +189,72 @@ function toolTextResult(data: unknown, isError = false) {
     content: [{ type: "text" as const, text: JSON.stringify(externalizeToolData(data), null, 2) }],
     isError,
   };
+}
+
+// ─── Rate limiting (audit §8.2 / Wave 0.7) ───────────────────────────────────
+// Availability policy (kill switch / org allowlist) lives in ./auth so BOTH
+// MCP surfaces (/api/mcp here and the /mcp mount in server/index.ts) share it.
+
+/** Receipt path prefix — distinguishes MCP tool calls from /api/v1 rows. */
+const MCP_USAGE_PATH_PREFIX = "/api/mcp#";
+
+/**
+ * Shared-store rate limit for tools/call, replacing the retired legacy
+ * endpoint's in-memory Map (which reset per-machine on the 2-node deploy and
+ * grew without cleanup). The store is api_key_usage — the surface's NATIVE
+ * usage ledger, already written per-request by requireApiKey for /api/v1,
+ * machine-native (no behavioral-analytics consumer assumes its rows are
+ * human actions — the 0.7 audit caught that activity_log receipts would
+ * have polluted the customer feed and defeated re-engagement/churn
+ * signals), and indexed on (organization_id, created_at). Each allowed
+ * call inserts a receipt keyed to the api key; the check counts MCP
+ * receipts in the trailing hour. The check-then-insert pair is not atomic,
+ * so the cap is a firm budget with small possible overshoot under
+ * concurrent requests — acceptable for an abuse brake, and unlike the
+ * retired Map the count is shared by every machine. Fails OPEN when the
+ * store is unreachable: the tool call would hit the same DB and fail
+ * anyway, and availability beats a hard-closed limiter for a read-mostly
+ * surface.
+ */
+async function consumeSharedRateLimit(
+  orgId: number,
+  keyId: number,
+  tool: string,
+): Promise<{ allowed: boolean; limit: number }> {
+  // Explicit "0" or "off" disables the cap (founder control); anything else
+  // unparseable falls back to the default.
+  const raw = (process.env.MCP_RATE_LIMIT_PER_HOUR ?? "").trim().toLowerCase();
+  if (raw === "0" || raw === "off") return { allowed: true, limit: 0 };
+  const parsed = Number.parseInt(raw, 10);
+  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
+  const windowStart = new Date(Date.now() - 60 * 60 * 1000);
+  try {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(apiKeyUsage)
+      .where(
+        and(
+          eq(apiKeyUsage.organizationId, orgId),
+          like(apiKeyUsage.path, `${MCP_USAGE_PATH_PREFIX}%`),
+          gte(apiKeyUsage.createdAt, windowStart),
+        ),
+      );
+    if ((row?.count ?? 0) >= limit) return { allowed: false, limit };
+    await db.insert(apiKeyUsage).values({
+      apiKeyId: keyId,
+      organizationId: orgId,
+      method: "POST",
+      path: `${MCP_USAGE_PATH_PREFIX}${tool}`.slice(0, 255),
+      statusCode: 200,
+      durationMs: 0,
+    });
+    return { allowed: true, limit };
+  } catch (err) {
+    logger.warn("[mcp] shared rate-limit store unreachable — allowing call", {
+      metadata: { orgId, error: err instanceof Error ? err.message : String(err) },
+    });
+    return { allowed: true, limit };
+  }
 }
 
 // ─── Method handlers ──────────────────────────────────────────────────────────
@@ -238,6 +325,17 @@ async function handleToolsCall(
     );
   }
 
+  // Shared-store budget + usage-ledger receipt, checked only once the call
+  // is otherwise authorized (unknown/forbidden tools never consume budget).
+  const rate = await consumeSharedRateLimit(key.organization.id, key.keyId, name);
+  if (!rate.allowed) {
+    return rpcError(
+      id,
+      MCP_RATE_LIMITED,
+      `Rate limit exceeded: ${rate.limit} tool calls per hour per organization.`,
+    );
+  }
+
   try {
     const result = await intent.handler(args, key.organization);
     if (!result.success) {
@@ -301,12 +399,30 @@ async function dispatch(
  * reply, or 202 with no body for a notification-only batch).
  */
 export async function mcpStreamableHttpHandler(req: Request, res: Response): Promise<void> {
+  // 0. Founder availability controls (audit §8.2 / Wave 0.7), shared with
+  //    the /mcp mount via ./auth: a kill switch that darkens the endpoint
+  //    (the app's standard 404 shape — a determined prober can fingerprint
+  //    it, but no auth oracle runs and no capability is reachable) and an
+  //    org allowlist that narrows it. Env-driven so the founder can flip
+  //    without a deploy; defaults preserve current behavior. The flip
+  //    decision itself is in the founder approval queue, not made here.
+  if (mcpEndpointDark()) {
+    Errors.notFound(res, "Endpoint");
+    return;
+  }
+
   // 1. Authenticate (transport level → real HTTP 401).
   const key = await authenticate(req);
   if (!key) {
     res
       .status(401)
       .json({ error: "UNAUTHORIZED", message: "Valid Bearer API key required.", statusCode: 401 });
+    return;
+  }
+
+  // 1b. Per-org allowlist (post-auth: the org is derived from the key).
+  if (!mcpOrgAllowed(key.organization.id)) {
+    Errors.forbidden(res, "This organization is not enabled for the MCP endpoint.");
     return;
   }
 
@@ -324,6 +440,21 @@ export async function mcpStreamableHttpHandler(req: Request, res: Response): Pro
 
   if (isBatch && messages.length === 0) {
     res.status(400).json(rpcError(null, JSONRPC_INVALID_REQUEST, "Empty batch"));
+    return;
+  }
+  // Batch cap: the 1MB body limit would otherwise admit ~17k tools/call
+  // messages, each driving a rate-limit COUNT round-trip — the limiter's
+  // own enforcement path must not be the amplifier (0.7 audit).
+  if (isBatch && messages.length > MAX_BATCH_MESSAGES) {
+    res
+      .status(400)
+      .json(
+        rpcError(
+          null,
+          JSONRPC_INVALID_REQUEST,
+          `Batch too large: max ${MAX_BATCH_MESSAGES} messages per request`,
+        ),
+      );
     return;
   }
 
@@ -356,7 +487,11 @@ export const __mcpInternals = {
   authenticate,
   PROTOCOL_VERSION,
   MCP_FORBIDDEN,
+  MCP_RATE_LIMITED,
   JSONRPC_METHOD_NOT_FOUND,
+  externalizeToolData,
+  consumeSharedRateLimit,
+  parseOrgAllowlist,
 };
 
 // Reference unused JSON-RPC codes so tsc doesn't flag them while keeping the

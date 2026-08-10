@@ -316,3 +316,25 @@ correctness risks across 2+ machines. Disposition:
   `pages/founder/solene-chat.tsx` (the live founder chat face). Shared
   `components/founder-chat/*` retained (used by solene-chat). Found by the
   WS2 cockpit inventory.
+- 2026-08-10 — `server/mcp-server.ts` (279 LOC) + its `/api/mcp/execute`
+  mount deleted (Wave 0.7). Superseded by the spec-compliant `/api/mcp`
+  (`server/mcp/streamableHttp.ts`): the legacy handler compared plaintext
+  keys in a loop (timing-unsafe, flagged in red-team lens 02), rate-limited
+  in an unbounded in-memory Map (lens 052), and was mounted behind session
+  `isAuthenticated`, which made its documented external-bearer purpose
+  unreachable. Retirement was pre-recorded in `tahoe-arc-retrospective.md`
+  ("Legacy MCP surface retirement"). No client callers, no tests, no UI
+  created `mcp_api_key` integration rows. **Correction (same day, from the
+  0.7 completeness audit — the first draft of this row contained two
+  falsehoods):** `server/mcp/index.ts` is NOT local-only — it is mounted
+  live at `POST /mcp` + `GET /mcp` (`server/index.ts:604/617`, unconditional
+  in prod); and its "takes organizationId as an untrusted param" description
+  is stale — T0-3 already bound the org server-side (`requireBoundOrg`).
+  The REAL open problem on `/mcp` is the scope-ladder bypass: `mcp/auth.ts`
+  validates an `ak_` key but never reads its scopes, so a zero-scope key
+  can call every /mcp tool that the key's org is bound to — same
+  credential, two authorization ladders vs `/api/mcp`. Wave 0.7 extended
+  the founder kill switch + org allowlist to BOTH surfaces; the /mcp
+  disposition (retire in favor of /api/mcp vs per-tool scope enforcement
+  across its 29 tools) is in the founder approval queue, with the scope
+  bypass as the forcing reason.

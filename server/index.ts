@@ -20,7 +20,7 @@ import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
-import { resolveMcpAuth } from "./mcp/auth.js";
+import { resolveMcpAuth, mcpEndpointDark, mcpOrgAllowed } from "./mcp/auth.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLimiterStore } from "./middleware/limiterRedisStore";
@@ -578,6 +578,14 @@ app.use("/mcp", mcpLimiter);
   //     limiter families above) — it was previously unmetered.
   const mcpAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Wave 0.7: the founder availability controls cover BOTH MCP surfaces —
+      // this /mcp mount AND /api/mcp. Kill switch first (before auth and
+      // before the unconfigured disclosure), allowlist after auth resolves
+      // the org binding.
+      if (mcpEndpointDark()) {
+        Errors.notFound(res, "Endpoint");
+        return;
+      }
       const authHeader = req.headers["authorization"] ?? "";
       const provided = Array.isArray(authHeader) ? authHeader[0] : authHeader;
       const auth = await resolveMcpAuth(provided);
@@ -592,6 +600,10 @@ app.use("/mcp", mcpLimiter);
       }
       if (auth.status !== "ok") {
         Errors.unauthorized(res);
+        return;
+      }
+      if (!mcpOrgAllowed(auth.organizationId)) {
+        Errors.forbidden(res, "This organization is not enabled for the MCP endpoint.");
         return;
       }
       res.locals.mcpOrganizationId = auth.organizationId;

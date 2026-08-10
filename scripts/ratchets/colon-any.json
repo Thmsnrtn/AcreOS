@@ -4,7 +4,7 @@
   "pattern": ":\\s*any\\b",
   "globs": ["server/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 3018,
+  "baselineCount": 3017,
   "direction": "down",
   "lastBumpNote": "3019 -> 3018 on 2026-08-09: developer-vertical Stage 1 extraction. The `threshold?: any` annotation on routes-lot-pricing.ts's inline evaluateRules moved into the pure @shared/subdivision/lotPricing engine and was retyped to `number | string | boolean` (the lot_pricing_rules.rules schema type), so the annotation is gone from server/. Locked in per this ratchet's strictly-down rule."
 }

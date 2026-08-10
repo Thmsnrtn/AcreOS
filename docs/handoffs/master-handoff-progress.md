@@ -321,7 +321,94 @@ from this file, not from memory. Updated every working session.*
 - **Approval queue:** nothing — read-path hardening + a refusal guard on
   org-entered URLs; no send lane (Slack/Zapier/Make sends were already live —
   the guard only narrows targets), no hard-stop domain, no baseline moved.
-### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — pending
+### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — ✅ DONE
+- **Premise drift (major, recorded):** the audit brief targets the legacy
+  `server/mcp-server.ts`, but HEAD has the spec-compliant `/api/mcp`
+  (`server/mcp/streamableHttp.ts`, Tahoe E12) which already carries the
+  checklist's hardest item — hashed `ak_live_` keys resolved through the SAME
+  api_keys infra as /api/v1 (hashApiKey + timing-safe re-compare, revocation/
+  expiry honored), org binding derived FROM the key (never a param), the
+  safe-intent subset with per-tool scope checks, and T0-3's static-key path
+  already timing-safe + org-bound. "Migrate auth onto the hashed infra" was
+  DONE at HEAD; re-scoped to the remaining delta.
+- **Legacy surface RETIRED** (`server/mcp-server.ts`, 279 LOC + its
+  `/api/mcp/execute` mount): plaintext key compare in a loop (red-team lens 02),
+  unbounded in-memory rate map (lens 052), and mounted behind session
+  `isAuthenticated` — its documented external-bearer purpose was unreachable.
+  Retirement was pre-recorded in `tahoe-arc-retrospective.md`; zero client
+  callers/tests/UI key-creation surfaces (verified). Deletion-ledger row added.
+  Earned ratchet drops locked in same-commit: res-status-raw 505→499,
+  as-any 1407→1406, colon-any 3018→3017.
+- **Availability controls (new):** `MCP_PUBLIC_DISABLED` darkens the endpoint
+  (404 via Errors.notFound BEFORE auth — existence not confirmed) and
+  `MCP_ORG_ALLOWLIST` narrows it per-org post-auth (403). Defaults preserve
+  current behavior; the flip-it-dark decision is queued for the founder (below),
+  not made here — the endpoint may have live Claude Desktop-generated users.
+- **Shared-store rate limit (new):** tools/call consumes a 100/hr-per-org
+  budget (env-overridable; explicit `0`/`off` disables) counted in
+  `api_key_usage` — the surface's NATIVE machine-traffic usage ledger, already
+  written per-request by requireApiKey for /api/v1 and indexed on
+  (organization_id, created_at). Each allowed call inserts a receipt keyed to
+  the api key (path `/api/mcp#<tool>`). Replaces the retired per-machine
+  in-memory Map. Fails OPEN if the store is unreachable; unknown/forbidden
+  tools never consume budget; JSON-RPC batches capped at 20 messages so the
+  limiter's own COUNT path can't be amplified through the 1MB body limit.
+- **Exit test:** `tests/unit/mcpSurfaceHardening.test.ts` (11 tests) —
+  retirement pins (file gone, mount/import gone via precise regexes, modern
+  endpoint still mounted); kill-switch 404 pre-auth + default-enabled 401;
+  allowlist parsing + post-auth ordering pin; rate limit allow/block/override/
+  fail-open + receipt-write + budget-before-handler pin; externalizeToolData
+  functional pins (0.6 closure). 38/38 with the two pre-existing MCP suites.
+- **Independent completeness audit (pre-commit) — 13 findings; the headline
+  ones remediated, the rest dispositioned:**
+  - **HEADLINE: `server/mcp/index.ts` is NOT local-only.** It is mounted LIVE
+    at `POST /mcp` + `GET /mcp` (`server/index.ts:604/617`, unconditional in
+    prod) — my first ledger draft and the "deliberately not executed" claim
+    were FALSE, and hardening only /api/mcp made the kill switch a half-truth.
+    Remediated: the availability policy (kill switch + org allowlist) moved to
+    `mcp/auth.ts` and now covers BOTH surfaces (`/mcp`'s middleware checks it
+    before auth / after org-binding). Deletion-ledger row corrected in place.
+  - **OPEN + queued urgent: /mcp scope-ladder bypass** — `mcp/auth.ts`
+    validates an `ak_` key but never reads its scopes, so a zero-scope key
+    reaches every /mcp tool its org is bound to (same credential, two
+    authorization ladders vs /api/mcp). Org binding still holds (not
+    cross-tenant). Disposition options in the founder queue below.
+  - **Remediated store-choice defect:** activity_log receipts would have
+    polluted the customer activity feed (feed shows raw rows, 100/hr of
+    machine chatter) and distorted EVERY consumer that reads activity as
+    human engagement (re-engagement re-arm, power-user referral detection,
+    churn/revenue-protection signals — ~30 readers). Receipts moved to
+    `api_key_usage` (machine-native, schema-indexed org+created, zero
+    behavioral consumers). The three interim consumer patches were reverted —
+    fixing the store beats patching thirty readers.
+  - **Remediated control defects:** allowlist now FAILS CLOSED when set but
+    unparseable (a typo must not silently allow every org); unrecognized
+    kill-switch values log a warning; `MCP_RATE_LIMIT_PER_HOUR=0/off`
+    disables the cap (it was previously un-disableable — and the "defaults
+    byte-identical" claim was corrected: the 100/hr cap + receipts are NEW
+    deliberate behavior on tools/call, documented as such); JSON-RPC batch
+    capped at 20 (was unbounded → ~17k limiter COUNTs per 1MB request);
+    `externalizeToolData` JSON-restores ONLY the root position (a nested
+    customer note containing JSON must not flip type externally) and its
+    docstring now states the honest limits (sanitizer redaction/truncation
+    inside the envelope is not reversible; nested wholesale wraps arrive as
+    JSON text).
+  - **Accepted/inherited (recorded, not fixed here):** the check-then-insert
+    budget is non-atomic (small overshoot under concurrency — documented as
+    a firm-budget abuse brake, not a hard cap); the dark-mode 404 is
+    app-branded and fingerprintable (availability control, not stealth);
+    /mcp's own express-rate-limit stays in-memory (its disposition is queued
+    wholesale); /mcp's unauthenticated 503 config disclosure (dies with the
+    disposition); `financial_read→notes:read` scope mapping oddity
+    (pre-existing); activity_log's indexes exist only in migrations, not in
+    schema (flagged for Wave O — drizzle-push provisioning would miss them).
+- **Deliberately NOT executed here:** the /mcp disposition itself (retire vs
+  per-tool scopes across its 29 tools — founder queue, urgent); the §8.2
+  "read-only by default + per-tool grants" token redesign (Wave-2, needs
+  key-issuance UX).
+- **Approval queue:** the flip decision + the /mcp disposition (below). No
+  send lane, no hard-stop domain; ratchet moves are all DOWNWARD (earned by
+  deletion, locked per CLAUDE.md rule 5).
 ### 0.8 — Mail lanes (`lobService` → `resolveProviderCredential`, purpose lanes, wedge cap, `mailProviderLanes.test`) — pending · **SEND LANE: propose-don't-merge (§A rule 5) — goes to founder approval queue before merge**
 ### 0.9 — Critical-job-failure pages (F-13-1 shipped — verify) + pager-matrix-as-data ratchet + external watchdogs armed (F-18-2) — pending
 
@@ -350,11 +437,33 @@ from this file, not from memory. Updated every working session.*
    your call on the metering semantics for founder-org spend.
 5. *(anticipated)* **0.8 mail lanes** will enter this queue when built — it is a
    send-lane change (§A rule 5: propose, don't merge).
+6. **MCP endpoint availability (from 0.7):** the dark-flag + per-org allowlist
+   mechanism is merged with defaults preserving current behavior (enabled, all
+   orgs). Your call, per §8.2 and the no-public-API-before-~50 trigger: set
+   `MCP_PUBLIC_DISABLED=1` (fully dark until the ~50-customer flip) or
+   `MCP_ORG_ALLOWLIST=<ids>` (named pilot orgs only). Consideration: existing
+   `ak_` keys may already be in customers' Claude Desktop configs — darkening
+   breaks them silently.
+7. **URGENT — `/mcp` disposition (from 0.7's completeness audit):**
+   `server/mcp/index.ts` is mounted LIVE at POST/GET `/mcp` (server/index.ts)
+   and has a real scope-ladder bypass: `mcp/auth.ts` accepts `ak_` keys but
+   never enforces their scopes, so a zero-scope key reaches all 29 /mcp tools
+   for its org (org binding holds — not cross-tenant — but /api/mcp enforces
+   per-tool scopes and /mcp does not: same credential, two ladders). Wave 0.7
+   extended your kill switch + org allowlist to this surface, but the bypass
+   itself needs one of two dispositions: (a) RETIRE /mcp in favor of /api/mcp
+   (breaks Claude Desktop configs generated by routes-setup.ts /
+   founder-setup-wizard — MCP_API_KEY static-key users), or (b) implement
+   per-tool scope enforcement across its 29 tools. The retrospective's
+   "retire/harden" line supports either; (a) is less code and one fewer
+   surface, and the static-key lane could be preserved by pointing generated
+   configs at /api/mcp.
 
 ## Next item up
 
-- **0.7**: MCP server hardening — founder-flag dark or per-org allowlist,
-  migrate auth onto the hashed Data-API key infra (retire the slug-derived
-  token fallback), shared-store rate limiting (in-memory dies per-machine on
-  the 2-node deploy). Verify premises at HEAD first (`server/mcp-server.ts`).
-  Then 0.8 (build but do NOT merge — founder queue) → 0.9.
+- **0.8**: mail lanes — `lobService` → `resolveProviderCredential`, purpose
+  lanes, wedge cap, `mailProviderLanes.test`. **SEND LANE: build on a side
+  branch / as an uncommitted-to-main proposal, do NOT merge (§A rule 5)** —
+  the deliverable is a founder-queue entry with the diff + exit tests, not a
+  merged commit. Verify premises at HEAD first. Then 0.9 (pager matrix +
+  external watchdogs), which closes Wave 0.

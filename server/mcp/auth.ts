@@ -24,6 +24,71 @@
 import { hashApiKey, verifyHash, verifySecret } from "../services/apiKeys.js";
 import { logger } from "../utils/logger.js";
 
+// ─── Availability policy (audit §8.2 / Wave 0.7) ────────────────────────────
+//
+// Founder env controls covering BOTH MCP surfaces (POST /api/mcp streamable
+// AND the POST/GET /mcp stdio-shaped mount in server/index.ts — the 0.7
+// completeness audit caught that hardening only one of the two left the kill
+// switch a half-truth). Defaults preserve current behavior (enabled, all
+// orgs); flipping them is a founder decision, queued in the ledger.
+
+export function isTruthyEnv(v: string | undefined): boolean {
+  if (v === undefined) return false;
+  const t = v.trim().toLowerCase();
+  if (t === "1" || t === "true") return true;
+  if (t.length > 0) {
+    // A kill switch that silently no-ops on "yes"/"on" is worse than none.
+    logger.warn("[mcp] unrecognized boolean env value — treating as false", {
+      metadata: { value: v },
+    });
+  }
+  return false;
+}
+
+/** True when the founder has darkened every MCP surface. */
+export function mcpEndpointDark(): boolean {
+  return isTruthyEnv(process.env.MCP_PUBLIC_DISABLED);
+}
+
+/**
+ * Parse MCP_ORG_ALLOWLIST ("1,7,42") → Set of org ids; null when unset
+ * (all orgs). Set-but-unparseable FAILS CLOSED (empty set = deny all) —
+ * a restriction control must not evaporate on a typo.
+ */
+export function parseOrgAllowlist(raw: string | undefined): Set<number> | null {
+  if (raw === undefined || raw.trim().length === 0) return null;
+  const entries = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const ids = entries
+    .map((s) => Number.parseInt(s, 10))
+    .filter((n) => Number.isFinite(n));
+  if (ids.length === 0) {
+    logger.error(
+      "[mcp] MCP_ORG_ALLOWLIST is set but contains no valid org ids — denying all orgs (fail closed)",
+    );
+    return new Set();
+  }
+  if (ids.length < entries.length) {
+    logger.warn("[mcp] MCP_ORG_ALLOWLIST contains invalid entries — ignoring them", {
+      metadata: { raw },
+    });
+  }
+  return new Set(ids);
+}
+
+/**
+ * Allowlist verdict for an authed org binding. A null binding (static key
+ * with no MCP_ORG_ID) is DENIED whenever an allowlist is set — only listed
+ * orgs pass a narrowing control.
+ */
+export function mcpOrgAllowed(orgId: number | null): boolean {
+  const allowlist = parseOrgAllowlist(process.env.MCP_ORG_ALLOWLIST);
+  if (allowlist === null) return true;
+  return orgId !== null && allowlist.has(orgId);
+}
+
 export type McpAuthResult =
   | { status: "unconfigured" }
   | { status: "unauthorized" }

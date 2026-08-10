@@ -135,7 +135,6 @@ import { correlationIdMiddleware } from "./middleware/correlationId";
 import { featureGate } from "./middleware/featureGate";
 
 // MCP handler
-import { mcpHandler } from "./mcp-server";
 // MCP Streamable HTTP endpoint (Tahoe E12) — AcreOS as a tool server for
 // external AI agents. Bearer-API-key authed, org-scoped, read-mostly subset
 // of the App Intent registry.
@@ -1382,7 +1381,11 @@ export async function registerRoutes(
   // mined from parcel_observations. SELECT-only; the observation-log writer and
   // delta detector remain the sole writers.
   app.use('/api/parcel-biography', isAuthenticated, getOrCreateOrg, parcelBiographyRouter);
-  app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
+  // Legacy /api/mcp/execute retired (Wave 0.7, 2026-08-10): superseded by the
+  // spec-compliant /api/mcp below. The legacy handler compared plaintext keys
+  // in a loop, rate-limited in-memory (reset per machine, unbounded Map), and
+  // sat behind session auth that made its documented external-bearer purpose
+  // unreachable. Retirement was recorded in tahoe-arc-retrospective.md.
   // Tahoe E12: spec-compliant MCP Streamable HTTP endpoint for EXTERNAL AI
   // agents. Auth is the public API key (Authorization: Bearer ak_...),
   // resolved inside the handler — NOT session auth — so no isAuthenticated /
