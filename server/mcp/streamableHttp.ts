@@ -36,6 +36,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { apiKeys, organizations, type Organization } from "@shared/schema";
 import { hashApiKey, verifyHash } from "../services/apiKeys";
+import { isWrappedUntrusted, unwrapUntrusted } from "../ai/untrustedEnvelope";
 import { getIntent, resolveInputSchema, type AppIntent } from "../services/appIntents";
 import {
   listExternalSafeIntents,
@@ -130,10 +131,41 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: unknown) 
   };
 }
 
+/**
+ * Strip the internal untrusted-envelope markers before data leaves for an
+ * EXTERNAL MCP client. The envelope exists to protect OUR model loops; an
+ * external agent gets its org's own data back clean (audit P-2 / Wave 0.6:
+ * wholesale-wrapped connector payloads would otherwise arrive as
+ * marker-framed strings where objects used to be). When an unwrapped value
+ * is itself a JSON document (the wholesale-wrap shape), parse it back so
+ * the external shape matches the pre-envelope contract.
+ */
+function externalizeToolData(value: unknown): unknown {
+  if (typeof value === "string" && isWrappedUntrusted(value)) {
+    const inner = unwrapUntrusted(value);
+    const trimmed = inner.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        /* truncated or non-JSON — return the bare text */
+      }
+    }
+    return inner;
+  }
+  if (Array.isArray(value)) return value.map(externalizeToolData);
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, externalizeToolData(v)]),
+    );
+  }
+  return value;
+}
+
 /** Wrap an intent's data payload in the MCP CallToolResult shape. */
 function toolTextResult(data: unknown, isError = false) {
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(externalizeToolData(data), null, 2) }],
     isError,
   };
 }

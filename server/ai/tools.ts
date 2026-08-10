@@ -20,7 +20,7 @@ import {
   recordAutonomousSend,
 } from "../services/autonomyGuardrails";
 import { logger } from "../utils/logger";
-import { wrapUntrusted } from "./untrustedEnvelope";
+import { wrapUntrusted, wrapUntrustedJson } from "./untrustedEnvelope";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import {
   APPROVAL_REQUIRED_TOOLS as kernelApprovalRequiredTools,
@@ -2206,7 +2206,10 @@ export async function executeTool(
             apn: property.apn,
             address: property.address,
             coordinates: { lat, lng },
-            enrichment,
+            // Third-party provider aggregate of arbitrary shape — its free-
+            // text fields are not guaranteed to sit under keyed names, so
+            // wrap the whole blob (audit P-2 / Wave 0.6).
+            enrichment: wrapUntrustedJson(enrichment, "tool:research_property.enrichment"),
             completenessScore: (enrichment as any).completenessScore ?? null,
           },
         };
@@ -2245,7 +2248,8 @@ export async function executeTool(
             enrichedAt: (property as any).enrichedAt,
             completenessScore: enrichmentData.completenessScore ?? null,
             completenessBreakdown: enrichmentData.completenessBreakdown ?? null,
-            enrichment: enrichmentData,
+            // Same third-party blob as research_property — wrap wholesale.
+            enrichment: wrapUntrustedJson(enrichmentData, "tool:get_property_enrichment.enrichment"),
           },
         };
       }

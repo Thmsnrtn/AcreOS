@@ -202,6 +202,38 @@ function walk(
 }
 
 /**
+ * Wholesale wrap for vendor payloads of ARBITRARY shape (PropStream,
+ * BatchLeads, RESO listings, Stripe objects, enrichment blobs) whose free
+ * text is not guaranteed to sit under keyed names. Serializes, caps the
+ * JSON BEFORE wrapping with an explicit truncation marker, then envelopes.
+ *
+ * The explicit pre-wrap cap exists because wrapUntrusted's own default
+ * (8000) truncates with a bare slice — JSON chopped mid-token with no
+ * signal reads to the model like complete data (audit P-2 / Wave 0.6
+ * finding). Here the model always sees either whole JSON or a visible
+ * "[truncated …]" marker, and the envelope's close marker stays intact.
+ */
+export function wrapUntrustedJson(
+  value: unknown,
+  source: string,
+  maxLength = 12_000,
+): string {
+  let json: string;
+  try {
+    json = JSON.stringify(value) ?? "null";
+  } catch {
+    json = String(value);
+  }
+  const capped =
+    json.length > maxLength
+      ? `${json.slice(0, maxLength)} …[truncated ${json.length - maxLength} of ${json.length} chars]`
+      : json;
+  // maxLength ≥ capped.length so sanitizePrompt cannot re-truncate and
+  // amputate the marker; redaction may still expand safely inside.
+  return wrapUntrusted(capped, source, { maxLength: capped.length });
+}
+
+/**
  * THE tool-result → model boundary. Replaces bare
  * `JSON.stringify(result)` at every site that feeds an executeTool /
  * runTool result back into a model message. Wraps the untrusted fields

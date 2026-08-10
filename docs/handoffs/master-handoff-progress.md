@@ -246,7 +246,81 @@ from this file, not from memory. Updated every working session.*
   (d) Raw provider blobs (`research_property` enrichment) — same class as the
   connector passthroughs, folded into 0.6's scope. (e) `aiDetectObjection`
   sends raw seller text but output is whitelist-bounded.
-### 0.6 — Connectors `executor.ts` P0 disposition (org-scoping, SSRF guard, enveloped results) — pending
+### 0.6 — Connectors `executor.ts` P0 disposition (org-scoping, SSRF guard, enveloped results) — ✅ DONE
+- **Premise verification against the §8.1 checklist:**
+  - **Org-scoping: ALREADY TRUE at HEAD** — `getPaxConnector` filters
+    `organizationId + connectorId` (`storage/paxRepo.ts:233`), decryption is
+    org-keyed (`decryptCredentials(x, orgId)` — cross-org ciphertext cannot
+    decrypt), and all 17 exports take `org` and call `getCredentials(org.id,…)`.
+    Recorded as verify-and-pin, not rebuilt.
+  - **SSRF: REAL GAP, closed** — Slack/Zapier/Make `webhookUrl` and the MLS
+    `mlsUrl` base are org-admin-entered and were fetched server-side with no
+    guard (internal/metadata targets reachable). All five URL-bearing sites now
+    run `guardConnectorUrl` → the SHARED `validateUrl`/`SSRFBlockedError`
+    (`middleware/fileUploadSecurity.ts` — same guard as browse_web, the webhook
+    job handler, and /api/webhooks/test), refusing before the network is
+    touched and logging the block. Fixed-host vendors (PropStream, BatchLeads,
+    Stripe, Google) need no guard — their creds are key material, not URLs.
+  - **Enveloped results: REAL GAP, closed** — raw vendor payloads of arbitrary
+    shape bypassed the keyed field-walk: PropStream (×2), BatchLeads, MLS/RESO
+    (×2 — `PublicRemarks` etc. live under vendor keys), and Stripe customer
+    objects now wrap WHOLESALE via `wrapUntrusted`; non-keyed free-text fields
+    wrap individually (Drive file names, Calendar `location`). Audit fold-in:
+    `research_property` / `get_property_enrichment` in tools.ts wrap their
+    third-party `enrichment` blobs wholesale too. Gmail results were already
+    fully covered by keyed fields (`from`/`subject`/`snippet`); Calendar
+    `title`/`description` are keyed and wrap at the serialize boundary.
+- **Exit test:** `tests/unit/connectorExecutorP0.test.ts` (9 tests) — derived
+  org-scoping sweep (every executor export must call `getCredentials(org.id`;
+  a new unscoped function fails CI) + functional org-id pin; SSRF functional
+  proofs (metadata/private/loopback/file:// refused with fetch NEVER called;
+  public literal-IP target passes — no DNS dependency in sandbox); envelope
+  functional proofs (vendor payloads return as wrapped strings; Drive
+  name/Calendar location wrapped, structural fields bare); wiring pin
+  (tools.ts still dispatches to the executor).
+- **Independent completeness audit (pre-commit) — 6 confirmed holes, all
+  remediated in the same commit:**
+  1. Silent 8000-char bare-slice truncation would have chopped every
+     wholesale-wrapped vendor payload mid-token with no signal — worse than
+     unwrapped for data honesty. New `wrapUntrustedJson` caps the JSON BEFORE
+     wrapping (12K) with an explicit "[truncated N of M chars]" marker; the
+     envelope close marker can never be amputated. All 8 wholesale sites
+     (6 executor + 2 tools.ts enrichment) migrated; test feeds a >12K payload.
+  2. External MCP break: wholesale-wrapped connector results are reachable via
+     POST /api/mcp (safe-intent subset) — external clients would have received
+     marker-framed strings where objects used to be, leaking the internal
+     envelope convention. `externalizeToolData` at the streamableHttp boundary
+     strips markers and parses wholesale JSON back to its pre-envelope shape
+     (the envelope protects OUR loops; external orgs get their data clean).
+  3. Model-controlled path traversal on "fixed-host" vendors: `new URL()`
+     normalizes ".." — customerId "../account" would have sent the org's LIVE
+     Stripe secret key to /v1/account; same shape on Drive fileId. Both path
+     segments now encoded; functional tests pin it.
+  4-5. Uncovered short identity strings (Calendar `attendees`, Stripe
+     `receipt_email`, Gmail `Date` header) — sanitized inline per the
+     lead-names pattern.
+  6. Query-literal injection (model-chosen strings into Drive q-literals and
+     MLS OData $filter quotes) — escaped (`odataQuote` doubling, Drive
+     backslash+quote escape).
+- **Audit verified-OK:** fetch inventory complete/correctly classified (12
+  sites; 5 guarded pre-network, 7 fixed-host); no creds field beyond
+  webhookUrl/mlsUrl reaches a URL; guard fails closed on unexpected errors;
+  org-scoping total; registry + connector routes clean (no other org-URL
+  fetches repo-wide); only tools.ts consumes the executor; client UI null
+  branch unaffected.
+- **Ledgered residual (accepted or deferred, from the audit's ambiguous list):**
+  redirect-following after validateUrl matches the repo's established
+  webhook-handler pattern (browse_web's per-hop interception is the stronger
+  outlier; upgrading all consumers is a Wave-2 hardening candidate);
+  validateUrl's DNS-error fail-open + resolve-time (not pinned) rebind window
+  are inherited platform-wide traits; `accessToken2` is dead residue;
+  `upload_drive_file` sits in the registry with no executor (registry is not a
+  verified surface — 0.7/8.2 refactor candidate); `/connectors/:id/connect`
+  accepts arbitrary credential keys with no write-time URL validation
+  (fetch-time guard covers the security case).
+- **Approval queue:** nothing — read-path hardening + a refusal guard on
+  org-entered URLs; no send lane (Slack/Zapier/Make sends were already live —
+  the guard only narrows targets), no hard-stop domain, no baseline moved.
 ### 0.7 — MCP server dark/per-org allowlist; hashed-key auth; shared-store rate limit — pending
 ### 0.8 — Mail lanes (`lobService` → `resolveProviderCredential`, purpose lanes, wedge cap, `mailProviderLanes.test`) — pending · **SEND LANE: propose-don't-merge (§A rule 5) — goes to founder approval queue before merge**
 ### 0.9 — Critical-job-failure pages (F-13-1 shipped — verify) + pager-matrix-as-data ratchet + external watchdogs armed (F-18-2) — pending
@@ -279,8 +353,8 @@ from this file, not from memory. Updated every working session.*
 
 ## Next item up
 
-- **0.6**: connectors `executor.ts` P0 disposition — org-scoping on credential
-  fetches, SSRF guard on outbound calls, enveloped results. Verify premises at
-  HEAD first (the connectors program may have moved since the audit brief was
-  written), then implement with a falsifiable exit test. Then 0.7 → 0.9 in
-  order (0.8 builds but does NOT merge — founder queue).
+- **0.7**: MCP server hardening — founder-flag dark or per-org allowlist,
+  migrate auth onto the hashed Data-API key infra (retire the slug-derived
+  token fallback), shared-store rate limiting (in-memory dies per-machine on
+  the 2-node deploy). Verify premises at HEAD first (`server/mcp-server.ts`).
+  Then 0.8 (build but do NOT merge — founder queue) → 0.9.
