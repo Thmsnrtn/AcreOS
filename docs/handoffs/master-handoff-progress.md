@@ -894,15 +894,20 @@ integration defects were all fixed centrally before commit:
   written proposal). Same protocol: exclusive file sets, adversarial
   verifiers in isolated worktrees, central integration, manifest regen
   last, full three gates before commit. Fallback timer armed.
-- **After fleet 6:** Wave S opens (D-5): S1 charters + S2
-  autonomy-follows-perception ratchet are the natural next fleet's core
-  (pure construction over `domainAutonomy` + senses; no founder-queue
-  exposure), with S4's scenario-library matrix close behind. Alongside:
-  Wave 1 remaining (1.3 Today/Deals/Inbox interactions, 1.4 EntityTable
-  kit, 1.5 settings decomposition), F1 slice 4+, O4/O6/O7 buildable
-  parts, X-A slice 2 (whatever the founder approves from the caps
-  proposal), then Wave 2 per §D. G2/G3 wait on customers; founder queue
-  unchanged. S3 hands / promotion mechanics stay propose-first per D-5.
+- **Slice 6 SHIPPED at `6c919ed`** (1.2 error states + F1-s3 Controls hub
+  48 routes + X-A-s1 abuse spine — section above; all ten verifier catches
+  fixed centrally pre-commit; survived a container restart mid-gates with
+  the check result carried and test+build re-run clean).
+- **In flight: FLEET 7** building Wave S S1+S2 (charter registry derived
+  from the REAL trust ledger/senses/hands wiring + charter cards in the
+  Controls hub + promotion-follows-perception gate + Letter blindness
+  lines), Wave 1.4 (EntityTable kit + the five list migrations), and O4
+  (SLOs per surface class + synthetic canaries wired into the EXISTING
+  /status page). Same protocol; fallback timer armed.
+- **After fleet 7:** S4 scenario-library matrix, 1.3/1.5, F1 slice 4+,
+  O6/O7 buildable parts, X-A slice 2 (post-ruling), then Wave 2 per §D.
+  G2/G3 wait on customers; founder queue unchanged. S3 hands / promotion
+  mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
