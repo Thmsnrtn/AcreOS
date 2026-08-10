@@ -220,8 +220,41 @@ interface GovernanceCoverageReport {
     reviewed: number;
     byKind: Record<string, number>;
     unreviewed: { count: number; ids: string[] };
-    entries: Array<{ id: string; title: string; kind: string; refs: string[]; reviewStatus: string }>;
+    /** X-B (Addendum B §F): per-claim primary-source debt. Optional so a
+     *  cached pre-X-B payload never crashes the section. */
+    sourcing?: { verified: number; withoutPrimarySource: { count: number; ids: string[] } };
+    entries: Array<{
+      id: string;
+      title: string;
+      kind: string;
+      refs: string[];
+      reviewStatus: string;
+      /** "verified" | "drafted" | "unsourced" — derived server-side from the row. */
+      sourcing?: string;
+    }>;
   };
+}
+
+// Plain words for the sourcing vocabulary (X-B): has anyone retrieved the
+// LAW'S OWN TEXT and checked this row against it? Distinct from review
+// status, which is about who read the implementation.
+const SOURCING_LABEL: Record<string, { label: string; strong: boolean }> = {
+  verified: { label: "primary source verified", strong: true },
+  drafted: { label: "sourcing drafted — not verified", strong: false },
+  unsourced: { label: "no primary source on file", strong: false },
+};
+
+function sourcingBadge(sourcing: string | undefined) {
+  if (!sourcing) return null; // pre-X-B payload — say nothing rather than guess
+  const meta = SOURCING_LABEL[sourcing] ?? { label: sourcing, strong: false };
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs ${meta.strong ? "border-acr-success/40 text-acr-success" : "border-acr-warn/40 text-acr-warn"}`}
+    >
+      {meta.label}
+    </Badge>
+  );
 }
 
 // Plain words for the enforcement vocabulary — never render a raw kind token
@@ -343,6 +376,13 @@ function GovernanceSection() {
               ? "Every statute implementation has been read by a human."
               : `${s.unreviewed.count} implement a law no one has reviewed yet.`}
           </p>
+          {s.sourcing && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="governance-sourcing-debt">
+              {s.sourcing.withoutPrimarySource.count === 0
+                ? "Every row carries a retrieved primary source."
+                : `${s.sourcing.withoutPrimarySource.count} of ${s.total} rows have no primary source on file — no automation may compute from them.`}
+            </p>
+          )}
         </div>
       </div>
 
@@ -389,15 +429,18 @@ function GovernanceSection() {
                 kind={entry.kind}
                 refs={entry.refs}
                 extraBadge={
-                  entry.reviewStatus === "UNREVIEWED" ? (
-                    <Badge variant="outline" className="border-acr-warn/40 text-acr-warn text-xs">
-                      unreviewed
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">
-                      {entry.reviewStatus.replace(/-/g, " ")}
-                    </Badge>
-                  )
+                  <>
+                    {entry.reviewStatus === "UNREVIEWED" ? (
+                      <Badge variant="outline" className="border-acr-warn/40 text-acr-warn text-xs">
+                        unreviewed
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">
+                        {entry.reviewStatus.replace(/-/g, " ")}
+                      </Badge>
+                    )}
+                    {sourcingBadge(entry.sourcing)}
+                  </>
                 }
                 testId={`governance-statute-${entry.id}`}
               />

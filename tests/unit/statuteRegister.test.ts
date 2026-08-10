@@ -242,6 +242,70 @@ describe("statute register — review honesty", () => {
   });
 });
 
+describe("statute register — per-claim sourcing honesty (X-B, Addendum B §F)", () => {
+  // Sourcing fields record contact with the PRIMARY SOURCE (the law's own
+  // text), distinct from reviewStatus (who read the implementation). The
+  // down-only count of rows without a primary source lives in
+  // tests/unit/domainTruthRatchet.test.ts; this block pins the fields'
+  // honesty so a row can never LOOK sourced without being sourced.
+
+  const sourced = (e: StatuteEntry) =>
+    e.primarySourceCitation !== undefined ||
+    e.retrievedAt !== undefined ||
+    e.verifiedBy !== undefined ||
+    e.confidence !== undefined;
+
+  it("sourcing fields travel together — a partial block is a claim without its evidence", () => {
+    const partial = STATUTE_REGISTER.filter(
+      (e) =>
+        sourced(e) &&
+        !(e.primarySourceCitation && e.retrievedAt && e.verifiedBy && e.confidence),
+    ).map((e) => e.id);
+    expect(
+      partial,
+      `rows with an incomplete sourcing block (all four of primarySourceCitation/` +
+        `retrievedAt/verifiedBy/confidence, or none): ${partial.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("retrievedAt is ISO YYYY-MM-DD and never in the future (no invented retrievals)", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const e of STATUTE_REGISTER) {
+      if (e.retrievedAt === undefined) continue;
+      expect(e.retrievedAt, `${e.id} retrievedAt`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(
+        e.retrievedAt <= today,
+        `${e.id} retrievedAt ${e.retrievedAt} is in the future — a retrieval that has not happened`,
+      ).toBe(true);
+    }
+  });
+
+  it("primarySourceCitation, when present, is substantive enough to re-pull the same text", () => {
+    const thin = STATUTE_REGISTER.filter(
+      (e) => e.primarySourceCitation !== undefined && e.primarySourceCitation.trim().length < 20,
+    ).map((e) => e.id);
+    expect(
+      thin,
+      `primarySourceCitation too thin to locate the source: ${thin.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it('"verified" requires the licensed-professional check — drafting is not verification', () => {
+    // Every row currently in this register gates money, deadlines, or legal
+    // exposure (read the failureModes), so per Addendum B §F "verified"
+    // demands licensed-professional sign-off for all of them. Narrowing that
+    // classification is a founder decision recorded dated in docs/company/ —
+    // not an edit to this assertion.
+    const bad = STATUTE_REGISTER.filter(
+      (e) => e.confidence === "verified" && e.verifiedBy !== "licensed-professional",
+    ).map((e) => `${e.id} (verifiedBy: ${e.verifiedBy})`);
+    expect(
+      bad,
+      `rows claiming "verified" without licensed-professional sign-off: ${bad.join(", ")}`,
+    ).toEqual([]);
+  });
+});
+
 describe("statute register ratchet — UNREVIEWED may only shrink", () => {
   it("the UNREVIEWED count never exceeds the baseline", () => {
     const debt = unreviewed().map((e) => e.id);

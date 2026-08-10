@@ -21,6 +21,8 @@ import {
 import {
   STATUTE_REGISTER,
   unreviewed,
+  claimsWithoutPrimarySource,
+  hasVerifiedSourcing,
 } from "@shared/governance/statuteRegister";
 
 // ── Mock infra dependencies BEFORE importing the module under test ──────────
@@ -125,6 +127,28 @@ describe("governance coverage report (F5-lite)", () => {
         expect(entry!.kind).toBe(statute.enforcement.kind);
         expect(entry!.refs).toEqual(statute.enforcement.refs);
         expect(entry!.reviewStatus).toBe(statute.reviewStatus);
+      }
+    });
+
+    it("sourcing rollup and per-entry sourcing state mirror the shared helpers (X-B)", () => {
+      const report = buildGovernanceCoverageReport();
+      const unsourcedHelper = claimsWithoutPrimarySource();
+      expect(report.statutes.sourcing.withoutPrimarySource.count).toBe(unsourcedHelper.length);
+      expect(report.statutes.sourcing.withoutPrimarySource.ids).toEqual(
+        unsourcedHelper.map((e) => e.id),
+      );
+      expect(report.statutes.sourcing.verified).toBe(
+        STATUTE_REGISTER.filter(hasVerifiedSourcing).length,
+      );
+      // Per-entry state is derived from the row, never invented.
+      const byId = new Map(report.statutes.entries.map((e) => [e.id, e]));
+      for (const statute of STATUTE_REGISTER) {
+        const expected = hasVerifiedSourcing(statute)
+          ? "verified"
+          : statute.primarySourceCitation
+            ? "drafted"
+            : "unsourced";
+        expect(byId.get(statute.id)!.sourcing, `${statute.id} sourcing state`).toBe(expected);
       }
     });
 

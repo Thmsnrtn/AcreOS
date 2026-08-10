@@ -31,8 +31,22 @@ import {
 import {
   STATUTE_REGISTER,
   unreviewed,
+  claimsWithoutPrimarySource,
+  hasVerifiedSourcing,
   type StatuteEnforcementKind,
+  type StatuteEntry,
 } from "@shared/governance/statuteRegister";
+
+/**
+ * X-B (Addendum B §F) — the row's sourcing state, derived, never stored:
+ * "verified" = the full bar (primary source retrieved + licensed-professional
+ * check); "drafted" = a primary source is on file but the required check has
+ * not cleared; "unsourced" = nobody has recorded retrieving the law's text.
+ */
+function sourcingState(entry: StatuteEntry): "verified" | "drafted" | "unsourced" {
+  if (hasVerifiedSourcing(entry)) return "verified";
+  return entry.primarySourceCitation ? "drafted" : "unsourced";
+}
 
 /** The full report, computed fresh from the registries on every read. */
 export function buildGovernanceCoverageReport() {
@@ -53,6 +67,7 @@ export function buildGovernanceCoverageReport() {
   };
   for (const entry of STATUTE_REGISTER) statutesByKind[entry.enforcement.kind] += 1;
   const debtUnreviewed = unreviewed();
+  const debtUnsourced = claimsWithoutPrimarySource();
 
   return {
     asOf: new Date().toISOString(),
@@ -85,12 +100,23 @@ export function buildGovernanceCoverageReport() {
         count: debtUnreviewed.length,
         ids: debtUnreviewed.map((e) => e.id),
       },
+      // X-B (Addendum B §F): per-claim sourcing debt — how many rows have no
+      // primary source on file at all. The same quantity the
+      // domainTruthRatchet baseline holds down-only.
+      sourcing: {
+        verified: STATUTE_REGISTER.filter(hasVerifiedSourcing).length,
+        withoutPrimarySource: {
+          count: debtUnsourced.length,
+          ids: debtUnsourced.map((e) => e.id),
+        },
+      },
       entries: STATUTE_REGISTER.map((entry) => ({
         id: entry.id,
         title: entry.citation,
         kind: entry.enforcement.kind,
         refs: entry.enforcement.refs,
         reviewStatus: entry.reviewStatus,
+        sourcing: sourcingState(entry),
       })),
     },
   };

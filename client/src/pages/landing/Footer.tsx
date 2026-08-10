@@ -19,6 +19,8 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { SupportFeedbackModal } from "@/components/support-feedback-modal";
 import { LEGAL_ENTITY_NAME } from "@/lib/legal-entity";
+import { BUSINESS_TYPES, BUSINESS_TYPE_IDS } from "@shared/business-types";
+import { forVerticalPath } from "@shared/seo/public-routes";
 
 export function Footer() {
   // 2026-05-11: replaced dead `mailto:` contact link with the
@@ -64,6 +66,21 @@ export function Footer() {
             <Link href="/tools/parcel-check">Parcel check</Link>
             <Link href="/tools/calculator">Land deal calculator</Link>
             <Link href="/land-credit-score">Land Credit Score</Link>
+            {/* G1.2 — public read-only demo workspace. */}
+            <Link href="/demo">Live demo</Link>
+          </div>
+          {/* G1.3 — every registered vertical's /for page, DERIVED from the
+              live registry (labels verbatim, same discipline as the
+              positioning chips) so a registry change can never strand a
+              stale link. Also the crawl path into the /for pages, which
+              are prerender:false. */}
+          <div className="lp-footer-col">
+            <div className="lp-footer-h">Who it&apos;s for</div>
+            {BUSINESS_TYPE_IDS.map((id) => (
+              <Link key={id} href={forVerticalPath(id)}>
+                {BUSINESS_TYPES[id].label}
+              </Link>
+            ))}
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Learn</div>

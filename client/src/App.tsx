@@ -440,6 +440,12 @@ const WhyPage = React.lazy(() => import("@/pages/why"));
 // intent. Lazy-loaded so they don't weigh on the landing-page first paint.
 const AcreosVsPropstreamPage = React.lazy(() => import("@/pages/compare/acreos-vs-propstream"));
 const AcreosVsDealmachinePage = React.lazy(() => import("@/pages/compare/acreos-vs-dealmachine"));
+// /for/<vertical> — one registry-derived marketing page per registered
+// business type (G1.3). Public, lazy-loaded.
+const ForVerticalPage = React.lazy(() => import("@/pages/for/vertical"));
+// /demo — public read-only demo workspace entry (G1.2). Renders an honest
+// "not provisioned" state when no demo org is configured.
+const DemoPage = React.lazy(() => import("@/pages/demo"));
 // /learn/<vertical>/<state> — programmatic SEO surface for state×vertical
 // long-tail queries. Public, lazy-loaded so it doesn't weigh on first paint.
 const StateVerticalLearnPage = React.lazy(() => import("@/pages/learn/state-vertical"));
@@ -762,6 +768,12 @@ function Router() {
       <Route path="/land-credit-score" component={LandCreditScorePage} />
       <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />
       <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />
+      {/* /for/<vertical> — registry-derived marketing pages, one per
+          registered business type (G1.3). Public marketing routes, NOT
+          customer navigation — the five doors are untouched. */}
+      <Route path="/for/:vertical" component={ForVerticalPage} />
+      {/* /demo — public read-only demo workspace (G1.2). */}
+      <Route path="/demo" component={DemoPage} />
       {/* Programmatic SEO — county data primers. Registered before the
           state×vertical route: the 4-segment path is more specific, and
           first-match order keeps the two from colliding. */}

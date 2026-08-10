@@ -81,6 +81,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-deal-underwriting.ts",
   "routes-deals.ts",
   "routes-deliverability.ts",
+  "routes-demo.ts",
   "routes-dispatch.ts",
   "routes-disposition.ts",
   "routes-doc-system.ts",

@@ -65,6 +65,12 @@ export const LANDING_COPY = {
     // long paragraph's content already lives in How-it-works and Features, so
     // it was cut from the hero rather than compressed into mush.
     cta1: "Start free — 14 days, no card",
+    // G1.2 — quiet tertiary link under the CTA row (a third button would
+    // undo the benchmark pass's hero decluttering). Every word is enforced:
+    // read-only = demoSessionReadOnlyGuard (403 on any mutation), sample
+    // data = the labeled sampleSeeder fixtures, no email = no auth on the
+    // demo session. Pinned by tests/unit/demoOrg.test.ts.
+    ctaDemo: "Or browse the live demo — read-only, sample data, no email.",
     // Secondary CTA is the proof itself: the public streaming parcel-check at
     // /tools/parcel-check lets a stranger watch real government data resolve
     // source-by-source, no signup. The proof sells; the result page carries the

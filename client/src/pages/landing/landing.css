@@ -1328,7 +1328,9 @@
 
 .lp-footer-cols {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fit: the column count follows the rendered children (G1.3 added a
+     fifth), so a new column can never orphan-wrap on desktop again. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 24px;
 }
 @media (max-width: 880px) {

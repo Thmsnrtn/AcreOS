@@ -40,7 +40,11 @@
  *   1. every `codeSites` path resolves to a file that actually exists,
  *   2. every `unit-test` enforcement claim names a test file that exists,
  *   3. ids are unique,
- *   4. the count of UNREVIEWED entries may only SHRINK.
+ *   4. the count of UNREVIEWED entries may only SHRINK,
+ *   5. per-claim sourcing blocks (Addendum B §F) are complete-or-absent and
+ *      honest; tests/unit/domainTruthRatchet.test.ts additionally holds the
+ *      claims-without-primary-source count down-only and pins the
+ *      refuse-not-compute seam (sourcingGateForComputation).
  *
  * Modelled deliberately on shared/governance/constitution.ts — same registry +
  * ratchet shape, same enforcement vocabulary. Do not invent a second pattern.
@@ -86,6 +90,46 @@ export interface StatuteEnforcement {
   note?: string;
 }
 
+// ── Per-claim sourcing (Addendum B §F — domain-truth verification) ────────
+//
+// The fields below record whether anyone has actually RETRIEVED the law's
+// text and checked the register's claim against it. They are distinct from
+// reviewStatus (who has read the IMPLEMENTATION) and from `citation` (the
+// register's identification of the obligation): sourcing asserts contact
+// with the primary source itself.
+//
+// NEVER invent any of these. An absent sourcing block is the honest state
+// and is exactly what the claims-without-primary-source ratchet
+// (tests/unit/domainTruthRatchet.test.ts) counts and drives down.
+
+/** Who checked the row's legal content against the primary source. */
+export type StatuteVerifier =
+  /** A licensed professional (attorney / CPA, as the subject matter demands)
+   *  checked the claim against the primary source. The only verifier that can
+   *  carry a row to "verified" — every row currently in this register gates
+   *  money, deadlines, or legal exposure (read the failureModes), and per
+   *  Addendum B §F drafting is not verification for those. */
+  | "licensed-professional"
+  /** The founder read the primary source against the claim (dated). A real
+   *  check, honestly recorded — but not a professional one; caps at "drafted". */
+  | "founder"
+  /** A model drafted the verification against the primary source. Drafting is
+   *  NOT verification; caps at "drafted". */
+  | "model-draft";
+
+/**
+ * How far the sourcing has actually gotten. There is deliberately no
+ * "high/medium/low" here — a legal claim is either verified for reliance or
+ * it is not, and everything short of verified must refuse-not-compute.
+ */
+export type StatuteSourcingConfidence =
+  /** Primary source retrieved, claim checked, and the licensed-professional
+   *  requirement satisfied. The ONLY state automation may compute from. */
+  | "verified"
+  /** A sourcing draft exists (model or founder work against the primary
+   *  source) but the required professional check has not cleared. */
+  | "drafted";
+
 export interface StatuteEntry {
   /** Stable kebab/dot id — never reused, never renamed. */
   id: string;
@@ -122,6 +166,32 @@ export interface StatuteEntry {
    * the implementation is knowingly partial.
    */
   note?: string;
+
+  // ── Per-claim sourcing (Addendum B §F). ALL FOUR TRAVEL TOGETHER: a row
+  // carries the complete sourcing block or none of it (pinned in
+  // tests/unit/statuteRegister.test.ts). All four are optional because the
+  // honest state of most rows is UNSOURCED — this register was built by
+  // reading the CODE, not the law. Do not backfill a field to make a row
+  // look sourced; refuse-not-fabricate applies to law above all.
+
+  /**
+   * The primary source actually retrieved and read for this row — the
+   * official state code / eCFR / IRS publication location, precise enough
+   * for someone else to pull the same text (include the revision or
+   * effective date where the source is versioned).
+   */
+  primarySourceCitation?: string;
+  /** ISO date (YYYY-MM-DD) the primary source was retrieved and read. */
+  retrievedAt?: string;
+  /** Who performed the check against the primary source. */
+  verifiedBy?: StatuteVerifier;
+  /**
+   * "verified" requires verifiedBy === "licensed-professional" (every row
+   * currently in this register gates money, deadlines, or legal exposure;
+   * narrowing that classification is a founder decision, recorded dated in
+   * docs/company/, not an edit). Everything else caps at "drafted".
+   */
+  confidence?: StatuteSourcingConfidence;
 }
 
 export const STATUTE_REGISTER: readonly StatuteEntry[] = [
@@ -781,4 +851,87 @@ export function refusalOnly(): StatuteEntry[] {
 
 export function byEnforcement(kind: StatuteEnforcementKind): StatuteEntry[] {
   return STATUTE_REGISTER.filter((e) => e.enforcement.kind === kind);
+}
+
+// ── Per-claim sourcing helpers (Addendum B §F) ───────────────────────────
+
+/**
+ * True only when the row's legal content has cleared the full sourcing bar:
+ * complete sourcing block AND confidence "verified" AND the
+ * licensed-professional check. Deliberately re-checks the verifier even
+ * though the data invariant (pinned in statuteRegister.test.ts) already
+ * requires it for "verified" — the gate below must hold even if the data
+ * discipline ever slips. If a future founder decision narrows the
+ * money/deadline classification, this predicate and its tests change
+ * together, citing the dated decision.
+ */
+export function hasVerifiedSourcing(e: StatuteEntry): boolean {
+  return (
+    e.confidence === "verified" &&
+    e.verifiedBy === "licensed-professional" &&
+    Boolean(e.primarySourceCitation) &&
+    Boolean(e.retrievedAt)
+  );
+}
+
+/**
+ * The X-B ratchet quantity: rows where nobody has recorded retrieving the
+ * primary source at all. Counted (down-only) by
+ * tests/unit/domainTruthRatchet.test.ts. Lowering it requires REAL sourcing
+ * work — never a backfilled citation.
+ */
+export function claimsWithoutPrimarySource(): StatuteEntry[] {
+  return STATUTE_REGISTER.filter((e) => !e.primarySourceCitation);
+}
+
+/** The gate's refusal is a value, not an exception — callers surface `reason`
+ *  verbatim (refuse-not-compute is an HONEST refusal, not a crash). */
+export type SourcingGateVerdict =
+  | { ok: true; entry: StatuteEntry }
+  | { ok: false; statuteId: string; reason: string };
+
+/**
+ * THE ENFORCEMENT SEAM (Addendum B §F, scaffolded by X-B).
+ *
+ * Any automation that computes money, a deadline, or a compliance verdict
+ * FROM a statute-register row must call this first and, on `ok: false`,
+ * refuse-not-compute — surface `reason` to the operator instead of a number.
+ *
+ * AT HEAD NO SUCH AUTOMATION EXISTS: the register's production consumers are
+ * display/calendar only (the governance-coverage report and the O1
+ * dated-obligations calendar), and the domain automations the register
+ * points at via codeSites (redemptionClock, lateFeeProposal, periodic
+ * statements…) compute from their own domain registries, not from these
+ * rows. tests/unit/domainTruthRatchet.test.ts pins that consumer set, so
+ * the first automation wired to a register row must come through this gate
+ * consciously. That is recorded honestly here rather than pretending an
+ * enforcement target exists today.
+ */
+export function sourcingGateForComputation(statuteId: string): SourcingGateVerdict {
+  const entry = statuteById(statuteId);
+  if (!entry) {
+    return {
+      ok: false,
+      statuteId,
+      reason:
+        `Refusing to compute: "${statuteId}" is not in the statute register ` +
+        `(shared/governance/statuteRegister.ts). A computation claiming legal ` +
+        `backing must name a register row that exists.`,
+    };
+  }
+  if (!hasVerifiedSourcing(entry)) {
+    const state = entry.primarySourceCitation
+      ? `its sourcing is "${entry.confidence ?? "incomplete"}" (verifiedBy: ${entry.verifiedBy ?? "nobody"})`
+      : "no primary source has been retrieved for it";
+    return {
+      ok: false,
+      statuteId,
+      reason:
+        `Refusing to compute from statute-register row "${entry.id}" ` +
+        `(${entry.citation}): ${state}. Verified sourcing — primary source ` +
+        `retrieved, claim checked, licensed-professional sign-off — is required ` +
+        `before any deadline or money computation may rely on this row.`,
+    };
+  }
+  return { ok: true, entry };
 }

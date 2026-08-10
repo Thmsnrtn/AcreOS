@@ -108,6 +108,25 @@ export function Hero() {
             {c.cta2}
           </Link>
         </div>
+        {/* G1.2 — the demo entry as a quiet text link, not a third button
+            (the benchmark pass deliberately capped the hero at two CTAs). */}
+        <div className="lp-hero-ctasub">
+          <Link
+            href="/demo"
+            className="lp-hero-demo-link"
+            style={{ textDecoration: "underline", color: "inherit" }}
+            data-testid="hero-demo-link"
+            onClick={() =>
+              emitMarketingTouch({
+                surface: "landing:hero",
+                eventType: "cta_click",
+                payload: { ctaId: "hero_demo_link" },
+              })
+            }
+          >
+            {c.ctaDemo}
+          </Link>
+        </div>
         <div className="lp-hero-ctasub">{c.ctaSub}</div>
         {c.proof ? (
           <div className="lp-hero-proof">

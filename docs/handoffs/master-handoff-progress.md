@@ -551,6 +551,45 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves G/O/F — slice 3 (G1.2 + G1.3 + X-B scaffold) — ✅ SHIPPED
+
+- **G1.3 (/for/<vertical>):** one template page rendering PURELY from
+  BUSINESS_TYPES + VERTICAL_ONBOARDING; all 15 kebab-case slugs enumerated
+  into the public-route pipeline (sitemap/prerender pick them up); no
+  beta/maturity treatment (D-4); derived forVerticalRoutes.test.ts mirrors
+  the live-registry pattern. CTA → the demo entry.
+- **G1.2 (public demo org):** /demo mints a 2h cookie-scoped session against
+  a founder-designated org (DEMO_ORG_ID) — honest not-provisioned state when
+  unset (never a fake org); seeds via the ONE sample-data path; refuses a
+  non-free org (billing never silently edited); enforces org simulationMode.
+  App-wide read-only guard (mounted before all routers): every mutating verb
+  from a demo session → 403, workspace snapshot serves ONLY sample-marked
+  rows, funnel stays clean by composition with G1.1's recorder guard. PROD
+  provisioning of the org row = founder/ops step (queued).
+- **X-B scaffold (domain truth):** statuteRegister entries gain optional
+  travel-together sourcing fields {primarySourceCitation, retrievedAt,
+  verifiedBy, confidence} — ZERO invented citations (all 31 rows honestly
+  unverified at ship; verified status requires licensed-professional per the
+  register's own rule); claims-without-primary-source ratchet baselined at
+  31, down-only; `sourcingGateForComputation()` refuse-not-compute seam with
+  consumers pinned (register consumers at HEAD are display/registry-only —
+  the seam is pinned so the FIRST deadline/money automation must pass
+  through it); coverage endpoint + Story surface the sourcing state. Actual
+  row verification = founder-queued (licensed spot-check for money/deadline
+  rows).
+- **Verifier catches, all fixed centrally:** demo-entry mutation lacked
+  invalidation (eslint ratchet); the demo guard silently 403'd the
+  marketing-touch beacon for the cookie's whole life — darkening the
+  acquisition funnel for exactly the visitors the demo converts (exempted +
+  pinned); sitemap regeneration dropped /terms/history (a ToS §16 promise)
+  and the sitemap-notes crawler feed because committed artifacts had drifted
+  ahead of the generator — both enumerated at the source so regeneration can
+  never strip them again; case-shifted /API/ paths could skip the guard
+  (lowercased + pinned); footer grid orphan-wrapped its new fifth column
+  (auto-fit).
+- Manifest regenerated post-X-B (statuteRegister is estate). No baselines
+  raised; no new founder routes; five doors untouched.
+
 ## Waves G/O/F — slice 2 (F1-s2 + O2-buildable + O3 + F5-lite) — ✅ SHIPPED
 
 Same fleet protocol as slice 1. Three of four verifiers returned
@@ -676,20 +715,23 @@ integration defects were all fixed centrally before commit:
   founder queue for send lanes / hard-stops / baseline raises / keyed-env
   work, refuse-not-fabricate, doors fixed, D-4 (verticals are CORE).
 - **Slice 1 SHIPPED at `0c5eb23`** (F1-s1 + F3 + O1 + G1.1 — section above).
-- **In flight: FLEET 2** (workflow `wf_211cda2b-625`) building F1-slice2
-  (observability → /founder/admin/telemetry hub, baseline 58→53),
-  O2-buildable (backup_verified reader + drDrillFreshness ratchet), O3
-  (runbook link-lint into the check chain), F5-lite (governance coverage
-  endpoint + Letter KPI + Story governance section) — four fixers with
-  exclusive file sets + adversarial verifiers. Integration protocol (learned
-  from slice 1): fix verifier catches centrally; regenerate the gate-tamper
-  manifest LAST if any estate file moved; lock earned ratchet drops; full
-  gates with exit codes checked separately; one slice commit.
-- **Fleet 3 next** (needs App.tsx free): G1.3 /for/:vertical registry pages +
-  G1.2 demo org (viewer-role read-only session, simulationMode org,
-  activation-safe via G1.1's sample guard). Then: G1.4 provable-claims +
-  marketing-claims.test, X-B scaffold (statuteRegister claim-sourcing —
-  regenerate manifest after), O5-part, F2, Wave 1 (1.1–1.6) onward per §D.
+- **Slice 2 SHIPPED at `dd5e85c`** (F1-s2 + O2-buildable + O3 + F5-lite —
+  section above). Note for posterity: F3's gate-tamper watch flagged the
+  slice's own estate edits on its first full-tree run — regenerated per its
+  procedure, the mechanism works.
+- **In flight: FLEET 3** (workflow `wf_87a37ca3-552`) building G1.2+G1.3 as
+  one marketing-surface fixer (/for/<vertical> registry pages + public demo
+  org — viewer-role read-only session, mutation-block middleware,
+  simulationMode, sample-marked so G1.1's guard keeps the funnel clean;
+  prod demo-org provisioning stays a founder/ops step with an honest
+  not-provisioned state) and X-B scaffold (statuteRegister per-claim
+  sourcing fields, claims-without-citations down-only ratchet, automations
+  gated refuse-not-compute from unverified rows; actual row verification +
+  licensed spot-check stays founder-queued). Integration: manifest regen
+  LAST (statuteRegister is estate), same protocol.
+- **After fleet 3:** G1.4 provable-claims + marketing-claims.test (landing
+  files free again), O5-part (grounded deflection + severity SLAs), F2 (one
+  decision queue), then Wave 1 (1.1–1.6) and the §D main line.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

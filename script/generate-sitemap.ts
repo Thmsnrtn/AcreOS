@@ -87,6 +87,9 @@ function buildRobots(): string {
     ...PUBLIC_ROUTES.map((r) => `Allow: ${r.path}`),
     // Programmatic SEO content trees — let crawlers reach every /learn page.
     "Allow: /learn/",
+    // Comparison landers directory (individual pages are enumerated above;
+    // the prefix Allow keeps future /compare/* additions crawlable).
+    "Allow: /compare/",
     // Public parcel report permalinks (Tier 3A). Indexable only when a
     // report exists — the server serves noindex shells for absent ones.
     "Allow: /p/",
@@ -118,6 +121,11 @@ function buildRobots(): string {
     // served by server/routes-public-parcel-report.ts from the
     // public_parcel_reports table (Tier 3A). Never fabricated coverage.
     `Sitemap: ${SITE_BASE_URL}/sitemap-reports.xml`,
+    // Dynamic sitemap of PUBLISHED field notes — served by
+    // server/routes-founder-letters.ts from community_letters. It was in the
+    // committed robots.txt but not in this builder, so a regeneration
+    // silently dropped it (slice-3 audit catch).
+    `Sitemap: ${SITE_BASE_URL}/sitemap-notes.xml`,
     "",
   ].join("\n");
 }

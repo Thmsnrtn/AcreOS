@@ -123,6 +123,9 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-deal-underwriting.ts", mountPath: "/api/deal-underwriting", kind: "router", export: "default" },
   { file: "routes-deals.ts", mountPath: null, kind: "register", export: "registerDealRoutes" },
   { file: "routes-deliverability.ts", mountPath: null, kind: "register", export: "registerDeliverabilityRoutes" },
+  // G1.2 — public read-only demo workspace (/api/demo/*); the read-only
+  // guard middleware from the same file is mounted app-wide in routes.ts.
+  { file: "routes-demo.ts", mountPath: null, kind: "register", export: "registerDemoRoutes" },
   { file: "routes-dispatch.ts", mountPath: null, kind: "register", export: "registerDispatchRoutes" },
   { file: "routes-disposition.ts", mountPath: "/api/disposition", kind: "router", export: "default" },
   { file: "routes-doc-system.ts", mountPath: null, kind: "register", export: "registerDocSystemRoutes" },

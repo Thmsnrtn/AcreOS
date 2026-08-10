@@ -399,6 +399,13 @@ export async function registerRoutes(
   const { apiTelemetry } = await import("./middleware/apiTelemetry");
   app.use("/api", apiTelemetry());
 
+  // G1.2: hard read-only guard for public demo sessions — every mutating
+  // /api request from a browser carrying the demo cookie is refused with
+  // 403 (except the demo session lifecycle endpoints). Mounted BEFORE any
+  // route registration so no route can precede it.
+  const { demoSessionReadOnlyGuard } = await import("./routes-demo");
+  app.use(demoSessionReadOnlyGuard);
+
   // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
   app.get("/api/config/features", async (_req, res) => {
     try {
@@ -2480,6 +2487,11 @@ export async function registerRoutes(
   registerSubProcessorRoutes(app);
   // Phase 3 Week 14: Activation funnel + retention infra (Yuna §8, Konstantin §2)
   registerActivationRoutes(app);
+  // G1.2: public read-only demo workspace (/api/demo/*). The env-designated
+  // demo org self-seeds via the one sample-data path; unprovisioned deploys
+  // report so honestly. The read-only guard is mounted app-wide above.
+  const { registerDemoRoutes } = await import("./routes-demo");
+  registerDemoRoutes(app);
   // Phase 3 Week 12: ML training-snapshot instrumentation (Magnus §1)
   registerMlSnapshotsRoutes(app);
   // Phase 8 Months 11: Wenzeslaus ETL orchestrator + DLQ replay UI
