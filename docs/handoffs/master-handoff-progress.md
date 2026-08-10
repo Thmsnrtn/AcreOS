@@ -12,10 +12,11 @@ from this file, not from memory. Updated every working session.*
 
 | # | Drift | Consequence |
 |---|---|---|
-| D-1 | **RESOLVED 2026-08-09.** The master handoff document was absent from the repo at session start (not tracked or untracked anywhere). The founder supplied it in-session; it is now committed in full (§A–§G including all six reference parts) at `docs/handoffs/acreos-master-handoff.md`. | Wave 0 items 0.1–0.9, Waves 1–6, G/O/F/X are now enumerable. Program unblocked. |
+| D-1 | **RESOLVED 2026-08-09.** The master handoff document was absent from the repo at session start (not tracked or untracked anywhere). The founder supplied it in-session; it is now committed in full (§A–§G including all six reference parts; reference body renumbered to §H when Addendum C landed, see D-5) at `docs/handoffs/acreos-master-handoff.md`. | Wave 0 items 0.1–0.9, Waves 1–6, G/O/F/X are now enumerable. Program unblocked. |
 | D-2 | **Item 0.2's headline premise is stale — the F-18-1 fix already shipped** in the remediation continuation batch (2026-08-06, `REMEDIATION.md` item 3): `server/services/vendorCredentialExpiry.ts` (registry seeded ATTOM `2026-08-28`), milestone paging in `sendDailyBriefing` (warn T-14/T-7, critical page ≤T-2 via `alertSpine`), and the `vendor_credentials` step-away readiness check. All verified wired at HEAD (scheduler → `runScheduledJobs.ts:1146`). | 0.2 re-scoped from "build it" to "verify at HEAD + close the enforcement gap" (below). |
 | D-3 | The audit's F-18-1 **"Gate it"** (sole-source ⇒ expiry-row invariant) was NOT part of the shipped fix — no `vendor-expiry` ratchet existed and the unit test didn't derive from the sole-source allowlist. | Closed this session (see 0.2). Built as a **derived set-invariant test**, not a count ratchet — per `99-master.md:228`'s over-build dissent and the repo's derived-test preference. |
 | D-4 | **FOUNDER RULING (2026-08-10, direct in-session):** the completed vertical-maturity program — all 15 verticals brought to honest core (PRs #275/#276, merged pre-Wave-0) — **SUPERSEDES every handoff recommendation premised on verticals being beta / frozen / conveyor-gated / roadmap-gated**. The founder read the handoff and identified this as its one outdated aspect. Consistent with founder ruling #11 (2026-07-29, deletion ledger) rescinding the one-at-a-time conveyor. | Any later-wave brief (Waves 1–6/G/O/F, addenda) whose premise is a vertical's beta/frozen status must be re-scoped at execution: verticals are CORE. Do not relitigate activation gates the completed program already passed — including the residential-comps data-plane hard-stop, which the founder lifted in-session during that program ("Lift hard-stop + MLS vendor"). |
+| D-5 | **ADDENDUM C INGESTED (2026-08-10, founder-supplied in-session):** the Staff & Autopilot Doctrine — shaping the founder-backend autopilot (`operator`/`decide`/`council`/`senses`/`domainAutonomy`/`hands`) into six chartered staff domains (the five Trust-Ledger domains + Beatrice/compliance), with autonomy-follows-perception promotion gating, mandate-proportional hands, an executable scenario library, conflict→negotiation memos, the cabinetmaker CEO interface, and the maturation-curve ledgers. Married into the handoff as **WAVE S** in §D (parallel after Wave 0, overlaps Wave F; full brief now at §G; the reference body was renumbered §G→§H). | Wave S items S1–S7 join the executable pool immediately (S1/S2 first — charters + promotion-prerequisite ratchet are pure construction). Standing rules apply unchanged: S3's deploy/rollback + any send-adjacent hands, autonomy-ladder promotion mechanics, and anything touching hard-stop domains remain §A-rule-5 propose-don't-merge (self-patch-never-merges is already constitutional). S5 rides slice 5's reasons-on-disposition rail. Naming note: `docs/design/*` uses "Wave S" for the separate design-elevation "signature moments" wave — §D's Wave S is the staff doctrine; disambiguate by document family. |
 
 ---
 
@@ -820,11 +821,15 @@ integration defects were all fixed centrally before commit:
   written proposal). Same protocol: exclusive file sets, adversarial
   verifiers in isolated worktrees, central integration, manifest regen
   last, full three gates before commit. Fallback timer armed.
-- **After fleet 6:** Wave 1 remaining (1.3 Today/Deals/Inbox
-  interactions, 1.4 EntityTable kit, 1.5 settings decomposition), F1
-  slice 4+, O4/O6/O7 buildable parts, X-A slice 2 (whatever the founder
-  approves from the caps proposal), then Wave 2 per §D. G2/G3 wait on
-  customers; founder queue unchanged.
+- **After fleet 6:** Wave S opens (D-5): S1 charters + S2
+  autonomy-follows-perception ratchet are the natural next fleet's core
+  (pure construction over `domainAutonomy` + senses; no founder-queue
+  exposure), with S4's scenario-library matrix close behind. Alongside:
+  Wave 1 remaining (1.3 Today/Deals/Inbox interactions, 1.4 EntityTable
+  kit, 1.5 settings decomposition), F1 slice 4+, O4/O6/O7 buildable
+  parts, X-A slice 2 (whatever the founder approves from the caps
+  proposal), then Wave 2 per §D. G2/G3 wait on customers; founder queue
+  unchanged. S3 hands / promotion mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
