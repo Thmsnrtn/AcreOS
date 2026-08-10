@@ -111,12 +111,12 @@ export function FounderPulseStrip() {
     >
       <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
         {tone === "live" && (
-          <span className="absolute inline-flex h-full w-full rounded-full bg-acr-success opacity-60 animate-ping motion-reduce:animate-none" />
+          <span className="absolute inline-flex h-full w-full rounded-full bg-acr-pos opacity-60 animate-ping motion-reduce:animate-none" />
         )}
         <span
           className={cn(
             "relative inline-flex h-2 w-2 rounded-full",
-            tone === "live" ? "bg-acr-success" : tone === "stale" ? "bg-acr-warn" : "bg-muted-foreground/50",
+            tone === "live" ? "bg-acr-pos" : tone === "stale" ? "bg-acr-warn" : "bg-muted-foreground/50",
           )}
         />
       </span>

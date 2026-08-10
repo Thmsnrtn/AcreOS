@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
-  organizations,
+  organizations, paxDecisionAppeals, paxRefusalPayloads, recourseDrafts,
 } from "@shared/schema";
 import { eq, and, desc, gte, isNull, or, lt, sql } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
@@ -113,7 +113,111 @@ export function sanitizeDecisionOptions(
   return valid.length > 0 ? valid : undefined;
 }
 
+/**
+ * F2 slice 1 (handoff P6 §3 — "one decision queue") — MIRROR CARDS.
+ *
+ * Two founder decision inflows that previously lived ONLY on their deep
+ * surfaces are mirrored into the decisions door as cards with links back:
+ *
+ *   appeal_review   ← pax_decision_appeals   (/founder/appeals — a customer
+ *                     is waiting on an upheld/reversed verdict)
+ *   recourse_draft  ← recourse_drafts        (/founder/recourse — a drafted
+ *                     personal reply to a negative signal, same-hour doctrine)
+ *
+ * Deliberately an ADAPTER, not a data migration: the deep stores stay the
+ * system of record and their surfaces keep the full disposition forms
+ * (verdict + reviewNotes + customerMessage; edit-and-send). The mirror card
+ * carries presence + ranking + a deep link; it never executes anything
+ * (actionPayload is always null) and it resolves ITSELF when the deep
+ * surface disposes the source row (see resolveMirrorItem + the hooks in
+ * routes-founder-appeals.ts / routes-founder-recourse.ts). The door's
+ * generic approve/reject/override refuse mirror cards and point at the deep
+ * surface (routes-founder-intelligence.ts).
+ */
+export const MIRRORED_QUEUE_ITEM_TYPES = {
+  appeal_review: {
+    deepLink: "/founder/appeals",
+    surfaceName: "Appeals",
+    bundleKey: "sourceAppealId",
+  },
+  recourse_draft: {
+    deepLink: "/founder/recourse",
+    surfaceName: "Recourse",
+    bundleKey: "sourceRecourseDraftId",
+  },
+} as const;
+export type MirroredQueueItemType = keyof typeof MIRRORED_QUEUE_ITEM_TYPES;
+
+export function isMirroredQueueItemType(
+  itemType: string,
+): itemType is MirroredQueueItemType {
+  return Object.prototype.hasOwnProperty.call(MIRRORED_QUEUE_ITEM_TYPES, itemType);
+}
+
+/**
+ * Reasons-on-disposition (P6 §3: "reasons captured on 100% of dispositions").
+ * The founder's optional one-line reason rides EVERY disposition verb into
+ * the existing founder_modification text column (no migration — the column
+ * already carries founder notes on the rosy-river and reverse paths).
+ * founderOverrideAction keeps its exact legacy semantics (reject reason /
+ * override action / chosen-option text) so every learning-loop reader is
+ * untouched.
+ */
+export const DISPOSITION_REASON_MAX_CHARS = 2000;
+
+export function normalizeDispositionReason(reason?: unknown): string | undefined {
+  if (typeof reason !== "string") return undefined;
+  const trimmed = reason.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > DISPOSITION_REASON_MAX_CHARS
+    ? trimmed.slice(0, DISPOSITION_REASON_MAX_CHARS)
+    : trimmed;
+}
+
+const RECOURSE_SIGNAL_CARD_META: Record<string, { label: string; urgencyScore: number }> = {
+  cancellation: { label: "A cancellation", urgencyScore: 85 },
+  detractor_nps: { label: "A detractor NPS score", urgencyScore: 75 },
+  low_support_rating: { label: "A low support rating", urgencyScore: 70 },
+};
+
+/**
+ * Thrown when a terminal disposition verb is invoked on a MIRROR card. The
+ * door routes catch it (refuseMirrorDisposition renders the deep-link
+ * refusal); any other caller (founder-chat tools, future executors) gets an
+ * error instead of silently hiding a waiting customer behind an approved
+ * mirror while the real row stays open.
+ */
+export class MirrorDispositionError extends Error {
+  constructor(
+    public readonly itemType: MirroredQueueItemType,
+    verb: string,
+  ) {
+    super(
+      `Cannot ${verb} a mirror card (${itemType}) — dispose it on its deep surface: ` +
+        MIRRORED_QUEUE_ITEM_TYPES[itemType].deepLink,
+    );
+    this.name = "MirrorDispositionError";
+  }
+}
+
 export const decisionsInboxService = {
+
+  /**
+   * Terminal-verb guard for mirror cards, at the SERVICE altitude so every
+   * caller inherits it (the fleet-5 audit proved the route-only guard was
+   * bypassable via founder-chat's approve_decision/reject_decision tools).
+   * `defer` stays exempt — deferring a mirror is presence management, not a
+   * verdict, and resolveMirrorItem covers deferred cards.
+   */
+  async refuseIfMirror(itemId: number, verb: string): Promise<void> {
+    const item = await db.query.decisionsInboxItems.findFirst({
+      where: eq(decisionsInboxItems.id, itemId),
+      columns: { itemType: true },
+    });
+    if (item && isMirroredQueueItemType(item.itemType)) {
+      throw new MirrorDispositionError(item.itemType, verb);
+    }
+  },
 
   /**
    * Called by Sophie's escalate_to_human tool execution.
@@ -726,6 +830,232 @@ export const decisionsInboxService = {
     return { itemId: item.id, created: true };
   },
 
+  /**
+   * F2 slice 1 — mirror a filed customer appeal (pax_decision_appeals) into
+   * the decisions door. Called best-effort from routes-pax-appeals.ts right
+   * after the appeal row is written; a mirror failure must never fail the
+   * customer's filing. Class B through the arbiter (a customer is actively
+   * waiting on a founder verdict). Dedupe: one OPEN (pending/deferred) card
+   * per appeal via contextBundle.sourceAppealId.
+   *
+   * Deliberately NO customer free text in sophieAnalysis — the appeal reason
+   * is customer-typed and this row's text feeds model-read surfaces
+   * (decisionLogRag, companyMind); the verbatim lives on the deep surface.
+   */
+  async createFromAppeal(appealId: number): Promise<{ itemId: number | null; created: boolean }> {
+    const appeal = await db.query.paxDecisionAppeals.findFirst({
+      where: eq(paxDecisionAppeals.id, appealId),
+    });
+    if (!appeal) return { itemId: null, created: false };
+    // Only an open/under-review appeal earns a card — mirroring an already-
+    // ruled appeal would resurrect a decided item.
+    if (appeal.status !== "open" && appeal.status !== "under_review") {
+      return { itemId: null, created: false };
+    }
+
+    const meta = MIRRORED_QUEUE_ITEM_TYPES.appeal_review;
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, "appeal_review"),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'sourceAppealId' = ${String(appealId)}`,
+      ),
+    });
+    // Dedupe predicate re-applied in process so unit tests pin the
+    // open-card-only semantics independent of the SQL layer (A1 pattern).
+    if (
+      existing &&
+      existing.itemType === "appeal_review" &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      Number(existing.contextBundle?.sourceAppealId) === appealId
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const refusal = appeal.refusalPayloadId
+      ? await db.query.paxRefusalPayloads.findFirst({
+          where: eq(paxRefusalPayloads.id, appeal.refusalPayloadId),
+        })
+      : null;
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, appeal.organizationId),
+    });
+    const orgLabel = org?.name ?? `org #${appeal.organizationId}`;
+
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Customer appeal #${appealId} awaiting verdict`,
+      { itemType: "appeal_review", appealId, organizationId: appeal.organizationId },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: "appeal_review",
+      riskLevel: "high",
+      urgencyScore: 75,
+      sophieAnalysis:
+        `Customer appeal #${appealId} from "${orgLabel}" against a Pax refusal` +
+        `${refusal?.citedImmutableId ? ` (cited rule: ${refusal.citedImmutableId})` : ""}. ` +
+        "The customer is waiting on your verdict — read their reason and rule " +
+        "upheld or reversed on the Appeals queue.",
+      recommendedAction:
+        "Open the Appeals queue, read the customer's reason with the full refusal " +
+        "context, and rule upheld or reversed. This card clears itself when you do.",
+      recommendedActionLabel: "Review Appeal",
+      // Nothing executes from this card — the verdict form (decision +
+      // rationale + customer message) lives on the deep surface only.
+      actionPayload: null,
+      organizationId: appeal.organizationId,
+      ownerAgentCodename: this.inferAgent("appeal_review"),
+      contextBundle: {
+        sourceAppealId: appealId,
+        deepLink: meta.deepLink,
+        deepLinkLabel: "Review on the Appeals queue",
+        orgName: org?.name ?? null,
+        ...(refusal?.citedImmutableId ? { citedImmutableId: refusal.citedImmutableId } : {}),
+        ...(refusal?.severity ? { refusalSeverity: refusal.severity } : {}),
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
+   * F2 slice 1 — mirror a recourse draft (recourse_drafts: a drafted personal
+   * reply to a detractor NPS / low support rating / cancellation) into the
+   * decisions door. Called best-effort from the aggregation sweep
+   * (recourseDrafter.aggregateRecourseSignals) when a NEW draft row lands.
+   * Class B (the same-hour-reply doctrine is the whole point of the loop).
+   * Dedupe: one OPEN card per draft via contextBundle.sourceRecourseDraftId.
+   */
+  async createFromRecourseDraft(draftId: number): Promise<{ itemId: number | null; created: boolean }> {
+    const draft = await db.query.recourseDrafts.findFirst({
+      where: eq(recourseDrafts.id, draftId),
+    });
+    if (!draft) return { itemId: null, created: false };
+    // Only an open draft earns a card.
+    if (draft.status !== "draft") return { itemId: null, created: false };
+
+    const meta = MIRRORED_QUEUE_ITEM_TYPES.recourse_draft;
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, "recourse_draft"),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'sourceRecourseDraftId' = ${String(draftId)}`,
+      ),
+    });
+    if (
+      existing &&
+      existing.itemType === "recourse_draft" &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      Number(existing.contextBundle?.sourceRecourseDraftId) === draftId
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, draft.organizationId),
+    });
+    const orgLabel = org?.name ?? `org #${draft.organizationId}`;
+    const signalMeta = RECOURSE_SIGNAL_CARD_META[draft.signalType] ?? {
+      label: "A negative customer signal",
+      urgencyScore: 70,
+    };
+
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Recourse reply waiting: draft #${draftId}`,
+      { itemType: "recourse_draft", draftId, organizationId: draft.organizationId },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: "recourse_draft",
+      riskLevel: "high",
+      urgencyScore: signalMeta.urgencyScore,
+      sophieAnalysis:
+        `${signalMeta.label} from "${orgLabel}" — a personal reply is drafted and ` +
+        "waiting. The recourse doctrine is a same-hour human reply: review, edit, " +
+        "and send it (or dismiss it) on the Recourse queue.",
+      recommendedAction:
+        "Open the Recourse queue, read the customer's own words, edit the drafted " +
+        "reply, and send or dismiss it. This card clears itself when you do.",
+      recommendedActionLabel: "Reply to Customer",
+      // Nothing executes from this card — the send (with the founder's edited
+      // body) happens exclusively on the deep surface.
+      actionPayload: null,
+      organizationId: draft.organizationId,
+      ownerAgentCodename: this.inferAgent("recourse_draft"),
+      contextBundle: {
+        sourceRecourseDraftId: draftId,
+        deepLink: meta.deepLink,
+        deepLinkLabel: "Open the Recourse queue",
+        orgName: org?.name ?? null,
+        signalType: draft.signalType,
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
+   * F2 slice 1 — close a mirror card because its DEEP SURFACE disposed the
+   * source row (verdict rendered / reply sent / draft dismissed). The founder
+   * acted on the system of record, so the card resolves with resolvedBy
+   * "founder_deep_surface" (→ the "You reviewed" bucket, never
+   * "Auto-handled") and the deep surface's reason line lands in
+   * founderModification — the same column every door disposition writes its
+   * reason to. Best-effort by contract: callers never fail their disposition
+   * on a mirror-resolution failure.
+   */
+  async resolveMirrorItem(input: {
+    itemType: MirroredQueueItemType;
+    sourceId: number;
+    status: "approved" | "rejected";
+    detail: string;
+  }): Promise<{ resolved: boolean; itemId: number | null }> {
+    const meta = MIRRORED_QUEUE_ITEM_TYPES[input.itemType];
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, input.itemType),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>${meta.bundleKey} = ${String(input.sourceId)}`,
+      ),
+    });
+    // Open-card-only re-check in process (A1 pattern) — a resolved mirror is
+    // never overwritten.
+    if (
+      !existing ||
+      existing.itemType !== input.itemType ||
+      (existing.status !== "pending" && existing.status !== "deferred") ||
+      Number(existing.contextBundle?.[meta.bundleKey]) !== input.sourceId
+    ) {
+      return { resolved: false, itemId: null };
+    }
+
+    await db.update(decisionsInboxItems)
+      .set({
+        status: input.status,
+        resolvedAt: new Date(),
+        resolvedBy: "founder_deep_surface",
+        founderModification: normalizeDispositionReason(input.detail) ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(decisionsInboxItems.id, existing.id));
+    return { resolved: true, itemId: existing.id };
+  },
+
   /** Returns pending items sorted by urgencyScore descending. */
   async getPendingItems() {
     return db.query.decisionsInboxItems.findMany({
@@ -738,9 +1068,16 @@ export const decisionsInboxService = {
    * Approve: mark approved, then EXECUTE the action payload. v3 closes the
    * loop. Jarvis 2.3: `chosenOptionText` records the tapped card option
    * (`option:<key> — <label>`) into founderOverrideAction so the log shows
-   * WHICH option answered the card.
+   * WHICH option answered the card. F2: the founder's optional one-line
+   * `reason` lands in founderModification (see normalizeDispositionReason).
    */
-  async approve(itemId: number, chosenOptionText?: string): Promise<{ executed: boolean; detail?: string }> {
+  async approve(itemId: number, chosenOptionText?: string, reason?: string): Promise<{ executed: boolean; detail?: string }> {
+    // Mirror cards are presence + a deep link — dispositions happen on the
+    // deep surface (the guard lives HERE, not only in the door routes, so
+    // founder-chat's approve_decision tool and any future caller cannot mark
+    // a mirror approved while the customer's real row stays open).
+    await this.refuseIfMirror(itemId, "approve");
+    const reasonText = normalizeDispositionReason(reason);
     // Mark as approved
     await db.update(decisionsInboxItems)
       .set({
@@ -749,6 +1086,7 @@ export const decisionsInboxService = {
         resolvedBy: "founder",
         updatedAt: new Date(),
         ...(chosenOptionText ? { founderOverrideAction: chosenOptionText } : {}),
+        ...(reasonText ? { founderModification: reasonText } : {}),
       })
       .where(eq(decisionsInboxItems.id, itemId));
 
@@ -806,36 +1144,60 @@ export const decisionsInboxService = {
       // Horizon A2 — the autopilot's request to widen its own authority;
       // Solene owns it (Sovereign Principle 10: only the founder's tap grants).
       shadow_promotion_request: "solene",
+      // F2 mirror cards — owned by the agents whose deep surfaces they
+      // mirror: Quinn (Chief of Alignment) reviews appeals, Rafe (CCO) owns
+      // the recourse loop. Both are canonical roster codenames
+      // (shared/schema/agent-codenames.ts).
+      appeal_review: "quinn",
+      recourse_draft: "rafe",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },
 
+  /**
+   * F2 reasons-on-disposition: `reason` keeps its legacy write into
+   * founderOverrideAction (every learning-loop reader keys on that column)
+   * AND lands normalized in founderModification — the one column every
+   * disposition verb now writes its reason to.
+   */
   async reject(itemId: number, reason?: string): Promise<void> {
+    await this.refuseIfMirror(itemId, "reject");
+    const reasonText = normalizeDispositionReason(reason);
     await db.update(decisionsInboxItems)
       .set({
         status: "rejected",
         resolvedAt: new Date(),
         resolvedBy: "founder",
         founderOverrideAction: reason,
+        ...(reasonText ? { founderModification: reasonText } : {}),
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, itemId));
   },
 
-  async defer(itemId: number, hours = 24): Promise<void> {
+  async defer(itemId: number, hours = 24, reason?: string): Promise<void> {
+    const reasonText = normalizeDispositionReason(reason);
     const deferredUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
     await db.update(decisionsInboxItems)
-      .set({ status: "deferred", deferredUntil, updatedAt: new Date() })
+      .set({
+        status: "deferred",
+        deferredUntil,
+        ...(reasonText ? { founderModification: reasonText } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(decisionsInboxItems.id, itemId));
   },
 
-  async override(itemId: number, customAction: string): Promise<void> {
+  async override(itemId: number, customAction: string, reason?: string): Promise<void> {
+    await this.refuseIfMirror(itemId, "override");
+    const reasonText = normalizeDispositionReason(reason);
     await db.update(decisionsInboxItems)
       .set({
         status: "approved",
         resolvedAt: new Date(),
         resolvedBy: "founder",
         founderOverrideAction: customAction,
+        ...(reasonText ? { founderModification: reasonText } : {}),
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, itemId));

@@ -41,7 +41,7 @@ interface ControlData {
 
 function levelTone(level: string): string {
   return level === "autonomous_gated"
-    ? "text-acr-success"
+    ? "text-acr-pos"
     : level === "execute_gated"
       ? "text-primary"
       : level === "draft"
@@ -51,7 +51,7 @@ function levelTone(level: string): string {
 
 function levelBarTone(level: string): string {
   return level === "autonomous_gated"
-    ? "bg-acr-success"
+    ? "bg-acr-pos"
     : level === "execute_gated"
       ? "bg-primary"
       : level === "draft"

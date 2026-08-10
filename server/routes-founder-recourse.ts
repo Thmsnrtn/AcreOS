@@ -340,6 +340,28 @@ export function registerFounderRecourseRoutes(app: Express): void {
           },
         });
 
+        // F2 (one decision queue) — the founder just disposed this draft on
+        // the deep surface; its mirror card on the decisions door resolves
+        // itself. The sent body is customer content and stays in this ledger
+        // — only the disposition line travels. Best-effort: never fail the
+        // send on it.
+        try {
+          const { decisionsInboxService } = await import("./services/decisionsInbox");
+          await decisionsInboxService.resolveMirrorItem({
+            itemType: "recourse_draft",
+            sourceId: id,
+            status: "approved",
+            detail: `Reply sent from the Recourse queue (email ${emailStatus}).`,
+          });
+        } catch (mirrorErr) {
+          logger.warn("[founder-recourse] decisions-door mirror resolve failed (non-blocking)", {
+            metadata: {
+              draftId: id,
+              error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr),
+            },
+          });
+        }
+
         return res.json({
           draft: { id, status: "sent", sentAt },
           notification: { emailStatus },
@@ -362,6 +384,14 @@ export function registerFounderRecourseRoutes(app: Express): void {
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "draft id must be a positive integer");
       }
+
+      // F2 reasons-on-disposition — optional one-line reason for dropping
+      // the draft (e.g. "already handled by phone"). Recorded on the mirror
+      // card's founderModification (the decisions ledger is where disposition
+      // reasons live; recourse_drafts itself has no reason column and gains
+      // none — no schema surgery in this slice).
+      const dismissReason =
+        typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 2000) : "";
 
       try {
         const [row] = await db
@@ -387,6 +417,26 @@ export function registerFounderRecourseRoutes(app: Express): void {
               inArray(recourseDrafts.status, ["draft"]),
             ),
           );
+
+        // F2 — resolve the decisions-door mirror card (best-effort).
+        try {
+          const { decisionsInboxService } = await import("./services/decisionsInbox");
+          await decisionsInboxService.resolveMirrorItem({
+            itemType: "recourse_draft",
+            sourceId: id,
+            status: "rejected",
+            detail: dismissReason
+              ? `Dismissed from the Recourse queue — ${dismissReason}`
+              : "Dismissed from the Recourse queue without sending.",
+          });
+        } catch (mirrorErr) {
+          logger.warn("[founder-recourse] decisions-door mirror resolve failed (non-blocking)", {
+            metadata: {
+              draftId: id,
+              error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr),
+            },
+          });
+        }
 
         return res.json({ draft: { id, status: "dismissed" } });
       } catch (err) {

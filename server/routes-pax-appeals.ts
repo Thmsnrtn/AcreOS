@@ -225,6 +225,22 @@ export function registerPaxAppealRoutes(app: Express): void {
           },
         });
 
+        // F2 (one decision queue) — mirror the appeal into the founder's
+        // decisions door as an appeal_review card linking back here. Strictly
+        // best-effort: a mirror failure must never fail the customer's filing
+        // (the deep queue at /founder/appeals remains the system of record).
+        try {
+          const { decisionsInboxService } = await import("./services/decisionsInbox");
+          await decisionsInboxService.createFromAppeal(appeal.id);
+        } catch (mirrorErr) {
+          logger.warn("[pax-appeals] decisions-door mirror failed (non-blocking)", {
+            metadata: {
+              appealId: appeal.id,
+              error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr),
+            },
+          });
+        }
+
         return res.status(201).json({
           appeal: {
             id: appeal.id,

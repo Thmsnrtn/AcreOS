@@ -142,7 +142,9 @@ describe("autopilot-control.tsx — 'Safety net outside the app' section", () =>
     expect(section.match(/Can't verify from here/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(section).toContain("step-away readiness");
     // …and the section contains no success styling and no armed claim at all.
-    expect(section).not.toContain("acr-success");
+    // (acr-pos is the system's green token; the dead acr-success alias was
+    // swept repo-wide in the 2026-08 dead-token sweep.)
+    expect(section).not.toContain("acr-pos");
     expect(section).not.toMatch(/status.*armed|"Armed"|>Armed</i);
     // The indicator dot is amber, unconditionally (no ternary picking a color).
     expect(section).toContain('rounded-full bg-acr-warn"');

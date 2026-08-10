@@ -303,7 +303,26 @@ export async function aggregateRecourseSignals(
         })
         .returning({ id: recourseDrafts.id });
 
-      if (result.length > 0) inserted += 1;
+      if (result.length > 0) {
+        inserted += 1;
+        // F2 (one decision queue) — a NEW draft mirrors into the founder's
+        // decisions door as a recourse_draft card linking back to
+        // /founder/recourse. Best-effort: the sweep's job is the ledger row;
+        // a mirror failure must never fail (or double-count) the aggregation.
+        // The onConflictDoNothing guard above means this only fires for
+        // genuinely new signals, so re-running the sweep never re-mirrors.
+        try {
+          const { decisionsInboxService } = await import("./decisionsInbox");
+          await decisionsInboxService.createFromRecourseDraft(result[0].id);
+        } catch (mirrorErr) {
+          logger.warn("[recourse] decisions-door mirror failed (non-blocking)", {
+            metadata: {
+              draftId: result[0].id,
+              error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr),
+            },
+          });
+        }
+      }
     } catch (err) {
       logger.warn("[recourse] failed to persist a recourse signal", {
         metadata: {

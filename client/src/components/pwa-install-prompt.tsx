@@ -245,7 +245,7 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 function Benefit({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2 text-xs text-muted-foreground">
-      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-acr-success" aria-hidden="true" />
+      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-acr-pos" aria-hidden="true" />
       <span>{children}</span>
     </li>
   );

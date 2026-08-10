@@ -83,7 +83,7 @@ const STAGE_LINE: Record<RungStage, string> = {
 
 /** Never green unless the server measured it green. */
 const STATE_META: Record<RungState, { label: string; tone: string; dot: string; icon: typeof CheckCircle2 }> = {
-  done: { label: "Done", tone: "text-acr-success", dot: "bg-acr-success", icon: CheckCircle2 },
+  done: { label: "Done", tone: "text-acr-pos", dot: "bg-acr-pos", icon: CheckCircle2 },
   not_done: { label: "Not done", tone: "text-acr-warn", dot: "bg-acr-warn", icon: AlertCircle },
   blocked: { label: "Needs an earlier rung", tone: "text-muted-foreground", dot: "bg-muted-foreground/50", icon: Lock },
   unverifiable: { label: "Can't verify", tone: "text-acr-warn", dot: "bg-acr-warn", icon: HelpCircle },
@@ -193,8 +193,8 @@ export function ReadinessLadderSection() {
               <p className="mt-0.5 text-xs text-muted-foreground">{d.nextStep.action}</p>
             </div>
           ) : d.complete ? (
-            <div className="flex items-start gap-2 rounded-card border border-acr-success/40 bg-acr-success/5 p-3" data-testid="ladder-complete">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-acr-success" aria-hidden="true" />
+            <div className="flex items-start gap-2 rounded-card border border-acr-pos/40 bg-acr-pos/5 p-3" data-testid="ladder-complete">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-acr-pos" aria-hidden="true" />
               <p className="text-sm text-foreground">
                 Setup is finished — all {d.totalCount} rungs verified. This section has nothing left to ask you for.
               </p>
@@ -289,7 +289,7 @@ export function ReadinessLadderSection() {
               <ul className="mt-1 space-y-0.5">
                 {d.operating.map((line) => (
                   <li key={line} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <CircleDot className="mt-0.5 h-3 w-3 shrink-0 text-acr-success" aria-hidden="true" />
+                    <CircleDot className="mt-0.5 h-3 w-3 shrink-0 text-acr-pos" aria-hidden="true" />
                     <span>{line}</span>
                   </li>
                 ))}
@@ -339,7 +339,7 @@ export function ReadinessLadderSection() {
                 <ul className="mt-1 space-y-1" data-testid="ladder-history">
                   {d.completed.map((c) => (
                     <li key={c.key} className="flex items-start gap-1.5">
-                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-acr-success" aria-hidden="true" />
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-acr-pos" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block text-xs font-medium text-foreground">{c.title}</span>
                         <span className="block text-micro text-muted-foreground">{c.evidence}</span>

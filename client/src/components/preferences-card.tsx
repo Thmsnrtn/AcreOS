@@ -90,7 +90,7 @@ export function PreferencesCard() {
                 </p>
               </div>
               {isInstalled ? (
-                <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-acr-success">
+                <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-acr-pos">
                   <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                   Installed
                 </span>

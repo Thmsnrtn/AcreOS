@@ -65,6 +65,12 @@ describe("doNothingContract — every known class has a sentence", () => {
       "dunning_recovery",
       "critical_alert",
       "feature_request_flagged",
+      // F2 mirror cards (2026-08-10) — behavior verified against
+      // routes-founder-appeals.ts (sole terminal writer; appeals never
+      // expire) and routes-founder-recourse.ts (drafts sent/dismissed only
+      // by founder routes; never expire).
+      "appeal_review",
+      "recourse_draft",
     ]) {
       expect(KNOWN_TYPES).toContain(t);
     }
@@ -132,6 +138,23 @@ describe("doNothingContract — load-bearing truths per class", () => {
     expect(s).toContain(`${FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS} hours`);
   });
 
+  it("F2 mirror cards: the deep queue is the truth — the card only mirrors it", () => {
+    // appeal_review — routes-founder-appeals.ts is the ONLY writer of a
+    // terminal appeal status; nothing rules automatically and appeals never
+    // expire, so an unanswered card leaves the refusal standing.
+    const appeal = doNothingContract("appeal_review");
+    expect(appeal).toContain("stays open");
+    expect(appeal).toContain("the refusal stands");
+    expect(appeal).toContain("clears itself");
+    // recourse_draft — drafts are sent/dismissed only by the founder routes;
+    // they never send themselves. The executor caveat may clear the CARD,
+    // never send the reply.
+    const recourse = doNothingContract("recourse_draft");
+    expect(recourse).toContain("no reply goes to the customer");
+    expect(recourse).toContain("never send themselves");
+    expect(recourse).toContain("can never send the reply");
+  });
+
   it("executor-eligible classes are honest about the opt-in autonomous executor", () => {
     // runAutonomousDecisionExecutor scans ALL pending items when the founder
     // has set AUTONOMOUS_EXECUTOR_ENABLED=true, so these sentences must not
@@ -142,6 +165,9 @@ describe("doNothingContract — load-bearing truths per class", () => {
       "dunning_recovery",
       "critical_alert",
       "feature_request_flagged",
+      // F2 mirror cards are pending inbox rows too — same honesty required.
+      "appeal_review",
+      "recourse_draft",
     ]) {
       const s = doNothingContract(t);
       expect(s).toContain("autonomous executor");

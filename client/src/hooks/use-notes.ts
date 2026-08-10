@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type InsertNote } from "@shared/routes";
+import { invalidateRelated } from "@/lib/query-keys";
 
 export function useNotes() {
   return useQuery({
@@ -55,8 +56,10 @@ export function useCreateNote() {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
+      // Registry fan-out (P1 §2.1): notes feed the Today door's cash strip
+      // via the consolidated /api/today payload — RELATED["note"] in
+      // lib/query-keys.ts owns the list (notes list, checklist, Today).
+      invalidateRelated("note", queryClient);
     },
   });
 }
@@ -72,7 +75,8 @@ export function useDeleteNote() {
       if (!res.ok) throw new Error("Failed to delete note");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });
+      // Registry fan-out (P1 §2.1) — see useCreateNote.
+      invalidateRelated("note", queryClient);
     },
   });
 }

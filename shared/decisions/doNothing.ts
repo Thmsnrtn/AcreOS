@@ -100,6 +100,30 @@ export const DO_NOTHING_CONTRACTS: Record<string, string> = {
 
   feature_request_flagged:
     `If you never answer: nothing is built or scheduled — this card waits. ${EXECUTOR_CAVEAT}`,
+
+  // F2 mirror cards — verified sources:
+  //   appeal_review — server/routes-founder-appeals.ts is the ONLY writer of
+  //     a terminal appeal status (upheld/reversed); appeals never expire and
+  //     nothing rules on them automatically. The card is a mirror
+  //     (decisionsInbox.createFromAppeal): the enabled-by-opt-in autonomous
+  //     executor could at most clear the CARD (it logs under Auto-handled);
+  //     the appeal row itself still waits on /founder/appeals.
+  //   recourse_draft — recourse_drafts rows are sent/dismissed ONLY by the
+  //     founder routes (routes-founder-recourse.ts); drafts never send
+  //     themselves and never expire. Same mirror caveat.
+  appeal_review:
+    "If you never answer: the customer's appeal stays open and the refusal stands — " +
+    "nothing rules on it for you, ever. This card mirrors the Appeals queue and clears " +
+    "itself when you rule there. If you've switched the autonomous executor on, it may " +
+    "clear this mirror card and log it under Auto-handled — but the appeal itself still " +
+    "waits for your verdict on the Appeals queue.",
+
+  recourse_draft:
+    "If you never answer: no reply goes to the customer — the drafted reply just waits " +
+    "on the Recourse queue (drafts never send themselves and never expire). This card " +
+    "mirrors that queue and clears itself when you send or dismiss there. If you've " +
+    "switched the autonomous executor on, it may clear this mirror card and log it under " +
+    "Auto-handled — but it can never send the reply.",
 };
 
 /**

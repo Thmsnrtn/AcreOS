@@ -123,7 +123,7 @@ const OUTCOME_META: Record<string, { icon: typeof CheckCircle2; tone: string; la
 };
 
 function voteBadge(vote: StoryEntry["vote"]) {
-  if (vote === "success") return <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">went well</Badge>;
+  if (vote === "success") return <Badge variant="outline" className="border-acr-pos/40 text-acr-pos text-xs">went well</Badge>;
   if (vote === "failure") return <Badge variant="outline" className="border-destructive/40 text-destructive text-xs">didn't land</Badge>;
   return null;
 }
@@ -250,7 +250,7 @@ function sourcingBadge(sourcing: string | undefined) {
   return (
     <Badge
       variant="outline"
-      className={`text-xs ${meta.strong ? "border-acr-success/40 text-acr-success" : "border-acr-warn/40 text-acr-warn"}`}
+      className={`text-xs ${meta.strong ? "border-acr-pos/40 text-acr-pos" : "border-acr-warn/40 text-acr-warn"}`}
     >
       {meta.label}
     </Badge>
@@ -276,7 +276,7 @@ function enforcementBadge(kind: string) {
   return (
     <Badge
       variant="outline"
-      className={`text-xs ${meta.strong ? "border-acr-success/40 text-acr-success" : "border-acr-warn/40 text-acr-warn"}`}
+      className={`text-xs ${meta.strong ? "border-acr-pos/40 text-acr-pos" : "border-acr-warn/40 text-acr-warn"}`}
     >
       {meta.label}
     </Badge>
@@ -435,7 +435,7 @@ function GovernanceSection() {
                         unreviewed
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">
+                      <Badge variant="outline" className="border-acr-pos/40 text-acr-pos text-xs">
                         {entry.reviewStatus.replace(/-/g, " ")}
                       </Badge>
                     )}

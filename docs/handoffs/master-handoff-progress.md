@@ -551,6 +551,43 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves F/1 — slice 5 (F2-s1 + W1.1 + dead-token sweep) — ✅ SHIPPED
+
+- **F2 slice 1 (one decision queue):** the two decision inflows living only
+  on deep surfaces — pax appeals awaiting verdict, recourse drafts — now
+  MIRROR into the decisions door as presence+link cards (adapter, not
+  migration: deep stores stay the system of record; cards carry
+  actionPayload:null, self-resolve when the deep surface disposes, never
+  double-list, never overwrite a resolved card). Reasons-on-disposition:
+  every door verb accepts an optional reason riding the existing
+  founder_modification column (no migration; legacy founderOverrideAction
+  semantics untouched — all 13 readers verified zero-diff).
+- **W1.1 (invalidation house pattern):** invalidation-registry (entity →
+  key families, every key DERIVED from real client usage — the test greps
+  the codebase and rejects invented keys), invalidateRelated helper adopted
+  at the top mutation sites, and useOptimisticCreate with the create-lead
+  exemplar — the Wave-1 exit line "create-lead visible on Today instantly"
+  is real (optimistic insert into flat/paginated/infinite caches, snapshot
+  rollback on error, temp-row reconcile on success).
+- **Dead-token sweep:** bg-acr-success (+ acr-error/danger/primary/info
+  aliases) resolved to NOTHING — green/red states rendered colorless in ~12
+  files and chartPalette referenced a nonexistent var (plus a real
+  hsl(var()) unwrap bug on raw-hex vars). Swept onto the REAL tokens with
+  every site read (no semantic flips); deadTokens.test.ts now parses the
+  tailwind acr group + CSS vars and fails CI on any future dead token.
+- **Verifier catches, both fixed centrally at the prescribed altitude:**
+  (1) the mirror-refusal guard was route-only — founder-chat's
+  approve_decision/reject_decision tools called the service directly and
+  could mark a mirror approved while the customer's real row stayed open;
+  the guard now lives IN the service verbs (MirrorDispositionError naming
+  the deep link; defer exempt; chat callers surface it as an honest tool
+  failure) with a derived pin. (2) useOptimisticCreate's insert
+  prefix-matched FOREIGN caches (a lead row landed in a score-history
+  array); inserts now require the exact key or a registered list-variant
+  marker, pinned with the audit's own reproduction case.
+- Gate manifest regenerated (token sweep touched an estate-pinned test).
+  No baselines moved; all three gates (check + test + build) green.
+
 ## Waves G/O/F + Wave 1 — slice 4 (G1.4 + O5-part + W1.6) — ✅ SHIPPED
 
 **Wave G's G1 is now COMPLETE** (G1.1–G1.4); G2/G3 wait on customers.
@@ -767,18 +804,19 @@ integration defects were all fixed centrally before commit:
   section above). Note for posterity: F3's gate-tamper watch flagged the
   slice's own estate edits on its first full-tree run — regenerated per its
   procedure, the mechanism works.
-- **Slice 3 SHIPPED at `f4bec05`** (G1.2 + G1.3 + X-B scaffold — section
-  above).
-- **In flight: FLEET 4** (workflow `wf_14319fc0-2fb`) building G1.4
-  (provable-claims registry rendered on /transparency + marketingClaims.test
-  over landing copy vs real caps — closes Wave G's G1), O5-part (severity
-  classes P0/P1/P2 replacing the flat SLA, escalations carrying the clock
-  into the founder queue, structural grounded-deflection constraint on the
-  support resolver), and Wave-1 1.6 (Pax tool dedupe with a derived
-  no-duplicate-verbs registry pin + per-context capability scoping at the
-  executive's tool-list builder — conservative: alias not delete,
-  behavior-preserving). Same integration protocol.
-- **After fleet 4:** F2 (one decision queue), Wave 1 remaining (1.1–1.5),
+- **Slice 3 SHIPPED at `f4bec05`**; **slice 4 SHIPPED at `670b1b7`** (G1
+  COMPLETE; sections above). Gate set is now check + test + **build** (slice
+  3 proved the narrower set can pass on a broken build). Every fleet phase
+  carries a fallback send_later timer (the silent-death lesson).
+- **In flight: FLEET 5** (workflow `wf_ae358df0-085`) building F2 slice 1
+  (two highest-value decision inflows merged into the decisions door +
+  reasons-on-disposition), W1.1 (invalidation registry + optimistic
+  create-lead exemplar toward the Wave-1 exit line), and the dead-token
+  sweep (bg-acr-success → acr-pos, ~12 files + derived deadTokens ratchet).
+  Same integration protocol; fallback timer armed.
+- **After fleet 5:** Wave 1 remaining (1.2 error states, 1.3 Today/Deals/
+  Inbox interactions, 1.4 EntityTable kit, 1.5 settings decomposition), F1
+  slice 3+, O4/O6/O7 buildable parts, X-A (now unblocked: Wave 0 ✓ + G1 ✓),
   then Wave 2 per §D. G2/G3 wait on customers; founder queue unchanged.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down

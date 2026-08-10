@@ -55,14 +55,19 @@ export const chartPaletteSet2 = [
 ] as const;
 
 // Semantic palette — when a chart represents canonical AcreOS concepts
-// (success / warn / danger), prefer these so the chart matches the rest of
+// (positive / warn / negative), prefer these so the chart matches the rest of
 // the UI. Pulled from acr-* design tokens at runtime via CSS variables.
+// NOTE: the --acr-* vars hold raw hex (see tailwind.config.ts acrToken), so
+// they must NOT be wrapped in hsl(); shadcn vars (--primary etc.) are HSL
+// triplets and DO need the hsl() wrapper.
 export const chartPaletteSemantic = {
   primary: "hsl(var(--primary))",
-  success: "hsl(var(--acr-success))",
-  warn: "hsl(var(--acr-warn))",
-  danger: "hsl(var(--acr-danger))",
-  info: "hsl(var(--acr-info))",
+  success: "var(--acr-pos)",
+  warn: "var(--acr-warn)",
+  danger: "var(--acr-neg)",
+  // There is no acr info token; the theme accent is the closest neutral-
+  // informational color in the system.
+  info: "var(--acr-accent)",
   muted: "hsl(var(--muted-foreground))",
 } as const;
 

@@ -68,7 +68,7 @@ const LEVEL_RANK: Record<string, number> = { observe: 0, draft: 1, execute_gated
 // Plain-language budget status — never render the raw "amber"/"red" token at a CEO.
 const BUDGET_WORD: Record<string, string> = { green: "on track", amber: "getting tight", red: "needs attention" };
 function levelTone(l: string) {
-  return l === "autonomous_gated" ? "text-acr-success" : l === "execute_gated" ? "text-primary" : l === "draft" ? "text-acr-warn" : "text-muted-foreground";
+  return l === "autonomous_gated" ? "text-acr-pos" : l === "execute_gated" ? "text-primary" : l === "draft" ? "text-acr-warn" : "text-muted-foreground";
 }
 function prettyDomain(d: string) { return d.charAt(0).toUpperCase() + d.slice(1); }
 
@@ -363,7 +363,7 @@ export default function FounderAutopilotControlPage() {
                   <CardContent className="p-4 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full ${live.data.lastTickAt ? "bg-acr-success" : "bg-muted-foreground"}`} aria-hidden="true" />
+                        <span className={`h-2 w-2 rounded-full ${live.data.lastTickAt ? "bg-acr-pos" : "bg-muted-foreground"}`} aria-hidden="true" />
                         <span className="text-sm font-semibold text-foreground">Live</span>
                       </div>
                       <span className="text-xs text-muted-foreground" data-testid="live-last-tick">
@@ -564,7 +564,7 @@ export default function FounderAutopilotControlPage() {
             {/* Real outcomes — attributed signups from published content */}
             <motion.section variants={staggerItem}>
               <div className="flex items-center gap-3 rounded-card border border-border bg-card p-4" data-testid="control-conversions">
-                <TrendingUp className={`h-5 w-5 shrink-0 ${(data.conversions?.totalSignups ?? 0) > 0 ? "text-acr-success" : "text-muted-foreground"}`} aria-hidden="true" />
+                <TrendingUp className={`h-5 w-5 shrink-0 ${(data.conversions?.totalSignups ?? 0) > 0 ? "text-acr-pos" : "text-muted-foreground"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground">
                     {(data.conversions?.totalSignups ?? 0) > 0 ? `${data.conversions!.totalSignups} signup${data.conversions!.totalSignups === 1 ? "" : "s"} from published content` : "No attributed signups yet"}
@@ -586,7 +586,7 @@ export default function FounderAutopilotControlPage() {
                     <p className="text-sm font-semibold text-foreground">
                       ${Math.round(data.budget.effectiveCapUsd)}/mo growth budget
                       {data.budget.effectiveCapUsd > data.budget.baseCapUsd && (
-                        <span className="ml-2 text-xs font-normal text-acr-success">ramped from ${Math.round(data.budget.baseCapUsd)}</span>
+                        <span className="ml-2 text-xs font-normal text-acr-pos">ramped from ${Math.round(data.budget.baseCapUsd)}</span>
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -703,16 +703,16 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
 }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <Card className={enabled ? "border-acr-success/40 bg-acr-success/5" : ""}>
+    <Card className={enabled ? "border-acr-pos/40 bg-acr-pos/5" : ""}>
       <CardContent className="p-5 space-y-3">
         <div className="flex items-start gap-3">
-          <div className={`rounded-card p-2 shrink-0 ${enabled ? "bg-acr-success/10" : "bg-muted"}`}>
-            <Icon className={`h-5 w-5 ${enabled ? "text-acr-success" : "text-muted-foreground"}`} aria-hidden="true" />
+          <div className={`rounded-card p-2 shrink-0 ${enabled ? "bg-acr-pos/10" : "bg-muted"}`}>
+            <Icon className={`h-5 w-5 ${enabled ? "text-acr-pos" : "text-muted-foreground"}`} aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-foreground">{title}</p>
-              <Badge variant="outline" className={`text-xs ${enabled ? "border-acr-success/40 text-acr-success" : "text-muted-foreground"}`}>{enabled ? "On" : "Off"}</Badge>
+              <Badge variant="outline" className={`text-xs ${enabled ? "border-acr-pos/40 text-acr-pos" : "text-muted-foreground"}`}>{enabled ? "On" : "Off"}</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>
           </div>
@@ -837,9 +837,9 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
             {preflight.data.items.map((item) => (
               <li key={item.label} className="py-2 space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${item.ok ? "bg-acr-success" : "bg-acr-neg"}`} aria-hidden="true" />
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${item.ok ? "bg-acr-pos" : "bg-acr-neg"}`} aria-hidden="true" />
                   <span className="text-sm text-foreground">{item.label}</span>
-                  <span className={`ml-auto text-micro ${item.ok ? "text-acr-success" : "text-acr-neg"}`}>
+                  <span className={`ml-auto text-micro ${item.ok ? "text-acr-pos" : "text-acr-neg"}`}>
                     {item.ok ? "Clear" : "In the way"}
                   </span>
                 </div>
@@ -863,7 +863,7 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
                     <p className="text-xs text-muted-foreground">{step.line}</p>
                   </div>
                   {done ? (
-                    <Badge variant="outline" className="shrink-0 border-acr-success/40 text-acr-success text-micro">Done</Badge>
+                    <Badge variant="outline" className="shrink-0 border-acr-pos/40 text-acr-pos text-micro">Done</Badge>
                   ) : (
                     <Button
                       size="sm" variant={unlocked ? "default" : "outline"} className="min-h-[44px] shrink-0"
@@ -1349,7 +1349,7 @@ interface StepAwayData {
 const STEP_AWAY_KEY = ["/api/founder/autopilot/step-away"];
 
 function readinessTone(status: ReadinessCheck["status"]) {
-  return status === "ready" ? "text-acr-success" : status === "attention" ? "text-acr-neg" : "text-acr-warn";
+  return status === "ready" ? "text-acr-pos" : status === "attention" ? "text-acr-neg" : "text-acr-warn";
 }
 
 function StepAwaySection() {
@@ -1379,7 +1379,7 @@ function StepAwaySection() {
   const ready = d.verdict === "ready";
 
   return (
-    <Card className={ready ? "border-acr-success/40 bg-acr-success/5" : "border-acr-warn/40 bg-acr-warn/5"}>
+    <Card className={ready ? "border-acr-pos/40 bg-acr-pos/5" : "border-acr-warn/40 bg-acr-warn/5"}>
       <CardContent className="p-4 space-y-3">
         <button
           type="button"
@@ -1388,9 +1388,9 @@ function StepAwaySection() {
           aria-expanded={open}
           data-testid="step-away-toggle"
         >
-          <div className={`rounded-card p-2 shrink-0 ${ready ? "bg-acr-success/10" : "bg-acr-warn/10"}`}>
+          <div className={`rounded-card p-2 shrink-0 ${ready ? "bg-acr-pos/10" : "bg-acr-warn/10"}`}>
             {ready ? (
-              <ShieldCheck className="h-5 w-5 text-acr-success" aria-hidden="true" />
+              <ShieldCheck className="h-5 w-5 text-acr-pos" aria-hidden="true" />
             ) : (
               <AlertCircle className="h-5 w-5 text-acr-warn" aria-hidden="true" />
             )}
@@ -1418,7 +1418,7 @@ function StepAwaySection() {
             {d.checks.map((c) => (
               <li key={c.key} className="py-2 space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${c.status === "ready" ? "bg-acr-success" : c.status === "attention" ? "bg-acr-neg" : "bg-acr-warn"}`} aria-hidden="true" />
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${c.status === "ready" ? "bg-acr-pos" : c.status === "attention" ? "bg-acr-neg" : "bg-acr-warn"}`} aria-hidden="true" />
                   <span className="text-sm text-foreground">{c.title}</span>
                   {c.critical && c.status !== "ready" && (
                     <Badge variant="destructive" className="text-micro">blocks step-away</Badge>
@@ -1528,7 +1528,7 @@ function drDrillLine(d: DrDrillState): string {
 }
 
 const PROOF_DOT: Record<ProofTone, string> = {
-  ready: "bg-acr-success",
+  ready: "bg-acr-pos",
   warn: "bg-acr-warn",
   attention: "bg-acr-neg",
 };

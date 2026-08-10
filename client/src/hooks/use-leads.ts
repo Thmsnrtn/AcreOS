@@ -4,7 +4,8 @@ import { api, buildUrl, type InsertLead } from "@shared/routes";
 import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { useOptimisticCreate, useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { QK, invalidateRelated, relatedKeys } from "@/lib/query-keys";
 
 // Page size used when walking /api/leads/paginated to build the legacy
 // flat-list cache. Larger pages = fewer round-trips but bigger per-fetch
@@ -177,11 +178,24 @@ export function useLead(id: number) {
   });
 }
 
+/**
+ * HOUSE-PATTERN EXEMPLAR — optimistic CREATE (master-handoff P1 §2.1).
+ *
+ * The new lead appears at the head of every cached leads list the instant
+ * the user submits — including the "infinite-flat" cache that the Today
+ * door renders (today.tsx reads useLeads() for its activation/DriveMode
+ * surfaces), which is what makes "create a lead → see it on Today
+ * instantly" true. On response the temp row (negative id) is swapped for
+ * the server row; on failure it disappears with a toast.
+ *
+ * Honesty boundary: the optimistic row is the user's own input + client
+ * timestamps. The server-RANKED surfaces (the /api/today decision queue,
+ * Betty score, dashboards) are refetched via relatedKeys("lead") — we
+ * never fabricate a queue position or a score client-side.
+ */
 export function useCreateLead() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async (data: Omit<InsertLead, 'organizationId'>) => {
+  return useOptimisticCreate<Omit<InsertLead, "organizationId">>({
+    mutationFn: async (data) => {
       const res = await fetch(api.leads.create.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -197,35 +211,17 @@ export function useCreateLead() {
       }
       return api.leads.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
-      // F-D20: invalidate AND force refetch — the paginated list uses
-      // keepPreviousData, so a passive invalidation leaves the user staring
-      // at the old list (without their new lead) until the user navigates.
-      // refetchType: "active" forces an immediate refetch on any mounted
-      // query matching the prefix.
-      queryClient.invalidateQueries({
-        queryKey: [api.leads.list.path],
-        refetchType: "active",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
-      // Audit F-11-1 (completeness pass): the Today door reads /api/today and
-      // surfaces an unscored-lead nudge — a freshly created lead is exactly
-      // that, so the create path must invalidate it too (delete already did).
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
-      toast({
-        title: "Success",
-        description: "Lead created successfully.",
-      });
-    },
-    onError: (error) => {
-      const title = getErrorTitle(error);
-      const description = getErrorMessage(error);
-      toast({
-        title,
-        description,
-        variant: "destructive",
-      });
-    },
+    listKeys: [[api.leads.list.path]],
+    buildOptimisticRow: (data) => ({
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }),
+    // Registry fan-out (F-D20 refetchType:"active" on the list keys is
+    // handled inside the factory; the fan-out below refetches the Today
+    // door, dashboards, aging and the onboarding checklist).
+    extraInvalidateKeys: relatedKeys("lead"),
+    successToast: { title: "Success", description: "Lead created successfully." },
   });
 }
 
@@ -247,9 +243,10 @@ export function useUpdateLead() {
       return api.leads.update.responses[200].parse(await res.json());
     },
     listKeys: [[api.leads.list.path]],
-    // Audit F-11-1 (completeness pass): a status/score change moves the lead
-    // in the Today door's priority feed — invalidate /api/today too.
-    extraInvalidateKeys: [["/api/today"]],
+    // Registry fan-out (P1 §2.1): a status/score change moves the lead in
+    // the Today door's feed, the dashboards and the aging chart — the
+    // RELATED["lead"] entry in lib/query-keys.ts owns that list.
+    extraInvalidateKeys: relatedKeys("lead"),
     detailKey: ({ id }) => [api.leads.get.path, id],
     getId: ({ id }) => id,
     successToast: { title: "Success", description: "Lead updated successfully." },
@@ -269,21 +266,14 @@ export function useDeleteLead() {
       return id;
     },
     onSuccess: (_data, id) => {
-      // Invalidate every consumer that displays lead counts or lists. The
-      // /leads list refreshing alone isn't enough — /today's overdue tile,
-      // /today's decision queue, the leads-aging chart, and the dashboard
-      // KPI strip all derive from separate queries. Without these the
-      // founder sees the deleted lead persist in the dashboard count
-      // (caught 2026-05-12: "I deleted 17 sample leads, they never
-      // disappeared from the dashboard").
-      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-      // Audit F-11-1: the Today door reads /api/today (not today-priorities);
-      // without this the primary customer door goes stale after a mutation.
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
+      // Registry fan-out (P1 §2.1) — every consumer that displays lead
+      // counts or lists: /today's consolidated payload + priorities, the
+      // dashboard KPI strip/intelligence, the leads-aging chart, the
+      // onboarding checklist. The RELATED["lead"] entry in
+      // lib/query-keys.ts owns the list (born from the 2026-05-12 bug
+      // "I deleted 17 sample leads, they never disappeared from the
+      // dashboard" — this hook's hand-rolled fan-out is now centralized).
+      invalidateRelated("lead", queryClient);
       queryClient.removeQueries({ queryKey: [api.leads.get.path, id] });
       toast({
         title: "Lead deleted",
@@ -293,12 +283,7 @@ export function useDeleteLead() {
           onClick: async () => {
             try {
               await fetch(`/api/leads/${id}/restore`, { method: "PATCH", credentials: "include" });
-              queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
-              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
-              queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-              queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1
-              queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
+              invalidateRelated("lead", queryClient);
             } catch { /* ignore */ }
           },
         }, "Undo") as any,
@@ -336,9 +321,11 @@ export function useRescoreLead() {
       return res.json();
     },
     onSuccess: (_data, leadId) => {
-      queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      // Registry fan-out (P1 §2.1): a rescore moves the lead in the Today
+      // feed + dashboards, not just the list — plus the per-lead caches.
+      invalidateRelated("lead", queryClient);
       queryClient.invalidateQueries({ queryKey: [api.leads.get.path, leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "score-history"] });
+      queryClient.invalidateQueries({ queryKey: QK.leads.scoreHistory(leadId) });
       toast({
         title: "Lead rescored",
         description: "The lead score has been updated.",

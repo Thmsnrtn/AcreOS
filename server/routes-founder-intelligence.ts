@@ -32,7 +32,12 @@ import {
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne, isNull } from "drizzle-orm";
 import { isFounderIdentity } from "./services/founder";
-import { decisionsInboxService } from "./services/decisionsInbox";
+import {
+  decisionsInboxService,
+  isMirroredQueueItemType,
+  MIRRORED_QUEUE_ITEM_TYPES,
+  normalizeDispositionReason,
+} from "./services/decisionsInbox";
 import { founderDigestService } from "./services/founderDigest";
 import { companyAgentService } from "./services/companyAgents";
 import { agentCommsService } from "./services/agentComms";
@@ -1186,10 +1191,35 @@ function resolveChosenOption(
   return opt && typeof opt.label === "string" ? (opt as DecisionCardOption) : null;
 }
 
+/**
+ * F2 (one decision queue) — mirror cards (appeal_review / recourse_draft)
+ * carry no executable disposition on the door: the full disposition form
+ * (verdict + rationale + customer message; edit-and-send) lives on the deep
+ * surface, and the card resolves ITSELF when the deep surface disposes the
+ * source row. The generic approve/reject/override verbs refuse them with a
+ * pointer instead of silently hiding a waiting customer. Defer stays allowed
+ * (snoozing the card never touches the deep queue).
+ */
+function refuseMirrorDisposition(
+  res: Response,
+  itemType: string,
+): ReturnType<typeof Errors.badRequest> {
+  const meta = MIRRORED_QUEUE_ITEM_TYPES[itemType as keyof typeof MIRRORED_QUEUE_ITEM_TYPES];
+  return Errors.badRequest(
+    res,
+    `This card mirrors the ${meta.surfaceName} queue — resolve it there (${meta.deepLink}); the card clears itself when you do.`,
+    { deepLink: meta.deepLink },
+  );
+}
+
 router.post("/decisions-inbox/:id/approve", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    const { chosenOption } = req.body ?? {};
+    const { chosenOption, reason } = req.body ?? {};
+    // F2 reasons-on-disposition — optional founder one-liner, normalized once
+    // here and carried into the store (founderModification) + the precedent
+    // trainer below.
+    const reasonText = normalizeDispositionReason(reason);
 
     // Horizon A3 — letter-reply confirm cards resolve EXCLUSIVELY through
     // confirmLetterReply (witnessed admission: the tap on the shown-back
@@ -1200,6 +1230,10 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     // guard also covers option-less approves.
     let item: typeof decisionsInboxItems.$inferSelect | undefined =
       (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+    // F2 — mirror cards resolve only via their deep surface.
+    if (item && isMirroredQueueItemType(item.itemType)) {
+      return refuseMirrorDisposition(res, item.itemType);
+    }
     if (item?.itemType === "letter_reply_confirm") {
       if (chosenOption == null) {
         return Errors.badRequest(res, "Letter-reply cards resolve only via an explicit chosenOption");
@@ -1248,21 +1282,31 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     const result = await decisionsInboxService.approve(
       id,
       chosen ? `option:${chosen.key} — ${chosen.label}` : undefined,
+      reasonText,
     );
 
-    // Jarvis 2.3 precedent write-back — only when an explicit option was
-    // chosen (plain approvals carry no reusable rule; the service enforces
-    // admission either way). Fire-and-forget: the service is fail-open.
+    // Jarvis 2.3 precedent write-back — when an explicit option was chosen
+    // OR (F2) the founder typed a reason. Admission control stays entirely
+    // in the service: today it admits approvals only on an explicit option
+    // (a reasoned plain approval is offered to it but declined as
+    // not_a_reusable_rule — widening that policy is founderPrecedent's call,
+    // not this route's). The reason itself is durably captured in
+    // founderModification by the service either way (P6 §3's training
+    // signal). Fire-and-forget: the service is fail-open.
     // Outcome check-in answers are calibration ground truth, not reusable
     // rulings — they never become precedents. A2: promotion answers are the
     // founder ruling on the MACHINE's authority, not on a recommendation —
     // they feed the Trust Ledger exclusively, never precedents.
-    if (item && chosen && item.itemType !== "outcome_check_in" && item.itemType !== "shadow_promotion_request") {
+    if (item && (chosen || reasonText) && item.itemType !== "outcome_check_in" && item.itemType !== "shadow_promotion_request") {
       recordFounderPrecedent({
         itemId: id,
         itemType: item.itemType,
         question: `${item.sophieAnalysis} — recommended: ${item.recommendedActionLabel}`,
-        answer: { outcome: "approved", chosenOptionLabel: chosen.label },
+        answer: {
+          outcome: "approved",
+          ...(chosen ? { chosenOptionLabel: chosen.label } : {}),
+          ...(reasonText ? { reason: reasonText } : {}),
+        },
         organizationId: item.organizationId,
       }).catch(() => {});
     }
@@ -1281,6 +1325,12 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
     // Fetch the decision item before rejecting so we can learn from it.
     // (decisionsInboxService has no getById(); read the row directly.)
     const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
+    // F2 — mirror cards resolve only via their deep surface (a "decline"
+    // here would hide a waiting customer while the real queue stays open).
+    if (item && isMirroredQueueItemType(item.itemType)) {
+      return refuseMirrorDisposition(res, item.itemType);
+    }
 
     // Horizon A3 — a reject (swipe-left) on a letter-reply confirm card is a
     // discard: it resolves through confirmLetterReply's single implementation
@@ -1365,8 +1415,10 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
 router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    const { hours } = req.body;
-    await decisionsInboxService.defer(id, hours ?? 24);
+    // F2 reasons-on-disposition — snoozing is a disposition of attention too;
+    // the optional reason rides the same founderModification column.
+    const { hours, reason } = req.body ?? {};
+    await decisionsInboxService.defer(id, hours ?? 24, normalizeDispositionReason(reason));
     res.json({ success: true });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -1376,11 +1428,17 @@ router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, r
 router.post("/decisions-inbox/:id/override", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    const { customAction, chosenOption } = req.body ?? {};
+    const { customAction, chosenOption, reason } = req.body ?? {};
+    const reasonText = normalizeDispositionReason(reason);
 
     // Fetch the decision item before overriding so we can learn from it.
     // (decisionsInboxService has no getById(); read the row directly.)
     const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
+    // F2 — mirror cards resolve only via their deep surface.
+    if (item && isMirroredQueueItemType(item.itemType)) {
+      return refuseMirrorDisposition(res, item.itemType);
+    }
 
     // Horizon A3 — letter-reply confirm cards resolve EXCLUSIVELY through
     // confirmLetterReply (witnessed admission). SwipeDecisionCard posts
@@ -1433,7 +1491,7 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
       await applyPromotionAnswer({ item, optionKey: chosen.key });
     }
 
-    await decisionsInboxService.override(id, action);
+    await decisionsInboxService.override(id, action, reasonText);
 
     // v4: Learn from the override so agents improve over time. A check-in
     // answer is calibration ground truth, not an override of an agent
@@ -1463,7 +1521,9 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
         question: `${item.sophieAnalysis} — recommended: ${item.recommendedActionLabel}`,
         answer: {
           outcome: "override",
-          reason: typeof customAction === "string" ? customAction : undefined,
+          // F2: an explicit typed reason wins; the customAction text remains
+          // the fallback rationale exactly as before.
+          reason: reasonText ?? (typeof customAction === "string" ? customAction : undefined),
           chosenOptionLabel: chosen?.label,
         },
         organizationId: item.organizationId,

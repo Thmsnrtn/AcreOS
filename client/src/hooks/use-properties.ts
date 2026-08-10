@@ -4,6 +4,7 @@ import { z } from "zod";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { invalidateRelated } from "@/lib/query-keys";
 
 export interface PaginatedPropertiesResponse {
   data: any[];
@@ -72,13 +73,10 @@ export function useCreateProperty() {
       return api.properties.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
-      // Onboarding checklist's "Add first property" tile derives from the
-      // checklist-status endpoint. Lead + deal create already invalidate
-      // it; property create did not, so the tile never ticked after
-      // the user added their first property.
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key (create parity with delete)
+      // Registry fan-out (P1 §2.1): list + dashboards + Today door +
+      // onboarding checklist ("Add first property" tile) — RELATED
+      // ["property"] in lib/query-keys.ts owns the consumer list.
+      invalidateRelated("property", queryClient);
       toast({
         title: "Success",
         description: "Property created successfully.",
@@ -135,10 +133,9 @@ export function useDeleteProperty() {
       return { snapshots };
     },
     onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key
+      // Registry fan-out (P1 §2.1) — RELATED["property"] in
+      // lib/query-keys.ts (list, dashboards, Today door, checklist).
+      invalidateRelated("property", queryClient);
       queryClient.removeQueries({ queryKey: [api.properties.get.path, id] });
       toast({
         title: "Success",

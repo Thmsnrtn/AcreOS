@@ -168,7 +168,7 @@ function AiCostCeilingTile() {
     ? "bg-destructive"
     : data.aboveAlert
       ? "bg-acr-warn"
-      : "bg-acr-success";
+      : "bg-acr-pos";
   const statusLabel = data.atCeiling
     ? "At ceiling"
     : data.aboveAlert
@@ -216,7 +216,7 @@ function AiCostCeilingTile() {
                 ? "text-destructive"
                 : data.aboveAlert
                   ? "text-acr-warn"
-                  : "text-acr-success",
+                  : "text-acr-pos",
             )}
           >
             {statusLabel}

@@ -392,10 +392,11 @@ describe("obligations year view (client mirror)", () => {
 
   it("the year view never claims green — past-due renders as attention, not done", () => {
     // Source pin on the honesty rule: the row dot is amber or negative-toned,
-    // never the success token.
+    // never the success token (acr-pos — the dead acr-success alias was swept
+    // repo-wide in the 2026-08 dead-token sweep).
     const section = pageSrc.slice(pageSrc.indexOf("function ObligationsYearSection"));
     const body = section.slice(0, section.indexOf("\n}\n"));
-    expect(body).not.toContain("bg-acr-success");
+    expect(body).not.toContain("bg-acr-pos");
     expect(body).toContain("bg-acr-warn");
     expect(body).toContain("bg-acr-neg");
   });

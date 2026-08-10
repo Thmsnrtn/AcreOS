@@ -252,6 +252,28 @@ export function registerFounderAppealRoutes(app: Express): void {
           },
         });
 
+        // F2 (one decision queue) — the founder just disposed this appeal on
+        // the deep surface, so its mirror card on the decisions door resolves
+        // itself, carrying the verdict + rationale as the disposition reason
+        // (reviewNotes is the founder's own required rationale — the P6 §3
+        // training signal). Best-effort: never fail the verdict on it.
+        try {
+          const { decisionsInboxService } = await import("./services/decisionsInbox");
+          await decisionsInboxService.resolveMirrorItem({
+            itemType: "appeal_review",
+            sourceId: id,
+            status: "approved",
+            detail: `Resolved on the Appeals queue — verdict: ${decision}. ${reviewNotes}`,
+          });
+        } catch (mirrorErr) {
+          logger.warn("[founder-appeals] decisions-door mirror resolve failed (non-blocking)", {
+            metadata: {
+              appealId: id,
+              error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr),
+            },
+          });
+        }
+
         // Close the loop back to the customer — email is best-effort and must
         // never fail the resolution (the in-thread customerMessage is the
         // canonical record; the email is the courtesy nudge).

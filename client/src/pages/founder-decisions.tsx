@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AGENT_FRIENDLY_NAMES,
   AGENT_ROLES,
@@ -184,6 +185,19 @@ function readShadowPromotion(bundle: Record<string, unknown> | null): ShadowProm
   return sp as ShadowPromotionEvidence;
 }
 
+// F2 mirror cards (appeal_review / recourse_draft) carry a link back to their
+// deep surface in contextBundle.deepLink. Only internal founder paths are ever
+// rendered as links — anything else is ignored (the bundle is data, not nav).
+function readDeepLink(
+  bundle: Record<string, unknown> | null,
+): { href: string; label: string } | null {
+  const href = (bundle as { deepLink?: unknown } | null)?.deepLink;
+  if (typeof href !== "string" || !href.startsWith("/founder/")) return null;
+  const rawLabel = (bundle as { deepLinkLabel?: unknown } | null)?.deepLinkLabel;
+  const label = typeof rawLabel === "string" && rawLabel.trim() ? rawLabel : "Open the source queue";
+  return { href, label };
+}
+
 // ───────────── Row component ─────────────
 
 function DecisionRowCard({
@@ -203,7 +217,7 @@ function DecisionRowCard({
   /** Needs-you bucket: render the card's option buttons inline so the row
    * is actually answerable (the swipe surface is unmounted dead code). */
   answerable?: boolean;
-  onAnswer?: (id: number, optionKey: string) => void;
+  onAnswer?: (id: number, optionKey: string, reason?: string) => void;
   answerInFlight?: number | null;
   highlighted?: boolean;
 }) {
@@ -211,8 +225,13 @@ function DecisionRowCard({
   // Two-tap arming for the promotion grant button — first tap arms, second
   // tap confirms. Widening the machine's authority must never be a mis-tap.
   const [armedOption, setArmedOption] = useState<string | null>(null);
+  // F2 reasons-on-disposition — optional one-line reason that rides the
+  // answer POST (the server stores it in founderModification; it is the
+  // training signal the learning loop consumes).
+  const [reasonText, setReasonText] = useState("");
   const options = answerable ? readOptions(row.contextBundle) : [];
   const shadowPromotion = readShadowPromotion(row.contextBundle);
+  const deepLink = answerable ? readDeepLink(row.contextBundle) : null;
   const isPromotionCard = row.itemType === "shadow_promotion_request";
   const answering = answerInFlight === row.id;
 
@@ -235,7 +254,7 @@ function DecisionRowCard({
       return;
     }
     setArmedOption(null);
-    onAnswer(row.id, opt.key);
+    onAnswer(row.id, opt.key, reasonText.trim() ? reasonText.trim() : undefined);
   };
 
   return (
@@ -341,6 +360,42 @@ function DecisionRowCard({
               This widens the system's authority — tap the button again to confirm, or tap another option to cancel.
             </p>
           )}
+          {/* F2 reasons-on-disposition — optional, one line, rides the tap. */}
+          <div>
+            <label
+              htmlFor={`decision-reason-${row.id}`}
+              className="text-micro text-muted-foreground"
+            >
+              Why? Optional, one line — your reason teaches the machine.
+            </label>
+            <Textarea
+              id={`decision-reason-${row.id}`}
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              placeholder="e.g. Billing asks from annual-plan customers always get a call first"
+              className="mt-1 text-sm"
+              data-testid={`decision-reason-${row.id}`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* F2 mirror cards (appeal_review / recourse_draft) — the disposition
+          form lives on the deep surface; the card links straight to it and
+          clears itself once the source row is disposed there. */}
+      {answerable && deepLink && (
+        <div className="mt-3">
+          <Button asChild className="w-full min-h-11 justify-center">
+            <PrefetchLink
+              href={deepLink.href}
+              aria-label={deepLink.label}
+              data-testid={`decision-deep-link-${row.id}`}
+            >
+              {deepLink.label} <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
+            </PrefetchLink>
+          </Button>
         </div>
       )}
 
@@ -897,10 +952,13 @@ export default function FounderDecisionsPage() {
   // server-side default action.
   const [answerInFlight, setAnswerInFlight] = useState<number | null>(null);
   const answerMut = useMutation({
-    mutationFn: async ({ id, optionKey }: { id: number; optionKey: string }) => {
+    mutationFn: async ({ id, optionKey, reason }: { id: number; optionKey: string; reason?: string }) => {
       setAnswerInFlight(id);
       await apiRequest("POST", `/api/founder/intelligence/decisions-inbox/${id}/approve`, {
         chosenOption: optionKey,
+        // F2 reasons-on-disposition — optional; the server normalizes and
+        // stores it in founderModification.
+        ...(reason ? { reason } : {}),
       });
     },
     onSuccess: () => {
@@ -1109,7 +1167,7 @@ export default function FounderDecisionsPage() {
                 onReverse={(id) => reverseMut.mutate(id)}
                 reverseInFlight={reverseInFlight}
                 answerable={activeBucket === "needsYou"}
-                onAnswer={(id, optionKey) => answerMut.mutate({ id, optionKey })}
+                onAnswer={(id, optionKey, reason) => answerMut.mutate({ id, optionKey, reason })}
                 answerInFlight={answerInFlight}
                 highlighted={row.id === deepLinkId}
               />

@@ -80,9 +80,9 @@ const FLOWS: Array<{
 function StatusBadge({ status }: { status: ImportJob["status"] }) {
   const variants: Record<ImportJob["status"], { label: string; cls: string; icon: React.ReactNode }> = {
     queued: { label: "Queued", cls: "bg-muted text-muted-foreground", icon: <Loader2 className="size-3 animate-spin" /> },
-    running: { label: "Running", cls: "bg-acr-primary/10 text-acr-primary", icon: <Loader2 className="size-3 animate-spin" /> },
-    completed: { label: "Done", cls: "bg-acr-success/10 text-acr-success", icon: <CheckCircle2 className="size-3" /> },
-    failed: { label: "Failed", cls: "bg-acr-error/10 text-acr-error", icon: <XCircle className="size-3" /> },
+    running: { label: "Running", cls: "bg-primary/10 text-primary", icon: <Loader2 className="size-3 animate-spin" /> },
+    completed: { label: "Done", cls: "bg-acr-pos/10 text-acr-pos", icon: <CheckCircle2 className="size-3" /> },
+    failed: { label: "Failed", cls: "bg-acr-neg/10 text-acr-neg", icon: <XCircle className="size-3" /> },
     cancelled: { label: "Cancelled", cls: "bg-muted text-muted-foreground", icon: <XCircle className="size-3" /> },
   };
   const v = variants[status];
@@ -164,7 +164,7 @@ export default function DataImportPage() {
               <Card key={flow.kind}>
                 <CardContent className="space-y-3 p-5">
                   <div className="flex items-center gap-3">
-                    <Icon className="size-5 text-acr-primary" aria-hidden="true" />
+                    <Icon className="size-5 text-primary" aria-hidden="true" />
                     <h3 className="text-base font-semibold">{flow.title}</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">{flow.description}</p>
@@ -264,7 +264,7 @@ export default function DataImportPage() {
                         </p>
                       )}
                       {job.status === "failed" && job.errorMessage && (
-                        <p className="mt-2 text-xs text-acr-error">{job.errorMessage}</p>
+                        <p className="mt-2 text-xs text-acr-neg">{job.errorMessage}</p>
                       )}
                     </li>
                   );

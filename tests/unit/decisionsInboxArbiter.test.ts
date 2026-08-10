@@ -9,6 +9,8 @@
  *   createFromAlert          riskLevel critical        → B
  *   createFromChurnRisk      riskLevel critical        → B
  *   createFromFeatureRequest priorityScore ≥80 (high)  → B ; medium → C
+ *   createFromAppeal         customer waiting on verdict → B   (F2 mirror)
+ *   createFromRecourseDraft  same-hour-reply doctrine    → B   (F2 mirror)
  *
  *   deliver  → status "pending"   (today's behavior)
  *   defer_*  → status "deferred"  + deferredUntil
@@ -139,6 +141,9 @@ vi.mock("../../server/db", () => {
       featureRequests: { findFirst: findFirstFor("featureRequests") },
       organizations: { findFirst: findFirstFor("organizations") },
       decisionsInboxItems: { findFirst: findFirstFor("decisionsInboxItems") },
+      paxDecisionAppeals: { findFirst: findFirstFor("paxDecisionAppeals") },
+      paxRefusalPayloads: { findFirst: findFirstFor("paxRefusalPayloads") },
+      recourseDrafts: { findFirst: findFirstFor("recourseDrafts") },
     },
     insert: (_t: any) => ({
       values: (row: Record<string, any>) => ({
@@ -183,6 +188,15 @@ beforeEach(() => {
     category: "data",
     organizationId: 7,
   };
+  // F2 mirror inflows (appeals + recourse drafts).
+  FIND_FIRST.paxDecisionAppeals = {
+    id: 41,
+    organizationId: 7,
+    refusalPayloadId: 9,
+    status: "open",
+  };
+  FIND_FIRST.paxRefusalPayloads = { id: 9, citedImmutableId: "IMM-3", severity: "warn" };
+  FIND_FIRST.recourseDrafts = { id: 61, organizationId: 7, signalType: "detractor_nps", status: "draft" };
 });
 
 describe("explicit class mapping per call site", () => {
@@ -218,6 +232,22 @@ describe("explicit class mapping per call site", () => {
 
     expect(ARBITER_CALLS[0].interruptClass).toBe("B");
     expect(INSERTED[0]).toMatchObject({ itemType: "churn_risk_intervention", status: "pending" });
+  });
+
+  it("createFromAppeal (F2 mirror): a customer waiting on a verdict → Class B", async () => {
+    await decisionsInboxService.createFromAppeal(41);
+
+    expect(ARBITER_CALLS).toEqual([
+      { source: "decisions_inbox", interruptClass: "B", channel: "inbox_pending_item" },
+    ]);
+    expect(INSERTED[0]).toMatchObject({ itemType: "appeal_review", status: "pending" });
+  });
+
+  it("createFromRecourseDraft (F2 mirror): the same-hour-reply doctrine → Class B", async () => {
+    await decisionsInboxService.createFromRecourseDraft(61);
+
+    expect(ARBITER_CALLS[0].interruptClass).toBe("B");
+    expect(INSERTED[0]).toMatchObject({ itemType: "recourse_draft", status: "pending" });
   });
 
   it("createFromFeatureRequest: priorityScore ≥ 80 → Class B; below → Class C", async () => {

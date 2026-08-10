@@ -3,6 +3,7 @@ import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { invalidateRelated, relatedKeys } from "@/lib/query-keys";
 import type { Deal, InsertDeal } from "@shared/schema";
 
 export interface PaginatedDealsResponse {
@@ -115,9 +116,9 @@ export function useCreateDeal() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key (create parity with delete)
+      // Registry fan-out (P1 §2.1): list + dashboards + Today door +
+      // onboarding checklist — RELATED["deal"] in lib/query-keys.ts.
+      invalidateRelated("deal", queryClient);
       toast({
         title: "Success",
         description: "Deal created successfully.",
@@ -145,7 +146,9 @@ export function useUpdateDeal() {
       return res.json();
     },
     listKeys: [["/api/deals"]],
-    extraInvalidateKeys: [["/api/today"]], // F-11-1: stage/status change moves the deal in the Today feed
+    // Registry fan-out (P1 §2.1): a stage/status change moves the deal in
+    // the Today feed and the dashboards — RELATED["deal"] owns the list.
+    extraInvalidateKeys: relatedKeys("deal"),
     detailKey: ({ id }) => ["/api/deals", id],
     getId: ({ id }) => id,
     successToast: { title: "Success", description: "Deal updated successfully." },
@@ -161,15 +164,12 @@ export function useDeleteDeal() {
       if (!res.ok) throw new Error(`${res.status}: Failed to delete deal`);
     },
     onSuccess: (_data, id) => {
-      // Mirrors the leads-delete fix (commit 26c20669). A bare /api/deals
-      // invalidation leaves dashboard widgets (stats, intelligence,
-      // today-priorities) holding stale rows, plus the per-deal detail
-      // cache still exists if the user navigates back to it.
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key
+      // Registry fan-out (P1 §2.1, mirrors the leads-delete fix, commit
+      // 26c20669): a bare /api/deals invalidation leaves dashboard widgets
+      // and the Today door holding stale rows — RELATED["deal"] in
+      // lib/query-keys.ts owns the full consumer list. The per-deal detail
+      // cache is removed so navigating back doesn't resurrect the row.
+      invalidateRelated("deal", queryClient);
       queryClient.removeQueries({ queryKey: ['/api/deals', id] });
       toast({
         title: "Success",
@@ -249,7 +249,9 @@ export function useBulkStageUpdate() {
     },
     onSuccess: (data) => {
       if ('success' in data && data.success) {
-        queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+        // Registry fan-out (P1 §2.1): a bulk stage move shifts pipeline
+        // aggregates, dashboards and the Today feed, not just the list.
+        invalidateRelated("deal", queryClient);
       }
     },
     onError: (error) => {
@@ -283,7 +285,10 @@ export function useAdvanceDealStage() {
       return res.json() as Promise<{ deal: import("@shared/schema").Deal; previousStatus: string; nextStatus: string }>;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      // Registry fan-out (P1 §2.1): the swipe-advance previously missed
+      // /api/today and the dashboards entirely — a stage change moves the
+      // deal in the Today feed, so it goes through RELATED["deal"] now.
+      invalidateRelated("deal", queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/deals", data.deal.id] });
       toast({
         title: "Stage advanced",
@@ -312,7 +317,9 @@ export function useBulkStageUndo() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      // Registry fan-out (P1 §2.1): the undo moves stages back, so the
+      // same consumers as the bulk update need refetching.
+      invalidateRelated("deal", queryClient);
       toast({
         title: "Success",
         description: "Stage changes have been undone.",
