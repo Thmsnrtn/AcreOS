@@ -551,11 +551,24 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
-## Next item up
+## Program state (Wave 0 → continuous execution)
 
-- **WAVE 0 COMPLETE** pending: (a) the 0.9 commit landing (gates + audit in
-  flight at the time of this write), and (b) the founder's 0.8 ruling (the
-  proposal is queued; its implementation is the one open Wave-0 build).
-- After Wave 0: Waves G / O / F may parallelize per §D. Next session should
-  resume from this file: run the 0.8 build if approved, then open the Wave-0
-  PR for founder review, then start Wave G/O/F premise verification.
+- **WAVE 0 COMPLETE** at `4602e15` (0.1–0.7 + 0.9 shipped; 0.8 proposed in
+  the founder queue). Every item carried full green gates + an independent
+  completeness audit; every audit finding was remediated or explicitly
+  ledgered.
+- **FOUNDER DIRECTIVE (2026-08-10, in-session): "Work continuously through
+  the entire handoff."** The program does not pause between waves. Standing
+  rules unchanged: premise-verify every brief at HEAD (repo wins), falsifiable
+  exit test per item, independent completeness audit before an item closes,
+  founder queue for send lanes / hard-stops / baseline raises / keyed-env
+  work, refuse-not-fabricate, doors fixed, D-4 (verticals are CORE).
+- **In flight:** Waves G/O/F premise-verification scouts (parallel, read-only)
+  covering G1, O1/O2-buildable/O3/O5-part, F1-first-slice/F3/F5. Execution
+  order will be chosen from their reports — expected: F3 (eternal-lines
+  ratchets, smallest trust-class item) → O1/O3 → G1 → Wave 1 (1.1–1.6) → then
+  the §D main line, with X-B (domain-truth inventory + enforcement scaffold,
+  "may start immediately") slotted alongside.
+- A session resuming from this file mid-program: read the newest wave section
+  below, finish its in-flight item with the same discipline, and continue down
+  the §D sequence. The founder queue is the only place items wait.
