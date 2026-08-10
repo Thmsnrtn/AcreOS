@@ -1164,7 +1164,7 @@ integration defects were all fixed centrally before commit:
   repeat resolutions surface a standing-order PROPOSAL, never an automatic
   policy write). Verifiers are briefed on the last two slices' blocking
   defects as the fabrication pattern to hunt. Fallback timer armed.
-- **Slice 9 SHIPPED** (O6 + O7 + S5 — section above). Three lanes, 3
+- **Slice 9 SHIPPED at `3f1d47a`** (O6 + O7 + S5 — section above). Three lanes, 3
   blocking + 10 should-fix, all fixed centrally and pinned. **The pattern,
   now three slices running: the defects that matter are surfaces asserting
   what the code has not established** — a public page claiming a review
@@ -1173,12 +1173,21 @@ integration defects were all fixed centrally before commit:
   verdict on months-old arithmetic. None are visible to typecheck, lint, or
   the lane's own suite. The adversarial audit is the only thing that finds
   them, which is why it is not optional.
-- **After fleet 9 → FLEET 10:** S5's emitter (derive two real charter
-  positions from live loop state and file the memo at the council seam —
-  deliberately deferred rather than faked), F1 slice 4+, X-A slice 2
-  (post-ruling), then Wave 2 per §D. G2/G3 wait on customers; founder
-  queue unchanged. S3 hands / promotion mechanics stay propose-first
-  per D-5.
+- **In flight: FLEET 10** (workflow `wf_2651deef-a09`) building S5's
+  EMITTER (the derivation slice 9 deferred: build both charter positions
+  from real move/charter/sense state, file at the council seam gated on
+  deliberated + contested, idempotent per fingerprint, and file NOTHING
+  when the top moves do not map to a registered contention), F1 slice 4
+  (next founder cluster; 48 routes, 44 top-level pages, /founder/admin
+  holds only costs+telemetry), and X-A slice 2 (abuse SIGNALS + a
+  founder trust panel labelled proposed-not-enforced — no cap enforced,
+  no automatic tier write, since the caps proposal is unruled). All three
+  verifiers are briefed on the three-slice fabrication pattern with the
+  five real examples. Fallback timer armed.
+- **After fleet 10:** Wave 2 per §D (Map M0/M1 + the license-aware egress
+  chokepoint), F2 slice 2 (remaining decision inflows), X-A slice 3
+  (post-ruling). G2/G3 wait on customers; founder queue unchanged. S3
+  hands / promotion mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
