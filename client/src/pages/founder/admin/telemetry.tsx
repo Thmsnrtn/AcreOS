@@ -13,7 +13,7 @@
  * palette and bookmarks can land directly on a sub-view; the retired paths
  * redirect here with the right tab via FOUNDER_LEGACY_REDIRECTS.
  */
-import { useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -37,12 +37,24 @@ const TABS = [
 export default function FounderAdminTelemetryPage() {
   useDocumentTitle("Telemetry & traces — AcreOS");
   const search = useSearch();
+  const [, navigate] = useLocation();
   const requested = new URLSearchParams(search).get("tab");
-  const initial = TABS.some((t) => t.value === requested) ? requested! : "observatory";
+  // URL-controlled for the same reason as the Controls hub: tab-pinned links
+  // to this SAME pathname (palette, pax-controls) must switch the visible tab
+  // even when the hub is already mounted (fleet-6 verifier catch).
+  const tab = TABS.some((t) => t.value === requested) ? requested! : "observatory";
 
   return (
     <PageShell label="Telemetry & traces">
-      <Tabs defaultValue={initial} className="w-full">
+      <Tabs
+        value={tab}
+        onValueChange={(v) =>
+          navigate(v === "observatory" ? "/founder/admin/telemetry" : `/founder/admin/telemetry?tab=${v}`, {
+            replace: true,
+          })
+        }
+        className="w-full"
+      >
         <TabsList className="mb-4 flex h-auto flex-wrap justify-start gap-1">
           {TABS.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="text-xs sm:text-sm">

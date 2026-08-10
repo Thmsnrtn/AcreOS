@@ -145,6 +145,15 @@ export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   "/founder/pax-traces": "/founder/admin/telemetry?tab=pax-traces",
   "/founder/pax-calibration": "/founder/admin/telemetry?tab=calibration",
   "/founder/event-log": "/founder/admin/telemetry?tab=events",
+  // ── F1 slice 3 (2026-08-10): P6 Controls-absorption cluster → the Controls
+  // door. Your Voice (standing orders), Launch readiness, Legal readiness,
+  // System keys and the Recovery console are tabs of
+  // /founder/autopilot/control now; each alias pins its tab.
+  "/founder/autopilot/voice": "/founder/autopilot/control?tab=voice",
+  "/founder/readiness": "/founder/autopilot/control?tab=readiness",
+  "/founder/legal-readiness": "/founder/autopilot/control?tab=legal",
+  "/founder/keys": "/founder/autopilot/control?tab=keys",
+  "/founder/recovery-console": "/founder/autopilot/control?tab=recovery",
 };
 
 /**

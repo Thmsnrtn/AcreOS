@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { QueryErrorState } from "@/components/query-error-state";
+import { StaleDataChip } from "@/lib/stale-while-error";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 import {
@@ -194,6 +195,7 @@ export default function TodayPage() {
     error: todayErrorObj,
     refetch: refetchToday,
     isRefetching: todayRefetching,
+    dataUpdatedAt: todayDataUpdatedAt,
   } = useQuery<TodayPayload>({
     queryKey: todayQueryKey,
     staleTime: 2 * 60 * 1000,
@@ -215,6 +217,16 @@ export default function TodayPage() {
   const decisionItems: DecisionItem[] = today?.queue ?? [];
   const decisionQueueLoading = todayLoading;
   const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
+
+  // ── Stale-while-error (Wave 1.2, lib/stale-while-error.tsx) ────────────
+  // A failed REFETCH over cached data must not blank the whole door: keep
+  // rendering the cached payload with the quiet stale chip. Only when
+  // nothing is cached (first visit + fetch failed) does the door fall to
+  // the full error card. `today` includes placeholderData borrowed from
+  // the previous visit's cache entry, which is exactly the data we want
+  // to keep showing.
+  const todayHardError = todayError && today === undefined;
+  const todayStaleError = todayError && today !== undefined;
 
   // ── Inline queue resolution (Maren CPO #2) ─────────────────────────────
   // The habit-loop core: resolve a Decision Queue item in place (Done /
@@ -680,7 +692,10 @@ export default function TodayPage() {
       )}
 
       {/* ── /api/today error: one merged fetch, one retry surface ────── */}
-      {!showEmptyState && todayError && (
+      {/* Hard error (nothing cached): the full error card replaces the
+          sections below. Stale error (refetch failed over cached data):
+          the quiet chip — the sections keep rendering the cached payload. */}
+      {!showEmptyState && todayHardError && (
         <QueryErrorState
           error={todayErrorObj instanceof Error ? todayErrorObj : null}
           onRetry={() => refetchToday()}
@@ -691,6 +706,14 @@ export default function TodayPage() {
           testId="today-query-error"
         />
       )}
+      {!showEmptyState && todayStaleError && (
+        <StaleDataChip
+          dataUpdatedAt={todayDataUpdatedAt}
+          onRetry={() => refetchToday()}
+          isRetrying={todayRefetching}
+          testId="today-stale-chip"
+        />
+      )}
 
       {/* ── "Heading out?" affordance (Hank) ──────────────────────────
           Surfaces Drive Mode at the moment of need rather than waiting
@@ -698,7 +721,7 @@ export default function TodayPage() {
           the morning brief because it's about the *next two hours*, not
           the *last twelve*. Conditions: weekday 6am–11am local AND at
           least one drive-mode lead captured in the last 14 days. */}
-      {!showEmptyState && !todayError && showHeadingOut && (
+      {!showEmptyState && !todayHardError && showHeadingOut && (
         <Card
           className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-1 mb-4"
           data-testid="card-heading-out"
@@ -744,13 +767,13 @@ export default function TodayPage() {
       {/* ── Morning brief — collapsed queue preamble (Tier 3C) ───────── */}
       {/* One-line disclosure directly above the queue, not a separate
           destination. Expands in place; Pax controls live behind it. */}
-      {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
+      {!showEmptyState && !todayHardError && <MorningBrief brief={today?.brief ?? null} />}
 
       {/* ── Receipts strip (Tier 3C) ─────────────────────────────────── */}
       {/* Completed events since the last visit, each traceable to real
           rows (pax_sends, completed payments). Renders nothing when there
           are none — no padding. */}
-      {!showEmptyState && !todayError && (
+      {!showEmptyState && !todayHardError && (
         <ReceiptsStrip receipts={today?.receipts ?? []} />
       )}
 
@@ -759,7 +782,7 @@ export default function TodayPage() {
           the owned tape (note investor), the origination pipeline (note
           originator), the servicing queue (note servicer), the redemption
           clock (tax-lien). Generic verticals render nothing here. */}
-      {!showEmptyState && !todayError && todayLayout.Lede && (
+      {!showEmptyState && !todayHardError && todayLayout.Lede && (
         <todayLayout.Lede
           data={{
             pendingPayments30: cash?.pendingPayments30 ?? 0,
@@ -771,7 +794,7 @@ export default function TodayPage() {
       )}
 
       {/* ── Section 2: Decision queue (merged) ───────────────────────── */}
-      {!showEmptyState && !todayError && (
+      {!showEmptyState && !todayHardError && (
         <DecisionQueue
           items={decisionItems}
           isLoading={decisionQueueLoading}
@@ -786,7 +809,7 @@ export default function TodayPage() {
       )}
 
       {/* ── Section 3: Cash strip ────────────────────────────────────── */}
-      {!showEmptyState && !todayError && (
+      {!showEmptyState && !todayHardError && (
         <CashStrip
           isLoading={todayLoading}
           cashOnHand={cash?.cashOnHand ?? 0}
@@ -801,13 +824,13 @@ export default function TodayPage() {
       {/* Owner-change / tax-status deltas detected on parcels in the
           pipeline, derived free from county records. Owns its own query
           + mark-read; behind the Today door per the five-doors rule. */}
-      {!showEmptyState && !todayError && <ParcelAlerts />}
+      {!showEmptyState && !todayHardError && <ParcelAlerts />}
 
       {/* ── Referral nudge (Tier 2C) ─────────────────────────────────── */}
       {/* Post-first-value only (hasAnyData) and permanently dismissible.
           Sits low on the page on purpose — it's a quiet suggestion, not
           a banner competing with the operator's actual work. */}
-      {!showEmptyState && !todayError && hasAnyData && !referralNudgeDismissed && (
+      {!showEmptyState && !todayHardError && hasAnyData && !referralNudgeDismissed && (
         <Card className="rounded-card shadow-acr-1" data-testid="card-referral-nudge">
           <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 md:gap-2.5 min-w-0">
@@ -851,7 +874,7 @@ export default function TodayPage() {
       {/* ── Section 5: Activity feed ─────────────────────────────────── */}
       {/* Kept as a standalone component — it owns its own infinite-scroll
           pagination, so it is intentionally not merged into /api/today. */}
-      {!showEmptyState && !todayError && <TodayActivityFeed />}
+      {!showEmptyState && !todayHardError && <TodayActivityFeed />}
       </PullToRefresh>
     </PageShell>
   );

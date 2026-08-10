@@ -35,7 +35,7 @@ const COMMON_PROVIDERS = [
   { provider: "mapbox", displayName: "Mapbox", description: "Maps & geocoding" },
 ];
 
-export default function FounderKeysPage() {
+export function KeysContent() {
   useDocumentTitle("System API keys — AcreOS");
 
   const { data: keys = [], isLoading, error, refetch } = useQuery<any[]>({
@@ -73,7 +73,7 @@ export default function FounderKeysPage() {
   ];
 
   return (
-    <PageShell label="System API keys">
+    <div>
       <div className="mb-6 flex items-start gap-3">
         <Key className="w-6 h-6 text-primary mt-1" aria-hidden="true" />
         <div>
@@ -177,6 +177,16 @@ export default function FounderKeysPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Standalone page wrapper — the canonical surface is the "System keys" tab of
+ *  the Controls door (/founder/autopilot/control?tab=keys, F1 slice 3). */
+export default function FounderKeysPage() {
+  return (
+    <PageShell label="System API keys">
+      <KeysContent />
     </PageShell>
   );
 }

@@ -162,12 +162,11 @@ function statusCount(status: Status): number {
   );
 }
 
-export default function FounderLegalReadinessPage() {
+export function LegalReadinessContent() {
   useDocumentTitle("Launch legal readiness — AcreOS");
 
   return (
-    <PageShell label="Launch legal readiness">
-      <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold text-acr-ink">
             Launch Legal & Peace-of-Mind Readiness
@@ -250,7 +249,17 @@ export default function FounderLegalReadinessPage() {
             );
           })}
         </motion.div>
-      </div>
+    </div>
+  );
+}
+
+/** Standalone page wrapper — the canonical surface is the "Legal readiness"
+ *  tab of the Controls door (/founder/autopilot/control?tab=legal, F1
+ *  slice 3). */
+export default function FounderLegalReadinessPage() {
+  return (
+    <PageShell label="Launch legal readiness">
+      <LegalReadinessContent />
     </PageShell>
   );
 }

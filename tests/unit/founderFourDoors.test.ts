@@ -27,8 +27,12 @@ const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"),
  *  2026-08-10: 58→53 (F1 slice 2) — the 6 observability routes
  *  (ai-observatory, telemetry, traces, pax-traces, pax-calibration,
  *  event-log) merged into the single /founder/admin/telemetry tabbed hub,
- *  mirroring the costs hub; the old paths redirect with their tab pinned. */
-const FOUNDER_ROUTE_BASELINE = 53;
+ *  mirroring the costs hub; the old paths redirect with their tab pinned.
+ *  2026-08-10: 53→48 (F1 slice 3) — the P6 Controls-absorption cluster:
+ *  keys, readiness, legal-readiness, recovery-console and autopilot/voice
+ *  became tabs of the Controls door (/founder/autopilot/control); the old
+ *  paths redirect with their tab pinned. */
+const FOUNDER_ROUTE_BASELINE = 48;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

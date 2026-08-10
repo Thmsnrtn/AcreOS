@@ -48,7 +48,12 @@ export function useProperties() {
     queryKey: [api.properties.list.path],
     queryFn: async () => {
       const res = await fetch(`${api.properties.list.path}?page=1&pageSize=100`, { credentials: "include" });
-      if (!res.ok) return [];
+      // Throw, never swallow into []: this queryFn seeds the SHARED
+      // ["/api/properties"] cache, and a swallowed failure here painted an
+      // outage as an empty portfolio on every consumer — including the Map
+      // door, whose error honesty (stale chip / error card) it silently
+      // defeated (fleet-6 verifier catch).
+      if (!res.ok) throw new Error(`${res.status}: Failed to fetch properties`);
       const json = await res.json();
       // Return the data array for backward compatibility
       return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];

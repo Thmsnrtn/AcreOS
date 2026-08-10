@@ -24,6 +24,7 @@ import {
   Flame,
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
+import { StaleDataChip } from "@/lib/stale-while-error";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
@@ -276,7 +277,7 @@ function revenueImpact(severity: string, type?: string): string | null {
 
 function InsightsPanel() {
   const [, setLocation] = useLocation();
-  const { data, isLoading, error, refetch, isRefetching } = useQuery<InsightsData>({
+  const { data, isLoading, error, refetch, isRefetching, dataUpdatedAt } = useQuery<InsightsData>({
     queryKey: ["/api/pax/insights"],
   });
 
@@ -299,7 +300,10 @@ function InsightsPanel() {
     );
   }
 
-  if (error) {
+  // Stale-while-error (Wave 1.2): only fall to the full error card when
+  // there is NO cached data. A failed refetch over cached insights keeps
+  // the panel rendering with the quiet stale chip below.
+  if (error && data === undefined) {
     return (
       <QueryErrorState
         error={error}
@@ -312,6 +316,16 @@ function InsightsPanel() {
     );
   }
 
+  const staleChip = error ? (
+    <StaleDataChip
+      dataUpdatedAt={dataUpdatedAt}
+      onRetry={() => refetch()}
+      isRetrying={isRefetching}
+      className="mb-4"
+      testId="pax-insights-stale-chip"
+    />
+  ) : null;
+
   const observations = data?.observations ?? [];
   const staleLeads = data?.staleLeads ?? [];
   const expiringOffers = data?.expiringOffers ?? [];
@@ -321,20 +335,24 @@ function InsightsPanel() {
 
   if (totalItems === 0) {
     return (
-      <EmptyState
-        icon={Sparkles}
-        headline="All clear — Pax is keeping watch."
-        subtitle="No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends."
-        tone="celebratory"
-        // TODO(cta): insights panel — no action available when all clear
-        cta={{ label: "", _noOp: true }}
-        testId="pax-insights-empty"
-      />
+      <>
+        {staleChip}
+        <EmptyState
+          icon={Sparkles}
+          headline="All clear — Pax is keeping watch."
+          subtitle="No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends."
+          tone="celebratory"
+          // TODO(cta): insights panel — no action available when all clear
+          cta={{ label: "", _noOp: true }}
+          testId="pax-insights-empty"
+        />
+      </>
     );
   }
 
   return (
     <div className="space-y-8">
+      {staleChip}
       {/* Pax Noticed */}
       {observations.length > 0 && (
         <section aria-labelledby="pax-noticed-heading">

@@ -304,11 +304,11 @@ const InvestorDirectoryPage = React.lazy(() => import("@/pages/investor-director
 // redirects to /founder/bridge. Both files deleted 2026-06-01.
 // FounderFeatureFlags archived 2026-06-01 — route redirects to /founder/features; lazy import was dead code.
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
-const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
-const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"));
-// Beatrice/Lena — Launch Legal & Peace-of-Mind Readiness checklist surface.
-// Renders docs/legal/launch-readiness-checklist.md status at a glance.
-const FounderLegalReadinessPage = React.lazy(() => import("@/pages/founder/legal-readiness"));
+// F1 slice 3: System keys, Launch readiness, Legal readiness, the Recovery
+// console and Your Voice are tabs of the Controls door
+// (/founder/autopilot/control) now — their standalone routes redirect there
+// with the tab pinned, and their lazy imports are gone (the Controls bundle
+// imports each page's *Content component directly).
 const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
 // Command cockpit — one synthesis surface aggregating every domain's
@@ -325,7 +325,6 @@ const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-coc
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
 // FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
-const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/recovery-console"));
 // FounderActivationPage archived 2026-06-01 — no sidebar entry.
 // FounderMlSnapshotsPage archived 2026-06-01 — no sidebar entry.
 // FounderEtlPage archived 2026-06-01 — no sidebar entry.
@@ -359,8 +358,6 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
 const FounderHomePage = React.lazy(() => import("@/pages/founder/home"));
-// "Your Voice" — set durable intents + standing orders the autopilot honors.
-const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
 // "The Story" — the glass-box timeline of every action + its full reasoning.
 const FounderAutopilotStoryPage = React.lazy(() => import("@/pages/founder/autopilot-story"));
 // The Control Center — master switches + per-domain trust + everything in one.
@@ -1202,11 +1199,8 @@ function Router() {
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
-      {/* The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
-      {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
-      <Route path="/founder/autopilot/voice">
-        {() => <FounderProtectedRoute component={FounderVoicePage} />}
-      </Route>
+      {/* The /founder/autopilot/{story,control} sub-surfaces stay. "Your
+          Voice" is the ?tab=voice tab of the Controls hub (F1 slice 3). */}
       {/* "The Story" — glass-box timeline of every autopilot action + its why. */}
       <Route path="/founder/autopilot/story">
         {() => <FounderProtectedRoute component={FounderAutopilotStoryPage} />}
@@ -1272,15 +1266,9 @@ function Router() {
       <Route path="/founder/features">
         {() => <FounderProtectedRoute component={FounderFeatures} />}
       </Route>
-      <Route path="/founder/keys">
-        {() => <FounderProtectedRoute component={FounderKeysPage} />}
-      </Route>
-      <Route path="/founder/readiness">
-        {() => <FounderProtectedRoute component={FounderReadinessPage} />}
-      </Route>
-      <Route path="/founder/legal-readiness">
-        {() => <FounderProtectedRoute component={FounderLegalReadinessPage} />}
-      </Route>
+      {/* /founder/keys, /founder/readiness and /founder/legal-readiness are
+          tabs of the Controls hub (F1 slice 3) — legacy paths redirect with
+          their tab pinned via FOUNDER_LEGACY_REDIRECTS. */}
       <Route path="/founder/customers/health">
         {() => <FounderProtectedRoute component={FounderCustomersHealthPage} />}
       </Route>
@@ -1311,9 +1299,8 @@ function Router() {
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
       </Route>
-      <Route path="/founder/recovery-console">
-        {() => <FounderProtectedRoute component={FounderRecoveryConsolePage} />}
-      </Route>
+      {/* /founder/recovery-console is the ?tab=recovery tab of the Controls
+          hub (F1 slice 3). */}
       <Route path="/founder/feedback">
         {() => <FounderProtectedRoute component={FounderFeedbackInboxPage} />}
       </Route>

@@ -10,8 +10,8 @@ import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
+import { StaleDataChip } from "@/lib/stale-while-error";
 import { ContentReveal } from "@/components/ContentReveal";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
@@ -130,7 +130,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
   useDocumentTitle(dealsLabel);
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
-  const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
+  const { data: dealsResponse, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
 
   // W2-6: remember the board/list window-scroll offset per route so door
   // switches reopen at the prior position. Restores once per mount after
@@ -358,7 +358,15 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
   // aggregates endpoint (GET /api/deals/aggregates), NOT the current page
   // of useDealsPaginated. The page-local reductions that used to live here
   // silently lied for any org with more than one page (25 rows) of deals.
-  const { data: dealAggregates, isLoading: isAggregatesLoading } = useDealAggregates(typeFilter);
+  const {
+    data: dealAggregates,
+    isLoading: isAggregatesLoading,
+    isError: isAggregatesError,
+    error: aggregatesError,
+    refetch: refetchAggregates,
+    isRefetching: isAggregatesRefetching,
+    dataUpdatedAt: aggregatesUpdatedAt,
+  } = useDealAggregates(typeFilter);
   const aggTotals = dealAggregates?.totals;
   const acquisitionsCount = aggTotals?.acquisitions ?? 0;
   const dispositionsCount = aggTotals?.dispositions ?? 0;
@@ -468,12 +476,16 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
     );
   };
 
-  if (error) {
+  // Stale-while-error (Wave 1.2): only swap the whole door for the error
+  // card when there is NOTHING cached to show. A failed refetch over a
+  // cached page keeps rendering the board with the quiet stale chip below.
+  if (isError && dealsResponse === undefined) {
     return (
       <PageShell label={dealsLabel} embedded={embedded}>
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
+          isRetrying={isRefetching}
           title="Failed to load deals"
           testId="error-state-deals"
         />
@@ -483,16 +495,17 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
   return (
     <PageShell label={dealsLabel} embedded={embedded}>
-        
-          
+          {/* Refetch failed but a cached page is still on screen — say so
+              quietly instead of blanking the pipeline (stale-while-error). */}
+          {isError && (
+            <StaleDataChip
+              dataUpdatedAt={dataUpdatedAt}
+              onRetry={() => refetch()}
+              isRetrying={isRefetching}
+              testId="deals-stale-chip"
+            />
+          )}
 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {isError && (
-              <InlineError 
-                message={(error as Error)?.message || "Failed to load deals."}
-                onRetry={() => (refetch as () => void)()}
-                testId="inline-error-deals"
-              />
-            )}
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Deals</div>
@@ -533,6 +546,30 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
           <DisclaimerBanner type="deals" />
 
+          {/* Header KPIs (org-wide aggregates). Hard failure with nothing
+              cached must NOT render $0/0 as if real (refuse-not-fabricate) —
+              show the compact error card instead. A failed refetch over
+              cached aggregates keeps the numbers up with the stale chip. */}
+          {isAggregatesError && dealAggregates === undefined ? (
+            <QueryErrorState
+              error={aggregatesError instanceof Error ? aggregatesError : null}
+              onRetry={() => refetchAggregates()}
+              isRetrying={isAggregatesRefetching}
+              compact
+              title="Couldn't load deal metrics"
+              description="Pipeline totals are unavailable right now. Your deals below are unaffected."
+              testId="error-state-deal-aggregates"
+            />
+          ) : (
+          <>
+          {isAggregatesError && (
+            <StaleDataChip
+              dataUpdatedAt={aggregatesUpdatedAt}
+              onRetry={() => refetchAggregates()}
+              isRetrying={isAggregatesRefetching}
+              testId="deals-aggregates-stale-chip"
+            />
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
@@ -610,6 +647,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
           </div>
+          </>
+          )}
 
           {/* Deal Coach (D4) — autopilot next-best actions over the pipeline */}
           <DealCoach />

@@ -37,6 +37,7 @@ import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
+import { StaleDataChip, StaleWhileError } from "@/lib/stale-while-error";
 import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { FinanceBook } from "@/components/finance/FinanceBook";
 import { usePersona, useTerm } from "@/hooks/use-persona";
@@ -72,7 +73,20 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   const propertyPluralLabel = useTerm("entity.property.plural");
   const isLandInvestorPersona = persona === "land_investor" || persona === "tax_delinquent";
   void propertyPluralLabel; // reserved for future per-persona vocabulary swaps in this page
-  const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
+  const {
+    data: notes,
+    isLoading,
+    error: notesError,
+    refetch: refetchNotes,
+    isRefetching: notesRefetching,
+    dataUpdatedAt: notesUpdatedAt,
+  } = useNotes();
+  // Stale-while-error (Wave 1.2): a failed refetch over a cached note book
+  // keeps the page rendering with the quiet chip; only a failure with
+  // NOTHING cached degrades the portfolio to an error card. Without this
+  // split, a hard failure fell through to "No notes serviced yet" + $0
+  // stats — a fabricated empty book.
+  const notesHardError = Boolean(notesError) && notes === undefined;
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
   // /finance?action=new opens the new-note dialog — wires the global FAB /
@@ -95,13 +109,14 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
   const { toast } = useToast();
-  const { data: portfolioSummary } = useQuery<{
+  const portfolioSummaryQuery = useQuery<{
     totalNotes: number;
     activeNotes: number;
     totalPortfolioValue: number;
     totalMonthlyPayment: number;
     monthlyCashFlow: { month: string; amount: number }[];
   }>({ queryKey: ["/api/finance/portfolio-summary"] });
+  const portfolioSummary = portfolioSummaryQuery.data;
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -210,14 +225,29 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               the entry point. For note_investor / wholesaler / flipper
               the hero is the entry point and the area chart is
               suppressed in favor of the persona-shaped representation. */}
-          <PersonaFinanceHero notes={enrichedNotes} />
+          {/* Honest degradation: with the notes query hard-failed the hero
+              would render as if the book were empty — suppress it; the
+              error card in the portfolio section below carries the retry. */}
+          {!notesHardError && <PersonaFinanceHero notes={enrichedNotes} />}
 
           {/* Portfolio Cash Flow Chart — kept for the default
               land_investor persona only. Note-investor sees the
               twelve small-multiple panels in the hero above, which
               is the Tufte-recommended substitute for an area chart
               when you want per-month decomposition. */}
-          {isLandInvestorPersona && portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
+          {/* Stale-while-error: a failed refetch keeps the cached chart up
+              with the quiet chip; a failure with nothing cached shows the
+              compact error card instead of silently hiding the section. */}
+          {isLandInvestorPersona && (
+          <StaleWhileError
+            query={portfolioSummaryQuery}
+            compact
+            errorTitle="Couldn't load cash flow"
+            errorDescription="Your monthly cash-flow history is unavailable right now — the notes below are unaffected."
+            testId="finance-cashflow"
+            chipClassName="mb-6"
+          >
+          {portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
             <Card className="mb-6">
               <CardHeader className="pb-2">
                 {/* §1.3: section-level head — dual class + utility. */}
@@ -273,6 +303,8 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                 </div>
               </CardContent>
             </Card>
+          )}
+          </StaleWhileError>
           )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -341,6 +373,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
 
           <DisclaimerBanner type="finance" />
 
+          {/* Stat tiles compute from the notes cache. With the query
+              hard-failed they would claim an org-wide $0 book — refuse to
+              fabricate; the portfolio section below carries the error+retry. */}
+          {!notesHardError && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="glass-panel">
               <CardContent className="p-6">
@@ -404,13 +440,17 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               </CardContent>
             </Card>
           </div>
+          )}
 
-          {notesError && (
-            <QueryErrorState
-              error={notesError}
+          {/* Stale-while-error: refetch failed but the cached book is still
+              on screen — the quiet chip says so. (The hard-failure error
+              card lives in the Loan Portfolio section below.) */}
+          {Boolean(notesError) && !notesHardError && (
+            <StaleDataChip
+              dataUpdatedAt={notesUpdatedAt}
               onRetry={() => refetchNotes()}
-              title="Failed to load notes"
-              compact
+              isRetrying={notesRefetching}
+              testId="finance-notes-stale-chip"
             />
           )}
 
@@ -448,6 +488,17 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                     </div>
                   ))}
                 </div>
+              ) : notesHardError ? (
+                // Honest degradation: a hard failure must never read as
+                // "No notes serviced yet" — that fabricates an empty book.
+                <QueryErrorState
+                  error={notesError instanceof Error ? notesError : null}
+                  onRetry={() => refetchNotes()}
+                  isRetrying={notesRefetching}
+                  title="Couldn't load your notes"
+                  description="Your note book is safe — we just couldn't fetch it. Try again."
+                  testId="finance-notes-error"
+                />
               ) : !enrichedNotes || enrichedNotes.length === 0 ? (
                 <EmptyState
                   icon={FileText}

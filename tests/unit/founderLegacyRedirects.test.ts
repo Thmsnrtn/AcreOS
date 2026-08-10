@@ -33,8 +33,8 @@ const APP = fs.readFileSync(path.resolve(ROOT, "client/src/App.tsx"), "utf-8");
 const LEGACY_PATHS = Object.keys(FOUNDER_LEGACY_REDIRECTS);
 
 describe("founder legacy-redirect map", () => {
-  it("holds exactly the 30 known aliases — 24 from slice 1 + the 6 observability routes folded into /founder/admin/telemetry in slice 2 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
-    expect(LEGACY_PATHS).toHaveLength(30);
+  it("holds exactly the 35 known aliases — 24 from slice 1, 6 observability routes folded into /founder/admin/telemetry in slice 2, and 5 Controls-cluster routes folded into /founder/autopilot/control in slice 3 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
+    expect(LEGACY_PATHS).toHaveLength(35);
   });
 
   it("every legacy path is reachable through the catch-all pattern", () => {
@@ -88,17 +88,36 @@ describe("founder legacy-redirect map", () => {
     expect(resolveFounderLegacyPath("/founder/event-log")).toBe(`${HUB}?tab=events`);
   });
 
-  it("every ?tab= a canonical target pins is a real tab value in the hub page", () => {
-    const hub = fs.readFileSync(
-      path.resolve(ROOT, "client/src/pages/founder/admin/telemetry.tsx"),
-      "utf-8",
-    );
+  it("each retired Controls-cluster route lands on its own tab of the Controls door (slice 3)", () => {
+    const HUB = "/founder/autopilot/control";
+    expect(resolveFounderLegacyPath("/founder/autopilot/voice")).toBe(`${HUB}?tab=voice`);
+    expect(resolveFounderLegacyPath("/founder/readiness")).toBe(`${HUB}?tab=readiness`);
+    expect(resolveFounderLegacyPath("/founder/legal-readiness")).toBe(`${HUB}?tab=legal`);
+    expect(resolveFounderLegacyPath("/founder/keys")).toBe(`${HUB}?tab=keys`);
+    expect(resolveFounderLegacyPath("/founder/recovery-console")).toBe(`${HUB}?tab=recovery`);
+  });
+
+  it("every ?tab= a canonical target pins is a real tab value in its hub page", () => {
+    // Pathname → the file whose TABS declaration must carry the tab value.
+    // Every tab-pinning canonical target must resolve through this map, so a
+    // future consolidation that pins tabs on a new hub must register it here.
+    const HUB_FILES: Record<string, string> = {
+      "/founder/admin/telemetry": "client/src/pages/founder/admin/telemetry.tsx",
+      "/founder/autopilot/control": "client/src/pages/founder/autopilot-control.tsx",
+    };
     for (const canonical of Object.values(FOUNDER_LEGACY_REDIRECTS)) {
-      const tab = new URLSearchParams(canonical.split("?")[1] ?? "").get("tab");
-      if (!tab || !canonical.startsWith("/founder/admin/telemetry")) continue;
+      const [pathname, query] = canonical.split("?");
+      const tab = new URLSearchParams(query ?? "").get("tab");
+      if (!tab) continue;
+      const hubFile = HUB_FILES[pathname];
+      expect(
+        hubFile,
+        `${canonical}: pins a tab on ${pathname}, which is not a registered tab hub — add it to HUB_FILES`,
+      ).toBeTruthy();
+      const hub = fs.readFileSync(path.resolve(ROOT, hubFile), "utf-8");
       expect(
         hub.includes(`value: "${tab}"`),
-        `${canonical}: tab "${tab}" is not declared in admin/telemetry.tsx TABS`,
+        `${canonical}: tab "${tab}" is not declared in ${hubFile} TABS`,
       ).toBe(true);
     }
   });
@@ -172,7 +191,9 @@ const KNOWN_LEGACY_LITERAL_FILES: readonly string[] = [
   "client/src/components/layout-sidebar.tsx",
   "client/src/lib/featureFlags.ts",
   "client/src/pages/founder-decisions.tsx",
-  "client/src/pages/founder/autopilot-control.tsx",
+  // founder/autopilot-control.tsx removed 2026-08-10 (F1 slice 3): its
+  // "/founder/autopilot" quick link was rewritten to "/founder" and the
+  // "/founder/autopilot/voice" link became the hub's own ?tab=voice tab.
   "client/src/pages/founder/build.tsx",
   "client/src/pages/founder/customers.tsx",
   "client/src/pages/founder/inspector/org.tsx",

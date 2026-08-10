@@ -115,6 +115,10 @@ export default function BorrowerPortal() {
   // borrower on a weak cell connection must never end up staring at a
   // dead form with no path forward.
   const [networkError, setNetworkError] = useState<Error | null>(null);
+  // X-A portal hardening: the server answers an expired link with 410 +
+  // error "portal_link_expired" — a distinct, honest state that gets its own
+  // re-request screen (never a dead form pretending the email was wrong).
+  const [linkExpired, setLinkExpired] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useDocumentTitle("Borrower portal");
@@ -144,6 +148,11 @@ export default function BorrowerPortal() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 410 && data.error === "portal_link_expired") {
+          // Honest death: the link is expired, not the email wrong.
+          setLinkExpired(true);
+          return;
+        }
         throw new Error(data.message || "We couldn't match that email to this loan. Check the address from your payment reminder email and try again.");
       }
 
@@ -162,11 +171,45 @@ export default function BorrowerPortal() {
     return <BorrowerLandingPage />;
   }
 
+  if (linkExpired) {
+    // X-A: the re-request screen an expired link degrades to. Honest about
+    // what happened, honest about the path forward — never a dead 500 and
+    // never a form that pretends the email was wrong.
+    return (
+      <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to flex items-center justify-center p-4">
+        <h1 className="sr-only">Borrower portal link expired</h1>
+        <div className="w-full max-w-md">
+          <Card className="w-full floating-window text-center" data-testid="card-portal-link-expired">
+            <CardHeader>
+              <div className="mx-auto mb-4 p-4 rounded-full bg-acr-warn-soft dark:bg-acr-warn-soft/30">
+                <Clock className="w-8 h-8 text-acr-warn" aria-hidden="true" />
+              </div>
+              <CardTitle>This portal link has expired</CardTitle>
+              <CardDescription>
+                Portal links expire for your security. Your loan and payment
+                history are unaffected.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Ask your lender to send you a fresh portal link — once they
+                re-issue it, the new link opens this same portal with
+                everything intact.
+              </p>
+            </CardContent>
+          </Card>
+          <ReportPageFooter accessToken={accessToken} />
+        </div>
+      </div>
+    );
+  }
+
   if (!isVerified) {
     return (
       <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to flex items-center justify-center p-4">
         <h1 className="sr-only">Borrower portal sign-in</h1>
-        <Card className="w-full max-w-md floating-window">
+        <div className="w-full max-w-md">
+        <Card className="w-full floating-window">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10">
               <Shield className="w-8 h-8 text-primary" aria-hidden="true" />
@@ -248,6 +291,8 @@ export default function BorrowerPortal() {
             </p>
           </CardContent>
         </Card>
+        <ReportPageFooter accessToken={accessToken} />
+        </div>
       </div>
     );
   }
@@ -385,6 +430,124 @@ function PortalSunsetBanner() {
         </button>
       </Alert>
     </div>
+  );
+}
+
+/**
+ * X-A slice 1 — the "Report this page" affordance. The borrower portal is an
+ * EXTERNAL surface: the person looking at it was sent here by a customer org,
+ * and if the page is a phishing lure or a scam they need a one-tap way to
+ * tell a human. Posts to /api/borrower/report-page (rate-limited), which
+ * files a native abuse_report item on the founder's decisions queue in one
+ * hop. A small footer control on existing screens — deliberately NOT a new
+ * route or nav entry.
+ */
+function ReportPageFooter({ accessToken }: { accessToken?: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+
+  const submit = async () => {
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    setSendState("sending");
+    try {
+      const res = await fetch("/api/borrower/report-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: trimmed,
+          pagePath: window.location.pathname,
+          ...(accessToken ? { accessToken } : {}),
+        }),
+      });
+      setSendState(res.ok ? "sent" : "failed");
+    } catch {
+      setSendState("failed");
+    }
+  };
+
+  return (
+    <footer className="mt-6 pb-4 text-center">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="text-xs text-muted-foreground"
+        onClick={() => setOpen(true)}
+        data-testid="button-report-page"
+      >
+        <AlertTriangle className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+        Report this page
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) {
+            setReason("");
+            setSendState("idle");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Report this page</DialogTitle>
+            <DialogDescription>
+              If this page looks suspicious — a loan you don't recognize, a
+              request that feels like a scam, or anything else that seems wrong
+              — tell us why and a human will review it.
+            </DialogDescription>
+          </DialogHeader>
+          {sendState === "sent" ? (
+            <p className="text-sm" role="status" data-testid="report-page-sent">
+              Thanks — your report was sent for human review.
+            </p>
+          ) : (
+            <>
+              <div className="space-y-2 text-left">
+                <Label htmlFor="report-page-reason">What seems wrong?</Label>
+                <Textarea
+                  id="report-page-reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  maxLength={2000}
+                  rows={4}
+                  placeholder="Describe what looks suspicious about this page."
+                  data-testid="input-report-page-reason"
+                />
+              </div>
+              {sendState === "failed" && (
+                <p className="text-sm text-acr-neg" role="alert" data-testid="report-page-failed">
+                  We couldn't send your report right now. Wait a moment and try
+                  again.
+                </p>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  {Verbs.CANCEL}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={sendState === "sending" || !reason.trim()}
+                  data-testid="button-submit-report"
+                >
+                  {sendState === "sending" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                      Sending…
+                    </>
+                  ) : (
+                    "Send report"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </footer>
   );
 }
 
@@ -1988,6 +2151,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReportPageFooter accessToken={accessToken} />
 
       <nav
         className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-surface-chrome backdrop-blur"

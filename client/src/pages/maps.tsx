@@ -67,6 +67,7 @@ import { findStateWarning, isUplBlocked } from "@/lib/upl-gating";
 import { StateUplBanner } from "@/components/upl-gating-banner";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { QueryErrorState } from "@/components/query-error-state";
+import { StaleDataChip } from "@/lib/stale-while-error";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
@@ -1054,11 +1055,25 @@ export default function MapsPage() {
   const minAcresId = useId();
   const maxAcresId = useId();
 
-  const { data: propertiesRaw = [], isLoading } = useQuery<Property[]>({
+  // Stale-while-error (Wave 1.2): these queryFns used to swallow failures
+  // (`if (!res.ok) return []`), so a server error painted the map as an
+  // EMPTY portfolio — "No parcel coordinates yet" over a basemap, which
+  // fabricates a state the org isn't in. They now throw; below, a failure
+  // over cached pins keeps the map up with the quiet stale chip, and a
+  // failure with nothing cached shows a real error card with retry.
+  const {
+    data: propertiesRaw,
+    isLoading,
+    isError: isPropertiesError,
+    error: propertiesError,
+    refetch: refetchProperties,
+    isRefetching: isPropertiesRefetching,
+    dataUpdatedAt: propertiesUpdatedAt,
+  } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
     queryFn: async () => {
       const res = await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to fetch properties (${res.status})`);
       const json = await res.json();
       return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
     },
@@ -1066,17 +1081,41 @@ export default function MapsPage() {
   });
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
 
-  const { data: dealsRaw = [] } = useQuery<DealWithProperty[]>({
+  const {
+    data: dealsRaw,
+    isError: isDealsError,
+    error: dealsError,
+    refetch: refetchDeals,
+    isRefetching: isDealsRefetching,
+    dataUpdatedAt: dealsUpdatedAt,
+  } = useQuery<DealWithProperty[]>({
     queryKey: ["/api/deals"],
     queryFn: async () => {
       const res = await fetch("/api/deals?page=1&pageSize=100", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to fetch deals (${res.status})`);
       const json = await res.json();
       return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
     },
     retry: false,
   });
   const deals = Array.isArray(dealsRaw) ? dealsRaw : [];
+
+  // Hard error = nothing cached to render. The deals layer only gates the
+  // canvas in Deals mode; in Properties mode a deals failure is soft.
+  const propertiesHardError = isPropertiesError && propertiesRaw === undefined;
+  const dealsHardError = isDealsError && dealsRaw === undefined;
+  const mapHardError = propertiesHardError || (mapMode === "deals" && dealsHardError);
+  const mapStaleError =
+    !mapHardError &&
+    ((isPropertiesError && propertiesRaw !== undefined) ||
+      (isDealsError && dealsRaw !== undefined));
+  const retryMapData = () => {
+    if (isPropertiesError) void refetchProperties();
+    if (isDealsError) void refetchDeals();
+  };
+  const isMapRetrying = isPropertiesRefetching || isDealsRefetching;
+  // Timestamp of the stale layer we're showing (the erroring query's cache).
+  const mapStaleUpdatedAt = isPropertiesError ? propertiesUpdatedAt : dealsUpdatedAt;
 
   const dealByPropertyId = useMemo(() => {
     const map: Record<number, DealWithProperty> = {};
@@ -1499,6 +1538,19 @@ export default function MapsPage() {
           hasAnyProperties={properties.length > 0}
         />
 
+        {/* Stale-while-error: a failed refetch over cached pins keeps the
+            map rendering with this quiet chip instead of blanking it. */}
+        {mapStaleError && (
+          <div className="px-4 md:px-6 py-2">
+            <StaleDataChip
+              dataUpdatedAt={mapStaleUpdatedAt}
+              onRetry={retryMapData}
+              isRetrying={isMapRetrying}
+              testId="maps-stale-chip"
+            />
+          </div>
+        )}
+
         {/* Map + side panel. 100dvh honors iOS Safari's dynamic toolbar so
             the map doesn't slide under the 72px mobile bottom nav; also
             subtract the safe-area inset so the bottom of the map clears
@@ -1517,6 +1569,28 @@ export default function MapsPage() {
                     <MapPin className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
                   </div>
                 </Skeleton>
+              </div>
+            ) : mapHardError ? (
+              // Nothing cached and the fetch failed: a real error card with
+              // retry — never the "no parcel coordinates yet" empty state,
+              // which would present an outage as an empty portfolio.
+              <div className="h-full w-full flex items-center justify-center p-6">
+                <QueryErrorState
+                  error={
+                    propertiesHardError
+                      ? propertiesError instanceof Error
+                        ? propertiesError
+                        : null
+                      : dealsError instanceof Error
+                        ? dealsError
+                        : null
+                  }
+                  onRetry={retryMapData}
+                  isRetrying={isMapRetrying}
+                  title="Couldn't load the map data"
+                  description="Your parcels are safe — we just couldn't fetch them. Try again."
+                  testId="maps-query-error"
+                />
               </div>
             ) : filteredProperties.length === 0 ? (
               // r6 Tasha WF-R6-001 + STR-R6-001: even with zero parcels

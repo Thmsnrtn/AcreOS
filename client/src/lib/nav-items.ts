@@ -283,11 +283,13 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // ── Ops / admin ─────────────────────────────────────────────────────
   { label: "Studio", icon: Sliders, href: "/founder/studio", category: "ops" },
   { label: "Inspector", icon: Search, href: "/founder/inspector/audit", category: "ops" },
-  { label: "System keys", icon: Key, href: "/founder/keys", category: "ops" },
-  { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", category: "ops" },
-  { label: "Legal readiness", icon: Scale, href: "/founder/legal-readiness", category: "ops" },
+  // F1 slice 3: keys, launch/legal readiness and the recovery console live as
+  // tabs of the Controls door — these entries keep them palette-findable.
+  { label: "System keys", icon: Key, href: "/founder/autopilot/control?tab=keys", category: "ops" },
+  { label: "Launch readiness", icon: ListChecks, href: "/founder/autopilot/control?tab=readiness", category: "ops" },
+  { label: "Legal readiness", icon: Scale, href: "/founder/autopilot/control?tab=legal", category: "ops" },
   { label: "Founder settings", icon: Settings, href: "/founder/settings", category: "ops" },
-  { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", category: "ops" },
+  { label: "Recovery console", icon: LifeBuoy, href: "/founder/autopilot/control?tab=recovery", category: "ops" },
   { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", category: "ops" },
   { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", category: "ops" },
   { label: "Capability queue", icon: Wrench, href: "/founder/tools", category: "ops" },

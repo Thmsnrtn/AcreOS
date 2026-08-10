@@ -174,6 +174,17 @@ export function normalizeDispositionReason(reason?: unknown): string | undefined
     : trimmed;
 }
 
+/**
+ * X-A slice 1 — the portal "Report this page" affordance files a NATIVE
+ * decisions-door item of this type (riskLevel high). NOT a mirror: there is
+ * no deep-surface system of record — the queue row IS the record — so it is
+ * deliberately absent from MIRRORED_QUEUE_ITEM_TYPES and every disposition
+ * verb works on it directly.
+ */
+export const ABUSE_REPORT_ITEM_TYPE = "abuse_report";
+export const ABUSE_REPORT_REASON_MAX_CHARS = 2000;
+export const ABUSE_REPORT_PAGE_PATH_MAX_CHARS = 300;
+
 const RECOURSE_SIGNAL_CARD_META: Record<string, { label: string; urgencyScore: number }> = {
   cancellation: { label: "A cancellation", urgencyScore: 85 },
   detractor_nps: { label: "A detractor NPS score", urgencyScore: 75 },
@@ -1007,6 +1018,121 @@ export const decisionsInboxService = {
   },
 
   /**
+   * X-A slice 1 — file a portal abuse report as a NATIVE decisions-door item
+   * (one event hop: the portal's report POST → this row). Class B through the
+   * arbiter like every machine-initiated insert; riskLevel high — a person on
+   * an external portal surface is telling the founder something is wrong with
+   * a page a customer org put in front of them.
+   *
+   * Free-text discipline (same as createFromAppeal): the reporter's verbatim
+   * reason is REPORTER-TYPED and this row's sophieAnalysis feeds model-read
+   * surfaces (decisionLogRag, companyMind) — so the verbatim lives ONLY in
+   * contextBundle.reporterReason (bounded), never in the analysis text.
+   *
+   * Dedupe: one OPEN (pending/deferred) abuse_report per (organizationId,
+   * pagePath) — repeat reports of the same page return the existing card
+   * (created: false) instead of stacking rows; the endpoint's rate limiter
+   * caps velocity so the report path cannot itself become a spam vector.
+   */
+  async createFromAbuseReport(input: {
+    /** Portal path being reported, e.g. "/portal/<token-prefix…>". */
+    pagePath: string | null;
+    /** Reporter-supplied reason — verbatim, bounded, contextBundle-only. */
+    reason: string;
+    /** Lender org the reported page belongs to, when resolvable. */
+    organizationId: number | null;
+    /** Note behind the portal page, when resolvable. */
+    noteId: number | null;
+    /** The reported org's trust tier at filing time (triage context). */
+    orgTrustTier?: string | null;
+    reporterIp?: string | null;
+    reporterUserAgent?: string | null;
+  }): Promise<{ itemId: number | null; created: boolean }> {
+    const reason = (input.reason ?? "").trim().slice(0, ABUSE_REPORT_REASON_MAX_CHARS);
+    if (!reason) return { itemId: null, created: false };
+    const pagePath = input.pagePath
+      ? input.pagePath.slice(0, ABUSE_REPORT_PAGE_PATH_MAX_CHARS)
+      : null;
+
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, ABUSE_REPORT_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        // NULL-safe: `->>'pagePath' = 'null'` would never match SQL NULL, so
+        // null-page reports would never dedupe (fleet-6 verifier catch).
+        pagePath == null
+          ? sql`${decisionsInboxItems.contextBundle}->>'pagePath' IS NULL`
+          : sql`${decisionsInboxItems.contextBundle}->>'pagePath' = ${pagePath}`,
+        input.organizationId == null
+          ? isNull(decisionsInboxItems.organizationId)
+          : eq(decisionsInboxItems.organizationId, input.organizationId),
+      ),
+    });
+    // Dedupe predicate re-applied in process so unit tests pin the
+    // open-card-only semantics independent of the SQL layer (A1 pattern).
+    if (
+      existing &&
+      existing.itemType === ABUSE_REPORT_ITEM_TYPE &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      (existing.contextBundle?.pagePath ?? null) === (pagePath ?? null) &&
+      (existing.organizationId ?? null) === (input.organizationId ?? null)
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const orgLabel =
+      input.organizationId != null ? `org #${input.organizationId}` : "an unresolved org";
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Portal abuse report: ${pagePath ?? "unknown page"}`,
+      {
+        itemType: ABUSE_REPORT_ITEM_TYPE,
+        pagePath: pagePath ?? undefined,
+        organizationId: input.organizationId ?? undefined,
+      },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: ABUSE_REPORT_ITEM_TYPE,
+      riskLevel: "high",
+      urgencyScore: 80,
+      // NO reporter free text here — see the free-text discipline above.
+      sophieAnalysis:
+        `A visitor on an external portal page reported it as suspicious or abusive ` +
+        `(page belongs to ${orgLabel}). Their reason is quoted verbatim on this card's ` +
+        `context — read it and decide whether this is customer misconduct, a phishing ` +
+        `attempt, or a false alarm.`,
+      recommendedAction:
+        "Read the reporter's reason, inspect the reported page and the owning org, " +
+        "and decide: no action, contact the org, or start the (founder-only) " +
+        "suspension conversation.",
+      recommendedActionLabel: "Review Abuse Report",
+      // Nothing auto-executes from an abuse report — suspensions and every
+      // other consequence stay founder-only decisions.
+      actionPayload: null,
+      organizationId: input.organizationId,
+      ownerAgentCodename: this.inferAgent(ABUSE_REPORT_ITEM_TYPE),
+      contextBundle: {
+        pagePath,
+        reporterReason: reason,
+        ...(input.noteId != null ? { noteId: input.noteId } : {}),
+        ...(input.orgTrustTier ? { orgTrustTier: input.orgTrustTier } : {}),
+        ...(input.reporterIp ? { reporterIp: input.reporterIp } : {}),
+        ...(input.reporterUserAgent
+          ? { reporterUserAgent: input.reporterUserAgent.slice(0, 300) }
+          : {}),
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
    * F2 slice 1 — close a mirror card because its DEEP SURFACE disposed the
    * source row (verdict rendered / reply sent / draft dismissed). The founder
    * acted on the system of record, so the card resolves with resolvedBy
@@ -1150,6 +1276,9 @@ export const decisionsInboxService = {
       // (shared/schema/agent-codenames.ts).
       appeal_review: "quinn",
       recourse_draft: "rafe",
+      // X-A — portal abuse reports are a trust/alignment signal; Quinn
+      // (Chief of Alignment) owns triage. NATIVE item, not a mirror.
+      abuse_report: "quinn",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

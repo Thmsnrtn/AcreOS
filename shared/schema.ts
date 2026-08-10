@@ -92,6 +92,20 @@ export const organizations = pgTable("organizations", {
   requiresApprovalOffersOver: numeric("requires_approval_offers_over"),
   // Founder status - bypasses all limits and credit checks
   isFounder: boolean("is_founder").default(false),
+  // ─── X-A abuse spine: org-level trust tier ─────────────────────────────────
+  // 'new' → 'established' → 'trusted'. Every org starts 'new'; migration 0229
+  // seeded EXISTING orgs with a deterministic rule over real columns only
+  // (age via created_at, activity via last_active_at, standing via
+  // subscription_status + dunning_stage — never invented per-org numbers).
+  // Deliberately DISTINCT from investorNetworkService's investor-scoped
+  // trustTier (platinum/gold/silver/bronze/new) — that scores individual
+  // marketplace investors; this gates what an ORGANIZATION may do on shared
+  // rails. Resolved via server/services/orgTrust.ts (resolveOrgTrustTier /
+  // resolveOrgTrustCaps). The caps are CONFIG ONLY today: enforcement at the
+  // send chokepoints is a founder-queued decision
+  // (docs/proposals/x-a-send-chokepoint-caps.md) — do not wire it without
+  // that ruling. Promotion/demotion ladders are likewise founder-queued.
+  trustTier: text("trust_tier").notNull().default("new"), // 'new' | 'established' | 'trusted'
   // Note Investor vertical (Phase 5 §5 Q4 2026). The wizard's first question
   // captures whether this org buys land, buys notes, or both. Drives sidebar
   // module visibility, onboarding-flow step skipping, and the persona
@@ -1484,7 +1498,21 @@ export const notes = pgTable("notes", {
   
   // Portal access token for borrowers
   accessToken: text("access_token").unique(),
-  
+
+  // ─── X-A portal-link hardening: link expiry ────────────────────────────────
+  // When the borrower portal link (/portal/:accessToken) stops working. The
+  // token itself was historically non-expiring (and pre-2026-06 tokens were
+  // minted with Math.random() — predictable), so migration 0229 gave every
+  // EXISTING token-bearing note a 90-day sunset window and set a DB default of
+  // now() + 365 days for rows minted after it. NULL is tolerated by the code
+  // as "no expiry recorded" (migration-safe: a pre-migration row can never be
+  // locked out by code alone) — after 0229 runs, every token-bearing row has a
+  // value. An expired link dies HONESTLY at /api/borrower/verify with a 410
+  // `portal_link_expired` (the client renders a re-request screen, never a
+  // dead 500); the lender re-issues via POST /api/notes/:id/portal-link/refresh,
+  // which rotates the token (crypto-strong) and revokes live borrower sessions.
+  accessTokenExpiresAt: timestamp("access_token_expires_at").default(sql`now() + interval '365 days'`),
+
   // Pending checkout session ID for webhook verification
   pendingCheckoutSessionId: text("pending_checkout_session_id"),
   
@@ -13041,7 +13069,7 @@ export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
 // Decisions Inbox — pre-analyzed items requiring human judgment
 export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   id: serial("id").primaryKey(),
-  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row) | outcome_check_in (Horizon A1 outcome-ledger founder check-in card) | letter_reply_confirm (Horizon A3 letter-reply shown-back parse awaiting the founder's witnessed confirmation)
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row) | outcome_check_in (Horizon A1 outcome-ledger founder check-in card) | letter_reply_confirm (Horizon A3 letter-reply shown-back parse awaiting the founder's witnessed confirmation) | abuse_report (X-A: NATIVE item filed by the portal "Report this page" affordance — not a mirror)
   riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
   urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
   estimatedImpactCents: integer("estimated_impact_cents"),

@@ -42,6 +42,7 @@ import { logger } from "../utils/logger";
 import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 import { getOrgAutonomyLevel, checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
 import { getIdentityForSend } from "./orgEmailIdentity";
+import { ensureLivePortalLink } from "./portalLink";
 import {
   buildBorrowerLetter,
   buildBorrowerNotice,
@@ -224,15 +225,20 @@ export class FinanceAgentService {
    * Missing values stay missing — the templates render words instead of
    * inventing an amount or a date.
    */
-  private noticeInput(
+  private async noticeInput(
     note: Note,
     borrower: Lead | null,
     relativeDays: number,
     lenderName: string | null,
-  ): BorrowerNoticeInput {
+  ): Promise<BorrowerNoticeInput> {
     const name = borrower
       ? [borrower.firstName, borrower.lastName].filter(Boolean).join(" ").trim()
       : "";
+    // A notice must never embed a dead link: an EXPIRED portal token is
+    // rotated (and its old sessions revoked) before the URL is built, so
+    // "ask your lender to send a fresh link" is true by construction. Live
+    // tokens pass through untouched — no rotation churn on routine sends.
+    const liveNote = await ensureLivePortalLink(note);
     return {
       borrowerName: name.length > 0 ? name : null,
       amountDue: note.monthlyPayment ?? null,
@@ -240,7 +246,7 @@ export class FinanceAgentService {
       dueDate: note.nextPaymentDate ?? null,
       daysLate: Math.max(0, relativeDays),
       lenderName,
-      portalUrl: this.borrowerPortalUrl(note),
+      portalUrl: this.borrowerPortalUrl(liveNote),
       noteReference: `Note #${note.id}`,
     };
   }
@@ -284,7 +290,7 @@ export class FinanceAgentService {
   ): Promise<string> {
     const relativeDays = note.nextPaymentDate ? daysRelativeToDue(note.nextPaymentDate) : 0;
     const lenderName = await this.lenderNameFor(orgId);
-    const input = this.noticeInput(note, borrower, relativeDays, lenderName);
+    const input = await this.noticeInput(note, borrower, relativeDays, lenderName);
     return buildBorrowerNotice(type, input).text;
   }
 
@@ -332,7 +338,7 @@ export class FinanceAgentService {
     }
 
     const lenderName = await this.lenderNameFor(note.organizationId);
-    const input = this.noticeInput(note, borrower, relativeDays, lenderName);
+    const input = await this.noticeInput(note, borrower, relativeDays, lenderName);
     const channel = this.channelForRung(rung, borrower);
     const content =
       channel === "sms"
@@ -806,7 +812,7 @@ export class FinanceAgentService {
 
       const relativeDays = note.nextPaymentDate ? daysRelativeToDue(note.nextPaymentDate) : 0;
       const lenderName = await this.lenderNameFor(orgId);
-      const input = this.noticeInput(note, borrower, relativeDays, lenderName);
+      const input = await this.noticeInput(note, borrower, relativeDays, lenderName);
 
       // The letter rung produces a DOCUMENT. Physical mail is not wired, so we
       // hand back the artifact and record `document_ready` — never "sent".

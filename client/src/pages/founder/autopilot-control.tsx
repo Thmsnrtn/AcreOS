@@ -1,23 +1,37 @@
 /**
- * /founder/autopilot/control — the Autopilot Control Center.
+ * /founder/autopilot/control — the Controls door.
  *
  * One calm surface to run the whole autopilot: the master switches (hands +
  * auto-publish), per-domain trust (pause / grant), pending decisions, the
- * system's calibration, and quick ways into Your Voice / The Story / the daily
- * letter. Flipping the autopilot on is a tap here, not a Fly secret — and it's
- * safe by construction (every domain starts at OBSERVE).
+ * system's calibration, and quick ways into The Story / the daily letter.
+ * Flipping the autopilot on is a tap here, not a Fly secret — and it's safe by
+ * construction (every domain starts at OBSERVE).
+ *
+ * F1 slice 3 (P6 Controls absorption): the door is now a tabbed hub. Your
+ * Voice (standing orders), Launch readiness, Legal readiness, System keys and
+ * the Recovery console live as tabs here instead of five standalone routes,
+ * mirroring the /founder/admin/{costs,telemetry} consolidations. Deep-link a
+ * tab with ?tab=<value>; the retired paths redirect here with their tab
+ * pinned via FOUNDER_LEGACY_REDIRECTS (client/src/lib/route-redirects.ts).
  */
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
-  ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp, OctagonX,
+  ScrollText, Sparkles, ArrowRight, TrendingUp, OctagonX,
   KeyRound, Plug, Sunrise,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { VoiceContent } from "@/pages/founder/voice";
+import { ReadinessContent } from "@/pages/founder/readiness";
+import { LegalReadinessContent } from "@/pages/founder/legal-readiness";
+import { KeysContent } from "@/pages/founder/keys";
+import { RecoveryConsoleContent } from "@/pages/founder/recovery-console";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -138,7 +152,7 @@ function postureDiff(data: ControlData, p: Posture): string[] {
   return out;
 }
 
-export default function FounderAutopilotControlPage() {
+export function ControlCenterContent() {
   useDocumentTitle("Control Center · Founder");
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -295,10 +309,7 @@ export default function FounderAutopilotControlPage() {
   };
 
   return (
-    <PageShell maxWidth="4xl" label="Autopilot Control Center">
-      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
-      <div className="mb-4"><FounderPulseStrip /></div>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <header className="space-y-1">
           <div className="flex items-center gap-2">
             <Power className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -685,15 +696,78 @@ export default function FounderAutopilotControlPage() {
               <ConnectionsSection />
             </motion.section>
 
-            {/* Quick links */}
-            <motion.section variants={staggerItem} className="grid gap-3 sm:grid-cols-3">
-              <ControlLink href="/founder/autopilot" icon={Sparkles} title="The daily letter" />
-              <ControlLink href="/founder/autopilot/voice" icon={MessageSquareQuote} title="Your Voice" />
+            {/* Quick links — Your Voice is the adjacent tab now, not a link. */}
+            <motion.section variants={staggerItem} className="grid gap-3 sm:grid-cols-2">
+              <ControlLink href="/founder" icon={Sparkles} title="The daily letter" />
               <ControlLink href="/founder/autopilot/story" icon={ScrollText} title="The Story" />
             </motion.section>
           </motion.div>
         )}
-      </div>
+    </div>
+  );
+}
+
+// ─── The Controls door — one hub, six tabs (F1 slice 3) ─────────────────────
+//
+// P6 Controls-absorption cluster: Your Voice (/founder/autopilot/voice),
+// Launch readiness (/founder/readiness), Legal readiness
+// (/founder/legal-readiness), System keys (/founder/keys) and the Recovery
+// console (/founder/recovery-console) are tabs of the Controls door now, not
+// standalone routes. Each tab renders the original page's shell-less *Content
+// component verbatim — zero behavior change, one PageShell, one door.
+
+const TABS = [
+  { value: "control", label: "Control Center" },
+  { value: "voice", label: "Your Voice" },
+  { value: "readiness", label: "Launch readiness" },
+  { value: "legal", label: "Legal readiness" },
+  { value: "keys", label: "System keys" },
+  { value: "recovery", label: "Recovery console" },
+] as const;
+
+export default function FounderAutopilotControlPage() {
+  const search = useSearch();
+  const [, navigate] = useLocation();
+  const requested = new URLSearchParams(search).get("tab");
+  // URL-controlled, not defaultValue: palette/sidebar links pin ?tab= on this
+  // SAME pathname, and an uncontrolled Tabs reads the URL only at mount — so
+  // picking "Recovery console" while already on the hub would do nothing
+  // (fleet-6 verifier catch). Controlled both ways: the URL drives the tab,
+  // and a manual tab click rewrites the URL so it never goes stale.
+  const tab = TABS.some((t) => t.value === requested) ? requested! : "control";
+
+  return (
+    <PageShell label="Autopilot Control Center">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
+      <Tabs
+        value={tab}
+        onValueChange={(v) =>
+          navigate(v === "control" ? "/founder/autopilot/control" : `/founder/autopilot/control?tab=${v}`, {
+            replace: true,
+          })
+        }
+        className="w-full"
+      >
+        <TabsList className="mb-4 flex h-auto flex-wrap justify-start gap-1">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.value} value={t.value} className="text-xs sm:text-sm">
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {/* Each absorbed surface keeps its designed reading width. */}
+        <TabsContent value="control">
+          <div className="mx-auto max-w-4xl"><ControlCenterContent /></div>
+        </TabsContent>
+        <TabsContent value="voice">
+          <div className="mx-auto max-w-4xl"><VoiceContent /></div>
+        </TabsContent>
+        <TabsContent value="readiness"><ReadinessContent /></TabsContent>
+        <TabsContent value="legal"><LegalReadinessContent /></TabsContent>
+        <TabsContent value="keys"><KeysContent /></TabsContent>
+        <TabsContent value="recovery"><RecoveryConsoleContent /></TabsContent>
+      </Tabs>
     </PageShell>
   );
 }

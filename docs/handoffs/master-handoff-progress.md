@@ -552,6 +552,79 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves 1/F/X — slice 6 (1.2 error states + F1-s3 + X-A-s1) — ✅ SHIPPED
+
+- **Wave 1.2 (error states + stale-while-error, five doors) — CONFIRMED_GOOD
+  by its verifier:** `client/src/lib/stale-while-error.tsx` (getQueryDegradation
+  / staleSinceText — refuses to fabricate a time for placeholder data — /
+  StaleDataChip role="status" with a real Retry / StaleWhileError wrapper).
+  Wired on every door's primary queries: today.tsx no longer blanks eight
+  sections on a refetch error with cache present; deals.tsx full-swaps only
+  with nothing cached and the aggregates row no longer renders $0 as real on
+  hard failure; finance.tsx no longer degrades a hard notes failure into "No
+  notes serviced yet" + $0 tiles; maps.tsx queryFns THREW for the first time
+  (they had swallowed outages into an empty portfolio); pax.tsx insights
+  covered. Exit: doorErrorStates.test.tsx — primitive behavior + a derived
+  door pin resolving the five doors through MOBILE_DOORS→App.tsx lazy wiring
+  (fail-before proven by stashing). Premise drift recorded: the invalidation
+  registry lives in query-keys.ts (not a separate file); Finance door =
+  /money shell lazy-mounting finance.tsx; Pax door = /ai routed page.
+- **F1 slice 3 (Controls hub) — routes 53 → 48, baseline locked:** keys,
+  recovery-console, readiness, legal-readiness, voice absorbed into
+  /founder/autopilot/control as tabs (same *Content-export pattern as the
+  slice-2 telemetry hub); redirects for every legacy path;
+  FOUNDER_ROUTE_BASELINE lowered 53→48 in the same change. The out-of-set
+  nav-items/layout-sidebar edits were verifier-confirmed FORCED (the new
+  sweep test fails at baseline while those files still emit retired hrefs).
+- **X-A slice 1 (abuse spine):** organizations.trust_tier (new →
+  established → trusted; schema + migration 0229 + migrate.mjs mirror, honest
+  deterministic seed) + orgTrust.ts caps config (NOT enforced — all
+  send-chokepoint enforcement founder-queued with
+  docs/proposals/x-a-send-chokepoint-caps.md); portal-link expiry (410
+  portal_link_expired after email match — no token oracle; NULL fail-open)
+  with crypto-strong rebind; "Report this page" on the borrower portal →
+  native abuse_report decisions-queue item in one hop.
+- **Every verifier catch fixed centrally before commit (3 blocking, 3
+  should-fix, 4 notes):** (1) BLOCKING abuse-report limiter bypass — the
+  token-keyed bucket trusted attacker-supplied tokens (fresh bucket per
+  request ⇒ ~18k rows/hr); now dual-gated with an IP-keyed limiter (30/hr)
+  composing with the 5/hr token bucket, pinned. (2) BLOCKING res-status-raw
+  ratchet 500>499 — raw res.status(202) → res.json, count back at 499.
+  (3) BLOCKING reachability +3 — orgTrust's tier/caps tables un-exported
+  (observable only through the resolvers), suite rewritten accordingly,
+  count back at 652. (4) Non-idempotent trust-tier seed — the activity
+  window is now CLOSED ([2026-07-11, 2026-08-10]) in both artifacts, so
+  deploy re-runs can never silently promote (last_active_at only moves
+  forward); false idempotency claims corrected everywhere, pinned.
+  (5) Expiry-without-reachable-refresh lockout — new services/portalLink.ts
+  shared rebind core; financeAgent now ensures liveness (rotate-if-expired +
+  revoke) before embedding a portal URL in any notice, so the legacy 90-day
+  sunset can never strand a serviced borrower and legacy Math.random tokens
+  rotate out organically; pinned. (6) Controls/telemetry hubs used
+  uncontrolled Tabs — palette/sidebar links to a sibling tab of the same
+  pathname visibly did nothing; both hubs now URL-controlled both ways
+  (founderHubTabs.test.ts). (7) use-properties.ts swallowed failures into a
+  successful [] under the shared /api/properties key, defeating the Map
+  door's honesty from outside (outage-as-empty-portfolio via cache); now
+  throws, all 8 consumers audited null-safe, hook-honesty pin added.
+  (8) maps deals-mode hard error now passes the actual deals error.
+  (9) null-pagePath abuse reports never deduped (SQL `= 'null'` vs IS NULL);
+  branch fixed at both layers, pinned. (10) TTL asymmetry (365-day mint
+  default vs 90-day tier TTL) documented in the caps proposal as a founder
+  decision point.
+- **Founder queue additions (X-A, propose-only):** per-recipient frequency
+  ceilings at send chokepoints; wedge velocity caps + per-recipient dedupe
+  on the platform mail lane (interacts with the 0.8 mail-lanes ruling);
+  payment-method-to-exceed-wedge; signup friction ladder; complaint-driven
+  tier demotion; suspension ladder; portal-link TTL policy (mint-vs-rebind
+  asymmetry). All in docs/proposals/x-a-send-chokepoint-caps.md.
+- Known follow-ups (deliberate, ledgered not shipped): lender-side "Refresh
+  portal link" control on the note surface (self-serve UI for the rebind
+  endpoint); auxiliary badge queries still degrade silently (pax usage/
+  health chips, /api/avm null-on-!ok conflation — strongest next candidate);
+  importer-less default PageShell wrappers on absorbed founder pages
+  (mirrors slice-2 precedent) await a wrapper-deletion pass.
+
 ## Waves F/1 — slice 5 (F2-s1 + W1.1 + dead-token sweep) — ✅ SHIPPED
 
 - **F2 slice 1 (one decision queue):** the two decision inflows living only

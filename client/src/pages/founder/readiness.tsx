@@ -119,7 +119,7 @@ function ReadinessSkeleton() {
   );
 }
 
-export default function FounderReadinessPage() {
+export function ReadinessContent() {
   useDocumentTitle("Launch readiness — AcreOS");
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem("founder-readiness-dismissed") === "true"; } catch { return false; }
@@ -151,7 +151,7 @@ export default function FounderReadinessPage() {
   const criticalIncomplete = (data?.items ?? []).filter(i => i.priority === "critical" && i.status === "incomplete").length;
 
   return (
-    <PageShell label="Launch readiness">
+    <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
           <ListChecks className="w-6 h-6 text-primary" aria-hidden="true" />
@@ -343,6 +343,17 @@ export default function FounderReadinessPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Standalone page wrapper — the canonical surface is the "Launch readiness"
+ *  tab of the Controls door (/founder/autopilot/control?tab=readiness, F1
+ *  slice 3). */
+export default function FounderReadinessPage() {
+  return (
+    <PageShell label="Launch readiness">
+      <ReadinessContent />
     </PageShell>
   );
 }

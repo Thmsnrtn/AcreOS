@@ -112,7 +112,7 @@ const HUB = [
   { href: "/founder/decisions", icon: ListChecks, label: "Decisions", desc: "Everything awaiting your tap — approvals, questions, appeals" },
   { href: "/founder/autopilot/control", icon: SlidersHorizontal, label: "Controls", desc: "Switches, trust levels, budgets, emergency stop" },
   { href: "/founder/autopilot/story", icon: BookOpen, label: "Story", desc: "The glass-box audit trail — every action + why" },
-  { href: "/founder/autopilot/voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives the brain steers by" },
+  { href: "/founder/autopilot/control?tab=voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives the brain steers by" },
   { href: "/founder/all-tools", icon: LayoutGrid, label: "All instruments", desc: "Costs, telemetry, health, feed, steering — every deep panel" },
 ];
 

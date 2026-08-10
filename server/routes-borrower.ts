@@ -3,10 +3,16 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 import { withTransaction } from "./db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { notes, payments, type BorrowerSession, type Lead } from "@shared/schema";
+import { notes, payments, borrowerSessions, type BorrowerSession, type Lead } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+import {
+  portalLinkExpired,
+  rebindPortalLink,
+  PORTAL_LINK_EXPIRED_ERROR,
+  PORTAL_LINK_EXPIRED_MESSAGE,
+} from "./services/portalLink";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
@@ -49,6 +55,12 @@ import {
   buildBorrowerCardCheckoutParams,
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
+import { resolveOrgTrustTier } from "./services/orgTrust";
+import {
+  decisionsInboxService,
+  ABUSE_REPORT_REASON_MAX_CHARS,
+  ABUSE_REPORT_PAGE_PATH_MAX_CHARS,
+} from "./services/decisionsInbox";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -302,6 +314,43 @@ const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, bo
 // Deprecated sunsetting endpoint — raised from 2/min to a usable 10/min and
 // keyed by accessToken so legitimate borrowers retrying on cellular don't 429.
 const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60 * 1000 }, borrowerPortalKey);
+// X-A: the "Report this page" endpoint is unauthenticated by nature (the
+// reporter may not even be able to verify), so it gets a deliberately modest
+// budget — 5 reports per hour per token-or-IP — to keep the report path from
+// becoming its own spam vector into the founder queue.
+const abuseReportRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60 * 60 * 1000 }, borrowerPortalKey);
+// Fleet-6 verifier catch: borrowerPortalKey trusts the CALLER-SUPPLIED
+// accessToken as its bucket key, so an attacker rotating a random token per
+// request mints a fresh bucket every time and the 5/hour cap never trips
+// (~18k rows/hour under the global limiter alone). The report path therefore
+// carries a second, IP-keyed gate — generous enough for shared cellular NAT
+// (30/hour), but it bounds a single-IP adversary to 30 queue rows an hour.
+// Legitimate borrowers with one real token stay governed by the tighter
+// per-token bucket above; the two gates compose.
+const abuseReportIpLimiter = createRateLimiter(
+  { maxRequests: 30, windowMs: 60 * 60 * 1000 },
+  (req) => `abuse-ip:${req.ip || req.socket?.remoteAddress || "unknown"}`,
+);
+
+// ─────────────────────────────────────────────────────────────────────
+// X-A slice 1 — portal-link expiry (hardening the /portal/:accessToken link)
+// ─────────────────────────────────────────────────────────────────────
+// The link's token (notes.access_token) was historically NON-expiring, and
+// pre-2026-06 tokens were minted with Math.random() — predictable. Migration
+// 0229 added notes.access_token_expires_at (legacy links: 90-day sunset from
+// the migration; new notes: 365 days at mint via column default). The check
+// lives HERE, at the portal surfaces, and dies HONESTLY:
+//   • 410 + error "portal_link_expired" (never a dead 500, never a silent
+//     generic 404) — the client renders a re-request screen;
+//   • checked AFTER the email match so only the (token + matching email)
+//     holder ever learns the link's state — a token-guessing probe still
+//     sees the same generic "not found" it always did;
+//   • NULL expiry = "no expiry recorded" and stays VALID (migration-safe:
+//     a code-only deploy can never lock every borrower out).
+// The lender re-issues via POST /api/notes/:id/portal-link/refresh below,
+// and financeAgent rotates an expired link automatically before embedding
+// it in any outgoing reminder — both paths share services/portalLink.ts
+// (the gate, the rebind, and the revoke live there).
 
 // ─────────────────────────────────────────────────────────────────────
 // Sigfried §1 — Borrower-portal sunset (RFC 8594)
@@ -466,7 +515,15 @@ export function registerBorrowerRoutes(app: Express): void {
         // No borrower linked - cannot verify, treat as not found
         return Errors.notFound(res, "loan");
       }
-      
+
+      // X-A portal hardening: an expired link dies honestly, AFTER the email
+      // match (so only the token+email holder learns the link's state) and
+      // BEFORE any session is minted. 410 + a distinct error code the portal
+      // turns into a re-request screen — never a dead 500.
+      if (portalLinkExpired(note)) {
+        return sendError(res, 410, PORTAL_LINK_EXPIRED_ERROR, PORTAL_LINK_EXPIRED_MESSAGE);
+      }
+
       // Create a session for the borrower
       const sessionToken = crypto.randomBytes(32).toString('hex');
       const now = new Date();
@@ -528,6 +585,75 @@ export function registerBorrowerRoutes(app: Express): void {
   });
   
   // ─────────────────────────────────────────────────────────────────────
+  // X-A slice 1 — "Report this page" (abuse-report affordance)
+  // ─────────────────────────────────────────────────────────────────────
+  // The borrower portal is an EXTERNAL surface: the person looking at it is
+  // not an AcreOS user, and the page they're looking at was put in front of
+  // them by a customer org. If that page is a phishing lure, a scam note, or
+  // any other misuse, the visitor needs a one-tap way to tell a human.
+  //
+  // ONE event hop by design: this POST files a NATIVE decisions-door item
+  // (itemType "abuse_report", riskLevel high) via
+  // decisionsInboxService.createFromAbuseReport — no intermediate store, no
+  // batch job. Modest rate limit (5/hour per token-or-IP) so the report path
+  // cannot itself become a spam vector; open-card dedupe on (org, page) in
+  // the service caps queue growth further.
+  //
+  // The response NEVER reveals whether the supplied accessToken resolved to
+  // a real note (no oracle): filed, deduped, and unresolvable-token reports
+  // all acknowledge identically.
+  api.post("/api/borrower/report-page", abuseReportIpLimiter, abuseReportRateLimiter, async (req, res) => {
+    try {
+      const { reason, pagePath, accessToken } = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof reason !== "string" || !reason.trim()) {
+        return Errors.badRequest(res, "A short reason is required");
+      }
+      // Same sanitization posture as borrower messages: strip tags, cap length.
+      const cleanReason = reason
+        .trim()
+        .replace(/<[^>]*>/g, "")
+        .replace(/[<>]/g, "")
+        .slice(0, ABUSE_REPORT_REASON_MAX_CHARS);
+      if (!cleanReason) {
+        return Errors.badRequest(res, "A short reason is required");
+      }
+      const cleanPath =
+        typeof pagePath === "string" && pagePath.trim()
+          ? pagePath.trim().slice(0, ABUSE_REPORT_PAGE_PATH_MAX_CHARS)
+          : null;
+
+      // Resolve org context when the token is real — for founder triage only;
+      // the acknowledgment below is identical whether or not this resolves.
+      let organizationId: number | null = null;
+      let noteId: number | null = null;
+      let orgTrustTier: string | null = null;
+      if (typeof accessToken === "string" && accessToken.length > 8) {
+        const note = await storage.getNoteByAccessToken(accessToken);
+        if (note) {
+          organizationId = note.organizationId;
+          noteId = note.id;
+          orgTrustTier = await resolveOrgTrustTier(note.organizationId);
+        }
+      }
+
+      const userAgent = req.headers["user-agent"];
+      await decisionsInboxService.createFromAbuseReport({
+        pagePath: cleanPath,
+        reason: cleanReason,
+        organizationId,
+        noteId,
+        orgTrustTier,
+        reporterIp: req.ip || req.socket.remoteAddress || null,
+        reporterUserAgent: typeof userAgent === "string" ? userAgent : null,
+      });
+
+      res.json({ received: true });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // F3.4 fix — borrower-statement creds out of URL.
   // ─────────────────────────────────────────────────────────────────────
   // Beatrice's pre-deploy audit (2026-06-03) flagged
@@ -557,6 +683,11 @@ export function registerBorrowerRoutes(app: Express): void {
 
       const ip = req.ip || req.socket.remoteAddress || "unknown";
 
+      // X-A: the resolver's refusal-reason union belongs to statementAccess
+      // (not in this change's blast radius), so the expiry verdict rides this
+      // captured flag instead of widening that module's contract. Checked
+      // AFTER the email match — same info-leak posture as /api/borrower/verify.
+      let expiredLink = false;
       const resolver: BorrowerGrantResolver = {
         async resolve({ accessToken, email }) {
           const note = await storage.getNoteByAccessToken(accessToken);
@@ -572,6 +703,10 @@ export function registerBorrowerRoutes(app: Express): void {
           ) {
             return { ok: false, reason: "email_mismatch" };
           }
+          if (portalLinkExpired(note)) {
+            expiredLink = true;
+            return { ok: false, reason: "not_found" };
+          }
           return { ok: true, scope: `note:${note.id}` };
         },
       };
@@ -580,6 +715,12 @@ export function registerBorrowerRoutes(app: Express): void {
         { accessToken, email, ip },
         resolver,
       );
+
+      if (expiredLink) {
+        // Honest death for the statement path too — the landing page shows
+        // the same re-request screen instead of a generic "unauthorized".
+        return sendError(res, 410, PORTAL_LINK_EXPIRED_ERROR, PORTAL_LINK_EXPIRED_MESSAGE);
+      }
 
       if (!result.ok || !result.sessionCookie) {
         return Errors.unauthorized(res);
@@ -2135,20 +2276,56 @@ export function registerBorrowerRoutes(app: Express): void {
     try {
       const org = getOrganization(req);
       const noteId = Number(req.params.id);
-      
+
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
         return Errors.notFound(res, "note");
       }
-      
+
       // Use the access token for the portal URL
       const portalUrl = `${req.protocol}://${req.get('host')}/portal/${note.accessToken}`;
-      
-      res.json({ url: portalUrl });
+
+      // X-A: surface the link's honest lifetime alongside it. null =
+      // "no expiry recorded" (pre-0229 row) — shown as-is, never invented.
+      const expiresAtRaw = note.accessTokenExpiresAt;
+      const expiresAt =
+        expiresAtRaw == null ? null : new Date(expiresAtRaw).toISOString();
+
+      res.json({ url: portalUrl, expiresAt });
     } catch (err) {
       Errors.internal(res, err);
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // X-A slice 1 — portal-link rebind (rotate + re-expire)
+  // ─────────────────────────────────────────────────────────────────────
+  // The lender-side refresh path an expired (or compromised) link degrades
+  // to: rotates the token to a crypto-strong value (historical tokens were
+  // Math.random-minted), stamps a fresh expiry from the org's trust-tier
+  // caps (orgTrust.portalLinkTtlDays), and REVOKES every live borrower
+  // session minted from the old link — a rebind that left old sessions
+  // breathing would be rotation theater.
+  api.post("/api/notes/:id/portal-link/refresh", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const org = getOrganization(req);
+      const noteId = Number(req.params.id);
+      if (!Number.isInteger(noteId) || noteId <= 0) {
+        return Errors.badRequest(res, "Invalid note id");
+      }
+
+      // Rotation + TTL stamp + session revoke live in services/portalLink.ts,
+      // shared with financeAgent's rotate-at-send path — one rebind, two doors.
+      const rebound = await rebindPortalLink(org.id, noteId);
+      if (!rebound) {
+        return Errors.notFound(res, "note");
+      }
+
+      const portalUrl = `${req.protocol}://${req.get("host")}/portal/${rebound.accessToken}`;
+      res.json({ url: portalUrl, expiresAt: rebound.expiresAt.toISOString() });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
 
 }

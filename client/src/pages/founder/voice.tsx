@@ -36,7 +36,7 @@ interface StandingOrder {
 
 const MAX_LEN = 600;
 
-export default function FounderVoicePage() {
+export function VoiceContent() {
   useDocumentTitle("Your Voice · Founder");
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -125,8 +125,7 @@ export default function FounderVoicePage() {
   const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_LEN && !create.isPending;
 
   return (
-    <PageShell maxWidth="4xl" label="Your Voice">
-      <motion.div className="space-y-8" variants={staggerContainer} initial="hidden" animate="visible">
+    <motion.div className="space-y-8" variants={staggerContainer} initial="hidden" animate="visible">
         <motion.header variants={staggerItem} className="space-y-2">
           <div className="flex items-center gap-2">
             <MessageSquareQuote className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -276,8 +275,17 @@ export default function FounderVoicePage() {
               removingId={remove.isPending ? remove.variables ?? null : null}
             />
           </motion.div>
-        )}
-      </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
+/** Standalone page wrapper — the canonical surface is the "Your Voice" tab of
+ *  the Controls door (/founder/autopilot/control?tab=voice, F1 slice 3). */
+export default function FounderVoicePage() {
+  return (
+    <PageShell maxWidth="4xl" label="Your Voice">
+      <VoiceContent />
     </PageShell>
   );
 }

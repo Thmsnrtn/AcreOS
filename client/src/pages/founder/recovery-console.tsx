@@ -54,7 +54,7 @@ import { RecoveryAuditCard } from "@/components/founder/recovery-console/recover
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function FounderRecoveryConsolePage() {
+export function RecoveryConsoleContent() {
   useDocumentTitle("Recovery console");
 
   const [tab, setTab] = useState<string>("find");
@@ -87,8 +87,7 @@ export default function FounderRecoveryConsolePage() {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/recovery/audit"] });
 
   return (
-    <PageShell>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Wrench className="w-7 h-7" aria-hidden="true" />
@@ -182,8 +181,18 @@ export default function FounderRecoveryConsolePage() {
           </TabsContent>
         </Tabs>
 
-        <RecoveryAuditCard />
-      </div>
+      <RecoveryAuditCard />
+    </div>
+  );
+}
+
+/** Standalone page wrapper — the canonical surface is the "Recovery console"
+ *  tab of the Controls door (/founder/autopilot/control?tab=recovery, F1
+ *  slice 3). */
+export default function FounderRecoveryConsolePage() {
+  return (
+    <PageShell>
+      <RecoveryConsoleContent />
     </PageShell>
   );
 }
