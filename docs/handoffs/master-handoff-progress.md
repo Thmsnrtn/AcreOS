@@ -1244,7 +1244,7 @@ integration defects were all fixed centrally before commit:
   no automatic tier write, since the caps proposal is unruled). All three
   verifiers are briefed on the three-slice fabrication pattern with the
   five real examples. Fallback timer armed.
-- **Slice 10 SHIPPED** (S5 emitter + F1-s4 + X-A-s2 — section above).
+- **Slice 10 SHIPPED at `b2e92be`** (S5 emitter + F1-s4 + X-A-s2 — section above).
   Founder routes 48 → **44** (F1 s4's new /founder/admin/agents hub),
   baseline locked. Five slices running, the blocking defects are ALWAYS
   founder-facing sentences over-claiming: this time a dollar figure
@@ -1252,11 +1252,23 @@ integration defects were all fixed centrally before commit:
   fabrication inside a NEGATIVE claim ("nothing records an export" when
   export_jobs does), which the exit test had PINNED rather than caught
   because it checked source truth in only one direction.
-- **After fleet 10 → FLEET 11:** Wave 2 per §D (MapLibre M0/M1 +
-  self-hosted basemap, click-to-identify, the license-aware egress
-  chokepoint + fixture test, disclaimer-coverage lint), F2 slice 2
-  (remaining decision inflows), X-A slice 3 (post-ruling). G2/G3 wait on
-  customers; founder queue unchanged. S3 hands / promotion mechanics stay
+- **In flight: FLEET 11 — WAVE 2 OPENS** (workflow `wf_2b592c37-a16`):
+  2.5 the LICENSE-AWARE EGRESS CHOKEPOINT (the wave's highest-value item —
+  a `redistributable:"no"` field must not be able to leave through export,
+  public parcel report, market reports, MCP tool results or webhooks;
+  field→provenance DERIVED from the providers' own declarations, fail
+  CLOSED on unknown, and a thinner artifact must SAY it was thinned),
+  2.4+2.6 the provenance/freshness grammar + disclaimer-coverage lint
+  (composing with slice 6's stale-while-error chip, not forking it), and
+  2.1 map M0 groundwork (premise-check WHICH engine renders today — both
+  maplibre-gl and mapbox-gl are in package.json — then a basemap source
+  indirection with correct attribution; NO paid vendor, no faked
+  self-hosting). Verifiers briefed on the five-slice fabrication pattern
+  INCLUDING slice 10's negative-claim instance. Fallback timer armed.
+- **After fleet 11:** Wave 2 remainder (2.2 county fabrics as PMTiles,
+  2.3 click-to-identify → inspector → track-this-parcel), F2 slice 2,
+  X-A slice 3 (post-ruling), then Wave 3 per §D. G2/G3 wait on customers;
+  founder queue unchanged. S3 hands / promotion mechanics stay
   propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
