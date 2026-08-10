@@ -182,7 +182,7 @@ export const founderDigestService = {
         <li>⚠️ ${bullets.topAtRiskBullet}</li>
         <li>✅ ${bullets.recommendedActionBullet}</li>
       </ul>
-      ${allClear ? '<p style="color:green;font-weight:bold;">All systems nominal. Close this email and enjoy your day.</p>' : '<p><a href="/founder-dashboard">Open Dashboard →</a></p>'}
+      ${allClear ? '<p style="color:green;font-weight:bold;">All systems nominal. Close this email and enjoy your day.</p>' : '<p><a href="/founder">Open your Letter →</a></p>'}
     `;
 
     const [digestRecord] = await db.insert(founderDigestHistory).values({

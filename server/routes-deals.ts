@@ -1019,9 +1019,14 @@ export function registerDealRoutes(app: Express): void {
           }
         }
 
+        // Hoisted so the activation emitter below can hand the recorder the
+        // property's apn — a "closed" deal on a SAMPLE- parcel is an
+        // onboarding tire-kick, not activation (G1.1).
+        let closedDealProperty: Awaited<ReturnType<typeof storage.getProperty>> | undefined;
         try {
           // Get the property to find associated lead
           const property = await storage.getProperty(org.id, deal.propertyId);
+          closedDealProperty = property;
           if (property && property.sellerId) {
             const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
             await leadScoringService.recordConversion(property.sellerId, org.id, "deal_closed", {
@@ -1043,6 +1048,9 @@ export function registerDealRoutes(app: Express): void {
             userId: userIdForEvent,
             eventName: "first_deal_closed",
             eventValue: { dealId: deal.id, acceptedAmount: deal.acceptedAmount },
+            // G1.1 — deals carry no sample marker of their own; the attached
+            // property's apn is the marker (sample deals sit on SAMPLE- parcels).
+            entity: { apn: closedDealProperty?.apn },
           });
         } catch { /* non-fatal */ }
 

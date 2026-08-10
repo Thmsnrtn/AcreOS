@@ -159,7 +159,7 @@ router.get("/", async (req: Request, res: Response) => {
           title: ((row.payload as any)?.title as string) ?? `${row.eventType}`,
           body: ((row.payload as any)?.message as string) ?? "",
           priority: 95,
-          actionUrl: ((row.payload as any)?.actionUrl as string) ?? `/founder/now#${row.id}`,
+          actionUrl: ((row.payload as any)?.actionUrl as string) ?? `/founder#${row.id}`,
         });
       }
     } catch {
@@ -193,7 +193,10 @@ router.get("/", async (req: Request, res: Response) => {
             ? `${row.totalAccepted} accepted, ${row.totalRetracted} retracted lifetime.`
             : `${row.consecutiveRetracted} consecutive retracts. Confirm the demotion was warranted.`,
           priority: isPromotion ? 25 : 60,
-          actionUrl: `/founder/cockpit#autonomy`,
+          // The cockpit surface lives on at /founder/steering (the old
+          // /founder/cockpit alias now redirects to the founder home, which
+          // has no autonomy section).
+          actionUrl: `/founder/steering#autonomy`,
           ownerAgentCodename: row.agentCodename,
         });
       }

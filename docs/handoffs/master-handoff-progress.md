@@ -551,6 +551,72 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves G/O/F — opening slice (F1-s1 + F3 + O1 + G1.1) — ✅ SHIPPED
+
+Built as a four-fixer fleet with exclusive file sets, each adversarially
+verified by an independent agent, then integrated centrally. All four
+verifiers confirmed the implementations real; their five cross-item
+integration defects were all fixed centrally before commit:
+
+- **F1 slice 1 (founder redirect collapse):** the 24 redirect-only `/founder`
+  route registrations collapsed into ONE catch-all resolving a
+  `FOUNDER_LEGACY_REDIRECTS` map (wouter RegExp route, query-preserving);
+  5 server emitters + client literals rewritten to canonical four-door paths;
+  `FOUNDER_ROUTE_BASELINE` 82 → **58** (the scout's 59 was off by one —
+  verifier-recounted). New `founderLegacyRedirects.test.ts` (map targets must
+  be real registered routes; no legacy literal anywhere). Integration fix: the
+  SECOND independent pin of the route count
+  (`founderReadinessLadderPlacement.test.ts`) went red — now SINGLE-SOURCED
+  from the ratchet baseline (two copies of one number is how it went stale),
+  with its down-only ≤82 history kept as its own assertion.
+- **F3 (eternal lines):** constitution hard-stop `self-patch-never-merges`
+  (code-invariant, unenforced-baseline stays 0) + `selfPatchCannotMerge.test`
+  (merge-token sweep over autopilot/, GitOps surface pinned exactly,
+  two-file git-add allowlist pinned; GitHub-side credential separation
+  honestly stated as founder residual, not claimed); `FORBIDDEN_SUBSTRINGS`
+  widened to the gate estate (ratchets, ratchet evaluator, statuteRegister,
+  tests/unit, all workflows); `gateTamperWatch` — 33-file SHA-256 manifest
+  over the gate estate, 6h critical job (pages via the 0.9 matrix +
+  experience-log row), manifest regenerated ONLY by
+  `scripts/regenerate-gate-manifest.mjs` (reviewable diff). Integration fix:
+  manifest regenerated LAST after all estate-touching items; roster comment
+  de-numbered (two stale counts in a row — parity lives in
+  jobRosterCoverage).
+- **O1 (dated obligations):** `datedObligations.ts` registry (vendor
+  credentials + statute governance reviews; ONLY known dates —
+  refuse-not-fabricate; statute rows derive `nextReviewDue = reviewedAt+365d`
+  as declared policy), step-away + founderBriefing generalized onto it,
+  integration-time renewal lint (every apikey/oauth connector needs a row or
+  a REASONED dated allowlist entry — most are customer-BYO, reasoned so),
+  Controls-door year view (never-green grammar). Integration fix: the thin
+  vendorCredentialExpiry adapter had ZERO production consumers (module
+  orphan, +4 reachability) — DELETED, its F-18-1 invariants rewritten against
+  the registry of record; reachability locked 654 → **652** (G1.1 also wired
+  the two sample-marker constants).
+- **G1.1 (activation truth):** `activationEvent` declared on all 15 core
+  verticals (D-4); two missing events minted + wired at their real seams
+  (rent-roll reconcile, tax-worksheet scoring); the recorder now REFUSES
+  sample-marked entities (`sampleMarkers.ts` lifted from the seeder); the
+  growth agent's funnel repointed from the non-canonical
+  `user_activation_events` to canonical `activation_events`; derived
+  `registryActivation.test.ts` (every vertical's event ∈ ACTIVATION_EVENTS,
+  every declared event has a real emitter, recorder refuses samples).
+  Integration fix (verifier catch): the two campaign emitters
+  (email/SMS `first_mailer_sent`) fired off pure sample recipients — both now
+  gate on at-least-one-REAL-recipient.
+- Verified-by: four adversarial verifier reports (each re-ran suites incl.
+  co-located; two ran full isolation worktrees to attribute cross-item
+  effects) + central integration suites (85/85) + full gates on the combined
+  tree (evidence in the commit).
+- **Approval queue:** nothing new — no send lane, no hard-stop domain; both
+  ratchet moves DOWNWARD (route baseline 82→58, reachability 654→652).
+- **Deferred within these items (next slices):** F1 slice 2 (observability →
+  /founder/admin/telemetry hub, −5); G1.1 residue (un-threaded
+  `first_seller_response` seam — sample leads carry 555 numbers, negligible;
+  `first_letter_sent` paid-lane guard), G1.2 demo org, G1.3 /for/<vertical>;
+  O1 founder ask (unknown dates: insurance/domain/DKIM/vendor terms); F5-lite
+  governance coverage endpoint; O2/O3 buildable parts; X-B scaffold.
+
 ## Program state (Wave 0 → continuous execution)
 
 - **WAVE 0 COMPLETE** at `4602e15` (0.1–0.7 + 0.9 shipped; 0.8 proposed in

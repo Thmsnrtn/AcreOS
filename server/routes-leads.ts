@@ -521,6 +521,8 @@ export function registerLeadRoutes(app: Express): void {
           userId,
           eventName: "first_lead_added",
           eventValue: { leadId: lead.id },
+          // G1.1 — the recorder refuses seeded sample leads (source "sample_data").
+          entity: { source: lead.source },
         });
       } catch { /* non-fatal */ }
 

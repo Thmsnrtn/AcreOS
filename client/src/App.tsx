@@ -21,6 +21,10 @@ import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 import { variantPageFadeMobile } from "@/lib/motion-tokens";
 import { installViewTransitions } from "@/lib/view-transitions";
+import {
+  FOUNDER_LEGACY_ROUTE_PATTERN,
+  resolveFounderLegacyPath,
+} from "@/lib/route-redirects";
 import { useToast } from "@/hooks/use-toast";
 
 import { SidebarProvider } from "@/components/layout-sidebar";
@@ -635,6 +639,19 @@ function PersonaRoute({
   if (!personas.includes(persona)) return <NotFound />;
   return <Component />;
 }
+
+// Founder legacy-path resolver (F1 slice 1, 2026-08-10). The 24 redirect-only
+// founder <Route> registrations collapsed into one catch-all registered AFTER
+// the last real founder route, so it only ever sees paths no real route
+// claimed. Resolves FOUNDER_LEGACY_REDIRECTS (query string preserved — the
+// generalization of the old /founder/asks?id= trick); unknown founder paths
+// render NotFound exactly as an unregistered route always did.
+function FounderLegacyRedirect() {
+  const [location] = useLocation();
+  const canonical = resolveFounderLegacyPath(location);
+  if (!canonical) return <NotFound />;
+  return <Redirect to={`${canonical}${window.location.search}`} />;
+}
 // Re-export so persona-gated routes can be added incrementally without
 // touching this file each time the type signature evolves.
 export { PersonaRoute };
@@ -1136,33 +1153,10 @@ function Router() {
         {/* 2026-06-01 cut — admin-support.tsx archived; redirect to help. */}
         {() => <Redirect to="/help#support" />}
       </Route>
-      {/* IA consolidation (Lens 4): /founder/bridge is the canonical
-          The Letter (/founder) is the single founder home per the four-door
-          doctrine (client/src/lib/founder-doors.ts + CLAUDE.md). D6 fused the
-          Pulse (/founder) and Letter (/founder/autopilot) overviews there; the
-          earlier Lens-4 consolidation had pointed these legacy homes at
-          /founder/bridge, which left TWO surfaces each calling itself "the
-          canonical founder home." Completing the fold: every legacy founder-home
-          variant now redirects to /founder. Bridge stays reachable as a deep
-          chat+telemetry TOOL, not a competing home.
-            • /founder-dashboard  — was the legacy 7,400-line operations
-              console (FounderDashboard). The legacy component stays reachable
-              via the sidebar "Operations console (legacy)" overflow entry.
-            • /founder/now       — was the tile-driven daily inbox.
-            • /founder/cockpit   — was the weekly steering surface.
-          /founder-home (the early "clean home" landing page) redirected here
-          too until its route-redirects.ts sunset (2026-07-26) passed; the
-          route was deleted 2026-07-27 per the removal protocol.
-          See client/src/lib/route-redirects.ts. */}
-      <Route path="/founder-dashboard">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder/now">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder/cockpit">
-        {() => <Redirect to="/founder" />}
-      </Route>
+      {/* Legacy founder aliases (/founder-dashboard, /founder/now, …) are no
+          longer registered one-by-one — the FounderLegacyRedirect catch-all
+          at the END of the founder routes resolves FOUNDER_LEGACY_REDIRECTS
+          (client/src/lib/route-redirects.ts). */}
       {/* Pillar R — per-(agent, category) tier admin. Linked from the
           cockpit's autonomy section. */}
       <Route path="/founder/trust-graduation">
@@ -1187,34 +1181,17 @@ function Router() {
       <Route path="/founder/inspector/audit">
         {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
-      {/* /founder/dashboard was the legacy tile-driven Now-surface
-          (LegacyNowSurface). Folded into the single founder home (The Letter). */}
-      <Route path="/founder/dashboard">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* /founder — the founder home. The Solene-migration 5-door model is
-          now the sole surface: /founder always renders Today (the morning
-          pulse + active asks + decisions waiting + chat entry). The legacy
-          Pulse page (founder/index.tsx) is retired; its "Deep Tools" links
-          (Command cockpit, Customers, Pax traces, Pax calibration,
-          Life-Cockpit) are all present in FOUNDER_NAV_DEEP_DIVES and
-          reachable from /founder/all-tools + the command palette. Every
-          variant home (/founder-dashboard, /founder/now, /founder/cockpit,
-          /founder/dashboard) continues to redirect to /founder/bridge. */}
-      {/* D6 — the single fused founder home (board report + pulse strip + chat +
-          hub). The old /founder (Pulse) and /founder/autopilot (Letter) overview
-          surfaces are fused here; both now redirect to it. */}
+      {/* /founder — the single fused founder home (D6: board report + pulse
+          strip + chat + hub). The Solene-migration 5-door model is the sole
+          surface; every retired variant home (/founder-dashboard, /founder/now,
+          /founder/cockpit, /founder/dashboard, /founder/today,
+          /founder/autopilot) redirects here via the legacy catch-all. Deep
+          tools live in FOUNDER_NAV_DEEP_DIVES, reachable from
+          /founder/all-tools + the command palette. */}
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
-      <Route path="/founder/today">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* The Letter is now the fused home; the path redirects for old bookmarks.
-          The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
-      <Route path="/founder/autopilot">
-        {() => <Redirect to="/founder" />}
-      </Route>
+      {/* The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
       {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
       <Route path="/founder/autopilot/voice">
         {() => <FounderProtectedRoute component={FounderVoicePage} />}
@@ -1241,9 +1218,6 @@ function Router() {
           /founder/solene-chat redirects for old bookmarks (route-redirects.ts). */}
       <Route path="/founder/chat">
         {() => <FounderProtectedRoute component={FounderSoleneChatPage} />}
-      </Route>
-      <Route path="/founder/solene-chat">
-        {() => <Redirect to="/founder/chat" />}
       </Route>
       {/* Phase 5 of the Solene migration — the remaining three doors next
           to /founder/today. Each is a lean aggregation view that escapes to
@@ -1274,10 +1248,6 @@ function Router() {
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
-      <Route path="/founder/financials">
-        {/* 2026-06-01 cut — FounderFinancialsPage archived; redirect to the costs hub. */}
-        {() => <Redirect to="/founder/admin/costs" />}
-      </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
       </Route>
@@ -1289,13 +1259,6 @@ function Router() {
       </Route>
       <Route path="/founder/market-reports">
         {() => <FounderProtectedRoute component={FounderMarketReportsPage} />}
-      </Route>
-      {/* Legacy binary-flag page consolidated to /founder/features per
-          JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-
-          loaded only on direct URL hit, not in nav) for one release in case
-          migration edge-cases surface; planned removal next cleanup. */}
-      <Route path="/founder/feature-flags">
-        {() => <Redirect to="/founder/features" />}
       </Route>
       <Route path="/founder/features">
         {() => <FounderProtectedRoute component={FounderFeatures} />}
@@ -1332,10 +1295,6 @@ function Router() {
       <Route path="/founder/customers">
         {() => <FounderProtectedRoute component={FounderCustomersPage} />}
       </Route>
-      <Route path="/founder/integrations">
-        {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
       {/* Costs & economics — unified hub (Phase 2 consolidation): cost, AI spend,
           optimizer, unit economics, observability cost, providers, and the
           paid-data trial eval, all as tabs under the /founder/admin namespace. */}
@@ -1346,40 +1305,8 @@ function Router() {
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
       </Route>
-      <Route path="/founder/dsar">
-        {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/legal-holds">
-        {/* 2026-06-01 cut — FounderLegalHoldsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/sub-processors">
-        {/* 2026-06-01 cut — FounderSubProcessorsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
       <Route path="/founder/recovery-console">
         {() => <FounderProtectedRoute component={FounderRecoveryConsolePage} />}
-      </Route>
-      <Route path="/founder/activation">
-        {/* 2026-06-01 cut — FounderActivationPage archived; redirect to onboarding. */}
-        {() => <Redirect to="/founder/onboarding" />}
-      </Route>
-      <Route path="/founder/ml-snapshots">
-        {/* 2026-06-01 cut — FounderMlSnapshotsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/etl">
-        {/* 2026-06-01 cut — FounderEtlPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/prompt-versions">
-        {/* 2026-06-01 cut — FounderPromptVersionsPage archived; redirect to prompt-evolutions. */}
-        {() => <Redirect to="/founder/prompt-evolutions" />}
-      </Route>
-      <Route path="/founder/title-partners">
-        {/* 2026-06-01 cut — FounderTitlePartnersPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/feedback">
         {() => <FounderProtectedRoute component={FounderFeedbackInboxPage} />}
@@ -1392,15 +1319,6 @@ function Router() {
       </Route>
       <Route path="/founder/onboarding-funnel">
         {() => <FounderProtectedRoute component={FounderOnboardingFunnelPage} />}
-      </Route>
-      {/* 2026-07-27 four-door merge — the standalone Agent-asks queue
-          duplicated the Decisions door: founder-decisions.tsx embeds
-          OpenAsksSection with the same /api/founder/asks answer flows. One
-          "things that need me" queue, one door. The query string is preserved
-          (wouter's Redirect drops it otherwise) so /founder/asks?id=N deep
-          links still carry the ask id. See route-redirects.ts. */}
-      <Route path="/founder/asks">
-        {() => <Redirect to={`/founder/decisions${window.location.search}`} />}
       </Route>
       <Route path="/founder/feed">
         {() => <FounderProtectedRoute component={FounderFeedPage} />}
@@ -1497,18 +1415,6 @@ function Router() {
             public form remains at /beta-intake for non-founder users. */}
         {() => <Redirect to="/admin/beta" />}
       </Route>
-      <Route path="/founder/beta-analytics">
-        {/* 2026-06-01 cut — BetaAnalyticsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/agents">
-        {/* 2026-06-01 cut — FounderAgentsPage archived; redirect to agent-queue. */}
-        {() => <Redirect to="/founder/agent-queue" />}
-      </Route>
-      <Route path="/founder/daily-digest">
-        {/* 2026-06-01 cut — FounderDailyDigestPage archived; redirect to founder pulse. */}
-        {() => <Redirect to="/founder" />}
-      </Route>
       <Route path="/founder/decisions">
         {() => <FounderProtectedRoute component={FounderDecisionsPage} />}
       </Route>
@@ -1547,12 +1453,6 @@ function Router() {
       </Route>
       <Route path="/founder/experiments">
         {() => <FounderProtectedRoute component={FounderExperimentsPage} />}
-      </Route>
-      {/* /founder/todo — legacy "what needs you" feed, now folded into the
-          Today door (active asks + decisions waiting). Redirects there; the
-          old standalone page was deleted 2026-06-09. */}
-      <Route path="/founder/todo">
-        {() => <Redirect to="/founder/today" />}
       </Route>
       <Route path="/executive-dashboard">
         {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}
@@ -1771,10 +1671,6 @@ function Router() {
       </Route>
 
       {/* Founder / Admin — additional */}
-      <Route path="/founder/v13">
-        {/* Census W3-1 retire 2026-06-11 — SovereignV13Page deleted. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
       <Route path="/founder/agents/:codename">
         {() => <FounderProtectedRoute component={AgentDetailPage} />}
       </Route>
@@ -1815,6 +1711,15 @@ function Router() {
       </Route>
       <Route path="/founder/scenarios">
         {() => <FounderProtectedRoute component={FounderScenariosPage} />}
+      </Route>
+      {/* Founder legacy-path catch-all (F1 slice 1). MUST stay after every
+          real founder <Route> registration above — the Switch is first-match,
+          so a real founder route added below this line would be swallowed
+          (founderLegacyRedirects.test.ts pins the ordering). A RegExp because
+          wouter string patterns can't express "/founder-dashboard OR
+          /founder/<anything>" in one literal. */}
+      <Route path={FOUNDER_LEGACY_ROUTE_PATTERN}>
+        {() => <FounderLegacyRedirect />}
       </Route>
       {/* Old-path redirects for the refit surfaces. */}
       <Route path="/board-of-directors">

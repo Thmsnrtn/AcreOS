@@ -332,6 +332,11 @@ export default function FounderAutopilotControlPage() {
               <div className="mt-3">
                 <ExternalSafetyNetSection />
               </div>
+              {/* Master-handoff O1 — the year's KNOWN dated obligations,
+                  mirrored (and lint-pinned) from the server registry. */}
+              <div className="mt-3">
+                <ObligationsYearSection />
+              </div>
             </motion.section>
 
             {/* The founder's OWN onboarding (founder ask 2026-07-30) — a
@@ -1216,6 +1221,96 @@ function ExternalSafetyNetSection() {
       <p className="text-micro text-muted-foreground">
         The full "if AcreOS is dark" one-pager (who hosts what, first steps, vendor support) is the break-glass card —
         it must also live outside the app. Email yourself a copy above, then print it or file it.
+      </p>
+    </div>
+  );
+}
+
+// ── Obligations year view (master-handoff O1) ───────────────────────────────
+// The year's KNOWN dated obligations — sole-source vendor keys, statute
+// re-reviews — a static mirror of server/services/datedObligations.ts (the
+// registry the step-away verdict and the daily paging loop read).
+// tests/unit/datedObligations.test.ts fails the build when this mirror drifts
+// from the registry, so the dates shown here are always the enforced ones.
+// Grammar mirrors ExternalSafetyNetSection: this page can count the days but
+// cannot verify a renewal actually happened, so a row is NEVER shown green —
+// amber while the date is ahead, red once it has passed, until the registry
+// row itself is renewed or removed.
+
+interface ObligationYearRow {
+  /** Must match the registry row's `what` exactly (lint-pinned). */
+  what: string;
+  /** ISO YYYY-MM-DD — must match the registry row's `due` exactly (lint-pinned). */
+  due: string;
+  owner: string;
+  note: string;
+}
+
+const OBLIGATIONS_YEAR_VIEW: ObligationYearRow[] = [
+  {
+    what: "ATTOM API key (ATTOM_API_KEY)",
+    due: "2026-08-28",
+    owner: "founder",
+    note: "30-day free trial provisioned 2026-07-29 — convert to a paid plan or residential comps + valuation degrade to the honest-unkeyed path.",
+  },
+  {
+    what: "Statute review: money.no-platform-custody",
+    due: "2027-07-29",
+    owner: "founder",
+    note: "Annual re-review (reviewedAt 2026-07-29 + 365d) of the “be the rail, not the provider” ruling.",
+  },
+  {
+    what: "Statute review: tcpa.dnc-and-litigator-scrub",
+    due: "2027-07-29",
+    owner: "founder",
+    note: "Annual re-review (reviewedAt 2026-07-29 + 365d) of the DNC vendor + coverage decision.",
+  },
+];
+
+function obligationDaysLeft(due: string): number {
+  return Math.floor((Date.parse(`${due}T23:59:59Z`) - Date.now()) / 86_400_000);
+}
+
+function ObligationsYearSection() {
+  const rows = [...OBLIGATIONS_YEAR_VIEW].sort((a, b) => a.due.localeCompare(b.due));
+  return (
+    <div className="rounded-card border border-border bg-card p-4 space-y-3" data-testid="obligations-year-view">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">Obligations year view</p>
+        <p className="text-xs text-muted-foreground">
+          Every KNOWN date on which something lapses or falls due — vendor keys, statute re-reviews. The step-away
+          verdict and the daily page watch the same registry (warnings from T-14, pages as a date nears). This page can
+          count the days but cannot verify a renewal happened, so nothing here is ever shown green.
+        </p>
+      </div>
+      <ul className="divide-y divide-border/60">
+        {rows.map((o) => {
+          const daysLeft = obligationDaysLeft(o.due);
+          const past = daysLeft < 0;
+          return (
+            <li
+              key={o.what}
+              className="py-2 flex items-start gap-2"
+              data-testid={`obligation-${o.what.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+            >
+              {/* Never green — amber ahead of the date, red past it. */}
+              <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${past ? "bg-acr-neg" : "bg-acr-warn"}`} aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">{o.what}</span>
+                <span className={`block text-xs ${past ? "text-acr-neg" : "text-acr-warn"}`}>
+                  {past
+                    ? `${o.due} — ${-daysLeft} day${daysLeft === -1 ? "" : "s"} past due; verify it was handled, then renew the registry row`
+                    : `${o.due} — in ~${daysLeft} day${daysLeft === 1 ? "" : "s"} (owner: ${o.owner})`}
+                </span>
+                <span className="block text-xs text-muted-foreground">{o.note}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-micro text-muted-foreground">
+        Add or renew a date in server/services/datedObligations.ts — never here; a build-time lint keeps this list an
+        honest mirror of that registry.
       </p>
     </div>
   );

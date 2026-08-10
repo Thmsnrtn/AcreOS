@@ -103,6 +103,15 @@ export interface StatuteEntry {
   reviewStatus: StatuteReviewStatus;
   /** ISO date of the review. Required whenever reviewStatus !== "UNREVIEWED". */
   reviewedAt?: string;
+  /**
+   * ISO date the review should be REPEATED by. Policy: reviewedAt + 365 days
+   * (annual re-review). Set ONLY where a dated review exists — an entry with
+   * no reviewedAt has nothing to anchor a due date to and gets none (never
+   * invent a date). Consumed by server/services/datedObligations.ts, which
+   * surfaces it in the step-away verdict, the daily paging loop, and the
+   * Controls-door "Obligations year view".
+   */
+  nextReviewDue?: string;
   /** Where the review is recorded, and WHAT it actually covered. */
   reviewScope?: string;
   /** What goes wrong, to whom, if this is wrong. */
@@ -594,6 +603,8 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     },
     reviewStatus: "founder-reviewed",
     reviewedAt: "2026-07-29",
+    // reviewedAt + 365d — the annual re-review policy documented at the field.
+    nextReviewDue: "2027-07-29",
     reviewScope:
       "docs/company/founder-decisions-2026-07-28.md §13 — the founder reviewed and decided the VENDOR and the required coverage (federal/state DNC + litigators + FCC Reassigned Numbers) and the decision to build the seam. The §64.1200 legal analysis itself has NOT been reviewed by counsel.",
     failureMode:
@@ -641,6 +652,8 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     },
     reviewStatus: "founder-reviewed",
     reviewedAt: "2026-07-29",
+    // reviewedAt + 365d — the annual re-review policy documented at the field.
+    nextReviewDue: "2027-07-29",
     reviewScope:
       'docs/company/founder-decisions-2026-07-28.md §15 ("be the rail, not the provider") — the founder reviewed the custody audit of 30 money-touching surfaces and ruled to route out entirely, accepting the lost fee. Not reviewed by counsel; no licensing opinion exists.',
     failureMode:

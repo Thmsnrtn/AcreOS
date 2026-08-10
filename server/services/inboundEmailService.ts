@@ -153,6 +153,8 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
         userId: null,
         eventName: "first_seller_response",
         eventValue: { channel: "email", leadId },
+        // G1.1 — a reply threaded to a seeded sample lead is not a seller.
+        entity: { source: lead.source },
       });
     } catch { /* non-fatal */ }
 

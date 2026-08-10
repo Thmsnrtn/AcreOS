@@ -185,28 +185,32 @@ export async function sendDailyBriefing(): Promise<void> {
     return; // Already sent today
   }
 
-  // Audit F-18-1: once/day, page/warn on an approaching sole-source credential
-  // expiry (e.g. the ATTOM trial key). Milestone-gated via a deterministic
-  // dedupeKey (T-14/7/2 + expired) so there is no daily spam; warning severity
-  // records a finding, critical (≤2 days or already expired) pages the phone.
+  // Audit F-18-1, generalized by O1: once/day, page/warn on an approaching
+  // dated obligation (sole-source vendor key, statute re-review, …).
+  // Milestone-gated via a deterministic dedupeKey (T-14/7/2 + overdue) so
+  // there is no daily spam; warning severity records a finding, critical
+  // (≤2 days or already past due) pages the phone.
   try {
-    const { imminentCredentialExpiries, EXPIRY_PAGE_THRESHOLDS } = await import("./vendorCredentialExpiry");
-    for (const v of imminentCredentialExpiries(new Date(), 14)) {
-      const atMilestone = v.daysLeft < 0 || (EXPIRY_PAGE_THRESHOLDS as readonly number[]).includes(v.daysLeft);
+    const { imminentObligations, pageThresholdsFor } = await import("./datedObligations");
+    for (const o of imminentObligations(new Date(), 14)) {
+      const atMilestone = o.daysLeft < 0 || pageThresholdsFor(o).includes(o.daysLeft);
       if (!atMilestone) continue;
       const { raiseAlert } = await import("./alertSpine");
+      // Stable per-row anchor: the env var where one exists (credential rows),
+      // else a slug of the what-line.
+      const idPart = o.envVar ?? o.what.toLowerCase().replace(/[^a-z0-9]+/g, "_");
       await raiseAlert({
-        severity: v.daysLeft <= 2 ? "critical" : "warning",
-        source: "vendorCredentialExpiry",
-        title: v.daysLeft < 0 ? `${v.vendor} API key EXPIRED` : `${v.vendor} API key expires in ~${v.daysLeft} day(s)`,
-        detail: `${v.envVar} — sole source for ${v.isSoleSourceFor}. ${v.note}`,
-        dedupeKey: `vendor_expiry_${v.envVar}_${v.daysLeft < 0 ? "expired" : v.daysLeft}`,
+        severity: o.daysLeft <= 2 ? "critical" : "warning",
+        source: "datedObligations",
+        title: o.daysLeft < 0 ? `${o.what} is PAST DUE` : `${o.what} falls due in ~${o.daysLeft} day(s)`,
+        detail: `Owner: ${o.owner}.${o.soleSourceFor ? ` Sole source for ${o.soleSourceFor}.` : ""} ${o.note}`,
+        dedupeKey: `dated_obligation_${idPart}_${o.daysLeft < 0 ? "overdue" : o.daysLeft}`,
         domain: "reliability",
-        citedReason: "A sole-source vendor key that lapses mid-absence degrades the product with no warning.",
+        citedReason: "A known calendar obligation that lapses mid-absence degrades the product with no warning.",
       });
     }
   } catch (err) {
-    logger.warn("[FounderBriefing] vendor-expiry check failed", {
+    logger.warn("[FounderBriefing] dated-obligation check failed", {
       metadata: { detail: err instanceof Error ? err.message : String(err) },
     });
   }

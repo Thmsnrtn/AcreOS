@@ -221,11 +221,15 @@ const PRIORITY_TO_URGENCY: Record<ActionQueuePriority, number> = {
 };
 
 const TYPE_TO_ROUTE: Record<ActionQueueItem["type"], (data: any) => string> = {
-  support_escalation: (d) => `/founder-dashboard?tab=support&ticket=${d.ticketId ?? ""}`,
+  // The old founder-dashboard monolith's ?tab= deep links died with the
+  // monolith (see CLAUDE.md "Known monoliths"); its alias redirects to the
+  // founder home and the params were consumed by nothing. rawData still
+  // carries ticketId/featureRequestId/campaignId for downstream rendering.
+  support_escalation: () => "/founder",
   dunning_critical: (d) => `/founder/customers?orgId=${d.organizationId ?? ""}`,
   expiring_trial: (d) => `/founder/customers?orgId=${d.organizationId ?? ""}`,
-  feature_request: (d) => `/founder-dashboard?tab=feedback&request=${d.featureRequestId ?? ""}`,
-  inactive_campaign: (d) => `/founder-dashboard?tab=growth&campaign=${d.campaignId ?? ""}`,
+  feature_request: () => "/founder",
+  inactive_campaign: () => "/founder",
 };
 
 export async function getActionQueueAsTodos(): Promise<ActionQueueAsTodoItem[]> {

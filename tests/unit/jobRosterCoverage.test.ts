@@ -48,6 +48,11 @@ const SCANNED_FILES = [
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",
+  // F3 eternal lines (2026-08): the gate-estate tamper watch owns its own
+  // withJobLock literal (gate_tamper_watch) — registered from
+  // runScheduledJobs.ts via dynamic import (that file's line-count ratchet
+  // only goes down), scheduled inside the module like founderDigest above.
+  "../../server/services/autopilot/gateTamperWatch.ts",
 ];
 
 function extractWithJobLockNames(): Set<string> {

@@ -268,8 +268,9 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // Note: the canonical founder home (/founder → Today) and the four other
   // primary doors (Team/Customers/Money/Build) are NOT listed here — they
   // already live in FOUNDER_NAV_NEW_5_DOORS. This catalog is the SECONDARY
-  // surface: everything reachable beyond the 5 doors.
-  { label: "Your company (autopilot)", icon: Sparkles, href: "/founder/autopilot", category: "strategy" },
+  // surface: everything reachable beyond the 5 doors. ("Your company
+  // (autopilot)" was removed 2026-08-10: /founder/autopilot is now a legacy
+  // alias of the home itself, which this catalog deliberately excludes.)
   { label: "Autopilot controls", icon: Sparkles, href: "/founder/autopilot/control", category: "strategy" },
   { label: "Command cockpit", icon: BarChart2, href: "/founder/command", category: "strategy" },
   { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", category: "strategy" },

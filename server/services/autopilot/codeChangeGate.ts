@@ -9,9 +9,11 @@
  *
  *   • forbidden  — never autonomous, even witnessed through this path. The
  *                  things the immune system must never touch on its own: the
- *                  constitution/immutables, the security + deploy CI gates, the
- *                  truth/lint ratchets, auth + encryption cores, AND this gate
- *                  itself (no self-modification of the guardrail).
+ *                  constitution/immutables, ALL CI workflows, the truth/lint
+ *                  ratchets + their baselines, the governance registries, the
+ *                  unit-test estate, the gate-tamper watch + its manifest,
+ *                  auth + encryption cores, AND this gate itself (no
+ *                  self-modification of the guardrail).
  *   • safe_auto  — may auto-open a PR for the SAFE CLASS only: a dependency
  *                  PATCH-version bump (npm audit fix) touching only package.json
  *                  / lockfile, no new deps, no minor/major. Still goes through
@@ -55,11 +57,18 @@ const FORBIDDEN_SUBSTRINGS: readonly string[] = [
   "immutable", // @sovereign/immutables, constitution data
   "constitution", // constitutionalGuard, preCallConstitutionalChecker
   "codechangegate", // this guardrail itself
-  ".github/workflows/security", // the security CI gate
-  ".github/workflows/deploy", // the deploy gate + auto-rollback
+  // F3 "eternal lines" (2026-08): the original list named only the security +
+  // deploy workflows, leaving ci/test and every other CI lane touchable. ALL
+  // workflows are gates — widen to the whole directory.
+  ".github/workflows",
   "scripts/lint-no-fabrication", // the truth ratchet
   "scripts/lint-eslint-ratchet",
   "scripts/lint-truth",
+  "scripts/ratchet", // ratchet.mjs evaluator + every scripts/ratchets/*.json baseline
+  "statuteregister", // shared/governance/statuteRegister.ts (matched lowercased)
+  "tests/unit", // the ratchet-test estate — the immune system never edits tests
+  "gatetamper", // gateTamperWatch.ts + gateTamperManifest.json (the tamper watch may not be tampered)
+  "gate-manifest", // scripts/regenerate-gate-manifest.mjs — the manifest's only sanctioned writer
   "server/auth", // auth core
   "server/services/encryption", // encryption core
   "approvalkernel", // the witnessed-send kernel

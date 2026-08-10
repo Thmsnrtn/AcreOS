@@ -16,8 +16,15 @@ const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"),
 /** Current count — the ratchet baseline. Consolidation may only LOWER this.
  *  2026-06-23: 88→82 — the 7 cost/economics routes (cost, ai-costs,
  *  observability-cost, cost-optimizer, unit-economics, paid-data-eval,
- *  providers) merged into the single /founder/admin/costs tabbed hub. */
-const FOUNDER_ROUTE_BASELINE = 82;
+ *  providers) merged into the single /founder/admin/costs tabbed hub.
+ *  2026-08-10: 82→58 (F1 slice 1) — the 24 redirect-only registrations
+ *  collapsed into FOUNDER_LEGACY_REDIRECTS + one catch-all <Route>. The
+ *  catch-all takes a RegExp path (wouter string patterns can't express
+ *  "/founder-dashboard OR /founder/<anything>"), so this counter — which
+ *  counts string-literal registrations, i.e. actual founder surfaces —
+ *  does not see it, and rightly so: it registers no new surface.
+ *  founderLegacyRedirects.test.ts guards the catch-all itself. */
+const FOUNDER_ROUTE_BASELINE = 58;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

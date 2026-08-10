@@ -7,6 +7,8 @@
  *  - an UNREADABLE critical signal is never shown green (attention + blocked)
  *  - optional gaps (no grants, immune off) leave the verdict ready but are
  *    counted as worth-doing in the headline
+ *  - dated obligations (O1): an imminent obligation suppresses "every system
+ *    is armed"; a past-due one is action_needed — detail names what/owner/days
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +32,9 @@ let drillRows: Array<{ ranAt: Date; passed: boolean; rto: number }> = [];
 let uptimeSampleRows: Array<{ at: Date }> = [];
 let patchCapable = { capable: true, reason: "ok" };
 let ledgerLevels = ["execute_gated", "autonomous_gated", "draft", "observe", "observe"];
+// Dated obligations (F-18-1 generalized by O1). Empty = nothing imminent, so
+// the armed world stays deterministic regardless of the real registry's dates.
+let obligationRows: Array<{ what: string; due: string; owner: string; kind: string; soleSourceFor?: string; note: string; daysLeft: number }> = [];
 
 vi.mock("./settings", () => ({
   isPanicStopped: () => panicStopped,
@@ -88,6 +93,7 @@ vi.mock("../../db", () => ({
   },
 }));
 vi.mock("./selfPatchGitOps", () => ({ assertSelfPatchCapable: async () => patchCapable }));
+vi.mock("../datedObligations", () => ({ imminentObligations: () => obligationRows }));
 vi.mock("./domainAutonomy", () => ({
   getTrustLedger: async () => ledgerLevels.map((level, i) => ({ domain: `d${i}`, level, cleanCycleCount: 0, threshold: 10, lastPromotedAt: null, lastDemotedAt: null, lastDemotionReason: null })),
   deriveAutonomyHorizonDays: (levels: string[]) => Math.min(21, Math.max(1, levels.length)), // simple stand-in
@@ -112,6 +118,7 @@ beforeEach(() => {
   process.env.UPTIME_PROBE_TOKEN = "probe-token";
   uptimeSampleRows = [{ at: new Date(Date.now() - 4 * 60 * 1000) }];
   patchCapable = { capable: true, reason: "ok" };
+  obligationRows = [];
   process.env.FOUNDER_EMAIL = "tom@example.com";
   process.env.SELF_PATCH_ENABLED = "true";
   githubCreds = { token: "ghp_t", repository: "tom/acreos" };
@@ -238,6 +245,38 @@ describe("buildStepAwayReadiness", () => {
     expect(fresh.status).toBe("action_needed");
     expect(fresh.critical).toBe(false);
     expect(r.verdict).toBe("ready");
+  });
+
+  it("an imminent dated obligation → vendor_credentials attention naming what/owner/days; armed headline suppressed (O1)", async () => {
+    obligationRows = [{
+      what: "ATTOM API key (ATTOM_API_KEY)", due: "2026-08-28", owner: "founder",
+      kind: "vendor_credential", soleSourceFor: "residential comps", note: "Convert the trial to a paid plan.", daysLeft: 9,
+    }];
+    const r = await buildStepAwayReadiness();
+    const c = r.checks.find((x) => x.key === "vendor_credentials")!;
+    expect(c.status).toBe("attention");
+    expect(c.detail).toContain("ATTOM API key (ATTOM_API_KEY)");
+    expect(c.detail).toContain("owner: founder");
+    expect(c.detail).toContain("~9 day(s)");
+    expect(c.detail).toContain("sole source for residential comps");
+    expect(c.fix).toContain("Convert the trial");
+    // Non-critical, so the verdict stays ready — but the fully-armed headline
+    // must not be claimable while a known date is about to pass.
+    expect(r.verdict).toBe("ready");
+    expect(r.headline).not.toContain("Every system is armed");
+  });
+
+  it("a PAST-DUE obligation → action_needed, and a review row (no envVar/soleSource) reads cleanly", async () => {
+    obligationRows = [{
+      what: "Statute review: money.no-platform-custody", due: "2027-07-29", owner: "founder",
+      kind: "governance_review", note: "Annual re-review (reviewedAt 2026-07-29 + 365d).", daysLeft: -3,
+    }];
+    const r = await buildStepAwayReadiness();
+    const c = r.checks.find((x) => x.key === "vendor_credentials")!;
+    expect(c.status).toBe("action_needed");
+    expect(c.detail).toContain("Statute review: money.no-platform-custody");
+    expect(c.detail).toContain("fell due 3 day(s) ago");
+    expect(c.detail).not.toContain("sole source");
   });
 
   it("optional gaps (no grants, immune off, queue busy) leave the verdict READY but counted", async () => {

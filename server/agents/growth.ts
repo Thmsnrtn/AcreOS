@@ -55,8 +55,14 @@ export class GrowthAgent extends BaseAgent {
         SELECT COUNT(*) as count FROM organizations
         WHERE is_founder = false AND onboarding_completed = true AND updated_at >= ${yesterday}
       `),
+      // G1.1 drift fix — this read the non-canonical user_activation_events
+      // (written only by betaAnalytics), so the growth brief reported a funnel
+      // the product wasn't emitting. activation_events is the canonical table
+      // recordActivationEvent writes and /founder/activation reads. It is
+      // first-occurrence-per-org, so COUNT(*) per event = orgs that hit the
+      // event for the first time in the window.
       db.execute(sql`
-        SELECT event_name, COUNT(*) as count FROM user_activation_events
+        SELECT event_name, COUNT(*) as count FROM activation_events
         WHERE occurred_at >= ${yesterday}
         GROUP BY event_name
       `),
@@ -101,8 +107,10 @@ export class GrowthAgent extends BaseAgent {
         SELECT COUNT(*) as count FROM organizations
         WHERE is_founder = false AND created_at BETWEEN ${twoWeeksAgo} AND ${oneWeekAgo}
       `),
+      // G1.1 drift fix — canonical activation_events (see daily report note);
+      // its org column is organization_id, not user_activation_events' org_id.
       db.execute(sql`
-        SELECT event_name, COUNT(DISTINCT org_id) as orgs FROM user_activation_events
+        SELECT event_name, COUNT(DISTINCT organization_id) as orgs FROM activation_events
         WHERE occurred_at >= ${oneWeekAgo}
         GROUP BY event_name
         ORDER BY orgs DESC

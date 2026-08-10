@@ -190,6 +190,37 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     },
   },
 
+  {
+    id: "hard-stop.self-patch-never-merges",
+    title: "The self-patch can open a PR, never merge one",
+    statement:
+      "The autopilot's self-patch motor may only open a pull request on a feature branch. It ships no merge capability of any kind — no merge API call, no push to the default branch, no force push — so the full CI suite, the deploy gate, and the founder's review always stand between an autonomous patch and prod. Any future auto-merge class requires an explicit founder decision first.",
+    category: "hard-stop",
+    source:
+      "Autopilot self-patch doctrine (server/services/autopilot/selfPatch.ts safety layer 4: \"It opens a PULL REQUEST. It NEVER merges to main\"); master-handoff item F3 (2026-08)",
+    enforcement: {
+      kind: "code-invariant",
+      refs: [
+        "server/services/autopilot/selfPatch.ts",
+        "server/services/autopilot/selfPatchGitOps.ts",
+        "tests/unit/selfPatchCannotMerge.test.ts",
+      ],
+      note:
+        "Structural: the GitOps interface (selfPatch.ts) exposes no merge " +
+        "member, and the real runner's only remote writes are a push of the " +
+        "patch feature branch and POST /repos/{repo}/pulls. " +
+        "selfPatchCannotMerge.test.ts ratchets it: merge-capability tokens " +
+        "(merge endpoints, merge_method, a bare git-merge arg) appear nowhere " +
+        "under server/services/autopilot/, the runner's return surface is " +
+        "exactly the declared operation set, and the git-add allowlist is " +
+        "exactly the two package files. HONEST SCOPE: GitHub-side credential " +
+        "separation (a fine-grained PAT without merge/administration rights, " +
+        "branch protection on the default branch) is a founder-side control " +
+        "this repo cannot prove — the ratchet covers only what the code can " +
+        "do, and does not claim the remote is locked down.",
+    },
+  },
+
   // ── Navigation doctrine ────────────────────────────────────────────────
   {
     id: "nav.customer-five-doors",

@@ -156,11 +156,12 @@ const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
 
 /**
- * The roster. 118 entries: the 116 distinct `withJobLock` jobs registered in
- * runScheduledJobs.ts, plus the two jobs added in this same change —
- * `audit_chain_verify` (Quinn-F2 weekly chain-integrity verifier) and
- * `job_deadman_monitor` (this very monitor, so it watches itself). Derived by
- * reading every registration site for its effective cadence + criticality.
+ * The roster: every distinct `withJobLock` job registered in
+ * runScheduledJobs.ts, plus the deadman's own self-watch entries
+ * (`audit_chain_verify`, `job_deadman_monitor`) and `gate_tamper_watch`
+ * (F3 eternal lines, 2026-08). No hardcoded count here — two prior editions
+ * of this comment carried stale numbers; `jobRosterCoverage.test.ts` derives
+ * the roster↔registration parity that actually matters.
  *
  * `critical: true` is reserved for jobs whose silent death directly harms a
  * customer, loses money, breaks compliance, or blinds on-call:
@@ -455,6 +456,17 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // in the legacy sense — it's the new scheduleSelfRescheduling job registered
   // alongside the deadman. Listed here so the deadman watches the watcher.
   { name: "audit_chain_verify", intervalMs: WEEK, critical: true },
+
+  // ── F3 eternal lines — gate-estate tamper watch (2026-08) ──────────────────
+  // Re-hashes the gate estate (ratchet baselines, governance registries,
+  // sovereign immutables, codeChangeGate, the named ratchet tests, the two
+  // gate workflows) against the pinned manifest every 6 hours; a mismatch
+  // pages the founder critical + writes an experience-log row. CRITICAL: a
+  // silent gate mutation is exactly the tamper this job exists to page on,
+  // and its own ABSENCE must page too — a dark tamper watch is
+  // indistinguishable from a defeated one. On a deployed image without a
+  // source checkout the run reports SKIPPED (honest, still writes liveness).
+  { name: "gate_tamper_watch", intervalMs: 6 * HOUR, critical: true },
 
   // ── The deadman itself (added in this change) ──────────────────────────────
   // The deadman watches the deadman: a surviving worker generation will page if

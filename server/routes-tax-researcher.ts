@@ -838,6 +838,25 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
       .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
       .returning();
     if (!row) return Errors.notFound(res, "Listing");
+
+    // G1.1 — per-vertical activation telemetry. Setting a max bid / walk-away
+    // is the tax_lien_deed vertical's declared "aha" (the worksheet SCORED,
+    // not merely viewed — hence the gate on the scoring fields, not on any
+    // PATCH). Real entities only: the recorder refuses a SAMPLE- apn.
+    // Idempotent FIRST-occurrence; fire-and-forget.
+    if (parsed.data.maxBidCents != null || parsed.data.walkAwayAboveCents != null) {
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId: req.user?.id ?? null,
+          eventName: "first_worksheet_scored",
+          eventValue: { listingId: row.id, source: "tax-researcher:listing:patch" },
+          entity: { apn: row.apn },
+        });
+      } catch { /* non-fatal */ }
+    }
+
     res.json({ listing: row });
   } catch (err: any) {
     Errors.internal(res, err);

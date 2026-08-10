@@ -418,6 +418,26 @@ export function registerRentRollImportRoutes(app: Express): void {
         vacantRows: summary.vacantRows,
         skippedRowCount: summary.skippedRowCount,
       });
+
+      // G1.1 — per-vertical activation telemetry. A reconciled rent roll is the
+      // rental-family verticals' declared "aha" moment (BUSINESS_TYPES[*]
+      // .activationEvent). Real entities only: the recorder refuses a SAMPLE-
+      // parcel's roll. Idempotent FIRST-occurrence; fire-and-forget.
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId,
+          userId,
+          eventName: "first_rent_roll_reconciled",
+          eventValue: {
+            propertyId: propId,
+            rowsSubmitted: parsed.data.units.length,
+            createdUnits: summary.createdUnits,
+            source: "parcels:rent-roll:import",
+          },
+          entity: { apn: prop.apn },
+        });
+      } catch { /* non-fatal */ }
       // `rowsSubmitted` is returned so the caller can check the arithmetic
       // itself: units created + already-present + skipped must equal it.
       return res.status(201).json({

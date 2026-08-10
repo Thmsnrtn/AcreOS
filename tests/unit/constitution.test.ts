@@ -50,6 +50,12 @@ const ROOT = path.resolve(__dirname, "../..");
  *   this, which is exactly why four dead platform-custody surfaces survived
  *   several honesty waves — the ban on re-fronting platform SEND rails had no
  *   payments analogue.
+ * 2026-08-10 (stays 0): a SIXTH hard stop was registered —
+ *   hard-stop.self-patch-never-merges (master-handoff item F3, "eternal
+ *   lines"). It arrived already machine-enforced: the GitOps interface has no
+ *   merge member, the runner only pushes a feature branch + opens a PR, and
+ *   tests/unit/selfPatchCannotMerge.test.ts ratchets merge-capability tokens
+ *   out of server/services/autopilot/ entirely.
  */
 const UNENFORCED_HARD_STOP_BASELINE = 0;
 
@@ -89,14 +95,16 @@ describe("constitution registry — enforcement pointers are real", () => {
 });
 
 describe("constitution ratchet — hard stops must become machine-enforced", () => {
-  it("registers the five hard stops", () => {
-    // The permanent hard stops from CLAUDE.md's DO-NOT-DO list: four
-    // founder-only action classes (spends >$500, pricing, legal signing,
-    // customer-data deletion) plus one outright ban — customer money never
+  it("registers the six hard stops", () => {
+    // The permanent hard stops: four founder-only action classes from
+    // CLAUDE.md's DO-NOT-DO list (spends >$500, pricing, legal signing,
+    // customer-data deletion) plus two outright bans — customer money never
     // moves on AcreOS's own account (founder ruling 2026-07-29, "be the rail,
-    // not the provider"). This count may only GROW by an explicit founder
-    // decision; it may never shrink, because a hard stop is permanent.
-    expect(hardStops().length).toBe(5);
+    // not the provider") and the self-patch motor never merges its own PR
+    // (master-handoff item F3, 2026-08). This count may only GROW by an
+    // explicit founder decision; it may never shrink, because a hard stop is
+    // permanent.
+    expect(hardStops().length).toBe(6);
   });
 
   it("the count of UNENFORCED hard stops never exceeds the baseline (it may only shrink)", () => {

@@ -339,6 +339,8 @@ export function registerPropertyRoutes(app: Express): void {
           userId,
           eventName: "first_property_added",
           eventValue: { propertyId: property.id },
+          // G1.1 — the recorder refuses seeded sample parcels (SAMPLE- apn).
+          entity: { apn: property.apn },
         });
       } catch { /* non-fatal */ }
 

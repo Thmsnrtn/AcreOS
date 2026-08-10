@@ -31,6 +31,8 @@
  * spotlightModules name real routed surfaces / sidebar-module children.
  */
 
+import type { ACTIVATION_EVENTS } from "./schema";
+
 export const BUSINESS_TYPE_IDS = [
   "land_flipper",
   "note_investor",
@@ -65,6 +67,12 @@ export interface BusinessTypeMeta {
   // Vertical-specific integrations. Used by /api/trust/sub-processors
   // filtering + onboarding nudges.
   integrations: string[];
+  // G1.1 — the vertical's canonical "aha" activation event. MUST be a member
+  // of ACTIVATION_EVENTS (shared/schema.ts) that has a REAL recordActivation-
+  // Event emitter under server/ — registryActivation.test.ts derives both
+  // facts from source, so a dangling event name fails the suite. Type-only
+  // import above keeps this registry runtime-independent of the schema module.
+  activationEvent: (typeof ACTIVATION_EVENTS)[number];
 }
 
 export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
@@ -88,6 +96,8 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // route registers it — the registry must not name unreachable surfaces.
     spotlightModules: ["parcels", "leads", "deals", "letters"],
     integrations: ["county_gis", "regrid", "usda_nass", "stripe", "lob"],
+    // Mail out the door is the land wedge's magic-moment precursor (TTFM).
+    activationEvent: "first_mailer_sent",
   },
   note_investor: {
     id: "note_investor",
@@ -106,6 +116,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["notes", "borrowers", "money", "letters"],
     integrations: ["stripe", "tax_identity"],
+    // Servicing IS the business — the first borrower payment landing in the
+    // book is the moment the product is operating the note.
+    activationEvent: "first_borrower_payment_received",
   },
   hybrid: {
     id: "hybrid",
@@ -122,6 +135,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["parcels", "notes", "deals", "money"],
     integrations: ["county_gis", "regrid", "stripe", "lob"],
+    // The deal close is where the two books MEET (tpl_deal_closed hands a
+    // seller-financed close to note setup) — the hybrid's unifying moment.
+    activationEvent: "first_deal_closed",
   },
   fix_and_flip: {
     id: "fix_and_flip",
@@ -179,6 +195,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // valuation, pay-per-call via the residentialComps seam / provider
     // registry) — named here honestly, not just Stripe (audit Wave 1).
     integrations: ["stripe", "attom"],
+    // The first house in inventory is what lights the rehab surface; no
+    // rehab-milestone activation event exists yet (the rehab.milestone
+    // WORKFLOW trigger is not an activation_events member).
+    activationEvent: "first_property_added",
   },
   residential_wholesaler: {
     id: "residential_wholesaler",
@@ -224,6 +244,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // payment rail here to name. Subscription payments TO AcreOS are billing, not
     // a vertical integration.
     integrations: [],
+    // The assignment close (deal closed = contract assigned) is the
+    // wholesaler's payday moment.
+    activationEvent: "first_deal_closed",
   },
   buy_and_hold: {
     id: "buy_and_hold",
@@ -271,6 +294,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // ride the org's OWN connected identity (the BYO counterparty email lane),
     // not a provider-registry integration, so there is nothing to declare here.
     integrations: [],
+    // BH-5's own words: dropping the seller's rent roll in "is the moment a
+    // landlord-buyer says 'oh, this thing gets it'".
+    activationEvent: "first_rent_roll_reconciled",
   },
   short_term_rental: {
     id: "short_term_rental",
@@ -310,6 +336,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // children as buy_and_hold in layout-sidebar.tsx).
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
     integrations: [],
+    // Unit inventory in via the rent-roll importer — the same rentals-family
+    // entry moment (no reservation-ledger activation event exists yet).
+    activationEvent: "first_rent_roll_reconciled",
   },
   commercial: {
     id: "commercial",
@@ -372,6 +401,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Honest: like buy_and_hold, the rent ledger is manual-entry — no
     // dedicated commercial integration is wired.
     integrations: [],
+    // A commercial book starts the same way: the building's roll reconciled
+    // into units/leases behind the Rentals doors.
+    activationEvent: "first_rent_roll_reconciled",
   },
   creative_finance: {
     id: "creative_finance",
@@ -436,6 +468,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Serviced notes ride the same Stripe rails as the note vertical
     // (payment links / Stripe Connect in the /finance note drawer).
     integrations: ["stripe"],
+    // The carried paper performing — first borrower payment on the wrapped /
+    // owner-carry note — is when the creative-finance loop closes.
+    activationEvent: "first_borrower_payment_received",
   },
   developer: {
     id: "developer",
@@ -480,6 +515,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // subdivider), so the lots/permits/plats model applies to them too.
     spotlightModules: ["permits", "county-timelines", "lot-pricing", "ccr-templates"],
     integrations: ["county_gis"],
+    // The parent parcel entering inventory opens the Subdivision workspace;
+    // no plat/permit activation event exists yet (those are workflow
+    // triggers, not activation_events members).
+    activationEvent: "first_property_added",
   },
   subdivider: {
     id: "subdivider",
@@ -508,6 +547,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["parcels", "permits", "county-timelines", "lot-pricing", "ccr-templates"],
     integrations: ["county_gis"],
+    // Same workspace as developer (persona-mapping collapses the two): the
+    // parent parcel in inventory is the split's starting move.
+    activationEvent: "first_property_added",
   },
   tax_lien_deed: {
     id: "tax_lien_deed",
@@ -539,6 +581,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["redemption-clock", "auction-worksheet", "state-rules", "quiet-title"],
     integrations: ["county_gis"],
+    // Marcus's flagship: a worksheet listing SCORED (max bid / walk-away set)
+    // is the pre-auction moment the vertical exists for.
+    activationEvent: "first_worksheet_scored",
   },
   multifamily: {
     id: "multifamily",
@@ -611,6 +656,8 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
     integrations: [],
+    // Imelda's 6-plex rent-roll drop IS the multifamily "gets it" moment.
+    activationEvent: "first_rent_roll_reconciled",
   },
   mobile_home: {
     id: "mobile_home",
@@ -675,6 +722,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
     integrations: [],
+    // The park's pad inventory arrives the same way — the roll (lot leases)
+    // reconciled in via the importer's pad-aware unitKind path.
+    activationEvent: "first_rent_roll_reconciled",
   },
   agent_investor: {
     id: "agent_investor",
@@ -727,6 +777,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // The land data plane this surface runs on (parcel data on /maps and
     // parcel detail) — same providers the land_flipper surface uses.
     integrations: ["county_gis", "regrid"],
+    // The close is the wedge: the closing agent's commission auto-records on
+    // the routes-deals close seam (Wave 2 pass C) — deal closed = the
+    // commission surface lights up.
+    activationEvent: "first_deal_closed",
   },
 };
 

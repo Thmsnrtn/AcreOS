@@ -44,9 +44,12 @@
 import { storage } from "../../storage";
 import { logger } from "../../utils/logger";
 import { addMonths } from "../../utils/dateUtils";
+// G1.1 — the marker constants moved to the dependency-free sampleMarkers.ts
+// so the activation recorder can enforce the same contract without importing
+// this module's storage graph. Re-exported here so existing importers hold.
+import { SAMPLE_LEAD_SOURCE, SAMPLE_APN_PREFIX } from "./sampleMarkers";
 
-export const SAMPLE_LEAD_SOURCE = "sample_data" as const;
-export const SAMPLE_APN_PREFIX = "SAMPLE-" as const;
+export { SAMPLE_LEAD_SOURCE, SAMPLE_APN_PREFIX };
 
 // ───────────────────────────────────────────────────────────────────────────
 // Fixture shapes (properties/notes reference related rows by INDEX so we

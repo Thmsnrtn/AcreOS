@@ -45,38 +45,10 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
   /* /founder-home entry removed 2026-07-27: its 2026-07-26 sunset passed, so
    * per the removal protocol above the legacy <Route> was deleted from
    * App.tsx and the last in-app references (sidebar active-state checks)
-   * were rewritten. Four-door doctrine context: The Letter (/founder) is the
-   * single founder home; /founder-dashboard, /founder/now, /founder/cockpit
-   * and /founder/dashboard below still redirect there until their own
-   * removal (they have live server-side/email links pointing at them). */
-  {
-    legacy: "/founder-dashboard",
-    canonical: "/founder",
-    sunsetOn: "2026-07-26",
-    reason:
-      "Legacy 7,400-line operations console. Sidebar overflow still links here as 'Operations console (legacy)' but the route now redirects to the single founder home, The Letter (/founder).",
-  },
-  {
-    legacy: "/founder/now",
-    canonical: "/founder",
-    sunsetOn: "2026-07-26",
-    reason:
-      "Tile-driven daily inbox folded into the single founder home, The Letter (/founder).",
-  },
-  {
-    legacy: "/founder/cockpit",
-    canonical: "/founder",
-    sunsetOn: "2026-07-26",
-    reason:
-      "Weekly steering folded into the single founder home, The Letter (/founder). /founder/steering still renders the cockpit component for the sidebar 'Steering' entry.",
-  },
-  {
-    legacy: "/founder/dashboard",
-    canonical: "/founder",
-    sunsetOn: "2026-07-26",
-    reason:
-      "IA consolidation (Lens 4): legacy LegacyNowSurface tile layout folded into the bridge surface.",
-  },
+   * were rewritten. The remaining founder aliases (sunset 2026-07-26/27,
+   * passed) moved to FOUNDER_LEGACY_REDIRECTS below on 2026-08-10 — they
+   * keep redirecting (live email/server links point at them) but through a
+   * single catch-all route instead of 24 per-path registrations. */
   /* ── Phase 4 Week 19-20 (cmdk-v2 / Anya §8) ─────────────────────────
    * ⌘K is the discoverability spine. The Pax assistant, AI hub and
    * agent surfaces are now reached via ⌘K → "Ask Pax" affordance, not
@@ -112,24 +84,69 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     reason:
       "Pre-cmdk-v2 name for the chat hub. Replaced by ⌘K's Ask Pax affordance; redirect kept for 60 days.",
   },
-  /* ── Four-door consolidation (2026-07-27) ───────────────────────────── */
-  {
-    legacy: "/founder/asks",
-    canonical: "/founder/decisions",
-    sunsetOn: "2026-07-27",
-    reason:
-      "Two differently-named 'things that need me' queues violated the four-door doctrine. The Decisions door embeds OpenAsksSection with the same /api/founder/asks answer/supersede flows, so the standalone Agent-asks page was deleted. The redirect preserves the query string so ?id= deep links keep working.",
-  },
-  {
-    legacy: "/founder/solene-chat",
-    canonical: "/founder/chat",
-    sunsetOn: "2026-07-27",
-    reason:
-      "'Solene' is an internal codename and shouldn't leak into the founder's URL bar. Same chat page, neutral path; old bookmarks redirect.",
-  },
 ] as const;
 
 /** Lookup helper: returns the canonical path for a legacy path, or null. */
 export function getCanonicalPath(legacy: string): string | null {
   return ROUTE_REDIRECTS.find((r) => r.legacy === legacy)?.canonical ?? null;
+}
+
+/* ── Founder legacy-path collapse (F1 slice 1, 2026-08-10) ──────────────
+ *
+ * The founder surface carried 24 redirect-only <Route> registrations —
+ * nearly a third of all path="/founder…" entries in App.tsx. They are now
+ * ONE catch-all route (see FounderLegacyRedirect in App.tsx) that resolves
+ * this map. All sunsets here have passed; the aliases survive only because
+ * live artifacts (sent emails, action-queue rows, old bookmarks) still
+ * point at them. Chains are pre-flattened: every value is a REAL registered
+ * route in App.tsx, never another legacy key —
+ * founderLegacyRedirects.test.ts enforces both properties.
+ *
+ * The query string is preserved on every redirect (wouter's <Redirect>
+ * drops it otherwise), so e.g. /founder/asks?id=N still carries the ask id
+ * to /founder/decisions?id=N.
+ */
+export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
+  // Retired founder homes — all fold into The Letter (/founder).
+  "/founder-dashboard": "/founder", // legacy 7,400-line operations console
+  "/founder/now": "/founder", // tile-driven daily inbox
+  "/founder/cockpit": "/founder", // weekly steering (component lives on at /founder/steering)
+  "/founder/dashboard": "/founder", // LegacyNowSurface tile layout
+  "/founder/today": "/founder", // Solene-migration Today door, fused into the home
+  "/founder/autopilot": "/founder", // the Letter overview, fused into the home (D6)
+  "/founder/daily-digest": "/founder", // 2026-06-01 cut — page archived
+  "/founder/todo": "/founder", // chained through /founder/today; flattened
+  // Renames / consolidations with a real successor surface.
+  "/founder/solene-chat": "/founder/chat", // internal codename out of the URL bar
+  "/founder/asks": "/founder/decisions", // one "things that need me" queue (query preserved)
+  "/founder/financials": "/founder/admin/costs", // 2026-06-01 cut — costs hub owns it
+  "/founder/feature-flags": "/founder/features", // binary-flag page consolidated
+  "/founder/activation": "/founder/onboarding", // 2026-06-01 cut
+  "/founder/prompt-versions": "/founder/prompt-evolutions", // 2026-06-01 cut
+  "/founder/agents": "/founder/agent-queue", // 2026-06-01 cut (/founder/agents/:codename stays real)
+  // 2026-06-01 cut pages whose remit folded into the Bridge deep tool.
+  "/founder/integrations": "/founder/bridge",
+  "/founder/dsar": "/founder/bridge",
+  "/founder/legal-holds": "/founder/bridge",
+  "/founder/sub-processors": "/founder/bridge",
+  "/founder/ml-snapshots": "/founder/bridge",
+  "/founder/etl": "/founder/bridge",
+  "/founder/title-partners": "/founder/bridge",
+  "/founder/beta-analytics": "/founder/bridge",
+  "/founder/v13": "/founder/bridge", // Census W3-1 retire 2026-06-11
+};
+
+/**
+ * The one catch-all pattern replacing the 24 registrations. A RegExp
+ * (not a string) because wouter's segment-based string patterns cannot
+ * express "/founder-dashboard OR /founder/<anything>" in one literal.
+ * Deliberately does NOT match bare "/founder" (the real home, matched
+ * earlier in the Switch) nor public marketing paths like /founders-club.
+ */
+export const FOUNDER_LEGACY_ROUTE_PATTERN = /^\/founder(?:-dashboard|\/.+)$/i;
+
+/** Resolve a pathname against FOUNDER_LEGACY_REDIRECTS, or null. */
+export function resolveFounderLegacyPath(pathname: string): string | null {
+  const normalized = pathname.replace(/\/+$/, "").toLowerCase();
+  return FOUNDER_LEGACY_REDIRECTS[normalized] ?? null;
 }

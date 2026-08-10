@@ -29,9 +29,7 @@ import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampa
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
-// Daily due/expiry detectors — extracted from this file into a cohesive
-// job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
-// buy_and_hold beta→core registration (audit Wave 1).
+// Daily due/expiry detectors — S3 decomposition job-group (audit Wave 1 added the lease detector).
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 
@@ -4137,6 +4135,8 @@ export async function runScheduledJobs(): Promise<void> {
   startWorkflowDelayResumeJob(); // workflow durable-delay resume, every minute — see ./workflowDelayResume
   startAchAutopayJob(); // borrower ACH autopay submit+reconcile, hourly — see ./achAutopayRun
   startAcquiredNoteAgingJob(); // acquired-note delinquency + RESPA §1024.39 sweep, daily — see ./acquiredNoteAging
+  // F3 eternal lines — gate-estate SHA-256 tamper watch, 6h (critical roster entry; pages on mismatch).
+  import("../services/autopilot/gateTamperWatch").then(({ startGateTamperWatchJob }) => startGateTamperWatchJob()).catch(err => log(`Failed to import gate tamper watch: ${err}`, "gate-tamper"));
 
   // Start Pax scheduled tasks (every minute)
   startPaxSchedulerJob();

@@ -2008,16 +2008,25 @@ export function registerCampaignRoutes(app: Express): void {
 
       // Lenore §1 — value-event telemetry. First mailer sent via email
       // channel (distinct from first_letter_sent which is postcard).
-      // Only counts if at least one recipient succeeded. Idempotent.
+      // Only counts if at least one REAL recipient succeeded (G1.1: a
+      // campaign sent to only seeded sample leads must not light the
+      // declared land_flipper activation — clicking through fixtures is
+      // not activation).
       if (results.sent > 0) {
         try {
-          const { recordActivationEventAsync } = await import("./services/activation");
-          recordActivationEventAsync({
-            orgId: org.id,
-            userId: (req as AuthenticatedRequest).user?.id ?? null,
-            eventName: "first_mailer_sent",
-            eventValue: { campaignId, channel: "email", recipients: results.sent },
-          });
+          const { isSampleEntity } = await import("./services/onboarding/sampleMarkers");
+          const anyRealRecipient = dedupedLeads.some(
+            (l) => l != null && sentInExecution.has(l.id) && !isSampleEntity({ source: l.source }),
+          );
+          if (anyRealRecipient) {
+            const { recordActivationEventAsync } = await import("./services/activation");
+            recordActivationEventAsync({
+              orgId: org.id,
+              userId: (req as AuthenticatedRequest).user?.id ?? null,
+              eventName: "first_mailer_sent",
+              eventValue: { campaignId, channel: "email", recipients: results.sent },
+            });
+          }
         } catch { /* non-fatal */ }
       }
 
@@ -2264,16 +2273,23 @@ export function registerCampaignRoutes(app: Express): void {
       // Lenore §1 — value-event telemetry. First mailer sent via SMS
       // channel. Same canonical event as email; the (orgId, eventName)
       // uniqueness in activation_events prevents double-fire across
-      // channels — whichever fires first wins.
+      // channels — whichever fires first wins. G1.1: only a REAL recipient
+      // counts (sample-seeded leads must not light the declared activation).
       if (results.sent > 0) {
         try {
-          const { recordActivationEventAsync } = await import("./services/activation");
-          recordActivationEventAsync({
-            orgId: org.id,
-            userId: (req as AuthenticatedRequest).user?.id ?? null,
-            eventName: "first_mailer_sent",
-            eventValue: { campaignId, channel: "sms", recipients: results.sent },
-          });
+          const { isSampleEntity } = await import("./services/onboarding/sampleMarkers");
+          const anyRealRecipient = dedupedLeads.some(
+            (l) => l != null && sentInExecution.has(l.id) && !isSampleEntity({ source: l.source }),
+          );
+          if (anyRealRecipient) {
+            const { recordActivationEventAsync } = await import("./services/activation");
+            recordActivationEventAsync({
+              orgId: org.id,
+              userId: (req as AuthenticatedRequest).user?.id ?? null,
+              eventName: "first_mailer_sent",
+              eventValue: { campaignId, channel: "sms", recipients: results.sent },
+            });
+          }
         } catch { /* non-fatal */ }
       }
 

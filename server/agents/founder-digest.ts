@@ -169,8 +169,8 @@ export class FounderDigestAgent extends BaseAgent {
   ` : ""}
 
   <p style="color: #666; font-size: 12px;">
-    <a href="/founder/daily-digest">View Full Dashboard</a> |
-    <a href="/founder/beta-analytics">View Analytics</a>
+    <a href="/founder">Open your Letter</a> |
+    <a href="/founder/bridge">View Analytics</a>
   </p>
 </div>
     `.trim();

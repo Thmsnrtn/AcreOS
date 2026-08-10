@@ -135,10 +135,10 @@ class AlertPolicyService {
           <h2 style="color:#dc2626;">P0 — System Critical</h2>
           <p><strong>${alert.title}</strong></p>
           <p>${alert.message}</p>
-          <p><a href="${this.config.appUrl}/founder/dashboard">View Dashboard</a></p>
+          <p><a href="${this.config.appUrl}/founder">View Dashboard</a></p>
           <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${new Date().toISOString()}</p>
         `,
-        text: `[P0 CRITICAL] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder/dashboard`,
+        text: `[P0 CRITICAL] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder`,
       });
     } catch (err) {
       logger.error("[AlertPolicy] Failed to send P0 email", err);
@@ -191,10 +191,10 @@ class AlertPolicyService {
           <h2 style="color:#f59e0b;">P1 — Degraded Service</h2>
           <p><strong>${alert.title}</strong></p>
           <p>${alert.message}</p>
-          <p><a href="${this.config.appUrl}/founder/dashboard">View Dashboard</a></p>
+          <p><a href="${this.config.appUrl}/founder">View Dashboard</a></p>
           <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${new Date().toISOString()}</p>
         `,
-        text: `[P1 Warning] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder/dashboard`,
+        text: `[P1 Warning] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder`,
       });
     } catch (err) {
       logger.error("[AlertPolicy] Failed to send P1 email", err);
@@ -246,10 +246,10 @@ class AlertPolicyService {
         <h2>AcreOS Weekly Alert Digest</h2>
         <p>${p2Alerts.length} non-urgent items from the past week:</p>
         ${sections}
-        <p><a href="${this.config.appUrl}/founder/dashboard">View Full Dashboard</a></p>
+        <p><a href="${this.config.appUrl}/founder">View Full Dashboard</a></p>
         <p>— AcreOS Ops</p>
       `,
-      text: `AcreOS Weekly Alert Digest\n\n${p2Alerts.length} items:\n\n${textSections}\n\nDashboard: ${this.config.appUrl}/founder/dashboard`,
+      text: `AcreOS Weekly Alert Digest\n\n${p2Alerts.length} items:\n\n${textSections}\n\nDashboard: ${this.config.appUrl}/founder`,
       count: p2Alerts.length,
     };
   }

@@ -31,11 +31,19 @@ const LETTER = read("client/src/pages/founder/home.tsx");
 const AUTOPILOT_ROUTES = read("server/routes-autopilot.ts");
 
 /**
- * The founder route count at the moment the ladder shipped. This MUST equal
- * FOUNDER_ROUTE_BASELINE in founderFourDoors.test.ts — the ladder is proof that
- * a whole new founder experience can ship without adding a single route.
+ * The founder route count is SINGLE-SOURCED from founderFourDoors.test.ts'
+ * FOUNDER_ROUTE_BASELINE — the ladder is proof that a whole new founder
+ * experience can ship without adding a single route, and that invariant must
+ * survive deliberate consolidations (F1 slice 1, 2026-08-10, collapsed the
+ * 24 redirect-only registrations: 82 → 58). Two independently-maintained
+ * copies of the same number is how this test went stale the first time.
  */
-const FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP = 82;
+const FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP = (() => {
+  const ratchet = read("tests/unit/founderFourDoors.test.ts");
+  const m = ratchet.match(/FOUNDER_ROUTE_BASELINE\s*=\s*(\d+)/);
+  if (!m) throw new Error("FOUNDER_ROUTE_BASELINE must be readable from founderFourDoors.test.ts");
+  return Number(m[1]);
+})();
 
 describe("the readiness ladder added ZERO founder routes", () => {
   it("the /founder/* route count is unchanged from the ratchet baseline", () => {
@@ -47,11 +55,13 @@ describe("the readiness ladder added ZERO founder routes", () => {
     ).toBe(FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP);
   });
 
-  it("agrees with the founderFourDoors ratchet baseline (one number, not two)", () => {
-    const ratchet = read("tests/unit/founderFourDoors.test.ts");
-    const m = ratchet.match(/FOUNDER_ROUTE_BASELINE\s*=\s*(\d+)/);
-    expect(m, "FOUNDER_ROUTE_BASELINE must be readable").toBeTruthy();
-    expect(Number(m![1])).toBe(FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP);
+  it("the single-sourced baseline stays on its down-only history (≤82, the ladder-ship count)", () => {
+    // The constant above derives from founderFourDoors.test.ts, so agreement
+    // is structural now. What remains checkable here: the baseline can only
+    // have SHRUNK since the ladder shipped at 82 — a raise means someone
+    // added a founder route, which this suite exists to forbid.
+    expect(FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP).toBeGreaterThan(0);
+    expect(FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP).toBeLessThanOrEqual(82);
   });
 
   it("no founder route is a founder SETUP surface — the ladder lives inside Controls", () => {

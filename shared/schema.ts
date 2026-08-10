@@ -5946,6 +5946,18 @@ export const ACTIVATION_EVENTS = [
   // believer. Fired at the two inbound seams (reply-email webhook, inbound
   // SMS webhook) with eventValue.channel = "email" | "sms".
   "first_seller_response",
+  // G1.1 (2026-08) — per-vertical activation. Every registered business type
+  // now declares its canonical "aha" event (BUSINESS_TYPES[*].activationEvent
+  // in shared/business-types.ts, ratcheted by registryActivation.test.ts to
+  // events with a REAL server-side emitter). These two were the missing
+  // moments for the rental-family and tax-auction verticals:
+  //   first_rent_roll_reconciled — the seller's rent roll imported and
+  //     reconciled onto a building (POST /api/parcels/:id/rent-roll/import,
+  //     Imelda's "oh, this thing gets it" moment).
+  //   first_worksheet_scored — an auction-worksheet listing SCORED (max bid /
+  //     walk-away set on PATCH /tax-researcher/listings/:id), not merely viewed.
+  "first_rent_roll_reconciled",
+  "first_worksheet_scored",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]

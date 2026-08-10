@@ -13,12 +13,23 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { activationEvents, type ActivationEvent } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { isSampleEntity, type SampleEntityMarkers } from "./onboarding/sampleMarkers";
 
 interface RecordActivationEventArgs {
   orgId: number;
   userId?: string | null;
   eventName: ActivationEvent;
   eventValue?: Record<string, unknown>;
+  /**
+   * G1.1 real-entities-only rule — the marker fields of the entity behind the
+   * event (lead.source / property.apn), when the emitter has them in scope.
+   * An entity carrying the sample-data markers (sampleMarkers.ts: source
+   * "sample_data" or a "SAMPLE-" apn) is REFUSED, never recorded — clicking
+   * through seeded onboarding fixtures is not activation, and a funnel that
+   * counted it would be fabricated. Omitting `entity` records normally (many
+   * events — org_created, trial_to_paid — have no lead/property behind them).
+   */
+  entity?: SampleEntityMarkers;
 }
 
 /**
@@ -45,11 +56,18 @@ export function onboardingStepEnteredEvent(stepNumber: number): ActivationEvent 
  * fires-and-forgets, never throws into the caller.
  */
 export async function recordActivationEvent(args: RecordActivationEventArgs): Promise<void> {
-  const { orgId, userId, eventName, eventValue } = args;
+  const { orgId, userId, eventName, eventValue, entity } = args;
 
   if (!orgId || !eventName) {
     logger.warn("[activation] recordActivationEvent called without orgId/eventName", {
       metadata: { orgId, eventName },
+    });
+    return;
+  }
+
+  if (isSampleEntity(entity)) {
+    logger.warn("[activation] refused sample-marked entity — the funnel counts real entities only", {
+      metadata: { orgId, eventName, source: entity?.source ?? null, apn: entity?.apn ?? null },
     });
     return;
   }

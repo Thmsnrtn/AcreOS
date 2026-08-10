@@ -289,28 +289,31 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     );
   }
 
-  // ── Vendor credential expiry (audit F-18-1) ────────────────────────────────
-  // A sole-source external key that lapses mid-absence silently degrades the
-  // product with zero warning. Surfaces an approaching (or past) expiry in the
-  // "can I step away?" verdict so it can never say "every system is armed"
-  // while a key is about to die.
+  // ── Dated obligations (audit F-18-1, generalized by O1) ────────────────────
+  // A KNOWN calendar date that passes with nothing watching — a sole-source
+  // key lapsing, a statute re-review falling due — silently degrades the
+  // product (or the governance posture) mid-absence. Surfaces the nearest due
+  // obligation in the "can I step away?" verdict so it can never say "every
+  // system is armed" while a known date is about to pass. Key/title kept from
+  // the original credential-only check so UI and history stay continuous.
   {
     const base = { key: "vendor_credentials", title: "External keys won't lapse while you're gone", critical: false, href: "/founder/autopilot/control" };
     try {
-      const { imminentCredentialExpiries } = await import("../vendorCredentialExpiry");
-      const soon = imminentCredentialExpiries(new Date(), 14);
+      const { imminentObligations } = await import("../datedObligations");
+      const soon = imminentObligations(new Date(), 14);
       if (soon.length === 0) {
-        checks.push({ ...base, status: "ready", detail: "No configured sole-source external credential expires in the next 14 days." });
+        checks.push({ ...base, status: "ready", detail: "No dated obligation — sole-source credential, license or governance review — falls due in the next 14 days." });
       } else {
         const worst = soon[0];
-        const expired = worst.daysLeft < 0;
+        const overdue = worst.daysLeft < 0;
+        const soleSource = worst.soleSourceFor ? ` — sole source for ${worst.soleSourceFor}` : "";
         checks.push({
           ...base,
-          status: expired ? "action_needed" : "attention",
-          detail: expired
-            ? `${worst.vendor} (${worst.envVar}) EXPIRED ${-worst.daysLeft} day(s) ago — ${worst.isSoleSourceFor} is degraded.`
-            : `${worst.vendor} (${worst.envVar}) expires in ~${worst.daysLeft} day(s) — sole source for ${worst.isSoleSourceFor}.`,
-          fix: `Renew or convert the ${worst.vendor} plan before then. ${worst.note}`,
+          status: overdue ? "action_needed" : "attention",
+          detail: overdue
+            ? `${worst.what} (owner: ${worst.owner}) fell due ${-worst.daysLeft} day(s) ago${soleSource}.`
+            : `${worst.what} (owner: ${worst.owner}) falls due in ~${worst.daysLeft} day(s)${soleSource}.`,
+          fix: worst.note,
         });
       }
     } catch (err) {

@@ -26,6 +26,30 @@ describe("codeChangeGate — the immune system's guardrail (conservative)", () =
     }
   });
 
+  it("FORBIDS the whole gate estate (F3 eternal lines): ratchets, statutes, tests, ALL workflows, the tamper watch", () => {
+    // The original list covered only the security + deploy workflows and no
+    // ratchet estate at all — the immune system could in principle have
+    // auto-touched a baseline JSON, a governance registry, or a unit test and
+    // weakened a gate without tripping "forbidden". Now the entire gate
+    // estate is off-limits.
+    for (const f of [
+      ".github/workflows/ci.yml",
+      ".github/workflows/test.yml",
+      "scripts/ratchet.mjs",
+      "scripts/ratchets/res-status-raw.json",
+      "scripts/ratchets/run-scheduled-jobs-linecount.json",
+      "scripts/regenerate-gate-manifest.mjs", // the manifest's only sanctioned writer
+      "shared/governance/statuteRegister.ts",
+      "shared/governance/constitution.ts",
+      "tests/unit/constitution.test.ts",
+      "tests/unit/moneyCustodyHardStop.test.ts",
+      "server/services/autopilot/gateTamperWatch.ts",
+      "server/services/autopilot/gateTamperManifest.json",
+    ]) {
+      expect(classifyCodeChange({ files: [f] }).class, f).toBe("forbidden");
+    }
+  });
+
   it("allows safe_auto ONLY for a clean dependency patch bump touching only package files", () => {
     const v = classifyCodeChange({
       files: ["package.json", "package-lock.json"],
