@@ -3,7 +3,7 @@ import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 // APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
 // kernel enforces it INSIDE executeTool, so this call site cannot bypass it.
-import { executeTool } from "./tools";
+import { executeTool, toolAllowedOnSurface, type PaxSurface } from "./tools";
 // Tier 1B (elevation blueprint): customer-content fields in tool results are
 // wrapped in the untrusted envelope before re-entering the model channel.
 import { serializeToolResultForModel } from "./untrustedEnvelope";
@@ -170,10 +170,22 @@ async function finalizePaxOutput(params: {
 // retrieval tool when its feature flag is off. Synchronous + cheap (env read),
 // safe to call on every turn. Centralized so processChat + processChatStream
 // stay in sync.
-function buildPaxToolList(
+//
+// P-3 (2026-08-10) — per-context capability scoping: the list is additionally
+// filtered by the SURFACE the conversation runs on (rail chat vs sub-agent vs
+// scheduled run), against the per-tool surface mounts in PAX_TOOL_SURFACES
+// (server/ai/tools.ts). Today every tool is mounted on every surface — the
+// filter preserves current behavior — but narrowing a context's capability
+// set is now a registry edit, not a code fork. Exported so
+// tests/unit/paxToolRegistry.test.ts can pin the derived context → tool-set
+// mapping.
+export function buildPaxToolList(
   role: string,
+  surface: PaxSurface = "pax_inbox",
 ): ReturnType<typeof getToolsForRoleFromRegistry> {
-  const tools = getToolsForRoleFromRegistry(role);
+  const tools = getToolsForRoleFromRegistry(role).filter(
+    (t) => t.function?.name != null && toolAllowedOnSurface(t.function.name, surface),
+  );
   if (isLandKnowledgeEnabled()) return tools;
   return tools.filter((t) => t.function?.name !== "retrieve_land_knowledge");
 }
@@ -993,6 +1005,13 @@ interface ChatOptions {
   modelOverride?: string; // Override automatic model selection
   subAgentDepth?: number; // Internal: depth counter for spawn_subagent recursion guard
   /**
+   * P-3 capability scoping: which surface this conversation runs on. Filters
+   * the tool list via PAX_TOOL_SURFACES (see buildPaxToolList). Defaults to
+   * "pax_inbox" (the rail). spawn_subagent passes "pax_subagent";
+   * paxScheduler should pass "scheduler" (not yet wired at its call site).
+   */
+  surface?: PaxSurface;
+  /**
    * Pax response-shape prompt version. Default "v3" (one-line headline +
    * up to 3 bullets). Set to "v2" via `?paxPrompt=v2` for ops fall-back.
    */
@@ -1319,7 +1338,7 @@ export async function processChat(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = buildPaxToolList(normalizedRole);
+  const tools = buildPaxToolList(normalizedRole, options.surface ?? "pax_inbox");
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
@@ -1807,7 +1826,7 @@ export async function* processChatStream(
     ? "executive" 
     : roleStr as keyof typeof agentProfiles;
   const profile = agentProfiles[normalizedRole];
-  const tools = buildPaxToolList(normalizedRole);
+  const tools = buildPaxToolList(normalizedRole, options.surface ?? "pax_inbox");
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 

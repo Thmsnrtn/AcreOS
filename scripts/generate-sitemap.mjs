@@ -84,6 +84,30 @@ const STATIC_ROUTES = [
   // were REMOVED here rather than de-noindexed; re-add them when the
   // noindex comes off the pages.
   { path: "/land-credit-score",       lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/land-credit-score" component={LandCreditScorePage} />' },
+  // G1 (2026-08-10): /for/<vertical> marketing pages + the public demo entry
+  // + published field notes. Slugs MUST mirror FOR_VERTICAL_SLUGS in
+  // shared/seo/public-routes.ts — tests/unit/sitemapCanonical.test.ts derives
+  // that mapping and fails on drift, so this list cannot rot silently.
+  { path: "/for/land-flippers",           lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/note-investors",          lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/land-and-notes",          lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/residential-wholesalers", lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/fix-and-flip",            lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/buy-and-hold",            lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/short-term-rentals",      lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/commercial-real-estate",  lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/creative-finance",        lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/developers",              lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/subdividers",             lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/tax-liens",               lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/multifamily",             lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/mobile-home-parks",       lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/for/agent-investors",         lastmod: "2026-08-10", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/for/:vertical" component={ForVerticalPage} />' },
+  { path: "/demo",                        lastmod: "2026-08-10", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/demo" component={DemoPage} />' },
+  // Transparency carries the G1.4 provable-claims (/transparency#proof)
+  // section — it was routed but never sitemapped (slice-4 audit catch).
+  { path: "/transparency",                lastmod: "2026-08-10", changefreq: "monthly", priority: "0.6", appRoute: 'App.tsx: <Route path="/transparency" component={TransparencyPage} />' },
+  { path: "/field-notes",                 lastmod: "2026-08-10", changefreq: "weekly",  priority: "0.5", appRoute: 'App.tsx: <Route path="/field-notes" ... /> (published community letters)' },
   { path: "/glossary",                lastmod: "2026-06-10", changefreq: "monthly", priority: "0.6", appRoute: 'App.tsx: <Route path="/glossary" component={GlossaryPage} /> (restored 2026-06-10, T0-8)' },
   // The learn HUB page — the dynamic /learn/<vertical>/<state> +
   // /learn/county/* content pages were globbed below all along, but the hub

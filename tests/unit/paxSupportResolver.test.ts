@@ -85,7 +85,11 @@ const spendGuardMocks = vi.hoisted(() => ({
 }));
 vi.mock("../../server/services/aiSpendGuard", () => spendGuardMocks);
 
-import { resolveTicketWithPax, getResolveConfidenceThreshold } from "../../server/ai/paxSupportResolver";
+import {
+  resolveTicketWithPax,
+  getResolveConfidenceThreshold,
+  GROUNDED_SOURCES_CONSTRAINT,
+} from "../../server/ai/paxSupportResolver";
 import type { ChatCompletionFn } from "../../server/ai/paxSupportResolver";
 import type { Organization } from "@shared/schema";
 
@@ -235,6 +239,61 @@ describe("Pax-Support resolution variant — confidence gate", () => {
     for (const call of spendGuardMocks.recordExternalAiSpend.mock.calls) {
       expect(call[0]).toMatchObject({ orgId: ORG.id, taskType: "pax_support_resolve" });
     }
+  });
+
+  it("grounded deflection (O5): the system prompt the model ACTUALLY receives carries the structural grounded-sources constraint", async () => {
+    mocks.setTicket({
+      id: 20,
+      organizationId: 1,
+      category: "general",
+      subject: "Prompt pin",
+      description: "Grounding constraint must reach the model.",
+      aiResolutionAttempts: 0,
+    });
+    const completion = modelDraftingConfidence(85);
+    await resolveTicketWithPax(20, ORG, {
+      createCompletion: completion,
+      tryGeniusOnEscalate: false,
+    });
+    // Derived pin: capture the params passed to the real completion call —
+    // asserting on the live message, not a copy, so the pin cannot go stale.
+    const params = (completion as any).mock.calls[0][0];
+    const system = params.messages[0];
+    expect(system.role).toBe("system");
+    expect(system.content).toContain(GROUNDED_SOURCES_CONSTRAINT);
+    // The constraint is structural, not vibes: named grounded sources, an
+    // explicit no-guess rule, and the mandated no-source ⇒ escalate fallback.
+    expect(GROUNDED_SOURCES_CONSTRAINT).toContain("GROUNDED SOURCES ONLY");
+    expect(GROUNDED_SOURCES_CONSTRAINT).toContain("search_knowledge_base");
+    expect(GROUNDED_SOURCES_CONSTRAINT).toContain("search_resolved_tickets");
+    expect(GROUNDED_SOURCES_CONSTRAINT).toContain("diagnose_account");
+    expect(GROUNDED_SOURCES_CONSTRAINT).toMatch(/do not guess/i);
+    expect(GROUNDED_SOURCES_CONSTRAINT).toMatch(/LOW confidence_score/);
+    expect(GROUNDED_SOURCES_CONSTRAINT).toMatch(/escalates to a\s+human/);
+  });
+
+  it("grounded deflection (O5): the no-source fallback stays wired — a low-confidence holding draft escalates, never auto-sends", async () => {
+    mocks.setTicket({
+      id: 21,
+      organizationId: 1,
+      category: "general",
+      subject: "Undocumented feature question",
+      description: "No KB article covers this.",
+      aiResolutionAttempts: 0,
+    });
+    // The constraint's mandated behavior when no source grounds an answer:
+    // a LOW-confidence holding reply. The gate must route it to a human.
+    const result = await resolveTicketWithPax(21, ORG, {
+      createCompletion: modelDraftingConfidence(5, "I don't have a grounded answer yet — a specialist will follow up."),
+      tryGeniusOnEscalate: false,
+    });
+    expect(result.autoResolved).toBe(false);
+    expect(result.escalated).toBe(true);
+    // No customer-facing auto-reply was persisted.
+    expect(mocks.inserted.find((m) => m.role === "agent")).toBeFalsy();
+    // The ticket went back to a human, not to "resolved".
+    expect(mocks.updated.find((u) => u.resolutionType === "escalated")).toBeTruthy();
+    expect(mocks.updated.find((u) => u.status === "resolved")).toBeFalsy();
   });
 
   it("a ceiling refusal stops the resolver BEFORE any model call (never a free completion)", async () => {

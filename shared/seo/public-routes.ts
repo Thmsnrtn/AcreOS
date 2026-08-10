@@ -117,6 +117,10 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   // priority: this is the term we want to own in search.
   { path: "/land-credit-score", changefreq: "monthly", priority: 0.9, label: "Land Credit Score", prerender: true },
   { path: "/security", changefreq: "monthly", priority: 0.7, label: "Security", prerender: true },
+  // Routed + sitemapped by the canonical generator but was missing from
+  // this enumeration (slice-4 audit drift note): robots Allow follows from
+  // listing it here. Carries the provable-claims section (G1.4).
+  { path: "/transparency", changefreq: "monthly", priority: 0.6, label: "Transparency & proof", prerender: false },
   { path: "/glossary", changefreq: "monthly", priority: 0.7, label: "Glossary", prerender: true },
   // Learn hub — lists every authored state×vertical + county primer. Fully
   // static (registries resolve at build time, no client fetch), so it
@@ -126,6 +130,11 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   // traffic. prerender:false because the page mounts a noindex meta tag
   // until the founder fills in positioning copy (see ComparisonPage.tsx).
   // Once those go live we flip prerender on and drop the noindex guard.
+  // NOTE: deliberately ABSENT from sitemap.xml while noindex'd — the
+  // canonical generator (scripts/generate-sitemap.mjs, the only one; its
+  // .ts twin was deleted 2026-08-10 after regenerating with it broke the
+  // build's --check) excludes them, and a sitemapped-noindex page is a
+  // Search Console error. These rows still drive robots Allow + prerender.
   { path: "/compare/acreos-vs-propstream", changefreq: "monthly", priority: 0.7, label: "Compare · PropStream", prerender: false },
   { path: "/compare/acreos-vs-dealmachine", changefreq: "monthly", priority: 0.7, label: "Compare · DealMachine", prerender: false },
   { path: "/changelog", changefreq: "weekly", priority: 0.6, label: "Changelog", prerender: true },

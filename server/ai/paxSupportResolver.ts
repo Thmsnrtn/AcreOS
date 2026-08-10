@@ -110,7 +110,34 @@ const RESOLVER_TOOL_NAMES = [
   "escalate_to_human",
 ] as const;
 
+/**
+ * O5 — grounded-deflection hardening. A STRUCTURAL constraint, not a style
+ * note: every customer-facing claim must trace to a tool result from THIS
+ * run, and no-source means escalate (via a low-confidence draft the gate
+ * routes to a human) — never guess. Exported as its own constant so the
+ * prompt-pin test asserts against the exact string the model receives
+ * (captured off the real completion call, so the pin cannot go stale).
+ */
+export const GROUNDED_SOURCES_CONSTRAINT = `GROUNDED SOURCES ONLY (structural constraint)
+Every factual claim in your customer-facing reply MUST be grounded in a tool
+result from THIS run: knowledge-base articles (search_knowledge_base), past
+resolutions (search_resolved_tickets, get_similar_resolutions,
+get_troubleshooting_steps), the org's own live state (diagnose_account,
+get_account_summary, query_user_data, get_user_activity,
+check_data_integrity), or this ticket's own message history. State which
+source grounds your answer when you draft it.
+If NO tool result supports an answer: do not guess, and do not invent
+product behavior, prices, limits, links, dates, or policies. Instead call
+draft_customer_response with a LOW confidence_score (well below any
+auto-resolve threshold) and a holding reply, so the system escalates to a
+human. "I don't have a grounded answer yet — a specialist will follow up" is
+ALWAYS better than a fabricated one. Refuse-not-fabricate is a hard platform
+rule.`;
+
 const PAX_RESOLVER_SYSTEM_PROMPT = `${PAX_SYSTEM_PROMPT}
+
+────────────────────────────────────────────────────────
+${GROUNDED_SOURCES_CONSTRAINT}
 
 ────────────────────────────────────────────────────────
 RESOLUTION MODE (autonomous)

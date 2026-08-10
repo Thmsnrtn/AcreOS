@@ -58,6 +58,32 @@ export function registerSupportTicketRoutes(app: Express): void {
         logger.warn("[support] ticket-created founder notification failed", { ticketId: ticket.id, err: String(notifyErr) });
       }
 
+      // O5 — severity-class SLA (handoff P5 §4): classify at creation. A
+      // broken-money/send ticket is P0 and pages the founder through the
+      // alert spine (the same live page path the backup verifier uses).
+      // Best-effort — never blocks or alters the create.
+      try {
+        const { classifySupportSeverity, pageSupportP0Ticket } = await import(
+          "./services/autopilot/measurementLoops"
+        );
+        const cls = classifySupportSeverity({
+          category: category ?? ticket.category,
+          priority: priority ?? ticket.priority,
+          subject,
+          description,
+        });
+        if (cls.severityClass === "P0") {
+          await pageSupportP0Ticket({
+            ticketId: ticket.id,
+            organizationId: org.id,
+            subject,
+            reason: cls.reason,
+          });
+        }
+      } catch (sevErr) {
+        logger.warn("[support] P0 severity page failed (non-fatal)", { ticketId: ticket.id, err: String(sevErr) });
+      }
+
       res.status(201).json(ticket);
     } catch (error: any) {
       logger.error("[support] Error creating ticket", error);
@@ -107,18 +133,37 @@ export function registerSupportTicketRoutes(app: Express): void {
       const messages = await getTicketMessages(ticketId);
 
       // SLA metrics (wire-for-real: measurementLoops.computeSla). First-reply =
-      // the first agent message; resolution = resolvedAt. Best-effort.
+      // the first agent message; resolution = resolvedAt. O5: targets are
+      // severity-classed (P0/P1/P2, handoff P5 §4) — the flat 2h/24h default
+      // no longer applies here — and the visible deadline rides along.
+      // Best-effort.
       let sla = null;
       try {
-        const { computeSla } = await import("./services/autopilot/measurementLoops");
+        const { computeSla, classifySupportSeverity, slaTargetsFor, slaDeadlineFor } =
+          await import("./services/autopilot/measurementLoops");
         const firstAgentMsg = (messages as Array<{ role?: string; createdAt?: Date | string | null }>)
           .find((m) => m.role === "agent");
-        sla = computeSla({
-          createdAt: ticket.createdAt ?? new Date(),
-          firstReplyAt: firstAgentMsg?.createdAt ? new Date(firstAgentMsg.createdAt) : null,
-          resolvedAt: ticket.resolvedAt ?? null,
-          now: new Date(),
+        const severity = classifySupportSeverity({
+          category: ticket.category,
+          priority: ticket.priority,
+          subject: ticket.subject,
+          description: ticket.description,
         });
+        const createdAt = ticket.createdAt ?? new Date();
+        sla = {
+          ...computeSla(
+            {
+              createdAt,
+              firstReplyAt: firstAgentMsg?.createdAt ? new Date(firstAgentMsg.createdAt) : null,
+              resolvedAt: ticket.resolvedAt ?? null,
+              now: new Date(),
+            },
+            slaTargetsFor(severity.severityClass),
+          ),
+          severityClass: severity.severityClass,
+          severityReason: severity.reason,
+          slaDeadline: slaDeadlineFor(severity.severityClass, createdAt).toISOString(),
+        };
       } catch { /* SLA is best-effort metadata */ }
 
       res.json({ ticket, messages, sla });
@@ -822,11 +867,42 @@ export function registerSupportTicketRoutes(app: Express): void {
             wasSuccessful: (m.value as any)?.wasSuccessful || false,
             timestamp: m.createdAt
           }));
-        
+
+        // O5 — the founder queue shows the SLA clock: severity class +
+        // deadline + breach state, targets per class (P5 §4). Best-effort.
+        let sla: Record<string, unknown> | null = null;
+        try {
+          const { computeSla, classifySupportSeverity, slaTargetsFor, slaDeadlineFor } =
+            await import("./services/autopilot/measurementLoops");
+          const severity = classifySupportSeverity({
+            category: ticket.category,
+            priority: ticket.priority,
+            subject: ticket.subject,
+            description: ticket.description,
+          });
+          const createdAt = ticket.createdAt ?? new Date();
+          const firstAgentMsg = messages.find((m) => m.role === "agent");
+          sla = {
+            ...computeSla(
+              {
+                createdAt,
+                firstReplyAt: firstAgentMsg?.createdAt ? new Date(firstAgentMsg.createdAt) : null,
+                resolvedAt: ticket.resolvedAt ?? null,
+                now: new Date(),
+              },
+              slaTargetsFor(severity.severityClass),
+            ),
+            severityClass: severity.severityClass,
+            severityReason: severity.reason,
+            slaDeadline: slaDeadlineFor(severity.severityClass, createdAt).toISOString(),
+          };
+        } catch { /* SLA is best-effort metadata */ }
+
         return {
           ...ticket,
           organizationName: ticketOrg?.name || "Unknown",
           messages,
+          sla,
           rootCauseAnalysis: rootCauseMemory ? {
             rootCause: (rootCauseMemory.value as any)?.summary || (rootCauseMemory.value as any)?.rootCause,
             confidence: (rootCauseMemory.value as any)?.confidence || null,
@@ -1248,8 +1324,32 @@ ${actualBehavior || 'Not provided'}
       const [ticket] = await db.insert(supportTickets)
         .values(bugTicketData as any)
         .returning();
-      
+
       logger.info(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);
+
+      // O5 — bug reports classify too: a bug describing a broken money/send
+      // rail is P0 and pages. Best-effort — never blocks the report.
+      try {
+        const { classifySupportSeverity, pageSupportP0Ticket } = await import(
+          "./services/autopilot/measurementLoops"
+        );
+        const cls = classifySupportSeverity({
+          category: bugTicketData.category,
+          priority: bugTicketData.priority,
+          subject: bugTicketData.subject,
+          description: bugTicketData.description,
+        });
+        if (cls.severityClass === "P0") {
+          await pageSupportP0Ticket({
+            ticketId: ticket.id,
+            organizationId: org.id,
+            subject: bugTicketData.subject,
+            reason: cls.reason,
+          });
+        }
+      } catch (sevErr) {
+        logger.warn("[support] P0 severity page failed (non-fatal)", { ticketId: ticket.id, err: String(sevErr) });
+      }
       
       res.json({
         success: true,

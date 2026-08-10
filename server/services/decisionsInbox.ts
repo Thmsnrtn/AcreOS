@@ -15,6 +15,10 @@ import {
 } from "./outcomeLedger";
 import { logger } from "../utils/logger";
 import { wrapUntrusted } from "../ai/untrustedEnvelope";
+import {
+  classifySupportSeverity,
+  slaDeadlineFor,
+} from "./autopilot/measurementLoops";
 
 /**
  * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
@@ -151,6 +155,24 @@ export const decisionsInboxService = {
     const confidence = opts?.confidenceScore ?? 0;
     const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
 
+    // O5 — severity-class SLA (handoff P5 §4): classify the ticket so the
+    // founder queue carries the clock. The clock starts at ticket CREATION
+    // (escalating late must never reset it); the deadline is stamped into
+    // contextBundle — deliberately NOT a new column (no migration), mirroring
+    // the Jarvis 2.3 options pattern. P0 rides riskLevel critical; its PROMPT
+    // channel is the alertSpine page fired at ticket creation (routes seam) —
+    // deferring this row never silences that page.
+    const severity = classifySupportSeverity({
+      category: opts?.category ?? ticket.category,
+      priority: ticket.priority,
+      subject: ticket.subject,
+      description: ticket.description,
+    });
+    const ticketCreatedAt = ticket.createdAt ?? new Date();
+    const slaDeadline = slaDeadlineFor(severity.severityClass, ticketCreatedAt);
+    const isP0 = severity.severityClass === "P0";
+    const isP1 = severity.severityClass === "P1";
+
     // Deduplicate: check for existing pending item for this org+ticket
     if (ticket.organizationId) {
       const existing = await db.query.decisionsInboxItems.findFirst({
@@ -169,8 +191,11 @@ export const decisionsInboxService = {
     // unresolved medium-risk escalation should be answerable inside earned
     // autonomy — its arrival here is a logged defect signal, and the ticket
     // itself stays open in supportTickets either way).
+    // O5 overlay: a P0 (broken money/send) is critical → Class B; a P1
+    // (blocked workflow, same-day doctrine) must actually surface → Class B.
+    // Only a P2 non-billing question stays Class C.
     const arbiter = await arbitrateInboxInsert(
-      isBilling ? "B" : "C",
+      isP0 || isP1 || isBilling ? "B" : "C",
       `Support escalation: ticket #${ticketId}`,
       { itemType: "support_escalation", ticketId, organizationId: ticket.organizationId ?? undefined },
     );
@@ -186,8 +211,10 @@ export const decisionsInboxService = {
     const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "support_escalation",
-      riskLevel: isBilling ? "high" : "medium",
-      urgencyScore: isBilling ? 80 : 50,
+      // O5 severity overlay on the historical billing mapping: P0 → critical,
+      // P1 → high (same-day), P2 keeps billing-high / general-medium.
+      riskLevel: isP0 ? "critical" : isP1 || isBilling ? "high" : "medium",
+      urgencyScore: isP0 ? 95 : isBilling ? 80 : isP1 ? 70 : 50,
       sophieAnalysis: opts?.sophieAnalysis ?? `Support ticket #${ticketId} requires founder attention.`,
       sophieConfidenceScore: confidence,
       recommendedAction: resolution.geniusResponse ?? opts?.draftResponse ?? "Review ticket and respond to customer.",
@@ -199,6 +226,13 @@ export const decisionsInboxService = {
         ticketTitle: ticket.subject ?? "",
         category: ticket.category ?? "",
         geniusConfidence: resolution.geniusConfidence,
+        // O5 — the visible SLA clock for the Decisions queue card.
+        supportSla: {
+          severityClass: severity.severityClass,
+          reason: severity.reason,
+          slaDeadline: slaDeadline.toISOString(),
+          ticketCreatedAt: ticketCreatedAt.toISOString(),
+        },
         ...(options ? { options } : {}),
         ...(pred ? { outcomePrediction: pred.outcomePrediction } : {}),
       },

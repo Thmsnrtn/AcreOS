@@ -589,20 +589,13 @@ export const toolDefinitions = {
     }
   },
 
-  schedule_follow_up: {
-    name: "schedule_follow_up",
-    description: "Schedule a follow-up task for a lead or deal. Creates a task record in the database and returns confirmation with the task details.",
-    parameters: {
-      type: "object",
-      properties: {
-        entityType: { type: "string", enum: ["lead", "deal"], description: "Type of entity to link the follow-up to" },
-        entityId: { type: "number", description: "ID of the lead or deal" },
-        followUpDate: { type: "string", description: "Follow-up date in ISO format (YYYY-MM-DD)" },
-        note: { type: "string", description: "Note or description for the follow-up task" }
-      },
-      required: ["entityType", "entityId", "followUpDate", "note"]
-    }
-  },
+  // NOTE (P-3 dedupe, 2026-08-10): `schedule_follow_up` was a live duplicate of
+  // `schedule_followup` (both create a follow-up task) and is no longer OFFERED
+  // to the model — its definition was removed here so tool selection has one
+  // canonical name. Its executor case arm below is retained verbatim for
+  // call-compat (persisted tool_calls in conversation history, any replay of
+  // frozen rows, and models re-emitting a name they saw earlier in a long
+  // conversation). See CONSOLIDATED_TOOL_ALIASES.
 
   run_comps: {
     name: "run_comps",
@@ -952,6 +945,131 @@ export const toolDefinitions = {
 // (server/services/approvalKernel.ts) — re-exported here for existing
 // importers (executive.ts historical, appIntents catalog, MCP safe intents).
 export { APPROVAL_REQUIRED_TOOLS } from "../services/approvalKernel";
+
+// ── P-3 tool-registry hygiene (2026-08-10) ───────────────────────────────────
+// Tool names that were removed from toolDefinitions because they duplicated a
+// surviving canonical tool (the model was forced to guess between overlapping
+// verbs). Each removed name keeps its executor `case` arm in executeTool
+// VERBATIM — behavior for anything that still emits the old name (conversation
+// history replay, persisted tool_calls, stale client caches) is unchanged; the
+// name is simply no longer OFFERED to the model.
+// paxToolRegistry.test.ts pins: alias keys are absent from toolDefinitions,
+// alias targets are present, and each alias's case arm still exists.
+export const CONSOLIDATED_TOOL_ALIASES: Readonly<Record<string, string>> = {
+  // Duplicate of schedule_followup (both create a follow-up task via
+  // storage.createTask; schemas differed only in arg naming + entity range).
+  schedule_follow_up: "schedule_followup",
+};
+
+// ── P-3 per-context capability scoping ───────────────────────────────────────
+// The surfaces a Pax tool list can be built for. Scoping used to be ROLE-only
+// (getToolsForRoleFromRegistry); every surface — rail chat, scheduled runs,
+// recursive sub-agents — got the same list for a given role. Each tool now
+// also declares WHICH surfaces it is mounted on, and the executive's
+// buildPaxToolList filters by surface. Smaller surface = better routing, lower
+// tokens, smaller injection blast radius (an injected instruction cannot call
+// a tool that isn't mounted).
+//
+// Wiring status (honest):
+//   pax_inbox    — rail/palette chat; the default surface. LIVE.
+//   pax_subagent — spawn_subagent recursion; passed at its processChat call
+//                  site below. LIVE.
+//   scheduler    — paxScheduler runs; the enum + tags exist, but
+//                  server/services/paxScheduler.ts (outside this change's file
+//                  set) must pass `surface: "scheduler"` in its processChat
+//                  options for it to take effect. Until then scheduled runs
+//                  keep today's behavior (the default pax_inbox mount).
+export const PAX_SURFACES = ["pax_inbox", "pax_subagent", "scheduler"] as const;
+export type PaxSurface = (typeof PAX_SURFACES)[number];
+
+const ALL_SURFACES: readonly PaxSurface[] = PAX_SURFACES;
+
+// Per-tool surface mounts. SEEDED WITH TODAY'S TRUTH: every surface currently
+// receives the full role-scoped list, so every tool is mounted everywhere —
+// this map records that honestly rather than inventing restrictions nothing
+// approved. Narrowing a tool's surfaces is now a one-line, test-visible edit
+// (e.g. dropping send tools from "scheduler" when the audit's read-heavy
+// scheduled-run set is adopted as a product decision).
+//
+// DEFAULT-DENY: a tool missing from this map is mounted NOWHERE
+// (toolAllowedOnSurface returns false for unknown names), and
+// paxToolRegistry.test.ts fails until the new tool declares its surfaces.
+// Same doctrine as PAUSE_SAFE_TOOLS: the safe failure mode is "not offered".
+export const PAX_TOOL_SURFACES: Readonly<Record<string, readonly PaxSurface[]>> = {
+  get_system_context: ALL_SURFACES,
+  get_leads: ALL_SURFACES,
+  get_lead_details: ALL_SURFACES,
+  update_lead_status: ALL_SURFACES,
+  create_lead: ALL_SURFACES,
+  get_properties: ALL_SURFACES,
+  get_property_details: ALL_SURFACES,
+  get_notes: ALL_SURFACES,
+  calculate_amortization: ALL_SURFACES,
+  get_cashflow_summary: ALL_SURFACES,
+  get_dashboard_stats: ALL_SURFACES,
+  get_pipeline_summary: ALL_SURFACES,
+  create_property: ALL_SURFACES,
+  update_property: ALL_SURFACES,
+  get_deals: ALL_SURFACES,
+  create_deal: ALL_SURFACES,
+  update_deal: ALL_SURFACES,
+  get_tasks: ALL_SURFACES,
+  create_task: ALL_SURFACES,
+  update_task: ALL_SURFACES,
+  complete_task: ALL_SURFACES,
+  schedule_background_job: ALL_SURFACES,
+  extract_properties_from_text: ALL_SURFACES,
+  create_properties_batch: ALL_SURFACES,
+  generate_offer: ALL_SURFACES,
+  generate_offer_letter: ALL_SURFACES,
+  send_email: ALL_SURFACES,
+  send_sms: ALL_SURFACES,
+  run_comps_analysis: ALL_SURFACES,
+  calculate_roi: ALL_SURFACES,
+  calculate_payment_schedule: ALL_SURFACES,
+  research_property: ALL_SURFACES,
+  get_property_enrichment: ALL_SURFACES,
+  schedule_followup: ALL_SURFACES,
+  browse_web: ALL_SURFACES,
+  draft_offer: ALL_SURFACES,
+  run_comps: ALL_SURFACES,
+  get_stale_leads: ALL_SURFACES,
+  draft_outreach_message: ALL_SURFACES,
+  search_gmail: ALL_SURFACES,
+  send_gmail: ALL_SURFACES,
+  send_slack_message: ALL_SURFACES,
+  get_stripe_customer: ALL_SURFACES,
+  list_stripe_payments: ALL_SURFACES,
+  create_stripe_payment_link: ALL_SURFACES,
+  search_drive: ALL_SURFACES,
+  get_drive_file: ALL_SURFACES,
+  list_calendar_events: ALL_SURFACES,
+  create_calendar_event: ALL_SURFACES,
+  propstream_lookup: ALL_SURFACES,
+  propstream_comps: ALL_SURFACES,
+  batch_leads_skip_trace: ALL_SURFACES,
+  search_mls_listings: ALL_SURFACES,
+  get_mls_comps: ALL_SURFACES,
+  trigger_zapier: ALL_SURFACES,
+  trigger_make: ALL_SURFACES,
+  remember_fact: ALL_SURFACES,
+  recall_facts: ALL_SURFACES,
+  spawn_subagent: ALL_SURFACES,
+  retrieve_land_knowledge: ALL_SURFACES,
+};
+
+/**
+ * Is `toolName` mounted on `surface`? Pure + injectable for tests. Unknown
+ * tool names are DENIED (see PAX_TOOL_SURFACES default-deny note).
+ */
+export function toolAllowedOnSurface(
+  toolName: string,
+  surface: PaxSurface,
+  surfaceMap: Readonly<Record<string, readonly PaxSurface[]>> = PAX_TOOL_SURFACES,
+): boolean {
+  const surfaces = surfaceMap[toolName];
+  return surfaces != null && surfaces.includes(surface);
+}
 
 // ── Pause-safe tools (Workstream A honesty — the Pax kill switch) ────────────
 // Explicit allowlist of tools with NO side effects beyond the conversation:
@@ -2445,6 +2563,12 @@ export async function executeTool(
         };
       }
 
+      // P-3 dedupe (2026-08-10): `schedule_follow_up` is a CONSOLIDATED alias of
+      // `schedule_followup` — its toolDefinitions entry was removed so the model
+      // is offered one canonical name, but this arm stays verbatim so anything
+      // that still emits the old name (history replay, persisted tool_calls)
+      // behaves exactly as before. Do not delete without checking
+      // CONSOLIDATED_TOOL_ALIASES + paxToolRegistry.test.ts.
       case "schedule_follow_up": {
         const entityType = args.entityType as "lead" | "deal";
         const entityId = Number(args.entityId);
@@ -2704,6 +2828,10 @@ export async function executeTool(
         const subResult = await processChat(args.prompt, subOrg, "pax_subagent", {
           agentRole: (args.role || "research") as any,
           subAgentDepth: currentDepth + 1,
+          // P-3 capability scoping: sub-agents build their tool list for the
+          // pax_subagent surface (today mounted identically to the rail; any
+          // future narrowing happens in PAX_TOOL_SURFACES, not here).
+          surface: "pax_subagent",
         });
         // Guard totality (audit P-2 / Wave 0.5): a subagent's response is
         // MODEL-PROCESSED text that may derive from external/untrusted content
@@ -2841,7 +2969,9 @@ export function getToolsForRole(role: string) {
   const memoryTools = ["remember_fact", "recall_facts"];
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
+    // P-3 dedupe (2026-08-10): "schedule_follow_up" removed — consolidated into
+    // schedule_followup (see CONSOLIDATED_TOOL_ALIASES).
+    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "run_comps", "get_stale_leads", "draft_outreach_message"],
     underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],

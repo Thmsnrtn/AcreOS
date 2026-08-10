@@ -16,6 +16,12 @@
  * we never ran). Every number is stamped with the immutables.json version and
  * SHA-256 it was computed against, so a regulator can re-derive the window.
  *
+ * Also hosts the "Proof" section (G1.4, anchored at /transparency#proof): the
+ * public provable-claims registry from shared/governance/public-claims.ts —
+ * every public claim paired with the code/test/lint/CI pointer that enforces
+ * it, rendered statically (no query) so it shows in every page state.
+ * tests/unit/marketingClaims.test.ts pins that every pointer resolves.
+ *
  * Reads the public /transparency endpoint via the default query fetcher.
  */
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +30,7 @@ import { Link } from "wouter";
 import {
   ArrowLeft,
   ScrollText,
+  ShieldCheck,
   ShieldX,
   Scale,
   KeyRound,
@@ -48,6 +55,10 @@ import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import {
+  PROOF_KIND_LABELS,
+  proofClaimsByCategory,
+} from "@shared/governance/public-claims";
 
 // ---------------------------------------------------------------------------
 // Response shape — mirrors PublishedTransparencyReportShape on the server.
@@ -538,6 +549,85 @@ function PublishedReportView({
 }
 
 // ---------------------------------------------------------------------------
+// Proof — the provable-claims registry (G1.4), rendered statically.
+//
+// Every row comes from shared/governance/public-claims.ts, which only admits
+// claims that carry a resolving enforcement pointer (a test, lint, code
+// chokepoint, or CI audit in this repository).
+// tests/unit/marketingClaims.test.ts fails CI when any pointer stops
+// resolving, so a claim cannot outlive its enforcement on this page. No
+// query, no report dependency — this section renders in every page state.
+// ---------------------------------------------------------------------------
+function ProofSection() {
+  const groups = proofClaimsByCategory();
+  return (
+    <section
+      id="proof"
+      aria-labelledby="proof-heading"
+      className="scroll-mt-24 space-y-6"
+      data-testid="proof-claims"
+    >
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="h-6 w-6 text-primary" aria-hidden="true" />
+          <h2 id="proof-heading" className="text-2xl md:text-3xl font-bold">
+            Proof
+          </h2>
+        </div>
+        <p className="text-muted-foreground max-w-2xl leading-relaxed">
+          Claims we make in public, each paired with the code, test, or CI gate
+          in our own repository that enforces it. A claim is only listed here if
+          that enforcement exists today — and our build fails if a listed claim
+          ever loses it.
+        </p>
+      </div>
+
+      {groups.map((group) => (
+        <Card key={group.category} data-testid={`proof-group-${group.category}`}>
+          <CardHeader>
+            <CardTitle className="text-base">{group.label}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y" role="list">
+              {group.claims.map((row) => (
+                <li key={row.id} className="py-3 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {row.title}
+                    </span>
+                    <Badge variant="outline">
+                      {PROOF_KIND_LABELS[row.enforcement.kind]}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {row.claim}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">Enforced by:</span>{" "}
+                    {row.enforcement.refs.map((ref, i) => (
+                      <span key={ref} className="font-mono break-all">
+                        {ref}
+                        {i < row.enforcement.refs.length - 1 ? " · " : ""}
+                      </span>
+                    ))}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ))}
+
+      <p className="text-xs text-muted-foreground">
+        Each pointer is a repo-relative path. The registry behind this section
+        is machine-readable and checked in CI
+        (shared/governance/public-claims.ts).
+      </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page.
 // ---------------------------------------------------------------------------
 export default function TransparencyPage() {
@@ -583,6 +673,9 @@ export default function TransparencyPage() {
           }}
         />
       )}
+
+      {/* The provable-claims registry — static, independent of report state. */}
+      <ProofSection />
     </TransparencyChrome>
   );
 }

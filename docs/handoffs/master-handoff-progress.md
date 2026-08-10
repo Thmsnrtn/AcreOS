@@ -551,7 +551,55 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
-## Waves G/O/F — slice 3 (G1.2 + G1.3 + X-B scaffold) — ✅ SHIPPED
+## Waves G/O/F + Wave 1 — slice 4 (G1.4 + O5-part + W1.6) — ✅ SHIPPED
+
+**Wave G's G1 is now COMPLETE** (G1.1–G1.4); G2/G3 wait on customers.
+Incident note: this fleet's verify phase was killed silently by a worker
+restart (~4.5h stall, caught by the founder's "Are we stuck?"); recovered
+via workflow resume (cached builds + live verifiers), and every fleet now
+arms a fallback self check-in so a dead notification can never idle the
+program again.
+
+- **G1.4 (provable claims):** `shared/governance/public-claims.ts` — 17 rows
+  (10 derived VERBATIM from constitution code-invariants, prose-only ones
+  excluded; 7 curated), every row's enforcement pointer resolves; rendered
+  as /transparency#proof in every page state; `marketingClaims.test.ts`
+  walks landing + /for copy against real caps ("unlimited X" fails wherever
+  a cap exists — red-first proven) and pins the pricing five-letters number
+  to the enforced constant. Verifier catch fixed: the one claim that
+  misdescribed its own mechanism ("imported" → "test-pinned", on the page
+  whose premise is mechanism precision).
+- **O5-part (severity SLAs + grounded deflection):** P0/P1/P2 classification
+  at ticket creation (P0 = broken+money/send ⇒ spine page 30m/4h; P1
+  same-day; P2 48h); escalations carry class + deadline into the founder
+  queue (riskLevel/urgency overlays, deadline clocked from ticket CREATION,
+  never reset at escalation); the resolver's system prompt gains the
+  structural grounded-sources-only constraint (cite KB/org-state/history
+  tools or escalate — never guess), pinned derived. CONFIRMED_GOOD outright.
+- **W1.6 (tool hygiene):** duplicate-verb dedupe (schedule_follow_up folded
+  into its surviving sibling; executor arm kept VERBATIM for persisted
+  tool_calls replay; aliases mapped); per-context capability scoping seam at
+  the executive's tool-list builder (PAX_TOOL_SURFACES, default-deny for
+  unknown tools, pax_subagent wired at the real recursion site; seeded to
+  today's truth so behavior is unchanged); `paxToolRegistry.test.ts` (11
+  derived pins incl. a dated, reasoned duplicates allowlist — real product
+  decisions deferred, not silently blessed). CONFIRMED_GOOD outright.
+- **Slice-3 defect surfaced by this slice's audit, fixed at ROOT CAUSE: the
+  build was broken at HEAD.** TWO sitemap generators wrote one artifact with
+  contradictory policies; slice 3 regenerated with the WRONG one (the .ts
+  twin build.ts explicitly documents as the known-bad generator), so `npm
+  run build`'s canonical --check failed. Fixed: the canonical
+  scripts/generate-sitemap.mjs taught the 17 real new routes (+
+  /transparency, never sitemapped though routed); committed sitemap
+  regenerated canonically (47 URLs; noindex'd /compare/* correctly EXCLUDED
+  per canonical policy — slice 3 had wrongly re-listed them); the .ts twin
+  DELETED; sitemapContentRoutes.test.ts rewritten (not deleted) against the
+  committed artifact + canonical --check, now also pinning
+  one-artifact-one-writer and the /for slug registry sync. PUBLIC_ROUTES
+  /compare rows annotated with the sitemap-exclusion policy.
+- Integration also: gate manifest regenerated (public-claims.ts joined the
+  estate — 34 pins); a /why duplicate my own PUBLIC_ROUTES edit introduced
+  was caught by the derived duplicate-path test and removed.
 
 - **G1.3 (/for/<vertical>):** one template page rendering PURELY from
   BUSINESS_TYPES + VERTICAL_ONBOARDING; all 15 kebab-case slugs enumerated
@@ -719,19 +767,19 @@ integration defects were all fixed centrally before commit:
   section above). Note for posterity: F3's gate-tamper watch flagged the
   slice's own estate edits on its first full-tree run — regenerated per its
   procedure, the mechanism works.
-- **In flight: FLEET 3** (workflow `wf_87a37ca3-552`) building G1.2+G1.3 as
-  one marketing-surface fixer (/for/<vertical> registry pages + public demo
-  org — viewer-role read-only session, mutation-block middleware,
-  simulationMode, sample-marked so G1.1's guard keeps the funnel clean;
-  prod demo-org provisioning stays a founder/ops step with an honest
-  not-provisioned state) and X-B scaffold (statuteRegister per-claim
-  sourcing fields, claims-without-citations down-only ratchet, automations
-  gated refuse-not-compute from unverified rows; actual row verification +
-  licensed spot-check stays founder-queued). Integration: manifest regen
-  LAST (statuteRegister is estate), same protocol.
-- **After fleet 3:** G1.4 provable-claims + marketing-claims.test (landing
-  files free again), O5-part (grounded deflection + severity SLAs), F2 (one
-  decision queue), then Wave 1 (1.1–1.6) and the §D main line.
+- **Slice 3 SHIPPED at `f4bec05`** (G1.2 + G1.3 + X-B scaffold — section
+  above).
+- **In flight: FLEET 4** (workflow `wf_14319fc0-2fb`) building G1.4
+  (provable-claims registry rendered on /transparency + marketingClaims.test
+  over landing copy vs real caps — closes Wave G's G1), O5-part (severity
+  classes P0/P1/P2 replacing the flat SLA, escalations carrying the clock
+  into the founder queue, structural grounded-deflection constraint on the
+  support resolver), and Wave-1 1.6 (Pax tool dedupe with a derived
+  no-duplicate-verbs registry pin + per-context capability scoping at the
+  executive's tool-list builder — conservative: alias not delete,
+  behavior-preserving). Same integration protocol.
+- **After fleet 4:** F2 (one decision queue), Wave 1 remaining (1.1–1.5),
+  then Wave 2 per §D. G2/G3 wait on customers; founder queue unchanged.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
