@@ -80,7 +80,12 @@ export function computeUptimePct(sampleTimes: number[], opts: UptimeComputeOpts)
 
 // ── DB helpers ───────────────────────────────────────────────────────────────
 
-let lastSampleAt = 0;
+// Keyed by SOURCE: worker and external samples must throttle independently —
+// a shared timestamp would silently drop every ~5-min external probe sample
+// whenever the ~60s worker heartbeat runs in the same process (today they run
+// in separate Fly process groups, but that topology must not be load-bearing
+// for the F-18-2 armament check).
+const lastSampleAtBySource = new Map<string, number>();
 
 /**
  * Record a liveness sample, throttled to SAMPLE_INTERVAL_MS so the 5s poll loop
@@ -89,8 +94,8 @@ let lastSampleAt = 0;
  */
 export async function recordUptimeSample(source = "worker"): Promise<void> {
   const now = Date.now();
-  if (now - lastSampleAt < SAMPLE_INTERVAL_MS) return;
-  lastSampleAt = now;
+  if (now - (lastSampleAtBySource.get(source) ?? 0) < SAMPLE_INTERVAL_MS) return;
+  lastSampleAtBySource.set(source, now);
   try {
     await db.insert(uptimeSamples).values({ at: new Date(now), source });
     // Prune ~1% of the time to keep the table bounded without per-write cost.

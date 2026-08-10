@@ -15,6 +15,7 @@ from this file, not from memory. Updated every working session.*
 | D-1 | **RESOLVED 2026-08-09.** The master handoff document was absent from the repo at session start (not tracked or untracked anywhere). The founder supplied it in-session; it is now committed in full (§A–§G including all six reference parts) at `docs/handoffs/acreos-master-handoff.md`. | Wave 0 items 0.1–0.9, Waves 1–6, G/O/F/X are now enumerable. Program unblocked. |
 | D-2 | **Item 0.2's headline premise is stale — the F-18-1 fix already shipped** in the remediation continuation batch (2026-08-06, `REMEDIATION.md` item 3): `server/services/vendorCredentialExpiry.ts` (registry seeded ATTOM `2026-08-28`), milestone paging in `sendDailyBriefing` (warn T-14/T-7, critical page ≤T-2 via `alertSpine`), and the `vendor_credentials` step-away readiness check. All verified wired at HEAD (scheduler → `runScheduledJobs.ts:1146`). | 0.2 re-scoped from "build it" to "verify at HEAD + close the enforcement gap" (below). |
 | D-3 | The audit's F-18-1 **"Gate it"** (sole-source ⇒ expiry-row invariant) was NOT part of the shipped fix — no `vendor-expiry` ratchet existed and the unit test didn't derive from the sole-source allowlist. | Closed this session (see 0.2). Built as a **derived set-invariant test**, not a count ratchet — per `99-master.md:228`'s over-build dissent and the repo's derived-test preference. |
+| D-4 | **FOUNDER RULING (2026-08-10, direct in-session):** the completed vertical-maturity program — all 15 verticals brought to honest core (PRs #275/#276, merged pre-Wave-0) — **SUPERSEDES every handoff recommendation premised on verticals being beta / frozen / conveyor-gated / roadmap-gated**. The founder read the handoff and identified this as its one outdated aspect. Consistent with founder ruling #11 (2026-07-29, deletion ledger) rescinding the one-at-a-time conveyor. | Any later-wave brief (Waves 1–6/G/O/F, addenda) whose premise is a vertical's beta/frozen status must be re-scoped at execution: verticals are CORE. Do not relitigate activation gates the completed program already passed — including the residential-comps data-plane hard-stop, which the founder lifted in-session during that program ("Lift hard-stop + MLS vendor"). |
 
 ---
 
@@ -409,8 +410,93 @@ from this file, not from memory. Updated every working session.*
 - **Approval queue:** the flip decision + the /mcp disposition (below). No
   send lane, no hard-stop domain; ratchet moves are all DOWNWARD (earned by
   deletion, locked per CLAUDE.md rule 5).
-### 0.8 — Mail lanes (`lobService` → `resolveProviderCredential`, purpose lanes, wedge cap, `mailProviderLanes.test`) — pending · **SEND LANE: propose-don't-merge (§A rule 5) — goes to founder approval queue before merge**
-### 0.9 — Critical-job-failure pages (F-13-1 shipped — verify) + pager-matrix-as-data ratchet + external watchdogs armed (F-18-2) — pending
+### 0.8 — Mail lanes — 📋 PROPOSED (send lane: §A rule 5 — implementation gated on founder approval)
+- **Premise verification found MAJOR drift:** the brief's target `lobService.ts`
+  is unreachable DEAD code (sole importer's methods have zero external
+  callers); the LIVE counterparty rail is MailRouter → lobAdapter →
+  directMailService (+3 bypass siblings), already BYOK-first on credentials.
+  Purpose lanes are absent across the whole physical-mail stack; there is NO
+  system-purpose paper send at HEAD; the 5-piece wedge cap exists but only at
+  one route (key-unaware, bypassed by sequences/campaigns/autopilot). The
+  Provider-Role Register (§5 item 7) is unbuilt.
+- **Full proposal committed:** `docs/proposals/wave-0.8-mail-lanes.md` — the
+  lane design mirrors the proven email mechanism case-for-case (purpose field
+  → chokepoint guard before the provider client → adapter-never-called
+  ratchet), the wedge cap moves into `assertMailLane` at the true chokepoint,
+  the register gets seeded, and the exit-test spec (7 cases) is written.
+  Two founder decision points inside: lobService delete-vs-lane (recommend
+  DELETE), and folding in the `mailProvider.ts` plaintext-credential-read bug
+  (recommend fold) + the campaigns env-key address-verification bypass
+  (recommend ledger).
+- **Why proposal-only:** §A rule 5 — a send-lane change merges only with
+  founder approval, and everything committed to this branch rides the wave PR.
+  The build lands in a follow-up session against this spec once approved.
+### 0.9 — Critical-job-failure pages (F-13-1 verify) + pager-matrix-as-data + external watchdogs (F-18-2) — ✅ DONE
+- **F-13-1 verified TRUE at HEAD:** the deadman (`deadmanCheck.ts`) walks the
+  146-entry JOB_ROSTER (47 critical), and a dark critical job raises a CRITICAL alert
+  through the ONE spine (P0 page, throttle persisted in `deadman_page_state`
+  so deploys don't re-page). Pinned, not just read.
+- **Pager-matrix-as-data (P5-1) built:** `JobRosterEntry` gains
+  `onFailure?: page|queue|tray`; `resolveFailureLane()` is THE resolution and
+  gives the structural guarantee the doctrine asked for — `critical: true`
+  can NEVER resolve below "page" (a downgrading override is ignored, pinned
+  by a tamper test). The deadman now dispatches FROM the resolved lane
+  (page→critical spine alert; queue→warning finding+system_alerts, no page;
+  tray→log-only, a real behavioral lane for human-cadence-reviewed jobs).
+  The old local `entry.critical` severity branch is banned by pin.
+- **F-18-2 built:** step-away readiness gains the `external_watchdogs` check —
+  armament verified by BEHAVIOR: token unset ⇒ action_needed (founder
+  decision 8's deferral is now VISIBLE in the verdict); token set but no
+  landed external uptime sample (or stale >45m vs the 5m probe cadence) ⇒
+  action_needed (server env alone doesn't close the loop — the GH repo
+  secrets can still be missing); recent sample ⇒ ready. The probe ingest
+  (`/api/health/uptime-probe` → `recordUptimeSample("external")`) is the
+  behavior it reads. Provisioning itself remains the founder's (decision 8)
+  — the check makes the verdict stop lying, it does not flip any secret.
+- **Exit test:** `tests/unit/pagerMatrix.test.ts` (7 tests) — lane totality
+  across the roster; critical-can't-downgrade tamper pin; deadman
+  dispatches-from-lane + old-branch-banned pins; F-13-1 spine-contract pins;
+  external_watchdogs presence + behavior-not-self-report + loop-closure
+  pins. 52/52 with the roster/backup/autopay wiring suites; step-away
+  adjacent suites green.
+- **Independent completeness audit — 4 confirmed holes (all remediated) + one
+  real scoping gap (ledgered):**
+  1. The changed file's own co-located suite went red (the "fully armed"
+     world lacked the probe token + the db mock lacked the new query chain) —
+     fixed rewrite-not-delete, plus two new negative tests (dormant probe ⇒
+     action_needed with the armed headline suppressed; token-without-samples
+     ⇒ action_needed). Lesson recorded: the audit's run list must always
+     include the changed file's co-located suite.
+  2. The config-dormant meta-check still gated on raw `entry.critical` and
+     its projection dropped the lane — now projects + filters by
+     `resolveFailureLane` (the matrix is the single severity source for both
+     darkness AND dormancy visibility).
+  3. The sample-write throttle was module-global and source-agnostic — a
+     future single-process topology would have silently dropped every
+     external probe sample while returning {ok:true}, making the armament
+     check lie in the false-negative direction. Now keyed by source.
+  4. Orphaned JSDoc from the resolver insertion; alert metadata now carries
+     `lane`; the probe-token compare made timing-safe (it is now
+     load-bearing for a founder-facing verdict); the stale autopilot-control
+     copy ("Can't verify from here") corrected — the check verifies exactly
+     that.
+  - **LEDGERED, real, deliberately not built here: job-FAILURE events don't
+    consult the matrix.** `jobFailed` → notificationDispatcher resolves ALL
+    146 jobs' failure events to a flat Class-C in-app tray (dbBackup +
+    backupRestoreVerify carry explicit workaround comments calling raiseAlert
+    directly to escape it). The 0.9 matrix governs DARKNESS (the deadman) and
+    dormancy; routing failure EVENTS through resolveFailureLane touches the
+    event-mesh dispatcher and is queued as the natural Wave-O follow-up.
+  - Also ledgered: `uptime_samples.at` is one of few non-timezone timestamps
+    (works on UTC-defaulting Fly; the 45m window would break first on a TZ
+    change); the sample query lacks a source index (only hot in the sustained
+    loop-not-closed state); the readiness LADDER's watchdog rung checks
+    GitHub-side secret NAMES while the step-away check verifies server-side
+    BEHAVIOR — complementary, can visibly disagree, neither cross-references
+    the other (Wave-O UX note).
+- **Approval queue:** nothing — no baseline moved (the new lane field is
+  additive data; no entry declares an override yet), no send lane, no
+  hard-stop domain. Watchdog PROVISIONING stays with the founder (decision 8).
 
 ---
 
@@ -435,8 +521,14 @@ from this file, not from memory. Updated every working session.*
    Solene records spend to capitalTracker but not aiTelemetryEvents, so ceilings
    can't see it. Both held in aiCostCoverage's dated KNOWN_GAPS allowlist pending
    your call on the metering semantics for founder-org spend.
-5. *(anticipated)* **0.8 mail lanes** will enter this queue when built — it is a
-   send-lane change (§A rule 5: propose, don't merge).
+5. **0.8 mail lanes — PROPOSAL READY for your ruling**
+   (`docs/proposals/wave-0.8-mail-lanes.md`): approve the lane design (mirrors
+   your 2026-07-17 email-lane decision at the true physical-mail chokepoint,
+   wedge cap moved there, Provider-Role Register seeded) and rule the two
+   decision points: (a) DELETE the dead lobService (recommended) or retain
+   with a laned signature; (b) fold the mailProvider plaintext-credential-read
+   bug into the build (recommended). On approval the implementation follows
+   the committed spec.
 6. **MCP endpoint availability (from 0.7):** the dark-flag + per-org allowlist
    mechanism is merged with defaults preserving current behavior (enabled, all
    orgs). Your call, per §8.2 and the no-public-API-before-~50 trigger: set
@@ -461,9 +553,9 @@ from this file, not from memory. Updated every working session.*
 
 ## Next item up
 
-- **0.8**: mail lanes — `lobService` → `resolveProviderCredential`, purpose
-  lanes, wedge cap, `mailProviderLanes.test`. **SEND LANE: build on a side
-  branch / as an uncommitted-to-main proposal, do NOT merge (§A rule 5)** —
-  the deliverable is a founder-queue entry with the diff + exit tests, not a
-  merged commit. Verify premises at HEAD first. Then 0.9 (pager matrix +
-  external watchdogs), which closes Wave 0.
+- **WAVE 0 COMPLETE** pending: (a) the 0.9 commit landing (gates + audit in
+  flight at the time of this write), and (b) the founder's 0.8 ruling (the
+  proposal is queued; its implementation is the one open Wave-0 build).
+- After Wave 0: Waves G / O / F may parallelize per §D. Next session should
+  resume from this file: run the 0.8 build if approved, then open the Wave-0
+  PR for founder review, then start Wave G/O/F premise verification.

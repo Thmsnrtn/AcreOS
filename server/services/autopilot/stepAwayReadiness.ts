@@ -318,6 +318,62 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     }
   }
 
+  // ── External watchdog armament (audit F-18-2 / Wave 0.9) ───────────────────
+  // The in-app pager can be perfectly healthy while the app itself is dark —
+  // only the OUTSIDE-IN probes (uptime-probe.yml from GitHub's infra) can
+  // alarm then. Founder decision 8 (2026-07-28) deferred provisioning the two
+  // repo secrets; this check makes that deferral VISIBLE: the verdict can no
+  // longer read "every system armed" while the outside-in layer is dormant.
+  // Armament is verified by BEHAVIOR (a recorded external sample), never by
+  // config self-report alone: the server token can be set while the repo
+  // secrets are missing, and only a landed sample proves the loop closes.
+  {
+    const base = { key: "external_watchdogs", title: "Someone outside is watching the app", critical: false, href: "/founder/autopilot/control" };
+    try {
+      if (!process.env.UPTIME_PROBE_TOKEN) {
+        checks.push({
+          ...base,
+          status: "action_needed",
+          detail: "External uptime probe is DORMANT — a mid-absence app outage has no outside-in alarm (founder decision 8 deferred provisioning).",
+          fix: "🔑 Set UPTIME_PROBE_URL + UPTIME_PROBE_TOKEN as GitHub repo secrets AND UPTIME_PROBE_TOKEN on the server (fly secrets set ...). The probe workflow already ships and no-ops until then.",
+        });
+      } else {
+        const { db } = await import("../../db");
+        const { uptimeSamples } = await import("@shared/schema");
+        const { desc, eq } = await import("drizzle-orm");
+        const [latest] = await db
+          .select({ at: uptimeSamples.at })
+          .from(uptimeSamples)
+          .where(eq(uptimeSamples.source, "external"))
+          .orderBy(desc(uptimeSamples.at))
+          .limit(1);
+        const ageMs = latest ? Date.now() - new Date(latest.at).getTime() : null;
+        // Probe cadence is ~5 min; GitHub's scheduled crons are best-effort,
+        // so allow generous slack before declaring the loop broken.
+        const STALE_MS = 45 * 60 * 1000;
+        if (ageMs !== null && ageMs <= STALE_MS) {
+          checks.push({
+            ...base,
+            status: "ready",
+            detail: `External uptime probe verified by behavior — last outside-in sample ${Math.round(ageMs / 60000)}m ago.`,
+          });
+        } else {
+          checks.push({
+            ...base,
+            status: "action_needed",
+            detail:
+              ageMs === null
+                ? "UPTIME_PROBE_TOKEN is set on the server but NO external sample has ever landed — the GitHub repo secrets are likely missing, so the outside-in loop is not closed."
+                : `UPTIME_PROBE_TOKEN is set but the last external sample is ${Math.round(ageMs / 60000)}m old (probe cadence ~5m) — the outside-in loop is broken.`,
+            fix: "🔑 Verify UPTIME_PROBE_URL + UPTIME_PROBE_TOKEN repo secrets match the server env, and that uptime-probe.yml runs are green in GitHub Actions.",
+          });
+        }
+      }
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   // ── DR restore drill freshness (audit F-13-2) ──────────────────────────────
   // Backups that have never been restored are a hope, not a backup. The weekly
   // automated verify proves a snapshot restores into a scratch DB, but a full

@@ -530,7 +530,11 @@ export async function registerRoutes(
   app.post("/api/health/uptime-probe", async (req: Request, res: Response) => {
     const configured = process.env.UPTIME_PROBE_TOKEN;
     const provided = req.header("x-probe-token");
-    if (!configured || !provided || provided !== configured) {
+    // Timing-safe: this token is now load-bearing for the step-away
+    // "outside-in armed" verdict (F-18-2), so it gets the same compare
+    // discipline as every other shared secret.
+    const { timingSafeEqualStr } = await import("./utils/inviteTokens");
+    if (!configured || !provided || !timingSafeEqualStr(provided, configured)) {
       return Errors.unauthorized(res);
     }
     try {

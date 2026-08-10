@@ -1094,7 +1094,7 @@ const EXTERNAL_WATCHDOGS: ExternalWatchdogInfo[] = [
     title: "Uptime probe",
     what: "Pings the site from GitHub every ~5 minutes and records real outside-in uptime.",
     stateLine:
-      "Can't verify from here — dormant until you set UPTIME_PROBE_URL and UPTIME_PROBE_TOKEN; here's how.",
+      "Verified by behavior — the step-away readiness list above shows armed the moment an outside-in sample lands (dormant until you set UPTIME_PROBE_URL and UPTIME_PROBE_TOKEN; here's how).",
     secrets: ["UPTIME_PROBE_URL", "UPTIME_PROBE_TOKEN"],
     how: [
       'Terminal: gh secret set UPTIME_PROBE_URL --body "https://acreos.io"',

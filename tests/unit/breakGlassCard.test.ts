@@ -131,8 +131,16 @@ describe("autopilot-control.tsx — 'Safety net outside the app' section", () =>
   });
 
   it("NEVER renders an armed/green state — the app cannot read GitHub secrets", () => {
-    // Every watchdog state line admits unverifiability…
-    expect(section.match(/Can't verify from here/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    // Original invariant: every watchdog state line admits unverifiability
+    // because the app cannot read GitHub secrets. Wave 0.9 (F-18-2) changed
+    // that premise for ONE card: the uptime probe is now verifiable BY
+    // BEHAVIOR (landed samples power the step-away external_watchdogs
+    // check), so its static copy points at that live check instead of
+    // claiming unverifiability. The other watchdogs remain
+    // can't-verify-from-here, and the static section still may not claim
+    // armed/green itself — armed is only ever the LIVE check's word.
+    expect(section.match(/Can't verify from here/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(section).toContain("step-away readiness");
     // …and the section contains no success styling and no armed claim at all.
     expect(section).not.toContain("acr-success");
     expect(section).not.toMatch(/status.*armed|"Armed"|>Armed</i);

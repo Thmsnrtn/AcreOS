@@ -27,6 +27,7 @@ let grants: Array<{ expiresAt: Date; maxActions: number; usedCount: number }> = 
 let deadLetterRows: Array<{ id: number }> = [];
 // DR restore-drill rows (audit F-13-2 check). A fully-armed world has run one.
 let drillRows: Array<{ ranAt: Date; passed: boolean; rto: number }> = [];
+let uptimeSampleRows: Array<{ at: Date }> = [];
 let patchCapable = { capable: true, reason: "ok" };
 let ledgerLevels = ["execute_gated", "autonomous_gated", "draft", "observe", "observe"];
 
@@ -72,8 +73,14 @@ vi.mock("../../db", () => ({
   db: {
     select: () => ({
       from: () => ({
-        // dead-letter check: select().from().where() → deadLetterRows
-        where: () => Promise.resolve(deadLetterRows),
+        // dead-letter check: select().from().where() → deadLetterRows.
+        // external_watchdogs (F-18-2 / Wave 0.9) chains further:
+        // select().from().where().orderBy().limit() → uptimeSampleRows —
+        // so where() is a thenable that also carries the longer chain.
+        where: () =>
+          Object.assign(Promise.resolve(deadLetterRows), {
+            orderBy: () => ({ limit: () => Promise.resolve(uptimeSampleRows) }),
+          }),
         // DR-drill check (F-13-2): select().from().orderBy().limit() → drillRows
         orderBy: () => ({ limit: () => Promise.resolve(drillRows) }),
       }),
@@ -100,6 +107,10 @@ beforeEach(() => {
   deadLetterRows = [];
   // A recent, passing DR drill → the F-13-2 check is green in the armed world.
   drillRows = [{ ranAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), passed: true, rto: 30 }];
+  // Armed outside-in watchdog (F-18-2 / Wave 0.9): token set AND a fresh
+  // external uptime sample landed — armament is behavior, not config.
+  process.env.UPTIME_PROBE_TOKEN = "probe-token";
+  uptimeSampleRows = [{ at: new Date(Date.now() - 4 * 60 * 1000) }];
   patchCapable = { capable: true, reason: "ok" };
   process.env.FOUNDER_EMAIL = "tom@example.com";
   process.env.SELF_PATCH_ENABLED = "true";
@@ -120,6 +131,25 @@ describe("buildStepAwayReadiness", () => {
     expect(r.readyCount).toBe(r.totalCount);
     expect(r.horizonDays).toBe(5);
     expect(r.headline).toContain("step away");
+  });
+
+  it("dormant outside-in probe → external_watchdogs action_needed; 'every system armed' suppressed (F-18-2)", async () => {
+    delete process.env.UPTIME_PROBE_TOKEN;
+    const r = await buildStepAwayReadiness();
+    const wd = r.checks.find((c) => c.key === "external_watchdogs");
+    expect(wd?.status).toBe("action_needed");
+    // Non-critical, so the verdict stays ready — but the armed headline must
+    // not be claimable while the outside-in layer is dark.
+    expect(r.verdict).toBe("ready");
+    expect(r.headline).not.toContain("Every system is armed");
+  });
+
+  it("token set but NO landed external sample → action_needed (config alone doesn't close the loop)", async () => {
+    uptimeSampleRows = [];
+    const r = await buildStepAwayReadiness();
+    const wd = r.checks.find((c) => c.key === "external_watchdogs");
+    expect(wd?.status).toBe("action_needed");
+    expect(wd?.detail).toContain("NO external sample");
   });
 
   it("no page channel at all → NOT ready (critical reachability gap)", async () => {

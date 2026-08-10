@@ -43,6 +43,9 @@
  * entry and vice-versa so drift is caught in CI.
  */
 
+/** The three failure lanes of the pager matrix (audit P5-1). */
+export type FailureLane = "page" | "queue" | "tray";
+
 export interface JobRosterEntry {
   /** Logical job name — MUST match the `withJobLock('<name>', …)` literal. */
   name: string;
@@ -69,6 +72,16 @@ export interface JobRosterEntry {
   cron?: string;
   /** true → page P1 on absence; false → P2. */
   critical: boolean;
+  /**
+   * Pager-matrix-as-data (audit P5-1 / Wave 0.9): where this job's failure
+   * lands. Resolution is via resolveFailureLane — NEVER read this field
+   * directly. A critical job ALWAYS resolves to "page" (the resolver
+   * enforces it structurally; an override cannot downgrade it), so this
+   * field only meaningfully varies non-critical jobs between "queue"
+   * (default — warning finding + system_alerts) and "tray" (log-only
+   * severity, for jobs whose absence a human reviews on their own cadence).
+   */
+  onFailure?: FailureLane;
   /**
    * Optional predicate, evaluated at deadman-run time. When it returns true
    * the job is treated as intentionally off (env kill-switch / not-production)
@@ -462,6 +475,19 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "support_resolve_calibration_grader", intervalMs: DAY, critical: false },
 ];
 
+/**
+ * THE pager matrix resolution (audit P5-1 / Wave 0.9) — the single place the
+ * roster's severity map becomes a dispatch decision. Structural guarantee:
+ * `critical: true` can never resolve below "page" — an `onFailure` override
+ * cannot downgrade it (pinned by pagerMatrix.test.ts). Non-critical jobs
+ * default to "queue" (warning finding + system_alerts row, no page) and may
+ * opt down to "tray".
+ */
+export function resolveFailureLane(entry: JobRosterEntry): FailureLane {
+  if (entry.critical) return "page";
+  return entry.onFailure ?? "queue";
+}
+
 /** Roster entries that are NOT currently disabled by their env predicate. */
 export function activeRosterEntries(): JobRosterEntry[] {
   return JOB_ROSTER.filter((e) => !(e.disabledWhen?.() ?? false));
@@ -470,6 +496,8 @@ export function activeRosterEntries(): JobRosterEntry[] {
 export interface ConfigDormantEntry {
   name: string;
   critical: boolean;
+  /** Resolved failure lane — dormancy visibility follows the SAME matrix. */
+  lane: FailureLane;
   reason: string;
 }
 
@@ -486,6 +514,7 @@ export function configDormantEntries(): ConfigDormantEntry[] {
     .map((e) => ({
       name: e.name,
       critical: e.critical,
+      lane: resolveFailureLane(e),
       reason: e.disabledReason ?? "disabledWhen returned true (no disabledReason declared — add one)",
     }));
 }

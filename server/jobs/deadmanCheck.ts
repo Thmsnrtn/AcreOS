@@ -56,7 +56,7 @@ import { deadmanPageState, jobHealthLogs } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { raiseAlert, seedPageThrottle } from "../services/alertSpine";
 import { recordFinding } from "../services/audit/domainAudit";
-import { activeRosterEntries, configDormantEntries, type ConfigDormantEntry } from "./jobRegistry";
+import { activeRosterEntries, configDormantEntries, resolveFailureLane, type ConfigDormantEntry } from "./jobRegistry";
 
 // Process start time — used to avoid false-paging a job that has simply never
 // had a chance to run yet on a freshly-booted worker.
@@ -156,9 +156,21 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     if (persisted != null) {
       seedPageThrottle(DETECTOR_ID, `dark:${entry.name}`, persisted);
     }
+    // Pager-matrix-as-data (audit P5-1 / Wave 0.9): the roster's resolved
+    // lane — not a local criticality branch — decides the dispatch. page →
+    // critical spine alert (P0 page); queue → warning spine alert (finding +
+    // system_alerts, no page); tray → log-only (for jobs whose absence a
+    // human reviews on their own cadence — no spine row).
+    const lane = resolveFailureLane(entry);
+    if (lane === "tray") {
+      logger.warn(`[deadman] tray ${title} — ${ageDesc}`, {
+        metadata: { job: entry.name, lastSeenMs, thresholdMs, lane },
+      });
+      continue;
+    }
     try {
       const alertResult = await raiseAlert({
-        severity: entry.critical ? "critical" : "warning",
+        severity: lane === "page" ? "critical" : "warning",
         source: DETECTOR_ID,
         title,
         detail: body,
@@ -168,7 +180,7 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
           "SLO: every roster job must emit a liveness row within 2× its cadence (deadman).",
         subjectRef: entry.name,
         alertType: "job_dark",
-        metadata: { lastSeenMs, thresholdMs, critical: entry.critical, intervalMs: entry.intervalMs },
+        metadata: { lastSeenMs, thresholdMs, critical: entry.critical, lane, intervalMs: entry.intervalMs },
       });
       if (alertResult.paged) {
         // Persist the page timestamp (fire-and-forget — never block the sweep).
@@ -211,7 +223,9 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
   // each CRITICAL one (warn severity — it's a known gap, not an outage) so
   // the founder surfaces keep showing it until the config lands.
   const configDormant = configDormantEntries();
-  const dormantCritical = configDormant.filter((e) => e.critical);
+  // Same matrix as darkness dispatch: dormancy visibility follows the
+  // resolved lane, not the raw critical flag (audit P5-1 / Wave 0.9).
+  const dormantCritical = configDormant.filter((e) => e.lane === "page");
   if (configDormant.length > 0) {
     logger.warn(
       `[deadman] ${configDormant.length} roster job(s) config-dormant (${dormantCritical.length} critical): ` +
