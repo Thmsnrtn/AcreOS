@@ -1326,7 +1326,7 @@ integration defects were all fixed centrally before commit:
   indirection with correct attribution; NO paid vendor, no faked
   self-hosting). Verifiers briefed on the five-slice fabrication pattern
   INCLUDING slice 10's negative-claim instance. Fallback timer armed.
-- **Slice 11 SHIPPED** (Wave 2 opens — section above). Ratchet moved DOWN
+- **Slice 11 SHIPPED at `23d052b`** (Wave 2 opens — section above). Ratchet moved DOWN
   and locked: advice surfaces missing a disclaimer 15 → **13** (earned,
   after the detector was sharpened and three surfaces were covered).
 - **Deferred honestly, named not papered over:** the DSAR export
@@ -1335,11 +1335,21 @@ integration defects were all fixed centrally before commit:
   broker-backed `declaredSource` path are egress-adjacent and outside this
   slice's file sets — carried as the next egress slice's work rather than
   claimed as covered.
-- **After fleet 11 → FLEET 12:** Wave 2 remainder (2.2 county fabrics as
-  PMTiles, 2.3 click-to-identify → inspector → track-this-parcel), the
-  egress follow-ups above, F2 slice 2, X-A slice 3 (post-ruling), then
-  Wave 3 per §D. G2/G3 wait on customers; founder queue unchanged. S3
-  hands / promotion mechanics stay propose-first per D-5.
+- **In flight: FLEET 12** (Wave 2 remainder + egress follow-ups): 2.3
+  click-to-identify → inspector → "Track this parcel" → quick actions
+  (M1, on the county data the product already holds — 2.2's licensed
+  PMTiles fabrics need a county-licence decision and a tiling pipeline,
+  so they are NOT assumed here), the three NAMED egress follow-ups (DSAR
+  export ships `deals.enrichmentData` unscreened; the
+  `/api/export/everything` ZIP in migrationJobs.ts; the MCP
+  broker-backed `declaredSource` path with no production caller), and F2
+  slice 2 (the next decision inflows — 2 of 7 merged so far). Fallback
+  timer armed.
+- **After fleet 12:** Wave 2's 2.2 (county fabrics — gated on the
+  licence/tiling decision), Wave 3 depth-per-vertical per §D, F2
+  remainder, X-A slice 3 (post-ruling). G2/G3 wait on customers; founder
+  queue unchanged. S3 hands / promotion mechanics stay propose-first
+  per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
