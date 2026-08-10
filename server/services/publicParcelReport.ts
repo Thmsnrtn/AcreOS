@@ -45,6 +45,7 @@ import {
   type PublicReportFactCategory,
   type PublicReportFacts,
 } from "@shared/schema";
+import type { RedistributePosture } from "./providers/types";
 import { resolveParcel } from "./parcel/resolveParcel";
 import {
   LCS_DIMENSION_WEIGHTS,
@@ -53,6 +54,13 @@ import {
   lcsGradeForScore,
 } from "./landCredit";
 import { raiseAlert } from "./alertSpine";
+import {
+  postureMayLeave,
+  resolveEgressLicense,
+  screenSourcedNodes,
+  withholdingNotice,
+  type WithheldRegion,
+} from "./licenseEgress";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
 import { logger } from "../utils/logger";
 import { publicParcelReportEventsTotal } from "../metrics";
@@ -377,9 +385,17 @@ async function countGeneratedToday(): Promise<number> {
  * Per-county redistribution status from the GIS registry (Beatrice licensing
  * policy). Defaults to NOT redistributable on any miss/error.
  */
+/** The source name county-gis-provider stamps on its LookupResults. */
+const COUNTY_GIS_SOURCE = "County GIS";
+
 async function countyRedistribution(
   key: ReportKey,
-): Promise<{ allowed: boolean; attribution: string | null }> {
+): Promise<{
+  allowed: boolean;
+  attribution: string | null;
+  /** The posture a human recorded for THIS county, fed to the chokepoint. */
+  reviewedPostures: Record<string, RedistributePosture>;
+}> {
   try {
     const rows = await db
       .select({
@@ -402,15 +418,28 @@ async function countyRedistribution(
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-+|-+$/g, "") === key.countySlug,
     );
-    if (!match) return { allowed: false, attribution: null };
-    const allowed =
-      match.redistributable === "yes" || match.redistributable === "attribution";
-    return { allowed, attribution: allowed ? match.attribution ?? null : null };
+    // No county row = no recorded review = fail closed at the chokepoint.
+    if (!match) return { allowed: false, attribution: null, reviewedPostures: {} };
+
+    // The DECISION is the chokepoint's, not this function's: we hand it the
+    // posture a human recorded on county_gis_endpoints and let it rule. A
+    // recorded review can only settle a review-required source; it can never
+    // upgrade a vendor the register declares non-redistributable.
+    const reviewedPostures = {
+      [COUNTY_GIS_SOURCE]: match.redistributable as RedistributePosture,
+    };
+    const ruling = resolveEgressLicense(COUNTY_GIS_SOURCE, reviewedPostures);
+    const allowed = postureMayLeave(ruling.posture);
+    return {
+      allowed,
+      attribution: allowed ? match.attribution ?? null : null,
+      reviewedPostures,
+    };
   } catch (err) {
     logger.warn("[public-parcel-report] redistribution lookup failed", {
       metadata: { error: err instanceof Error ? err.message : String(err) },
     });
-    return { allowed: false, attribution: null };
+    return { allowed: false, attribution: null, reviewedPostures: {} };
   }
 }
 
@@ -471,7 +500,7 @@ async function buildFacts(key: ReportKey): Promise<PublicReportFacts | null> {
     },
   );
 
-  const categories: PublicReportFactCategory[] = REPORT_GEO_CATEGORIES.map(
+  const rawCategories: PublicReportFactCategory[] = REPORT_GEO_CATEGORIES.map(
     (category) => {
       const r = geoResolved.results[category];
       const ok = !!r && r.available && r.data != null;
@@ -493,6 +522,30 @@ async function buildFacts(key: ReportKey): Promise<PublicReportFacts | null> {
   //    allow redistribution. acres rides along (it is the load-bearing parcel
   //    fact); owner/tax/value attributes are the license-sensitive ones.
   const redistribution = await countyRedistribution(key);
+
+  // LICENSE-AWARE EGRESS. A saved public page IS redistribution, so every
+  // fact category goes through the chokepoint before it is persisted. The
+  // free-tier pin above makes a paid source structurally unreachable on this
+  // path; this is the second, independent barrier — if a paid or
+  // un-license-reviewed source ever reaches here, its data is emptied and the
+  // category keeps an honest hole (`withheld: true` + reason) instead of
+  // silently disappearing.
+  const { nodes: categories, screen: categoryScreen } = screenSourcedNodes(
+    "public-parcel-report",
+    rawCategories,
+    { labelKey: "category", reviewedPostures: redistribution.reviewedPostures },
+  );
+  if (categoryScreen.withheld.length > 0) {
+    logger.warn("[public-parcel-report] categories withheld by license egress", {
+      metadata: {
+        __pii_safe: true,
+        state: key.state,
+        county: key.countySlug,
+        withheld: categoryScreen.withheld.map((w) => `${w.label}:${w.source}`),
+      },
+    });
+  }
+
   let assessorData: Record<string, unknown> | null = null;
   if (redistribution.allowed && parcelData.data) {
     const d = parcelData.data;
@@ -528,6 +581,49 @@ async function buildFacts(key: ReportKey): Promise<PublicReportFacts | null> {
     },
     categories,
   };
+}
+
+/**
+ * The honest notice for a SAVED report: what this page is missing and why.
+ * Derived from the persisted facts (the per-category `withheld` marks the
+ * chokepoint left, plus the county-attribute posture), so a report saved
+ * before this slice and one saved after both describe themselves correctly.
+ * Null when nothing was withheld — a complete report must not imply a hole.
+ */
+export function reportWithholdingNotice(
+  facts: PublicReportFacts | null | undefined,
+): string | null {
+  if (!facts) return null;
+  const withheld: WithheldRegion[] = [];
+
+  for (const category of facts.categories ?? []) {
+    const node = category as unknown as Record<string, unknown>;
+    if (node.withheld !== true) continue;
+    const source = typeof category.source === "string" ? category.source : "unknown";
+    withheld.push({
+      path: category.category,
+      label: category.category,
+      source,
+      posture: resolveEgressLicense(source).posture,
+      reason:
+        typeof node.withheldReason === "string"
+          ? node.withheldReason
+          : resolveEgressLicense(source).reason,
+    });
+  }
+
+  if (facts.parcel?.countyAttributes === "not-redistributable") {
+    const ruling = resolveEgressLicense(COUNTY_GIS_SOURCE);
+    withheld.push({
+      path: "assessorData",
+      label: "county assessor attributes",
+      source: COUNTY_GIS_SOURCE,
+      posture: ruling.posture,
+      reason: `${COUNTY_GIS_SOURCE} terms for this county have not been license-reviewed for redistribution`,
+    });
+  }
+
+  return withholdingNotice("public-parcel-report", withheld);
 }
 
 /** Once-per-day spike alert + the hard-cap refusal, wired into telemetry. */

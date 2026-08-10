@@ -1692,7 +1692,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   {(currentProperty.marketValue || currentProperty.assessedValue) && (
                     <DataProvenanceTag
                       source={currentProperty.marketValue ? (currentProperty.enrichedAt ? "AcreOS estimate" : "User entered") : "County assessor"}
-                      asOf={parcelData?.lastUpdated || currentProperty.enrichedAt || currentProperty.updatedAt}
+                      asOf={parcelData?.lastUpdated}
+                      retrievedAt={currentProperty.enrichedAt ?? currentProperty.updatedAt}
                     />
                   )}
                 </div>
@@ -1961,7 +1962,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {currentProperty.assessedValue && Number(currentProperty.assessedValue) > 0 && (
                       <DataProvenanceTag
                         source="County assessor"
-                        asOf={parcelData?.lastUpdated || currentProperty.enrichedAt}
+                        asOf={parcelData?.lastUpdated}
+                        retrievedAt={currentProperty.enrichedAt}
                         confidence="high"
                       />
                     )}
@@ -1972,7 +1974,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {currentProperty.marketValue && Number(currentProperty.marketValue) > 0 && (
                       <DataProvenanceTag
                         source={currentProperty.enrichedAt ? "AcreOS estimate" : "User entered"}
-                        asOf={currentProperty.enrichedAt || currentProperty.updatedAt}
+                        retrievedAt={currentProperty.enrichedAt ?? currentProperty.updatedAt}
                         confidence={currentProperty.enrichedAt ? "medium" : undefined}
                       />
                     )}
@@ -1983,7 +1985,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {currentProperty.purchasePrice && Number(currentProperty.purchasePrice) > 0 && (
                       <DataProvenanceTag
                         source="User entered"
-                        asOf={currentProperty.purchaseDate || currentProperty.updatedAt}
+                        retrievedAt={currentProperty.updatedAt}
                         confidence="high"
                       />
                     )}
@@ -2000,7 +2002,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {currentProperty.listPrice && Number(currentProperty.listPrice) > 0 && (
                       <DataProvenanceTag
                         source="User entered"
-                        asOf={currentProperty.updatedAt}
+                        retrievedAt={currentProperty.updatedAt}
                       />
                     )}
                   </div>
@@ -2011,7 +2013,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                         <p className="font-medium">{formatCurrency(currentProperty.soldPrice)}</p>
                         <DataProvenanceTag
                           source="User entered"
-                          asOf={currentProperty.soldDate || currentProperty.updatedAt}
+                          retrievedAt={currentProperty.updatedAt}
                           confidence="high"
                         />
                       </div>

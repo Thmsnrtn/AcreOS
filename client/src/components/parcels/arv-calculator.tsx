@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Calculator, PlusCircle, Trash2, AlertTriangle } from "lucide-react";
 
@@ -235,6 +236,8 @@ export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; reh
           <Button onClick={() => calc.mutate()} disabled={calc.isPending}>
             <Calculator className="w-4 h-4 mr-1" aria-hidden="true" /> Compute ARV
           </Button>
+
+          <RequiredDisclaimer type="valuation" className="mt-4" />
         </CardContent>
       </Card>
     </div>

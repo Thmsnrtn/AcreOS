@@ -1,0 +1,21 @@
+{
+  "name": "disclaimer-coverage",
+  "mode": "external",
+  "evaluator": "scripts/lint-disclaimer-coverage.mjs",
+  "direction": "down",
+  "description": "DISCLAIMER-COVERAGE ratchet (handoff Part 3 \u00a72.9). Advice-shaped output \u2014 valuations, estimates, suggested offers, negotiation moves, tax/legal-adjacent figures \u2014 must render client/src/components/required-disclaimer.tsx. RequiredDisclaimer existed and was used on ~17 surfaces, but nothing checked whether it was used on the RIGHT ones, and a new advice surface could ship without it while passing tsc, eslint and its own tests. The advice-shaped set is DERIVED on every run, not hand-listed: a file qualifies when it trips one of five marker families (valuation / offer / negotiation / projection / tax-legal) in its non-import, non-comment, non-route-literal source AND also formats a number for display. Coverage is derived too \u2014 the file itself or a client-local import within two hops must reference RequiredDisclaimer. The count of uncovered advice surfaces is strictly down-only; a count BELOW baseline also fails, so the commit that fixes a surface locks the win in. Fix the occurrence, not the baseline: render the disclaimer, or record a false positive in the allowlist WITH a reason. The linter prints its own blind spots on every run (presence not reachability, runtime-composed copy invisible, depth-2 closure, server-side legends out of scope).",
+  "baselines": {
+    "adviceSurfacesMissingDisclaimer": 13
+  },
+  "allowlist": [
+    {
+      "file": "client/src/components/sign/EsignConsentDialog.tsx",
+      "reason": "Tripped by the word 'usury' inside the E-SIGN consent disclosure itself \u2014 the paragraph enumerating the consumer-protection statutes (TILA, RESPA, GLBA, state usury) the electronic-records consent is given under. The dialog IS the legal notice; wrapping a required legal disclosure in a second 'this is not legal advice' banner would confuse the consent it is asking for. Marker false positive, not an uncovered advice surface."
+    },
+    {
+      "file": "client/src/pages/safety-gates.tsx",
+      "reason": "Mounted at /admin/safety-gates. Tripped by 'estimated value' inside a GATE RULE DESCRIPTION ('Offer / estimated value must be <= 65%') \u2014 this page configures the autonomy thresholds that gate outbound offers; it does not present a valuation to a customer. The figures it prints are the operator's own threshold settings. Marker false positive on an internal configuration surface."
+    }
+  ],
+  "lastBumpNote": "2026-08-10 (Wave 2.4/2.6 \u2014 provenance grammar + disclaimer coverage): SEEDED at 15. The derived scan finds 21 advice-shaped client surfaces; 4 render RequiredDisclaimer (avm.tsx, flip-analyzer.tsx, tax-optimizer.tsx, and comps-analysis.tsx as of this change) and 2 are marker false positives allowlisted with reasons. The pre-change measurement was 16: this commit FIXED one occurrence rather than baselining it \u2014 client/src/components/comps-analysis.tsx prints an estimated market value plus three offer-price bands and carried no disclaimer, and now renders RequiredDisclaimer type=\"valuation\". Raising this number requires Iris-CTO sign-off; lowering it must be locked in by the commit that earned it. | 2026-08-10 fleet-11 integration: baseline 15 -> 13. The detector was sharpened in the same change (coverage now requires the JSX <RequiredDisclaimer render, not a raw substring that a comment or dead import satisfied; the valuation family gained ARV/AVM/After-Repair/Est. value), which surfaced 19. Disclaimers were then added to arv-calculator, CmaPanel and price-optimizer, taking the real count to 13 \u2014 BELOW the old baseline, so this is an earned drop and not a widened gate."
+}

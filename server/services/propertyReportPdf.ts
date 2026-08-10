@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { properties, parcelSnapshots, organizations } from "@shared/schema";
 import { and, desc, eq } from "drizzle-orm";
+import { resolveEgressLicense, postureMayLeave, withholdingNotice } from "./licenseEgress";
 
 const PRIMARY = "#9C4221"; // terracotta — matches the AcreOS brand
 const TEXT = "#1f2937";
@@ -72,6 +73,28 @@ export async function generatePropertyReport(input: PropertyReportInput) {
     .orderBy(desc(parcelSnapshots.fetchedAt))
     .limit(1);
 
+  // ── LICENSE SCREEN (Wave 2.5) ────────────────────────────────────────────
+  // A branded PDF is the most redistributive artifact we produce: the customer
+  // downloads it and forwards it to a counterparty. parcel_snapshots carries a
+  // declared `source`, and for ATTOM / BatchData / Regrid that source resolves
+  // to redistributable:"no" — those facts may not ride out in a document we
+  // hand over. Property columns the CUSTOMER entered are theirs and are
+  // unaffected; only the snapshot-derived block is screened.
+  const snapLicense = resolveEgressLicense(snap?.source);
+  const snapMayLeave = snap != null && postureMayLeave(snapLicense.posture);
+  const licensedSnap = snapMayLeave ? snap : null;
+  const pdfNotice = snap != null && !snapMayLeave
+    ? withholdingNotice("pdf-artifact", [
+        {
+          path: "parcelSnapshot",
+          label: "parcel snapshot",
+          source: snapLicense.source,
+          posture: snapLicense.posture,
+          reason: snapLicense.reason,
+        },
+      ])
+    : null;
+
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ margin: 50, info: { Title: `Property report — APN ${prop.apn}` } });
 
@@ -100,50 +123,50 @@ export async function generatePropertyReport(input: PropertyReportInput) {
     ["Subdivision", prop.subdivision ?? "—"],
     ["Lot", prop.lotNumber ?? prop.childLotNumber ?? "—"],
     ["Size", prop.sizeAcres ? `${prop.sizeAcres} acres` : "—"],
-    ["Zoning", prop.zoning ?? snap?.zoning ?? "—"],
+    ["Zoning", prop.zoning ?? licensedSnap?.zoning ?? "—"],
     ["Terrain", prop.terrain ?? "—"],
     ["Road access", prop.roadAccess ?? "—"],
   ]);
 
   // ── Section: Ownership ──
-  if (snap?.owner) {
+  if (licensedSnap?.owner) {
     section(doc, "Ownership");
     kvRows(doc, [
-      ["Owner of record", snap.owner],
-      ["Mailing address", snap.mailingAddress ?? snap.ownerAddress ?? "—"],
-      ["Source", snap.source ? `${snap.source} · fetched ${snap.fetchedAt?.toLocaleDateString() ?? "—"}` : "—"],
+      ["Owner of record", licensedSnap.owner],
+      ["Mailing address", licensedSnap.mailingAddress ?? licensedSnap.ownerAddress ?? "—"],
+      ["Source", licensedSnap.source ? `${licensedSnap.source} · fetched ${licensedSnap.fetchedAt?.toLocaleDateString() ?? "—"}` : "—"],
     ]);
   }
 
   // ── Section: Valuation ──
   section(doc, "Valuation");
   kvRows(doc, [
-    ["Assessed value", money(prop.assessedValue ?? snap?.assessedValue)],
-    ["Market value", money(prop.marketValue ?? snap?.marketValue)],
-    ["Property tax", money(snap?.taxAmount)],
-    ["Tax year", snap?.taxYear ? String(snap.taxYear) : "—"],
+    ["Assessed value", money(prop.assessedValue ?? licensedSnap?.assessedValue)],
+    ["Market value", money(prop.marketValue ?? licensedSnap?.marketValue)],
+    ["Property tax", money(licensedSnap?.taxAmount)],
+    ["Tax year", licensedSnap?.taxYear ? String(licensedSnap.taxYear) : "—"],
     ["Purchase price", money(prop.purchasePrice)],
     ["Purchase date", prop.purchaseDate?.toLocaleDateString() ?? "—"],
     ["List price", money(prop.listPrice)],
   ]);
 
   // ── Section: Sales history (last sale from snapshot) ──
-  if (snap?.lastSalePrice || snap?.lastSaleDate) {
+  if (licensedSnap?.lastSalePrice || licensedSnap?.lastSaleDate) {
     section(doc, "Sales history");
     kvRows(doc, [
-      ["Last sale price", money(snap.lastSalePrice)],
-      ["Last sale date", snap.lastSaleDate?.toLocaleDateString() ?? "—"],
+      ["Last sale price", money(licensedSnap.lastSalePrice)],
+      ["Last sale date", licensedSnap.lastSaleDate?.toLocaleDateString() ?? "—"],
     ]);
   }
 
   // ── Section: Legal description ──
-  if (prop.legalDescription || snap?.legalDescription) {
+  if (prop.legalDescription || licensedSnap?.legalDescription) {
     section(doc, "Legal description");
     doc
       .fontSize(9)
       .font("Helvetica")
       .fillColor(TEXT)
-      .text(prop.legalDescription || snap?.legalDescription || "—", { width: 500, lineGap: 2 });
+      .text(prop.legalDescription || licensedSnap?.legalDescription || "—", { width: 500, lineGap: 2 });
     doc.moveDown(0.8);
   }
 
@@ -155,12 +178,17 @@ export async function generatePropertyReport(input: PropertyReportInput) {
     .strokeColor(RULE)
     .lineWidth(0.5)
     .stroke();
+  // The sources line names what is actually IN the document. When the parcel
+  // block was withheld, saying "Sources: ATTOM" would credit a vendor whose
+  // facts this PDF does not contain — and hide the hole. The withholding
+  // notice rides here so the reader knows the report is thinner and why.
   doc
     .fontSize(8)
     .fillColor(MUTED)
     .text(
-      `Sources: ${snap?.source ?? "—"} (parcel) · AcreOS internal records. Generated by AcreOS Property Reports. ` +
-        `This report is informational only and not a title commitment or appraisal.`,
+      `Sources: ${licensedSnap?.source ?? "AcreOS internal records only"} · Generated by AcreOS Property Reports. ` +
+        `This report is informational only and not a title commitment or appraisal.` +
+        (pdfNotice ? ` ${pdfNotice}` : ""),
       50,
       footerY + 8,
       { width: doc.page.width - 100 },

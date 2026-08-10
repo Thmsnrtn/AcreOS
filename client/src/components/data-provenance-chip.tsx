@@ -1,102 +1,94 @@
 /**
  * DataProvenanceChip
  *
- * A tiny, honest attribution chip for any enrichment value sourced from a
- * real provider. Renders e.g. "FEMA NFHL · as of 2024 · 80%" with a small
- * confidence dot whose color is resolved entirely from design tokens (CSS
- * vars) so it survives every theme × mode combination.
+ * The compact inline rendering of the house provenance/freshness grammar
+ * (`client/src/lib/provenance.ts`). Renders e.g.
+ * "FEMA NFHL · as of 2024 · retrieved 3d ago · 80%" with a small tone dot whose
+ * color is resolved entirely from design tokens (CSS vars) so it survives every
+ * theme × mode combination.
+ *
+ * Wave 2.4 changed three things and kept everything else:
+ *
+ *  1. The sentence is no longer built here. `describeProvenance()` composes it,
+ *     so this chip and `DataProvenanceTag` cannot drift apart again.
+ *  2. `retrievedAt` exists as its own prop. `sourceAsOf` has always meant the
+ *     vintage AT the source; "when did AcreOS last look" is a different fact and
+ *     now has a different name instead of being crammed into the same one.
+ *  3. An unknown source no longer renders NOTHING. Silence next to a figure
+ *     reads as "no provenance needed"; the honest reading is "no provenance
+ *     known", so the chip says {@link PROVENANCE_UNKNOWN_SOURCE}. Call sites
+ *     whose surrounding copy ALREADY states the absence (the public parcel
+ *     report and /tools/parcel-check both print "Source unavailable for this
+ *     location.") pass `whenUnknown="hide"` so the page doesn't say it twice.
  *
  * Honesty contract:
- * - If there is no `source`, the chip renders NOTHING (graceful). We never
- *   invent an attribution to make a value look authoritative.
- * - The full human-readable provenance is exposed as an `aria-label` and as
- *   visible text — never color-only — so screen readers and color-blind users
- *   get the same information (WCAG 1.4.1).
- *
- * This is the chrome that makes free open data feel premium: a customer can
- * see exactly where a number came from, how old it is, and how confident we
- * are — something a paid black box literally cannot match.
+ * - Nothing is invented. No source, no vintage, no fetch time → the grammar
+ *   names the gap; the chip never fills it with the render clock.
+ * - The full provenance is exposed as `aria-label` AND as visible text — never
+ *   color-only — so screen readers and color-blind users get the same
+ *   information (WCAG 1.4.1).
  */
 import { cn } from "@/lib/utils";
+import {
+  describeProvenance,
+  provenanceToneVar,
+  type Provenance,
+  type ProvenanceClassification,
+  type ProvenanceConfidenceLevel,
+  type ProvenanceTime,
+  type ProvenanceVintagePrecision,
+} from "@/lib/provenance";
 
-export type DataClassification = "authoritative" | "estimate" | "modeled" | "unknown";
+/**
+ * Kept as a named alias so existing importers
+ * (`property-enrichment-widget.tsx`) keep compiling; the grammar owns the type.
+ */
+export type DataClassification = ProvenanceClassification;
 
 interface DataProvenanceChipProps {
-  /** Named source, e.g. "FEMA NFHL", "USDA SSURGO", "County GIS". Required to render. */
+  /** Named source, e.g. "FEMA NFHL", "USDA SSURGO", "County GIS". */
   source?: string | null;
   /** When the authoritative source last updated the fact (NOT when we fetched it). */
-  sourceAsOf?: string | Date | null;
-  /** 0–100 confidence the provider reported. */
-  confidence?: number | null;
+  sourceAsOf?: ProvenanceTime;
+  /** When AcreOS fetched or computed the value. `0`/null = unknown, and says so. */
+  retrievedAt?: ProvenanceTime;
+  /** 0–100, or a qualitative band the provider reported. */
+  confidence?: number | ProvenanceConfidenceLevel | null;
   /** How to treat the value: authoritative record vs. estimate vs. computed model. */
-  classification?: DataClassification | null;
+  classification?: ProvenanceClassification | null;
+  /** Vintage granularity; defaults to "year" (honest for most public datasets). */
+  vintagePrecision?: ProvenanceVintagePrecision;
+  /**
+   * What to do when the source is unknown. Default "state" — say so. Use "hide"
+   * ONLY where the surrounding copy already states the absence.
+   */
+  whenUnknown?: "state" | "hide";
   className?: string;
 }
-
-/** Resolve the confidence-dot color from design tokens — never hardcoded. */
-function confidenceVar(
-  confidence: number | null | undefined,
-  classification: DataClassification | null | undefined,
-): string {
-  // A modeled/estimate value is amber regardless of its internal confidence,
-  // because the uncertainty is structural, not statistical.
-  if (classification === "modeled" || classification === "estimate") {
-    return "var(--acr-heat-warm)";
-  }
-  if (classification === "unknown") {
-    return "var(--acr-muted, var(--muted-foreground))";
-  }
-  if (confidence == null) {
-    // Authoritative source with no numeric confidence still reads as trusted.
-    return classification === "authoritative" ? "var(--acr-pos)" : "var(--acr-accent)";
-  }
-  if (confidence >= 80) return "var(--acr-pos)";
-  if (confidence >= 50) return "var(--acr-heat-warm)";
-  return "var(--acr-heat-hot)";
-}
-
-/** "as of 2024" / "as of Mar 2024" — best-effort, never throws on bad input. */
-function formatAsOf(asOf: string | Date | null | undefined): string | null {
-  if (!asOf) return null;
-  const d = asOf instanceof Date ? asOf : new Date(asOf);
-  if (Number.isNaN(d.getTime())) {
-    // Server may already send a pre-formatted string like "2024" — pass through.
-    return typeof asOf === "string" ? asOf : null;
-  }
-  // Year-only is the honest granularity for most public datasets.
-  return String(d.getFullYear());
-}
-
-const CLASSIFICATION_LABEL: Record<DataClassification, string> = {
-  authoritative: "Authoritative record",
-  estimate: "Estimate",
-  modeled: "Modeled",
-  unknown: "Unverified",
-};
 
 export function DataProvenanceChip({
   source,
   sourceAsOf,
+  retrievedAt,
   confidence,
   classification,
+  vintagePrecision,
+  whenUnknown = "state",
   className,
 }: DataProvenanceChipProps) {
-  // Graceful: no source = no chip. Never fabricate provenance.
-  if (!source) return null;
+  const provenance: Provenance = {
+    source,
+    sourceAsOf,
+    retrievedAt,
+    confidence,
+    classification,
+    vintagePrecision,
+  };
+  const d = describeProvenance(provenance);
 
-  const asOf = formatAsOf(sourceAsOf);
-  const dotColor = confidenceVar(confidence, classification);
-
-  const parts: string[] = [source];
-  if (asOf) parts.push(`as of ${asOf}`);
-  if (typeof confidence === "number") parts.push(`${Math.round(confidence)}%`);
-  const visible = parts.join(" · ");
-
-  const ariaParts = [`Source: ${source}`];
-  if (classification) ariaParts.push(CLASSIFICATION_LABEL[classification]);
-  if (asOf) ariaParts.push(`as of ${asOf}`);
-  if (typeof confidence === "number") ariaParts.push(`${Math.round(confidence)} percent confidence`);
-  const aria = ariaParts.join(", ");
+  // The one case where rendering nothing is correct: the page itself already
+  // told the reader the source is unavailable.
+  if (!d.sourceKnown && whenUnknown === "hide") return null;
 
   return (
     <span
@@ -104,16 +96,26 @@ export function DataProvenanceChip({
         "inline-flex items-center gap-1 text-micro text-muted-foreground leading-none",
         className,
       )}
-      aria-label={aria}
       data-testid="data-provenance-chip"
+      data-provenance-absent={d.absent ? "true" : undefined}
+      title={d.absent ?? undefined}
     >
       <span
         aria-hidden="true"
         className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-        style={{ backgroundColor: dotColor }}
+        style={{ backgroundColor: provenanceToneVar(d.tone) }}
       />
-      <span aria-hidden="true" className="truncate">
-        {visible}
+      {/* The abbreviated line is shown but hidden from AT; the unabbreviated
+          sentence is read instead. `aria-label` on a plain span is not a valid
+          accessible name (role=generic), so the previous version's label was
+          announced by nothing at all — this is the sr-only pattern used
+          elsewhere in the component library. */}
+      <span aria-hidden="true" className="truncate" data-testid="data-provenance-chip-line">
+        {d.line}
+      </span>
+      <span className="sr-only" data-testid="data-provenance-chip-sr">
+        {d.aria}
+        {d.absent ? ` ${d.absent}` : ""}
       </span>
     </span>
   );

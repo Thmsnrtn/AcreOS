@@ -47,6 +47,7 @@ import {
   requiredApiScopesFor,
 } from "./safeIntents";
 import { logger } from "../utils/logger";
+import { screenToolResultData } from "../services/licenseEgress";
 
 // ─── MCP / JSON-RPC constants ──────────────────────────────────────────────
 
@@ -183,10 +184,22 @@ function externalizeToolData(value: unknown, root = true): unknown {
   return value;
 }
 
-/** Wrap an intent's data payload in the MCP CallToolResult shape. */
+/**
+ * Wrap an intent's data payload in the MCP CallToolResult shape.
+ *
+ * This is an egress boundary: the bytes leave for a third-party MCP host. The
+ * license chokepoint runs LAST (after externalization, on the shape that
+ * actually ships) so a provider-derived region with no recorded provenance is
+ * withheld and the result carries the notice saying so.
+ */
 function toolTextResult(data: unknown, isError = false) {
+  const externalized = externalizeToolData(data);
+  const screened = screenToolResultData("mcp-tool-result", externalized);
+  const body = screened.disclosure
+    ? { data: screened.data, _license: screened.disclosure }
+    : screened.data;
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(externalizeToolData(data), null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
     isError,
   };
 }

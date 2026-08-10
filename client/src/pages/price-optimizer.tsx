@@ -1,4 +1,5 @@
 import { useState, useId } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -497,6 +498,7 @@ export default function PriceOptimizerPage() {
               ))}
             </ul>
           )}
+          <RequiredDisclaimer type="valuation" className="mt-4" />
         </div>
       )}
     </PageShell>

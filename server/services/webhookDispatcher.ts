@@ -21,6 +21,7 @@ import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
 import { logger } from "../utils/logger";
+import { screenToolResultData } from "./licenseEgress";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
 
 export type WebhookEventType =
@@ -193,12 +194,22 @@ export async function dispatchWebhook(
 
   if (activeEndpoints.length === 0) return { dispatched: 0, failed: 0 };
 
+  // LICENSE-AWARE EGRESS. This legacy dispatcher posts to Zapier/Make/n8n
+  // receivers — third-party systems — so it is redistribution. Provider-derived
+  // regions with no recorded provenance are withheld and the payload carries
+  // the disclosure rather than shipping a silently thinner object.
+  const screened = screenToolResultData('outbound-webhook', data);
+
   const payload: WebhookPayload = {
     event,
     timestamp: new Date().toISOString(),
     organizationId,
-    data,
-    metadata: { version: '1.0', source: 'acreos' },
+    data: screened.data as Record<string, any>,
+    metadata: {
+      version: '1.0',
+      source: 'acreos',
+      ...(screened.disclosure ? { license: screened.disclosure } : {}),
+    },
   };
   const payloadJson = JSON.stringify(payload);
 

@@ -205,11 +205,14 @@ function StreamingTile({ tile }: { tile: TileState }) {
               );
             })()}
             <div className="mt-3">
+              {/* whenUnknown="hide": the honest empty state above already
+                  names the absence ("Source unavailable for this location."). */}
               <DataProvenanceChip
                 source={tile.result?.source ?? null}
                 sourceAsOf={tile.result?.sourceAsOf ?? null}
                 confidence={tile.result?.confidence ?? null}
                 classification={tile.result?.classification ?? "unknown"}
+                whenUnknown="hide"
               />
             </div>
           </motion.div>

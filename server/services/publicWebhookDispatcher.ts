@@ -32,6 +32,7 @@ import {
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { screenToolResultData } from "./licenseEgress";
 
 export type PublicWebhookEventType =
   | "lead.created"
@@ -145,13 +146,21 @@ export async function dispatchWebhookEvent(
   const targets = subs.filter((s) => s.events.includes(eventType));
   if (targets.length === 0) return;
 
+  // LICENSE-AWARE EGRESS. A webhook posts org data to a third-party endpoint
+  // the customer chose — redistribution by any reading. Provider-derived
+  // regions whose provenance the record never stamped are withheld, and the
+  // envelope carries the `_license` disclosure so the receiving system sees a
+  // stated omission rather than a silently thinner object.
+  const screened = screenToolResultData("outbound-webhook", payload);
+
   const eventId = randomUUID();
   const envelope = {
     id: eventId,
     type: eventType,
     created: Math.floor(Date.now() / 1000),
     organization_id: organizationId,
-    data: payload,
+    data: screened.data,
+    ...(screened.disclosure ? { _license: screened.disclosure } : {}),
   };
 
   await Promise.all(

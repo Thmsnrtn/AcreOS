@@ -5,6 +5,13 @@ import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+// The Map door's renderer. property-map-lazy → property-map.tsx, which is
+// engine-agnostic (mapbox-gl OR maplibre-gl, chosen at module-eval time).
+// WHICH tiles this door actually renders — and who bills for them — is
+// decided by the basemap SOURCE registry in client/src/lib/basemap.ts, which
+// carries the establishing comment. Today that resolves to Mapbox
+// (vendor-hosted, billed per map load past the free tier); no self-hosted
+// source is provisioned yet, and nothing on this page claims otherwise.
 import { PropertyMap } from "@/components/property-map-lazy";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

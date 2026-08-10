@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -26,6 +26,12 @@ import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { Errors } from "./utils/errors";
+import {
+  PROVIDER_DERIVED_RECORD_FIELDS,
+  screenRecordForExport,
+  withholdingNotice,
+  type WithheldRegion,
+} from "./services/licenseEgress";
 import rateLimit from "express-rate-limit";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
@@ -33,6 +39,118 @@ import rateLimit from "express-rate-limit";
 // 400 instead of timing out. New job-backed flows (POST /api/import/leads etc)
 // accept up to MAX_IMPORT_ROWS (50,000).
 const MAX_CSV_IMPORT_ROWS = 500;
+
+// ── License-aware egress (Wave 2.5) ─────────────────────────────────────────
+// Every bulk export is redistribution. Provider-derived regions of a record
+// (parcelData / parcelBoundary / enrichmentData — see
+// PROVIDER_DERIVED_RECORD_FIELDS) go through the chokepoint before the bytes
+// leave; anything whose provenance resolves to redistributable:"no", or whose
+// provenance the row never recorded, is withheld and the artifact SAYS SO.
+//
+// The export therefore ships an inline `_license` disclosure on each affected
+// record (JSON) or a trailing notice line (CSV) rather than silently shipping
+// a thinner file — the "silently thinner artifact" failure mode is the whole
+// reason this chokepoint exists.
+
+const EXPORT_CHANNEL = "csv-export" as const;
+
+/** Screen an array of entity rows; returns the released rows + one notice. */
+function screenExportRows(
+  rows: readonly Record<string, unknown>[],
+): {
+  rows: Record<string, unknown>[];
+  withheld: WithheldRegion[];
+  notice: string | null;
+  withheldCount: number;
+} {
+  const out: Record<string, unknown>[] = [];
+  const allWithheld: WithheldRegion[] = [];
+  for (const row of rows) {
+    const { record, screen } = screenRecordForExport(EXPORT_CHANNEL, row);
+    out.push(record);
+    allWithheld.push(...screen.withheld);
+  }
+  return {
+    rows: out,
+    withheld: allWithheld,
+    notice: withholdingNotice(EXPORT_CHANNEL, allWithheld),
+    withheldCount: allWithheld.length,
+  };
+}
+
+const normalizeColumn = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/**
+ * Does this CSV's header row contain any provider-derived region at all?
+ *
+ * VERIFIED AT HEAD: the per-entity CSV writers in server/services/importExport.ts
+ * emit a fixed column projection that contains NONE of
+ * PROVIDER_DERIVED_RECORD_FIELDS (grep that file — zero hits for parcelData /
+ * parcelBoundary / parcelCentroid / enrichmentData). So today this returns
+ * false for every CSV and no notice is owed. It is a live check rather than a
+ * comment so that the day a column IS added, the rows get screened for real.
+ */
+function csvColumnsCarryProviderData(csv: string): boolean {
+  const headerKey = normalizeColumn(csv.split("\n", 1)[0] ?? "");
+  return PROVIDER_DERIVED_RECORD_FIELDS.some((f) =>
+    headerKey.includes(normalizeColumn(f)),
+  );
+}
+
+/**
+ * CSV carries no per-row envelope, so the notice rides as a trailing comment
+ * line — visible in a text editor and ignored by every CSV reader that honors
+ * `#` comments.
+ *
+ * It claims ONLY what THIS file actually lost: a withheld `parcelData` did not
+ * thin a CSV whose columns never carried it, and must not be announced as if
+ * it had. A notice appears exactly when a withheld field's name is present in
+ * the CSV header row.
+ */
+function csvLicenseNotice(
+  csv: string,
+  withheld: readonly WithheldRegion[],
+): { csv: string; notice: string | null; withheldCount: number } {
+  const header = csv.split("\n", 1)[0] ?? "";
+  const norm = normalizeColumn;
+  const headerKey = norm(header);
+  const relevant = withheld.filter((w) => headerKey.includes(norm(w.path)));
+  const notice = withholdingNotice(EXPORT_CHANNEL, relevant);
+  return {
+    csv: notice ? `${csv}\n# ${notice}` : csv,
+    notice,
+    withheldCount: relevant.length,
+  };
+}
+
+/**
+ * Response headers so programmatic consumers see the withholding too.
+ *
+ * The notice is prose and contains an em dash; `res.setHeader` throws
+ * ERR_INVALID_CHAR on any code point above U+00FF, which would turn a
+ * successful export into a 500 the moment the first field was withheld. So
+ * the header carries an ASCII transliteration while the artifact body keeps
+ * the real sentence.
+ */
+function toHeaderSafe(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[‐-―]/g, "-") // hyphens/dashes
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^\x20-\x7E]/g, "?")
+    .trim();
+}
+
+function setLicenseHeaders(
+  res: Response,
+  notice: string | null,
+  withheldCount: number,
+): void {
+  if (!notice) return;
+  res.setHeader("X-AcreOS-License-Withheld", String(withheldCount));
+  res.setHeader("X-AcreOS-License-Notice", toHeaderSafe(notice));
+}
 
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);
@@ -386,16 +504,39 @@ export function registerImportExportRoutes(app: Express): void {
       res.setHeader("X-Deprecation-Replacement", "POST /api/export/everything");
       res.setHeader("X-Deprecation-Sunset", "2026-07-02");
 
+      // License-aware egress: the backup envelope re-serves the same CSV
+      // projections. Route each file through the chokepoint; the notice
+      // claims only what that file actually lost.
+      const backupWithheld: WithheldRegion[] = [];
+      const files = await Promise.all(
+        backup.files.map(async (f) => {
+          if (!csvColumnsCarryProviderData(f.content)) {
+            return { name: f.name, content: f.content };
+          }
+          const rows = f.name.startsWith("properties")
+            ? await getPropertiesData(org.id)
+            : f.name.startsWith("leads")
+              ? await getLeadsData(org.id)
+              : f.name.startsWith("deals")
+                ? await getDealsData(org.id)
+                : await getNotesData(org.id);
+          const screened = screenExportRows(rows as Record<string, unknown>[]);
+          const noticed = csvLicenseNotice(f.content, screened.withheld);
+          backupWithheld.push(...screened.withheld);
+          return { name: f.name, content: noticed.csv };
+        }),
+      );
+      const backupNotice = withholdingNotice("csv-export", backupWithheld);
+      setLicenseHeaders(res, backupNotice, backupWithheld.length);
+
       const jsonResponse = {
         metadata: {
           organizationId: org.id,
           organizationName: org.name,
           exportedAt: new Date().toISOString(),
+          ...(backupNotice ? { licenseNotice: backupNotice } : {}),
         },
-        files: backup.files.map((f) => ({
-          name: f.name,
-          content: f.content,
-        })),
+        files,
       };
 
       res.setHeader("Content-Type", "application/json");
@@ -480,10 +621,15 @@ export function registerImportExportRoutes(app: Express): void {
           data = await getNotesData(org.id, filters);
         }
 
+        // License-aware egress: a full-row JSON dump carries the
+        // provider-derived regions verbatim. Screen before the bytes leave.
+        const screened = screenExportRows(data as Record<string, unknown>[]);
+        setLicenseHeaders(res, screened.notice, screened.withheldCount);
+
         const filename = `${entityType}_export_${date}.json`;
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.send(JSON.stringify(data, null, 2));
+        res.send(JSON.stringify(screened.rows, null, 2));
       } else {
         let csv: string;
         let filename: string;
@@ -502,9 +648,30 @@ export function registerImportExportRoutes(app: Express): void {
           filename = `notes_export_${date}.csv`;
         }
 
+        // License-aware egress. The per-entity CSV writers emit a fixed column
+        // projection. `csvColumnsCarryProviderData` reads the header this
+        // export actually produced: when no provider-derived region is in it,
+        // there is nothing for the chokepoint to withhold from THIS file and
+        // no notice is owed (and we skip a second full read). When a column is
+        // added that does carry one, the rows are screened for real.
+        let noticed = { csv, notice: null as string | null, withheldCount: 0 };
+        if (csvColumnsCarryProviderData(csv)) {
+          const rows =
+            entityType === "leads"
+              ? await getLeadsData(org.id, filters)
+              : entityType === "properties"
+                ? await getPropertiesData(org.id, filters)
+                : entityType === "deals"
+                  ? await getDealsData(org.id, filters)
+                  : await getNotesData(org.id, filters);
+          const screened = screenExportRows(rows as Record<string, unknown>[]);
+          noticed = csvLicenseNotice(csv, screened.withheld);
+        }
+        setLicenseHeaders(res, noticed.notice, noticed.withheldCount);
+
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.send(csv);
+        res.send(noticed.csv);
       }
     } catch (error: any) {
       logger.error("Export error", error);

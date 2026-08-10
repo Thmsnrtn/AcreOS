@@ -20,17 +20,39 @@ import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
 import { storage } from "../storage.js";
 import { logger } from "../utils/logger.js";
+import { screenToolResultData } from "../services/licenseEgress.js";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
-function ok(data: unknown, note?: string) {
+/**
+ * Every tool result leaves the platform, so `ok()` IS an egress boundary and
+ * routes through the license chokepoint. Records whose provider-derived
+ * regions carry no provenance stamp (a full `properties` row's `parcelData` /
+ * `enrichmentData`) are withheld and the result SAYS so, rather than handing
+ * an MCP host bytes we may not redistribute.
+ *
+ * `declaredSource` is for call sites that hold a real `LookupResult.source`;
+ * omitted, only the unstamped provider regions are screened.
+ */
+function ok(data: unknown, note?: string, declaredSource?: string | null) {
+  const screened = screenToolResultData(
+    "mcp-tool-result",
+    data,
+    declaredSource === undefined ? {} : { declaredSource },
+  );
+  const body = screened.disclosure
+    ? { data: screened.data, _license: screened.disclosure }
+    : screened.data;
+  const header = screened.disclosure
+    ? `${note ? `${note}\n` : ""}${screened.disclosure.notice}`
+    : note;
   return {
     content: [
       {
         type: "text" as const,
-        text: note
-          ? `${note}\n\n${JSON.stringify(data, null, 2)}`
-          : JSON.stringify(data, null, 2),
+        text: header
+          ? `${header}\n\n${JSON.stringify(body, null, 2)}`
+          : JSON.stringify(body, null, 2),
       },
     ],
   };

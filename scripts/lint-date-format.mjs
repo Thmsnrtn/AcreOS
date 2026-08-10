@@ -38,7 +38,6 @@ const BASELINE = new Map([
   ["client/src/components/borrower/StatementsPanel.tsx", 2],
   ["client/src/components/calendar-widget.tsx", 1],
   ["client/src/components/conversation-tray.tsx", 1],
-  ["client/src/components/data-provenance-tag.tsx", 2],
   ["client/src/components/founder-bridge/BridgeHeader.tsx", 2],
   ["client/src/components/founder-chat/artifacts/mrr_sparkline.tsx", 1],
   ["client/src/components/founder/ActivityTimeline.tsx", 2],

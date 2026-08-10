@@ -552,6 +552,67 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Wave 2 — slice 11 (license-aware egress + provenance grammar + map M0) — ✅ SHIPPED
+
+**Wave 2 opens, and its headline item is now true: a `redistributable:"no"`
+field cannot leave the platform.** All three lanes came back DEFECTS_FOUND —
+4 blocking — and one of those was a REAL LEAK the wave exists to close.
+
+- **2.5 LICENSE-AWARE EGRESS CHOKEPOINT:** `server/services/licenseEgress.ts`
+  resolves a declared source to a posture from two authorities it does NOT
+  copy — the `DATA_LICENSE_REGISTER` (22 sources) and the five provider
+  objects' own `.redistributable`/`.license`/`.attributionText` — so
+  renegotiating ATTOM's contract in attom-provider.ts moves the chokepoint
+  automatically. Fails CLOSED (absent/unknown provenance ⇒ withheld,
+  `review-required` never leaves), and a caller-supplied per-county review can
+  only SETTLE a review-required source, never upgrade a declared "no"
+  (pinned both directions). Wired at six channels. A thinned artifact SAYS it
+  was thinned. The builder also caught its own would-be 500: the notice
+  contains an em dash and `res.setHeader` throws above U+00FF.
+  **BLOCKING fixed — the inventory missed the file-download ARTIFACTS.**
+  `GET /api/properties/:id/report.pdf` renders a branded PDF from
+  `parcel_snapshots` — owner of record, mailing address — whose source
+  resolves to `redistributable:"no"` today, and a PDF the customer forwards to
+  a counterparty is the most redistributive channel there is. A `pdf-artifact`
+  channel now exists, every snapshot read routes through a screened alias, and
+  the footer stops crediting a vendor whose facts the document does not
+  contain.
+  Also fixed: the index keyed provider NAMES but not the source strings
+  providers actually emit (`county-gis` stamps `"County GIS"`), so real county
+  rows fell to the unresolved branch and told the user provenance "is not
+  recorded" — a false negative about data whose provenance is right there. And
+  a withheld public-report category kept `available: true`, so the page
+  rendered a FABRICATED ABSENCE ("we looked and found nothing") instead of a
+  disclosed suppression.
+- **2.4/2.6 PROVENANCE GRAMMAR + DISCLAIMER LINT:** a genuine consolidation —
+  the two pre-existing dialects (data-provenance-chip and -tag) now both
+  render from one `describeProvenance`, and a fabricated
+  `asOf={new Date().toISOString()}` in comps-analysis (a "today" stamp on
+  every render) is gone, replaced by react-query's real `dataUpdatedAt`.
+  **BLOCKING fixed:** the wave INVERTED the meaning of `asOf` (was "when we
+  retrieved it", now "the vintage AT the source") without migrating consumers,
+  so properties.tsx was passing OUR timestamps as the SOURCE's vintage — the
+  UI would have claimed a vendor's data was "as of" a date that is really
+  ours. Every consumer migrated; the four remaining `asOf` values are genuine
+  source vintages. Also fixed: coverage was detected with a raw-source
+  substring, so a comment or dead import counted as a disclaimer, and the
+  valuation markers missed ARV/AVM/After-Repair. Tightening both surfaced 19
+  uncovered advice surfaces; disclaimers were added to the ARV calculator, the
+  CMA panel and the price optimizer, taking the real count to **13 — below the
+  old baseline of 15**, so the ratchet moved DOWN and was locked.
+- **2.1 MAP M0 GROUNDWORK:** the premise correction is the deliverable —
+  property-map.tsx imports BOTH mapbox-gl and maplibre-gl and selects at
+  module-eval time, so the old "Phase 2 not in this commit" header was stale;
+  the builder corrected it in place with a HISTORY block rather than deleting
+  the evidence. `client/src/lib/basemap.ts` gives every source a style URL AND
+  the attribution that legally must accompany it, from one record.
+  **BLOCKING fixed:** the header claimed a self-hosted Protomaps basemap is
+  swappable by CONFIGURATION — but the server's CSP `connect-src` is a
+  hardcoded allowlist admitting only the Mapbox hosts, so any off-origin swap
+  fails at runtime with no obvious cause. The claim now states the truth:
+  same-origin self-host is genuinely config; any off-origin host needs its
+  host added to connect-src in the same change.
+
 ## Waves S/F/X — slice 10 (S5 emitter + F1-s4 + X-A-s2 signals) — ✅ SHIPPED
 
 Two lanes DEFECTS_FOUND (1 blocking each), one CONFIRMED_GOOD. Both blocking
@@ -1265,11 +1326,20 @@ integration defects were all fixed centrally before commit:
   indirection with correct attribution; NO paid vendor, no faked
   self-hosting). Verifiers briefed on the five-slice fabrication pattern
   INCLUDING slice 10's negative-claim instance. Fallback timer armed.
-- **After fleet 11:** Wave 2 remainder (2.2 county fabrics as PMTiles,
-  2.3 click-to-identify → inspector → track-this-parcel), F2 slice 2,
-  X-A slice 3 (post-ruling), then Wave 3 per §D. G2/G3 wait on customers;
-  founder queue unchanged. S3 hands / promotion mechanics stay
-  propose-first per D-5.
+- **Slice 11 SHIPPED** (Wave 2 opens — section above). Ratchet moved DOWN
+  and locked: advice surfaces missing a disclaimer 15 → **13** (earned,
+  after the detector was sharpened and three surfaces were covered).
+- **Deferred honestly, named not papered over:** the DSAR export
+  (`exportUserData` ships `deals.enrichmentData` unscreened), the
+  `/api/export/everything` ZIP built in migrationJobs.ts, and the MCP
+  broker-backed `declaredSource` path are egress-adjacent and outside this
+  slice's file sets — carried as the next egress slice's work rather than
+  claimed as covered.
+- **After fleet 11 → FLEET 12:** Wave 2 remainder (2.2 county fabrics as
+  PMTiles, 2.3 click-to-identify → inspector → track-this-parcel), the
+  egress follow-ups above, F2 slice 2, X-A slice 3 (post-ruling), then
+  Wave 3 per §D. G2/G3 wait on customers; founder queue unchanged. S3
+  hands / promotion mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

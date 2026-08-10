@@ -20,22 +20,44 @@ import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, ty
 import { clientLogger } from "@/lib/clientLogger";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { OverlayLegend } from "@/components/maps/OverlayLegend";
-import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
+import {
+  getMapEngine,
+  getMapStyles,
+  getMapAttribution,
+  isMapEngineConfigured,
+  getMapUnconfiguredReason,
+  isStaticMapConfigured,
+  buildStaticMapUrl,
+  STATIC_MAP_ATTRIBUTION,
+  type MapStyleName,
+} from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
-// Rosy River B1 Phase 2 — engine-aware map renderer.
+// ─── Which engine actually renders this, and what it costs (Wave 2.1) ──────
 //
-// `gl` is the runtime constructor namespace; it points at mapboxgl OR
-// maplibregl based on VITE_MAP_ENGINE (default: mapbox).
+// This component IS the customer Map door's renderer (maps.tsx →
+// property-map-lazy.tsx → here). It is already engine-agnostic: `gl` below is
+// the runtime constructor namespace and points at mapboxgl OR maplibregl.
+// Both libraries ship in the vendor chunk.
+//
+// The ACTIVE choice is not made here — it is made by the basemap SOURCE
+// registry in client/src/lib/basemap.ts, which holds the full establishing
+// comment (who serves the tiles, who bills for them, whose attribution must
+// appear, and what a switch would actually entail). Today's default resolves
+// to Mapbox: vendor-hosted, billed per map load past the free tier
+// (docs/company/overhead-operating-costs.md:33 — "$0 | $0–50"). No
+// MapLibre-engine source is provisioned yet, so nothing here claims to be
+// self-hosted.
 //
 // We keep the `mapboxgl.X` TYPE references throughout this file because
 // the two libraries' types are structurally compatible (maplibre is a
 // permissive fork of mapbox-gl-js v1) and TS types are erased at runtime.
 // Only the `new ...()` constructor sites — Map, Marker, Popup,
-// NavigationControl — read from `gl` so they pick up the live engine.
+// NavigationControl, AttributionControl — read from `gl` so they pick up the
+// live engine.
 const MAP_ENGINE = getMapEngine();
 const gl: typeof mapboxgl = (MAP_ENGINE === "maplibre" ? (maplibregl as unknown) : mapboxgl) as typeof mapboxgl;
 
@@ -47,7 +69,53 @@ if (MAP_ENGINE === "mapbox" && MAPBOX_TOKEN) {
 
 type MapStyle = MapStyleName;
 
-const MAP_STYLES: Record<MapStyle, string> = STYLE_URLS[MAP_ENGINE];
+// Style URLs come from the active basemap source — never a literal here, so a
+// source swap cannot leave one map instance pointed at the old vendor. (That
+// was a live bug: SinglePropertyMap hardcoded a `mapbox://` style, which
+// maplibre-gl cannot resolve, so the parcel map broke under the maplibre flag.)
+const MAP_STYLES: Record<MapStyle, string> = getMapStyles();
+
+// The attribution the active source legally requires on screen.
+const BASEMAP_ATTRIBUTION = getMapAttribution();
+
+/**
+ * Attach the active source's attribution to a map instance.
+ *
+ * ONE function so the qualifier cannot be forgotten per map instance (the
+ * slice-8 ColumnValueReadout idiom). Every `new gl.Map(...)` in this file is
+ * constructed with `attributionControl: false` and then routed through here;
+ * mapBasemap.test.ts asserts those two counts are equal, so a third map added
+ * later cannot render someone's tiles unattributed.
+ *
+ * The control still collects each STYLE source's own attribution
+ * automatically; `customAttribution` adds the basemap-level notice on top,
+ * which is what a self-hosted style (whose author may omit the field) needs.
+ */
+function attachBasemapAttribution(mapInstance: mapboxgl.Map): void {
+  mapInstance.addControl(
+    new gl.AttributionControl({ compact: true, customAttribution: BASEMAP_ATTRIBUTION }),
+  );
+}
+
+/**
+ * Attribution for a STATIC map image.
+ *
+ * Interactive maps get theirs from the GL AttributionControl; a static <img>
+ * has no control, so the notice has to be rendered. Mapbox's ToS require the
+ * attribution on static images too, and it was missing entirely before Wave
+ * 2.1 — a rendered basemap with no credit is both a licence breach and a lie
+ * on screen. Always Mapbox's notice, because the static images always come
+ * from Mapbox regardless of which interactive source is active.
+ */
+function StaticMapAttribution() {
+  return (
+    // bg-surface-haze is the scale's "map/canvas overlay chrome" step — the
+    // same token the interactive map's own chrome uses.
+    <span className="pointer-events-none absolute bottom-0 right-0 bg-surface-haze px-1 text-micro leading-tight text-muted-foreground rounded-tl-sm">
+      {STATIC_MAP_ATTRIBUTION}
+    </span>
+  );
+}
 
 // FEMA migrated the public NFHL service off the old "gis" + "nfhl" path (now
 // a WebSEAL gateway that returns an HTML error page) to `/arcgis/` — same fix
@@ -2383,7 +2451,12 @@ export function PropertyMap({
       pitch: viewState.pitch || 60,
       bearing: 0,
       interactive,
+      // Default control off; attachBasemapAttribution adds the single control
+      // carrying both the style's own source notices and the active basemap
+      // source's required attribution.
+      attributionControl: false,
     });
+    attachBasemapAttribution(map.current);
 
     map.current.on("load", () => {
       if (!map.current) return;
@@ -2452,10 +2525,11 @@ export function PropertyMap({
             {Verbs.RETRY}
           </Button>
           {import.meta.env.DEV && (
+            // Operator-only. The reason comes from the active basemap source
+            // itself, so it names the credential that is ACTUALLY missing
+            // rather than guessing from the engine name.
             <p className="text-micro mt-3 opacity-70">
-              {MAP_ENGINE === "mapbox"
-                ? "dev: configure VITE_MAPBOX_ACCESS_TOKEN, or set VITE_MAP_ENGINE=maplibre"
-                : "dev: MapLibre tiles unavailable — check VITE_STADIA_API_KEY or network"}
+              dev: {getMapUnconfiguredReason() ?? "basemap source unavailable"}
             </p>
           )}
         </CardContent>
@@ -3404,16 +3478,21 @@ export function SinglePropertyMap({
     const coords = boundary.coordinates as number[][][];
     const bounds = computeBounds(coords);
     
-    // Build satellite 3D map with terrain
+    // Build the parcel map on the ACTIVE basemap source's satellite style.
+    // This used to hardcode `mapbox://styles/mapbox/satellite-streets-v12`,
+    // which maplibre-gl cannot resolve — so the whole engine indirection was
+    // bypassed here and this map would have broken under the maplibre flag.
     const mapInstance = new gl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style: MAP_STYLES.satellite,
       center: [centroid.lng, centroid.lat],
       zoom: 15.5,
       pitch: enable3DTerrain ? 50 : 0,
       bearing: -15,
       interactive: true,
+      attributionControl: false,
     });
+    attachBasemapAttribution(mapInstance);
     map.current = mapInstance;
 
     // Don't render raw GL errors to the customer, but don't swallow them
@@ -3668,7 +3747,12 @@ export function StaticPropertyMap({
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  if (!isMapEngineConfigured()) {
+  // This component renders a Mapbox Static Images URL specifically — there is
+  // no MapLibre or self-hosted static-image service wired. So it must gate on
+  // the STATIC provider's own configuration, not on the interactive engine's:
+  // once a MapLibre source is active, isMapEngineConfigured() can be true
+  // while no Mapbox token exists, which would have rendered <img src="">.
+  if (!isStaticMapConfigured()) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/30 rounded-md", className)} style={{ height }}>
         <div className="text-center text-muted-foreground p-4">
@@ -3736,20 +3820,26 @@ export function StaticPropertyMap({
   const pixelWidth = Math.min(width, 1280); // Max 1280px
   const safeHeight = Math.min(pixelHeight, 1280);
 
-  // B1 Phase 2 note: this static-image fallback uses Mapbox's Static Images
-  // API for GeoJSON overlay support. The OSM free static-map service has no
-  // equivalent. When MAP_ENGINE='maplibre' and no MAPBOX_TOKEN is set, the
-  // static fallback is empty — the interactive map remains the primary
-  // path. A future iteration can render the overlay client-side from a
-  // tiled basemap.
-  const staticMapUrl = MAPBOX_TOKEN
-    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`
-    : "";
+  // This static-image fallback is Mapbox's Static Images API and nothing
+  // else — it is the only static service wired, chosen for GeoJSON-overlay
+  // support. It is INDEPENDENT of the interactive basemap source: when a
+  // MapLibre source is active there is still no static equivalent, which is
+  // why the gate above is isStaticMapConfigured(). Attribution below is
+  // therefore Mapbox's, not the active source's.
+  const staticMapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`;
 
-  // Fallback URL without GeoJSON overlay (just satellite view centered on property)
-  const fallbackUrl = MAPBOX_TOKEN
-    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`
-    : "";
+  // Fallback without the GeoJSON overlay — just satellite centered on the
+  // parcel. Built by the shared URL builder so the static path has exactly
+  // one construction site.
+  const fallbackUrl =
+    buildStaticMapUrl({
+      longitude: centroid.lng,
+      latitude: centroid.lat,
+      zoom: 16,
+      width: pixelWidth,
+      height: safeHeight,
+      style: "satellite",
+    }) ?? "";
 
   if (imageError) {
     return (
@@ -3771,6 +3861,7 @@ export function StaticPropertyMap({
             View details
           </Badge>
         </div>
+        <StaticMapAttribution />
       </div>
     );
   }
@@ -3817,6 +3908,7 @@ export function StaticPropertyMap({
           Approximate extent
         </Badge>
       )}
+      <StaticMapAttribution />
     </div>
   );
 }

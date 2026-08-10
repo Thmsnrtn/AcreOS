@@ -17,6 +17,7 @@
  * Self-gates: renders only for agent_investor orgs; returns null otherwise.
  */
 import { useState } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Home, MapPin, PlugZap } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -247,6 +248,7 @@ function CmaResult({
       )}
 
       <p className="text-xs text-muted-foreground">{provenance}</p>
+      <RequiredDisclaimer type="valuation" className="mt-3" />
     </div>
   );
 }

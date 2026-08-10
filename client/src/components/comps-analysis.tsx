@@ -10,6 +10,7 @@ import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, Refr
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { GlossaryTerm } from "@/components/Glossary";
 import type { Property } from "@shared/schema";
 import { formatDate } from "@/lib/format";
@@ -105,7 +106,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
     return params.toString();
   };
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery<CompsResponse>({
+  const { data, isLoading, error, refetch, isFetching, dataUpdatedAt } = useQuery<CompsResponse>({
     queryKey: ["/api/properties", property.id, "comps", radius, minAcreage, maxAcreage],
     queryFn: async () => {
       const res = await fetch(`/api/properties/${property.id}/comps?${buildQueryString()}`, {
@@ -293,7 +294,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <p className="text-lg font-bold mt-1 tabular-nums m-0" data-testid="text-avg-price" aria-label={`Average price per acre: ${formatCurrency(analysis.averagePricePerAcre)}`}>
                   {formatCurrency(analysis.averagePricePerAcre)}
                 </p>
-                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+                <DataProvenanceTag source={`AcreOS comp analysis · ${analysis.sampleSize} comps`} retrievedAt={dataUpdatedAt} classification="estimate" confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
               </CardContent>
             </Card>
           </li>
@@ -307,7 +308,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <p className="text-lg font-bold mt-1 tabular-nums m-0" data-testid="text-median-price" aria-label={`Median price per acre: ${formatCurrency(analysis.medianPricePerAcre)}`}>
                   {formatCurrency(analysis.medianPricePerAcre)}
                 </p>
-                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+                <DataProvenanceTag source={`AcreOS comp analysis · ${analysis.sampleSize} comps`} retrievedAt={dataUpdatedAt} classification="estimate" confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
               </CardContent>
             </Card>
           </li>
@@ -321,7 +322,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <p className="text-lg font-bold mt-1 tabular-nums text-acr-pos m-0" data-testid="text-high-price" aria-label={`High price per acre: ${formatCurrency(analysis.highPricePerAcre)}`}>
                   {formatCurrency(analysis.highPricePerAcre)}
                 </p>
-                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+                <DataProvenanceTag source={`AcreOS comp analysis · ${analysis.sampleSize} comps`} retrievedAt={dataUpdatedAt} classification="estimate" confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
               </CardContent>
             </Card>
           </li>
@@ -335,7 +336,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <p className="text-lg font-bold mt-1 tabular-nums text-acr-neg m-0" data-testid="text-low-price" aria-label={`Low price per acre: ${formatCurrency(analysis.lowPricePerAcre)}`}>
                   {formatCurrency(analysis.lowPricePerAcre)}
                 </p>
-                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+                <DataProvenanceTag source={`AcreOS comp analysis · ${analysis.sampleSize} comps`} retrievedAt={dataUpdatedAt} classification="estimate" confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
               </CardContent>
             </Card>
           </li>
@@ -360,11 +361,20 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 {analysis.subjectAcreage && ` for ${analysis.subjectAcreage} acres`}
               </span>
             </div>
+            {/* Wave 2.4: this used to pass `asOf={new Date().toISOString()}`,
+                which stamped the estimate "today" on every render regardless of
+                how old the comps behind it were — a freshness claim the code had
+                not established. `dataUpdatedAt` is react-query's REAL fetch time
+                for this analysis (0 while unfetched, which the grammar reports as
+                an absent retrieval time rather than inventing one). The comps'
+                own sale dates stay attributed per-row in the table below. */}
             <DataProvenanceTag
               source="AcreOS comp analysis"
-              asOf={new Date().toISOString()}
+              retrievedAt={dataUpdatedAt}
+              classification="estimate"
               confidence={analysis.sampleSize >= 5 ? "high" : analysis.sampleSize >= 2 ? "medium" : "low"}
             />
+            <RequiredDisclaimer type="valuation" className="mt-3" />
           </CardContent>
         </Card>
       )}
@@ -389,7 +399,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.conservative.min)} - {formatCurrency(data.offerPrices.conservative.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">40-50% of market value</p>
-                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
+                <DataProvenanceTag source="AcreOS comp analysis" retrievedAt={dataUpdatedAt} classification="estimate" className="mt-1" />
               </li>
               <li className="p-3 rounded-md bg-acr-accent dark:bg-acr-accent/20 border border-acr-accent dark:border-acr-accent">
                 <div className="flex items-center gap-2 mb-1">
@@ -401,7 +411,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.standard.min)} - {formatCurrency(data.offerPrices.standard.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">50-65% of market value</p>
-                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
+                <DataProvenanceTag source="AcreOS comp analysis" retrievedAt={dataUpdatedAt} classification="estimate" className="mt-1" />
               </li>
               <li className="p-3 rounded-md bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft">
                 <div className="flex items-center gap-2 mb-1">
@@ -413,7 +423,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.aggressive.min)} - {formatCurrency(data.offerPrices.aggressive.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 m-0">65-80% of market value</p>
-                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
+                <DataProvenanceTag source="AcreOS comp analysis" retrievedAt={dataUpdatedAt} classification="estimate" className="mt-1" />
               </li>
             </ul>
           </CardContent>

@@ -544,11 +544,16 @@ export default function PublicParcelReportPage() {
                         </p>
                       )}
                       <div className="mt-3">
+                        {/* whenUnknown="hide": the empty-state copy directly
+                            above already says "Source unavailable for this
+                            location.", so the chip would state the same
+                            absence twice. */}
                         <DataProvenanceChip
                           source={cat.source}
                           sourceAsOf={cat.sourceAsOf}
                           confidence={null}
                           classification={cat.classification}
+                          whenUnknown="hide"
                         />
                       </div>
                     </div>

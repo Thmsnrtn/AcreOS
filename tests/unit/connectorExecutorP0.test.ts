@@ -286,7 +286,21 @@ describe("connector executor — vendor payloads re-enter the model enveloped", 
     // parsed back to its pre-envelope shape.
     const code = stripComments(read("server/mcp/streamableHttp.ts"));
     expect(code).toContain("function externalizeToolData(");
-    expect(code).toContain("JSON.stringify(externalizeToolData(data)");
+    // REWRITTEN, not deleted (Wave 2.5): the license chokepoint split this
+    // from a one-liner into externalize → screen → stringify. The ORIGINAL
+    // invariant is unchanged and still pinned — the bytes that ship are
+    // derived from externalizeToolData(data), so markers are stripped and
+    // wholesale JSON is parsed back to its pre-envelope shape. What is new
+    // is that the screen runs AFTER externalization, on the shape that
+    // actually leaves; asserting that order stops a future edit from
+    // screening the enveloped form and shipping the raw one.
+    expect(code).toContain("const externalized = externalizeToolData(data)");
+    expect(code).toContain('screenToolResultData("mcp-tool-result", externalized)');
+    expect(code).toMatch(/JSON\.stringify\(body/);
+    const fn = code.slice(code.indexOf("function toolTextResult("));
+    expect(fn.indexOf("externalizeToolData(data)")).toBeLessThan(
+      fn.indexOf("screenToolResultData("),
+    );
   });
 });
 

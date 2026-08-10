@@ -9,6 +9,7 @@
     "scripts/ratchets/as-any.json": "3b33fdfdf0b8751f955e6855b1d7b19ea0e20d819f3f5713df06cc12bb002fa7",
     "scripts/ratchets/colon-any.json": "e2c740e079d987f1c2ef0de480136206e71360c3fb81839eda671cc1e02f086d",
     "scripts/ratchets/console-in-server.json": "1dbff2fc82c12c4d0c245cbed79a6b55ef91bb2dd1a438eb12b22319de6872f4",
+    "scripts/ratchets/disclaimer-coverage.json": "0a1b3ad54b452eff739ef4b977f83ea8f44d9133b622d9027563e23728f6af71",
     "scripts/ratchets/openai-bypass.json": "bc24064827205100cf0858fc20604303ae93f5eadef578cf0a694119e456f85d",
     "scripts/ratchets/reachability.json": "99042657d058bd9039152c9313178df7e96eec93b88378bac34896e8ad0b6836",
     "scripts/ratchets/req-as-any.json": "f6f25dfd4c24383986c860fc33d5c3e4294524d10da42987e14f25087392b729",

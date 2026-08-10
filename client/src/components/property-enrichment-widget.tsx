@@ -437,6 +437,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     <DataProvenanceChip
                       source={enrichmentData.hazards.wetlandsSource}
                       sourceAsOf={enrichmentData.hazards.wetlandsSourceAsOf}
+                      retrievedAt={enrichmentData.lastEnrichedAt ?? enrichmentData.enrichedAt}
                     />
                   </div>
                 )}
@@ -446,13 +447,16 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     <span className="font-mono text-xs">{enrichmentData.hazards.firmPanel.panelId}</span>
                   </div>
                 )}
-                {/* Provenance under the highest-stakes value — flood. Renders
-                    nothing when the source is absent (graceful). */}
+                {/* Provenance under the highest-stakes value — flood. The
+                    enrichment payload carries a real fetch time
+                    (`lastEnrichedAt`/`enrichedAt`), so the chip can state BOTH
+                    the source's vintage and when AcreOS last looked. */}
                 {enrichmentData.hazards.source && (
                   <div className="pt-1">
                     <DataProvenanceChip
                       source={enrichmentData.hazards.source}
                       sourceAsOf={enrichmentData.hazards.sourceAsOf ?? enrichmentData.hazards.firmPanel?.effectiveDate}
+                      retrievedAt={enrichmentData.lastEnrichedAt ?? enrichmentData.enrichedAt}
                       confidence={enrichmentData.hazards.confidence}
                       classification={enrichmentData.hazards.classification}
                     />
@@ -555,6 +559,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     <DataProvenanceChip
                       source={enrichmentData.environment.source}
                       sourceAsOf={enrichmentData.environment.sourceAsOf}
+                      retrievedAt={enrichmentData.lastEnrichedAt ?? enrichmentData.enrichedAt}
                       confidence={enrichmentData.environment.confidence}
                       classification={enrichmentData.environment.classification}
                     />

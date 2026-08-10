@@ -42,7 +42,9 @@ import {
   normalizeReportKey,
   recordReportView,
   reportPath,
+  reportWithholdingNotice,
 } from "./services/publicParcelReport";
+import { screenSourcedNodes } from "./services/licenseEgress";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./services/legalDisclaimers";
 import type { PublicParcelReport } from "@shared/schema";
 
@@ -133,6 +135,11 @@ router.get(
       // Server-side truth for consumption: fire-and-forget view bump.
       void recordReportView(result.report.id);
 
+      // LICENSE-AWARE EGRESS at the response boundary. Rows saved before the
+      // chokepoint existed were never screened, so re-screen on the way out
+      // rather than trusting the stored blob; then say what was withheld.
+      const report = screenStoredReport(result.report);
+
       return res.json({
         found: true,
         generated: result.generated,
@@ -141,7 +148,10 @@ router.get(
           countySlug: result.report.countySlug,
           apn: result.report.apn,
         }),
-        report: result.report,
+        report,
+        ...(reportWithholdingNotice(report.facts)
+          ? { licenseNotice: reportWithholdingNotice(report.facts) }
+          : {}),
         // L1 liability shield — response-level legend covers reports
         // generated before the lcs payload started carrying its own.
         disclaimer: DISCLAIMER_INFORMATIONAL_SCORE,
@@ -151,6 +161,24 @@ router.get(
     }
   },
 );
+
+/**
+ * Re-screen a STORED report on the way out.
+ *
+ * The service screens at generation time, but rows written before this
+ * chokepoint existed carry unscreened facts, and a stored blob is not
+ * evidence of a decision that was made. Screening again here costs one pass
+ * over four categories and means the API response — the only thing the public
+ * page renders from — cannot serve a non-redistributable fact.
+ */
+function screenStoredReport(report: PublicParcelReport): PublicParcelReport {
+  const facts = report.facts;
+  if (!facts?.categories?.length) return report;
+  const { nodes } = screenSourcedNodes("public-parcel-report", facts.categories, {
+    labelKey: "category",
+  });
+  return { ...report, facts: { ...facts, categories: nodes } };
+}
 
 export default router;
 
