@@ -1075,7 +1075,7 @@ integration defects were all fixed centrally before commit:
   Ops note: a container restart rolled the LOCAL clone back two commits
   after the push — the remote was intact; recovered by fast-forward, no
   work lost. Pushes are the only durable state; commit early.)
-- **Slice 8 SHIPPED** (S4 + 1.3 + 1.5 — section above). Two fleet agents
+- **Slice 8 SHIPPED at `1c31b94`** (S4 + 1.3 + 1.5 — section above). Two fleet agents
   died mid-run on credit exhaustion; the missing audits were re-run as
   fleet 8b and found 2 blocking defects (a Today affordance that lied about
   what it did; settings status rows passing platform credentials off as the
@@ -1084,12 +1084,21 @@ integration defects were all fixed centrally before commit:
   adversarial audit before merge — passing typecheck and its own test is
   not evidence, and in this case the audit was the only completeness record
   that ever existed for the settings decomposition.
-- **After fleet 8 → FLEET 9:** O6 (unit-economics receipt in the Letter +
-  infra-curve panel) and O7 buildable parts (deputy break-glass kit +
-  freshness ratchet, continuity statement), F1 slice 4+, S5 buildable part
-  (two-position conflict memos riding F2's reasons rail), X-A slice 2
-  (post-ruling), then Wave 2 per §D. G2/G3 wait on customers; founder queue
-  unchanged. S3 hands / promotion mechanics stay propose-first per D-5.
+- **In flight: FLEET 9** (workflow `wf_a37737ac-4c2`) building O6 (the
+  unit-economics RECEIPT in the Letter + infra-curve panel — the engine
+  `server/services/unitEconomics.ts` already exists, so the gap is the
+  surface and the honesty of what it says), O7 buildable (deputy
+  break-glass kit + freshness ratchet mirroring drDrillFreshness +
+  continuity statement on /transparency, every public claim registered in
+  public-claims.ts or not made), and S5 buildable (two-position conflict
+  memos as NATIVE decisions-queue items riding slice 5's reasons rail;
+  repeat resolutions surface a standing-order PROPOSAL, never an automatic
+  policy write). Verifiers are briefed on the last two slices' blocking
+  defects as the fabrication pattern to hunt. Fallback timer armed.
+- **After fleet 9:** F1 slice 4+, X-A slice 2 (post-ruling), S5's
+  remaining parts, then Wave 2 per §D. G2/G3 wait on customers; founder
+  queue unchanged. S3 hands / promotion mechanics stay propose-first
+  per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
