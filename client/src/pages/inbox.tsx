@@ -48,9 +48,15 @@ import { Link } from "wouter";
 import { Verbs } from "@/lib/labels";
 import { TeamChatPanel } from "@/components/team-chat-panel";
 import { NativeMailPanel } from "@/components/native-mail-panel";
+import { useListKeys, ListKeyGrammarOverlay } from "@/hooks/use-list-keys";
+import { deriveNeedsReplyEmailIds, threadNeedsReply } from "@/components/inbox/needs-reply";
 
 type ChannelFilter = "all" | "email" | "sms" | "team" | "mail";
-type StatusFilter = "all" | "unread" | "starred" | "archived";
+// "needs_reply" (Wave 1.3): a DERIVED view — latest email per thread,
+// unarchived, treated as awaiting a reply. Derivation is client-side over
+// the already-loaded rows (components/inbox/needs-reply.ts documents the
+// honesty boundary); the server query is the same as "all".
+type StatusFilter = "all" | "unread" | "needs_reply" | "starred" | "archived";
 
 type UnifiedItem = {
   type: "email";
@@ -762,6 +768,14 @@ function SMSConversationDetail({
 
   const leadName = lead ? `${lead.firstName} ${lead.lastName}` : "Unknown";
 
+  // The full needs-reply predicate CAN run here — this pane holds the
+  // thread's messages with directions (the list view can't; see
+  // components/inbox/needs-reply.ts). Latest message inbound and nothing
+  // sent after it → the seller is waiting on you.
+  const awaitingReply = threadNeedsReply(
+    messages.map((m) => ({ direction: m.direction, at: m.createdAt })),
+  );
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-4 border-b flex-wrap">
@@ -786,6 +800,15 @@ function SMSConversationDetail({
             <div className="font-medium flex items-center gap-2 flex-wrap">
               {leadName}
               <ChannelBadge channel="sms" />
+              {awaitingReply && (
+                <Badge
+                  variant="outline"
+                  className="text-xs text-acr-warn border-[color:var(--acr-warn)]/40"
+                  data-testid="badge-awaiting-reply"
+                >
+                  Awaiting your reply
+                </Badge>
+              )}
             </div>
             {lead?.phone ? (
               <a
@@ -932,6 +955,14 @@ export default function InboxPage() {
     if (statusFilter === "unread") {
       params.isRead = "false";
       params.isArchived = "false";
+    } else if (statusFilter === "needs_reply") {
+      // Deliberately UNFILTERED on isArchived (fleet-8 verifier catch): the
+      // derivation drops a thread whose LATEST message is archived, so it
+      // must be able to SEE that archived row. Filtering it out server-side
+      // made the next-newest unarchived message look like the latest, and
+      // threads the user had just archived resurfaced in the view whose
+      // caption promises archiving clears them. Archived rows load and are
+      // then filtered out client-side by the needs-reply id set.
     } else if (statusFilter === "starred") {
       params.isStarred = "true";
       params.isArchived = "false";
@@ -1047,14 +1078,28 @@ export default function InboxPage() {
     }
     
     items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    
+
     return items;
   }, [emailMessages, smsConversations, channelFilter]);
 
+  // ── Needs-reply view (Wave 1.3) ────────────────────────────────────────
+  // Derived, never fetched: the latest email of each thread, unarchived,
+  // is awaiting a reply. Email-only BY DATA HONESTY — the unified list's
+  // SMS side carries conversation rows without message direction, so an
+  // SMS "needs reply" claim would be invented; the view says so on screen.
+  const needsReplyActive = statusFilter === "needs_reply" && channelFilter !== "sms";
+  const needsReplyItems = useMemo(() => {
+    if (!needsReplyActive) return unifiedItems;
+    const ids = deriveNeedsReplyEmailIds(emailMessages);
+    return unifiedItems.filter(
+      (item) => item.type === "email" && ids.has(item.data.id),
+    );
+  }, [unifiedItems, needsReplyActive, emailMessages]);
+
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return unifiedItems;
+    if (!searchQuery.trim()) return needsReplyItems;
     const query = searchQuery.toLowerCase();
-    return unifiedItems.filter(item => {
+    return needsReplyItems.filter(item => {
       if (item.type === "email") {
         const msg = item.data;
         return (
@@ -1071,7 +1116,7 @@ export default function InboxPage() {
         return leadName.includes(query) || phone.includes(query);
       }
     });
-  }, [unifiedItems, searchQuery, leadsMap]);
+  }, [needsReplyItems, searchQuery, leadsMap]);
 
   const selectedLead = useMemo(() => {
     if (!selectedItem) return undefined;
@@ -1182,6 +1227,68 @@ export default function InboxPage() {
     week: "This week",
     earlier: "Earlier",
   };
+
+  // ── Keyboard grammar (Wave 1.3): J/K/Enter/E + "?" ─────────────────────
+  // The list renders bucketed (Today → This week → Earlier) but traverses
+  // as one flat sequence in exactly the on-screen order.
+  const orderedItems = useMemo(
+    () => [...groupedItems.today, ...groupedItems.week, ...groupedItems.earlier],
+    [groupedItems],
+  );
+  const itemKey = (item: UnifiedItem) =>
+    item.type === "email" ? `email-${item.data.id}` : `sms-${item.data.id}`;
+
+  // "E" — archive the focused EMAIL through the same optimistic mutation
+  // the row's hover button uses. SMS conversations have no archive/done
+  // mutation server-side (verified at HEAD: conversations expose no
+  // archive route), so "E" honestly no-ops on them — the "?" overlay and
+  // the SMS row itself never claim otherwise.
+  const keyArchiveMutation = useOptimisticUpdate<{ id: number }>({
+    mutationFn: async ({ id }) => {
+      const res = await apiRequest("POST", `/api/inbox/${id}/archive`);
+      return res.json();
+    },
+    listKeys: [["/api/inbox"]],
+    getId: ({ id }) => id,
+    buildPatch: () => ({ isArchived: true }),
+    extraInvalidateKeys: [["/api/inbox/unread-count"], ["/api/inbox/unified"]],
+    successToast: { title: "Archived", description: "Moved to archive." },
+  });
+
+  const [helpOpen, setHelpOpen] = useState(false);
+  const listViewActive = channelFilter !== "team" && channelFilter !== "mail";
+  const { activeIndex } = useListKeys({
+    itemCount: orderedItems.length,
+    enabled: !isLoading && listViewActive,
+    onOpen: (index) => {
+      const item = orderedItems[index];
+      if (item) handleSelectItem(item);
+    },
+    actionKeys: {
+      e: (index) => {
+        const item = orderedItems[index];
+        if (!item || item.type !== "email") return;
+        keyArchiveMutation.mutate({ id: item.data.id });
+        if (selectedItem?.type === "email" && selectedItem.data.id === item.data.id) {
+          setSelectedItem(null);
+        }
+      },
+    },
+    onHelp: () => setHelpOpen((prev) => !prev),
+  });
+  const activeItemKey =
+    activeIndex !== null && orderedItems[activeIndex]
+      ? itemKey(orderedItems[activeIndex])
+      : null;
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  useEffect(() => {
+    if (!activeItemKey) return;
+    const el = rowRefs.current.get(activeItemKey);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+      el.focus({ preventScroll: true });
+    }
+  }, [activeItemKey]);
 
   return (
     // min-h-dvh (not min-h-screen) so iOS Safari's dynamic address bar
@@ -1314,6 +1421,13 @@ export default function InboxPage() {
                 )}
               </TabsTrigger>
               <TabsTrigger
+                value="needs_reply"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                data-testid="tab-status-needs-reply"
+              >
+                Needs reply
+              </TabsTrigger>
+              <TabsTrigger
                 value="starred"
                 className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-starred"
@@ -1338,6 +1452,20 @@ export default function InboxPage() {
         ) : (
         <div className="flex-1 flex overflow-hidden">
           <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
+            {/* Needs-reply honesty line: the view is derived (latest email
+                per thread, unarchived) and email-only — SMS list rows carry
+                no reply state to derive from. Never imply more coverage
+                than the data supports. */}
+            {needsReplyActive && (
+              <p
+                className="px-3 py-2 border-b text-xs text-muted-foreground"
+                data-testid="text-needs-reply-caption"
+              >
+                Latest email of each thread, awaiting your reply — archive
+                clears it. SMS threads aren't included (reply state isn't
+                tracked in the list view).
+              </p>
+            )}
             <ContentReveal
               ready={!isLoading}
               skeleton={<ListSkeleton count={5} />}
@@ -1368,6 +1496,16 @@ export default function InboxPage() {
                   <ClearedEmpty
                     headline="All caught up — no unread messages"
                     subtitle="Nothing needs your attention right now."
+                    archiveCount={unifiedItems.length}
+                    onShowArchive={() => setStatusFilter("all")}
+                    archiveLabel="View all messages"
+                  />
+                ) : needsReplyActive && unifiedItems.length > 0 ? (
+                  /* Needs-reply zero over a non-empty inbox → the good kind
+                     of empty: every thread's latest email is handled. */
+                  <ClearedEmpty
+                    headline="No email threads waiting on you"
+                    subtitle="Every thread's latest message is archived or superseded. SMS threads aren't included — reply state isn't tracked in the list view."
                     archiveCount={unifiedItems.length}
                     onShowArchive={() => setStatusFilter("all")}
                     archiveLabel="View all messages"
@@ -1430,8 +1568,39 @@ export default function InboxPage() {
                         </h2>
                       </div>
                       <ul className="list-none p-0 m-0" role="list" aria-label={`${BUCKET_LABELS[bucket]}: ${items.length} message${items.length !== 1 ? "s" : ""}`}>
-                        {items.map((item) => (
-                          <li key={item.type === "email" ? `email-${item.data.id}` : `sms-${item.data.id}`}>
+                        {items.map((item) => {
+                          const key = itemKey(item);
+                          const isKeyboardActive = key === activeItemKey;
+                          return (
+                          <li
+                            key={key}
+                            // Roving keyboard focus (J/K): the active row
+                            // takes programmatic focus so screen readers
+                            // announce it; Enter opens, E archives (email).
+                            // tabIndex -1 keeps Tab order unchanged.
+                            tabIndex={isKeyboardActive ? -1 : undefined}
+                            data-keyboard-active={isKeyboardActive ? "true" : undefined}
+                            className={isKeyboardActive ? "ring-2 ring-ring ring-inset outline-none" : undefined}
+                            ref={(el) => {
+                              if (el) rowRefs.current.set(key, el);
+                              else rowRefs.current.delete(key);
+                            }}
+                            // Keep the row's own identity in its accessible
+                            // name — a generic "Focused message" erased the
+                            // sender and subject for screen-reader users
+                            // (fleet-8 catch). The inner row computes the
+                            // same identity; this mirrors it so the focused
+                            // <li> announces WHICH message it landed on.
+                            aria-label={
+                              isKeyboardActive
+                                ? `${
+                                    item.type === "email"
+                                      ? `${item.data.senderName || item.data.senderEmail || "Unknown sender"}: ${item.data.subject || "(No subject)"}`
+                                      : "SMS conversation"
+                                  } — press Enter to open`
+                                : undefined
+                            }
+                          >
                             {item.type === "email" ? (
                               <EmailMessageRow
                                 message={item.data}
@@ -1458,7 +1627,8 @@ export default function InboxPage() {
                               />
                             )}
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     </div>
                   );
@@ -1502,6 +1672,21 @@ export default function InboxPage() {
           </div>
         </div>
         )}
+
+        {/* ── "?" grammar overlay — documents this list's keys ──────────── */}
+        <ListKeyGrammarOverlay
+          open={helpOpen}
+          onOpenChange={setHelpOpen}
+          title="Inbox keys"
+          entries={[
+            { keys: "j", label: "Next message" },
+            { keys: "k", label: "Previous message" },
+            { keys: "enter", label: "Open the focused message" },
+            { keys: "e", label: "Archive the focused email (SMS can't be archived)" },
+            { keys: "escape", label: "Clear focus" },
+            { keys: "?", label: "Toggle this help" },
+          ]}
+        />
         </ErrorBoundary>
       </main>
     </div>

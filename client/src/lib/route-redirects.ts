@@ -187,3 +187,22 @@ export function composeFounderRedirect(canonical: string, incomingSearch: string
   const search = params.toString();
   return search ? `${pathname}?${search}` : pathname;
 }
+
+/* ── Settings legacy redirects (Wave 1.5, 2026-08-10) ───────────────────
+ *
+ * Same mechanism as the founder collapse above, but for the settings
+ * surface: every legacy `?tab=`/`#hash` form on /settings (including the
+ * upgrade-toast pseudo-query `#billing?tier=pro`), and the retired
+ * /settings/email + /settings/mail slugs resolve onto the routed
+ * `/settings/<section>` set. The map lives WITH the section registry in
+ * `./settings-sections` — one source of truth with the rail and the ⌘K
+ * palette, so a legacy value can only ever point at a live routed section
+ * (settingsDecomposition.test.ts enforces it, mirroring
+ * founderLegacyRedirects.test.ts). Re-exported here so this file remains
+ * the one place to look for "where do old paths go".
+ */
+export {
+  SETTINGS_LEGACY_REDIRECTS,
+  resolveLegacySettingsTab,
+  resolveLegacySettingsLocation,
+} from "./settings-sections";

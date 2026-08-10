@@ -6,9 +6,11 @@
  *      default G-chord navigation from DOOR_CHORDS AND resolves every keydown
  *      through shortcutTransition, so the tested machine IS the runtime
  *      machine — mapping and behavior can never drift from the tests.
- *   2. useKeyboardLayer (hooks/use-keyboard-layer.ts) drives J/K/Enter
- *      traversal of the Today queue from nextQueueIndex + the suppression
- *      predicates here.
+ *   2. useListKeys (hooks/use-list-keys.tsx) drives J/K/Enter/Escape plus the
+ *      per-door action keys on every door list (Today queue, Inbox) from
+ *      nextQueueIndex + the suppression predicates here. (It superseded the
+ *      Today-only useKeyboardLayer, which was deleted with Wave 1.3 rather
+ *      than left behind as a live-looking orphan.)
  *   3. useRouteHeadingFocus (hooks/use-route-heading-focus.ts) reuses
  *      isEditableTarget so it never steals focus from a form field.
  *

@@ -1128,17 +1128,37 @@ function Router() {
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
       </Route>
+      {/* Standalone settings pages — full pages with their own PageShell,
+          registry-listed in lib/settings-sections.ts (`standalone: true`).
+          They MUST be registered before the /settings/:section shell
+          catch-all below: wouter's Switch is first-match, so a standalone
+          page registered after it would silently never render.
+          (Moved up from the old "Settings — additional" cluster when the
+          Wave 1.5 shell landed.) */}
+      <Route path="/settings/privacy">
+        {() => <ProtectedRoute component={PrivacySettingsPage} />}
+      </Route>
+      <Route path="/settings/tax-identity">
+        {() => <ProtectedRoute component={TaxIdentitySettingsPage} />}
+      </Route>
+      <Route path="/settings/accessibility">
+        {() => <ProtectedRoute component={AccessibilitySettingsPage} />}
+      </Route>
+      <Route path="/settings/pax">
+        {() => <ProtectedRoute component={PaxControlsPage} />}
+      </Route>
+      {/* Routed settings sections (Wave 1.5, P2 §1) — the shell resolves
+          :section against SETTINGS_SECTIONS (lib/settings-sections.ts) and
+          lazy-loads pages/settings/<id>-section.tsx. Retired slugs
+          (/settings/email, /settings/mail — former redirect stubs to
+          /settings#communications) and every legacy ?tab=/#hash value
+          resolve through SETTINGS_LEGACY_REDIRECTS inside the shell. */}
+      <Route path="/settings/:section">
+        {() => <ProtectedRoute component={SettingsPage} />}
+      </Route>
       <Route path="/my-letter">
         {/* 2026-06-01 cut — my-letter.tsx archived; no callers. Redirect to today. */}
         {() => <Redirect to="/today" />}
-      </Route>
-      <Route path="/settings/email">
-        {/* 2026-06-01 cut — email-settings.tsx deleted (was a redirect stub). */}
-        {() => <Redirect to="/settings#communications" />}
-      </Route>
-      <Route path="/settings/mail">
-        {/* 2026-06-01 cut — mail-settings.tsx deleted (was a redirect stub). */}
-        {() => <Redirect to="/settings#communications" />}
       </Route>
       <Route path="/inbox">
         {() => <ProtectedRoute component={InboxPage} />}
@@ -1613,19 +1633,9 @@ function Router() {
         {() => <ProtectedRoute component={RegulatoryIntelPage} />}
       </Route>
 
-      {/* Settings — additional */}
-      <Route path="/settings/privacy">
-        {() => <ProtectedRoute component={PrivacySettingsPage} />}
-      </Route>
-      <Route path="/settings/tax-identity">
-        {() => <ProtectedRoute component={TaxIdentitySettingsPage} />}
-      </Route>
-      <Route path="/settings/accessibility">
-        {() => <ProtectedRoute component={AccessibilitySettingsPage} />}
-      </Route>
-      <Route path="/settings/pax">
-        {() => <ProtectedRoute component={PaxControlsPage} />}
-      </Route>
+      {/* Settings — standalone pages moved up beside the /settings shell
+          (Wave 1.5): they must precede the /settings/:section catch-all,
+          which would otherwise shadow them (Switch is first-match). */}
       {/* Quinn item #5 — "How AcreOS sources data" disclosure. Linked from
           Settings and from each datum's provenance "i" affordance. */}
       <Route path="/data-sources">

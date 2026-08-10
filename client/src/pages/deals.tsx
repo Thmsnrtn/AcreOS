@@ -3,6 +3,7 @@ import { plural, usd } from "@/lib/format";
 import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { DealCoach } from "@/components/deals/DealCoach";
+import { columnStats } from "@/components/deals/column-stats";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
@@ -97,6 +98,42 @@ const STAGE_BENCHMARK_DAYS: Record<string, number> = {
   closed: 999,
   cancelled: 999,
 };
+
+/**
+ * One column-value readout for every viewport. Extracted because the mobile
+ * paths had dropped the coverage qualifier and the aria-label, so a PARTIAL
+ * total read as a complete one on phones (fleet-8 verifier catch) — the exact
+ * over-read column-stats exists to prevent. Rendering it from one place means
+ * the honesty qualifier cannot be forgotten per-viewport again.
+ */
+function ColumnValueReadout({
+  stats,
+  stageLabel,
+  testId,
+}: {
+  stats: { totalValue: number; valuedCount: number; count: number };
+  stageLabel: string;
+  testId?: string;
+}) {
+  if (stats.valuedCount === 0) return null;
+  const partial = stats.valuedCount < stats.count;
+  return (
+    <p
+      className="mt-0.5 text-xs font-mono tabular-nums text-muted-foreground"
+      data-testid={testId}
+      aria-label={`${stageLabel} total value ${usd(stats.totalValue, { noCents: true })}${
+        partial ? `, from ${stats.valuedCount} of ${stats.count} deals with amounts` : ""
+      }`}
+    >
+      {usd(stats.totalValue, { noCents: true })}
+      {partial && (
+        <span className="ml-1 font-sans" aria-hidden="true">
+          · {stats.valuedCount} of {stats.count} priced
+        </span>
+      )}
+    </p>
+  );
+}
 
 function getDealHealth(deal: DealWithProperty): { status: 'healthy' | 'warning' | 'stalled'; days: number } {
   const updatedAt = deal.updatedAt ? new Date(deal.updatedAt) : new Date();
@@ -197,6 +234,13 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
     useSensor(KeyboardSensor),
   );
 
+  // Optimistic column move (Wave 1.3 verified): useUpdateDeal IS the house
+  // useOptimisticUpdate factory — the card re-renders in the target column
+  // the moment the drop lands (patchListCaches walks the paginated deals
+  // cache), rolls back from snapshots + toasts on error, and re-fans out
+  // through relatedKeys("deal") on settle. The per-call toasts that used
+  // to live here DOUBLED the factory's own success/error toasts (two
+  // toasts per drag), so the factory's are now the only ones.
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragId(null);
     const { active, over } = event;
@@ -207,27 +251,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
     if (!stageDef) return;
     const previousDeal = enrichedDeals.find(d => d.id === dealId);
     if (previousDeal && previousDeal.status === newStage) return;
-    const locationLabel = previousDeal?.property
-      ? `${previousDeal.property.county}, ${previousDeal.property.state}`
-      : `Deal #${dealId}`;
-    updateDealStage(
-      { id: dealId, status: newStage },
-      {
-        onSuccess: () => {
-          toast({
-            title: "Stage updated",
-            description: `${locationLabel} moved to ${stageDef.label}.`,
-          });
-        },
-        onError: (err: any) => {
-          toast({
-            title: "Couldn't move deal",
-            description: err?.message || "Your change didn't save. Try again in a moment.",
-            variant: "destructive",
-          });
-        },
-      },
-    );
+    updateDealStage({ id: dealId, status: newStage });
   };
 
   // Bulk selection state for bulk stage update with undo
@@ -879,6 +903,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   {dealStages.map((stage) => {
                     const stageDeals = paginatedDeals.filter(d => d.status === stage.value);
                     if (stageDeals.length === 0) return null;
+                    const stageStats = columnStats(stageDeals);
                     return (
                       <section key={stage.value} aria-labelledby={`mobile-list-stage-${stage.value}`}>
                         <div className={`rounded-card px-4 py-3 mb-2 ${stage.color}`}>
@@ -890,6 +915,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                               {stageDeals.length}
                             </Badge>
                           </div>
+                          <ColumnValueReadout stats={stageStats} stageLabel={stage.label} />
                         </div>
                         <div className="space-y-2">
                           {stageDeals.map((deal) => {
@@ -938,6 +964,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   {(() => {
                     const stage = dealStages[selectedStageIndex];
                     const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                    const stageStats = columnStats(stageDeals);
                     return (
                       <section aria-labelledby={`mobile-kanban-stage-${stage.value}`}>
                         <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
@@ -949,6 +976,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                               {stageDeals.length}
                             </Badge>
                           </div>
+                          <ColumnValueReadout stats={stageStats} stageLabel={stage.label} />
                         </div>
                         <div className="bg-muted/30 rounded-b-card p-3 min-h-[300px] space-y-3">
                           <ContentReveal
@@ -1136,6 +1164,10 @@ function KanbanColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.value });
   const headingId = `kanban-stage-${stage.value}`;
+  // Column intelligence (Wave 1.3): count + total value derived from the
+  // rows THIS column renders — pure arithmetic over loaded data, mirroring
+  // each card's own amount line (accepted ?? offer). No endpoint involved.
+  const stats = columnStats(deals);
   return (
     <section className="w-72 flex-shrink-0" aria-labelledby={headingId}>
       <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
@@ -1147,6 +1179,11 @@ function KanbanColumn({
             {deals.length}
           </Badge>
         </div>
+        <ColumnValueReadout
+          stats={stats}
+          stageLabel={stage.label}
+          testId={`column-value-${stage.value}`}
+        />
       </div>
       <div
         ref={setNodeRef}

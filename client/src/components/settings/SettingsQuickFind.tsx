@@ -1,59 +1,77 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ArrowRight, Command } from "lucide-react";
+import { Search, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { settingsSectionById } from "@/lib/settings-sections";
 
 /**
  * SettingsQuickFind — a single search input that maps the user's intent to
- * the right tab + scroll target inside settings.tsx.
+ * the routed settings section that holds the control.
  *
- * The settings page is genuinely large (7 tabs × many sections). Rather
- * than refactor every section, this surface lets the user type "two
- * factor" / "stripe" / "vat" / "theme" and jump straight to where the
- * setting lives — without scrolling through three other categories first.
+ * The settings tree is genuinely large (five groups, ~20 sections). Rather
+ * than make the user guess which group owns a control, this surface lets
+ * them type "two factor" / "stripe" / "vat" / "theme" and jump straight to
+ * where the setting lives.
  *
- * The catalog is hand-curated so the keyword list maps cleanly to user
- * intent rather than to component names. When you add a new section
- * to settings.tsx, add a row here so it stays discoverable.
+ * The catalog is hand-curated ON PURPOSE and is FINER-GRAINED than the
+ * section registry: "Two-factor auth", "Active sessions" and "Password" are
+ * three separate rows that all resolve to the Security section, because
+ * people search for the control, not the page. Each row therefore names a
+ * real registry section id (see SettingsEntry.section) rather than being
+ * generated from the registry — and settingsDecomposition.test.ts pins
+ * every id against SETTINGS_SECTIONS so the two can never drift.
  */
 
 type SettingsEntry = {
   label: string;
   description: string;
-  tab: "account" | "security" | "organization" | "billing" | "tax-compliance" | "notifications" | "integrations";
+  /**
+   * A real SETTINGS_SECTIONS id — NOT a legacy tab token. The decomposition
+   * rewired the jump target through the legacy-tab map, which collapsed
+   * seven of these rows onto sections that do not hold the control the row
+   * names ("Appearance / theme" landed on Profile, "API keys" on Mailbox…).
+   * settingsDecomposition.test.ts pins every id here against the registry,
+   * so a renamed section breaks the build instead of the navigation.
+   */
+  section: string;
   keywords: string;
 };
 
 const CATALOG: SettingsEntry[] = [
-  { label: "Profile + name", description: "Display name, email, avatar", tab: "account", keywords: "name email avatar profile photo display" },
-  { label: "Appearance / theme", description: "Themes, fonts, density, motion", tab: "account", keywords: "theme dark light bedrock dirtpass homestead font sf appearance ui color" },
-  { label: "Persona vocabulary", description: "Land flipper / fix-and-flip / note investor labels", tab: "account", keywords: "persona vocabulary lead deal investor type land flipper note fix flip" },
-  { label: "Referrals", description: "Invite friends and earn credit", tab: "account", keywords: "referral invite share friends bonus" },
-  { label: "Privacy / DSAR", description: "Data export, deletion, GDPR", tab: "account", keywords: "privacy data export dsar gdpr delete download my data" },
-  { label: "Two-factor auth (2FA)", description: "Enable TOTP / SMS", tab: "security", keywords: "2fa two factor mfa totp authenticator security otp" },
-  { label: "Active sessions", description: "Revoke other browser sessions", tab: "security", keywords: "sessions devices logout revoke browser" },
-  { label: "Password", description: "Change account password", tab: "security", keywords: "password change reset login" },
-  { label: "Team members", description: "Invite + role + view-only", tab: "organization", keywords: "team members invite role admin user seat" },
-  { label: "Co-owners", description: "Org co-owner / shared workspace", tab: "organization", keywords: "co-owner co owner shared organization owner ownership" },
-  { label: "Org goals", description: "Set revenue / lead targets", tab: "organization", keywords: "goals revenue targets lead deal metrics okr" },
-  { label: "Org profile", description: "Company name, branding", tab: "organization", keywords: "company organization brand logo name" },
-  { label: "Subscription", description: "Plan, seats, upgrade", tab: "billing", keywords: "subscription plan upgrade downgrade tier pro scale starter price" },
-  { label: "Payment method", description: "Card on file, Stripe portal", tab: "billing", keywords: "payment card credit billing stripe portal invoice receipt" },
-  { label: "Invoices", description: "Past billing history", tab: "billing", keywords: "invoice history receipt past charge" },
-  { label: "Tax setup", description: "W-9, VAT, sales tax", tab: "tax-compliance", keywords: "tax w9 w-9 vat sales tax id ein number 1099" },
-  { label: "Compliance forms", description: "Statutory / state forms", tab: "tax-compliance", keywords: "compliance statutory state form disclosure tila respa filing" },
-  { label: "Email notifications", description: "What we email you about", tab: "notifications", keywords: "email notification alert digest weekly" },
-  { label: "SMS alerts", description: "Critical text notifications", tab: "notifications", keywords: "sms text phone alert critical mobile" },
-  { label: "Push notifications", description: "Browser + PWA pushes", tab: "notifications", keywords: "push browser pwa desktop notification" },
-  { label: "API keys", description: "Manage org API keys", tab: "integrations", keywords: "api key token developer rest webhook scope" },
-  { label: "BYOK (Bring your own keys)", description: "OpenAI / Anthropic credentials", tab: "integrations", keywords: "byok openai anthropic claude gpt key llm ai credentials" },
-  { label: "Stripe Connect", description: "Contractor payouts", tab: "integrations", keywords: "stripe connect payout contractor ach payment" },
-  { label: "Webhooks", description: "Outbound event subscriptions", tab: "integrations", keywords: "webhook outbound event subscription endpoint url" },
-  { label: "Autonomy matrix", description: "Founder-only AI autonomy rules", tab: "integrations", keywords: "autonomy ai matrix founder rules permission autonomous agent" },
+  { label: "Profile + name", description: "Display name, email, avatar", section: "profile", keywords: "name email avatar profile photo display" },
+  { label: "Appearance / theme", description: "Themes, fonts, density, motion", section: "appearance", keywords: "theme dark light bedrock dirtpass homestead font sf appearance ui color" },
+  { label: "Persona vocabulary", description: "Land flipper / fix-and-flip / note investor labels", section: "vertical", keywords: "persona vocabulary lead deal investor type land flipper note fix flip" },
+  { label: "Referrals", description: "Invite friends and earn credit", section: "profile", keywords: "referral invite share friends bonus" },
+  { label: "Privacy / DSAR", description: "Data export, deletion, GDPR", section: "privacy", keywords: "privacy data export dsar gdpr delete download my data" },
+  { label: "Two-factor auth (2FA)", description: "Enable TOTP / SMS", section: "security", keywords: "2fa two factor mfa totp authenticator security otp" },
+  { label: "Active sessions", description: "Revoke other browser sessions", section: "security", keywords: "sessions devices logout revoke browser" },
+  { label: "Password", description: "Change account password", section: "security", keywords: "password change reset login" },
+  { label: "Team members", description: "Invite + role + view-only", section: "team", keywords: "team members invite role admin user seat" },
+  { label: "Co-owners", description: "Org co-owner / shared workspace", section: "team", keywords: "co-owner co owner shared organization owner ownership" },
+  { label: "Org goals", description: "Set revenue / lead targets", section: "organization", keywords: "goals revenue targets lead deal metrics okr" },
+  { label: "Org profile", description: "Company name, branding", section: "organization", keywords: "company organization brand logo name" },
+  { label: "Subscription", description: "Plan, seats, upgrade", section: "billing", keywords: "subscription plan upgrade downgrade tier pro scale starter price" },
+  { label: "Payment method", description: "Card on file, Stripe portal", section: "billing", keywords: "payment card credit billing stripe portal invoice receipt" },
+  { label: "Invoices", description: "Past billing history", section: "billing", keywords: "invoice history receipt past charge" },
+  { label: "Tax setup", description: "W-9, VAT, sales tax", section: "tax-identity", keywords: "tax w9 w-9 vat sales tax id ein number 1099" },
+  { label: "Compliance forms", description: "Statutory / state forms", section: "compliance", keywords: "compliance statutory state form disclosure tila respa filing" },
+  { label: "Email notifications", description: "What we email you about", section: "notifications", keywords: "email notification alert digest weekly" },
+  { label: "SMS alerts", description: "Critical text notifications", section: "notifications", keywords: "sms text phone alert critical mobile" },
+  { label: "Push notifications", description: "Browser + PWA pushes", section: "notifications", keywords: "push browser pwa desktop notification" },
+  { label: "API keys", description: "Manage org API keys", section: "api", keywords: "api key token developer rest webhook scope" },
+  { label: "BYOK (Bring your own keys)", description: "OpenAI / Anthropic credentials", section: "byok", keywords: "byok openai anthropic claude gpt key llm ai credentials" },
+  { label: "Stripe Connect", description: "Contractor payouts", section: "billing", keywords: "stripe connect payout contractor ach payment" },
+  { label: "Webhooks", description: "Outbound event subscriptions", section: "api", keywords: "webhook outbound event subscription endpoint url" },
+  { label: "Autonomy matrix", description: "Founder-only AI autonomy rules", section: "autonomy", keywords: "autonomy ai matrix founder rules permission autonomous agent" },
 ];
 
+/** The destination's REAL label — the row used to print a retired tab token. */
+function sectionLabel(sectionId: string): string {
+  return settingsSectionById(sectionId)?.label ?? sectionId;
+}
+
 interface SettingsQuickFindProps {
-  onJump: (tab: SettingsEntry["tab"]) => void;
+  onJump: (sectionId: SettingsEntry["section"]) => void;
 }
 
 export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
@@ -63,18 +81,31 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
   const listRef = useRef<HTMLUListElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Cmd+K / Ctrl+K focuses the input. /-press also focuses it, GitHub-style.
+  // "/" focuses this input, GitHub-style. ⌘K is deliberately NOT hijacked
+  // (fleet-8 verifier catch): this component used to mount on one route and
+  // now mounts on the overview plus every routed section, so swallowing ⌘K
+  // would kill the global palette across the whole settings tree — including
+  // on the very pages where the palette now indexes settings sections.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      const inField = tag === "INPUT" || tag === "TEXTAREA";
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        inputRef.current?.focus();
-      } else if (e.key === "/" && !inField) {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
+      if (e.key !== "/") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      // tagName alone missed contentEditable surfaces and ARIA text widgets,
+      // so "/" fired while the user was typing in a section control.
+      const role = target?.getAttribute?.("role");
+      const inField =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        !!target?.isContentEditable ||
+        role === "textbox" ||
+        role === "combobox" ||
+        role === "searchbox";
+      if (inField) return;
+      e.preventDefault();
+      inputRef.current?.focus();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -94,8 +125,10 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
   }, [query]);
 
   function pick(entry: SettingsEntry) {
-    onJump(entry.tab);
-    window.location.hash = entry.tab;
+    // Navigate ONLY. This used to also write the row's legacy tab token into
+    // the location hash, which the shell's legacy-hash resolver then tried to
+    // re-resolve — leaving a stale fragment on a routed section path.
+    onJump(entry.section);
     setQuery("");
     setOpen(false);
     inputRef.current?.blur();
@@ -135,14 +168,16 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
           onKeyDown={onInputKey}
-          placeholder="Find a setting… (Cmd+K, or press /)"
+          placeholder="Find a setting… (press /)"
           aria-label="Search settings"
           aria-autocomplete="list"
           aria-expanded={open && results.length > 0}
           className="w-full h-10 pl-9 pr-16 rounded-card border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
+        {/* The hint must match the key we actually own — ⌘K belongs to the
+            global palette, which now indexes settings sections itself. */}
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-micro text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden sm:inline-flex items-center gap-0.5">
-          <Command className="w-2.5 h-2.5" aria-hidden="true" />K
+          /
         </kbd>
       </div>
       {open && query && (
@@ -158,7 +193,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
             </li>
           ) : (
             results.map((entry, idx) => (
-              <li key={`${entry.tab}-${entry.label}`} role="option" aria-selected={idx === activeIndex}>
+              <li key={`${entry.section}-${entry.label}`} role="option" aria-selected={idx === activeIndex}>
                 <button
                   type="button"
                   onMouseDown={(e) => {
@@ -174,7 +209,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{entry.label}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {entry.tab} · {entry.description}
+                      {sectionLabel(entry.section)} · {entry.description}
                     </div>
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />

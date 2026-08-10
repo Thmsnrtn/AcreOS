@@ -32,6 +32,12 @@ import { Slider } from "@/components/ui/slider";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
+// Wave B accessibility & comfort accommodations (Lexend, reading density,
+// cognitive a11y, larger taps, picture-first parcels, focus mode). Mounted
+// here since the Wave 1.5 settings decomposition — this page is the ONE
+// accessibility home the registry (lib/settings-sections.ts) points at;
+// the panel previously lived in the retired monolith's Account tab.
+import { AccessibilityPanel } from "@/components/settings/accessibility-panel";
 
 const SAMPLE_TEXT =
   "AcreOS will read Pax responses and legal documents aloud at this rate and voice. Adjust the controls to your preference.";
@@ -218,6 +224,9 @@ export default function AccessibilitySettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reading, motion, and comfort accommodations — the Wave B panel. */}
+      <AccessibilityPanel />
     </PageShell>
   );
 }

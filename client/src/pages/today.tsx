@@ -35,6 +35,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
+import { approveItemsSequentially } from "@/components/today/approve-above-threshold";
 import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
 import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
@@ -327,6 +328,74 @@ export default function TodayPage() {
   const handleClearAll = React.useCallback(() => {
     clearQueue.mutate();
   }, [clearQueue]);
+
+  // ── Approve-above-threshold (Wave 1.3) ─────────────────────────────────
+  // Batch affordance over the queue's "Pax would handle" rows: run the SAME
+  // per-item PATCH /api/today/queue/:id the row-level Done button uses,
+  // once per item, SEQUENTIALLY, collecting per-item results — never a
+  // bulk endpoint (components/today/approve-above-threshold.ts owns the
+  // sequencing and is deliberately transport-free). Approving marks each
+  // row done in the resolution ledger; it executes nothing — the confirm
+  // dialog in DecisionQueue says so.
+  const [approveProgress, setApproveProgress] = React.useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const handleApproveAboveThreshold = React.useCallback(
+    async (items: DecisionItem[]) => {
+      if (items.length === 0 || approveProgress) return;
+      setApproveProgress({ done: 0, total: items.length });
+      const { approved, failed } = await approveItemsSequentially(
+        items,
+        async (id) => {
+          // The EXISTING per-item resolution endpoint — same path, same
+          // body as tapping Done on the row.
+          const res = await apiRequest(
+            "PATCH",
+            `/api/today/queue/${encodeURIComponent(id)}`,
+            { action: "done" },
+          );
+          if (!res.ok) throw new Error(`Couldn't approve this item (${res.status})`);
+        },
+        (done, total) => setApproveProgress({ done, total }),
+      );
+      // Optimistically drop the approved rows so the queue shrinks
+      // immediately; the invalidation below refetches server truth (failed
+      // rows come back untouched because their ledger rows never changed).
+      if (approved.length > 0) {
+        const approvedSet = new Set(approved);
+        const previous = queryClient.getQueryData<TodayPayload>(todayQueryKey);
+        if (previous) {
+          queryClient.setQueryData<TodayPayload>(todayQueryKey, {
+            ...previous,
+            queue: previous.queue.filter((q) => !approvedSet.has(q.id)),
+            progress: previous.progress
+              ? {
+                  cleared: previous.progress.cleared + approved.length,
+                  total: previous.progress.total,
+                }
+              : previous.progress,
+          });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
+      setApproveProgress(null);
+      // Per-item results, summarized honestly.
+      if (failed.length === 0) {
+        toast({
+          title: `Approved ${approved.length} item${approved.length === 1 ? "" : "s"}`,
+          description: "Each was marked done individually — nothing was sent or executed.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: `Approved ${approved.length} of ${items.length}`,
+          description: `${failed.length} item${failed.length === 1 ? "" : "s"} couldn't be approved and stay${failed.length === 1 ? "s" : ""} in your queue.`,
+        });
+      }
+    },
+    [approveProgress, todayQueryKey, toast],
+  );
 
   // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
   // A pull gesture at the top re-pulls the consolidated /api/today payload
@@ -805,6 +874,9 @@ export default function TodayPage() {
           totalToday={today?.progress?.total ?? 0}
           onClearAll={handleClearAll}
           isClearing={clearQueue.isPending}
+          onApproveAboveThreshold={handleApproveAboveThreshold}
+          isApproving={approveProgress !== null}
+          approveProgress={approveProgress}
         />
       )}
 

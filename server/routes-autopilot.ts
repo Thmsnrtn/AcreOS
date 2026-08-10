@@ -94,6 +94,29 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── GET the scenario library (Wave S · S4 — executable doctrine) ────────
+  // The trigger → charter → playbook → autonomy → founder-touch → drill
+  // matrix, every claim derived or honestly declared: trigger wiring comes
+  // from SENSE_INVENTORY / verified event kinds, "page" rows carry their real
+  // pager path or an explicit declared-gap, and lastDrilled derives from the
+  // append-only drill ledgers — null renders "never drilled", never a guess.
+  // Feeds the Story door's Scenarios tab. Drill EXECUTION (quarterly
+  // game-days) is F6 and founder-scheduled — this endpoint only derives the
+  // due count.
+  app.get(
+    "/api/founder/autopilot/scenarios",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getScenarioLibrary } = await import("./services/autopilot/scenarioLibrary");
+        return res.json(await getScenarioLibrary());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── POST the atomic PANIC STOP (T0.3) — halt everything in one tap ───────
   // The most consequential founder control: flips all master switches off +
   // quarantines every domain to OBSERVE + records a receipt + pages. Reversible

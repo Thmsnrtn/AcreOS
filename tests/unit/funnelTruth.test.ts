@@ -144,7 +144,9 @@ describe("emission-site wiring (structural)", () => {
     expect(onboarding).not.toContain('trackCanonicalEvent("first_value_reached"');
     expect(onboarding).toContain('trackEvent("onboarding_completed"');
 
-    const settings = read("client/src/pages/settings.tsx");
+    // Wave 1.5 settings decomposition: the checkout-return effect moved
+    // from the settings.tsx monolith into the routed Billing section.
+    const settings = read("client/src/pages/settings/billing-section.tsx");
     expect(settings).not.toContain('trackCanonicalEvent("trial_to_paid"');
     expect(settings).toContain('trackEvent("stripe_checkout_return"');
   });

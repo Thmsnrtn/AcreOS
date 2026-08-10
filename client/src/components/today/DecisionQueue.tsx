@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useKeyboardLayer } from "@/hooks/use-keyboard-layer";
+import { useListKeys, ListKeyGrammarOverlay } from "@/hooks/use-list-keys";
+import {
+  isAboveThreshold,
+  qualifyingApprovals,
+} from "@/components/today/approve-above-threshold";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -164,6 +168,20 @@ interface DecisionQueueProps {
   onClearAll?: () => void;
   /** True while the clear-all POST is in flight — drives the confirm spinner. */
   isClearing?: boolean;
+  /**
+   * Batch-approve the "Pax would handle" rows (Wave 1.3): the parent runs
+   * the SAME per-item resolution mutation the row-level Done button uses,
+   * once per item, sequentially — never a bulk endpoint (see
+   * components/today/approve-above-threshold.ts). This component only
+   * renders the affordance + the confirm dialog that states exactly which
+   * rows it will touch and what "approve" does (marks each done — nothing
+   * is sent or executed).
+   */
+  onApproveAboveThreshold?: (items: DecisionItem[]) => void;
+  /** True while the sequential per-item run is in flight. */
+  isApproving?: boolean;
+  /** "Approving n of N…" readout while the run progresses. */
+  approveProgress?: { done: number; total: number } | null;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -212,17 +230,21 @@ export function DecisionQueue({
   totalToday = 0,
   onClearAll,
   isClearing = false,
+  onApproveAboveThreshold,
+  isApproving = false,
+  approveProgress = null,
 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [, setLocation] = useLocation();
 
   // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
-  // user's autonomy threshold. Visual-only treatment (see prop doc).
-  const isAutoHandled = (item: DecisionItem) =>
-    item.source.startsWith("pax-") &&
-    typeof item.confidence === "number" &&
-    item.confidence >= autoThreshold;
+  // user's autonomy threshold. Visual-only treatment (see prop doc). Shared
+  // predicate with the batch affordance so row styling and "Approve all N"
+  // can never disagree about which rows qualify.
+  const isAutoHandled = (item: DecisionItem) => isAboveThreshold(item, autoThreshold);
 
   useEffect(() => {
     persistSnoozed(snoozed);
@@ -238,6 +260,17 @@ export function DecisionQueue({
     }
     wasClearingRef.current = isClearing;
   }, [isClearing]);
+
+  // Same edge-close pattern for the batch-approve confirm: the dialog stays
+  // mounted while the sequential run progresses ("Approving n of N…"), and
+  // closes when the parent's run settles (per-item results land in a toast).
+  const wasApprovingRef = useRef(false);
+  useEffect(() => {
+    if (wasApprovingRef.current && !isApproving) {
+      setConfirmApproveOpen(false);
+    }
+    wasApprovingRef.current = isApproving;
+  }, [isApproving]);
 
   function snoozeItem(id: string) {
     lightImpact();
@@ -267,16 +300,35 @@ export function DecisionQueue({
   );
   const snoozedCount = Object.keys(snoozed).length;
 
-  // ── Keyboard layer (Tier 3C) — J/K traverses, Enter opens ──────────────
+  // ── Keyboard layer (Wave 1.3) — J/K traverses, Enter opens, S snoozes ──
   // Desktop-only (fine pointer + hover); suppressed while typing and while
-  // dialogs are open. See hooks/use-keyboard-layer.ts.
-  const { activeIndex } = useKeyboardLayer({
+  // dialogs are open. "S" prefers the server 3-day snooze (the same
+  // per-item PATCH the inline Snooze button fires) when the row is
+  // resolvable; otherwise it falls back to the local 24h hide — exactly
+  // the two paths the on-screen controls already offer, no third one.
+  // "?" toggles the grammar overlay below. See hooks/use-list-keys.tsx.
+  const { activeIndex } = useListKeys({
     itemCount: visible.length,
     enabled: !isLoading,
     onOpen: (index) => {
       const item = visible[index];
       if (item) setLocation(item.actionUrl);
     },
+    actionKeys: {
+      s: (index) => {
+        const item = visible[index];
+        if (!item) return;
+        const canResolve =
+          !!onResolve && !isAutoHandled(item) && item.inlineAction?.kind === "resolve";
+        if (canResolve && !(resolvingIds?.has(item.id) ?? false)) {
+          lightImpact();
+          onResolve!(item.id, "snooze");
+        } else if (!canResolve) {
+          snoozeItem(item.id);
+        }
+      },
+    },
+    onHelp: () => setHelpOpen((prev) => !prev),
   });
   const activeId = activeIndex !== null ? visible[activeIndex]?.id ?? null : null;
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
@@ -291,6 +343,14 @@ export function DecisionQueue({
 
   // Finishability readout: only rendered when something real happened today.
   const showProgress = clearedToday > 0 && totalToday > 0;
+
+  // The exact rows a batch approve would touch (visible "Pax would handle"
+  // rows), via the same shared predicate the row styling uses.
+  const autoItems = useMemo(
+    () => qualifyingApprovals(visible, autoThreshold),
+    [visible, autoThreshold],
+  );
+  const thresholdPctLabel = Math.round(autoThreshold * 100);
 
   return (
     <div data-testid="section-decision-queue">
@@ -327,6 +387,22 @@ export function DecisionQueue({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Batch approve — only when qualifying "Pax would handle" rows
+              exist AND the parent wired the sequential per-item runner. */}
+          {autoItems.length > 0 && onApproveAboveThreshold && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1 text-xs"
+              onClick={() => setConfirmApproveOpen(true)}
+              disabled={isApproving}
+              aria-label={`Clear ${autoItems.length} Pax preview${autoItems.length === 1 ? "" : "s"} at or above your ${thresholdPctLabel}% threshold — they will not come back`}
+              data-testid="button-approve-above-threshold"
+            >
+              <Zap className="w-3 h-3" aria-hidden="true" />
+              Clear {autoItems.length} above threshold
+            </Button>
+          )}
           {visible.length > 0 && (
             onClearAll ? (
               // Permanent clear — destructive, so it opens a confirm dialog
@@ -692,6 +768,102 @@ export function DecisionQueue({
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* ── Approve-above-threshold confirm ───────────────────────────────
+          States exactly which rows it touches and what "approve" does. On
+          confirm the parent runs the SAME per-item resolution mutation the
+          row-level Done button uses, once per item, sequentially — per-item
+          results land in the parent's summary toast; failed rows stay. */}
+      {onApproveAboveThreshold && (
+        <AlertDialog
+          open={confirmApproveOpen}
+          onOpenChange={(open) => {
+            // Don't let an outside-click close the dialog mid-run.
+            if (isApproving) return;
+            setConfirmApproveOpen(open);
+          }}
+        >
+          <AlertDialogContent data-testid="dialog-approve-above-threshold">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Clear {autoItems.length} Pax preview{autoItems.length === 1 ? "" : "s"} at or above{" "}
+                {thresholdPctLabel}% confidence?
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2">
+                  <ul className="list-disc pl-5 space-y-1 max-h-40 overflow-y-auto">
+                    {autoItems.map((item) => (
+                      <li key={item.id} className="text-sm">
+                        {item.title}
+                        {typeof item.confidence === "number" && (
+                          <span className="tabular-nums text-muted-foreground">
+                            {" "}· {Math.round(item.confidence * 100)}%
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    Each row is marked done individually, one request per row.
+                    Nothing is sent or executed on your behalf —{" "}
+                    <strong>and these rows will not come back</strong>: marking
+                    a Pax preview done is how you tell the queue to stop
+                    raising it. Rows that fail stay in your queue.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                disabled={isApproving}
+                data-testid="cancel-approve-above-threshold"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isApproving}
+                onClick={(e) => {
+                  // Keep the dialog mounted while the sequential run
+                  // progresses; the isApproving true→false edge closes it.
+                  e.preventDefault();
+                  onApproveAboveThreshold(autoItems);
+                }}
+                className="gap-1.5"
+                data-testid="confirm-approve-above-threshold"
+              >
+                {isApproving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    {approveProgress
+                      ? `Approving ${approveProgress.done} of ${approveProgress.total}…`
+                      : "Approving…"}
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" aria-hidden="true" />
+                    Approve all {autoItems.length}
+                  </>
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* ── "?" grammar overlay — documents this list's keys ────────────── */}
+      <ListKeyGrammarOverlay
+        open={helpOpen}
+        onOpenChange={setHelpOpen}
+        title="Decision queue keys"
+        entries={[
+          { keys: "j", label: "Next item" },
+          { keys: "k", label: "Previous item" },
+          { keys: "enter", label: "Open the focused item" },
+          { keys: "s", label: "Snooze the focused item" },
+          { keys: "escape", label: "Clear focus" },
+          { keys: "?", label: "Toggle this help" },
+        ]}
+      />
     </div>
   );
 }

@@ -49,11 +49,13 @@ async function seedSessionCookies(page: Page, baseURL: string) {
 }
 
 /**
- * Arriving via /settings#billing intentionally auto-opens the
- * plan-comparison dialog (settings.tsx hash effect — the upgrade-toast
- * deep-link behavior). A real customer dismisses it to reach the plans grid
- * underneath; so does this spec. Tolerates the dialog not opening (e.g. if
- * that behavior is ever removed) — the assertions that matter come after.
+ * Since the Wave 1.5 settings decomposition, /settings#billing redirects to
+ * the routed /settings/billing section, and the plan-comparison dialog only
+ * auto-opens when the deep link carries a ?tier= (the upgrade-toast form
+ * /settings#billing?tier=pro → /settings/billing?tier=pro). Plain #billing
+ * arrivals land directly on the section with the plans grid in view. This
+ * helper therefore usually no-ops, but stays for the tier-carrying path and
+ * tolerates the dialog not opening — the assertions that matter come after.
  *
  * Dismissal is via the dialog's close button — the affordance a touch user
  * actually has. Escape is only a fallback: verified on ipad-mini (768px)
@@ -84,20 +86,19 @@ test.describe("billing upgrade journey (Settings → Billing)", () => {
     test.skip(!process.env.DATABASE_URL, "requires DATABASE_URL (CI service / local PG)");
     await seedSessionCookies(page, baseURL!);
 
-    // The canonical deep link every server upgradeUrl points at. The hash
-    // both selects the tab (getTabFromHash) and works on every breakpoint —
-    // the horizontal TabsList is hidden below md, so clicking the trigger
-    // is not a portable way in on phones.
+    // The canonical deep link every server upgradeUrl points at. Since the
+    // Wave 1.5 decomposition the settings shell resolves the legacy hash to
+    // the routed section — the redirect must land on /settings/billing on
+    // every breakpoint (the desktop rail is hidden below md; the mobile
+    // Select is the picker, but the deep link needs neither).
     await page.goto("/settings#billing", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/settings/billing", { timeout: 20_000 });
     await dismissPlanComparisonDialog(page);
 
-    // The Billing tab must exist in the settings tab model (visible on
-    // >=md; present-but-hidden behind the mobile Select below md).
-    await expect(page.getByTestId("tab-billing")).toBeAttached();
-
-    // The billing tab content + plans section render — the WS1 regression
-    // this spec exists to hold: #billing must actually contain the plans.
-    const billingContent = page.getByTestId("tab-content-billing");
+    // The billing section content + plans section render — the WS1
+    // regression this spec exists to hold: the #billing deep link must
+    // actually land on the plans.
+    const billingContent = page.getByTestId("settings-section-billing");
     await expect(billingContent).toBeVisible({ timeout: 20_000 });
     const pricingSection = page.locator("#pricing-section");
     await expect(pricingSection).toBeVisible();

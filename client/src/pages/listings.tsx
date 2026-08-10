@@ -912,8 +912,12 @@ export default function ListingsPage() {
             >
               <p className="text-xs text-muted-foreground" data-testid="text-publish-disclaimer">
                 Each platform requires partner credentials configured in{" "}
-                <Link href="/settings#integrations" className="underline hover:text-foreground">
-                  Settings → Integrations
+                {/* Point at the section that actually holds partner
+                    credentials, with a label that matches it: the bare
+                    "integrations" token is ambiguous now (the standalone
+                    /settings/integrations page is Slack & Teams). */}
+                <Link href="/settings/byok" className="underline hover:text-foreground">
+                  Settings → Your provider keys
                 </Link>
                 . Platforms without credentials will be returned as{" "}
                 <span className="font-medium">missing credentials</span> and skipped — no listing leaves your tenant.

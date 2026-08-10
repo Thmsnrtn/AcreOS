@@ -21,6 +21,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { GlassEngine } from "@/components/founder/GlassEngine";
+import { ScenarioMatrix } from "@/components/founder/ScenarioMatrix";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { formatRelative } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -464,7 +465,7 @@ function TraceBlock({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-const STORY_TABS = ["timeline", "engine", "governance"] as const;
+const STORY_TABS = ["timeline", "engine", "governance", "scenarios"] as const;
 
 // Deep-link support (?tab=governance — the Letter's "rules that are code" row
 // lands here). Same URL-read pattern as founder/studio.tsx.
@@ -544,6 +545,7 @@ export default function FounderAutopilotStoryPage() {
               <TabsTrigger value="timeline" data-testid="story-tab-timeline">The timeline</TabsTrigger>
               <TabsTrigger value="engine" data-testid="story-tab-engine">The engine</TabsTrigger>
               <TabsTrigger value="governance" data-testid="story-tab-governance">The rules</TabsTrigger>
+              <TabsTrigger value="scenarios" data-testid="story-tab-scenarios">The scenarios</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline" className="mt-4">
               {entries.length === 0 ? (
@@ -574,6 +576,12 @@ export default function FounderAutopilotStoryPage() {
               {/* The rules the engine runs under — read straight from the two
                   governance registries. Own fetch + own states. */}
               <GovernanceSection />
+            </TabsContent>
+            <TabsContent value="scenarios" className="mt-4">
+              {/* S4 — the scenario library as executable doctrine: every row
+                  derived or honestly declared, grouped by responsible
+                  charter. Own fetch + own states. */}
+              <ScenarioMatrix />
             </TabsContent>
           </Tabs>
         )}

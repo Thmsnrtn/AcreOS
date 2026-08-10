@@ -68,6 +68,12 @@ import {
   FOUNDER_DEEP_DIVE_CATEGORY_LABEL,
 } from "@/lib/nav-items";
 import { readRecents, recordRecency } from "@/lib/cmdkRecency";
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_SECTIONS,
+  settingsSectionPath,
+} from "@/lib/settings-sections";
+import { useFlag } from "@/contexts/feature-flags-context";
 import { isFrozenRoute } from "@shared/feature-freeze";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -271,6 +277,23 @@ const FOUNDER_PAGES: Array<{ name: string; icon: typeof Users; path: string }> =
   })),
 ];
 
+// ── Settings destinations (Wave 1.5, P2 §1.4 "search-first") ─────────
+// Derived from the SAME registry that builds the settings rail
+// (lib/settings-sections.ts), so the palette can never drift from the
+// rail — settingsDecomposition.test.ts pins this derivation. Labels
+// carry the five-group path ("Settings · You — Appearance") so typing
+// "quiet" anywhere in the app offers the exact section deep-link.
+const SETTINGS_GROUP_LABEL: Record<string, string> = Object.fromEntries(
+  SETTINGS_GROUPS.map((g) => [g.id, g.label]),
+);
+const SETTINGS_PALETTE_PAGES = SETTINGS_SECTIONS.map((s) => ({
+  name: `Settings · ${SETTINGS_GROUP_LABEL[s.group]} — ${s.label}`,
+  icon: Settings as typeof Users,
+  path: settingsSectionPath(s),
+  keywords: s.keywords.split(" "),
+  flag: s.flag,
+}));
+
 // Phase 4 Week 19-20 (cmdk-v2 / Anya §3): the prior 6-action
 // `quickActions` array was superseded by the 30-verb registry in
 // `client/src/lib/cmdkVerbs.ts`. The verb registry is matcher-aware
@@ -304,6 +327,10 @@ export function CommandPalette() {
   });
   const { isFounder } = useAuth();
   const { isAvailable } = useProviderStatus();
+  // Settings-entry gating: the autonomy section is founder-flag-gated on
+  // the rail (lib/settings-sections.ts `flag`); the palette applies the
+  // SAME flag so ⌘K never offers a destination the rail hides.
+  const autonomyFlagOn = useFlag("feature.autonomy-matrix");
 
   const [query, setQuery] = useState("");
 
@@ -489,15 +516,38 @@ export function CommandPalette() {
       return rankItems(matcherQuery, items, { recents }).slice(0, 12);
     }
     if (activeScope && activeScope !== "settings") return []; // pages list is the cross-cutting nav surface
-    const items = pages.map((p) => ({
+    // Settings sections ride along with the cross-cutting pages list —
+    // registry-derived (see SETTINGS_PALETTE_PAGES above), flag-gated
+    // exactly like the rail (the autonomy section only exists when the
+    // founder-gated feature.autonomy-matrix flag is on).
+    const settingsItems = SETTINGS_PALETTE_PAGES.filter(
+      (p) => !p.flag || (p.flag === "feature.autonomy-matrix" && autonomyFlagOn),
+    ).map((p) => ({
       id: `page:${p.path}`,
       title: p.name,
+      keywords: p.keywords,
       kind: "page" as const,
       page: p,
     }));
-    if (!matcherQuery.trim()) return [];
+    const items = [
+      ...pages.map((p) => ({
+        id: `page:${p.path}`,
+        title: p.name,
+        kind: "page" as const,
+        page: p,
+      })),
+      ...settingsItems,
+    ];
+    if (!matcherQuery.trim()) {
+      // The :settings chip with no query browses the full section
+      // inventory (mirrors the founder chip's browsable slice).
+      if (activeScope === "settings") {
+        return rankItems("", settingsItems, { recents, keepAll: true }).slice(0, 24);
+      }
+      return [];
+    }
     return rankItems(matcherQuery, items, { recents }).slice(0, 6);
-  }, [matcherQuery, activeScope, recents, isFounder]);
+  }, [matcherQuery, activeScope, recents, isFounder, autonomyFlagOn]);
 
   // Entity search results (leads / properties / deals). Prefer server-side
   // fuzzy/hybrid results once /api/search resolves; fall back to a client-side
@@ -1386,7 +1436,11 @@ export function CommandPalette() {
                         "tdc" surfaces "Tax Delinquent Counties" via
                         page match; "send" surfaces send-letter / text
                         / email via verb match. */}
-                    {matcherQuery.trim().length > 0 && (matchedVerbs.length > 0 || matchedPages.length > 0) && (() => {
+                    {/* `|| activeScope` so a scope chip with an EMPTY query
+                        still renders its browse slice — the :settings chip
+                        computed one but this guard swallowed it, making the
+                        branch dead code (fleet-8 verifier catch). */}
+                    {(matcherQuery.trim().length > 0 || activeScope) && (matchedVerbs.length > 0 || matchedPages.length > 0) && (() => {
                       const actionsGroup = matchedVerbs.length > 0 ? (
                         <CommandGroup heading="Actions" key="actions">
                           {matchedVerbs.map(({ item: m }) => {

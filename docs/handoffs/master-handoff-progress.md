@@ -552,6 +552,121 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves S/1 — slice 8 (S4 scenario library + 1.3 door interactions + 1.5 settings) — ✅ SHIPPED
+
+**Fleet incident, recorded because the protocol earned its keep:** fleet 8
+lost TWO agents to credit exhaustion mid-run — the W1.3 verifier and the
+W1.5 *builder*. The W1.5 lane therefore reached the tree with NO
+self-report, no suite record, and no drift log: unaudited work that
+type-checked and passed its own test. Both missing audits were re-run as
+fleet 8b (`wf_c8f881a1-47b`), the W1.5 one explicitly briefed that its
+builder had died and that completeness was its primary question. Between
+them the audits found **2 blocking defects and 15 more**, every one of
+which is fixed centrally below. Nothing was committed until they returned.
+
+- **S4 (scenario library as executable doctrine) — CONFIRMED_GOOD:** 17
+  seeded Addendum-C rows in `server/services/autopilot/scenarioLibrary.ts`,
+  every reference DERIVED — sense triggers through `senseIsWired`, charters
+  through `getCharterDef`, runbook refs resolved on disk, and every
+  `founderTouch:"page"` row naming a real pager path or rendering as an
+  honest "declared, not yet wired to a pager" (exactly 2, pinned). Legal
+  letter = founder-only + page + counsel path, no staff autonomy ever;
+  model-provider-outage cites the deterministic floor as its playbook. A
+  third honest trigger form (`human`) was added rather than inventing event
+  kinds for scenarios with no machine sense. `lastDrilled` is null for all
+  17 (no game-day ledger exists yet) — pinned as CURRENT TRUTH with
+  rewrite-don't-delete instructions. The builder caught its own dead export
+  during self-audit and WIRED it instead of shipping it.
+  Integration fix: event rows rendered the same "trigger wired" badge as
+  sense rows, but a verified literal only proves the emitter EXISTS — a
+  dormant emitter would have read as fully wired. `triggerEvidence` now
+  distinguishes sense-consumed / event-literal / human, with its own badge.
+- **W1.3 (door interactions) — DEFECTS_FOUND, all fixed:**
+  1. **BLOCKING, an outright lie in the UI.** "Approve N above threshold"
+     with a Zap icon over rows badged "Pax would handle", whose dialog
+     promised "anything that needs a witnessed send will still ask you" —
+     while writing `status="done"`, which `isQueueItemHidden` treats as
+     permanent (no expiry, unlike snooze) against deterministic item ids.
+     The user was told they were authorising Pax to proceed; the actual
+     effect was permanent silent dismissal with nothing executed and no
+     future prompt. Now: **Clear** N above threshold, "these rows will not
+     come back", the false "same as tapping Done on each row" claim removed
+     (no Done button is EVER rendered on those rows — `canResolveInline`
+     requires `!auto`), irreversibility in the aria-label. Pinned scoped to
+     the dialog so the row-level copy, which is honest about a row left
+     alone, survives untouched.
+  2. Capture-phase listener took precedence for EVERY key, not just "?",
+     silently outranking any nested owner of j/k/Enter/Escape and making
+     the hook's own `defaultPrevented` guard unreachable (proven by the
+     auditor with a differential harness). Split: "?" alone captures,
+     everything else bubbles where the pre-wave hook listened.
+  3. The "?" overlay claimed "nothing is lost" while displacing the app's
+     ONLY entry point to five global shortcuts. It now renders them, pinned
+     against the real `global: true` registrations so the two cannot drift.
+  4. `use-keyboard-layer.ts` orphaned by the wave — 106 lines of
+     live-looking dead code invisible to every gate (reachability scans
+     server exports only). Deleted; the primitives file's consumer list
+     corrected.
+  5. Needs-reply resurfaced just-archived threads: the query filtered
+     `isArchived=false`, so the derivation never saw the archived latest and
+     promoted the next-newest instead — the view whose caption promises
+     archiving clears it. The unit test passed only because its fixture
+     supplied a row the runtime could never deliver. Query no longer
+     filters; the reproduction is pinned.
+  6. Deals mobile readouts dropped the "N of M priced" qualifier and
+     aria-label desktop carried, so a PARTIAL total read as complete. One
+     `ColumnValueReadout` now serves all three viewports, pinned.
+  7. Inbox focused-row aria-label replaced the row's whole accessible name
+     with a generic string — sender and subject restored.
+- **W1.5 (settings decomposition) — the lane with no builder record —
+  DEFECTS_FOUND, all fixed. The audit's completeness verdict was strong on
+  the question that mattered:** all 8 monolith `TabsContent` bodies traced
+  control-by-control (57 data-testids grepped) with nothing dropped; gating
+  parity exact (`feature.autonomy-matrix` now enforced in three places,
+  component-level owner/role gates byte-identical); all 11 legacy
+  `?tab=`/`#hash` forms resolve to live sections. settings.tsx: 1,843 → 386
+  lines, 16 routed sections, TabsContent ratcheted to zero.
+  1. **BLOCKING, fabrication class.** The P2 §1.4 status rows presented
+     PLATFORM signals as the ORG's own state: the comms lane read
+     `/api/integrations/status` (platform SES/Twilio/Lob env) and the AI
+     lane read AcreOS's own OpenAI key — so an org with nothing connected
+     was told "Email ready" and "Your AI provider key is connected". On the
+     page whose entire job is telling you what YOU have connected. Comms now
+     reads `/api/settings/integrations/status` (isAuthenticated +
+     getOrCreateOrg, the org's own providers WITH validation state, which
+     also lets a row say *erroring*); the AI lane is REMOVED — no
+     org-scoped AI health exists at HEAD, so the row shows nothing rather
+     than something false. `statusLane` is typed `"comms"` only, so a future
+     "ai" lane fails typecheck instead of silently reintroducing it.
+  2. **BLOCKING.** QuickFind's 25-row catalog still spoke the retired
+     7-tab vocabulary while the shell routed jumps through the legacy map,
+     so ~7 rows landed on a section that does not contain the control they
+     name ("API keys" → Mailbox, "Appearance / theme" → Profile). Every row
+     now names a REAL registry section id and the shell navigates by
+     `settingsSectionPath`; the catalog stays deliberately finer-grained
+     than the registry (people search for the control, not the page), with
+     every id pinned against `SETTINGS_SECTIONS`.
+  3. The `:settings` palette browse branch was dead code — computed, then
+     swallowed by a render guard requiring a non-empty query. Guard relaxed
+     so a scope chip renders its slice.
+  4. The legacy-hash resolver ran on EVERY `/settings/*` path, so any
+     in-page anchor colliding with a legacy token (#team, #billing,
+     #security…) teleported the reader — and blocked the setting-level
+     anchors §1.4 asks for. Now root-only.
+  5. QuickFind hijacked ⌘K across ~18 mount points (it had one at HEAD),
+     killing the global palette throughout settings — including on the
+     pages where this same lane added settings destinations TO that palette.
+     ⌘K released; "/" now also exempts contentEditable and ARIA text
+     widgets; the visible hint matches the key actually owned.
+  6. `integrations` meant two things (`/settings/integrations` = Slack &
+     Teams vs the map's → communications); the listings.tsx link that read
+     "Settings → Integrations" now points at the section holding partner
+     credentials with a matching label.
+  7. The registry docstring claimed the surfaces "reach 100% of the
+     inventory" while an unrouted, unimported `pages/settings/api-keys.tsx`
+     sat outside it. Orphan deleted; the claim narrowed to what the suite
+     proves.
+
 ## Waves S/1/O — slice 7 (S1+S2 staff charters + 1.4 EntityTable + O4 SLOs) — ✅ SHIPPED
 
 - **Wave S S1+S2 (the first staff slice, per D-5) — CONFIRMED_GOOD:**
@@ -960,20 +1075,21 @@ integration defects were all fixed centrally before commit:
   Ops note: a container restart rolled the LOCAL clone back two commits
   after the push — the remote was intact; recovered by fast-forward, no
   work lost. Pushes are the only durable state; commit early.)
-- **In flight: FLEET 8** building S4 (scenario library as executable
-  doctrine — trigger→charter→playbook→autonomy→founder-touch→drill matrix
-  DERIVED against the real SENSE_INVENTORY/charters/jobRegistry/runbooks,
-  surfaced on the Story door), 1.3 (Today queue keys/snooze/approve-above-
-  threshold; Deals optimistic drag + column intelligence; Inbox needs-reply
-  view + keys), and 1.5 (settings decomposition: five-group left rail,
-  routed sections, redirects, status-row grammar, no-new-TabsContent lint —
-  settings.tsx is a 20-TabsContent monolith with a partially-decomposed
-  settings/ directory already present). Same protocol; fallback timer
-  armed.
-- **After fleet 8:** O6/O7 buildable parts, F1 slice 4+, S5 buildable part
-  (conflict memos ride F2's reasons rail), X-A slice 2 (post-ruling), then
-  Wave 2 per §D. G2/G3 wait on customers; founder queue unchanged. S3
-  hands / promotion mechanics stay propose-first per D-5.
+- **Slice 8 SHIPPED** (S4 + 1.3 + 1.5 — section above). Two fleet agents
+  died mid-run on credit exhaustion; the missing audits were re-run as
+  fleet 8b and found 2 blocking defects (a Today affordance that lied about
+  what it did; settings status rows passing platform credentials off as the
+  org's own) plus 15 more. All fixed centrally and pinned before commit.
+  **Standing lesson added:** a lane whose BUILDER dies still gets its
+  adversarial audit before merge — passing typecheck and its own test is
+  not evidence, and in this case the audit was the only completeness record
+  that ever existed for the settings decomposition.
+- **After fleet 8 → FLEET 9:** O6 (unit-economics receipt in the Letter +
+  infra-curve panel) and O7 buildable parts (deputy break-glass kit +
+  freshness ratchet, continuity statement), F1 slice 4+, S5 buildable part
+  (two-position conflict memos riding F2's reasons rail), X-A slice 2
+  (post-ruling), then Wave 2 per §D. G2/G3 wait on customers; founder queue
+  unchanged. S3 hands / promotion mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

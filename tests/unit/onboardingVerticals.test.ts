@@ -183,8 +183,11 @@ describe("skip + re-run wiring (source-pinned)", () => {
     path.resolve(__dirname, "../../client/src/pages/onboarding-v2.tsx"),
     "utf8",
   );
+  // Wave 1.5 settings decomposition: the re-run affordance moved from the
+  // settings.tsx monolith into the routed Organization section. Same
+  // invariant, new home.
   const settingsSrc = readFileSync(
-    path.resolve(__dirname, "../../client/src/pages/settings.tsx"),
+    path.resolve(__dirname, "../../client/src/pages/settings/organization-section.tsx"),
     "utf8",
   );
 
