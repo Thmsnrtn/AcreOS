@@ -21,7 +21,7 @@
     "server/services/autopilot/codeChangeGate.ts": "3fc5a984c93dd54757c4cec3ac6cabc43491f1a2e1da2c58c996af70b39d7742",
     "server/services/autopilot/gateTamperWatch.ts": "18700aec9de7dad62cdbd7c881dff7497bf903d01537763a8d4810dc0c854a24",
     "shared/governance/constitution.ts": "ef143686b1d43936fe2d686d0b5fe901547a7ca6cba4d18f0103961fa0ea98bc",
-    "shared/governance/public-claims.ts": "d22343d581eb43b0dfc13035fabf631b438a64de0d5af2fd277a5ca6082d7c99",
+    "shared/governance/public-claims.ts": "266f6b8ad1c65f255167ab7530afb167b87ab5c079dd663d5e83aef9cdf2cf44",
     "shared/governance/statuteRegister.ts": "0ccaefae7de3cfe3c853160d9f08eecd775eff8680ecffc36e4f26ac947825c7",
     "sovereign-protocol/immutables.json": "a80aacb95ae1b6cd4ed4fe308dc36fcc4a86ba2184fea1a31ac48474ce7dc8ae",
     "tests/unit/constitution.test.ts": "de01680c8e7625bbdb6c00259f10dc274165993218366b07dd60a16da83593d1",

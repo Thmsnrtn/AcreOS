@@ -117,6 +117,30 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── GET cross-charter contention (Wave S · S5 — negotiation with a record)
+  // The three NEGOTIABLE contentions (budget, growth-vs-finance,
+  // speed-vs-compliance), how many two-position memos are open on each, and
+  // any repeat-resolution standing-order PROPOSAL outstanding — every proposal
+  // explicitly marked not-in-force, because writing a standing order changes
+  // what the machine may do without asking and that stays the founder's act
+  // (the POST /standing-orders route below is the only way one is ever born).
+  // Also returns the ladder-decided move kinds, derived live from decide.ts,
+  // so the founder can see which conflicts are NEVER negotiated rather than
+  // taking the claim on faith. A pure read — it writes nothing.
+  app.get(
+    "/api/founder/autopilot/contentions",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getContentionState } = await import("./services/autopilot/conflictMemo");
+        return res.json(await getContentionState());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── POST the atomic PANIC STOP (T0.3) — halt everything in one tap ───────
   // The most consequential founder control: flips all master switches off +
   // quarantines every domain to OBSERVE + records a receipt + pages. Reversible

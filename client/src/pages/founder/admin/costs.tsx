@@ -35,6 +35,7 @@ import { UnitEconomicsContent } from "@/pages/founder/unit-economics";
 import { ObservabilityCostContent } from "@/pages/founder/observability-cost";
 import { ProvidersContent } from "@/pages/founder-providers";
 import { PaidDataEvalContent } from "@/pages/founder/paid-data-eval";
+import { InfraCurvePanel } from "@/components/founder/InfraCurvePanel";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -628,7 +629,16 @@ export default function FounderAdminCostsPage() {
         <TabsContent value="overview"><CostContent /></TabsContent>
         <TabsContent value="ai-spend"><AiCostsContent /></TabsContent>
         <TabsContent value="optimizer"><CostOptimizerContent /></TabsContent>
-        <TabsContent value="unit-economics"><UnitEconomicsContent /></TabsContent>
+        {/* O6 (P5 §5.3) — the infra curve sits ABOVE the per-customer table
+            in the same tab: "what is a unit of work costing me over time"
+            frames "which customers cost what". A section of an existing hub,
+            deliberately not a new founder route. */}
+        <TabsContent value="unit-economics">
+          <div className="space-y-4">
+            <InfraCurvePanel />
+            <UnitEconomicsContent />
+          </div>
+        </TabsContent>
         <TabsContent value="sentry"><ObservabilityCostContent /></TabsContent>
         <TabsContent value="providers"><ProvidersContent /></TabsContent>
         <TabsContent value="data-plane"><DataPlaneContent /></TabsContent>

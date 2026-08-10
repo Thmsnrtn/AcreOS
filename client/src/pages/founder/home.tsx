@@ -27,6 +27,7 @@ import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
 import { StaffBlindnessLines } from "@/components/founder/StaffCharterCards";
 import { LetterConfession } from "@/components/founder/LetterConfession";
+import { UnitEconomicsReceiptSection } from "@/components/founder/UnitEconomicsReceipt";
 import { ReadinessLadderLetterLine } from "@/components/founder/ReadinessLadderSection";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatRelative } from "@/lib/format";
@@ -369,6 +370,17 @@ export default function FounderHomePage() {
               <WedgeReceipts metric={receiptMetric} />
             </motion.div>
           )}
+
+          {/* O6 (P5 §5) — the unit-economics receipt: what each customer
+              contributes, the platform roll-up, and which way it's moving.
+              Every figure comes off the existing unit-economics engine via
+              /api/founder/money/unit-economics-receipt and links to the rows
+              that produced it; anything the engine can't source renders as an
+              explicit absence, never a zero. Same auxiliary-signal discipline
+              as StepAwayLine — the Letter never blocks on it. */}
+          <motion.div variants={staggerItem}>
+            <UnitEconomicsReceiptSection />
+          </motion.div>
 
           {/* "My brain changed" — the model-change annunciator. Muted but
               NEVER hidden when present: the track record below was earned by

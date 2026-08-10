@@ -355,6 +355,12 @@ export function ControlCenterContent() {
               <div className="mt-3">
                 <BackupRestoreProofSection />
               </div>
+              {/* Master-handoff O7 (P5 §6) — the deputy break-glass kit read
+                  as evidence: which pieces of it actually exist, and how long
+                  since anyone walked it. Absent pieces render absent. */}
+              <div className="mt-3">
+                <ContinuityKitSection />
+              </div>
             </motion.section>
 
             {/* The founder's OWN onboarding (founder ask 2026-07-30) — a
@@ -2119,6 +2125,188 @@ function ConnectionsSection() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ── Continuity — the deputy break-glass kit (master-handoff O7, P5 §6) ──────
+// "What happens if you can't be reached?" answered from evidence, not
+// intention. server/services/continuityKit.ts parses
+// docs/runbooks/deputy-break-glass-kit.md and DERIVES which pieces of the kit
+// exist: a runbook that must resolve on disk, a declaration whose placeholder
+// value reads absent, a section that must carry real content. A piece with no
+// evidence renders "Not in place" — never a check mark — so the honest state
+// today (no deputy named, no credential custody) is visible rather than
+// implied away.
+//
+// The kit also EXPIRES: past its review interval this card goes amber and
+// tests/unit/continuityKit.test.ts fails the build, exactly as the DR-drill
+// ledger's freshness ratchet does. Green here means one thing and one thing
+// only: the server returned verdict "ready" (every piece present AND reviewed
+// inside the interval). Nothing on this card can be made green by editing the
+// card.
+
+interface ContinuityPieceRow {
+  key: string;
+  what: string;
+  why: string;
+  present: boolean;
+  detail: string;
+  fix: string;
+}
+
+interface ContinuityKitData {
+  docPath: string;
+  docPresent: boolean;
+  verdict: "no-kit" | "incomplete" | "unreviewed" | "stale" | "ready";
+  headline: string;
+  pieces: ContinuityPieceRow[];
+  piecesPresent: number;
+  piecesRequired: number;
+  reviewIntervalDays: number;
+  lastReviewedAt: string | null;
+  reviewAgeDays: number | null;
+  freshness: "no-kit" | "never-reviewed" | "fresh" | "stale";
+  lastVacationDrill: string | null;
+  nonDelegable: Array<{ id: string; title: string }>;
+  deputyPermitted: Array<{ key: string; what: string }>;
+}
+
+const CONTINUITY_KIT_KEY = ["/api/founder/intelligence/continuity-kit"];
+
+function continuityTone(k: ContinuityKitData): ProofTone {
+  // The single green path — the server's own verdict, nothing inferred here.
+  if (k.verdict === "ready") return "ready";
+  if (k.verdict === "no-kit") return "attention";
+  return "warn";
+}
+
+function continuityReviewLine(k: ContinuityKitData): string {
+  if (k.freshness === "no-kit") {
+    return "Freshness can't be read from here — the kit document isn't in the deployed image (docs/ is excluded from it). CI reads it from the repository on every build.";
+  }
+  if (k.freshness === "never-reviewed") {
+    return `Never reviewed — the kit is meant to be walked end to end every ${k.reviewIntervalDays} days.`;
+  }
+  if (k.freshness === "stale") {
+    return `Last reviewed ${k.lastReviewedAt} (${k.reviewAgeDays}d ago) — past the ${k.reviewIntervalDays}-day interval, so the kit is stale.`;
+  }
+  return `Last reviewed ${k.lastReviewedAt} (${k.reviewAgeDays}d ago) — inside the ${k.reviewIntervalDays}-day interval.`;
+}
+
+function ContinuityKitSection() {
+  const q = useQuery<ContinuityKitData>({
+    queryKey: CONTINUITY_KIT_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/founder/intelligence/continuity-kit", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load the continuity kit (${res.status})`);
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (q.isLoading) return <Skeleton className="h-40 w-full rounded-card" />;
+  if (q.isError || !q.data) {
+    return (
+      <QueryErrorState
+        error={q.error instanceof Error ? q.error : new Error("Failed")}
+        title="Continuity kit unavailable"
+        onRetry={() => void q.refetch()}
+      />
+    );
+  }
+
+  const k = q.data;
+  const tone = continuityTone(k);
+
+  return (
+    <div className="rounded-card border border-border bg-card p-4 space-y-3" data-testid="continuity-kit">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">If you cannot be reached</p>
+        <p className="text-xs text-muted-foreground">
+          What a trusted deputy would need to keep the company alive. Each piece is derived from the kit document —
+          a piece with no evidence shows as not in place, never as done.
+        </p>
+      </div>
+
+      <div className="flex items-start gap-2" data-testid="continuity-verdict">
+        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${PROOF_DOT[tone]}`} aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          {/* In the deployed image docs/ is excluded (.dockerignore), so the
+              kit cannot be read at all and every piece comes back absent.
+              Rendering "0 of 12 pieces in place" there states a measurement
+              that was never taken — twelve fabricated failures (fleet-9
+              verifier catch). Say what is true instead. */}
+          <span className="block text-sm font-medium text-foreground">
+            {k.verdict === "no-kit"
+              ? "Readiness can't be read from here"
+              : `${k.piecesPresent} of ${k.piecesRequired} pieces in place`}
+          </span>
+          <span className={`block text-xs ${PROOF_TEXT[tone]}`}>{k.headline}</span>
+          <span className={`block text-xs ${k.freshness === "fresh" ? "text-muted-foreground" : PROOF_TEXT["warn"]}`}>
+            {continuityReviewLine(k)}
+          </span>
+        </span>
+      </div>
+
+      {/* Suppressed when the kit is unreadable — a red row per piece would be
+          twelve assertions of absence we did not measure. */}
+      <ul className={`divide-y divide-border/60 ${k.verdict === "no-kit" ? "hidden" : ""}`}>
+        {k.pieces.map((p) => (
+          <li key={p.key} className="py-2 flex items-start gap-2" data-testid={`continuity-piece-${p.key}`}>
+            <span
+              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${p.present ? PROOF_DOT.ready : PROOF_DOT.warn}`}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-foreground">
+                {p.what}{" "}
+                <Badge variant="outline" className={`text-xs ${p.present ? "text-muted-foreground" : "border-acr-warn/40 text-acr-warn"}`}>
+                  {p.present ? "In place" : "Not in place"}
+                </Badge>
+              </span>
+              <span className={`block text-xs ${p.present ? "text-muted-foreground" : "text-acr-warn"}`}>{p.detail}</span>
+              {!p.present && <span className="block text-xs text-muted-foreground">Fix: {p.fix}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="rounded-card border border-border/60 bg-muted/30 p-3 space-y-1">
+        <p className="text-xs font-medium text-foreground">What a deputy may do</p>
+        <p className="text-micro text-muted-foreground">
+          Declared, not granted — this list mints no login. Whoever holds credential custody can act on it.
+        </p>
+        <ul className="mt-1 space-y-0.5">
+          {k.deputyPermitted.map((a) => (
+            <li key={a.key} className="text-xs text-muted-foreground" data-testid={`continuity-permitted-${a.key}`}>
+              {a.what}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-card border border-border/60 bg-muted/30 p-3 space-y-1">
+        <p className="text-xs font-medium text-foreground">Never delegable — to a deputy or to anyone</p>
+        <p className="text-micro text-muted-foreground">
+          Derived from the constitution, not typed here. A deputy permission naming one of these is refused by the
+          same module that builds this card.
+        </p>
+        <ul className="mt-1 space-y-0.5">
+          {k.nonDelegable.map((h) => (
+            <li key={h.id} className="text-xs text-muted-foreground" data-testid={`continuity-hard-stop-${h.id}`}>
+              {h.title}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <p className="text-micro text-muted-foreground">
+        Edit {k.docPath} to change any of this — nothing here can be made green from the app.
+        {k.lastVacationDrill
+          ? ` Last 7-day hands-off vacation test: ${k.lastVacationDrill}.`
+          : " The 7-day hands-off vacation test is a founder act and the kit records none yet."}
+      </p>
     </div>
   );
 }

@@ -44,7 +44,12 @@ import {
 import { and, desc, gte, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { computeRunway } from "./services/finance/runwayModel";
-import { readUnitEconomicsRollup } from "./services/unitEconomics";
+import {
+  readUnitEconomicsRollup,
+  readUnitEconomicsReceipt,
+  readInfraCurve,
+  RECEIPT_MARGIN_FLOOR_PCT,
+} from "./services/unitEconomics";
 import { getContributionMargin } from "./services/financial-ledger";
 import { organizations } from "@shared/schema";
 import { monthlyRevenueCentsFor, tierForSubscriptionTier } from "@shared/billing/tier-pricing";
@@ -411,7 +416,10 @@ export function registerFounderMoneyRoutes(app: Express): void {
           paybackMonths,
           // Phase-gate reference lines for the eventual chart.
           thresholds: {
-            grossMarginFloorPct: 70, // charter: ≥70% sustained
+            // ONE definition of the ≥70% charter floor (O6) — the Letter's
+            // receipt and this dashboard judge the same number by the same
+            // constant, so they cannot drift apart. Value unchanged.
+            grossMarginFloorPct: RECEIPT_MARGIN_FLOOR_PCT, // charter: ≥70% sustained
             ltvCacFloor: 3, // charter: ≥3:1 at Phase 3
             paybackCeilingMonths: 12, // charter: <12mo at Phase 2
           },
@@ -519,6 +527,41 @@ export function registerFounderMoneyRoutes(app: Express): void {
       } catch (err) {
         logger.error(
           "[founder/money/paid-data-readiness] failed",
+          err instanceof Error ? err : undefined,
+        );
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── O6 (P5 §5) — the unit-economics RECEIPT + the infra curve ───────────
+  //
+  // ONE founder-gated read serving two surfaces (the slice-7 charters-endpoint
+  // shape: isAuthenticated + requireFounder + Errors.*):
+  //   • the Letter's receipt section  (client/src/components/founder/UnitEconomicsReceipt.tsx)
+  //   • the infra-curve panel         (client/src/components/founder/InfraCurvePanel.tsx,
+  //                                    rendered in /founder/admin/costs → Unit economics)
+  //
+  // Every figure is DERIVED in server/services/unitEconomics.ts from the
+  // persisted snapshots (which are themselves derived from financial_ledger).
+  // Nothing here computes, rounds, or defaults a number — a route that did
+  // would be a second definition of the margin, which is exactly the class of
+  // defect the "one money spine" note in the service header exists to prevent.
+  app.get(
+    "/api/founder/money/unit-economics-receipt",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const days = Math.min(365, Math.max(7, Number(req.query.days) || 90));
+        const [receipt, curve] = await Promise.all([
+          readUnitEconomicsReceipt(),
+          readInfraCurve(days),
+        ]);
+        return res.json({ receipt, curve });
+      } catch (err) {
+        logger.error(
+          "[founder/money/unit-economics-receipt] failed",
           err instanceof Error ? err : undefined,
         );
         return Errors.internal(res, err);

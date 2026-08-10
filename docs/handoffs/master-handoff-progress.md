@@ -552,6 +552,75 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves O/S — slice 9 (O6 unit-economics receipt + O7 continuity kit + S5 conflict memos) — ✅ SHIPPED
+
+All three lanes came back DEFECTS_FOUND — **3 blocking, 10 should-fix** — and
+every one is fixed centrally and pinned. The pattern is now unmistakable and
+worth naming: for the third slice running, the defects that mattered were not
+broken code but **surfaces asserting things the code had not established**.
+Type-checks, lints and the lanes' own tests were green throughout.
+
+- **O6 (unit-economics receipt + infra curve):** the engine already existed,
+  so the lane's work was the surface — and its own builder caught two
+  honesty defects mid-build (judging the ≥70% charter floor against
+  CONTRIBUTION margin, which excludes the allocated fixed share and would
+  have flattered every month by exactly the allocation; and a vacuous "every
+  organization (0) has a snapshot — nothing is missing" on an empty
+  cluster). Integration fixes: the "Customers with a snapshot" tile counted
+  ORGS (computeAllOrgs snapshots free tiers, trials and the demo org) — now
+  "Orgs with a snapshot" qualified by the real paying count; the roll-up
+  broke the service's own ZERO-NEEDS-EVIDENCE contract, which per-customer
+  rows honored but the figure the Letter LEADS with did not — now carries
+  `billedEvents` ("$0 across 0 billed events" vs "$0 spent"), null when the
+  counts are unreadable because unknown is not zero; freshness stated a date
+  but no AGE and no threshold, so a dead nightly job would keep rendering a
+  present-tense pass/fail against the margin floor — now `ageDays` +
+  `RECEIPT_STALE_AFTER_DAYS`, with the floor VERDICT suppressed once stale;
+  and the "what this curve cannot see" list claimed map tiles were "not yet
+  billed" when Mapbox ships today and bills for tile loads — reworded to
+  name the vendor actually incurring unmetered cost.
+- **O7 (deputy break-glass kit + continuity):** the kit is a real artifact
+  with a machine-read declarations block, an append-only review ledger, the
+  six constitutional hard stops by id, and a freshness ratchet genuinely
+  mirroring the DR-drill trio. **BLOCKING (public page):** the /transparency
+  continuity statement asserted in the present tense that the kit "exists and
+  is reviewed on a fixed interval" — it has never been reviewed, zero review
+  blocks, and every other surface says so. Rewritten to state the POLICY
+  ("declares a 100-day review interval, and has not yet had its first
+  recorded review; once one lands, our build fails when it ages past it"),
+  with the pin now DERIVED from the kit's real freshness so it cannot go
+  stale in either direction. **BLOCKING (gate estate):** the lane edited
+  public-claims.ts — a gate-tamper-pinned file — without regenerating the
+  manifest, which would have failed `npm test` AND paged the live
+  gate_tamper_watch job. Regenerated. Also: the Controls card rendered "0 of
+  12 pieces in place" plus twelve red rows in PRODUCTION, where docs/ is
+  excluded from the image so the kit cannot be read at all — twelve
+  fabricated failures; it now says "Readiness can't be read from here" and
+  suppresses the list. And a hardcoded "the vacation test has not been run"
+  sentence is now DERIVED from the kit's own drill line (null on NONE).
+- **S5 (conflict memos):** the builder's registry-refusal, ladder-first
+  ordering and derived-not-copied stabilize set are genuinely good — probing
+  decide.ts's real `rankMoves` means a new P0 move is covered the day it
+  lands. **BLOCKING:** the Decisions door toasted "Your decision was
+  recorded and applied" for a memo, which by design has `actionPayload:
+  null` and applies NOTHING — the toast now reads the server's `executed`
+  flag and tells the truth per card. Also: the memo asserted the safety
+  ladder "would have decided this" from live incident/envelope/compliance
+  state it never reads — downgraded to what the code actually checks (the
+  two positions' move kinds); `getContentionState` reported `openMemos: 0`
+  when its query THREW — now `number | null` with a `readFailed` marker,
+  because "not measured" is not "none open"; and nothing validated that a
+  memo's two positions belong to the contention they are filed under, so a
+  card could be headed with one fight while its positions argued another —
+  now a `charter_mismatch` refusal, ordered AFTER the ladder check so a fire
+  still reports `ladder_decides`.
+- **Deferred honestly, not silently:** `fileConflictMemo` has no production
+  caller yet — wiring the emitter means deriving two REAL charter positions
+  (recommendation, cost read, risk read) from live loop state, and inventing
+  those hastily is precisely how a fabricated memo would be born. The read
+  surface and its founder-gated endpoint are the slice's deliverable; the
+  emitter is the next slice's, named here rather than papered over.
+
 ## Waves S/1 — slice 8 (S4 scenario library + 1.3 door interactions + 1.5 settings) — ✅ SHIPPED
 
 **Fleet incident, recorded because the protocol earned its keep:** fleet 8
@@ -1095,8 +1164,19 @@ integration defects were all fixed centrally before commit:
   repeat resolutions surface a standing-order PROPOSAL, never an automatic
   policy write). Verifiers are briefed on the last two slices' blocking
   defects as the fabrication pattern to hunt. Fallback timer armed.
-- **After fleet 9:** F1 slice 4+, X-A slice 2 (post-ruling), S5's
-  remaining parts, then Wave 2 per §D. G2/G3 wait on customers; founder
+- **Slice 9 SHIPPED** (O6 + O7 + S5 — section above). Three lanes, 3
+  blocking + 10 should-fix, all fixed centrally and pinned. **The pattern,
+  now three slices running: the defects that matter are surfaces asserting
+  what the code has not established** — a public page claiming a review
+  practice it never had, a toast claiming a memo applied something, twelve
+  red readiness rows in an environment that cannot read the file, a margin
+  verdict on months-old arithmetic. None are visible to typecheck, lint, or
+  the lane's own suite. The adversarial audit is the only thing that finds
+  them, which is why it is not optional.
+- **After fleet 9 → FLEET 10:** S5's emitter (derive two real charter
+  positions from live loop state and file the memo at the council seam —
+  deliberately deferred rather than faked), F1 slice 4+, X-A slice 2
+  (post-ruling), then Wave 2 per §D. G2/G3 wait on customers; founder
   queue unchanged. S3 hands / promotion mechanics stay propose-first
   per D-5.
 - A session resuming from this file mid-program: read the newest wave section

@@ -19,6 +19,13 @@ import {
   classifySupportSeverity,
   slaDeadlineFor,
 } from "./autopilot/measurementLoops";
+/**
+ * S5 — the conflict memo's shape. TYPE-ONLY on purpose: conflictMemo.ts imports
+ * this module's VALUES (the item type + the service), so a value import back
+ * the other way would close a runtime cycle. A type import erases at compile
+ * time and cannot.
+ */
+import type { ConflictMemo as ConflictMemoRow } from "./autopilot/conflictMemo";
 
 /**
  * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
@@ -184,6 +191,21 @@ export function normalizeDispositionReason(reason?: unknown): string | undefined
 export const ABUSE_REPORT_ITEM_TYPE = "abuse_report";
 export const ABUSE_REPORT_REASON_MAX_CHARS = 2000;
 export const ABUSE_REPORT_PAGE_PATH_MAX_CHARS = 300;
+
+/**
+ * Wave S · S5 — a cross-charter CONFLICT MEMO. Also NATIVE (same reasoning as
+ * abuse_report: the queue row IS the record, so every disposition verb works
+ * on it directly and it is deliberately absent from MIRRORED_QUEUE_ITEM_TYPES).
+ *
+ * Two charters wanted opposite things and the council split; the memo carries
+ * BOTH positions with their cost and risk reads plus a default. It executes
+ * nothing — actionPayload is always null — so the founder's tap IS the action,
+ * and their optional reason rides the same founderModification column every
+ * other disposition writes to (see normalizeDispositionReason above). The
+ * builder and the negotiability rules live in
+ * server/services/autopilot/conflictMemo.ts; this module only files the row.
+ */
+export const CONFLICT_MEMO_ITEM_TYPE = "conflict_memo";
 
 const RECOURSE_SIGNAL_CARD_META: Record<string, { label: string; urgencyScore: number }> = {
   cancellation: { label: "A cancellation", urgencyScore: 85 },
@@ -1133,6 +1155,96 @@ export const decisionsInboxService = {
   },
 
   /**
+   * Wave S · S5 — file a cross-charter CONFLICT MEMO as a NATIVE decisions-door
+   * item. The memo object arrives fully built and already vetted by
+   * conflictMemo.evaluateContention: the safety ladder does not decide it, the
+   * council was genuinely divided, and the contention is a registered one.
+   * This method's whole job is the row.
+   *
+   * Class C through the arbiter, riskLevel medium: a contention is a
+   * CONSIDERED decision, not an emergency. Anything that IS an emergency was
+   * refused upstream by the ladder guard and never reached here — routing a
+   * memo at Class B would mean the machine interrupts the founder for a
+   * negotiation as loudly as for a fire.
+   *
+   * Two invariants this row exists to hold:
+   *   • actionPayload is ALWAYS null — a memo can never execute, so adopting
+   *     a position is something the founder does, not something a tap triggers.
+   *   • ONE open memo per fingerprint — the same fight never stacks two cards.
+   */
+  async createFromConflictMemo(
+    memo: ConflictMemoRow,
+  ): Promise<{ itemId: number | null; created: boolean }> {
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, CONFLICT_MEMO_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'fingerprint' = ${memo.fingerprint}`,
+      ),
+    });
+    // Open-card-only re-check in process so unit tests pin the semantics
+    // independent of the SQL layer (the A1 / abuse_report pattern).
+    if (
+      existing &&
+      existing.itemType === CONFLICT_MEMO_ITEM_TYPE &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      existing.contextBundle?.fingerprint === memo.fingerprint
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const arbiter = await arbitrateInboxInsert("C", `Conflict memo: ${memo.label}`, {
+      itemType: CONFLICT_MEMO_ITEM_TYPE,
+      contention: memo.contention,
+      fingerprint: memo.fingerprint,
+    });
+
+    const sides = memo.positions
+      .map((p) => `${p.charter} wants: ${p.recommendation}`)
+      .join(" ");
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: CONFLICT_MEMO_ITEM_TYPE,
+      riskLevel: "medium",
+      urgencyScore: 55,
+      sophieAnalysis:
+        `${memo.label} — two charters want opposite things and the council split ` +
+        `${Math.round(memo.council.agreement * 100)}/${Math.round(memo.council.disagreement * 100)} ` +
+        `across ${memo.council.votes} voice(s). ${sides} Both positions, with their cost and ` +
+        `risk reads, are on this card. Neither position is a stabilize move, so the ` +
+        `safety ladder did not decide this one — that check reads the two positions' ` +
+        `move kinds, not live incident or envelope state.`,
+      // The panel's measured agreement IS the confidence — never a stronger
+      // claim. Scaled to the column's 0-100 integer convention: storing the
+      // raw 0..1 fraction would truncate to 0 and make a 3-of-4 council read
+      // "not sure" on the card (naturalConfidence bands at 85/60), which is a
+      // badge claiming weaker evidence than the derivation supports.
+      sophieConfidenceScore: Math.round(memo.council.agreement * 100),
+      recommendedAction: memo.question,
+      recommendedActionLabel: "Rule on this contention",
+      // A memo executes NOTHING. Adopting a position is the founder's act.
+      actionPayload: null,
+      ownerAgentCodename: this.inferAgent(CONFLICT_MEMO_ITEM_TYPE),
+      contextBundle: {
+        conflictMemo: memo,
+        fingerprint: memo.fingerprint,
+        // Built by the memo, not here: the `adopt_<charter>` key is what the
+        // repeat-resolution reader matches on, so it gets exactly one author.
+        options: memo.options,
+        ...(memo.standingOrderProposal
+          ? { standingOrderProposal: memo.standingOrderProposal }
+          : {}),
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
    * F2 slice 1 — close a mirror card because its DEEP SURFACE disposed the
    * source row (verdict rendered / reply sent / draft dismissed). The founder
    * acted on the system of record, so the card resolves with resolvedBy
@@ -1279,6 +1391,11 @@ export const decisionsInboxService = {
       // X-A — portal abuse reports are a trust/alignment signal; Quinn
       // (Chief of Alignment) owns triage. NATIVE item, not a mirror.
       abuse_report: "quinn",
+      // S5 — a cross-charter conflict memo is the MACHINE asking the founder
+      // to rule on its own internal contention, so Solene owns it for the same
+      // reason she owns shadow_promotion_request: only the founder's tap
+      // settles a question about what the machine should do.
+      conflict_memo: "solene",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

@@ -77,3 +77,50 @@ export function councilConfidence(agg: CouncilAggregate): number {
   if (agg.agreement > 0.5) return 0.5;
   return 0.3;
 }
+
+/**
+ * S5 — is this panel CONTESTED enough that the split itself is the news?
+ *
+ * Deliberately DERIVED from councilConfidence rather than carrying a second
+ * threshold: a panel is contested exactly when its confidence has dropped to
+ * the bare-majority band or below (agreement ≤ ½). A clear majority (≥ ⅔)
+ * still lowers confidence — the risk gate handles that by MIN — but it is not
+ * a disagreement worth spending a founder's attention on.
+ *
+ * One threshold, one place. If the bands ever move, this moves with them and
+ * cannot drift. A panel too small to disagree (<2 voices) is never contested —
+ * absence of a panel is not evidence of conflict. Pure.
+ */
+export function councilIsContested(agg: CouncilAggregate): boolean {
+  if (agg.votes < 2) return false;
+  return councilConfidence(agg) <= 0.5;
+}
+
+/** One side of a split panel: a recommended kind and how many voices backed it. */
+export interface CouncilSide {
+  kind: string;
+  votes: number;
+}
+
+/**
+ * S5 — the two leading positions in the tally, so a contested call can be
+ * written up carrying BOTH sides instead of only the winner.
+ *
+ * `aggregateCouncil` answers "what did the panel decide"; this answers "what
+ * did the panel decide AGAINST", which is the half a negotiation memo needs.
+ * Ordering is deterministic: votes descending, ties broken by first-seen
+ * (insertion) order, exactly like the consensus pick. `opposing` is null when
+ * the panel was unanimous — there is no second position to report, and
+ * inventing one would be fabrication. Pure + total.
+ */
+export function councilTopTwo(agg: CouncilAggregate): {
+  leading: CouncilSide | null;
+  opposing: CouncilSide | null;
+} {
+  const sides: CouncilSide[] = Object.entries(agg.tally).map(([kind, votes]) => ({ kind, votes }));
+  if (sides.length === 0) return { leading: null, opposing: null };
+  // Stable sort: Array.prototype.sort is stable in every supported runtime, so
+  // equal vote counts keep insertion (first-seen) order.
+  const ranked = [...sides].sort((a, b) => b.votes - a.votes);
+  return { leading: ranked[0] ?? null, opposing: ranked[1] ?? null };
+}

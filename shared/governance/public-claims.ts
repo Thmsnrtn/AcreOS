@@ -244,6 +244,63 @@ const CURATED_ROWS: PublicProofClaim[] = [
       ],
     },
   },
+  // ── Continuity (master-handoff O7 / P5 §6) ────────────────────────────────
+  // "What happens if the founder is hit by a bus" is a sales objection for a
+  // one-person platform. These three rows are the only part of the answer that
+  // is ENFORCED today; the rest of the continuity statement on /transparency
+  // is derived state (how complete the kit is), test-pinned to the kit itself
+  // rather than claimed here. Nothing about a deputy's existence is claimed —
+  // there isn't one, and the page says so.
+  {
+    id: "continuity.hard-stops-stay-founder-only",
+    title: "No absence hands anyone the founder-only hard stops",
+    claim:
+      "The founder-only hard stops — pricing changes, legal signing, spends over $500, and destructive customer-data deletion — cannot be delegated to a deputy or to anyone else, including during an absence: the continuity kit derives its non-delegable list from the same constitution registry the runtime enforces, and any proposed deputy permission naming one of those hard stops is refused by that module rather than granted.",
+    category: "governance",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "shared/governance/constitution.ts",
+        "server/services/continuityKit.ts",
+        "tests/unit/continuityKit.test.ts",
+        "tests/unit/founderHardStopGuardrails.test.ts",
+      ],
+      note: "Scope: the delegation path. The hard stops' own runtime enforcement is founderHardStopGuardrails.test.ts; continuityKit.test.ts additionally proves a permission naming a hard stop is refused, using a planted fixture permission.",
+    },
+  },
+  {
+    id: "continuity.kit-state-derived",
+    title: "Our continuity plan's state is derived, never asserted",
+    claim:
+      "Every piece of our founder-absence kit — a named deputy, a way to reach them, their written authority, credential custody, the outage card, the absence runbook, the panic-stop instructions — resolves from real evidence: a file that must exist, or a declaration whose placeholder value reads as missing. A piece that does not exist renders as missing rather than as a check mark, and the continuity statement on this page is test-pinned to that derived state.",
+    category: "honesty",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "docs/runbooks/deputy-break-glass-kit.md",
+        "server/services/continuityKit.ts",
+        "client/src/pages/transparency.tsx",
+        "tests/unit/continuityKit.test.ts",
+      ],
+    },
+  },
+  {
+    id: "continuity.kit-review-ratchet",
+    title: "The continuity kit expires on a fixed interval",
+    claim:
+      "The kit declares a 100-day review interval. Once a review is recorded, our build fails when the newest recorded review ages past that interval, and the founder's own surface shows the kit as stale instead of green — a kit nobody has re-read cannot quietly keep counting as current.",
+    category: "honesty",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "docs/runbooks/deputy-break-glass-kit.md",
+        "server/services/continuityKit.ts",
+        "client/src/pages/founder/autopilot-control.tsx",
+        "tests/unit/continuityKit.test.ts",
+      ],
+      note: "Honest scope: no review has been recorded yet, so the ratchet is dormant — the kit's ledger must keep saying so, and the kit can never render ready while unreviewed.",
+    },
+  },
   {
     id: "honesty.demo-read-only-sample-data",
     title: "The public demo is read-only, on labeled sample data",

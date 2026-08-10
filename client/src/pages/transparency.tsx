@@ -57,6 +57,7 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   PROOF_KIND_LABELS,
+  proofClaimById,
   proofClaimsByCategory,
 } from "@shared/governance/public-claims";
 
@@ -628,6 +629,118 @@ function ProofSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Continuity — what happens to your data and your service if the founder is
+// unreachable (master-handoff O7 / P5 §6).
+//
+// A one-person platform gets asked this, and the honest answer today is
+// partly uncomfortable. Two rules keep this section from drifting into
+// reassurance:
+//
+//  1. The DERIVED sentence below describes the real state of our internal
+//     continuity kit (docs/runbooks/deputy-break-glass-kit.md, parsed by
+//     server/services/continuityKit.ts). tests/unit/continuityKit.test.ts
+//     pins it: the day a deputy is actually named, that test fails until this
+//     sentence is rewritten — and it fails just as hard if this page starts
+//     implying a deputy we do not have.
+//  2. Everything else here is rendered FROM the provable-claims registry, so
+//     this section structurally cannot make a claim that has no enforcement.
+//     A claim with no registry row does not render; it does not exist.
+// ---------------------------------------------------------------------------
+
+/**
+ * PINNED to the continuity kit's derived state by
+ * tests/unit/continuityKit.test.ts. Do not soften it: "we have arrangements"
+ * would be exactly the fabrication the rest of this page exists to refuse.
+ */
+const DEPUTY_ARRANGEMENT_TODAY =
+  "No deputy is named today. AcreOS is run by one person, and we publish that plainly rather than imply a bench we do not have. The kit a deputy would use — outage triage, severity routing, the panic stop, what to tell you, and the list of decisions nobody but the founder may ever make — exists and declares a 100-day review interval, though it has not yet had its first recorded review; once one lands, our build fails when it ages past that interval. Which parts of it are still missing is derived from the kit itself, not asserted by us.";
+
+const CONTINUITY_CLAIM_IDS = [
+  "constitution.rails.byo-not-refront",
+  "constitution.hard-stop.customer-data-deletion",
+  "continuity.hard-stops-stay-founder-only",
+  "continuity.kit-state-derived",
+  "continuity.kit-review-ratchet",
+];
+
+function ContinuitySection() {
+  const claims = CONTINUITY_CLAIM_IDS.map((id) => proofClaimById(id)).filter(
+    (c): c is NonNullable<typeof c> => Boolean(c),
+  );
+  return (
+    <section
+      id="continuity"
+      aria-labelledby="continuity-heading"
+      className="scroll-mt-24 space-y-6"
+      data-testid="continuity-statement"
+    >
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <KeyRound className="h-6 w-6 text-primary" aria-hidden="true" />
+          <h2 id="continuity-heading" className="text-2xl md:text-3xl font-bold">
+            If the founder is unreachable
+          </h2>
+        </div>
+        <p className="text-muted-foreground max-w-2xl leading-relaxed">
+          You are trusting a small company with the record of your business. It
+          is fair to ask what happens to that record if the person behind it
+          disappears for a week — or permanently. Here is the honest answer,
+          limited to the parts we can point at code for.
+        </p>
+      </div>
+
+      <Card data-testid="continuity-deputy-state">
+        <CardHeader>
+          <CardTitle className="text-base">Where the arrangement stands today</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {DEPUTY_ARRANGEMENT_TODAY}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="continuity-claims">
+        <CardHeader>
+          <CardTitle className="text-base">What holds regardless</CardTitle>
+          <CardDescription>
+            Each line is one of the enforced claims above, restated where it
+            matters most — when nobody is at the controls.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="divide-y" role="list">
+            {claims.map((row) => (
+              <li key={row.id} className="py-3 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">
+                    {row.title}
+                  </span>
+                  <Badge variant="outline">
+                    {PROOF_KIND_LABELS[row.enforcement.kind]}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {row.claim}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+        What we deliberately do not say: that the service is immune to a long
+        absence, or that someone else is standing by to run it. Neither is true
+        yet. Your own connected accounts — your mailbox, your phone number,
+        your payment processor — are yours and keep working on their own terms,
+        which is the point of running them that way.
+      </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page.
 // ---------------------------------------------------------------------------
 export default function TransparencyPage() {
@@ -676,6 +789,10 @@ export default function TransparencyPage() {
 
       {/* The provable-claims registry — static, independent of report state. */}
       <ProofSection />
+
+      {/* Continuity (O7) — the founder-absence answer, sourced from the kit's
+          real state and the enforced claims registry. Also static. */}
+      <ContinuitySection />
     </TransparencyChrome>
   );
 }

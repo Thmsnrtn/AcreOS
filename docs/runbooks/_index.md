@@ -13,6 +13,10 @@ Operational runbooks for AcreOS. Each is a Symptom → Diagnose → Fix → Veri
 7. [Database restore from snapshot](./07-database-restore-from-snapshot.md) — Fly Postgres snapshot restore (links to Boniface drill doc)
 8. [Founder out of office](./08-founder-out-of-office.md) — escalation rotation, who handles what
 
+## Continuity (founder unreachable)
+
+- [Deputy break-glass kit](./deputy-break-glass-kit.md) — what a trusted deputy needs to keep the company alive, what they may do, and the hard stops that can never be delegated. Its completeness and its review freshness are derived and test-enforced (`server/services/continuityKit.ts`), and shown on the Controls door under "If you cannot be reached".
+
 ## Other operational runbooks
 
 - [AI quota exceeded](./ai-quota-exceeded.md)

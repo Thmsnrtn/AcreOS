@@ -53,6 +53,7 @@ import type { DecisionCardOption } from "./services/decisionsInbox";
 import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { readContinuityKit } from "./services/continuityKit";
 
 const router = Router();
 
@@ -4382,6 +4383,27 @@ router.get("/data-plane", requireFounder, async (_req: Request, res: Response) =
       licenses,
     });
   } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/continuity-kit
+//
+// Master-handoff O7 (P5 §6): the deputy break-glass kit, read as EVIDENCE.
+// readContinuityKit() parses docs/runbooks/deputy-break-glass-kit.md and
+// derives which pieces actually exist (a runbook that resolves on disk, a
+// declaration whose placeholder value reads absent, a section with real
+// content), plus how long since the kit was last walked. It grants nothing:
+// the constitutional hard stops come back as non-delegable, and any deputy
+// permission naming one is refused inside the module.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/continuity-kit", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    res.json(readContinuityKit());
+  } catch (err) {
+    // `unknown`, not `any` — Errors.internal takes unknown, and the colon-any
+    // ratchet counts the annotation form too (audit F-06-1).
     Errors.internal(res, err);
   }
 });

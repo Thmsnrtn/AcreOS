@@ -185,6 +185,60 @@ function readShadowPromotion(bundle: Record<string, unknown> | null): ShadowProm
   return sp as ShadowPromotionEvidence;
 }
 
+// Wave S · S5 — a cross-charter CONFLICT MEMO carries both positions in
+// contextBundle.conflictMemo. The card renders them side by side with their
+// cost and risk reads, because the point of the memo is that the founder sees
+// the fight, not just the winner. Everything is read defensively: a bundle is
+// data, and a missing field renders as an honest absence rather than a guess.
+interface ConflictMemoPosition {
+  charter?: string;
+  recommendation?: string;
+  cost?: { usd?: number | null; basis?: string };
+  risk?: { basis?: string; coupledCharter?: string | null };
+  requiresNewCommitment?: boolean;
+}
+
+interface ConflictMemoView {
+  label?: string;
+  question?: string;
+  resource?: string;
+  positions?: ConflictMemoPosition[];
+  default?: { favors?: string | null; sentence?: string };
+  council?: { votes?: number; agreement?: number };
+}
+
+interface StandingOrderProposalView {
+  chosenKey?: string;
+  timesResolvedTheSameWay?: number;
+  body?: string;
+  ask?: string;
+  inForce?: boolean;
+}
+
+function readConflictMemo(bundle: Record<string, unknown> | null): ConflictMemoView | null {
+  const memo = (bundle as { conflictMemo?: unknown } | null)?.conflictMemo;
+  if (!memo || typeof memo !== "object") return null;
+  const view = memo as ConflictMemoView;
+  return Array.isArray(view.positions) && view.positions.length > 0 ? view : null;
+}
+
+function readStandingOrderProposal(
+  bundle: Record<string, unknown> | null,
+): StandingOrderProposalView | null {
+  const p = (bundle as { standingOrderProposal?: unknown } | null)?.standingOrderProposal;
+  if (!p || typeof p !== "object") return null;
+  const view = p as StandingOrderProposalView;
+  // A proposal that claims to be in force is not a proposal — refuse to render
+  // it rather than let a card overstate what the machine is allowed to do.
+  return view.inForce === true ? null : view;
+}
+
+/** Plain words for a charter token — the staff roster's own vocabulary. */
+function charterWords(charter: string | undefined): string {
+  if (!charter) return "A charter";
+  return charter.charAt(0).toUpperCase() + charter.slice(1);
+}
+
 // F2 mirror cards (appeal_review / recourse_draft) carry a link back to their
 // deep surface in contextBundle.deepLink. Only internal founder paths are ever
 // rendered as links — anything else is ignored (the bundle is data, not nav).
@@ -232,6 +286,10 @@ function DecisionRowCard({
   const options = answerable ? readOptions(row.contextBundle) : [];
   const shadowPromotion = readShadowPromotion(row.contextBundle);
   const deepLink = answerable ? readDeepLink(row.contextBundle) : null;
+  // The memo renders in EVERY bucket, not just needs-you: "negotiation with a
+  // record" means the record outlives the ruling.
+  const conflictMemo = readConflictMemo(row.contextBundle);
+  const standingOrderProposal = readStandingOrderProposal(row.contextBundle);
   const isPromotionCard = row.itemType === "shadow_promotion_request";
   const answering = answerInFlight === row.id;
 
@@ -328,6 +386,102 @@ function DecisionRowCard({
           )}
         </div>
       </div>
+
+      {/* S5 — the two-position conflict memo. Both charters' recommendations
+          with their cost and risk reads, then the default. A cost with no
+          measured number says "Not measured" rather than showing a zero. */}
+      {conflictMemo && (
+        <div
+          className="mt-3 rounded-card border bg-muted/30 p-3"
+          data-testid={`conflict-memo-${row.id}`}
+        >
+          {conflictMemo.question && (
+            <p className="text-sm font-medium text-foreground">{conflictMemo.question}</p>
+          )}
+          {conflictMemo.resource && (
+            <p className="text-micro text-muted-foreground mt-0.5">
+              In contention: {conflictMemo.resource}
+            </p>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2 mt-3">
+            {conflictMemo.positions?.map((p, i) => (
+              <div
+                key={p.charter ?? i}
+                className="rounded-card border bg-background p-3"
+                data-testid={`conflict-position-${row.id}-${p.charter ?? i}`}
+              >
+                <Badge variant="outline" className="text-micro uppercase">
+                  {charterWords(p.charter)}
+                </Badge>
+                <p className="text-xs text-foreground mt-1.5">{p.recommendation}</p>
+
+                <div className="mt-2 space-y-1.5">
+                  <div>
+                    <p className="text-micro uppercase text-muted-foreground">Cost</p>
+                    <p className="text-xs font-mono text-foreground">
+                      {p.cost?.usd == null ? "Not measured" : dollars(p.cost.usd * 100)}
+                    </p>
+                    {p.cost?.basis && (
+                      <p className="text-micro text-muted-foreground">{p.cost.basis}</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-micro uppercase text-muted-foreground">Risk</p>
+                    <p className="text-xs text-foreground">
+                      {p.risk?.basis || "Not measured"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {conflictMemo.default?.sentence && (
+            <p
+              className="text-micro text-muted-foreground mt-3"
+              data-testid={`conflict-default-${row.id}`}
+            >
+              <span className="font-medium text-foreground">The default: </span>
+              {conflictMemo.default.sentence}
+            </p>
+          )}
+
+          {/* The "may I stop asking you this?" gesture. It is a PROPOSAL and
+              says so on its face: nothing here is in force, and only the
+              founder can turn it into a standing order in Controls. */}
+          {standingOrderProposal && (
+            <div
+              className="mt-3 rounded-card border border-dashed p-3"
+              data-testid={`standing-order-proposal-${row.id}`}
+            >
+              {/* Outline + accent FOREGROUND only: there is no acr-accent-soft
+                  token, so pairing bg-acr-accent with text-acr-accent would
+                  paint the label its own background colour. */}
+              <Badge variant="outline" className="text-micro uppercase text-acr-accent">
+                Proposal — not in force
+              </Badge>
+              {standingOrderProposal.ask && (
+                <p className="text-xs text-foreground mt-1.5">{standingOrderProposal.ask}</p>
+              )}
+              {standingOrderProposal.body && (
+                <p className="text-xs font-mono text-muted-foreground mt-1.5">
+                  “{standingOrderProposal.body}”
+                </p>
+              )}
+              <PrefetchLink
+                href="/founder/autopilot/control"
+                className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-2"
+                aria-label="Open Controls to write this standing order yourself"
+                data-testid={`standing-order-proposal-link-${row.id}`}
+              >
+                Write it yourself in Controls
+                <ChevronRight className="w-3 h-3" aria-hidden="true" />
+              </PrefetchLink>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Needs-you rows carry answerable options (contextBundle.options) —
           render them inline, phone-sized, one tap each. Every tap posts the
@@ -954,17 +1108,25 @@ export default function FounderDecisionsPage() {
   const answerMut = useMutation({
     mutationFn: async ({ id, optionKey, reason }: { id: number; optionKey: string; reason?: string }) => {
       setAnswerInFlight(id);
-      await apiRequest("POST", `/api/founder/intelligence/decisions-inbox/${id}/approve`, {
+      const res = await apiRequest("POST", `/api/founder/intelligence/decisions-inbox/${id}/approve`, {
         chosenOption: optionKey,
         // F2 reasons-on-disposition — optional; the server normalizes and
         // stores it in founderModification.
         ...(reason ? { reason } : {}),
       });
+      // The server tells us whether anything actually EXECUTED. A card with
+      // no actionPayload (a conflict memo is the first of these) records the
+      // ruling and executes nothing — saying "and applied" there would be a
+      // straight lie about what the tap did (fleet-9 verifier catch).
+      const body = (await res.json().catch(() => null)) as { executed?: boolean } | null;
+      return { executed: body?.executed === true };
     },
-    onSuccess: () => {
+    onSuccess: ({ executed }) => {
       toast({
         title: "Answered",
-        description: "Your decision was recorded and applied.",
+        description: executed
+          ? "Your decision was recorded and applied."
+          : "Your ruling was recorded. Nothing executes from this card — it is the record of how you decided.",
       });
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decision-log"] });
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
