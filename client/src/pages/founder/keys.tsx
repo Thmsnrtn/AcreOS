@@ -13,7 +13,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Key, Loader2, X } from "lucide-react";
 
-import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -178,15 +177,5 @@ export function KeysContent() {
         )}
       </div>
     </div>
-  );
-}
-
-/** Standalone page wrapper — the canonical surface is the "System keys" tab of
- *  the Controls door (/founder/autopilot/control?tab=keys, F1 slice 3). */
-export default function FounderKeysPage() {
-  return (
-    <PageShell label="System API keys">
-      <KeysContent />
-    </PageShell>
   );
 }

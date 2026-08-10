@@ -15,7 +15,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Target, Scale, Plus, X, Loader2, MessageSquareQuote, Send } from "lucide-react";
 
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -277,16 +276,6 @@ export function VoiceContent() {
           </motion.div>
       )}
     </motion.div>
-  );
-}
-
-/** Standalone page wrapper — the canonical surface is the "Your Voice" tab of
- *  the Controls door (/founder/autopilot/control?tab=voice, F1 slice 3). */
-export default function FounderVoicePage() {
-  return (
-    <PageShell maxWidth="4xl" label="Your Voice">
-      <VoiceContent />
-    </PageShell>
   );
 }
 

@@ -224,18 +224,48 @@ describe("enforcement boundary — the spine is wired to its two consumers and N
     return out.sort();
   }
 
-  it("resolveOrgTrustTier/resolveOrgTrustCaps have exactly two importers today: routes-borrower.ts + portalLink.ts", () => {
-    // Built AND wired — but ONLY at the portal-link/abuse-report seams
-    // (portalLink.ts is the shared rebind core; financeAgent reaches trust
-    // caps only THROUGH it, for link TTLs — a portal-lifecycle affordance,
-    // not a send cap). If this list grows a send/mail/export chokepoint,
-    // that is the founder-queued enforcement decision shipping without its
-    // ruling (docs/proposals/x-a-send-chokepoint-caps.md) — this test should
-    // go red and the baseline should only change WITH that ruling recorded.
+  it("orgTrust has exactly three importers today, and none of them enforces anything", () => {
+    // Built AND wired — but ONLY at seams that refuse nothing. If this list
+    // grows a send/mail/export chokepoint, that is the founder-queued
+    // enforcement decision shipping without its ruling
+    // (docs/proposals/x-a-send-chokepoint-caps.md) — this test should go red
+    // and the baseline should only change WITH that ruling recorded.
+    //
+    //   routes-borrower.ts        — portal-link TTL + abuse-report context.
+    //   services/portalLink.ts    — the shared rebind core; financeAgent
+    //                               reaches trust caps only THROUGH it, for
+    //                               link TTLs (a portal-lifecycle affordance,
+    //                               not a send cap).
+    //   routes-founder-customers.ts — REWRITTEN, NOT RELAXED (X-A slice 2).
+    //     GET /api/founder/trust-signals, the founder trust panel's read
+    //     endpoint. It is NOT enforcement, and the next test proves each
+    //     clause rather than asserting it: the path is GET-only, it never
+    //     writes trust_tier, and it resolves caps purely to DISPLAY them —
+    //     tagged with resolveOrgTrustCapStatus() so every cap but
+    //     portalLinkTtlDays renders as "proposed". Slice 2 built the evidence
+    //     a future ruling would act on; it changed what no org may do.
     expect(orgTrustImporters()).toEqual([
       "server/routes-borrower.ts",
+      "server/routes-founder-customers.ts",
       "server/services/portalLink.ts",
     ]);
+  });
+
+  it("the founder panel importer is a READ surface — GET only, no tier write, caps only displayed", () => {
+    const panelRoutes = read("server/routes-founder-customers.ts");
+    // Read-only: the trust-signals path exists only as a GET.
+    expect(panelRoutes).toMatch(/app\.get\(\s*\n\s*"\/api\/founder\/trust-signals"/);
+    expect(panelRoutes).not.toMatch(
+      /app\.(post|put|patch|delete)\(\s*\n?\s*"\/api\/founder\/trust-signals/,
+    );
+    // Never writes the column it reads.
+    expect(panelRoutes).not.toMatch(/set\(\s*\{[^}]*trustTier/);
+    // Caps are resolved next to their real status, so the surface renders
+    // "proposed" for everything the founder has not ruled on.
+    expect(panelRoutes).toContain("resolveOrgTrustCapStatus()");
+    expect(panelRoutes).toContain("PROPOSED — NOT ENFORCED");
+    // And it touches no send/mail/export rail.
+    expect(panelRoutes).not.toMatch(/emailService|sendEmail|sendSms|twilio/i);
   });
 
   it("both importers consume the tier/caps live (not dead exports)", () => {

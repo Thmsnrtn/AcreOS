@@ -1,6 +1,5 @@
 import { useState, useId } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import {
   MessageSquare, ChevronDown, ChevronUp,
   ThumbsUp, ThumbsDown, XCircle,
 } from "lucide-react";
-import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { usd } from "@/lib/format";
 import {
@@ -195,8 +193,9 @@ function ListSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
   );
 }
 
-export default function FounderGovernancePage() {
-  useDocumentTitle("Governance");
+/** Shell-less body — rendered as the "Governance" tab of the agents hub
+ *  (/founder/admin/agents?tab=governance, F1 slice 4). */
+export function GovernanceContent() {
   const { data: negotiations = [], isLoading: negLoading, error: negError, refetch: refetchNeg } = useAgentNegotiations();
   const { data: tokens = [], isLoading: tokensLoading, error: tokensError, refetch: refetchTokens } = useDelegationTokens();
   const { data: trustLog = [], isLoading: trustLoading, error: trustError, refetch: refetchTrust } = useTrustEnforcement();
@@ -206,8 +205,7 @@ export default function FounderGovernancePage() {
   const escalated = Array.isArray(negotiations) ? negotiations.filter((n: any) => n.status === "escalated") : [];
 
   return (
-    <PageShell>
-      <div className="space-y-6 md:space-y-8">
+    <div className="space-y-6 md:space-y-8">
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -473,7 +471,6 @@ export default function FounderGovernancePage() {
             )}
           </TabsContent>
         </Tabs>
-      </div>
-    </PageShell>
+    </div>
   );
 }

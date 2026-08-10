@@ -18,7 +18,6 @@ import {
   ChevronRight, RefreshCw, ArrowRight,
 } from "lucide-react";
 
-import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -344,16 +343,5 @@ export function ReadinessContent() {
         </div>
       )}
     </div>
-  );
-}
-
-/** Standalone page wrapper — the canonical surface is the "Launch readiness"
- *  tab of the Controls door (/founder/autopilot/control?tab=readiness, F1
- *  slice 3). */
-export default function FounderReadinessPage() {
-  return (
-    <PageShell label="Launch readiness">
-      <ReadinessContent />
-    </PageShell>
   );
 }

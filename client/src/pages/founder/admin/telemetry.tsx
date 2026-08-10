@@ -24,6 +24,10 @@ import { AgentTracesContent } from "@/pages/founder-traces";
 import { PaxTracesContent } from "@/pages/founder/pax-traces";
 import { PaxCalibrationContent } from "@/pages/founder/pax-calibration";
 import { EventLogContent } from "@/pages/founder/event-log";
+// X-A slice 2 — trust/abuse evidence is an INSTRUMENT (read-only observation of
+// orgs), so it joins this hub as a tab rather than claiming a route. It adds no
+// /founder/* path: the founder route count only shrinks.
+import { TrustSignalsContent } from "@/pages/founder/admin/trust-signals";
 
 const TABS = [
   { value: "observatory", label: "AI observatory" },
@@ -32,6 +36,7 @@ const TABS = [
   { value: "pax-traces", label: "Pax traces" },
   { value: "calibration", label: "Pax calibration" },
   { value: "events", label: "Event log" },
+  { value: "trust", label: "Trust & abuse" },
 ] as const;
 
 export default function FounderAdminTelemetryPage() {
@@ -68,6 +73,7 @@ export default function FounderAdminTelemetryPage() {
         <TabsContent value="pax-traces"><PaxTracesContent /></TabsContent>
         <TabsContent value="calibration"><PaxCalibrationContent /></TabsContent>
         <TabsContent value="events"><EventLogContent /></TabsContent>
+        <TabsContent value="trust"><TrustSignalsContent /></TabsContent>
       </Tabs>
     </PageShell>
   );

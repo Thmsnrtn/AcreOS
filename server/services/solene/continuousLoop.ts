@@ -847,6 +847,33 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                   votes: del.aggregate.votes,
                 });
               }
+              // S5 — a genuinely DIVIDED council is news, not just a confidence
+              // penalty. When the split maps to a registered cross-charter
+              // contention it becomes ONE memo on the founder's decisions door
+              // (idempotent per contention: an open memo for the same
+              // fingerprint is reused, never duplicated). Its own try/catch on
+              // purpose — folding it into the deliberation catch would log
+              // "deliberation failed" for a memo failure, which is false — and
+              // it assigns NOTHING, so this tick's ranking, confidence and
+              // outcome cannot change no matter how it goes.
+              try {
+                const { councilIsContested } = await import("../autopilot/council");
+                if (del.deliberated && councilIsContested(del.aggregate)) {
+                  const { maybeFileContentionMemo } = await import("../autopilot/contentionPositions");
+                  await maybeFileContentionMemo({
+                    moves: effectiveMoves,
+                    council: del.aggregate,
+                    deliberated: del.deliberated,
+                    senses,
+                    dispatchCeilingUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
+                  });
+                }
+              } catch (memoErr) {
+                logger.warn(
+                  "[continuousLoop] tick: conflict-memo path failed; tick unaffected",
+                  memoErr instanceof Error ? memoErr : undefined,
+                );
+              }
             }
           } catch (delErr) {
             logger.warn(

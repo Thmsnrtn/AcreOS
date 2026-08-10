@@ -125,7 +125,9 @@ export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   "/founder/feature-flags": "/founder/features", // binary-flag page consolidated
   "/founder/activation": "/founder/onboarding", // 2026-06-01 cut
   "/founder/prompt-versions": "/founder/prompt-evolutions", // 2026-06-01 cut
-  "/founder/agents": "/founder/agent-queue", // 2026-06-01 cut (/founder/agents/:codename stays real)
+  // 2026-06-01 cut; re-pointed 2026-08-10 when slice 4 retired /founder/agent-queue
+  // (chains stay pre-flattened). /founder/agents/:codename stays a real route.
+  "/founder/agents": "/founder/admin/agents?tab=queue",
   // 2026-06-01 cut pages whose remit folded into the Bridge deep tool.
   "/founder/integrations": "/founder/bridge",
   "/founder/dsar": "/founder/bridge",
@@ -154,6 +156,16 @@ export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   "/founder/legal-readiness": "/founder/autopilot/control?tab=legal",
   "/founder/keys": "/founder/autopilot/control?tab=keys",
   "/founder/recovery-console": "/founder/autopilot/control?tab=recovery",
+  // ── F1 slice 4 (2026-08-10): agent-instrument cluster → /founder/admin/agents.
+  // The five routes that inspected the AGENTS THEMSELVES are tabs of one hub in
+  // the deliberate-instrument namespace now; each alias pins its tab. The
+  // incoming query survives the merge, so a legacy path carrying an id or a
+  // filter still lands with it.
+  "/founder/agent-queue": "/founder/admin/agents?tab=queue",
+  "/founder/governance": "/founder/admin/agents?tab=governance",
+  "/founder/trust-graduation": "/founder/admin/agents?tab=trust",
+  "/founder/memory": "/founder/admin/agents?tab=memory",
+  "/founder/scenarios": "/founder/admin/agents?tab=scenarios",
 };
 
 /**

@@ -32,9 +32,18 @@ const APP = fs.readFileSync(path.resolve(ROOT, "client/src/App.tsx"), "utf-8");
 
 const LEGACY_PATHS = Object.keys(FOUNDER_LEGACY_REDIRECTS);
 
+/** Pathname → the file whose TABS declaration must carry the pinned tab value.
+ *  Every tab-pinning canonical target must resolve through this map, so a
+ *  future consolidation that pins tabs on a new hub must register it here. */
+const HUB_FILES: Record<string, string> = {
+  "/founder/admin/telemetry": "client/src/pages/founder/admin/telemetry.tsx",
+  "/founder/autopilot/control": "client/src/pages/founder/autopilot-control.tsx",
+  "/founder/admin/agents": "client/src/pages/founder/admin/agents.tsx",
+};
+
 describe("founder legacy-redirect map", () => {
-  it("holds exactly the 35 known aliases — 24 from slice 1, 6 observability routes folded into /founder/admin/telemetry in slice 2, and 5 Controls-cluster routes folded into /founder/autopilot/control in slice 3 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
-    expect(LEGACY_PATHS).toHaveLength(35);
+  it("holds exactly the 40 known aliases — 24 from slice 1, 6 observability routes folded into /founder/admin/telemetry in slice 2, 5 Controls-cluster routes folded into /founder/autopilot/control in slice 3, and 5 agent-instrument routes folded into /founder/admin/agents in slice 4 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
+    expect(LEGACY_PATHS).toHaveLength(40);
   });
 
   it("every legacy path is reachable through the catch-all pattern", () => {
@@ -97,14 +106,28 @@ describe("founder legacy-redirect map", () => {
     expect(resolveFounderLegacyPath("/founder/recovery-console")).toBe(`${HUB}?tab=recovery`);
   });
 
+  it("each retired agent-instrument route lands on its own tab of the agents hub (slice 4)", () => {
+    const HUB = "/founder/admin/agents";
+    expect(resolveFounderLegacyPath("/founder/agent-queue")).toBe(`${HUB}?tab=queue`);
+    expect(resolveFounderLegacyPath("/founder/governance")).toBe(`${HUB}?tab=governance`);
+    expect(resolveFounderLegacyPath("/founder/trust-graduation")).toBe(`${HUB}?tab=trust`);
+    expect(resolveFounderLegacyPath("/founder/memory")).toBe(`${HUB}?tab=memory`);
+    expect(resolveFounderLegacyPath("/founder/scenarios")).toBe(`${HUB}?tab=scenarios`);
+    // The slice-1 alias for the retired /founder/agents index pointed at
+    // /founder/agent-queue, which slice 4 retired in turn. Chains must stay
+    // pre-flattened, so it now points at the hub tab directly.
+    expect(resolveFounderLegacyPath("/founder/agents")).toBe(`${HUB}?tab=queue`);
+  });
+
+  it("an agent-instrument redirect keeps whatever query the legacy link carried", () => {
+    // A retired path may be linked with state (an id, a filter). The merge must
+    // keep it AND pin the tab, not drop one for the other.
+    expect(composeFounderRedirect(FOUNDER_LEGACY_REDIRECTS["/founder/memory"], "?q=zoning")).toBe(
+      "/founder/admin/agents?q=zoning&tab=memory",
+    );
+  });
+
   it("every ?tab= a canonical target pins is a real tab value in its hub page", () => {
-    // Pathname → the file whose TABS declaration must carry the tab value.
-    // Every tab-pinning canonical target must resolve through this map, so a
-    // future consolidation that pins tabs on a new hub must register it here.
-    const HUB_FILES: Record<string, string> = {
-      "/founder/admin/telemetry": "client/src/pages/founder/admin/telemetry.tsx",
-      "/founder/autopilot/control": "client/src/pages/founder/autopilot-control.tsx",
-    };
     for (const canonical of Object.values(FOUNDER_LEGACY_REDIRECTS)) {
       const [pathname, query] = canonical.split("?");
       const tab = new URLSearchParams(query ?? "").get("tab");
@@ -121,6 +144,35 @@ describe("founder legacy-redirect map", () => {
       ).toBe(true);
     }
   });
+});
+
+/* A redirect that pins ?tab= only lands where it promises if the hub reads the
+ * tab from the URL on EVERY render. founderHubTabs.test.ts pins that for the
+ * two hubs it names by hand; this derives the same check from the redirect map
+ * itself, so a hub added to HUB_FILES by a future consolidation cannot ship
+ * uncontrolled (the failure mode is silent: the URL says ?tab=x, the page shows
+ * the default tab). */
+describe("every hub a redirect pins a tab on is URL-controlled", () => {
+  for (const [basePath, file] of Object.entries(HUB_FILES)) {
+    it(`${basePath} derives its visible tab from ?tab= and writes tab clicks back`, () => {
+      const src = fs.readFileSync(path.resolve(ROOT, file), "utf-8");
+      expect(src).toContain("useSearch()");
+      expect(src).toMatch(/new URLSearchParams\(search\)\.get\("tab"\)/);
+      expect(src).toMatch(/<Tabs\s[^>]*value=\{tab\}/);
+      expect(src).toMatch(/onValueChange=/);
+      expect(src, "an uncontrolled <Tabs defaultValue> reads the URL only at mount").not.toMatch(
+        /<Tabs\s[^>]*defaultValue=/,
+      );
+      // …and writes the chosen tab back onto its OWN pathname, either by
+      // building the literal (`${basePath}?tab=${v}`) or by setting the param
+      // on the existing search (the form that also preserves other params).
+      expect(
+        src.includes(`${basePath}?tab=`) || /params\.set\("tab", ?\w/.test(src),
+        `${file}: a tab click must write ?tab= back onto ${basePath}`,
+      ).toBe(true);
+      expect(src).toMatch(/\{\s*replace:\s*true,?\s*\}/);
+    });
+  }
 });
 
 describe("composeFounderRedirect (canonical query + incoming search merge)", () => {

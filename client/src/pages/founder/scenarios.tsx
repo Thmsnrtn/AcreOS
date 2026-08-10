@@ -1,7 +1,5 @@
 import { useId, useState } from "react";
-import { PageShell } from "@/components/page-shell";
 import { Label } from "@/components/ui/label";
-import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
@@ -954,13 +952,13 @@ function LearningEngine() {
   );
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
+// ─── Content ────────────────────────────────────────────────────────────────
 
-export default function FounderScenariosPage() {
-  useDocumentTitle("Scenarios");
+/** Shell-less body — rendered as the "Scenarios" tab of the agents hub
+ *  (/founder/admin/agents?tab=scenarios, F1 slice 4). */
+export function ScenariosContent() {
   return (
-    <PageShell maxWidth="6xl">
-      <div className="space-y-6">
+    <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Brain className="h-6 w-6" aria-hidden="true" /> Scenarios
@@ -991,7 +989,6 @@ export default function FounderScenariosPage() {
             <TabsContent value="nervous"><NervousSystem /></TabsContent>
             <TabsContent value="surface"><AdaptiveSurface /></TabsContent>
           </Tabs>
-      </div>
-    </PageShell>
+    </div>
   );
 }

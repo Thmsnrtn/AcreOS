@@ -11,7 +11,6 @@
  * doc for the "why / what to do / who owns it" detail. No API, no DB.
  */
 
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -250,16 +249,5 @@ export function LegalReadinessContent() {
           })}
         </motion.div>
     </div>
-  );
-}
-
-/** Standalone page wrapper — the canonical surface is the "Legal readiness"
- *  tab of the Controls door (/founder/autopilot/control?tab=legal, F1
- *  slice 3). */
-export default function FounderLegalReadinessPage() {
-  return (
-    <PageShell label="Launch legal readiness">
-      <LegalReadinessContent />
-    </PageShell>
   );
 }

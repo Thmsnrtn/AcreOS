@@ -21,8 +21,6 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
-import { PageShell } from "@/components/page-shell";
-import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import {
   Card,
   CardContent,
@@ -43,7 +41,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Bot,
   CircleCheck,
@@ -165,8 +162,9 @@ function pillarLabel(p: string | undefined): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderAgentQueuePage() {
-  useDocumentTitle("Agent queue");
+/** Shell-less body — rendered as the "Queue" tab of the agents hub
+ *  (/founder/admin/agents?tab=queue, F1 slice 4). */
+export function AgentQueueContent() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -262,9 +260,7 @@ export default function FounderAgentQueuePage() {
 
   // ── Render ──
   return (
-    <PageShell>
-      <div className="max-w-5xl mx-auto py-6 space-y-6">
-        <CanonicalSurfacesBanner variant="compact" />
+    <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -448,8 +444,7 @@ export default function FounderAgentQueuePage() {
             </div>
           </TabsContent>
         </Tabs>
-      </div>
-    </PageShell>
+    </div>
   );
 }
 

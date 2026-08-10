@@ -28,7 +28,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -183,17 +182,6 @@ export function RecoveryConsoleContent() {
 
       <RecoveryAuditCard />
     </div>
-  );
-}
-
-/** Standalone page wrapper — the canonical surface is the "Recovery console"
- *  tab of the Controls door (/founder/autopilot/control?tab=recovery, F1
- *  slice 3). */
-export default function FounderRecoveryConsolePage() {
-  return (
-    <PageShell>
-      <RecoveryConsoleContent />
-    </PageShell>
   );
 }
 

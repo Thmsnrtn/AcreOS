@@ -107,6 +107,8 @@ vi.mock("../../server/services/dunning", () => ({ dunningService: {} }));
 const INSERTED: Array<Record<string, any>> = [];
 const UPDATED: Array<Record<string, any>> = [];
 let nextId = 1;
+/** S5-completion: force the write to fail, to prove the tick survives it. */
+let INSERT_THROWS = false;
 
 const FIND_FIRST: Record<string, any> = {};
 /** Rows the `db.select()...` chain resolves to (the memo history read). */
@@ -140,6 +142,7 @@ vi.mock("../../server/db", () => {
     selectDistinct: (_c?: any) => makeChain(),
     insert: (_t: any) => ({
       values: (row: Record<string, any>) => {
+        if (INSERT_THROWS) throw new Error("decisions_inbox_items is unreachable");
         const withId = { id: nextId++, ...row };
         INSERTED.push(withId);
         const ret = { returning: () => Promise.resolve([withId]) };
@@ -181,6 +184,8 @@ import {
   councilIsContested,
   councilTopTwo,
 } from "../../server/services/autopilot/council";
+import { rankMoves, type DecisionSenses } from "../../server/services/autopilot/decide";
+import { maybeFileContentionMemo } from "../../server/services/autopilot/contentionPositions";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf-8");
@@ -243,6 +248,7 @@ beforeEach(() => {
   SELECT_ROWS = [];
   nextId = 1;
   arbiterMode = "deliver";
+  INSERT_THROWS = false;
   for (const k of Object.keys(FIND_FIRST)) delete FIND_FIRST[k];
 });
 
@@ -670,5 +676,378 @@ describe("fleet-9 catch — contention state reports unknown as unknown", () => 
     expect(src).toMatch(/readFailed = true;\s*\n\s*openMemos = null;/);
     // And the initial value is null, so an unreached read is never a zero.
     expect(src).toMatch(/let openMemos: number \| null = null;/);
+  });
+});
+
+// ─── 7. S5 completion — the emitter WIRED at the council seam ───────────────
+//
+// Slice 9 built the memo and deliberately left fileConflictMemo with zero
+// production callers, because filing a memo requires deriving two REAL charter
+// positions and improvising them is how a fabricated memo gets born. These
+// tests pin the derivation's honesty and the seam's blast radius:
+//
+//   • a contested tick whose two sides map to a registered contention files
+//     exactly ONE memo, with costs that are real or honestly null;
+//   • the same open contention on the next tick files NOTHING (the existing
+//     open-memo dedupe is reused, not re-invented);
+//   • a pair the registry does not describe files NOTHING — the derivation
+//     refuses rather than bridging, and the file-layer charter check refuses
+//     a mismatched pair with charter_mismatch;
+//   • a throwing memo path returns a refusal instead of propagating, and the
+//     seam assigns nothing, so the tick's own result cannot change.
+
+/** A calm tick: nothing on fire, so the ranker offers growth + optimize. */
+const CALM_SENSES: DecisionSenses = {
+  openIncidents: 0,
+  complianceOpenCount: 0,
+  envelopeStatus: "green",
+  supportBacklog: 0,
+  trials: 4,
+  activationStalled: false,
+  mrr: 900,
+  dispatchBacklog: 0,
+  emailComplaints: 0,
+  dunningPressure: 0,
+  churnSignals: 0,
+  trialsEnding: 0,
+  reflexFailures: 0,
+};
+/** REAL moves from the authoritative ranker — never hand-written fixtures. */
+const CALM_MOVES = rankMoves(CALM_SENSES);
+
+/** A panel that split 1–1 (one voice dropped) — exactly two sides, contested. */
+const SPLIT_GROWTH_OPS = aggregateCouncil([
+  { recommendedKind: "grow_owned_channels" },
+  { recommendedKind: "optimize" },
+]);
+
+const CALM_TICK = {
+  moves: CALM_MOVES,
+  council: SPLIT_GROWTH_OPS,
+  deliberated: true,
+  senses: CALM_SENSES,
+  dispatchCeilingUsd: 5,
+  budget: { capUsd: 50, spentUsd: 12.5 },
+};
+
+describe("a contested tick with two mappable positions files exactly ONE memo", () => {
+  it("derives both positions from the REAL ranker + binding registry", async () => {
+    const res = await maybeFileContentionMemo(CALM_TICK);
+
+    expect(res.filed).toBe(true);
+    expect(res.contention).toBe("budget_allocation");
+    expect(INSERTED).toHaveLength(1);
+
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+    expect(memo.contention).toBe("budget_allocation");
+    expect(memo.positions.map((p: any) => p.charter).sort()).toEqual(["growth", "ops"]);
+
+    // Each position's recommendation carries the ranker's OWN rationale — the
+    // sentence decide.ts wrote from real counts, not a re-worded claim.
+    const growth = memo.positions.find((p: any) => p.charter === "growth");
+    const ops = memo.positions.find((p: any) => p.charter === "ops");
+    const growMove = CALM_MOVES.find((m) => m.kind === "grow_owned_channels")!;
+    expect(growth.moveKind).toBe("grow_owned_channels");
+    expect(growth.recommendation).toContain(growMove.rationale);
+    expect(ops.moveKind).toBe("optimize");
+
+    // BOTH sides commit: every candidate move becomes a governed dispatch that
+    // draws on the AI/data envelope, so neither position is the "free" one and
+    // the no-commitment shortcut must not fire.
+    expect(growth.requiresNewCommitment).toBe(true);
+    expect(ops.requiresNewCommitment).toBe(true);
+    // REWRITTEN to the new truth (fleet-10 verifier catch, rewrite-not-delete):
+    // the original pin asserted "silence advances neither", which was itself
+    // the false claim — the authoritative ladder ranks grow_owned_channels
+    // ABOVE optimize, so doing nothing hands the next tick to growth. The
+    // surviving invariant is unchanged: the default must state what silence
+    // ACTUALLY does, never flatter it as neutrality.
+    expect(memo.default.favors).toBe("growth");
+    expect(memo.default.sentence).toContain("hands the next tick to growth");
+    expect(memo.default.sentence).not.toContain("silence advances neither");
+  });
+
+  it("states each side's REAL binding — no position reads as consequence-free", async () => {
+    await maybeFileContentionMemo(CALM_TICK);
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+    const growth = memo.positions.find((p: any) => p.charter === "growth");
+    const ops = memo.positions.find((p: any) => p.charter === "ops");
+    // act.ts binds grow_owned_channels irreversible and optimize reversible;
+    // both are internal. The card says so rather than implying either is free.
+    expect(growth.cost.basis).toContain("irreversible");
+    expect(ops.cost.basis).toContain("reversible");
+    expect(ops.cost.basis).not.toContain("irreversible");
+    for (const p of [growth, ops]) expect(p.cost.basis).toContain("internal");
+  });
+
+  it("costs are REAL — the ceiling the loop actually commits, with the envelope read", async () => {
+    await maybeFileContentionMemo(CALM_TICK);
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+
+    for (const p of memo.positions) {
+      expect(p.cost.usd).toBe(5);
+      expect(p.cost.basis).toContain("$5.00");
+      expect(p.cost.basis).toContain("worst-case");
+      // The live envelope read is quoted, not invented.
+      expect(p.cost.basis).toContain("$12.50");
+      expect(p.cost.basis).toContain("$50.00");
+    }
+    // Only the growth side is the deferrable one at the budget gate.
+    const growth = memo.positions.find((p: any) => p.charter === "growth");
+    const ops = memo.positions.find((p: any) => p.charter === "ops");
+    expect(growth.cost.basis).toContain("deferrable");
+    expect(ops.cost.basis).not.toContain("deferrable");
+  });
+
+  it("an unmeasurable cost is NULL with its basis — never a plausible number", async () => {
+    await maybeFileContentionMemo({ ...CALM_TICK, dispatchCeilingUsd: null, budget: null });
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+    for (const p of memo.positions) {
+      expect(p.cost.usd).toBeNull();
+      expect(p.cost.basis).toContain("not measured");
+    }
+  });
+
+  it("an unreadable envelope says so instead of quoting a number it does not have", async () => {
+    await maybeFileContentionMemo({ ...CALM_TICK, budget: null });
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+    for (const p of memo.positions) {
+      expect(p.cost.usd).toBe(5); // the ceiling IS known
+      expect(p.cost.basis).toContain("not readable"); // the envelope is not
+      expect(p.cost.basis).not.toContain("$50.00");
+    }
+  });
+
+  it("risk reads come from the real coupling model, with honest absence when unmodeled", async () => {
+    await maybeFileContentionMemo(CALM_TICK);
+    const memo = INSERTED[0].contextBundle.conflictMemo;
+    const growth = memo.positions.find((p: any) => p.charter === "growth");
+    const ops = memo.positions.find((p: any) => p.charter === "ops");
+    // crossFunction couples growth→support at +0.3 (its heaviest outward edge).
+    expect(growth.risk.coupledCharter).toBe("support");
+    expect(growth.risk.pressureAdded).toBeCloseTo(0.3, 5);
+    // ops has NO outward coupling — the memo says that rather than inventing one.
+    expect(ops.risk.coupledCharter).toBeNull();
+    expect(ops.risk.pressureAdded).toBeNull();
+    expect(ops.risk.basis.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a second tick with the same open memo files NOTHING", () => {
+  it("reuses the OPEN memo for the fingerprint instead of spawning a duplicate", async () => {
+    const first = await maybeFileContentionMemo(CALM_TICK);
+    expect(first.filed).toBe(true);
+    expect(INSERTED).toHaveLength(1);
+
+    // The next tick sees the same contention still open on the door.
+    FIND_FIRST.decisionsInboxItems = {
+      id: INSERTED[0].id,
+      itemType: CONFLICT_MEMO_ITEM_TYPE,
+      status: "pending",
+      contextBundle: { fingerprint: INSERTED[0].contextBundle.fingerprint },
+    };
+
+    const second = await maybeFileContentionMemo(CALM_TICK);
+    expect(second.filed).toBe(false);
+    expect(second.reason).toBe("reused_open_memo");
+    expect(second.itemId).toBe(INSERTED[0].id);
+    // The load-bearing assertion: still exactly one memo, and no update.
+    expect(INSERTED).toHaveLength(1);
+    expect(UPDATED).toHaveLength(0);
+    expect(ARBITER_CALLS).toHaveLength(1);
+  });
+});
+
+describe("an unmappable pair files nothing", () => {
+  it("refuses a cross-charter pair no registered contention describes", async () => {
+    const senses: DecisionSenses = { ...CALM_SENSES, supportBacklog: 2, dunningPressure: 1 };
+    const res = await maybeFileContentionMemo({
+      ...CALM_TICK,
+      senses,
+      moves: rankMoves(senses),
+      council: aggregateCouncil([
+        { recommendedKind: "clear_support_backlog" },
+        { recommendedKind: "recover_payments" },
+      ]),
+    });
+    expect(res.filed).toBe(false);
+    expect(res.reason).toBe("no_registered_contention");
+    expect(INSERTED).toHaveLength(0);
+    expect(ARBITER_CALLS).toHaveLength(0);
+  });
+
+  it("refuses to bridge growth-vs-finance with a finance move that is not holding cash", async () => {
+    // The registry asks "spend on acquisition now, or hold the cash for
+    // runway?" — convert_trials is a SEND, not a hold, so filing it under that
+    // headline would head the card with a fight its positions do not argue.
+    const senses: DecisionSenses = { ...CALM_SENSES, trialsEnding: 3 };
+    const res = await maybeFileContentionMemo({
+      ...CALM_TICK,
+      senses,
+      moves: rankMoves(senses),
+      council: aggregateCouncil([
+        { recommendedKind: "grow_owned_channels" },
+        { recommendedKind: "convert_trials" },
+      ]),
+    });
+    expect(res.filed).toBe(false);
+    expect(res.reason).toBe("no_registered_contention");
+    expect(INSERTED).toHaveLength(0);
+  });
+
+  it("and the FILE layer still refuses a mismatched pair with charter_mismatch", async () => {
+    // Belt and braces: even if a future caller bypassed the derivation, the
+    // registry check refuses positions that are not this contention's charters.
+    const res = await fileConflictMemo({
+      contention: "budget_allocation",
+      positions: [
+        { ...GROWTH_POSITION, charter: "support" },
+        { ...FINANCE_POSITION, charter: "deploy" },
+      ],
+      council: DIVIDED,
+    });
+    expect(res.created).toBe(false);
+    expect(res.refused).toBe("charter_mismatch");
+    expect(INSERTED).toHaveLength(0);
+    expect(ARBITER_CALLS).toHaveLength(0);
+  });
+
+  it("every move pair in the derivation table names a REGISTERED contention", () => {
+    // Drift guard: the memo's headline label, question and resource come from
+    // the registry, so a table entry pointing at a contention that does not
+    // exist would head a card with nothing at all.
+    const src = read("server/services/autopilot/contentionPositions.ts");
+    const keys = [...src.matchAll(/contention: "([a-z_]+)"/g)].map((m) => m[1]);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(getContentionDef(key), `${key} must be a registered contention`).toBeTruthy();
+    }
+  });
+
+  it("refuses a THREE-way split — two of three positions is not the whole contest", async () => {
+    const senses: DecisionSenses = { ...CALM_SENSES, trialsEnding: 3 };
+    const res = await maybeFileContentionMemo({
+      ...CALM_TICK,
+      senses,
+      moves: rankMoves(senses),
+      council: aggregateCouncil([
+        { recommendedKind: "grow_owned_channels" },
+        { recommendedKind: "optimize" },
+        { recommendedKind: "convert_trials" },
+      ]),
+    });
+    expect(res.filed).toBe(false);
+    expect(res.reason).toBe("multi_way_split");
+    expect(INSERTED).toHaveLength(0);
+  });
+
+  it("refuses a vote for a kind that is not in the tick's candidate set", async () => {
+    const res = await maybeFileContentionMemo({
+      ...CALM_TICK,
+      council: aggregateCouncil([
+        { recommendedKind: "grow_owned_channels" },
+        { recommendedKind: "invent_a_new_thing" },
+      ]),
+    });
+    expect(res.filed).toBe(false);
+    expect(res.reason).toBe("vote_not_a_candidate");
+    expect(INSERTED).toHaveLength(0);
+  });
+
+  it("files nothing when the council agreed, or when no panel deliberated", async () => {
+    const agreed = await maybeFileContentionMemo({
+      ...CALM_TICK,
+      council: aggregateCouncil([
+        { recommendedKind: "grow_owned_channels" },
+        { recommendedKind: "grow_owned_channels" },
+      ]),
+    });
+    expect(agreed.filed).toBe(false);
+    expect(agreed.reason).toBe("council_not_contested");
+
+    const undeliberated = await maybeFileContentionMemo({ ...CALM_TICK, deliberated: false });
+    expect(undeliberated.filed).toBe(false);
+    expect(undeliberated.reason).toBe("not_deliberated");
+    expect(INSERTED).toHaveLength(0);
+  });
+});
+
+describe("a throwing memo path leaves the tick's own result unchanged", () => {
+  it("returns a refusal instead of propagating when the write fails", async () => {
+    INSERT_THROWS = true;
+    const res = await maybeFileContentionMemo(CALM_TICK);
+    expect(res.filed).toBe(false);
+    expect(res.reason).toBe("error");
+    expect(res.itemId).toBeNull();
+    expect(INSERTED).toHaveLength(0);
+  });
+
+  it("the seam calls it gated, wrapped, and assigns NOTHING", () => {
+    const loop = read("server/services/solene/continuousLoop.ts");
+
+    // Gated exactly as the council seam requires.
+    expect(loop).toMatch(/del\.deliberated && councilIsContested\(del\.aggregate\)/);
+    // Called, and its result is discarded — the tick cannot read it.
+    expect(loop).toMatch(/\n\s*await maybeFileContentionMemo\(/);
+    expect(loop).not.toMatch(/=\s*await maybeFileContentionMemo\(/);
+
+    // Its OWN try/catch — folding it into the deliberation catch would log
+    // "deliberation failed" for a memo failure, which is a false statement.
+    expect(loop).toContain("conflict-memo path failed");
+
+    // The seam sits at the council, after the confidence assignment.
+    const conf = loop.indexOf("councilConf = del.confidence");
+    const memo = loop.indexOf("maybeFileContentionMemo");
+    expect(conf).toBeGreaterThan(-1);
+    expect(memo).toBeGreaterThan(conf);
+
+    // And the whole block touches none of the tick's own state.
+    const block = loop.slice(loop.indexOf("councilIsContested(del.aggregate)"), memo + 900);
+    for (const forbidden of ["councilConf =", "effectiveMoves =", "actMove", "outcome ="]) {
+      expect(block.includes(forbidden), `the memo seam must not touch ${forbidden}`).toBe(false);
+    }
+  });
+
+  it("the derivation widens no autonomy and writes no standing order", async () => {
+    const src = read("server/services/autopilot/contentionPositions.ts");
+    for (const forbidden of [
+      "setDomainLevel",
+      "recordCleanCycle",
+      "recordAnomaly",
+      "requestPromotion",
+      "createStandingOrder",
+      "setGrowthBudgetOverrideUsd",
+      "planAndAct",
+      "enqueueDispatch",
+    ]) {
+      expect(src.includes(forbidden), `contentionPositions.ts must not touch ${forbidden}`).toBe(false);
+    }
+    // Filing a memo writes exactly one row and updates nothing.
+    await maybeFileContentionMemo(CALM_TICK);
+    expect(INSERTED).toHaveLength(1);
+    expect(UPDATED).toHaveLength(0);
+  });
+});
+
+// ─── Fleet-10 verifier catches — the founder-facing sentences ───────────────
+
+describe("fleet-10 catch — the memo's dollar figure names what it measures", () => {
+  const src = read("server/services/autopilot/contentionPositions.ts");
+
+  it("the spend line says autopilot DISPATCH spend, not all AI and data spend", () => {
+    // The value comes from the agent_dispatch meter; calling it "AI and data
+    // spend" understated the draw on the very envelope the card asks the
+    // founder to allocate — on the one contention this emitter can file.
+    expect(src).toContain("Month-to-date autopilot dispatch spend");
+    expect(src).not.toContain("Month-to-date AI and data spend");
+    // …and it says plainly what is excluded.
+    expect(src).toContain("other AI spend");
+  });
+
+  it("the header describes the derivation the code performs, not one it doesn't", () => {
+    // requiresNewCommitment is hardcoded true for every derived position; the
+    // header claimed it was derived from act.ts's binding.
+    expect(src).toMatch(/COMMITS something new → NOT derived/);
+    expect(src).toContain("requiresNewCommitment: true");
   });
 });

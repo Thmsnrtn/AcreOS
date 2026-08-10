@@ -396,8 +396,8 @@ interface NavModule {
 // Flip, Subdivision) remain — each is `businessTypeOnly` and only
 // appears for a matching operator profile. The Founder module remains
 // `founderOnly` and is the ONLY place internal agent-codename surfaces
-// (/founder/governance, /founder/scenarios, /founder/memory, etc.) are
-// linked from. Customers never see them.
+// (the /founder/admin/agents tabs, etc.) are linked from. Customers never
+// see them.
 // ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
   // ── Five fixed doors (+ Inbox, Settings) ──────────────────────────
@@ -732,7 +732,7 @@ const NAV_MODULES: NavModule[] = [
       // ── Agent / AI tooling ─────────────────────────────────────────
       // Pax traces, Pax calibration, and agent traces folded into the
       // Telemetry & traces hub above (F1 slice 2).
-      { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
+      { label: "Agent queue", icon: Bot, href: "/founder/admin/agents?tab=queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget — an Agents tab" },
       { label: "Dispatches", icon: Workflow, href: "/founder/dispatches", description: "Real-time view of the auto-dispatch queue — queued / in-progress / terminal rows + cancel + review status" },
       // "Agent asks" removed 2026-07-27 — /founder/asks merged into the
       // Decisions door (/founder/decisions), already a primary child above.
@@ -761,10 +761,10 @@ const NAV_MODULES: NavModule[] = [
       // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
       // anticipatory-enterprise, and agent-collaboration retired.
       // The four refit survivors live under /founder/*.
-      { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides" },
-      { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy)" },
+      { label: "Governance", icon: Shield, href: "/founder/admin/agents?tab=governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides — an Agents tab" },
+      { label: "Scenarios", icon: Brain, href: "/founder/admin/agents?tab=scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy) — an Agents tab" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
-      { label: "Memory browser", icon: Database, href: "/founder/memory", description: "Per-agent semantic + episodic memory inspector" },
+      { label: "Memory browser", icon: Database, href: "/founder/admin/agents?tab=memory", description: "Per-agent semantic + episodic memory inspector — an Agents tab" },
       { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },

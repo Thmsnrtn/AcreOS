@@ -552,6 +552,66 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves S/F/X — slice 10 (S5 emitter + F1-s4 + X-A-s2 signals) — ✅ SHIPPED
+
+Two lanes DEFECTS_FOUND (1 blocking each), one CONFIRMED_GOOD. Both blocking
+defects were, again, **founder-facing sentences asserting more than the code
+established** — five slices running now.
+
+- **S5 EMITTER (the derivation slice 9 deferred rather than faked) —
+  DEFECTS_FOUND, fixed:** `contentionPositions.ts` derives each side from real
+  state (who from the move's own `domain`, what from the ranker's own
+  rationale, cost from the dispatch ceiling + live envelope, risk from
+  crossFunction couplings weighted by live pressures) and **refuses far more
+  often than it files**. The central judgement is mapping by MOVE PAIR, not
+  charter pair: only `budget_allocation` survives that test today, because
+  `growth_vs_finance`'s question ("hold the cash for runway?") is answered
+  only by `protect_runway`, a P0 the ladder decides outright, and
+  `speed_vs_compliance` names a charter NO decide.ts move carries. Two further
+  refusals (`multi_way_split`, unknown-kind) exist purely to stop a card
+  over-claiming. The seam is inert by construction — its own try/catch (so a
+  memo failure can't log "deliberation failed"), assigns nothing, and the
+  builder pinned that the block contains no assignment to the tick's state.
+  Its own draft-stage catch is worth recording: deriving
+  `requiresNewCommitment` from act.ts's binding made `optimize` read as
+  commitment-free, producing "silence effectively backs ops" — false, since an
+  optimize dispatch spends from the same envelope.
+  **BLOCKING fixed:** the cost basis labelled an agent_dispatch-ONLY figure
+  "Month-to-date AI and data spend" and compared it to the whole envelope —
+  understating the draw on the very envelope the card asks the founder to
+  allocate, on the one contention it can file. Now named for what it measures,
+  with the exclusion stated. Also fixed: the DEFAULT line said "silence
+  advances neither" when the ladder ranks `grow_owned_channels` ABOVE
+  `optimize`, so silence hands the tick to growth — the default is now
+  ladder-aware, and the stale pin was REWRITTEN to the new truth rather than
+  deleted. And the module header claimed a derivation it does not perform.
+- **F1 slice 4 — CONFIRMED_GOOD, the auditor "set out to break it and could
+  not":** five routes absorbed into a new `/founder/admin/agents` instrument
+  hub (agent-queue, governance, trust-graduation, memory, scenarios — "every
+  surface that inspects the agents themselves"), mirroring admin/costs and
+  admin/telemetry, with redirects and the baseline lowered in the same change.
+- **X-A slice 2 (signals, nothing enforced) — DEFECTS_FOUND, fixed:** the
+  panel reads real evidence, labels caps "consumed vs proposed" from
+  `resolveOrgTrustCapStatus` (so a surface can never drift into claiming a cap
+  is live), and the auditor independently confirmed NOTHING writes
+  `organizations.trust_tier` outside migration 0229's frozen seed.
+  **BLOCKING fixed — the fabrication was in a NEGATIVE claim:**
+  `export_velocity` was declared UNAVAILABLE because "nothing records an
+  export", and that false premise rendered verbatim on the founder panel AND
+  became a founder-queue ask. `export_jobs` records exactly this — org-scoped,
+  indexed on (organization_id, status, created_at). The signal is now REAL,
+  scoped honestly to bulk archive jobs (a per-view CSV that creates no job row
+  is not counted, so it is a floor). Also fixed: the complaint-rate
+  unavailability rested on "no per-org send denominator exists" when
+  `outbound_email_log` IS org-scoped — reworded to the true reason (it covers
+  only registry-routed mail, so dividing complaints from ALL mail by a
+  fraction of it would overstate every org's rate). **And the exit test itself
+  was the deeper problem:** it enforced source truth in one direction only, so
+  it PINNED the fabrication instead of catching it. It now also requires every
+  unavailable signal to name the tables it actually inspected, and asserts
+  those tables exist and appear in the note — an absence claim must be
+  checkable, not asserted.
+
 ## Waves O/S — slice 9 (O6 unit-economics receipt + O7 continuity kit + S5 conflict memos) — ✅ SHIPPED
 
 All three lanes came back DEFECTS_FOUND — **3 blocking, 10 should-fix** — and
@@ -1184,10 +1244,20 @@ integration defects were all fixed centrally before commit:
   no automatic tier write, since the caps proposal is unruled). All three
   verifiers are briefed on the three-slice fabrication pattern with the
   five real examples. Fallback timer armed.
-- **After fleet 10:** Wave 2 per §D (Map M0/M1 + the license-aware egress
-  chokepoint), F2 slice 2 (remaining decision inflows), X-A slice 3
-  (post-ruling). G2/G3 wait on customers; founder queue unchanged. S3
-  hands / promotion mechanics stay propose-first per D-5.
+- **Slice 10 SHIPPED** (S5 emitter + F1-s4 + X-A-s2 — section above).
+  Founder routes 48 → **44** (F1 s4's new /founder/admin/agents hub),
+  baseline locked. Five slices running, the blocking defects are ALWAYS
+  founder-facing sentences over-claiming: this time a dollar figure
+  labelled as more than it measured, and — the sharpest one yet — a
+  fabrication inside a NEGATIVE claim ("nothing records an export" when
+  export_jobs does), which the exit test had PINNED rather than caught
+  because it checked source truth in only one direction.
+- **After fleet 10 → FLEET 11:** Wave 2 per §D (MapLibre M0/M1 +
+  self-hosted basemap, click-to-identify, the license-aware egress
+  chokepoint + fixture test, disclaimer-coverage lint), F2 slice 2
+  (remaining decision inflows), X-A slice 3 (post-ruling). G2/G3 wait on
+  customers; founder queue unchanged. S3 hands / promotion mechanics stay
+  propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

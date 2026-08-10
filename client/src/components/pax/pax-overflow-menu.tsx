@@ -41,7 +41,7 @@ const PaxRecoursePanel = lazy(() =>
   })),
 );
 // AgentCommandCenterPage archived 2026-06-01 — agents drawer now deep-links
-// to /founder/agent-queue via the "Full page" button in the sheet header.
+// to the Agents hub's Proposal queue tab via the "Full page" button in the sheet header.
 
 // Drawer lazy-load fallback — canonical motion tokens.
 function DrawerFallback() {
@@ -74,7 +74,7 @@ const SHEET_META: Record<
   agents: {
     title: "Agents",
     description: "The agent roster working behind Pax.",
-    route: "/founder/agent-queue",
+    route: "/founder/admin/agents?tab=queue",
     routeLabel: "Open Agent Queue",
   },
   insights: {
@@ -228,7 +228,7 @@ export function PaxOverflowMenu({
                 )}
                 {view === "agents" && isFounder && (
                   /* Agent Command Center archived 2026-06-01 — use the
-                     "Full page" button above to navigate to /founder/agent-queue. */
+                     "Full page" button above to navigate to the Agents hub's Proposal queue tab. */
                   <div className="py-8 text-center text-sm text-muted-foreground">
                     Open the agent queue via the Full page link above.
                   </div>

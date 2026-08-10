@@ -31,8 +31,16 @@ const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"),
  *  2026-08-10: 53→48 (F1 slice 3) — the P6 Controls-absorption cluster:
  *  keys, readiness, legal-readiness, recovery-console and autopilot/voice
  *  became tabs of the Controls door (/founder/autopilot/control); the old
- *  paths redirect with their tab pinned. */
-const FOUNDER_ROUTE_BASELINE = 48;
+ *  paths redirect with their tab pinned.
+ *  2026-08-10: 48→44 (F1 slice 4) — the agent-instrument cluster: the five
+ *  routes that inspect the agents themselves (agent-queue, governance,
+ *  trust-graduation, memory, scenarios) became tabs of the single
+ *  /founder/admin/agents hub, mirroring the costs and telemetry hubs; five
+ *  routes out, one in. The old paths redirect with their tab pinned.
+ *  (/founder/dispatches belongs in that hub too but stayed put this slice —
+ *  server/services/autopilot/stepAwayReadiness.ts emits it as an href and
+ *  that file was outside the slice's file set.) */
+const FOUNDER_ROUTE_BASELINE = 44;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

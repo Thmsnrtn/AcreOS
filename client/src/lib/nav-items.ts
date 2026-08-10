@@ -239,13 +239,15 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
 
   // ── AI / Agents ─────────────────────────────────────────────────────
-  { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", category: "ai" },
+  // F1 slice 4: the five agent instruments live as tabs of /founder/admin/agents —
+  // these entries keep each one palette-findable at its own tab.
+  { label: "Agent queue", icon: Bot, href: "/founder/admin/agents?tab=queue", category: "ai" },
   { label: "Dispatches", icon: WorkflowIcon, href: "/founder/dispatches", category: "ai" },
   // "Agent asks" removed 2026-07-27 — /founder/asks merged into the Decisions
   // door (/founder/decisions), which is a primary door and so not listed here.
   { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
   { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
-  { label: "Memory browser", icon: Database, href: "/founder/memory", category: "ai" },
+  { label: "Memory browser", icon: Database, href: "/founder/admin/agents?tab=memory", category: "ai" },
   { label: "Agent performance", icon: Activity, href: "/agent-performance", category: "ai" },
 
   // ── Customers ───────────────────────────────────────────────────────
@@ -293,15 +295,15 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", category: "ops" },
   { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", category: "ops" },
   { label: "Capability queue", icon: Wrench, href: "/founder/tools", category: "ops" },
-  { label: "Trust graduation", icon: Shield, href: "/founder/trust-graduation", category: "ops" },
+  { label: "Trust graduation", icon: Shield, href: "/founder/admin/agents?tab=trust", category: "ops" },
 
   // ── Experimental ────────────────────────────────────────────────────
   // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
   // anticipatory-enterprise, and agent-collaboration retired. Board of
-  // directors → /founder/governance, conscious organization →
-  // /founder/scenarios (refit surfaces).
-  { label: "Governance", icon: Shield, href: "/founder/governance", category: "experimental" },
-  { label: "Scenarios", icon: Brain, href: "/founder/scenarios", category: "experimental" },
+  // directors and conscious organization were refit as founder surfaces and
+  // are the Governance and Scenarios tabs of the agents hub (F1 slice 4).
+  { label: "Governance", icon: Shield, href: "/founder/admin/agents?tab=governance", category: "experimental" },
+  { label: "Scenarios", icon: Brain, href: "/founder/admin/agents?tab=scenarios", category: "experimental" },
   { label: "Data moat", icon: Database, href: "/data-moat", category: "experimental" },
   { label: "Reseller program", icon: Store, href: "/reseller", category: "experimental" },
   { label: "Executive dashboard", icon: BarChart3, href: "/executive-dashboard", category: "experimental" },

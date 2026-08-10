@@ -25,7 +25,7 @@
     "shared/governance/statuteRegister.ts": "0ccaefae7de3cfe3c853160d9f08eecd775eff8680ecffc36e4f26ac947825c7",
     "sovereign-protocol/immutables.json": "a80aacb95ae1b6cd4ed4fe308dc36fcc4a86ba2184fea1a31ac48474ce7dc8ae",
     "tests/unit/constitution.test.ts": "de01680c8e7625bbdb6c00259f10dc274165993218366b07dd60a16da83593d1",
-    "tests/unit/founderFourDoors.test.ts": "2c46dfd6c010a1ef4e169a06f5fa2ba8f651e662cae842cb9cadb8adf58db6bc",
+    "tests/unit/founderFourDoors.test.ts": "adcc3b6916186a109d0324f40f204e3cbc52cd24e0dad9a7629d6bdbb1ea1328",
     "tests/unit/founderHardStopGuardrails.test.ts": "f028ef210f9cafd955b3a15625a2efc5154ee1054c4a7251dca92077e3360cdb",
     "tests/unit/gateTamperWatch.test.ts": "dd9423a0942f1135b270aeca10f0be1af17c284854032c6e0dbc543761d7d529",
     "tests/unit/jobRosterCoverage.test.ts": "acb5a63a8fa1b37a3585525cc64fa859f126bb31d819686d1056e2eb8f214687",

@@ -358,11 +358,32 @@ function adoptKey(charter: CharterDomain): string {
  */
 function deriveDefault(positions: readonly CharterPosition[]): MemoDefault {
   const holds = positions.filter((p) => !p.requiresNewCommitment);
-  const favors = holds.length === 1 ? holds[0].charter : null;
-  const tail =
+  let favors = holds.length === 1 ? holds[0].charter : null;
+  let tail =
     favors != null
       ? `That effectively backs ${favors}'s position, which asks for no new commitment.`
       : "Both positions ask for a new commitment, so silence advances neither.";
+
+  // "Silence advances neither" is only true when the ladder is indifferent
+  // between the two. When both sides commit but the ladder RANKS one above the
+  // other, doing nothing does not hold the line — it hands the tick to the
+  // higher-ranked move (fleet-10 verifier catch: on the one contention this
+  // emitter files, grow_owned_channels outranks optimize, so silence favored
+  // growth while the card said it favored nobody).
+  if (favors == null) {
+    const priorities = ladderMovePriorities();
+    const ranked = positions
+      .map((p) => ({ p, priority: p.moveKind == null ? undefined : priorities.get(p.moveKind) }))
+      .filter((r): r is { p: CharterPosition; priority: number } => r.priority !== undefined)
+      .sort((a, b) => a.priority - b.priority);
+    if (ranked.length === positions.length && ranked.length > 1 && ranked[0].priority !== ranked[1].priority) {
+      favors = ranked[0].p.charter;
+      tail =
+        `Both positions ask for a new commitment, but the ladder already ranks ` +
+        `${ranked[0].p.moveKind} above ${ranked[1].p.moveKind} — so doing nothing ` +
+        `hands the next tick to ${favors}, it does not hold the line.`;
+    }
+  }
   return {
     action: "hold_both_positions",
     favors,

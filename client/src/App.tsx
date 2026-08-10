@@ -205,7 +205,8 @@ const MapsPage = React.lazy(() => import("@/pages/maps"));
 // /command-center route is a Redirect to /ai#chat and pax.tsx owns the only
 // live lazy import of pages/command-center.tsx.
 // ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
-// @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
+// @/pages/founder/scenarios, now the Scenarios tab of the agents hub
+// (F1 slice 4); /conscious-organization redirects there.
 // AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;
 // /anticipatory-enterprise redirects to /founder/bridge.
 // /real-runtime removed (Lens 4 Fix 4): customer-facing surface that
@@ -321,6 +322,12 @@ const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/cos
 // Observability consolidated into one /founder/admin/telemetry hub (F1 slice 2):
 // AI observatory, API telemetry, agent + Pax traces, calibration, event log.
 const FounderAdminTelemetryPage = React.lazy(() => import("@/pages/founder/admin/telemetry"));
+// F1 slice 4 — the agent instrument. Absorbs the five routes that inspected the
+// agents themselves (agent-queue, governance, trust-graduation, memory,
+// scenarios) as tabs; their old paths redirect here tab-pinned. Dispatches is
+// the one sibling that did NOT move this slice — see its route below.
+const FounderAdminAgentsPage = React.lazy(() => import("@/pages/founder/admin/agents"));
+const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
@@ -339,8 +346,6 @@ const FounderRecoursePage = React.lazy(() => import("@/pages/founder/recourse"))
 // Tier 3F — the data co-op's quarterly market-report DRAFT review surface.
 // Review only (no publish path). GET /api/founder/market-reports.
 const FounderMarketReportsPage = React.lazy(() => import("@/pages/founder/market-reports"));
-const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
-const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 // FounderAsksPage deleted 2026-07-27 (four-door merge) — the standalone
 // /founder/asks queue duplicated the Decisions door; founder-decisions.tsx
 // embeds OpenAsksSection against the same /api/founder/asks backend. The
@@ -386,7 +391,6 @@ const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
 const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
 const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
 const FounderInspectorRouter = React.lazy(() => import("@/pages/founder/inspector"));
-const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 // PropertiesComparePage archived 2026-06-01 — no callers.
 // DealUnderwritingPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // TeamKPIPage archived 2026-06-01 — no nav entry, no callers.
@@ -412,15 +416,12 @@ const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashbo
 // sovereign-v13, anticipatory-enterprise, and agent-collaboration were
 // retired (pages deleted, routes redirect). The four surviving surfaces
 // moved under /founder/* as first-class founder deep-dives:
-//   board-of-directors    → /founder/governance
-//   memory-browser        → /founder/memory
+//   board-of-directors    → the Governance tab of /founder/admin/agents (F1 slice 4)
+//   memory-browser        → the Memory tab of /founder/admin/agents (F1 slice 4)
 //   event-log             → the Event log tab of /founder/admin/telemetry (F1 slice 2)
-//   conscious-organization → /founder/scenarios
-const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
+//   conscious-organization → the Scenarios tab of /founder/admin/agents (F1 slice 4)
 const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
-const FounderMemoryPage = React.lazy(() => import("@/pages/founder/memory"));
 const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
-const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -1185,11 +1186,8 @@ function Router() {
           longer registered one-by-one — the FounderLegacyRedirect catch-all
           at the END of the founder routes resolves FOUNDER_LEGACY_REDIRECTS
           (client/src/lib/route-redirects.ts). */}
-      {/* Pillar R — per-(agent, category) tier admin. Linked from the
-          cockpit's autonomy section. */}
-      <Route path="/founder/trust-graduation">
-        {() => <FounderProtectedRoute component={FounderTrustGraduationPage} />}
-      </Route>
+      {/* Pillar R — per-(agent, category) tier admin — now the "Trust
+          graduation" tab of /founder/admin/agents (F1 slice 4). */}
       {/* CMO ad engine — single founder surface to review + ship ads to
           Meta + TikTok. See server/services/cmo/ + apps/remotion/. */}
       <Route path="/founder/cmo">
@@ -1315,6 +1313,12 @@ function Router() {
       <Route path="/founder/admin/telemetry">
         {() => <FounderProtectedRoute component={FounderAdminTelemetryPage} />}
       </Route>
+      {/* Agents — unified agent instrument (F1 slice 4): the proposal queue,
+          governance, trust graduation, memory and scenarios, all as tabs under
+          /founder/admin. */}
+      <Route path="/founder/admin/agents">
+        {() => <FounderProtectedRoute component={FounderAdminAgentsPage} />}
+      </Route>
       {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
@@ -1324,9 +1328,12 @@ function Router() {
       <Route path="/founder/feedback">
         {() => <FounderProtectedRoute component={FounderFeedbackInboxPage} />}
       </Route>
-      <Route path="/founder/agent-queue">
-        {() => <FounderProtectedRoute component={FounderAgentQueuePage} />}
-      </Route>
+      {/* /founder/agent-queue is the Proposal queue tab of
+          /founder/admin/agents (F1 slice 4). /founder/dispatches belongs in
+          that hub too and its body is ready to move, but it stayed a route
+          this slice: server/services/autopilot/stepAwayReadiness.ts emits
+          "/founder/dispatches" as a readiness href and server/** was outside
+          the slice's file set. Move both together. */}
       <Route path="/founder/dispatches">
         {() => <FounderProtectedRoute component={FounderDispatchesPage} />}
       </Route>
@@ -1540,8 +1547,9 @@ function Router() {
         {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/conscious-organization">
-        {/* Census W3-1 refit 2026-06-11 — page moved to /founder/scenarios. */}
-        {() => <Redirect to="/founder/scenarios" />}
+        {/* Census W3-1 refit 2026-06-11 — page moved to the Scenarios tab of
+            the agents hub (F1 slice 4). */}
+        {() => <Redirect to="/founder/admin/agents?tab=scenarios" />}
       </Route>
       <Route path="/anticipatory-enterprise">
         {/* Census W3-1 retire 2026-06-11 — page deleted; no nav entry. */}
@@ -1700,15 +1708,10 @@ function Router() {
 
       {/* Sovereign Protocol — Census W3-1 retire/refit split (2026-06-11).
           Refit surfaces live at their /founder/* routes; old paths 301. */}
-      <Route path="/founder/governance">
-        {() => <FounderProtectedRoute component={FounderGovernancePage} />}
-      </Route>
-      <Route path="/founder/memory">
-        {() => <FounderProtectedRoute component={FounderMemoryPage} />}
-      </Route>
-      <Route path="/founder/scenarios">
-        {() => <FounderProtectedRoute component={FounderScenariosPage} />}
-      </Route>
+      {/* The three sovereign refit surfaces (governance, memory, scenarios)
+          are tabs of /founder/admin/agents (F1 slice 4); the old paths and the
+          pre-refit /board-of-directors, /memory-browser and
+          /conscious-organization aliases redirect there tab-pinned. */}
       {/* Founder legacy-path catch-all (F1 slice 1). MUST stay after every
           real founder <Route> registration above — the Switch is first-match,
           so a real founder route added below this line would be swallowed
@@ -1720,10 +1723,10 @@ function Router() {
       </Route>
       {/* Old-path redirects for the refit surfaces. */}
       <Route path="/board-of-directors">
-        {() => <Redirect to="/founder/governance" />}
+        {() => <Redirect to="/founder/admin/agents?tab=governance" />}
       </Route>
       <Route path="/memory-browser">
-        {() => <Redirect to="/founder/memory" />}
+        {() => <Redirect to="/founder/admin/agents?tab=memory" />}
       </Route>
       <Route path="/event-log">
         {() => <Redirect to="/founder/admin/telemetry?tab=events" />}

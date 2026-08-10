@@ -33,8 +33,28 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import {
+  ABUSE_SIGNAL_WINDOW_DAYS,
+  evaluateTrustReviewEvidence,
+  readAbuseSignals,
+} from "./services/abuseSignals";
+import {
+  normalizeOrgTrustTier,
+  resolveOrgTrustCaps,
+  resolveOrgTrustCapStatus,
+} from "./services/orgTrust";
 
 const RECENT_SIGNUPS_LIMIT = 20;
+/** Bounded so the panel is one page of orgs, not an unbounded table scan. */
+const TRUST_PANEL_ORG_LIMIT = 200;
+/**
+ * The one sentence the trust panel is allowed to say about enforcement, kept
+ * server-side so the surface cannot soften it. Pinned by
+ * tests/unit/abuseSignals.test.ts.
+ */
+const TRUST_PANEL_ENFORCEMENT_STATUS =
+  "PROPOSED — NOT ENFORCED. No cap on this page limits anything today, and " +
+  "nothing here changes an org's trust tier. A tier change is a founder act.";
 const TRIAL_WINDOW_DAYS = 14;
 const CHURN_WINDOW_DAYS = 30;
 const UTM_WINDOW_DAYS = 90;
@@ -218,6 +238,109 @@ export function registerFounderCustomersRoutes(app: Express) {
         });
       } catch (error) {
         logger.error("[founder-customers] failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return Errors.internal(res, error);
+      }
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /api/founder/trust-signals — X-A slice 2. EVIDENCE, NOT A CONTROL.
+  // ─────────────────────────────────────────────────────────────────────────
+  //
+  // Per org: its stored trust tier, the abuse signals that genuinely exist at
+  // HEAD (server/services/abuseSignals.ts — each one either reads a real table
+  // or is named UNAVAILABLE with the reason), and what its caps WOULD be if
+  // the founder ratifies docs/proposals/x-a-send-chokepoint-caps.md.
+  //
+  // WHY THIS IS NOT ENFORCEMENT — the reason this file may import orgTrust:
+  //   • GET only. It reads organizations.trust_tier and never writes it; a
+  //     tier change is a founder act and no route to make one exists yet.
+  //   • It sits on no send, export or portal path — nothing here can refuse,
+  //     throttle or delay anything a customer does.
+  //   • It resolves caps purely to DISPLAY them, tagged with their real status
+  //     from resolveOrgTrustCapStatus(): exactly one cap (portalLinkTtlDays)
+  //     is consumed by live code, every other is "proposed".
+  // tests/unit/orgTrust.test.ts's importer pin was rewritten (not deleted) to
+  // record this third importer with that reasoning.
+  app.get(
+    "/api/founder/trust-signals",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const now = new Date();
+        const rawWindow = Number(req.query.windowDays);
+        const windowDays =
+          Number.isFinite(rawWindow) && rawWindow > 0 && rawWindow <= 365
+            ? Math.floor(rawWindow)
+            : ABUSE_SIGNAL_WINDOW_DAYS;
+
+        // Every org, highest id first (creation order for a serial PK),
+        // bounded. "Organizations" is the honest noun: these are tenants, not
+        // customers — an unpaid trial org is on this list and calling it a
+        // customer would be a lie the data does not support.
+        const orgRows = await db
+          .select({
+            id: organizations.id,
+            name: organizations.name,
+            trustTier: organizations.trustTier,
+            isFounder: organizations.isFounder,
+          })
+          .from(organizations)
+          .orderBy(desc(organizations.id))
+          .limit(TRUST_PANEL_ORG_LIMIT);
+
+        const signalsByOrg = await readAbuseSignals(
+          orgRows.map((o) => o.id),
+          { windowDays, now },
+        );
+        const capStatus = resolveOrgTrustCapStatus();
+
+        const orgs = orgRows.map((org) => {
+          // Bulk read → normalize in memory. Same fail-closed rule as the
+          // per-org resolver: an unrecognized stored value reads as "new".
+          const tier = normalizeOrgTrustTier(org.trustTier);
+          const caps = resolveOrgTrustCaps(tier);
+          const signals = signalsByOrg.get(org.id)?.signals ?? [];
+          return {
+            organizationId: org.id,
+            name: org.name,
+            isFounderOrg: org.isFounder === true,
+            trustTier: tier,
+            /**
+             * The RAW stored string, unnormalized. Sent alongside the resolved
+             * tier so the panel can show when the two disagree — a corrupt or
+             * legacy value reads as "new" here, and hiding that would make a
+             * fail-closed read look like a deliberate tier.
+             */
+            trustTierStored: org.trustTier ?? null,
+            signals,
+            proposedCaps: Object.entries(caps).map(([key, value]) => ({
+              key,
+              value,
+              status: capStatus[key as keyof typeof capStatus] ?? "proposed",
+            })),
+            evidence: evaluateTrustReviewEvidence(signals, {
+              portalLinksActiveMax: caps.portalLinksActiveMax,
+            }),
+          };
+        });
+
+        res.json({
+          asOf: now.toISOString(),
+          windowDays,
+          orgCount: orgs.length,
+          orgLimit: TRUST_PANEL_ORG_LIMIT,
+          /** Load-bearing: the client renders this verbatim, it does not compose its own. */
+          enforcementStatus: TRUST_PANEL_ENFORCEMENT_STATUS,
+          proposalPath: "docs/proposals/x-a-send-chokepoint-caps.md",
+          orgs,
+        });
+      } catch (error) {
+        logger.error("[founder-trust-signals] failed", {
           error: error instanceof Error ? error.message : String(error),
         });
         return Errors.internal(res, error);

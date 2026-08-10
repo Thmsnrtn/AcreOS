@@ -135,7 +135,7 @@ export default function FounderFeedPage() {
         description: e.sophieAnalysis.slice(0, 240),
         badge: e.status,
         createdAt: e.createdAt,
-        href: "/founder/agent-queue",
+        href: "/founder/admin/agents?tab=queue",
       });
     }
     for (const p of proposals?.proposals ?? []) {
@@ -147,7 +147,7 @@ export default function FounderFeedPage() {
         description: (output.rationale ?? "").slice(0, 240),
         badge: p.status,
         createdAt: p.createdAt,
-        href: "/founder/agent-queue",
+        href: "/founder/admin/agents?tab=queue",
       });
     }
     out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

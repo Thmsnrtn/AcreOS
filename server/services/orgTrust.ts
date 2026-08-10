@@ -116,6 +116,53 @@ const ORG_TRUST_CAPS: Record<OrgTrustTier, OrgTrustCaps> = {
   },
 };
 
+/**
+ * X-A slice 2 — which caps are ACTUALLY consumed today, straight from this
+ * module rather than restated by a surface.
+ *
+ * The founder-visible trust panel has to label each cap honestly, and the only
+ * place that knows the answer is this file (the header explains why: the caps
+ * table is config, and exactly one entry — portalLinkTtlDays — is read by a
+ * live code path). Deriving the labels from here means a surface can never
+ * drift into claiming a cap is live when it is not, and the day the founder
+ * rules on docs/proposals/x-a-send-chokepoint-caps.md, flipping an entry here
+ * updates every label at once.
+ *
+ * "consumed" is deliberately NOT the word "enforced": portalLinkTtlDays sets a
+ * link lifetime on rebind. It refuses nothing and moves no mail.
+ */
+export type OrgTrustCapStatus = "consumed" | "proposed";
+
+const ORG_TRUST_CAP_STATUS: Record<keyof OrgTrustCaps, OrgTrustCapStatus> = {
+  wedgeSendsPerDay: "proposed",
+  wedgeRecipientsPerDay: "proposed",
+  wedgeSameRecipientCooldownDays: "proposed",
+  portalLinksActiveMax: "proposed",
+  portalLinkRefreshesPerDay: "proposed",
+  // The one live consumer: services/portalLink.ts stamps this TTL on a rebind.
+  portalLinkTtlDays: "consumed",
+  exportJobsPerHour: "proposed",
+  exportRowsPerDay: "proposed",
+};
+
+/** Pure lookup — read-only, additive. Enforces nothing. */
+export function resolveOrgTrustCapStatus(): Record<keyof OrgTrustCaps, OrgTrustCapStatus> {
+  return { ...ORG_TRUST_CAP_STATUS };
+}
+
+/**
+ * Validate a trust-tier value the caller already has in hand (e.g. from a bulk
+ * `SELECT id, name, trust_tier` that reads many orgs in one query, where
+ * resolveOrgTrustTier's per-org round trip would be N queries).
+ *
+ * Same fail-CLOSED posture as resolveOrgTrustTier: anything unrecognized —
+ * null, a legacy value, an investor tier that leaked in — resolves to "new",
+ * the most restrictive tier. Read-only; writes nothing.
+ */
+export function normalizeOrgTrustTier(value: unknown): OrgTrustTier {
+  return isOrgTrustTier(value) ? value : "new";
+}
+
 /** Pure lookup — the tier's cap set. */
 export function resolveOrgTrustCaps(tier: OrgTrustTier): OrgTrustCaps {
   return ORG_TRUST_CAPS[tier];

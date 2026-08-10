@@ -1,6 +1,5 @@
 import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import {
   Lightbulb, History, Layers,
 } from "lucide-react";
 import { relative } from "@/lib/format";
-import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useCognitiveMemory } from "@/hooks/use-sovereign-dashboard";
 
 function useMemorySearch(query: string, memoryType: string) {
@@ -149,8 +147,9 @@ function MemoryCard({ memory }: { memory: any }) {
   );
 }
 
-export default function FounderMemoryPage() {
-  useDocumentTitle("Memory browser");
+/** Shell-less body — rendered as the "Memory" tab of the agents hub
+ *  (/founder/admin/agents?tab=memory, F1 slice 4). */
+export function MemoryContent() {
   const searchId = useId();
   const [searchQuery, setSearchQuery] = useState("");
   const [memoryType, setMemoryType] = useState("all");
@@ -185,8 +184,7 @@ export default function FounderMemoryPage() {
     : [];
 
   return (
-    <PageShell>
-      <div className="space-y-6 md:space-y-8">
+    <div className="space-y-6 md:space-y-8">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Brain className="w-6 h-6 text-primary" aria-hidden="true" />
@@ -316,7 +314,6 @@ export default function FounderMemoryPage() {
             testId="founder-memory-empty"
           />
         )}
-      </div>
-    </PageShell>
+    </div>
   );
 }

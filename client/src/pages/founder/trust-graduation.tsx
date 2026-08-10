@@ -1,24 +1,22 @@
 /**
- * Pillar R — Trust graduation founder admin page.
+ * Pillar R — Trust graduation.
  *
  * Shows every (agent, category) row with its current tier, streaks,
  * lifetime acceptance/retract counts, and founder-override flag.
  * Inline buttons flip the tier or set/clear an override flag.
  *
- * Linked from the cockpit autonomy section. This is where you go when
- * /founder/now surfaces a tier_promotion you want to fast-forward or a
+ * F1 slice 4: no longer its own route. This is the "Trust graduation" tab of
+ * the agents hub (/founder/admin/agents?tab=trust) — where you go when The
+ * Letter surfaces a tier_promotion you want to fast-forward or a
  * tier_demotion you want to reverse.
  */
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDocumentTitle } from "@/hooks/use-document-title";
-import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, ShieldAlert, Lock, Unlock, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { formatDate } from "@/lib/format";
@@ -51,8 +49,9 @@ const TIER_BADGE: Record<Tier, { label: string; className: string }> = {
   suspended: { label: "suspended", className: "bg-acr-neg-soft text-acr-neg border-transparent" },
 };
 
-export default function FounderTrustGraduationPage() {
-  useDocumentTitle("Trust graduation — founder admin");
+/** Shell-less body — rendered as the "Trust graduation" tab of the agents hub
+ *  (/founder/admin/agents?tab=trust, F1 slice 4). */
+export function TrustGraduationContent() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data, isLoading, isError, refetch } = useQuery<GraduationResponse>({
@@ -82,10 +81,8 @@ export default function FounderTrustGraduationPage() {
   }, [data]);
 
   return (
-    <PageShell label="Trust graduation">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <CanonicalSurfacesBanner variant="compact" />
-        <header>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <header>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-acr-brand" aria-hidden="true" />
             Trust graduation
@@ -226,7 +223,6 @@ export default function FounderTrustGraduationPage() {
             </Card>
           ))
         )}
-      </div>
-    </PageShell>
+    </div>
   );
 }
