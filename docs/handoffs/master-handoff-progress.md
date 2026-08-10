@@ -953,16 +953,27 @@ integration defects were all fixed centrally before commit:
   48 routes + X-A-s1 abuse spine — section above; all ten verifier catches
   fixed centrally pre-commit; survived a container restart mid-gates with
   the check result carried and test+build re-run clean).
-- **In flight: FLEET 7** building Wave S S1+S2 (charter registry derived
-  from the REAL trust ledger/senses/hands wiring + charter cards in the
-  Controls hub + promotion-follows-perception gate + Letter blindness
-  lines), Wave 1.4 (EntityTable kit + the five list migrations), and O4
-  (SLOs per surface class + synthetic canaries wired into the EXISTING
-  /status page). Same protocol; fallback timer armed.
-- **After fleet 7:** S4 scenario-library matrix, 1.3/1.5, F1 slice 4+,
-  O6/O7 buildable parts, X-A slice 2 (post-ruling), then Wave 2 per §D.
-  G2/G3 wait on customers; founder queue unchanged. S3 hands / promotion
-  mechanics stay propose-first per D-5.
+- **Slice 7 SHIPPED at `04a5561`** (Wave S S1+S2 staff charters +
+  promotion-follows-perception, 1.4 EntityTable kit, O4 SLOs/canaries —
+  section above; both O4 defects + four hardening notes fixed centrally;
+  one vitest worker-teardown flake re-run to a clean green before commit.
+  Ops note: a container restart rolled the LOCAL clone back two commits
+  after the push — the remote was intact; recovered by fast-forward, no
+  work lost. Pushes are the only durable state; commit early.)
+- **In flight: FLEET 8** building S4 (scenario library as executable
+  doctrine — trigger→charter→playbook→autonomy→founder-touch→drill matrix
+  DERIVED against the real SENSE_INVENTORY/charters/jobRegistry/runbooks,
+  surfaced on the Story door), 1.3 (Today queue keys/snooze/approve-above-
+  threshold; Deals optimistic drag + column intelligence; Inbox needs-reply
+  view + keys), and 1.5 (settings decomposition: five-group left rail,
+  routed sections, redirects, status-row grammar, no-new-TabsContent lint —
+  settings.tsx is a 20-TabsContent monolith with a partially-decomposed
+  settings/ directory already present). Same protocol; fallback timer
+  armed.
+- **After fleet 8:** O6/O7 buildable parts, F1 slice 4+, S5 buildable part
+  (conflict memos ride F2's reasons rail), X-A slice 2 (post-ruling), then
+  Wave 2 per §D. G2/G3 wait on customers; founder queue unchanged. S3
+  hands / promotion mechanics stay propose-first per D-5.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.
