@@ -480,9 +480,16 @@ export async function registerRoutes(
       }));
       const overall = services.every((s: any) => s.status === "operational") ? "operational"
         : services.some((s: any) => s.status === "outage") ? "outage" : "degraded";
-      res.json({ status: overall, services, lastChecked: result.timestamp });
+      // O4 (P5 §2) — the SLO register + persona-journey canary truth layer.
+      // Best-effort: the classic service checks must render even when the SLO
+      // read fails; a null here makes the page say "unavailable", never a
+      // stale or invented value (module-level 60s cache absorbs the 30s poll).
+      const slo = await import("./services/slo")
+        .then(({ getPublicSloStatus }) => getPublicSloStatus())
+        .catch(() => null);
+      res.json({ status: overall, services, lastChecked: result.timestamp, slo });
     } catch {
-      res.json({ status: "unknown", services: [], lastChecked: new Date() });
+      res.json({ status: "unknown", services: [], lastChecked: new Date(), slo: null });
     }
   });
 

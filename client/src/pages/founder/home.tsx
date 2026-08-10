@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
+import { StaffBlindnessLines } from "@/components/founder/StaffCharterCards";
 import { LetterConfession } from "@/components/founder/LetterConfession";
 import { ReadinessLadderLetterLine } from "@/components/founder/ReadinessLadderSection";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -402,6 +403,15 @@ export default function FounderHomePage() {
               pointers live. */}
           <motion.div variants={staggerItem}>
             <GovernanceRulesRow />
+          </motion.div>
+
+          {/* What the staff can't see yet (Wave S · S2) — the blindness lines,
+              derived from the charter registry's unwired core senses: the SAME
+              derivation the promotion gate enforces, so the founder always
+              knows what his staff can't know. Renders nothing when there are
+              no blind spots; a failed read says so. */}
+          <motion.div variants={staggerItem}>
+            <StaffBlindnessLines />
           </motion.div>
 
           {/* Talk to your company */}

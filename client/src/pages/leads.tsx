@@ -79,7 +79,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EntityTable } from "@/components/entity-table/EntityTable";
+import type { EntityColumn } from "@/components/entity-table/types";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
@@ -1122,6 +1123,181 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
+  // The desktop leads table, as EntityTable column defs (Wave 1.4 — the
+  // shared table kit). Same six visible columns and behaviors as the
+  // hand-rolled ui/table scaffolding this replaced, including the
+  // three-state score sort (none → desc → asc) which stays CONTROLLED by
+  // `sortOrder` so the saved-views selector and the mobile sort button
+  // keep steering it.
+  const leadColumns: Array<EntityColumn<LeadWithScore>> = [
+    {
+      id: "select",
+      header: (
+        <Checkbox
+          checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
+          onCheckedChange={(checked) => handleSelectAll(checked === true)}
+          aria-label="Select all leads"
+          data-testid="checkbox-select-all-leads"
+        />
+      ),
+      headerLabel: "Select",
+      headClassName: "w-[50px]",
+      cell: (lead) => (
+        <Checkbox
+          checked={selectedLeadIds.has(lead.id)}
+          onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+          aria-label={`Select ${lead.firstName} ${lead.lastName}`}
+          data-testid={`checkbox-lead-${lead.id}`}
+        />
+      ),
+    },
+    {
+      id: "name",
+      header: "Name",
+      headClassName: "min-w-[120px]",
+      cellClassName: "font-medium",
+      cell: (lead) => (
+        <div className="flex items-center gap-1.5">
+          <span>{lead.firstName} {lead.lastName}</span>
+          <PaxContextButton
+            entityType="lead"
+            entityId={lead.id}
+            entityName={`${lead.firstName} ${lead.lastName}`}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "score",
+      header: "Score",
+      sortable: true,
+      sortTestId: "button-sort-score",
+      headClassName: "min-w-[100px]",
+      cell: (lead) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <LeadScoreBadge lead={lead} />
+          <ContactAgeBadge lead={lead} />
+          <TcpaConsentBadge lead={lead} />
+          {lead.lastContactedAt && (
+            <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
+              {formatDate(lead.lastContactedAt)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Contact",
+      headClassName: "min-w-[180px]",
+      cell: (lead) => (
+        <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+          {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
+          {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
+        </div>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      headClassName: "min-w-[100px]",
+      cell: (lead) => <LeadStatusBadge status={lead.status} />,
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      headClassName: "min-w-[160px]",
+      cell: (lead) => (
+        <div className="flex items-center justify-end gap-1">
+          {lead.phone && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  asChild
+                  aria-label="Call lead"
+                  data-testid={`button-call-lead-${lead.id}`}
+                >
+                  <a href={`tel:${lead.phone}`}>
+                    <Phone className="w-4 h-4" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Call {lead.phone}</TooltipContent>
+            </Tooltip>
+          )}
+          {lead.email && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  asChild
+                  aria-label="Email lead"
+                  data-testid={`button-email-lead-${lead.id}`}
+                >
+                  <a href={`mailto:${lead.email}`}>
+                    <Mail className="w-4 h-4" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Email {lead.email}</TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setLocation(`/leads/${lead.id}`)}
+                aria-label="View notes and timeline"
+                data-testid={`button-note-lead-${lead.id}`}
+              >
+                <StickyNote className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add Note / View Timeline</TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Lead actions" data-testid={`button-actions-lead-${lead.id}`}>
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setLocation(`/leads/${lead.id}`)} data-testid={`button-view-lead-${lead.id}`}>
+                <Eye className="w-4 h-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                <Edit className="w-4 h-4 mr-2" />
+                {Verbs.EDIT}
+              </DropdownMenuItem>
+              <RescoreMenuItem leadId={lead.id} />
+              <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
+                <FileText className="w-4 h-4 mr-2" />
+                Generate Offer Letter
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setDeletingLead(lead)}
+                className="text-destructive"
+                data-testid={`button-delete-lead-${lead.id}`}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {Verbs.DELETE}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ];
+
   if (error) {
     return (
       <PageShell label={leadsLabel} embedded={embedded}>
@@ -1563,202 +1739,57 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   }
                 >
                   <>
-                    {/* Desktop Table View */}
+                    {/* Desktop Table View — the shared EntityTable kit
+                        (Wave 1.4). Columns live in `leadColumns` above;
+                        the score sort is controlled by `sortOrder` so the
+                        saved-views selector and the mobile sort button
+                        keep steering the same state. Loading stays with
+                        ContentReveal outside the kit; the two empty
+                        variants (first-run vs filters-returned-nothing)
+                        render through the kit's empty slot. */}
                     <div className="hidden md:block overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead className="w-[50px]">
-                              <Checkbox
-                                checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
-                                onCheckedChange={(checked) => handleSelectAll(checked === true)}
-                                aria-label="Select all leads"
-                                data-testid="checkbox-select-all-leads"
+                      <EntityTable<LeadWithScore>
+                        items={paginatedLeads}
+                        getRowId={(lead) => lead.id}
+                        columns={leadColumns}
+                        headerRowClassName="bg-muted/50"
+                        rowClassName="group"
+                        rowTestId={(lead) => `row-lead-${lead.id}`}
+                        caption="Leads"
+                        testId="table-leads"
+                        sort={sortOrder ? { columnId: "score", direction: sortOrder } : null}
+                        onSortChange={(next) =>
+                          setSortOrder(next && next.columnId === "score" ? next.direction : null)
+                        }
+                        empty={
+                          leads?.length === 0 ? (
+                            <FirstHelloEmpty
+                              surface="leads"
+                              cta={{
+                                primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
+                                secondary: { label: "Import from CSV", onClick: () => setIsSmartCsvOpen(true) },
+                              }}
+                            />
+                          ) : (
+                            <div className="p-4">
+                              <EmptyFilter
+                                filterCount={
+                                  (search ? 1 : 0) +
+                                  (stageFilter !== "all" ? 1 : 0) +
+                                  (assigneeFilter !== "all" ? 1 : 0) +
+                                  countActiveGisFilters(gisFilters)
+                                }
+                                onClearFilters={() => {
+                                  setSearch("");
+                                  setStageFilter("all");
+                                  setAssigneeFilter("all");
+                                  setGisFilters(defaultGisFilters);
+                                }}
                               />
-                            </TableHead>
-                            <TableHead className="min-w-[120px]">Name</TableHead>
-                            <TableHead className="min-w-[100px]">
-                              <button
-                                type="button"
-                                onClick={handleSortByScore}
-                                className="flex items-center hover-elevate rounded px-1 -ml-1"
-                                data-testid="button-sort-score"
-                              >
-                                Score
-                                {getSortIcon()}
-                              </button>
-                            </TableHead>
-                            <TableHead className="min-w-[180px]">Contact</TableHead>
-                            <TableHead className="min-w-[100px]">Status</TableHead>
-                            <TableHead className="text-right min-w-[160px]">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredLeads?.length === 0 && leads?.length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={6} className="p-0">
-                                <FirstHelloEmpty
-                                  surface="leads"
-                                  cta={{
-                                    primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
-                                    secondary: { label: "Import from CSV", onClick: () => setIsSmartCsvOpen(true) },
-                                  }}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {filteredLeads?.length === 0 && leads && leads.length > 0 && (
-                            <TableRow>
-                              <TableCell colSpan={6} className="p-4">
-                                <EmptyFilter
-                                  filterCount={
-                                    (search ? 1 : 0) +
-                                    (stageFilter !== "all" ? 1 : 0) +
-                                    (assigneeFilter !== "all" ? 1 : 0) +
-                                    countActiveGisFilters(gisFilters)
-                                  }
-                                  onClearFilters={() => {
-                                    setSearch("");
-                                    setStageFilter("all");
-                                    setAssigneeFilter("all");
-                                    setGisFilters(defaultGisFilters);
-                                  }}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {paginatedLeads.map((lead) => (
-                            <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedLeadIds.has(lead.id)}
-                                  onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
-                                  aria-label={`Select ${lead.firstName} ${lead.lastName}`}
-                                  data-testid={`checkbox-lead-${lead.id}`}
-                                />
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                <div className="flex items-center gap-1.5">
-                                  <span>{lead.firstName} {lead.lastName}</span>
-                                  <PaxContextButton
-                                    entityType="lead"
-                                    entityId={lead.id}
-                                    entityName={`${lead.firstName} ${lead.lastName}`}
-                                  />
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <LeadScoreBadge lead={lead} />
-                                  <ContactAgeBadge lead={lead} />
-                                  <TcpaConsentBadge lead={lead} />
-{lead.lastContactedAt && (
-                                    <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
-                                      {formatDate(lead.lastContactedAt)}
-                                    </span>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                                  {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
-                                  {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <LeadStatusBadge status={lead.status} />
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  {lead.phone && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                          asChild
-                                          aria-label="Call lead"
-                                          data-testid={`button-call-lead-${lead.id}`}
-                                        >
-                                          <a href={`tel:${lead.phone}`}>
-                                            <Phone className="w-4 h-4" />
-                                          </a>
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Call {lead.phone}</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {lead.email && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                          asChild
-                                          aria-label="Email lead"
-                                          data-testid={`button-email-lead-${lead.id}`}
-                                        >
-                                          <a href={`mailto:${lead.email}`}>
-                                            <Mail className="w-4 h-4" />
-                                          </a>
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Email {lead.email}</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                        onClick={() => setLocation(`/leads/${lead.id}`)}
-                                        aria-label="View notes and timeline"
-                                        data-testid={`button-note-lead-${lead.id}`}
-                                      >
-                                        <StickyNote className="w-4 h-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Add Note / View Timeline</TooltipContent>
-                                  </Tooltip>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Lead actions" data-testid={`button-actions-lead-${lead.id}`}>
-                                        <MoreVertical className="w-4 h-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => setLocation(`/leads/${lead.id}`)} data-testid={`button-view-lead-${lead.id}`}>
-                                        <Eye className="w-4 h-4 mr-2" />
-                                        View Details
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
-                                        <Edit className="w-4 h-4 mr-2" />
-                                        {Verbs.EDIT}
-                                      </DropdownMenuItem>
-                                      <RescoreMenuItem leadId={lead.id} />
-                                      <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
-                                        <FileText className="w-4 h-4 mr-2" />
-                                        Generate Offer Letter
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => setDeletingLead(lead)}
-                                        className="text-destructive"
-                                        data-testid={`button-delete-lead-${lead.id}`}
-                                      >
-                                        <Trash2 className="w-4 h-4 mr-2" />
-                                        {Verbs.DELETE}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                            </div>
+                          )
+                        }
+                      />
                       {serverTotal > pageSize && (
                         <ListPagination
                           currentPage={safeCurrentPage}
@@ -2112,34 +2143,35 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   Preview (first 5 rows)
                 </div>
                 <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="CSV preview">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {importPreview.headers.slice(0, 5).map((header) => (
-                          <TableHead key={header} className="text-xs whitespace-nowrap">
-                            {header}
-                          </TableHead>
-                        ))}
-                        {importPreview.headers.length > 5 && (
-                          <TableHead className="text-xs">+{importPreview.headers.length - 5} more</TableHead>
-                        )}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {importPreview.preview.map((row, idx) => (
-                        <TableRow key={idx}>
-                          {importPreview.headers.slice(0, 5).map((header) => (
-                            <TableCell key={header} className="text-xs max-w-[150px] truncate">
-                              {row[header] || "—"}
-                            </TableCell>
-                          ))}
-                          {importPreview.headers.length > 5 && (
-                            <TableCell className="text-xs text-muted-foreground">…</TableCell>
-                          )}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  {/* CSV preview through the shared kit: columns derived
+                      from the file's own headers (first 5 + overflow). */}
+                  <EntityTable<Record<string, string>>
+                    items={importPreview.preview}
+                    testId="table-leads-import-preview"
+                    caption="CSV preview"
+                    columns={[
+                      ...importPreview.headers.slice(0, 5).map(
+                        (header): EntityColumn<Record<string, string>> => ({
+                          id: header,
+                          header,
+                          headClassName: "text-xs whitespace-nowrap",
+                          cellClassName: "text-xs max-w-[150px] truncate",
+                          cell: (row) => row[header] || "—",
+                        }),
+                      ),
+                      ...(importPreview.headers.length > 5
+                        ? [
+                            {
+                              id: "__overflow",
+                              header: `+${importPreview.headers.length - 5} more`,
+                              headClassName: "text-xs",
+                              cellClassName: "text-xs text-muted-foreground",
+                              cell: () => "…",
+                            } satisfies EntityColumn<Record<string, string>>,
+                          ]
+                        : []),
+                    ]}
+                  />
                 </div>
               </div>
             </div>

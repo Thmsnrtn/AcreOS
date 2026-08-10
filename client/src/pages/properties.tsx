@@ -115,7 +115,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DealCalculator } from "@/components/deal-calculator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EntityTable } from "@/components/entity-table/EntityTable";
+import { EntityList } from "@/components/entity-table/EntityList";
+import type { EntityColumn } from "@/components/entity-table/types";
 import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -717,9 +719,18 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 />
               ) : (
                 <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paginatedProperties.map((property) => (
-                <div key={property.id} className="relative">
+            {/* Inventory card grid via the shared table/list kit
+                (Wave 1.4, EntityList grid layout). Same cards, same
+                columns classes, same two empty variants — the kit owns
+                the container + empty slot, the page keeps the card. */}
+            <EntityList
+              items={paginatedProperties}
+              getItemId={(property) => property.id}
+              layout="grid"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              testId="list-properties"
+              renderItem={(property) => (
+                <div className="relative">
                   <div className="absolute top-3 left-3 z-docked">
                     <Checkbox
                       checked={selectedPropertyIds.has(property.id)}
@@ -734,9 +745,17 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     onDelete={() => setDeletingProperty(property)}
                   />
                 </div>
-              ))}
-              {filteredProperties.length === 0 && properties && properties.length > 0 && (
-                <div className="col-span-full">
+              )}
+              empty={
+                properties?.length === 0 ? (
+                  <FirstHelloEmpty
+                    surface="properties"
+                    cta={{
+                      primary: { label: "Add a property", onClick: () => setIsCreateOpen(true) },
+                      secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                    }}
+                  />
+                ) : filteredProperties.length === 0 && properties && properties.length > 0 ? (
                   <EmptyFilter
                     filterCount={
                       (statusFilter !== "all" ? 1 : 0) +
@@ -749,20 +768,9 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                       setDistressFilter("any");
                     }}
                   />
-                </div>
-              )}
-              {properties?.length === 0 && (
-                <div className="col-span-full">
-                  <FirstHelloEmpty
-                    surface="properties"
-                    cta={{
-                      primary: { label: "Add a property", onClick: () => setIsCreateOpen(true) },
-                      secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+                ) : null
+              }
+            />
             {serverTotal > pageSize && (
               <ListPagination
                 currentPage={safePropertyPage}
@@ -850,34 +858,35 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                   Preview (first 5 rows)
                 </div>
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {importPreview.headers.slice(0, 5).map((header) => (
-                          <TableHead key={header} className="text-xs whitespace-nowrap">
-                            {header}
-                          </TableHead>
-                        ))}
-                        {importPreview.headers.length > 5 && (
-                          <TableHead className="text-xs">+{importPreview.headers.length - 5} more</TableHead>
-                        )}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {importPreview.preview.map((row, idx) => (
-                        <TableRow key={idx}>
-                          {importPreview.headers.slice(0, 5).map((header) => (
-                            <TableCell key={header} className="text-xs max-w-[150px] truncate">
-                              {row[header] || "-"}
-                            </TableCell>
-                          ))}
-                          {importPreview.headers.length > 5 && (
-                            <TableCell className="text-xs text-muted-foreground">...</TableCell>
-                          )}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  {/* CSV preview through the shared kit: columns derived
+                      from the file's own headers (first 5 + overflow). */}
+                  <EntityTable<Record<string, string>>
+                    items={importPreview.preview}
+                    testId="table-properties-import-preview"
+                    caption="CSV preview"
+                    columns={[
+                      ...importPreview.headers.slice(0, 5).map(
+                        (header): EntityColumn<Record<string, string>> => ({
+                          id: header,
+                          header,
+                          headClassName: "text-xs whitespace-nowrap",
+                          cellClassName: "text-xs max-w-[150px] truncate",
+                          cell: (row) => row[header] || "-",
+                        }),
+                      ),
+                      ...(importPreview.headers.length > 5
+                        ? [
+                            {
+                              id: "__overflow",
+                              header: `+${importPreview.headers.length - 5} more`,
+                              headClassName: "text-xs",
+                              cellClassName: "text-xs text-muted-foreground",
+                              cell: () => "...",
+                            } satisfies EntityColumn<Record<string, string>>,
+                          ]
+                        : []),
+                    ]}
+                  />
                 </div>
               </div>
             </div>

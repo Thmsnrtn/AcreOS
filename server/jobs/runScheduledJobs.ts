@@ -4852,57 +4852,10 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import revenue recognition: ${err}`, "billing");
   });
 
-  // ─── FW-OLU-2: synthetic vendor checks (every 15 min) ──
-  // Five checks (SES, Stripe webhook freshness, Clerk proxy, DB
-  // writeable, Twilio). Persists to synthetic_check_runs. Founder
-  // pulls latest via /api/founder/synthetic-checks/recent.
-  import("../services/syntheticChecks").then(({ runAllSyntheticChecks }) => {
-    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
-      log("Synthetic checks scheduler registered (self-rescheduling, 15m)", "ops");
-      scheduleSelfRescheduling({
-        name: "synthetic_checks",
-        intervalMs: 15 * 60 * 1000,
-        initialDelayMs: 3 * 60 * 1000, // 3min after boot
-        run: async () => {
-          // 15m cadence → TTL = ~90% of cadence (13m).
-          await withJobLock("synthetic_checks", 13 * 60, async () => {
-            // Detection WITHOUT announcement was the bug: the results were
-            // discarded. Inspect them and page on-call if any check is
-            // failing (a failing SES/Stripe-webhook/Clerk/DB/Twilio probe is a
-            // production-affecting signal). 'degraded' is informational only.
-            const results = await runAllSyntheticChecks();
-            const failing = results.filter((r) => r.status === "failing");
-            if (failing.length > 0) {
-              // Tier 1D: route through the alert spine instead of a raw
-              // notifyOnCall — the spine's dedupe window means a check that
-              // stays failing pages once an hour, not every 15 minutes, and
-              // the failure also lands as a finding + system_alerts row.
-              const { raiseAlert } = await import("../services/alertSpine");
-              for (const r of failing) {
-                await raiseAlert({
-                  severity: "critical",
-                  source: "synthetic_checks",
-                  title: `Synthetic check failing: ${r.checkKey}`,
-                  detail:
-                    `Synthetic vendor check "${r.checkKey}" reported status=failing. ` +
-                    `A failing probe means a core dependency (email/Stripe webhook/Clerk proxy/DB/Twilio) ` +
-                    `is unreachable or erroring. See synthetic_check_runs for detail.`,
-                  dedupeKey: `failing:${r.checkKey}`,
-                  domain: "reliability",
-                  citedReason: "Synthetic vendor probes assert core dependencies stay reachable (FW-OLU-2).",
-                  alertType: "synthetic_check_failing",
-                  pagePriority: "P1",
-                  metadata: { checkKey: r.checkKey, status: r.status },
-                }).catch(() => {/* raiseAlert is internally best-effort */});
-              }
-            }
-          });
-        },
-      });
-    });
-  }).catch(err => {
-    log(`Failed to import synthetic checks: ${err}`, "ops");
-  });
+  // ─── Reliability canaries: FW-OLU-2 synthetic vendor checks (15m, moved
+  // verbatim) + O4 persona-journey canary (30m) — cohesive group extracted to
+  // ./reliabilityCanaries (S3 decomposition; this file's line ratchet only goes down).
+  import("./reliabilityCanaries").then(({ startReliabilityCanaryJobs }) => startReliabilityCanaryJobs()).catch(err => log(`Failed to import reliability canaries: ${err}`, "ops"));
 
   // ─── Panel-300 #9: reconciliation cron (daily) ──────────────────
   // Compares Stripe MTD-paid total vs revenue_recognition_periods

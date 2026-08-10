@@ -183,6 +183,46 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
       logger.warn("[autopilot] promotion HELD — decision quality below floor", { domain, level });
       return level;
     }
+    // ── Wave S · S2: autonomy follows perception. ──────────────────────────
+    // A domain whose CHARTER still has unwired core senses (charters.ts,
+    // derived from the SENSE_INVENTORY) cannot be promoted PAST draft — the
+    // promotion card is not minted, and the refusal is logged with the honest
+    // reason (the charters endpoint surfaces the same reason as the ledger's
+    // promotionBlockedReason, derived from the same pure gate, so the founder
+    // always sees why). observe → draft is unaffected: drafting is how a
+    // domain earns its eyes. RESTRICTION ONLY — this never widens autonomy,
+    // never auto-promotes, and the founder's sovereign setDomainLevel
+    // override is untouched. Fails CLOSED: an unreadable charter refuses the
+    // card (the next clean cycle re-checks; the dedupe already makes cards
+    // re-askable, so nothing is lost).
+    const target = nextLevel(level);
+    if (target && levelRank(target) > levelRank("draft")) {
+      let verdict: { allowed: boolean; reason: string | null };
+      try {
+        // Dynamic import keeps this module cycle-free (charters imports us).
+        // Same pure gate the charters endpoint reads for the ledger's
+        // promotionBlockedReason — the refusal here and the reason the
+        // founder sees are one derivation, so they can never disagree.
+        const { promotionPerceptionGate } = await import("./charters");
+        verdict = promotionPerceptionGate(domain, target);
+      } catch {
+        verdict = { allowed: false, reason: "charter unreadable (fails closed)" };
+      }
+      if (!verdict.allowed) {
+        await db
+          .update(domainAutonomyLevels)
+          .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+          .where(eq(domainAutonomyLevels.domain, domain));
+        logger.info("[autopilot] promotion card NOT minted — autonomy follows perception", {
+          domain,
+          level,
+          target,
+          reason: verdict.reason ?? "unwired core senses",
+        });
+        return level;
+      }
+    }
+
     // ── Horizon A2: promotion is a FOUNDER TAP, never an automatic write. ──
     // Constitutional basis: Sovereign Principle 10 — "No agent may unilaterally
     // expand its own authority"; promotions/demotions are Class B decisions.

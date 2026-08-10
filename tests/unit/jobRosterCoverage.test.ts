@@ -45,6 +45,11 @@ const SCANNED_FILES = [
   // (same strictly-DOWN line ratchet), so their withJobLock literals
   // (note_payment_due_scan + lease_expiry_scan) now live in this module.
   "../../server/jobs/expiryDetectorJobs.ts",
+  // O4 (2026-08-10): the reliability-canary group owns its withJobLock
+  // literals in its own module — synthetic_checks moved VERBATIM out of
+  // runScheduledJobs.ts (same strictly-DOWN line ratchet) alongside the new
+  // persona_journey_canary.
+  "../../server/jobs/reliabilityCanaries.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",

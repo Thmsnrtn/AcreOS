@@ -428,6 +428,18 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () =>
       process.env.NODE_ENV !== "production" || !process.env.FLY_API_TOKEN },
   { name: "synthetic_checks", intervalMs: 15 * MIN, critical: true },
+  // O4 (P5 §2) — persona-journey canary: every 30 min walks the deepest real
+  // journey available (demo-org sample-marked workspace read + sentinel
+  // round-trip when DEMO_ORG_ID is provisioned & simulated; a platform read
+  // otherwise, recorded honestly as substrate "platform_only") and writes
+  // per-step latency+success to synthetic_check_runs (checkKey
+  // 'persona_journey' / 'journey_*'). NON-critical, explicit "queue" lane per
+  // the O5 pager matrix: a broken journey raises a WARNING finding +
+  // system_alerts row and shows on the public /status page — it does not
+  // page. The page-worthy zero-tolerance sensors (mail_flusher,
+  // synthetic_checks, data_source_probe) are already critical entries; the
+  // deadman still surfaces this canary's ABSENCE as P2.
+  { name: "persona_journey_canary", intervalMs: 30 * MIN, critical: false, onFailure: "queue" },
   { name: "reconciliation_cron", intervalMs: DAY, critical: true },
   // Tier 2B — hourly replay of failed financial_ledger postings. Critical:
   // if this goes dark while dead letters exist, money is silently missing

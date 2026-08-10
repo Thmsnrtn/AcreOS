@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { EntityTable } from "@/components/entity-table/EntityTable";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
@@ -107,6 +108,9 @@ interface AgingResponse {
     days_overdue: number;
   }>;
 }
+
+/** One open charge as served by /api/rent/aging — the main list's row. */
+type AgingCharge = AgingResponse["charges"][number];
 
 interface LateFeeRuleRow {
   state: string;
@@ -474,46 +478,72 @@ export default function RentRollPage() {
                     ))}
                   </motion.ul>
 
-                  {/* Desktop: full table. Hidden on mobile. */}
+                  {/* Desktop: full table via the shared EntityTable kit
+                      (Wave 1.4, compact density). Hidden on mobile. */}
                   <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
-                          <th className="px-3 py-2 text-left font-medium">Lease</th>
-                          <th className="px-3 py-2 text-left font-medium">Month</th>
-                          <th className="px-3 py-2 text-left font-medium">Due</th>
-                          <th className="px-3 py-2 text-right font-medium">Days late</th>
-                          <th className="px-3 py-2 text-right font-medium">Balance</th>
-                          <th className="px-3 py-2 text-right font-medium">Late fee</th>
-                          <th className="px-3 py-2 text-left font-medium">Posture</th>
-                          <th className="px-3 py-2 text-right font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {charges.map((c) => (
-                          <tr key={c.id} className="border-b border-border/40">
-                            <td className="px-3 py-2 font-mono text-xs">{c.lease_id.slice(0, 8)}…</td>
-                            <td className="px-3 py-2">{String(c.charged_for_month).slice(0, 10)}</td>
-                            <td className="px-3 py-2">{String(c.due_date).slice(0, 10)}</td>
-                            <td
-                              className={`px-3 py-2 text-right tabular-nums ${
-                                c.days_overdue > 0 ? "text-acr-warning" : ""
-                              }`}
-                            >
-                              {c.days_overdue}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums">
-                              {centsExact(c.balance_cents)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                              {c.late_fee_cents > 0 ? centsExact(c.late_fee_cents) : "—"}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge variant={postureTone(c.legal_posture)} className="text-xs">
-                                {c.legal_posture.replace(/_/g, " ")}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <EntityTable<AgingCharge>
+                      items={charges}
+                      getRowId={(c) => c.id}
+                      density="compact"
+                      headerRowClassName="bg-muted/30"
+                      rowClassName="border-border/40"
+                      caption="Open balances"
+                      testId="table-rent-aging"
+                      columns={[
+                        {
+                          id: "lease",
+                          header: "Lease",
+                          cellClassName: "font-mono text-xs",
+                          cell: (c) => `${c.lease_id.slice(0, 8)}…`,
+                        },
+                        {
+                          id: "month",
+                          header: "Month",
+                          cell: (c) => String(c.charged_for_month).slice(0, 10),
+                        },
+                        {
+                          id: "due",
+                          header: "Due",
+                          cell: (c) => String(c.due_date).slice(0, 10),
+                        },
+                        {
+                          id: "daysLate",
+                          header: "Days late",
+                          align: "right",
+                          cellClassName: (c) =>
+                            `tabular-nums ${c.days_overdue > 0 ? "text-acr-warning" : ""}`,
+                          cell: (c) => c.days_overdue,
+                        },
+                        {
+                          id: "balance",
+                          header: "Balance",
+                          align: "right",
+                          cellClassName: "font-mono tabular-nums",
+                          cell: (c) => centsExact(c.balance_cents),
+                        },
+                        {
+                          id: "lateFee",
+                          header: "Late fee",
+                          align: "right",
+                          cellClassName: "font-mono tabular-nums text-muted-foreground",
+                          cell: (c) => (c.late_fee_cents > 0 ? centsExact(c.late_fee_cents) : "—"),
+                        },
+                        {
+                          id: "posture",
+                          header: "Posture",
+                          cell: (c) => (
+                            <Badge variant={postureTone(c.legal_posture)} className="text-xs">
+                              {c.legal_posture.replace(/_/g, " ")}
+                            </Badge>
+                          ),
+                        },
+                        {
+                          id: "actions",
+                          header: "Actions",
+                          align: "right",
+                          cellClassName: "whitespace-nowrap",
+                          cell: (c) => (
+                            <>
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -534,11 +564,11 @@ export default function RentRollPage() {
                                   Late fee…
                                 </Button>
                               )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            </>
+                          ),
+                        },
+                      ]}
+                    />
                   </div>
                 </>
               )}
@@ -606,40 +636,63 @@ export default function RentRollPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
-                    <th className="px-3 py-2 text-left font-medium">State</th>
-                    <th className="px-3 py-2 text-right font-medium">Cap (small)</th>
-                    <th className="px-3 py-2 text-right font-medium">Cap (4+ unit)</th>
-                    <th className="px-3 py-2 text-right font-medium">Flat cap</th>
-                    <th className="px-3 py-2 text-right font-medium">Grace</th>
-                    <th className="px-3 py-2 text-left font-medium">Citation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(rules.data?.rules ?? []).map((r) => (
-                    <tr key={r.state} className="border-b border-border/40">
-                      <td className="px-3 py-2 font-medium">{r.state}</td>
-                      <td className="px-3 py-2 text-right">
-                        {r.capPctSmallProperty
-                          ? `${(parseFloat(r.capPctSmallProperty) * 100).toFixed(0)}%`
-                          : "Not encoded"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {r.capPctLargeProperty
-                          ? `${(parseFloat(r.capPctLargeProperty) * 100).toFixed(0)}%`
-                          : "Not encoded"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
-                        {r.capFlatCents === null ? "—" : centsExact(r.capFlatCents)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.graceDays}d</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{r.citation ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Rule register via the shared EntityTable kit (Wave 1.4).
+                  "Not encoded" stays words, never a defaulted number. */}
+              <EntityTable<LateFeeRuleRow>
+                items={rules.data?.rules ?? []}
+                getRowId={(r) => r.state}
+                density="compact"
+                headerRowClassName="bg-muted/30"
+                rowClassName="border-border/40"
+                caption="State late-fee rules"
+                testId="table-late-fee-rules"
+                columns={[
+                  {
+                    id: "state",
+                    header: "State",
+                    cellClassName: "font-medium",
+                    cell: (r) => r.state,
+                  },
+                  {
+                    id: "capSmall",
+                    header: "Cap (small)",
+                    align: "right",
+                    cell: (r) =>
+                      r.capPctSmallProperty
+                        ? `${(parseFloat(r.capPctSmallProperty) * 100).toFixed(0)}%`
+                        : "Not encoded",
+                  },
+                  {
+                    id: "capLarge",
+                    header: "Cap (4+ unit)",
+                    align: "right",
+                    cell: (r) =>
+                      r.capPctLargeProperty
+                        ? `${(parseFloat(r.capPctLargeProperty) * 100).toFixed(0)}%`
+                        : "Not encoded",
+                  },
+                  {
+                    id: "flatCap",
+                    header: "Flat cap",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums",
+                    cell: (r) => (r.capFlatCents === null ? "—" : centsExact(r.capFlatCents)),
+                  },
+                  {
+                    id: "grace",
+                    header: "Grace",
+                    align: "right",
+                    cellClassName: "tabular-nums",
+                    cell: (r) => `${r.graceDays}d`,
+                  },
+                  {
+                    id: "citation",
+                    header: "Citation",
+                    cellClassName: "text-xs text-muted-foreground",
+                    cell: (r) => r.citation ?? "—",
+                  },
+                ]}
+              />
             </div>
           )}
         </CardContent>
@@ -787,53 +840,73 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
           the same rent-first rule the allocator uses, so the two can never
           disagree about what a balance is made of. */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
-              <th className="px-3 py-2 text-left font-medium">Month</th>
-              <th className="px-3 py-2 text-left font-medium">Due</th>
-              <th className="px-3 py-2 text-right font-medium">Rent</th>
-              <th className="px-3 py-2 text-right font-medium">Late fees</th>
-              <th className="px-3 py-2 text-right font-medium">Received</th>
-              <th className="px-3 py-2 text-right font-medium">Rent left</th>
-              <th className="px-3 py-2 text-right font-medium">Fees left</th>
-              <th className="px-3 py-2 text-right font-medium">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {charges.map((c) => {
-              const split = splitChargeOutstanding(toAllocationCharge(c));
-              return (
-                <tr
-                  key={c.id}
-                  className="border-b border-border/40"
-                  data-testid={`ledger-charge-${c.id}`}
-                >
-                  <td className="px-3 py-2">{String(c.chargedForMonth).slice(0, 7)}</td>
-                  <td className="px-3 py-2">{String(c.dueDate).slice(0, 10)}</td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {centsExact(c.amountCents)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {c.lateFeeCents > 0 ? centsExact(c.lateFeeCents) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {centsExact(c.paidCents)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {centsExact(split.rentOutstandingCents)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {centsExact(split.lateFeeOutstandingCents)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold">
-                    {centsExact(c.balanceCents)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {/* Per-charge ledger via the shared EntityTable kit (Wave 1.4).
+            The rent/fee split stays DERIVED from paidCents under the same
+            rent-first rule the allocator uses. */}
+        <EntityTable<LedgerCharge>
+          items={charges}
+          getRowId={(c) => c.id}
+          density="compact"
+          headerRowClassName="bg-muted/30"
+          rowClassName="border-border/40"
+          rowTestId={(c) => `ledger-charge-${c.id}`}
+          caption="Lease ledger charges"
+          testId="table-lease-ledger"
+          columns={[
+            {
+              id: "month",
+              header: "Month",
+              cell: (c) => String(c.chargedForMonth).slice(0, 7),
+            },
+            {
+              id: "due",
+              header: "Due",
+              cell: (c) => String(c.dueDate).slice(0, 10),
+            },
+            {
+              id: "rent",
+              header: "Rent",
+              align: "right",
+              cellClassName: "font-mono tabular-nums",
+              cell: (c) => centsExact(c.amountCents),
+            },
+            {
+              id: "lateFees",
+              header: "Late fees",
+              align: "right",
+              cellClassName: "font-mono tabular-nums",
+              cell: (c) => (c.lateFeeCents > 0 ? centsExact(c.lateFeeCents) : "—"),
+            },
+            {
+              id: "received",
+              header: "Received",
+              align: "right",
+              cellClassName: "font-mono tabular-nums",
+              cell: (c) => centsExact(c.paidCents),
+            },
+            {
+              id: "rentLeft",
+              header: "Rent left",
+              align: "right",
+              cellClassName: "font-mono tabular-nums",
+              cell: (c) => centsExact(splitChargeOutstanding(toAllocationCharge(c)).rentOutstandingCents),
+            },
+            {
+              id: "feesLeft",
+              header: "Fees left",
+              align: "right",
+              cellClassName: "font-mono tabular-nums",
+              cell: (c) => centsExact(splitChargeOutstanding(toAllocationCharge(c)).lateFeeOutstandingCents),
+            },
+            {
+              id: "balance",
+              header: "Balance",
+              align: "right",
+              cellClassName: "font-mono tabular-nums font-semibold",
+              cell: (c) => centsExact(c.balanceCents),
+            },
+          ]}
+        />
       </div>
 
       {/* Recorded payments, per charge — the persisted allocation lines. */}
@@ -1093,46 +1166,67 @@ function RecordPaymentForm({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-muted-foreground border-b border-border">
-                    <th className="px-2 py-1 text-left font-medium">#</th>
-                    <th className="px-2 py-1 text-left font-medium">Month</th>
-                    <th className="px-2 py-1 text-right font-medium">To rent</th>
-                    <th className="px-2 py-1 text-right font-medium">To late fees</th>
-                    <th className="px-2 py-1 text-right font-medium">Applied</th>
-                    <th className="px-2 py-1 text-right font-medium">Balance before</th>
-                    <th className="px-2 py-1 text-right font-medium">Balance after</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allocation.allocations.map((a) => (
-                    <tr
-                      key={a.chargeId}
-                      className="border-b border-border/40"
-                      data-testid={`allocation-line-${a.sequence}`}
-                    >
-                      <td className="px-2 py-1 tabular-nums">{a.sequence}</td>
-                      <td className="px-2 py-1">{a.chargedForMonth.slice(0, 7)}</td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
-                        {centsExact(a.appliedToRentCents)}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
-                        {a.appliedToLateFeeCents > 0 ? centsExact(a.appliedToLateFeeCents) : "—"}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums font-semibold">
-                        {centsExact(a.appliedCents)}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums text-muted-foreground">
-                        {centsExact(a.balanceBeforeCents)}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
-                        {centsExact(a.balanceAfterCents)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Allocation preview via the shared EntityTable kit
+                  (Wave 1.4, dense density) — the to-the-cent split shown
+                  BEFORE anything is written. */}
+              <EntityTable<ChargeAllocation>
+                items={allocation.allocations}
+                getRowId={(a) => a.chargeId}
+                density="dense"
+                headerRowClassName="text-muted-foreground border-border"
+                rowClassName="border-border/40"
+                rowTestId={(a) => `allocation-line-${a.sequence}`}
+                caption="Payment allocation preview"
+                testId="table-allocation-preview"
+                columns={[
+                  {
+                    id: "sequence",
+                    header: "#",
+                    cellClassName: "tabular-nums",
+                    cell: (a) => a.sequence,
+                  },
+                  {
+                    id: "month",
+                    header: "Month",
+                    cell: (a) => a.chargedForMonth.slice(0, 7),
+                  },
+                  {
+                    id: "toRent",
+                    header: "To rent",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums",
+                    cell: (a) => centsExact(a.appliedToRentCents),
+                  },
+                  {
+                    id: "toLateFees",
+                    header: "To late fees",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums",
+                    cell: (a) => (a.appliedToLateFeeCents > 0 ? centsExact(a.appliedToLateFeeCents) : "—"),
+                  },
+                  {
+                    id: "applied",
+                    header: "Applied",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums font-semibold",
+                    cell: (a) => centsExact(a.appliedCents),
+                  },
+                  {
+                    id: "balanceBefore",
+                    header: "Balance before",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums text-muted-foreground",
+                    cell: (a) => centsExact(a.balanceBeforeCents),
+                  },
+                  {
+                    id: "balanceAfter",
+                    header: "Balance after",
+                    align: "right",
+                    cellClassName: "font-mono tabular-nums",
+                    cell: (a) => centsExact(a.balanceAfterCents),
+                  },
+                ]}
+              />
             </div>
           )}
           <p className="text-xs text-muted-foreground" data-testid="allocation-explanation">

@@ -552,6 +552,61 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves S/1/O — slice 7 (S1+S2 staff charters + 1.4 EntityTable + O4 SLOs) — ✅ SHIPPED
+
+- **Wave S S1+S2 (the first staff slice, per D-5) — CONFIRMED_GOOD:**
+  `server/services/autopilot/charters.ts` — six charters (five Trust-Ledger
+  domains + Beatrice/compliance) with every field DERIVED from real wiring:
+  handsGranted from the live hands registry, coreSenses from a new
+  SENSE_INVENTORY in senses.ts (wired = loader exists AND the tick/context
+  pack consumes it, source-pinned with drift pins proving the declared gaps
+  are still real), metrics real-or-null, ladder from getTrustLedger, last-3
+  receipts per domain (per-domain queries — the shared-window false negative
+  was fixed at integration). Beatrice ships OFF-ledger, honestly marked
+  (extending AutopilotDomain was invasive: crossFunction's exhaustive
+  5-domain records — recorded drift, not forced). Staff cards = a tab in the
+  Controls hub; the Letter prints "I cannot yet see X" blindness lines from
+  the same registry; GET /api/founder/autopilot/charters serves both. S2:
+  promotionPerceptionGate — no domain promotes past `draft` with unwired
+  core senses; recordCleanCycle refuses to mint the promotion card (counter
+  still accrues; observe→draft unaffected; founder sovereignty untouched);
+  integration hardening: the gate now fails SAFE on an unchartered domain
+  ("no charter on file"), pinned. Reachability drop earned + locked
+  (652→651, listHandSpecs gained its first production consumer).
+- **Wave 1.4 (EntityTable kit) — CONFIRMED_GOOD:** typed column defs,
+  sortable headers (aria-sort), sticky header, EmptyState/skeleton per
+  config, j/k+Enter row navigation; EntityList as the card/stack half. All
+  five heavy lists migrated (leads, properties, finance notes, rent-roll,
+  auction-worksheet) with prior table scaffolding removed and a derived
+  forbidden-marker pin per page; 46-test exit suite proven red at base.
+  Integration hardening: nullish now sorts LAST in descending order too
+  (the direction multiplier used to flip it), pinned.
+- **O4 (SLOs + canaries + status truth) — DEFECTS_FOUND, both fixed
+  centrally:** shared/slo.ts + server/services/slo.ts — the four surface
+  classes as data with sensors DERIVED or honestly "declared, not yet
+  sensed"; persona-journey canary job (reliabilityCanaries.ts, registered
+  with a pager lane, demo-org substrate when provisioned / platform-only
+  honestly recorded when not) writing synthetic_check_runs; /status renders
+  the register + last canary run; error-budget seam reuses the house
+  burn-rate math. FIXED (1): the outside-in uptime read scored a 5-minute
+  probe against the 60-second worker cadence — a perfectly healthy system
+  computed ~20% uptime on the PUBLIC status page; per-source
+  expectedIntervalMs now. FIXED (2): raw exception text (err.message)
+  reached the public /api/status payload via persisted step details;
+  exceptions now stay in server logs and the record carries a fixed honest
+  string — authored annotations pass through. Also: job-lane label now
+  names the hourly success-sampling so a stale "failed" cannot over-read.
+  Second reachability drop earned + locked (651→650).
+- Follow-ups ledgered (deliberate): /api/founder/synthetic-checks/recent
+  interleaves canary rows with vendor checks (filter or raise limit —
+  routes-lifecycle.ts was outside the slice's file set); the brain does not
+  yet READ the O4 canaries as a sense (slo_canaries stays honestly unwired
+  in the inventory until a future S2 wire); founder telemetry-hub burn
+  panel; charter receipts copy could carry per-receipt timestamps.
+- Founder queue additions: the P5 "burning error budget pauses Phase work"
+  POLICY (O4 built the seam, not the policy); S3 hands + any autonomy
+  promotion mechanics remain propose-first per D-5.
+
 ## Waves 1/F/X — slice 6 (1.2 error states + F1-s3 + X-A-s1) — ✅ SHIPPED
 
 - **Wave 1.2 (error states + stale-while-error, five doors) — CONFIRMED_GOOD

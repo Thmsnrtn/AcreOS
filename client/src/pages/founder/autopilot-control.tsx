@@ -42,6 +42,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+import { StaffCharterCards } from "@/components/founder/StaffCharterCards";
 import { ReadinessLadderSection, READINESS_LADDER_KEY } from "@/components/founder/ReadinessLadderSection";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -718,6 +719,9 @@ export function ControlCenterContent() {
 
 const TABS = [
   { value: "control", label: "Control Center" },
+  // Wave S · S1 — the staff as people-shaped charters (mandate, numbers,
+  // level, streak, receipts) instead of bare policy rows.
+  { value: "staff", label: "The Staff" },
   { value: "voice", label: "Your Voice" },
   { value: "readiness", label: "Launch readiness" },
   { value: "legal", label: "Legal readiness" },
@@ -759,6 +763,9 @@ export default function FounderAutopilotControlPage() {
         {/* Each absorbed surface keeps its designed reading width. */}
         <TabsContent value="control">
           <div className="mx-auto max-w-4xl"><ControlCenterContent /></div>
+        </TabsContent>
+        <TabsContent value="staff">
+          <div className="mx-auto max-w-5xl"><StaffCharterCards /></div>
         </TabsContent>
         <TabsContent value="voice">
           <div className="mx-auto max-w-4xl"><VoiceContent /></div>

@@ -20,7 +20,12 @@ const noteFormSchema = insertNoteSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// ui/table stays for the NoteDetailDrawer's payment-history + amortization
+// tables (note DETAIL surface); the notes LIST renders via the shared
+// EntityTable kit (Wave 1.4).
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EntityTable } from "@/components/entity-table/EntityTable";
+import type { EntityColumn } from "@/components/entity-table/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -207,6 +212,105 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
       });
     }
   };
+
+  // The desktop Loan Portfolio table, as EntityTable column defs
+  // (Wave 1.4). Same eight visible columns as the hand-rolled table this
+  // replaced; the row itself opens the note drawer (see onRowClick below).
+  const noteColumns: Array<EntityColumn<NoteWithDetails>> = [
+    {
+      id: "borrower",
+      header: "Borrower",
+      headClassName: "min-w-[140px]",
+      cell: (note) => (
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <span className="font-medium">
+            {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "property",
+      header: "Property",
+      headClassName: "min-w-[140px]",
+      cell: (note) => (
+        <>
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <span className="text-sm">
+              {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
+            </span>
+          </div>
+          {note.originatingDealId != null && (
+            // Note→deal lineage chip — links back to the originating deal.
+            // stopPropagation so the chip navigates without also opening
+            // the note drawer (the row's onClick).
+            <Link href={`/deals/${note.originatingDealId}`}>
+              <Badge
+                variant="outline"
+                className="mt-1 ml-6 gap-1 cursor-pointer hover-elevate text-[11px] font-normal"
+                onClick={(e) => e.stopPropagation()}
+                data-testid={`chip-note-deal-${note.id}`}
+              >
+                <Link2 className="w-3 h-3" aria-hidden="true" />
+                from Deal #{note.originatingDealId}
+              </Badge>
+            </Link>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      headClassName: "min-w-[90px]",
+      cellClassName: "font-mono font-medium tabular-nums",
+      cell: (note) => usd(note.currentBalance),
+    },
+    {
+      id: "monthly",
+      header: "Monthly",
+      align: "right",
+      headClassName: "min-w-[80px]",
+      cellClassName: "font-mono font-bold tabular-nums text-acr-pos",
+      cell: (note) => usd(note.monthlyPayment),
+    },
+    {
+      id: "nextDue",
+      header: "Next Due",
+      headClassName: "min-w-[100px]",
+      cellClassName: "text-muted-foreground",
+      cell: (note) => (note.nextPaymentDate ? format(new Date(note.nextPaymentDate), 'MMM d, yyyy') : '-'),
+    },
+    {
+      id: "health",
+      header: "Health",
+      headClassName: "min-w-[80px]",
+      cell: (note) => {
+        const health = getLoanHealth(note);
+        return <span className={`text-sm font-medium ${health.color}`}>{health.label}</span>;
+      },
+    },
+    {
+      id: "status",
+      header: "Status",
+      headClassName: "min-w-[80px]",
+      cell: (note) => <Badge className={getStatusColor(note.status)}>{note.status}</Badge>,
+    },
+    {
+      id: "actions",
+      header: "",
+      headerLabel: "Actions",
+      headClassName: "min-w-[50px]",
+      cell: (note) => (
+        <Button size="icon" variant="ghost" aria-label="View note details" data-testid={`button-view-note-${note.id}`}>
+          <Eye className="w-4 h-4" />
+        </Button>
+      ),
+    },
+  ];
 
   // Tufte de-chartjunk: when the existing area chart renders, use it
   // to mark the prior-year mean as a horizontal reference line so the
@@ -589,93 +693,23 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                     })}
                   </ul>
 
-                  {/* Desktop: full 8-column table. Hidden on mobile. */}
+                  {/* Desktop: full 8-column table via the shared EntityTable
+                      kit (Wave 1.4). Hidden on mobile. Loading / error /
+                      empty branches stay OUTSIDE (above) per the slice-6
+                      error-honesty composition — the kit renders the data
+                      it is given. */}
                   <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead className="min-w-[140px]">Borrower</TableHead>
-                          <TableHead className="min-w-[140px]">Property</TableHead>
-                          <TableHead className="text-right min-w-[90px]">Balance</TableHead>
-                          <TableHead className="text-right min-w-[80px]">Monthly</TableHead>
-                          <TableHead className="min-w-[100px]">Next Due</TableHead>
-                          <TableHead className="min-w-[80px]">Health</TableHead>
-                          <TableHead className="min-w-[80px]">Status</TableHead>
-                          <TableHead className="min-w-[50px]"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {enrichedNotes.map((note) => {
-                          const health = getLoanHealth(note);
-                          return (
-                            <TableRow
-                              key={note.id}
-                              className="cursor-pointer hover-elevate"
-                              onClick={() => setSelectedNote(note)}
-                              data-testid={`row-note-${note.id}`}
-                            >
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                  <span className="font-medium">
-                                    {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                  <span className="text-sm">
-                                    {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
-                                  </span>
-                                </div>
-                                {note.originatingDealId != null && (
-                                  // Note→deal lineage chip — links back to the
-                                  // originating deal. stopPropagation so the
-                                  // chip navigates without also opening the
-                                  // note drawer (the row's onClick).
-                                  <Link href={`/deals/${note.originatingDealId}`}>
-                                    <Badge
-                                      variant="outline"
-                                      className="mt-1 ml-6 gap-1 cursor-pointer hover-elevate text-[11px] font-normal"
-                                      onClick={(e) => e.stopPropagation()}
-                                      data-testid={`chip-note-deal-${note.id}`}
-                                    >
-                                      <Link2 className="w-3 h-3" aria-hidden="true" />
-                                      from Deal #{note.originatingDealId}
-                                    </Badge>
-                                  </Link>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right font-mono font-medium tabular-nums">
-                                {usd(note.currentBalance)}
-                              </TableCell>
-                              <TableCell className="text-right font-mono font-bold tabular-nums text-acr-pos">
-                                {usd(note.monthlyPayment)}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), 'MMM d, yyyy') : '-'}
-                              </TableCell>
-                              <TableCell>
-                                <span className={`text-sm font-medium ${health.color}`}>
-                                  {health.label}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={getStatusColor(note.status)}>
-                                  {note.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Button size="icon" variant="ghost" aria-label="View note details" data-testid={`button-view-note-${note.id}`}>
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                    <EntityTable<NoteWithDetails>
+                      items={enrichedNotes}
+                      getRowId={(note) => note.id}
+                      onRowClick={(note) => setSelectedNote(note)}
+                      rowClassName="cursor-pointer hover-elevate"
+                      rowTestId={(note) => `row-note-${note.id}`}
+                      headerRowClassName="bg-muted/30"
+                      caption="Loan portfolio"
+                      testId="table-finance-notes"
+                      columns={noteColumns}
+                    />
                   </div>
                 </>
               )}

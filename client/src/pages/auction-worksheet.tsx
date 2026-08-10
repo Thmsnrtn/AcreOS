@@ -87,7 +87,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EmptyState } from "@/components/empty-state";
+import { EntityTable } from "@/components/entity-table/EntityTable";
+import { EntityList } from "@/components/entity-table/EntityList";
+import type { EntityColumn } from "@/components/entity-table/types";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -412,27 +414,13 @@ export default function AuctionWorksheetPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <Card><div className="p-5 space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
-        </div></Card>
-      ) : listings.length === 0 ? (
-        <EmptyState
-          icon={Gavel}
-          headline="No listings on the worksheet"
-          subtitle="Tax-sale listings flow in from your target counties. Open a county to review its auction schedule and delinquent inventory, then come back to set max bids and walk-away rules before sale day."
-          cta={{
-            label: "Open your counties",
-            href: "/counties",
-            "data-testid": "auction-worksheet-empty-counties",
-          }}
-          secondaryCta={{
-            label: "Review state rules",
-            href: "/state-rules",
-            "data-testid": "auction-worksheet-empty-state-rules",
-          }}
-        />
-      ) : courthouseMode ? (
+      {/* The worksheet list via the shared table/list kit (Wave 1.4,
+          EntityList stack layout): loading skeleton and the EmptyState
+          (with its real /counties + /state-rules CTAs) live on the kit's
+          state contract; the expandable ListingRow card stays the page's.
+          CourthouseMode still takes over only the has-rows case on a
+          mobile day-of screen — loading and empty render identically. */}
+      {!isLoading && listings.length > 0 && courthouseMode ? (
         <CourthouseMode
           listings={listings.map((l) => ({
             id: l.id,
@@ -448,16 +436,41 @@ export default function AuctionWorksheetPage() {
           }))}
         />
       ) : (
-        <div className="space-y-3">
-          {listings.map((l) => (
+        <EntityList<Listing>
+          items={listings}
+          getItemId={(l) => l.id}
+          layout="stack"
+          className="space-y-3"
+          testId="list-auction-worksheet"
+          loading={isLoading}
+          renderSkeleton={() => (
+            <Card><div className="p-5 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
+            </div></Card>
+          )}
+          emptyState={{
+            icon: Gavel,
+            headline: "No listings on the worksheet",
+            subtitle: "Tax-sale listings flow in from your target counties. Open a county to review its auction schedule and delinquent inventory, then come back to set max bids and walk-away rules before sale day.",
+            cta: {
+              label: "Open your counties",
+              href: "/counties",
+              "data-testid": "auction-worksheet-empty-counties",
+            },
+            secondaryCta: {
+              label: "Review state rules",
+              href: "/state-rules",
+              "data-testid": "auction-worksheet-empty-state-rules",
+            },
+          }}
+          renderItem={(l) => (
             <ListingRow
-              key={l.id}
               listing={l}
               dayOfMode={dayOfMode}
               auctionId={auctionId ? Number(auctionId) : null}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
     </PageShell>
   );
@@ -1714,36 +1727,54 @@ function LotListImportCard({ defaultAuctionId }: { defaultAuctionId: number | nu
                       {preview.sampleValid.length === 1 ? "" : "s"}
                     </summary>
                     <div className="overflow-x-auto mt-2">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-muted-foreground border-b border-border">
-                            <th className="px-2 py-1 text-left font-medium">File row</th>
-                            <th className="px-2 py-1 text-left font-medium">APN</th>
-                            <th className="px-2 py-1 text-left font-medium">County / state</th>
-                            <th className="px-2 py-1 text-left font-medium">Sale type</th>
-                            <th className="px-2 py-1 text-right font-medium">Tax owed</th>
-                            <th className="px-2 py-1 text-right font-medium">Min bid</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {preview.sampleValid.map((row, i) => (
-                            <tr key={i} className="border-b border-border/40">
-                              <td className="px-2 py-1 tabular-nums">{String(row.fileRow ?? "")}</td>
-                              <td className="px-2 py-1 font-mono">{String(row.apn ?? "")}</td>
-                              <td className="px-2 py-1">
-                                {String(row.county ?? "")}, {String(row.state ?? "")}
-                              </td>
-                              <td className="px-2 py-1">{String(row.saleType ?? "")}</td>
-                              <td className="px-2 py-1 text-right font-mono">
-                                {centsExact(row.totalTaxOwedCents as number | null)}
-                              </td>
-                              <td className="px-2 py-1 text-right font-mono">
-                                {centsExact((row.minimumBidCents as number | null) ?? null)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {/* Valid-row sample via the shared EntityTable kit
+                          (Wave 1.4, dense density). */}
+                      <EntityTable<Record<string, unknown>>
+                        items={preview.sampleValid}
+                        density="dense"
+                        headerRowClassName="text-muted-foreground border-border"
+                        rowClassName="border-border/40"
+                        caption="First valid rows from the lot list"
+                        testId="table-lot-import-sample"
+                        columns={[
+                          {
+                            id: "fileRow",
+                            header: "File row",
+                            cellClassName: "tabular-nums",
+                            cell: (row) => String(row.fileRow ?? ""),
+                          },
+                          {
+                            id: "apn",
+                            header: "APN",
+                            cellClassName: "font-mono",
+                            cell: (row) => String(row.apn ?? ""),
+                          },
+                          {
+                            id: "countyState",
+                            header: "County / state",
+                            cell: (row) => `${String(row.county ?? "")}, ${String(row.state ?? "")}`,
+                          },
+                          {
+                            id: "saleType",
+                            header: "Sale type",
+                            cell: (row) => String(row.saleType ?? ""),
+                          },
+                          {
+                            id: "taxOwed",
+                            header: "Tax owed",
+                            align: "right",
+                            cellClassName: "font-mono",
+                            cell: (row) => centsExact(row.totalTaxOwedCents as number | null),
+                          },
+                          {
+                            id: "minBid",
+                            header: "Min bid",
+                            align: "right",
+                            cellClassName: "font-mono",
+                            cell: (row) => centsExact((row.minimumBidCents as number | null) ?? null),
+                          },
+                        ] satisfies Array<EntityColumn<Record<string, unknown>>>}
+                      />
                     </div>
                   </details>
                 )}

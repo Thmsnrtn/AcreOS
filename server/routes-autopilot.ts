@@ -74,6 +74,26 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── GET the Staff charters (Wave S · S1 — charters over gates) ──────────
+  // One charter per domain (+ Beatrice/compliance, honestly off-ledger):
+  // mandate, live metrics-or-honest-absence, core senses with derived
+  // wired/unwired flags, hands DERIVED from the real registry, ladder state,
+  // and the Letter's blindness lines. Feeds the Controls hub's Staff tab and
+  // the Letter's "I cannot yet see X" section.
+  app.get(
+    "/api/founder/autopilot/charters",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getStaffCharters } = await import("./services/autopilot/charters");
+        return res.json(await getStaffCharters());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── POST the atomic PANIC STOP (T0.3) — halt everything in one tap ───────
   // The most consequential founder control: flips all master switches off +
   // quarantines every domain to OBSERVE + records a receipt + pages. Reversible
