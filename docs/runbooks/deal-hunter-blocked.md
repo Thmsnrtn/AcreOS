@@ -3,6 +3,15 @@
 **Severity:** P3 — Feature Degraded (non-revenue-critical)
 **Task Reference:** #324
 
+> **RETIRED SURFACE (2026-06-08):** the `dealHunter` service and the
+> `/api/deal-hunter/*` routes were retired — sourcing now lives in
+> `server/services/dealFeedEngine.ts` behind `/api/deal-feed`
+> (see `server/routes.ts` "retired 2026-06-08" note). The
+> `server/services/dealHunter.ts` and `dealHunterSources` references below
+> are the HISTORICAL procedure, kept
+> because the proxy-rotation / block-diagnosis playbook still applies to any
+> scraper lane. Do not grep for the old paths; start from `dealFeedEngine`.
+
 ---
 
 ## Symptoms

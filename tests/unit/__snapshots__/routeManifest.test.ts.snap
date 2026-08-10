@@ -126,6 +126,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-founder-customers.ts",
   "routes-founder-dlq.ts",
   "routes-founder-financials.ts",
+  "routes-founder-governance-coverage.ts",
   "routes-founder-graduation.ts",
   "routes-founder-inspector-finance.ts",
   "routes-founder-inspector.ts",

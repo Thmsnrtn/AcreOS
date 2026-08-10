@@ -46,7 +46,7 @@ function csrf(): Record<string, string> {
   return { "Content-Type": "application/json", "x-csrf-token": decodeURIComponent(m?.[1] ?? "") };
 }
 
-export default function FounderTelemetryPage() {
+export function TelemetryContent() {
   useDocumentTitle("API telemetry — AcreOS");
   const { toast } = useToast();
 
@@ -75,7 +75,7 @@ export default function FounderTelemetryPage() {
   });
 
   return (
-    <PageShell label="API telemetry">
+    <>
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -245,6 +245,14 @@ export default function FounderTelemetryPage() {
           </p>
         </>
       ) : null}
+    </>
+  );
+}
+
+export default function FounderTelemetryPage() {
+  return (
+    <PageShell label="API telemetry">
+      <TelemetryContent />
     </PageShell>
   );
 }

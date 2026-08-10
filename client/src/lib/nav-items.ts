@@ -42,7 +42,6 @@ import {
   // reference them.
   Heart,
   Cog,
-  FileCode,
   History,
   Lightbulb,
   CheckCircle2,
@@ -233,14 +232,13 @@ export const FOUNDER_NAV_ALL_TOOLS_SHORTCUT: FounderNavDoor = {
  */
 export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // ── Engineering ─────────────────────────────────────────────────────
-  { label: "API telemetry", icon: Activity, href: "/founder/telemetry", category: "engineering" },
+  // F1 slice 2: API telemetry, agent + Pax traces, Pax calibration, AI
+  // observatory and the event log merged into one /founder/admin/telemetry
+  // tabbed hub (mirrors the Costs & economics consolidation below).
+  { label: "Telemetry & traces", icon: Activity, href: "/founder/admin/telemetry", category: "engineering" },
   { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
-  { label: "Event log", icon: FileCode, href: "/founder/event-log", category: "engineering" },
 
   // ── AI / Agents ─────────────────────────────────────────────────────
-  { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", category: "ai" },
-  { label: "Pax calibration", icon: Target, href: "/founder/pax-calibration", category: "ai" },
-  { label: "Agent traces", icon: FileCode, href: "/founder/traces", category: "ai" },
   { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", category: "ai" },
   { label: "Dispatches", icon: WorkflowIcon, href: "/founder/dispatches", category: "ai" },
   // "Agent asks" removed 2026-07-27 — /founder/asks merged into the Decisions

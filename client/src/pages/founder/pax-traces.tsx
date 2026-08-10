@@ -162,7 +162,7 @@ function ToneBadge({ label, tone }: { label: string; tone: "neutral" | "ok" | "w
   );
 }
 
-export default function FounderPaxTracesPage() {
+export function PaxTracesContent() {
   useDocumentTitle("Pax traces — AcreOS");
   const [selected, setSelected] = React.useState<PaxTraceRow | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -178,7 +178,7 @@ export default function FounderPaxTracesPage() {
   };
 
   return (
-    <PageShell label="Pax traces">
+    <>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -477,6 +477,14 @@ export default function FounderPaxTracesPage() {
           )}
         </SheetContent>
       </Sheet>
+    </>
+  );
+}
+
+export default function FounderPaxTracesPage() {
+  return (
+    <PageShell label="Pax traces">
+      <PaxTracesContent />
     </PageShell>
   );
 }

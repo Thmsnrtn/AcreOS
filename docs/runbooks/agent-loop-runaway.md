@@ -111,6 +111,6 @@ If you paused the org incorrectly or they successfully remediated:
 
 ## Related
 - Runbook: agent-loop-runaway (this runbook)
-- Theo's AI safety guidelines: docs/ai-safety.md
-- Prompt injection prevention: docs/security/prompt-injection.md
+- AI safety audit (Lens 38): docs/audits/lenses/38-ai-safety.md — Theo's original AI surface audit is archived at docs/archive/exhaustive-completion/elite-team-2026-05-01/theo-ai.md
+- Prompt injection prevention: `server/middleware/promptInjection.ts` (the guard) + per-agent audit docs/audits/lenses/096-prompt-injection-per-agent.md
 - Cost control: /admin/billing/org/<org_id>

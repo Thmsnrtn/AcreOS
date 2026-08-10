@@ -104,7 +104,9 @@ export function getCanonicalPath(legacy: string): string | null {
  *
  * The query string is preserved on every redirect (wouter's <Redirect>
  * drops it otherwise), so e.g. /founder/asks?id=N still carries the ask id
- * to /founder/decisions?id=N.
+ * to /founder/decisions?id=N. A canonical value may carry its own query
+ * (a hub ?tab= pin); composeFounderRedirect merges it over the incoming
+ * search, canonical params winning.
  */
 export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   // Retired founder homes — all fold into The Letter (/founder).
@@ -134,6 +136,15 @@ export const FOUNDER_LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   "/founder/title-partners": "/founder/bridge",
   "/founder/beta-analytics": "/founder/bridge",
   "/founder/v13": "/founder/bridge", // Census W3-1 retire 2026-06-11
+  // ── F1 slice 2 (2026-08-10): observability cluster → /founder/admin/telemetry.
+  // Six standalone routes folded into the tabbed hub (mirrors the
+  // /founder/admin/costs consolidation); each alias pins its old tab.
+  "/founder/ai-observatory": "/founder/admin/telemetry?tab=observatory",
+  "/founder/telemetry": "/founder/admin/telemetry?tab=api",
+  "/founder/traces": "/founder/admin/telemetry?tab=traces",
+  "/founder/pax-traces": "/founder/admin/telemetry?tab=pax-traces",
+  "/founder/pax-calibration": "/founder/admin/telemetry?tab=calibration",
+  "/founder/event-log": "/founder/admin/telemetry?tab=events",
 };
 
 /**
@@ -149,4 +160,21 @@ export const FOUNDER_LEGACY_ROUTE_PATTERN = /^\/founder(?:-dashboard|\/.+)$/i;
 export function resolveFounderLegacyPath(pathname: string): string | null {
   const normalized = pathname.replace(/\/+$/, "").toLowerCase();
   return FOUNDER_LEGACY_REDIRECTS[normalized] ?? null;
+}
+
+/**
+ * Compose the final redirect target from a canonical map value and the
+ * incoming location's search string. Naive concatenation broke the moment a
+ * canonical value carried its own query (`…?tab=api` + `?id=3` →
+ * `…?tab=api?id=3`), so the two are merged as params — the canonical query
+ * wins on conflict, because it pins which hub tab the legacy path maps to.
+ */
+export function composeFounderRedirect(canonical: string, incomingSearch: string): string {
+  const [pathname, canonicalQuery] = canonical.split("?");
+  const params = new URLSearchParams(incomingSearch);
+  for (const [key, value] of new URLSearchParams(canonicalQuery ?? "")) {
+    params.set(key, value);
+  }
+  const search = params.toString();
+  return search ? `${pathname}?${search}` : pathname;
 }

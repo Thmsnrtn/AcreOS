@@ -1327,7 +1327,7 @@ export function CommandPalette() {
                             <span>Open founder home</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/founder/telemetry")}
+                            onSelect={() => handleSelect("/founder/admin/telemetry?tab=api")}
                             data-testid="command-item-system-health"
                             className="cursor-pointer"
                           >

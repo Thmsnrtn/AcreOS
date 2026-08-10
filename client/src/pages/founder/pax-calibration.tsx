@@ -139,7 +139,7 @@ function ChartSkeleton() {
   );
 }
 
-export default function FounderPaxCalibrationPage() {
+export function PaxCalibrationContent() {
   useDocumentTitle("Pax calibration — AcreOS");
   const [windowDays, setWindowDays] = React.useState<number>(30);
 
@@ -177,7 +177,7 @@ export default function FounderPaxCalibrationPage() {
   }, [data]);
 
   return (
-    <PageShell label="Pax calibration">
+    <>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -394,6 +394,14 @@ export default function FounderPaxCalibrationPage() {
           </Card>
         </div>
       )}
+    </>
+  );
+}
+
+export default function FounderPaxCalibrationPage() {
+  return (
+    <PageShell label="Pax calibration">
+      <PaxCalibrationContent />
     </PageShell>
   );
 }

@@ -18,8 +18,8 @@ on top of the existing restore mechanics in `07-database-restore-from-snapshot.m
 - Latest snapshot is < 24h old (verify via `flyctl postgres backups list -a acreos-db`)
 - Scratch DB exists: `acreos-db-scratch` (separate Fly Postgres app, no production
   traffic). If it doesn't, create it: `flyctl postgres create -n acreos-db-scratch`
-- Stopwatch ready. Two browser tabs open: the prod `/founder-home` and the scratch
-  app pointed at `acreos-db-scratch`.
+- Stopwatch ready. Two browser tabs open: the prod founder home (`/founder`, The
+  Letter) and the scratch app pointed at `acreos-db-scratch`.
 
 ## Drill steps + targets
 

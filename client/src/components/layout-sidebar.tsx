@@ -104,7 +104,6 @@ import {
   Lightbulb,
   History,
   Layers,
-  FileCode,
   X,
   Send,
   Clock,
@@ -720,6 +719,7 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       { label: "All tools", icon: LayoutDashboard, href: "/founder/all-tools", description: "Categorized index of every founder deep-dive surface" },
       { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers — one hub" },
+      { label: "Telemetry & traces", icon: Activity, href: "/founder/admin/telemetry", description: "AI observatory, API telemetry, agent + Pax traces, calibration, event log — one hub" },
       { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
       // ── Weekly-touch surfaces ─────────────────────────────────────
       { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge" },
@@ -729,11 +729,9 @@ const NAV_MODULES: NavModule[] = [
       { label: "CMO", icon: Megaphone, href: "/founder/cmo", description: "Native ad generation, approval, broadcast to Meta + TikTok" },
       // ── Customer health ────────────────────────────────────────────
       { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
-      // ── Pax traces / calibration ───────────────────────────────────
-      { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", description: "Read-only Pax LLM trace viewer — prompts, tool calls, guardrails, dispositions" },
-      { label: "Pax calibration", icon: Target, href: "/founder/pax-calibration", description: "Reliability diagram — Pax stated confidence vs. realized accept-rate" },
       // ── Agent / AI tooling ─────────────────────────────────────────
-      { label: "Agent traces", icon: FileCode, href: "/founder/traces", description: "Raw LLM prompt + response for every agent call" },
+      // Pax traces, Pax calibration, and agent traces folded into the
+      // Telemetry & traces hub above (F1 slice 2).
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Dispatches", icon: Workflow, href: "/founder/dispatches", description: "Real-time view of the auto-dispatch queue — queued / in-progress / terminal rows + cancel + review status" },
       // "Agent asks" removed 2026-07-27 — /founder/asks merged into the
@@ -748,7 +746,6 @@ const NAV_MODULES: NavModule[] = [
       // ── Ops / admin ────────────────────────────────────────────────
       { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
-      { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
       { label: "Market reports", icon: Newspaper, href: "/founder/market-reports", description: "Quarterly data-co-op market report DRAFTS (k≥5 floor) — review only, no publish" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
@@ -768,7 +765,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy)" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
       { label: "Memory browser", icon: Database, href: "/founder/memory", description: "Per-agent semantic + episodic memory inspector" },
-      { label: "Event log", icon: FileCode, href: "/founder/event-log", description: "Agent-event firehose — every decision and side effect" },
       { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },

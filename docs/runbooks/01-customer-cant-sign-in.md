@@ -43,6 +43,6 @@ Customer reports "I can't log in." Common variants:
 ---
 
 ## Escalate if
-- Multiple unrelated customers report sign-in failure in the same window → suspect Clerk outage. Check `https://status.clerk.com` and the **Vendor status** tile on /founder-home.
+- Multiple unrelated customers report sign-in failure in the same window → suspect Clerk outage. Check `https://status.clerk.com` and the **External safety net** section on the Controls door (`/founder/autopilot/control`).
 - SendGrid Activity shows mass bouncing → see runbook 05 (mass-email-bounces-spike).
 - User row missing in our DB and recovery bootstrap fails → escalate to engineering, do not delete + recreate (loses billing / consent history).

@@ -155,6 +155,6 @@ downloads + simplifies + reloads automatically.
 
 ---
 
-*Originally specified in `docs/exhaustive-completion/_MASTER-FINDINGS.md` P0-18
+*Originally specified in `docs/archive/exhaustive-completion/_MASTER-FINDINGS.md` P0-18
 (Aniyah §2). Phase B implementation: this runbook + the
 `server/services/landStatusLAR.ts` service.*

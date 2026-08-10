@@ -23,6 +23,7 @@ import { variantPageFadeMobile } from "@/lib/motion-tokens";
 import { installViewTransitions } from "@/lib/view-transitions";
 import {
   FOUNDER_LEGACY_ROUTE_PATTERN,
+  composeFounderRedirect,
   resolveFounderLegacyPath,
 } from "@/lib/route-redirects";
 import { useToast } from "@/hooks/use-toast";
@@ -301,7 +302,6 @@ const InvestorDirectoryPage = React.lazy(() => import("@/pages/investor-director
 // IA consolidation (Lens 4): the legacy FounderDashboard and FounderHomePage
 // page bundles are no longer mounted — every prior founder-home route
 // redirects to /founder/bridge. Both files deleted 2026-06-01.
-const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 // FounderFeatureFlags archived 2026-06-01 — route redirects to /founder/features; lazy import was dead code.
 const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
 const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
@@ -311,7 +311,6 @@ const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"
 const FounderLegalReadinessPage = React.lazy(() => import("@/pages/founder/legal-readiness"));
 const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
 const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
-const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
 // Command cockpit — one synthesis surface aggregating every domain's
 // continuous-audit findings into per-domain status tiles. Consumes
 // GET /api/founder/audit-findings (owned by the substrate agent).
@@ -319,6 +318,9 @@ const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
 // Costs & economics consolidated into one /founder/admin/costs hub (Phase 2).
 const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/costs"));
+// Observability consolidated into one /founder/admin/telemetry hub (F1 slice 2):
+// AI observatory, API telemetry, agent + Pax traces, calibration, event log.
+const FounderAdminTelemetryPage = React.lazy(() => import("@/pages/founder/admin/telemetry"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
@@ -347,8 +349,6 @@ const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatche
 // D2 signup-to-first-value funnel UI — surface for /api/founder/onboarding-funnel.
 const FounderOnboardingFunnelPage = React.lazy(() => import("@/pages/founder/onboarding-funnel"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
-const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
-const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-calibration"));
 // Wave 3 Workstream E — distribution truth surface. Paid / trial /
 // churned counts + UTM sources + recent signups by name.
 const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
@@ -417,12 +417,11 @@ const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashbo
 // moved under /founder/* as first-class founder deep-dives:
 //   board-of-directors    → /founder/governance
 //   memory-browser        → /founder/memory
-//   event-log             → /founder/event-log
+//   event-log             → the Event log tab of /founder/admin/telemetry (F1 slice 2)
 //   conscious-organization → /founder/scenarios
 const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
 const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
 const FounderMemoryPage = React.lazy(() => import("@/pages/founder/memory"));
-const FounderEventLogPage = React.lazy(() => import("@/pages/founder/event-log"));
 const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
 const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
 
@@ -485,7 +484,6 @@ const FounderPreviewPage = React.lazy(() => import("@/pages/founder-preview"));
 const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
 const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
 const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
-const FounderTracesPage = React.lazy(() => import("@/pages/founder-traces"));
 const SignDocumentPage = React.lazy(() => import("@/pages/sign-document"));
 const OfferBatchesPage = React.lazy(() => import("@/pages/offer-batches"));
 const LeadsDedupePage = React.lazy(() => import("@/pages/leads-dedupe"));
@@ -640,17 +638,18 @@ function PersonaRoute({
   return <Component />;
 }
 
-// Founder legacy-path resolver (F1 slice 1, 2026-08-10). The 24 redirect-only
+// Founder legacy-path resolver (F1 slices 1+2, 2026-08-10). The redirect-only
 // founder <Route> registrations collapsed into one catch-all registered AFTER
 // the last real founder route, so it only ever sees paths no real route
 // claimed. Resolves FOUNDER_LEGACY_REDIRECTS (query string preserved — the
-// generalization of the old /founder/asks?id= trick); unknown founder paths
-// render NotFound exactly as an unregistered route always did.
+// generalization of the old /founder/asks?id= trick; canonical targets may
+// carry their own ?tab= hub pin, merged via composeFounderRedirect); unknown
+// founder paths render NotFound exactly as an unregistered route always did.
 function FounderLegacyRedirect() {
   const [location] = useLocation();
   const canonical = resolveFounderLegacyPath(location);
   if (!canonical) return <NotFound />;
-  return <Redirect to={`${canonical}${window.location.search}`} />;
+  return <Redirect to={composeFounderRedirect(canonical, window.location.search)} />;
 }
 // Re-export so persona-gated routes can be added incrementally without
 // touching this file each time the type signature evolves.
@@ -1235,7 +1234,8 @@ function Router() {
       {/* Bridge — a deep chat + telemetry TOOL, reachable from the sidebar
           overflow and command palette. It is NOT the founder home: The Letter
           (/founder) is the single home per the four-door doctrine. (Telemetry
-          also stands alone at /founder/telemetry; chat is on The Letter.) */}
+          also stands alone in the /founder/admin/telemetry hub; chat is on
+          The Letter.) */}
       <Route path="/founder/bridge">
         {() => <FounderProtectedRoute component={FounderBridgePage} />}
       </Route>
@@ -1244,9 +1244,6 @@ function Router() {
           future enhancement folds in recovery console + cmo intelligence. */}
       <Route path="/founder/steering">
         {() => <FounderProtectedRoute component={FounderCockpitPage} />}
-      </Route>
-      <Route path="/founder/ai-observatory">
-        {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
@@ -1278,18 +1275,9 @@ function Router() {
       <Route path="/founder/growth/campaigns">
         {() => <FounderProtectedRoute component={FounderGrowthCampaignsPage} />}
       </Route>
-      <Route path="/founder/telemetry">
-        {() => <FounderProtectedRoute component={FounderTelemetryPage} />}
-      </Route>
       {/* Command cockpit — "is the company green right now?" synthesis surface. */}
       <Route path="/founder/command">
         {() => <FounderProtectedRoute component={FounderCommandPage} />}
-      </Route>
-      <Route path="/founder/pax-traces">
-        {() => <FounderProtectedRoute component={FounderPaxTracesPage} />}
-      </Route>
-      <Route path="/founder/pax-calibration">
-        {() => <FounderProtectedRoute component={FounderPaxCalibrationPage} />}
       </Route>
       {/* Wave 3 Workstream E (distribution telemetry) — acquisition truth */}
       <Route path="/founder/customers">
@@ -1300,6 +1288,12 @@ function Router() {
           paid-data trial eval, all as tabs under the /founder/admin namespace. */}
       <Route path="/founder/admin/costs">
         {() => <FounderProtectedRoute component={FounderAdminCostsPage} />}
+      </Route>
+      {/* Telemetry & traces — unified observability hub (F1 slice 2): AI
+          observatory, API telemetry, agent traces, Pax traces, Pax
+          calibration, and the event log, all as tabs under /founder/admin. */}
+      <Route path="/founder/admin/telemetry">
+        {() => <FounderProtectedRoute component={FounderAdminTelemetryPage} />}
       </Route>
       {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
       <Route path="/founder/life-cockpit">
@@ -1435,9 +1429,6 @@ function Router() {
       </Route>
       <Route path="/founder/prompt-history">
         {() => <FounderProtectedRoute component={FounderPromptHistoryPage} />}
-      </Route>
-      <Route path="/founder/traces">
-        {() => <FounderProtectedRoute component={FounderTracesPage} />}
       </Route>
       <Route path="/founder/strategy">
         {() => <FounderProtectedRoute component={FounderStrategyPage} />}
@@ -1695,7 +1686,7 @@ function Router() {
       </Route>
       <Route path="/data-moat">
         {/* 2026-06-01 cut — DataMoatDashboardPage archived; no nav entry. */}
-        {() => <Redirect to="/founder/telemetry" />}
+        {() => <Redirect to="/founder/admin/telemetry?tab=api" />}
       </Route>
 
       {/* Sovereign Protocol — Census W3-1 retire/refit split (2026-06-11).
@@ -1705,9 +1696,6 @@ function Router() {
       </Route>
       <Route path="/founder/memory">
         {() => <FounderProtectedRoute component={FounderMemoryPage} />}
-      </Route>
-      <Route path="/founder/event-log">
-        {() => <FounderProtectedRoute component={FounderEventLogPage} />}
       </Route>
       <Route path="/founder/scenarios">
         {() => <FounderProtectedRoute component={FounderScenariosPage} />}
@@ -1729,7 +1717,7 @@ function Router() {
         {() => <Redirect to="/founder/memory" />}
       </Route>
       <Route path="/event-log">
-        {() => <Redirect to="/founder/event-log" />}
+        {() => <Redirect to="/founder/admin/telemetry?tab=events" />}
       </Route>
       {/* Retired sovereign-legacy routes — pages deleted. */}
       <Route path="/sovereign">

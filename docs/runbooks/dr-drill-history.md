@@ -17,6 +17,12 @@ YYYY-MM-DD  ran-by=<github-login>
             postmortem: <path or url>
 ```
 
+CI parses each block's leading `YYYY-MM-DD  ran-by=` line
+(tests/unit/drDrillFreshness.test.ts). Zero blocks is honest-dormant — this
+file must keep saying so below — but once the first block lands, the newest
+block must stay ≤100 days old (the quarterly cadence + slack that
+/api/jobs/health also enforces at runtime) or the build fails.
+
 ---
 
 (no drills recorded yet — first drill lands the first row, then a

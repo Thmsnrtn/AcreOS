@@ -16,8 +16,9 @@
 
 ### 1. Identify which migration failed
 ```bash
-# Check migration journal
-cat migrations/meta/_journal.json | jq '.entries[-3:]'
+# Newest migration files (this repo has no drizzle journal — migrations/
+# holds numbered .sql files; the applied set lives in __drizzle_migrations)
+ls -t migrations/*.sql | head -5
 
 # SSH into production
 fly ssh console -a acreos

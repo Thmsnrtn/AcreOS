@@ -30,4 +30,4 @@ Operational runbooks for AcreOS. Each is a Symptom → Diagnose → Fix → Veri
 - The numbered runbooks (01–08) cover the most common founder-bottleneck scenarios — anything in this set should be resolvable by an on-call backup, not just the founder.
 - Each runbook ends with **Escalate if** — read this first if you're not 100% sure the situation matches the symptom.
 - If a runbook step references a script or admin route, those scripts/routes already exist. If something is missing, file an issue tagged `runbook-gap` rather than improvising.
-- The /founder-home **Vendor status** tile and **Critical alerts** view are the fastest way to confirm whether a problem is ours, a vendor's, or already escalating.
+- The Controls door (`/founder/autopilot/control`) — External safety net, Step-away readiness, and Backup restore proof sections — is the fastest way to confirm whether a problem is ours, a vendor's, or already escalating. (The old /founder-home vendor-status tile was retired with the founder-dashboard monolith.)

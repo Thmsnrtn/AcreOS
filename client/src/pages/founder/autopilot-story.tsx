@@ -10,13 +10,14 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ScrollText, ChevronDown, CheckCircle2, AlertCircle, PauseCircle, Send } from "lucide-react";
+import { ScrollText, ChevronDown, CheckCircle2, AlertCircle, PauseCircle, Send, ShieldCheck } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QueryErrorState } from "@/components/query-error-state";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { GlassEngine } from "@/components/founder/GlassEngine";
@@ -200,6 +201,214 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
   );
 }
 
+// ── Governance — the Story as a reader of the two governance registries ─────
+// (F5-lite). The payload is a pure read of shared/governance/constitution.ts +
+// statuteRegister.ts via /api/founder/governance/coverage — every number below
+// IS the registries' content, nothing is computed client-side beyond display.
+
+interface GovernanceCoverageReport {
+  asOf: string;
+  constitution: {
+    total: number;
+    enforced: number;
+    byKind: Record<string, number>;
+    unenforcedHardStops: { count: number; ids: string[] };
+    entries: Array<{ id: string; title: string; category: string; kind: string; refs: string[] }>;
+  };
+  statutes: {
+    total: number;
+    reviewed: number;
+    byKind: Record<string, number>;
+    unreviewed: { count: number; ids: string[] };
+    entries: Array<{ id: string; title: string; kind: string; refs: string[]; reviewStatus: string }>;
+  };
+}
+
+// Plain words for the enforcement vocabulary — never render a raw kind token
+// at the founder (same discipline as the Letter's BUDGET_STATUS).
+const ENFORCEMENT_LABEL: Record<string, { label: string; strong: boolean }> = {
+  // Constitution kinds
+  "code-invariant": { label: "enforced in code", strong: true },
+  "ratchet-test": { label: "ratchet test", strong: true },
+  lint: { label: "lint gate", strong: true },
+  "prose-only": { label: "prose only — no automated backstop", strong: false },
+  // Statute kinds
+  "unit-test": { label: "unit-tested", strong: true },
+  ratchet: { label: "ratchet test", strong: true },
+  "refusal-path": { label: "refuses in code, refusal untested", strong: false },
+};
+
+function enforcementBadge(kind: string) {
+  const meta = ENFORCEMENT_LABEL[kind] ?? { label: kind, strong: false };
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs ${meta.strong ? "border-acr-success/40 text-acr-success" : "border-acr-warn/40 text-acr-warn"}`}
+    >
+      {meta.label}
+    </Badge>
+  );
+}
+
+function GovernanceEntryRow({
+  title,
+  sub,
+  kind,
+  refs,
+  extraBadge,
+  testId,
+}: {
+  title: string;
+  sub: string;
+  kind: string;
+  refs: string[];
+  extraBadge?: ReactNode;
+  testId: string;
+}) {
+  return (
+    <li className="border-b border-border/60 px-2 py-3 last:border-0" data-testid={testId}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        {enforcementBadge(kind)}
+        {extraBadge}
+      </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+      {refs.length > 0 && (
+        <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground/80 break-all">
+          {refs.join(" · ")}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The rules, read straight from the registries: what's enforced by code, what
+ * still relies on vigilance, and which statutes a human has actually read.
+ * Self-contained fetch so a timeline hiccup never hides the rules.
+ */
+function GovernanceSection() {
+  const { data, isLoading, isError, error, refetch } = useQuery<GovernanceCoverageReport>({
+    queryKey: ["/api/founder/governance/coverage"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/governance/coverage", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load governance coverage (${res.status})`);
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2" aria-busy="true">
+        <Skeleton className="h-16 w-full rounded-card" />
+        <Skeleton className="h-48 w-full rounded-card" />
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <QueryErrorState
+        error={error instanceof Error ? error : new Error("Failed")}
+        title="Couldn't read the governance registries"
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
+  const c = data.constitution;
+  const s = data.statutes;
+  return (
+    <div className="space-y-4" data-testid="story-governance">
+      {/* The two headline fractions — the same rollups the ratchets pin. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-card p-3" data-testid="governance-constitution-rollup">
+          <p className="text-xs text-muted-foreground">Standing decisions machine-enforced</p>
+          <p className="mt-0.5 text-base font-semibold tabular-nums">
+            {c.enforced} of {c.total}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {c.unenforcedHardStops.count === 0
+              ? "Every hard stop has an automated backstop."
+              : `${c.unenforcedHardStops.count} hard stop(s) still rely on vigilance alone.`}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-3" data-testid="governance-statutes-rollup">
+          <p className="text-xs text-muted-foreground">Statute implementations human-reviewed</p>
+          <p className="mt-0.5 text-base font-semibold tabular-nums">
+            {s.reviewed} of {s.total}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {s.unreviewed.count === 0
+              ? "Every statute implementation has been read by a human."
+              : `${s.unreviewed.count} implement a law no one has reviewed yet.`}
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-2 sm:p-3">
+          <div className="flex items-center gap-2 px-2 pt-2">
+            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-foreground">The constitution — standing decisions</h2>
+          </div>
+          <p className="px-2 pt-1 text-xs text-muted-foreground">
+            Each decision below is recorded doctrine, with exactly how it is enforced today. Changing one is
+            founder-only, at its source — this page only reads.
+          </p>
+          <ul role="list" className="mt-2">
+            {c.entries.map((entry) => (
+              <GovernanceEntryRow
+                key={entry.id}
+                title={entry.title}
+                sub={entry.id}
+                kind={entry.kind}
+                refs={entry.refs}
+                testId={`governance-invariant-${entry.id}`}
+              />
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-2 sm:p-3">
+          <div className="flex items-center gap-2 px-2 pt-2">
+            <ScrollText className="h-4 w-4 text-primary" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-foreground">The statute register — laws this code implements</h2>
+          </div>
+          <p className="px-2 pt-1 text-xs text-muted-foreground">
+            A map, not a claim of compliance: where the code takes a legal obligation on, and who has checked it.
+          </p>
+          <ul role="list" className="mt-2">
+            {s.entries.map((entry) => (
+              <GovernanceEntryRow
+                key={entry.id}
+                title={entry.title}
+                sub={entry.id}
+                kind={entry.kind}
+                refs={entry.refs}
+                extraBadge={
+                  entry.reviewStatus === "UNREVIEWED" ? (
+                    <Badge variant="outline" className="border-acr-warn/40 text-acr-warn text-xs">
+                      unreviewed
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">
+                      {entry.reviewStatus.replace(/-/g, " ")}
+                    </Badge>
+                  )
+                }
+                testId={`governance-statute-${entry.id}`}
+              />
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // Compact, scannable trace row: the label sits in a fixed left column on
 // desktop (label | value on one line) and stacks above the value on mobile.
 // Same information as before, ~40% less vertical sprawl per action.
@@ -210,6 +419,17 @@ function TraceBlock({ label, children }: { label: string; children: ReactNode })
       <p className="min-w-0 text-foreground/90">{children}</p>
     </div>
   );
+}
+
+const STORY_TABS = ["timeline", "engine", "governance"] as const;
+
+// Deep-link support (?tab=governance — the Letter's "rules that are code" row
+// lands here). Same URL-read pattern as founder/studio.tsx.
+function readStoryTabFromUrl(): (typeof STORY_TABS)[number] {
+  if (typeof window === "undefined") return "timeline";
+  const param = new URLSearchParams(window.location.search).get("tab");
+  if (param && (STORY_TABS as readonly string[]).includes(param)) return param as (typeof STORY_TABS)[number];
+  return "timeline";
 }
 
 export default function FounderAutopilotStoryPage() {
@@ -276,10 +496,11 @@ export default function FounderAutopilotStoryPage() {
             onRetry={() => void refetch()}
           />
         ) : (
-          <Tabs defaultValue="timeline">
+          <Tabs defaultValue={readStoryTabFromUrl()}>
             <TabsList>
               <TabsTrigger value="timeline" data-testid="story-tab-timeline">The timeline</TabsTrigger>
               <TabsTrigger value="engine" data-testid="story-tab-engine">The engine</TabsTrigger>
+              <TabsTrigger value="governance" data-testid="story-tab-governance">The rules</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline" className="mt-4">
               {entries.length === 0 ? (
@@ -305,6 +526,11 @@ export default function FounderAutopilotStoryPage() {
                   branch above, so it never renders "no moves yet" over a
                   fetch failure. */}
               <GlassEngine entries={entries} />
+            </TabsContent>
+            <TabsContent value="governance" className="mt-4">
+              {/* The rules the engine runs under — read straight from the two
+                  governance registries. Own fetch + own states. */}
+              <GovernanceSection />
             </TabsContent>
           </Tabs>
         )}

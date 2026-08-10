@@ -23,6 +23,7 @@ import path from "path";
 import {
   FOUNDER_LEGACY_REDIRECTS,
   FOUNDER_LEGACY_ROUTE_PATTERN,
+  composeFounderRedirect,
   resolveFounderLegacyPath,
 } from "@/lib/route-redirects";
 
@@ -32,8 +33,8 @@ const APP = fs.readFileSync(path.resolve(ROOT, "client/src/App.tsx"), "utf-8");
 const LEGACY_PATHS = Object.keys(FOUNDER_LEGACY_REDIRECTS);
 
 describe("founder legacy-redirect map", () => {
-  it("holds exactly the 24 aliases retired in F1 slice 1 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
-    expect(LEGACY_PATHS).toHaveLength(24);
+  it("holds exactly the 30 known aliases — 24 from slice 1 + the 6 observability routes folded into /founder/admin/telemetry in slice 2 (new aliases mean a real route was deleted — flatten it here deliberately)", () => {
+    expect(LEGACY_PATHS).toHaveLength(30);
   });
 
   it("every legacy path is reachable through the catch-all pattern", () => {
@@ -75,6 +76,53 @@ describe("founder legacy-redirect map", () => {
     expect(resolveFounderLegacyPath("/founder/asks")).toBe("/founder/decisions");
     expect(resolveFounderLegacyPath("/founder")).toBeNull();
     expect(resolveFounderLegacyPath("/founder/does-not-exist")).toBeNull();
+  });
+
+  it("each retired observability route lands on its own tab of the telemetry hub (slice 2)", () => {
+    const HUB = "/founder/admin/telemetry";
+    expect(resolveFounderLegacyPath("/founder/ai-observatory")).toBe(`${HUB}?tab=observatory`);
+    expect(resolveFounderLegacyPath("/founder/telemetry")).toBe(`${HUB}?tab=api`);
+    expect(resolveFounderLegacyPath("/founder/traces")).toBe(`${HUB}?tab=traces`);
+    expect(resolveFounderLegacyPath("/founder/pax-traces")).toBe(`${HUB}?tab=pax-traces`);
+    expect(resolveFounderLegacyPath("/founder/pax-calibration")).toBe(`${HUB}?tab=calibration`);
+    expect(resolveFounderLegacyPath("/founder/event-log")).toBe(`${HUB}?tab=events`);
+  });
+
+  it("every ?tab= a canonical target pins is a real tab value in the hub page", () => {
+    const hub = fs.readFileSync(
+      path.resolve(ROOT, "client/src/pages/founder/admin/telemetry.tsx"),
+      "utf-8",
+    );
+    for (const canonical of Object.values(FOUNDER_LEGACY_REDIRECTS)) {
+      const tab = new URLSearchParams(canonical.split("?")[1] ?? "").get("tab");
+      if (!tab || !canonical.startsWith("/founder/admin/telemetry")) continue;
+      expect(
+        hub.includes(`value: "${tab}"`),
+        `${canonical}: tab "${tab}" is not declared in admin/telemetry.tsx TABS`,
+      ).toBe(true);
+    }
+  });
+});
+
+describe("composeFounderRedirect (canonical query + incoming search merge)", () => {
+  it("keeps the incoming search when the canonical has no query (the /founder/asks?id= trick)", () => {
+    expect(composeFounderRedirect("/founder/decisions", "?id=42")).toBe("/founder/decisions?id=42");
+    expect(composeFounderRedirect("/founder/decisions", "")).toBe("/founder/decisions");
+  });
+
+  it("merges a canonical ?tab= pin with the incoming search instead of concatenating two ?", () => {
+    expect(composeFounderRedirect("/founder/admin/telemetry?tab=api", "?window=7d")).toBe(
+      "/founder/admin/telemetry?window=7d&tab=api",
+    );
+    expect(composeFounderRedirect("/founder/admin/telemetry?tab=events", "")).toBe(
+      "/founder/admin/telemetry?tab=events",
+    );
+  });
+
+  it("the canonical query wins on conflict — the hub tab pin is not overridable by a stale bookmark", () => {
+    expect(composeFounderRedirect("/founder/admin/telemetry?tab=api", "?tab=bogus")).toBe(
+      "/founder/admin/telemetry?tab=api",
+    );
   });
 });
 

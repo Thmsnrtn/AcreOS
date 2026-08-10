@@ -23,8 +23,12 @@ const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"),
  *  "/founder-dashboard OR /founder/<anything>"), so this counter — which
  *  counts string-literal registrations, i.e. actual founder surfaces —
  *  does not see it, and rightly so: it registers no new surface.
- *  founderLegacyRedirects.test.ts guards the catch-all itself. */
-const FOUNDER_ROUTE_BASELINE = 58;
+ *  founderLegacyRedirects.test.ts guards the catch-all itself.
+ *  2026-08-10: 58→53 (F1 slice 2) — the 6 observability routes
+ *  (ai-observatory, telemetry, traces, pax-traces, pax-calibration,
+ *  event-log) merged into the single /founder/admin/telemetry tabbed hub,
+ *  mirroring the costs hub; the old paths redirect with their tab pinned. */
+const FOUNDER_ROUTE_BASELINE = 53;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

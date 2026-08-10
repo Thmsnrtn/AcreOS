@@ -252,7 +252,7 @@ function ModelDistributionSection({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function AiObservatory() {
+export function AiObservatoryContent() {
   useDocumentTitle("AI observatory");
   const { isFounder, isLoading: authLoading } = useAuth();
 
@@ -312,8 +312,7 @@ export default function AiObservatory() {
     .slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="space-y-8">
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -623,6 +622,15 @@ export default function AiObservatory() {
             )}
           </CardContent>
         </Card>
+    </div>
+  );
+}
+
+export default function AiObservatory() {
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <AiObservatoryContent />
       </div>
     </div>
   );

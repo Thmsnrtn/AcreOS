@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, BookOpen, Mic, SlidersHorizontal, LayoutGrid, Clock } from "lucide-react";
+import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, BookOpen, Mic, SlidersHorizontal, LayoutGrid, Clock, ShieldCheck } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { PageShell } from "@/components/page-shell";
@@ -395,6 +395,15 @@ export default function FounderHomePage() {
             />
           </motion.div>
 
+          {/* Rules that are code — how much of the doctrine is machine-enforced
+              (F5-lite). Both fractions come straight from the governance
+              registries via /api/founder/governance/coverage; tapping opens
+              the Story's governance reader where every rule + its enforcement
+              pointers live. */}
+          <motion.div variants={staggerItem}>
+            <GovernanceRulesRow />
+          </motion.div>
+
           {/* Talk to your company */}
           <motion.div variants={staggerItem}>
             <PrefetchLink
@@ -468,6 +477,57 @@ function StepAwayLine() {
         <Sparkles className="h-4 w-4 shrink-0 text-[hsl(var(--acr-warn))]" aria-hidden="true" />
       )}
       <span className="min-w-0 flex-1 truncate font-medium">{data.headline}</span>
+      <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </PrefetchLink>
+  );
+}
+
+/**
+ * "Rules that are code" — the governance-coverage KPI (F5-lite). Two honest
+ * fractions read straight from the governance registries: standing decisions
+ * with an automated backstop, and statute implementations a human has read.
+ * Same auxiliary-signal discipline as StepAwayLine: renders nothing while
+ * loading (the Letter never blocks), and a FAILED read says so in a muted
+ * line — never pixel-identical to a healthy row.
+ */
+function GovernanceRulesRow() {
+  const { data, isError } = useQuery<{
+    constitution: { total: number; enforced: number };
+    statutes: { total: number; reviewed: number };
+  }>({
+    queryKey: ["/api/founder/governance/coverage"],
+    queryFn: async () => (await apiRequest("GET", "/api/founder/governance/coverage")).json(),
+    staleTime: 5 * 60 * 1000,
+  });
+  if (isError) {
+    return (
+      <p
+        className="rounded-lg border border-border bg-card/60 p-3 text-sm text-muted-foreground"
+        data-testid="letter-governance-error"
+      >
+        Couldn't read the governance registries just now — the rules themselves live in code, not on this page.
+      </p>
+    );
+  }
+  if (!data) return null;
+  return (
+    <PrefetchLink
+      href="/founder/autopilot/story?tab=governance"
+      className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm hover-elevate"
+      data-testid="letter-governance-row"
+    >
+      <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        Rules that are code:{" "}
+        <span className="font-medium tabular-nums" data-testid="letter-governance-constitution">
+          {data.constitution.enforced} of {data.constitution.total}
+        </span>{" "}
+        standing decisions machine-enforced ·{" "}
+        <span className="font-medium tabular-nums" data-testid="letter-governance-statutes">
+          {data.statutes.reviewed} of {data.statutes.total}
+        </span>{" "}
+        statutes human-reviewed
+      </span>
       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
     </PrefetchLink>
   );

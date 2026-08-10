@@ -551,6 +551,52 @@ from this file, not from memory. Updated every working session.*
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
 
+## Waves G/O/F — slice 2 (F1-s2 + O2-buildable + O3 + F5-lite) — ✅ SHIPPED
+
+Same fleet protocol as slice 1. Three of four verifiers returned
+CONFIRMED_GOOD outright; O2's one catch (the earned tablesNoReader drop not
+locked) was fixed centrally. No estate files moved — no manifest regen needed.
+
+- **F1 slice 2 (observability hub):** the six observability routes
+  (telemetry, traces, pax-traces, pax-calibration, ai-observatory, event-log)
+  folded as tabs into ONE `/founder/admin/telemetry` hub mirroring the costs
+  hub (existing page components imported as tab content, internals untouched;
+  ?tab= deep links validated). Legacy paths ride the slice-1 catch-all map
+  with tab pins; `composeFounderRedirect` fixes the old query-concatenation
+  bug. `FOUNDER_ROUTE_BASELINE` 58 → **53** (down-only, earned).
+- **O2-buildable (backup proof trail):** `/api/jobs/health` now returns the
+  latest `backup_verified` row — the table's FIRST reader, closing F-13-3
+  (write-only proof was a black hole); Controls-door section renders it with
+  the honest tone ladder (skipped_config ⇒ dormant amber, never green; only a
+  verified row ≤~8 days renders ready). `drDrillFreshness.test.ts`: the
+  dr-drill ledger's dated blocks gate freshness ≤100d once the FIRST drill
+  lands; zero blocks pins the honesty posture instead of failing forever
+  (drill execution stays in the founder queue). tablesNoReader locked
+  58 → **57**.
+- **O3 (runbook link-lint):** `scripts/check-runbook-links.mjs` in the check
+  chain — every repo path in docs/runbooks/ must resolve; drill claims must
+  cite a dated ledger block (grammar derived from the ledgers' own formats);
+  dated, reasoned allowlist. The six pre-existing dangling pointers FIXED to
+  reality (not fabricated into existence); the verifier reproduced the
+  pre-fix defects against HEAD to prove the gate catches them. Top-5
+  runbooks-to-verified (last-walked dates) is founder work, noted not faked.
+- **F5-lite (governance visibility):** founder-gated
+  `/api/founder/governance/coverage` — a pure read of CONSTITUTION +
+  STATUTE_REGISTER (registries untouched, still tamper-pinned); the Letter
+  gains the "rules that are code" KPI row (12/14 invariants enforced, 2/31
+  statutes reviewed at ship time — all derived, zero hardcoded counts); Story
+  gains the governance tab (enforcement kinds labeled honestly,
+  strong-vs-weak, unreviewed statutes badged). Story is now a governance
+  reader — F5's first step.
+- **Ledgered observations from verifiers:** `bg-acr-success` is a DEAD token
+  repo-wide (12 files incl. this slice's convention-following uses; the real
+  green is `acr-pos`; chartPalette references the nonexistent var) — a
+  one-sweep fix candidate for Wave 1's polish pass. Playwright specs
+  referencing legacy founder paths ride the catch-all (low risk, noted).
+- **Deferred:** O2's founder ask unchanged (the drill itself); O3's
+  runbook-walk dates (founder); F5 full unification + brief-exit-test +
+  Solene enqueue gate (later F5 slices).
+
 ## Waves G/O/F — opening slice (F1-s1 + F3 + O1 + G1.1) — ✅ SHIPPED
 
 Built as a four-fixer fleet with exclusive file sets, each adversarially
@@ -629,12 +675,21 @@ integration defects were all fixed centrally before commit:
   exit test per item, independent completeness audit before an item closes,
   founder queue for send lanes / hard-stops / baseline raises / keyed-env
   work, refuse-not-fabricate, doors fixed, D-4 (verticals are CORE).
-- **In flight:** Waves G/O/F premise-verification scouts (parallel, read-only)
-  covering G1, O1/O2-buildable/O3/O5-part, F1-first-slice/F3/F5. Execution
-  order will be chosen from their reports — expected: F3 (eternal-lines
-  ratchets, smallest trust-class item) → O1/O3 → G1 → Wave 1 (1.1–1.6) → then
-  the §D main line, with X-B (domain-truth inventory + enforcement scaffold,
-  "may start immediately") slotted alongside.
+- **Slice 1 SHIPPED at `0c5eb23`** (F1-s1 + F3 + O1 + G1.1 — section above).
+- **In flight: FLEET 2** (workflow `wf_211cda2b-625`) building F1-slice2
+  (observability → /founder/admin/telemetry hub, baseline 58→53),
+  O2-buildable (backup_verified reader + drDrillFreshness ratchet), O3
+  (runbook link-lint into the check chain), F5-lite (governance coverage
+  endpoint + Letter KPI + Story governance section) — four fixers with
+  exclusive file sets + adversarial verifiers. Integration protocol (learned
+  from slice 1): fix verifier catches centrally; regenerate the gate-tamper
+  manifest LAST if any estate file moved; lock earned ratchet drops; full
+  gates with exit codes checked separately; one slice commit.
+- **Fleet 3 next** (needs App.tsx free): G1.3 /for/:vertical registry pages +
+  G1.2 demo org (viewer-role read-only session, simulationMode org,
+  activation-safe via G1.1's sample guard). Then: G1.4 provable-claims +
+  marketing-claims.test, X-B scaffold (statuteRegister claim-sourcing —
+  regenerate manifest after), O5-part, F2, Wave 1 (1.1–1.6) onward per §D.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

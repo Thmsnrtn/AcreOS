@@ -52,7 +52,7 @@ interface TraceDetail extends TraceSummary {
 
 const AGENT_CHOICES = ["pax", "sophie_csm", "forge_revenue", "atlas_cto", "beacon_marketing", "ledger_finance"];
 
-export default function FounderTracesPage() {
+export function AgentTracesContent() {
   useDocumentTitle("Agent traces");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const filterId = useId();
@@ -67,8 +67,7 @@ export default function FounderTracesPage() {
   const traces = data?.traces ?? [];
 
   return (
-    <PageShell label="Agent Traces">
-      <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
         <PageHeader
           title="Agent traces"
           icon={<FileCode className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
@@ -136,7 +135,14 @@ export default function FounderTracesPage() {
             ))}
           </ul>
         )}
-      </div>
+    </div>
+  );
+}
+
+export default function FounderTracesPage() {
+  return (
+    <PageShell label="Agent Traces">
+      <AgentTracesContent />
     </PageShell>
   );
 }

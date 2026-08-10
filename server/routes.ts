@@ -235,6 +235,7 @@ import { registerPaxCalibrationRoutes } from "./routes-pax-calibration";
 import { registerFounderCustomersRoutes } from "./routes-founder-customers";
 import { registerFounderPulseRoutes } from "./routes-founder-pulse";
 import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
+import { registerFounderGovernanceCoverageRoutes } from "./routes-founder-governance-coverage";
 import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-eval";
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
@@ -2344,6 +2345,11 @@ export async function registerRoutes(
   // County coverage ledger — /api/founder/coverage. Coverage % of the counties
   // customers actually touch + the demand-ranked discovery queue (crawl order).
   registerFounderCoverageRoutes(app);
+  // Governance coverage — /api/founder/governance/coverage. Pure read of the
+  // two governance registries (constitution + statute register): per-entry
+  // enforcement pointers + the debt rollups (unenforced hard stops,
+  // unreviewed statutes). Feeds the Letter KPI and the Story governance tab.
+  registerFounderGovernanceCoverageRoutes(app);
   // Paid-data eval harness — /api/founder/paid-data-eval. Runs the persisted
   // free LIS corpus against a paid provider (mock today) and reports field
   // divergence + decision-flip rate so a paid-data trial is bought surgically.

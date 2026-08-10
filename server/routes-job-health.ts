@@ -17,18 +17,21 @@
  *
  * GET /api/jobs/health → { jobs: [{ name, lastSuccessAt, lastFailureAt,
  *                                    consecutiveFailures, status,
- *                                    isStale, expectedIntervalMs }] }
+ *                                    isStale, expectedIntervalMs }],
+ *                          drDrill: { lastRanAt, daysSince, status, … },
+ *                          backupVerify: { status, verifiedAt, daysSince,
+ *                                          isFresh, dormantReason, … } }
  */
 
 import type { Express, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { jobHealthLogs, drDrills } from "@shared/schema";
+import { jobHealthLogs, drDrills, backupVerified } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { JOB_ROSTER } from "./jobs/jobRegistry";
+import { JOB_ROSTER, backupConfigMissingReason } from "./jobs/jobRegistry";
 
 /**
  * Jobs we surface in the user-facing health card, derived from the canonical
@@ -61,6 +64,15 @@ const TRACKED_JOBS: Array<{ name: string; label: string; intervalMs: number }> =
     label: SURFACED_JOBS[e.name],
     intervalMs: e.intervalMs,
   }));
+
+/**
+ * Master-handoff O2 (audit F-13-3): freshness threshold for the weekly
+ * backup restore-verification proof. Weekly cadence + one day of slack — a
+ * "verified" row older than this is a stale proof, not a current one.
+ * tests/unit/drDrillFreshness.test.ts pins this constant (alongside the
+ * 90/100/200-day drill thresholds) against silent drift.
+ */
+export const BACKUP_VERIFY_FRESH_DAYS = 8;
 
 interface JobHealth {
   name: string;
@@ -193,7 +205,70 @@ export function registerJobHealthRoutes(app: Express): void {
           };
         }
 
-        return res.json({ jobs: out, drDrill });
+        // Master-handoff O2 (audit F-13-3): the latest restore-verification
+        // proof row — backup_verified's FIRST reader; the writers are in
+        // server/jobs/backupRestoreVerify.ts. When the job is config-dormant
+        // it returns BEFORE writing any row, so dormancy is computed here
+        // from the same predicate the job roster uses and reported as
+        // skipped_config — the client renders that amber, never green. A
+        // "verified" row only counts as fresh while the pipeline is armed
+        // AND the row is within BACKUP_VERIFY_FRESH_DAYS.
+        const dormantReason = backupConfigMissingReason();
+        const [lastVerify] = await db
+          .select({
+            status: backupVerified.status,
+            verifiedAt: backupVerified.verifiedAt,
+            backupKey: backupVerified.backupKey,
+            maxDriftPct: backupVerified.maxDriftPct,
+            error: backupVerified.error,
+            durationMs: backupVerified.durationMs,
+          })
+          .from(backupVerified)
+          .orderBy(desc(backupVerified.verifiedAt))
+          .limit(1);
+
+        interface BackupVerifyOut {
+          status: "verified" | "failed" | "skipped_config" | "never_ran";
+          verifiedAt: string | null;
+          daysSince: number | null;
+          isFresh: boolean;
+          backupKey: string | null;
+          maxDriftPct: number | null;
+          error: string | null;
+          durationMs: number | null;
+          dormantReason: string | null;
+        }
+        let backupVerify: BackupVerifyOut;
+        if (lastVerify) {
+          const days = Math.floor((Date.now() - new Date(lastVerify.verifiedAt).getTime()) / 86_400_000);
+          backupVerify = {
+            // The column's documented domain (shared/schema.ts) — pass the
+            // row's own word through rather than re-judging it here.
+            status: lastVerify.status as BackupVerifyOut["status"],
+            verifiedAt: new Date(lastVerify.verifiedAt).toISOString(),
+            daysSince: days,
+            isFresh: lastVerify.status === "verified" && days <= BACKUP_VERIFY_FRESH_DAYS && !dormantReason,
+            backupKey: lastVerify.backupKey,
+            maxDriftPct: lastVerify.maxDriftPct ?? null,
+            error: lastVerify.error ?? null,
+            durationMs: lastVerify.durationMs ?? null,
+            dormantReason,
+          };
+        } else {
+          backupVerify = {
+            status: dormantReason ? "skipped_config" : "never_ran",
+            verifiedAt: null,
+            daysSince: null,
+            isFresh: false,
+            backupKey: null,
+            maxDriftPct: null,
+            error: null,
+            durationMs: null,
+            dormantReason,
+          };
+        }
+
+        return res.json({ jobs: out, drDrill, backupVerify });
       } catch (err) {
         logger.error("jobs.health failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);

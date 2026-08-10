@@ -120,7 +120,7 @@ function EventRow({ event }: { event: any }) {
   );
 }
 
-export default function FounderEventLogPage() {
+export function EventLogContent() {
   useDocumentTitle("Event log");
   const filterId = useId();
   const typeFilterId = useId();
@@ -145,8 +145,7 @@ export default function FounderEventLogPage() {
   }) : [];
 
   return (
-    <PageShell>
-      <div className="space-y-6 md:space-y-8">
+    <div className="space-y-6 md:space-y-8">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Network className="w-6 h-6 text-primary" aria-hidden="true" />
@@ -306,7 +305,14 @@ export default function FounderEventLogPage() {
             )}
           </CardContent>
         </Card>
-      </div>
+    </div>
+  );
+}
+
+export default function FounderEventLogPage() {
+  return (
+    <PageShell>
+      <EventLogContent />
     </PageShell>
   );
 }

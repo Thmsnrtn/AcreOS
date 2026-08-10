@@ -401,7 +401,7 @@ export default function PaxControlsPage() {
           <CardDescription>
             The most recent observations Pax surfaced and how they were
             dispositioned. Need the full LLM prompt + tool calls?{" "}
-            <Link href="/founder/pax-traces" className="underline underline-offset-2 inline-flex items-center gap-1">
+            <Link href="/founder/admin/telemetry?tab=pax-traces" className="underline underline-offset-2 inline-flex items-center gap-1">
               Pax trace viewer
               <FileCode className="w-3 h-3" aria-hidden="true" />
             </Link>

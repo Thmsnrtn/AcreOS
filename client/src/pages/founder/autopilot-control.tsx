@@ -337,6 +337,12 @@ export default function FounderAutopilotControlPage() {
               <div className="mt-3">
                 <ObligationsYearSection />
               </div>
+              {/* Master-handoff O2 (audit F-13-3) — the backup_verified proof
+                  trail finally read, plus DR-drill state, in the same
+                  never-green-unless-proven grammar. */}
+              <div className="mt-3">
+                <BackupRestoreProofSection />
+              </div>
             </motion.section>
 
             {/* The founder's OWN onboarding (founder ask 2026-07-30) — a
@@ -1438,6 +1444,159 @@ function StepAwaySection() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Backups proven restorable (master-handoff O2, audit F-13-3) ─────────────
+// The weekly restore-verify job (server/jobs/backupRestoreVerify.ts) restores
+// the latest snapshot into a scratch DB and writes a backup_verified proof
+// row; the quarterly DR drill proves full production cutover. This section is
+// that proof trail's first reader (via /api/jobs/health). Honesty grammar
+// mirrors ExternalSafetyNetSection: when the verify job is config-dormant the
+// server says so and the row renders amber with the arming reason — green
+// ONLY ever means a real "verified" row exists and is fresh (≤8 days, weekly
+// cadence + slack, judged server-side as isFresh). A drill whose RTO target
+// was MISSED never renders green either, however recent.
+// tests/unit/drDrillFreshness.test.ts pins these rules.
+
+interface BackupVerifyState {
+  status: "verified" | "failed" | "skipped_config" | "never_ran";
+  verifiedAt: string | null;
+  daysSince: number | null;
+  isFresh: boolean;
+  backupKey: string | null;
+  maxDriftPct: number | null;
+  error: string | null;
+  durationMs: number | null;
+  dormantReason: string | null;
+}
+
+interface DrDrillState {
+  lastRanAt: string | null;
+  daysSince: number | null;
+  status: "ok" | "stale" | "failing" | "never_ran";
+  lastTotalRtoMinutes: number | null;
+  lastPassedRtoTarget: boolean | null;
+}
+
+interface JobsHealthData {
+  drDrill: DrDrillState;
+  backupVerify: BackupVerifyState;
+}
+
+const JOBS_HEALTH_KEY = ["/api/jobs/health"];
+
+type ProofTone = "ready" | "warn" | "attention";
+
+function backupVerifyTone(v: BackupVerifyState): ProofTone {
+  if (v.dormantReason) return "warn"; // config-dormant — never green
+  if (v.status === "verified" && v.isFresh) return "ready";
+  if (v.status === "failed") return "attention";
+  return "warn"; // stale proof, or configured but no row yet
+}
+
+function drDrillTone(d: DrDrillState): ProofTone {
+  if (d.status === "failing") return "attention";
+  if (d.status === "never_ran" || d.status === "stale") return "warn";
+  if (d.lastPassedRtoTarget === false) return "warn"; // recent but RTO target MISSED
+  return "ready";
+}
+
+function backupVerifyLine(v: BackupVerifyState): string {
+  if (v.dormantReason) return `Dormant — ${v.dormantReason}`;
+  if (v.status === "failed") {
+    return `Restore-verification FAILED${v.daysSince !== null ? ` ${v.daysSince}d ago` : ""}${v.error ? ` — ${v.error}` : ""}. Treat backups as unproven until a verified row lands.`;
+  }
+  if (v.status === "verified" && v.isFresh) {
+    return `Latest snapshot restored and verified ${v.daysSince}d ago${v.maxDriftPct !== null ? ` (max row-count drift ${v.maxDriftPct}%)` : ""}.`;
+  }
+  if (v.status === "verified") {
+    return `Last verified restore was ${v.daysSince}d ago — past the weekly cadence, so the proof is stale.`;
+  }
+  return "Configured, but no proof row has landed yet — the first weekly run proves (or fails) the pipeline.";
+}
+
+function drDrillLine(d: DrDrillState): string {
+  if (d.status === "never_ran") {
+    return "No full restore drill has ever been recorded — RTO is unproven. Run runbook 07 end-to-end, then record it (a dr_drills row + a block in docs/runbooks/dr-drill-history.md).";
+  }
+  const rto = d.lastTotalRtoMinutes !== null ? `RTO ${d.lastTotalRtoMinutes}m` : "RTO unrecorded";
+  const target = d.lastPassedRtoTarget === false ? "target MISSED" : "target met";
+  if (d.status === "failing") return `Last drill ${d.daysSince}d ago (${rto}, ${target}) — far past the quarterly cadence.`;
+  if (d.status === "stale") return `Last drill ${d.daysSince}d ago (${rto}, ${target}) — past the quarterly cadence (stale after 100 days).`;
+  return `Last drill ${d.daysSince}d ago — ${rto}, ${target}.`;
+}
+
+const PROOF_DOT: Record<ProofTone, string> = {
+  ready: "bg-acr-success",
+  warn: "bg-acr-warn",
+  attention: "bg-acr-neg",
+};
+const PROOF_TEXT: Record<ProofTone, string> = {
+  ready: "text-muted-foreground",
+  warn: "text-acr-warn",
+  attention: "text-acr-neg",
+};
+
+function BackupRestoreProofSection() {
+  const q = useQuery<JobsHealthData>({
+    queryKey: JOBS_HEALTH_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/jobs/health", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load backup proof (${res.status})`);
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (q.isLoading) return <Skeleton className="h-20 w-full rounded-card" />;
+  if (q.isError || !q.data) {
+    return (
+      <QueryErrorState
+        error={q.error instanceof Error ? q.error : new Error("Failed")}
+        title="Backup proof unavailable"
+        onRetry={() => void q.refetch()}
+      />
+    );
+  }
+
+  const rows: Array<{ key: string; title: string; tone: ProofTone; line: string }> = [
+    {
+      key: "backup-verify",
+      title: "Weekly restore-verify",
+      tone: backupVerifyTone(q.data.backupVerify),
+      line: backupVerifyLine(q.data.backupVerify),
+    },
+    {
+      key: "dr-drill",
+      title: "Full DR drill",
+      tone: drDrillTone(q.data.drDrill),
+      line: drDrillLine(q.data.drDrill),
+    },
+  ];
+
+  return (
+    <div className="rounded-card border border-border bg-card p-4 space-y-3" data-testid="backup-restore-proof">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">Backups proven restorable</p>
+        <p className="text-xs text-muted-foreground">
+          A backup that has never been restored is a hope, not a backup. The weekly job restores the latest snapshot
+          into a scratch database and writes a proof row; the quarterly drill proves full production cutover. Green here
+          only ever means a real proof row exists and is fresh.
+        </p>
+      </div>
+      <ul className="divide-y divide-border/60">
+        {rows.map((r) => (
+          <li key={r.key} className="py-2 flex items-start gap-2" data-testid={`proof-${r.key}`}>
+            <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${PROOF_DOT[r.tone]}`} aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-foreground">{r.title}</span>
+              <span className={`block text-xs ${PROOF_TEXT[r.tone]}`}>{r.line}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
