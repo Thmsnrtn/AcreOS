@@ -16,6 +16,9 @@ from this file, not from memory. Updated every working session.*
 | D-2 | **Item 0.2's headline premise is stale — the F-18-1 fix already shipped** in the remediation continuation batch (2026-08-06, `REMEDIATION.md` item 3): `server/services/vendorCredentialExpiry.ts` (registry seeded ATTOM `2026-08-28`), milestone paging in `sendDailyBriefing` (warn T-14/T-7, critical page ≤T-2 via `alertSpine`), and the `vendor_credentials` step-away readiness check. All verified wired at HEAD (scheduler → `runScheduledJobs.ts:1146`). | 0.2 re-scoped from "build it" to "verify at HEAD + close the enforcement gap" (below). |
 | D-3 | The audit's F-18-1 **"Gate it"** (sole-source ⇒ expiry-row invariant) was NOT part of the shipped fix — no `vendor-expiry` ratchet existed and the unit test didn't derive from the sole-source allowlist. | Closed this session (see 0.2). Built as a **derived set-invariant test**, not a count ratchet — per `99-master.md:228`'s over-build dissent and the repo's derived-test preference. |
 | D-4 | **FOUNDER RULING (2026-08-10, direct in-session):** the completed vertical-maturity program — all 15 verticals brought to honest core (PRs #275/#276, merged pre-Wave-0) — **SUPERSEDES every handoff recommendation premised on verticals being beta / frozen / conveyor-gated / roadmap-gated**. The founder read the handoff and identified this as its one outdated aspect. Consistent with founder ruling #11 (2026-07-29, deletion ledger) rescinding the one-at-a-time conveyor. | Any later-wave brief (Waves 1–6/G/O/F, addenda) whose premise is a vertical's beta/frozen status must be re-scoped at execution: verticals are CORE. Do not relitigate activation gates the completed program already passed — including the residential-comps data-plane hard-stop, which the founder lifted in-session during that program ("Lift hard-stop + MLS vendor"). |
+| D-8 | **PREMISE DRIFT found while verifying Addenda D/E at HEAD (2026-08-11).** Five items, all logged rather than forced: **(a)** the addenda's source documents — `acreos-legal-review.md`, `acreos-customer-responsibility-audit.md`, `acreos-depth-audit-part3.md` — are **not in the repo**; Addendum D says "read that review before executing," and it cannot be read. **(b)** R.1.3's grep-ratchet allowlist (`addressValidation`, `healthCheck`, `credentialLivenessDetector`, setup routes) is **incomplete at HEAD**: eleven more files reference `LOB_*` keys — `routes-campaigns.ts` (5 refs), `services/mail/providers/lob.ts`, `connections/platformConnections.ts`, `communications.ts`, `routes-founder-integrations.ts`, `configManager.ts`, `byok/toggle.ts`, `routes-founder-intelligence.ts`, `ai/supportAgent.ts`, plus two scripts. **(c)** L.4.5 "beta badging … for beta verticals" **collides with D-4**: all 15 verticals are CORE, not beta. **(d)** L.4.1's disclaimer-coverage ratchet **already exists and is partly executed** (`scripts/lint-disclaimer-coverage.mjs`, baseline **13**, tightened this session to require rendered `<RequiredDisclaimer` JSX rather than a substring). **(e)** R.2's `attestations` table does not exist; only `fcra_attestations` does. | **(a)** Wave L executes from the addendum text alone; if a decision needs the underlying reasoning, ask the founder for the review doc rather than inventing it. **(b)** R.1's consolidation map (R.1.2) must cover all fourteen call sites, not the three in R.0's table — the ratchet's allowlist gets written *after* the map, from truth. **(c)** L.4.5 re-scoped to **product-level** beta badging (the pre-GA product, per L.3's Beta/Early Access Addendum), not per-vertical. **(d)** L.4.1's remaining work is the output-class→type map + driving 13 → 0, not building the lint. **(e)** R.2 is net-new; name it so it does not collide with `fcra_attestations`, and decide whether that table folds into the primitive. |
+| D-7 | **CORRECTION OF RECORD (founder-supplied, independently re-verified at HEAD 2026-08-11): Part 3 §2.4 is WRONG and is superseded by §J (Addendum E) R.0.** §2.4 claimed `lobService.ts` resolves a platform key with "no BYO/org-credential path wired." **Verified false:** `server/services/mailProvider.ts:82` implements `getOrgMailCredentials(organizationId)` reading an org-scoped `isEnabled` Lob integration from `organization_integrations`; `getDefaultCredentials()` (line 106) is fallback-only and wrapped in the live-send interlock (`mail/liveSendInterlock.ts`, imported line 6) so the platform key resolves to test mode unless production is explicitly armed. **The real defect is a different class — service sprawl:** three parallel mail paths, only `mailProvider` doing BYO resolution; `lobService.ts:104-106` reads `LOB_TEST/LIVE/API_KEY` from `process.env` in its constructor with **no organization parameter anywhere in the class**, and `directMail.ts:92` reads `process.env.LOB_API_KEY` directly. Both are reachable from `services/communications.ts`. | **Do NOT execute the Part 3 §2.4 remediation.** §2.4 now carries an inline supersession banner in the handoff; §A gained a pointer; §D item **0.8 is re-scoped** from "build a BYO path" to "consolidate the three paths onto the existing one" (R.1). 0.8 remains **founder-queued** (send lane, §A rule 5) — the re-scope makes it *smaller and safer*, not approved. All other §2.4 sub-items (purpose lanes, wedge caps, prohibited-content lint, refuse-don't-fall-back ratchet) stay valid and attach to the consolidated path. |
+| D-6 | **ADDENDA D & E INGESTED (2026-08-11, founder-supplied in-session):** Addendum D = **Wave L** (legal documents & disclosure surface — ToS truth-alignment, three new ToS sections, a Beta/Early Access Addendum, the disclosure-surface sweep, drift prevention, the counsel packet) and Addendum E = **Wave R** (responsibility hardening — mail-path consolidation, the Attestation Gate primitive, six gate applications, the platform-voice rule, statute-bearing surfaces + per-user attribution). Appended **after** the reference body as **§I** and **§J** exactly as the packet specified — no renumbering, so every existing `§H`/Part cross-reference stays valid. Bodies are verbatim; the single deviation is heading level (each addendum's `#` title became the `## §I.`/`## §J.` section marker, matching how Addendum C became §G). §D gained **WAVE L** and **WAVE R** registrations after the WAVE X line. **Wave S was NOT duplicated** — the packet's third registration is a shorter restatement of the WAVE S block already written at D-5; it was reconciled into that block with a pointer, since the existing one carries the full item list *and* the exit test. | Waves L and R join the executable pool. **§A rule 5 applies hard here:** R.1 is a **send lane** (founder queue — it re-scopes 0.8, it does not approve it); R.3.5's `dunning_sequences.autoStart` flip is debt-collection-adjacent and touches an outbound cadence; Wave L drafts customer-facing legal text — draft in-repo freely, but **publication requires founder sign-off**, and L.0.1's counsel-required footer stays until it is untrue. R.4 carries an explicit founder ruling (keep the confident voice; add basis line + mounted disclaimer + editable field) — do not neutralize it into calculator language. |
 | D-5 | **ADDENDUM C INGESTED (2026-08-10, founder-supplied in-session):** the Staff & Autopilot Doctrine — shaping the founder-backend autopilot (`operator`/`decide`/`council`/`senses`/`domainAutonomy`/`hands`) into six chartered staff domains (the five Trust-Ledger domains + Beatrice/compliance), with autonomy-follows-perception promotion gating, mandate-proportional hands, an executable scenario library, conflict→negotiation memos, the cabinetmaker CEO interface, and the maturation-curve ledgers. Married into the handoff as **WAVE S** in §D (parallel after Wave 0, overlaps Wave F; full brief now at §G; the reference body was renumbered §G→§H). | Wave S items S1–S7 join the executable pool immediately (S1/S2 first — charters + promotion-prerequisite ratchet are pure construction). Standing rules apply unchanged: S3's deploy/rollback + any send-adjacent hands, autonomy-ladder promotion mechanics, and anything touching hard-stop domains remain §A-rule-5 propose-don't-merge (self-patch-never-merges is already constitutional). S5 rides slice 5's reasons-on-disposition rail. Naming note: `docs/design/*` uses "Wave S" for the separate design-elevation "signature moments" wave — §D's Wave S is the staff doctrine; disambiguate by document family. |
 
 ---
@@ -529,7 +532,12 @@ from this file, not from memory. Updated every working session.*
    decision points: (a) DELETE the dead lobService (recommended) or retain
    with a laned signature; (b) fold the mailProvider plaintext-credential-read
    bug into the build (recommended). On approval the implementation follows
-   the committed spec.
+   the committed spec. **UPDATE 2026-08-11 — your Addendum E R.0 confirms this
+   proposal's independent finding** (Part 3 §2.4's "no BYO path exists" was
+   wrong; the leak is dormant, not live). The proposal needs no rewrite; the
+   §D brief was re-scoped to match it. R.0's remaining ask is that consolidation
+   cover the eleven additional `LOB_*` files the proposal's map does not yet
+   name (D-8(b)) — that widening is inside the same ruling, not a new one.
 6. **MCP endpoint availability (from 0.7):** the dark-flag + per-org allowlist
    mechanism is merged with defaults preserving current behavior (enabled, all
    orgs). Your call, per §8.2 and the no-public-API-before-~50 trigger: set
@@ -551,6 +559,29 @@ from this file, not from memory. Updated every working session.*
    "retire/harden" line supports either; (a) is less code and one fewer
    surface, and the static-key lane could be preserved by pointing generated
    configs at /api/mcp.
+8. **Wave R item R.3.5 — `dunning_sequences.autoStart` default flip (new,
+   2026-08-11):** `shared/schema.ts:3319` defaults it to **true**, so
+   debt-collection-adjacent contact with a consumer can begin by schema default
+   rather than by a customer's decision. Addendum E asks to flip it to false
+   behind an explicit arming gate. Flipping an outbound cadence default is
+   §A rule 5 (send-adjacent), and it changes behavior for any existing row
+   relying on the default — so it needs your ruling plus a migration decision
+   for rows already created. Sibling sweep in the same pass:
+   `pre_authorized_tradeoffs.autoExecute` (founder-side, defensible, but should
+   be a *named* pre-authorization rather than an implicit default).
+9. **Wave L — publishing customer-facing legal text (new, 2026-08-11):**
+   drafting in-repo needs no approval and will proceed. **Publishing** does —
+   ToS/privacy/DPA edits and the new Beta Addendum reach customers. Two things
+   are also blocked on inputs only you have: (a) **L1.3** needs a real business
+   address to replace the `[To be confirmed upon LLC formation]` placeholder at
+   `docs/legal/terms-of-service.md:246` — refuse-not-fabricate means I will not
+   invent one, and the same constant feeds CAN-SPAM footers; (b) **L6**'s seven
+   counsel questions are the deliverable, not something I resolve.
+10. **Wave S item S3 — hands proportional to mandate (carried, now itemized):**
+   deploy/rollback hands (canary-green + `codeChangeGate`; self-patch still
+   never merges itself), ops remediation hands, and any send-adjacent hand.
+   Pricing remains hard-stopped forever — staff may prepare the memo, never
+   touch the lever.
 
 ## Wave 2 — slice 11 (license-aware egress + provenance grammar + map M0) — ✅ SHIPPED
 
@@ -1221,6 +1252,68 @@ integration defects were all fixed centrally before commit:
   O1 founder ask (unknown dates: insurance/domain/DKIM/vendor terms); F5-lite
   governance coverage endpoint; O2/O3 buildable parts; X-B scaffold.
 
+## Waves L / R / S — registered, pending (from the addenda packet, 2026-08-11)
+
+Registered in §D on 2026-08-11. Briefs: **§I** (Addendum D → Wave L), **§J**
+(Addendum E → Wave R), **§G** (Addendum C → Wave S). Premises re-verified at HEAD
+per §A rule 2 before registration — results in drift log **D-6/D-7/D-8** above.
+Nothing below has been built yet except where marked ✅.
+
+### Wave L — legal documents & disclosure surface — 📋 PENDING (no Wave 0 dependency; may start anytime)
+
+| Item | Premise check at HEAD | Status / note |
+|---|---|---|
+| **L1.1** rewrite ToS §6 "Free Trial" | ✅ divergence **confirmed**: `docs/legal/terms-of-service.md:91-95` asserts "you will be charged at the applicable subscription rate unless you cancel"; the product ships a permanent free tier (`shared/billing/tier-limits.ts` — `free \| starter \| pro \| scale \| enterprise`) and `server/middleware/getOrCreateOrg.ts:216` stamps `trialEndsAt` 7 days out, read by `expensiveEndpointGuard.ts:68` for elevated limits. **No charge occurs.** | Ready. Path drift: the addendum credits `pricing.tsx` for `TIER_LIMITS`; it actually lives in `shared/billing/tier-limits.ts` (`pricing.tsx` is the marketing page). A fifth tier (`enterprise`) exists beyond the four named. **Before writing:** verify in code what happens to over-cap records at expiry — do not assert it. |
+| **L1.2** re-verify every factual assertion | Not yet run. `server/routes-sub-processors.ts` exists as the live list to reconcile against ToS §18 / Privacy §8. | Ready. Produces a divergence list; product-side divergences become findings-ledger entries, not doc edits. |
+| **L1.3** §20 placeholder | ✅ confirmed at `docs/legal/terms-of-service.md:246` — `[To be confirmed upon LLC formation — registered agent address, not founder home address]`. | Ready to draft, **blocked on a founder input**: the real business address. Refuse-not-fabricate — do not invent a mailbox address. Same constant feeds CAN-SPAM footers. |
+| **L1.4** narrow ToS §9 to Privacy §3 | Not yet diffed. | Ready. |
+| **L2.1–L2.4** new ToS sections | — | Ready to draft. **L2.3 (Automated Actions & Standing Instructions) is a prerequisite for any autonomy above `draft`** — it pairs with R.3.4. |
+| **L3** Beta/Early Access Addendum | — | Ready. Product-level beta (pre-GA), **not** vertical beta — see D-8(c)/D-4. |
+| **L4.1** disclaimer coverage → 0 gaps | ⚠️ **partly executed already**: `scripts/lint-disclaimer-coverage.mjs` exists, baseline **13**, and was tightened this session to require a rendered `<RequiredDisclaimer` element. Seven types confirmed in `client/src/components/required-disclaimer.tsx:7-13`. | Remaining work = the output-class→type map + driving 13 → 0. Baseline may only go **down**. |
+| **L4.2** send-lane disclosures | — | **Coordinates with §D item 0.8, which is founder-queued** (send lane). Blocked on that ruling. |
+| **L4.3** consent capture points | `EsignConsentDialog` exists; ToS §17 asserts the flow satisfies E-SIGN §101(c) (`terms-of-service.md:224`) — assertion **not yet verified against the flow**. | Ready; verification precedes any restatement. |
+| **L4.4** checkout disclosure | — | Ready; UI flagged for counsel per L.6, not resolved here. |
+| **L4.5** beta badging | ⚠️ **premise stale** — D-4: all 15 verticals are CORE. | Re-scoped to product-level beta badging. |
+| **L4.6** statute-bearing surfaces | Overlaps Addendum B / Wave X-B (shipped scaffold: `statuteRegister` sourcing fields + domain-truth ratchet). | Ready; attaches to the existing X-B seam rather than a new one. |
+| **L5.1–L5.3** drift prevention | ✅ confirmed: `client/src/pages/terms.tsx` **637** lines and `privacy.tsx` **881** lines are hand-maintained mirrors of the markdown — exactly the mechanism that produced the §6 divergence. `LegalDocReadAloud.tsx` and `terms-history.tsx` both exist and must keep working. | Ready; this is the item that stops the class of defect, so it should not be deferred behind the drafting. |
+| **L6** counsel packet | `docs/legal/` exists (ToS, privacy, DPA, and others). | Ready. The packet is the deliverable; **do not resolve its questions unilaterally** (L.0). |
+
+**Standing rule for this wave (L.0, binding):** produces a better *draft*, never legal
+sign-off. The counsel-required footer stays until it is untrue. Refuse-not-fabricate
+applies to law — cite only what is already cited or verifiable against primary sources.
+**Drafting in-repo is free; publishing customer-facing legal text needs founder sign-off.**
+
+### Wave R — responsibility hardening — 📋 PENDING (R.1 at Wave 0 priority)
+
+| Item | Premise check at HEAD | Status / note |
+|---|---|---|
+| **R.0** correction of record | ✅ **verified myself** — see D-7. | **Done as a record.** Handoff banner + §A pointer + 0.8 re-scope all landed this commit. |
+| **R.1** mail-path consolidation | ✅ three-path defect **confirmed** (`mailProvider.ts` correct; `lobService.ts:104-106` env-only, no org param; `directMail.ts:92` env-direct; both reachable from `communications.ts`). ⚠️ blast radius is **larger than R.0's table** — see D-8(b), fourteen files touch `LOB_*`. | **📋 FOUNDER QUEUE — send lane (§A rule 5).** Gates safe public signup; pair with R.3.1. **The map R.1.2 asks for largely exists already** — `docs/proposals/wave-0.8-mail-lanes.md` traced the live rail independently and reached R.0's conclusion on its own ("the leak the brief names is real but dormant"; "already BYOK-first on three of the four clients"), and its map is **more complete than R.0's three-row table**: four clients, with the live counterparty rail running `POST /api/outreach/mail/queue` → `mail_shipments` → `flushDueMailShipments` → `MailRouter.route` → `lobAdapter` → `directMailService`, plus three bypassing siblings. **Two independent traces agreeing is the strongest evidence in this ledger.** Finish R.1.2 by extending that map to the eleven extra `LOB_*` files, then write the allowlist from it. |
+| **R.2** Attestation Gate primitive | ✅ all three source patterns exist: `client/src/components/AtrGate.tsx` (with a **DB CHECK constraint** backstop — `shared/schema.ts:1591` cites `0099_notes_atr_origination_gate.sql`), `deals/AssignmentPanel.tsx`, `sign/EsignConsentDialog.tsx`. ⚠️ no `attestations` table (only `fcra_attestations`). | Ready — pure construction. The CHECK-constraint backstop is the model: gated actions structurally unreachable, not merely UI-blocked. |
+| **R.3.1** CSV import rights attestation | ✅ confirmed: `client/src/pages/data-import.tsx` accepts **50,000 rows** (header comment line 5, copy at 56/153) with **no rights attestation**. | Ready. Highest-value item in the wave. |
+| **R.3.2** skip-trace permissible use | — | Ready. |
+| **R.3.3** document adoption | `AssignmentPanel` already does this; generalize. | Ready; natural home for the `document` disclaimer type (ties to L4.1). |
+| **R.3.4** autonomy grant artifact | ✅ **dependency already satisfied** — Wave 0 item **0.4 (`resolveActionPolicy` at the pending-actions chokepoint) is DONE**. | Unblocked. Also needs **L2.3** in force (the paper side of the same promise). Autonomy-ladder mechanics remain §A rule 5. |
+| **R.3.5** dunning arming | ✅ confirmed: `shared/schema.ts:3319` — `autoStart: boolean("auto_start").default(true)`. Debt-collection-adjacent contact beginning by **schema default**. | **📋 FOUNDER QUEUE** — flipping an outbound cadence default. Sweep sibling defaults in the same pass (`pre_authorized_tradeoffs.autoExecute`). |
+| **R.3.6** bulk-send friction | — | Ready; the suppression math must be real counts or it is fabrication. |
+| **R.4** platform voice | ✅ confirmed: `client/src/pages/blind-offer-wizard.tsx:945` renders "Recommended offer". | Ready. **Founder ruling (2026-08-10) — keep the confident voice.** Add basis line + mounted disclaimer + preserved authorship; the lint is a **coverage** check, not a banned-word list. Do not strip the label. |
+| **R.5** statute surfaces + per-user attribution | — | Ready; attribution work pairs with F2's disposition reasons. |
+
+### Wave S — staff & autopilot doctrine — 🟡 PARTLY SHIPPED (after Wave 0 ✅; overlaps Wave F)
+
+Reconciled against what has actually shipped — the packet's registration could not
+know this: **S1 + S2 shipped in slice 7** (`04a5561` — charters + autonomy-follows-
+perception promotion gating), **S4 in slice 8** (`1c31b94` — scenario library),
+**S5 in slices 9–10** (`3f1d47a` conflict memos, `b2e92be` the real emitter).
+
+Remaining: **S3** hands proportional to mandate — **📋 FOUNDER QUEUE** (deploy/rollback
+and any send-adjacent hand; pricing stays hard-stopped forever, staff may prepare a memo
+and never touch the lever) · **S6** the CEO interrupt contract (shop hours, evening queue,
+"what happens if you do nothing", no silent limbo) · **S7** the maturation curve (four
+trust ledgers + named milestones). Exit test for the wave stays the **Shop-Day Test**.
+
+---
+
 ## Program state (Wave 0 → continuous execution)
 
 - **WAVE 0 COMPLETE** at `4602e15` (0.1–0.7 + 0.9 shipped; 0.8 proposed in
@@ -1350,6 +1443,16 @@ integration defects were all fixed centrally before commit:
   remainder, X-A slice 3 (post-ruling). G2/G3 wait on customers; founder
   queue unchanged. S3 hands / promotion mechanics stay propose-first
   per D-5.
+- **ADDENDA D & E INTEGRATED 2026-08-11** (docs-only; landed while fleet 12
+  ran, touching no file the fleet holds). §I/§J appended after the reference
+  body, WAVE L + WAVE R registered in §D, Wave S reconciled rather than
+  duplicated, and the **R.0 correction of record** recorded three ways: drift
+  log D-7, an inline supersession banner on Part 3 §2.4, and a re-scope of §D
+  item 0.8. Premises re-verified at HEAD first (§A rule 2) — five drifts logged
+  as D-8, of which the load-bearing one is that R.1's blast radius is fourteen
+  files, not the three in R.0's table. **Do not execute the Part 3 §2.4
+  remediation.** New pending-wave section above carries per-item premise checks;
+  three new founder-queue entries (8/9/10) carry what I will not decide.
 - A session resuming from this file mid-program: read the newest wave section
   below, finish its in-flight item with the same discipline, and continue down
   the §D sequence. The founder queue is the only place items wait.

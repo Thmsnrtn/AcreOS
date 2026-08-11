@@ -8,7 +8,9 @@
 
 ## §A. How to use this document
 
-You are receiving a six-part product/feature/liability/revenue/operations/founder-machine audit plus three execution addenda, married into one dependency-ordered program (§D). The six parts (appended in full below as the reference body) contain the *why* and the detail for every workstream; §D is the *order*; each item is shaped as a wave brief: context → files → exit test.
+You are receiving a six-part product/feature/liability/revenue/operations/founder-machine audit plus five execution addenda, married into one dependency-ordered program (§D). The six parts (appended in full below as the reference body, §H) contain the *why* and the detail for every workstream; §D is the *order*; each item is shaped as a wave brief: context → files → exit test. Addenda A/B/C are §E/§F/§G, before the reference body; Addenda D/E are §I/§J, **after** it (they arrived later and were appended in the position their packet specified — no renumbering, so existing cross-references stay valid).
+
+**One correction of record lives in the addenda:** §J R.0 supersedes Part 3 §2.4 (`§H`). The BYO physical-mail architecture already exists and is correct; do not execute the §2.4 remediation as written. §2.4 carries an inline banner saying so.
 
 Operating rules, in priority order:
 
@@ -42,7 +44,7 @@ Waves are dependency-ordered. **[∥]** marks work parallelizable within its wav
 0.5 Guard totality: `finalizePaxOutput` on non-streaming + subagent recursion; subagent outputs re-enter enveloped; depth/step budgets; injection eval lane in CI (P2 P-2).
 0.6 Connectors `executor.ts` P0 disposition: org-scoping on every credential fetch, SSRF guard on URL paths, results enveloped (P2 §8.1).
 0.7 MCP server dark/per-org allowlist; hashed-key auth (Data-API infra); shared-store rate limit (P2 §8.2, P3).
-0.8 Mail lanes: `lobService` → `resolveProviderCredential`, purpose lanes, wedge cap + `mailProviderLanes.test` (P3 §2.4/§5.1).
+0.8 Mail lanes — **re-scoped by §J R.0/R.1** (the original "`lobService` → `resolveProviderCredential`" brief is superseded: the BYO path already exists in `mailProvider.ts`). The real work is consolidating the three parallel mail paths onto `mailProvider`, plus purpose lanes, wedge cap, refuse-don't-fall-back, and the LOB-key grep ratchet + `mailProviderLanes.test` (P3 §2.4 as corrected by §J).
 0.9 Critical-job-failure pages + pager-matrix-as-data ratchet; external watchdogs armed (P5 §3.1 / F-13-1, F-18-2).
 
 **WAVE 1 — Feel & foundation.** [∥]
@@ -82,7 +84,15 @@ F1 Cockpit consolidation to Letter/Decisions/Controls/Story + `/admin` tools, re
 S1 Charters over gates: a charter object per Trust-Ledger domain (mandate · metrics owned · senses · hands · standing orders · ladder state + streak · budget · escalation · report cadence); Beatrice formalized as the sixth chartered domain (compliance); staff rendered as charter cards in the Controls door (§G C.2-S1). S2 Autonomy follows perception: no promotion past `draft` while a charter's core senses are unwired (test-pinned); senses built in charter priority order; every unwired core sense prints a blindness line in the Letter (C.2-S2). S3 Hands proportional to mandate: support grounded-resolution hand; deploy + rollback hands (canary-green + `codeChangeGate`; self-patch still never merges itself); ops remediation hands; finance/growth/Beatrice proposal-artifact hands (pricing stays hard-stopped forever); every new hand ships with reflex tests, a kill switch, a ledger entry, and witnessed/net-new discipline (C.2-S3). S4 Scenario library as executable doctrine: the trigger → charter → playbook → autonomy → founder-touch → drill matrix, seeded rows incl. legal-letter always-page and the model-provider-outage drill; game-days walk it; `worstDay` generates rows (C.2-S4). S5 Conflict → negotiation with a record: two-position decision memos on cross-charter contention; founder reasons feed `policyInducer` (rides F2's reasons-on-disposition); repeat resolutions become standing-order proposals; the Operator's `strategyNote` lands in a real Strategy Memory (C.2-S5). S6 The CEO interface, cabinetmaker edition: interrupt contract for declared shop hours; evening queue with recommendation, default, and "what happens if you do nothing" — expiry-to-safe-branch, silent limbo forbidden by construction; Sunday Letter; quarterly charter reviews (C.2-S6). S7 Maturation curve: four trust ledgers (clean-cycle streaks, drill receipts, ratchet coverage, decisions-vs-outcomes), named milestones, annual rhythm (C.2-S7).
 *Exit: §G C.3 — all six charters live with metrics/senses/hands and a Letter section, blindness lines printing; promotion integrity test-pinned; the conflict test end-to-end (two-position memo → reason captured → standing-order proposal on repeat); the quarterly Shop-Day Test run and its streak published on the trust page.*
 
-**WAVE X — Addenda A/B (below): X-A after Wave 0 + G1; X-B may start immediately [∥], gates specific automations.**
+**WAVE X — Addenda A/B (§E/§F): X-A after Wave 0 + G1; X-B may start immediately [∥], gates specific automations.**
+
+**WAVE L — Legal documents & disclosure surface (parallel track; no Wave 0 dependency; start anytime).** [∥]
+L1 truth-alignment pass — ToS §6 free-trial divergence, factual re-verification, §20 placeholder, §9 data-license alignment · L2 new ToS sections (Roles & Responsibilities, Customer-Connected Services, Automated Actions & Standing Instructions, missing mechanics) · L3 Beta/Early Access Addendum · L4 disclosure-surface sweep (disclaimer coverage ratchet, send-lane footers, consent capture, checkout, beta badging, statute-bearing surfaces) · L5 single source of truth + acceptance capture + drift ratchet · L6 counsel packet. *Full brief: Addendum D (§I). Standing rules in L.0 are binding — this produces a better draft, not legal sign-off.* L4.2 coordinates with Wave 0 item 0.8.
+
+**WAVE R — Responsibility hardening (R.1 at Wave 0 priority; remainder parallel).** [∥]
+**R.0 supersedes Part 3 §2.4** — the BYO Lob architecture exists and is correct; the defect is three parallel mail paths. R1 mail-path consolidation onto `mailProvider` + grep ratchet (**gates safe public signup — pair with R3.1**) · R2 Attestation Gate primitive extracted from `AtrGate` · R3 gates applied (CSV import rights, skip-trace purpose, document adoption, autonomy grant, dunning arming, bulk-send friction) · R4 platform voice — confident but never bare (basis line + mounted disclaimer + editable field; founder ruling, do not neutralize the voice) · R5 statute-bearing surfaces + per-user actor attribution. *Full brief: Addendum E (§J).* R3.4 depends on Wave 0 item 0.4.
+
+*(WAVE S — staff & autopilot doctrine — is registered above with its full item list and exit test; the addenda packet's shorter S line was reconciled into that block rather than duplicated. Its brief is §G, Addendum C.)*
 
 ---
 
@@ -144,6 +154,8 @@ Charter coverage: all six domains carry charters with live metrics, senses, hand
 ## §H. Reference body
 
 The six parts follow in full. They are the detail behind every §D item; read the cited section before executing its brief.
+
+**Two more addenda follow the reference body:** §I (Addendum D — Wave L, legal documents & disclosure surface) and §J (Addendum E — Wave R, responsibility hardening). §J R.0 corrects Part 3 §2.4 below; that section carries an inline supersession banner.
 
 ═══════════════════════════════════════════════════════════════════════════════
 # AcreOS Feature-Depth Audit — Every Module, Every Vertical, to Best-in-Class
@@ -670,6 +682,9 @@ Purpose lanes (`system` | `counterparty`) with **no silent fallback**: counterpa
 BYO-Twilio with explicit refuse-not-fallback when unconnected; TCPA consent + quiet-hours moved inside `sendOrgSMS`; DNC/litigator scrub seam at the same choke point. The campaign bypass (F-21-1) is the one hole and is already Brief #2 of the audit's Ten — after it lands, add the grep-ratchet (zero raw `messages.create` outside `comms/`) and this domain is closed. Note the quiet win already in place: because Twilio is BYO, **10DLC registration, carrier vetting, and sender reputation are the customer's regulatory relationship**, not yours — the platform's "still dark by choice: Twilio 10DLC purchase" line should become permanent policy (never purchase platform 10DLC for counterparty traffic).
 
 ### 2.4 Physical mail — **LEAK: the one send rail still re-fronted**
+
+> ⚠️ **SUPERSEDED — do not execute this section's remediation as written.** §J (Addendum E) **R.0** corrects it: the BYO physical-mail architecture **already exists and is correct** — `server/services/mailProvider.ts` resolves the org's own Lob credentials first (`getOrgMailCredentials`, line 82) with an interlocked platform fallback (`getDefaultCredentials`, line 106; `mail/liveSendInterlock.ts`). Re-verified true at HEAD 2026-08-11. The actual defect is narrower and a different class: **three parallel mail paths, only one of which does BYO resolution** (`lobService.ts` and `directMail.ts` read `process.env` directly). Build **R.1 (consolidation)**, not a new BYO path. Every other sub-item below (purpose lanes, wedge caps, prohibited-content lint, the refuse-don't-fall-back ratchet) remains valid and attaches to the consolidated path.
+
 `lobService.ts` resolves `process.env.LOB_API_KEY` — a platform key — and no BYO/org-credential path is wired, even though `resolveProviderCredential.ts` exists and other providers use it. Today AcreOS is the mail house's customer of record for every counterparty letter: content originator in Lob's eyes, merchant for postage, refund-holder for failed mail, and the party USPS/Lob complaints route to. This is exactly the posture the 2026-07-17 email ruling rejected — it just wasn't extended to paper.
 
 **Fix, same shape as email:** (a) wire `lobService` through `resolveProviderCredential` so an org's own Lob key is used when present; (b) add the same `purpose` lane discipline — platform key valid only for `system` mail and for the **registered wedge exception** (free-tier 5-piece lifetime first send, which is strategically correct to keep); (c) counterparty mail beyond the wedge on the platform key requires an explicit, small, capped metered lane *or* BYO at Starter+ (recommend: BYO default at Pro/Scale, platform-metered convenience capped low at Starter); (d) mitigations on any platform-keyed send: address verification (already there), a prohibited-content lint on templates (no debt-collection language without the compliance flow, no unfair/deceptive patterns — the `lint:no-fabrication` machinery shows how), per-org daily piece caps, and ToS language putting content responsibility where it belongs; (e) ratchet: `mailProviderLanes.test.ts` — counterparty send with no org key and wedge exhausted must refuse, not fall back. This is the highest-priority item in Part 3 because it is the only place a customer's *outbound speech to strangers* still travels under your name.
@@ -965,3 +980,168 @@ The backend already treats the founder's own life as in-scope — `lifeCockpit`,
 
 **The series (for handoff):**
 **P1** Surfaces — every door, vertical, and the map, to best-in-class. **P2** The operating system — Settings IA, collaboration, inboxes, deal engine, acquisition, negotiation, Pax as an AI system, connectors/MCP, the agency layer. **P3** Rails, not provider — the liability architecture and the provider-role register. **P4** The revenue engine — positioning, proof, activation, retention, the honest-claims machine. **P5** The operations layer — reliability contract, drilled resilience, support loop, unit economics, continuity. **P6** The founder machine — the cockpit, the decision system, the autonomy ladders, the colleagues, the build process. One company, standalone, run by one person and a machine that shows its receipts — with every part written to become the next wave's briefs.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+## §I. Addendum D — Wave L (Legal Documents & Disclosure Surface)
+
+*Added 2026-08-10. Slots into the Master Handoff as **Wave L**, a parallel track that may start immediately — it has no dependency on Wave 0, though L4.2 (mail-lane disclosure) should land alongside Wave 0's item 0.8. Source analysis: `acreos-legal-review.md` (structural review of terms-of-service.md v1.0, privacy-policy.md, data-processing-agreement.md, terms.tsx, privacy.tsx). Read that review before executing; it carries the reasoning behind every item here.*
+
+---
+
+## L.0 Standing rules for this wave (read first)
+
+1. **This wave produces a better *draft*, not legal sign-off.** Nothing in it substitutes for review by a licensed attorney. Every document must retain a visible status footer until counsel review occurs, and the current honest footer — *"Not yet reviewed by outside counsel. Counsel review required before public deployment."* — stays until it is no longer true.
+2. **Accuracy over armor.** The goal is documents that *describe the product truthfully* and state the roles the architecture actually implements. Do not write maximally protective-sounding prose; over-broad clauses can be less defensible than modest ones, and false confidence is the failure mode this wave exists to prevent. Where a drafting choice has a real trade-off, do not resolve it — record it in the counsel packet (L6).
+3. **Refuse-not-fabricate applies to law.** Do not invent statutory citations, assert enforceability, or state that a clause "protects" against something. Cite only statutes already cited in the existing documents or verifiable against primary sources; anything else goes to the counsel packet as a question.
+4. **Entity status stays honest.** AcreOS is a Massachusetts sole proprietorship until the LLC is formed. Do not soften, hedge, or omit that. The §19 assignment mechanism already handles continuity.
+5. **No effective-date backdating.** Any material change gets a new version, a new effective date, the §16 notice path, and a version-history entry.
+
+---
+
+## L.1 Truth-alignment pass (highest priority — do first)
+
+**L.1.1 Rewrite ToS §6 "Free Trial" to describe the actual product.** Current text asserts an automatic charge at trial end. Verified product behavior: `pricing.tsx` + `TIER_LIMITS` ship a permanent free tier (free / starter / pro / scale) with caps on leads, properties, notes, AI requests, sequences, seats, and credit pool, plus a 5-letter lifetime wedge send; `server/middleware/getOrCreateOrg.ts` stamps `trialEndsAt` seven days out; `expensiveEndpointGuard.ts` reads it to grant elevated limits during the window. No charge occurs; accounts settle onto free-tier limits. Rewrite the section to describe: the permanent free tier, the new-account elevated-limits window, expiry *to the free tier* with no charge and no card required, and what happens to data above free-tier caps at expiry (verify this in code before writing it — if over-cap records are retained but read-only, say so; if nothing happens, say that). Retitle the section accordingly.
+
+**L.1.2 Re-verify every other factual assertion in all three documents against HEAD.** Treat each as a claim needing a source: named subprocessors in ToS §18 and Privacy §8 (reconcile against the live subprocessor endpoint and the vendor inventory — flag any vendor listed but unused, or used but unlisted), retention periods in Privacy §6 against actual retention jobs, the 7-day deletion commitment in Privacy §7 against the right-to-erasure implementation, breach-notification timelines in Privacy §11 against any documented runbook, DPA Article 5 security measures against what is actually implemented, and the ToS §17 E-SIGN assertion against the real consent flow. Produce a divergence list; fix the document where the product is right, and file a findings-ledger entry where the *product* is the thing that needs to change.
+
+**L.1.3 Fill the §20 placeholder problem.** Remove `[To be confirmed upon LLC formation]` from published output. Until an entity and registered-agent address exist, publish a real business contact address that is not a home address (a mailbox service address is the common approach) or omit the line entirely rather than shipping a bracketed TODO. Note the same address is needed for CAN-SPAM footers on AcreOS's own marketing email — wire one constant, used in both places.
+
+**L.1.4 Align ToS §9 with the Privacy Policy's narrower training promise.** §9 currently licenses customer data "to provide and improve the Service." Privacy §3 is stricter and better: internal training only on aggregated, de-identified data, and no use of lead/contact or customer business data to train models benefiting other customers without explicit consent. Narrow §9 to match. This also aligns the paper with Part 2's P-7 commitment.
+
+## L.2 New ToS sections (free protection, currently absent)
+
+**L.2.1 Roles and Responsibilities.** The paper mirror of Part 3's architecture. Establish that for all activity conducted through the Service the Customer is the **merchant of record** for their payment processing, the **sender of record** for counterparty email, SMS, and physical mail, the **licensee of record** for third-party data accessed via their credentials, and the **signer and decision-maker of record** for documents and transactions — and that AcreOS supplies software executing the Customer's instructions through accounts the Customer owns and controls. Where AcreOS provides a platform-keyed convenience lane (the registered wedge mail exception), say so plainly and state the Customer remains responsible for the content of anything sent on their behalf. Cross-reference the §12 indemnity so the two work together.
+
+**L.2.2 Customer-Connected Services (BYO credentials).** Customer represents they hold valid accounts and have authority to connect them; authorizes AcreOS to act within granted scopes; remains bound by each provider's own terms (name the categories: telephony/10DLC registration, print-mail content policies, data-vendor license and permissible-use restrictions, payment processor terms); is responsible for their own sender reputation and regulatory registrations; and understands that disconnection or credential expiry stops the dependent functionality.
+
+**L.2.3 Automated Actions and Standing Instructions.** Required before any autonomy level above draft ships. Establish that the Customer's configured autonomy policy constitutes their standing instruction; that actions taken within it are the Customer's actions taken through the Service; that the Customer is responsible for reviewing their configuration and the action ledger; that the policy is revocable at any time; and that AcreOS's compliance gates (consent, quiet hours, suppression) constrain but do not replace the Customer's responsibility for their own outreach. Pair with the consent-artifact implementation in Part 3 §2.10.
+
+**L.2.4 Mechanics currently missing.** Add: a gross-negligence / willful-misconduct / fraud carve-out to §11 (flag the trade-off in the counsel packet rather than deciding it); indemnification procedure in §12 (prompt notice, control of defense, cooperation, consent to settle); a feedback license; publicity and testimonial consent (needed for Part 4's case receipts); an accessibility statement with a contact path; and an export-control/sanctions representation.
+
+## L.3 New document: Beta / Early Access Addendum
+
+A short standalone addendum applying to pre-GA participants, accepted separately at cohort onboarding and version-tracked like the main terms. Cover: pre-release status and expected defects; no availability, support, or response-time commitment; features may change or be withdrawn; **no reliance for time-sensitive or legally consequential deadlines** (this is the redemption-clock class of risk — state it explicitly); export your data regularly; feedback licensed to AcreOS; participation may end at any time by either party; and the addendum's relationship to the main ToS (supplements, and controls where it conflicts, for the beta period only). Keep it short and readable — one screen. Wire acceptance into the same capture mechanism as L.5.2.
+
+## L.4 The disclosure surface sweep (beyond the three documents)
+
+Disclosures live in the product, not only in `/terms`. Inventory and bring each to the same standard:
+
+1. **`RequiredDisclaimer` coverage.** Seven typed disclaimers exist (financial · legal · ai · valuation · score · document · worksheet). Build the output-class → disclaimer-type map, baseline current coverage, and ratchet to zero gaps — any surface rendering an AVM or comp mounts `valuation`; any generated instrument mounts `document`. (This is Part 3 §5.3; execute it here.)
+2. **Send-lane disclosures.** CAN-SPAM footer with a real physical address on AcreOS's own marketing email; the customer-identity footer on counterparty mail; and, for the platform-keyed wedge lane, whatever attribution the mail vendor's content policy requires. Coordinate with Wave 0 item 0.8.
+3. **Consent capture points.** SMS/TCPA consent language at every lead-capture surface; the skip-trace permissible-use attestation surfaced to the customer at first use (Part 3 §2.5); the E-SIGN consent flow (verify against §17's claim); cookie/tracking disclosure against actual analytics behavior.
+4. **Checkout disclosure.** Auto-renewal terms shown clearly *before* purchase, with the cancellation path visible — terms-page language alone is generally not the mechanism regulators look at. Flag the UI for counsel review in the packet.
+5. **Beta badging.** Verify the badge actually renders on every `businessTypeOnly` surface for beta verticals, in-product and on any marketing page (Part 1 §5).
+6. **Statute-bearing surfaces.** Until Addendum B verification completes, any surface computing a legally consequential date or amount (redemption windows, late-fee caps, disclosure deadlines) renders informational-only with a verify-with-your-county/counsel affordance, and its dependent automation stays gated off.
+
+## L.5 Drift prevention (so this never happens again)
+
+**L.5.1 One source of truth.** `terms.tsx` (637 lines) and `privacy.tsx` (881 lines) are hand-maintained mirrors of the markdown — the mechanism that produced the §6 divergence. Generate the rendered pages from the markdown at build time, or invert it; either way, one artifact is authoritative and the other is derived. Keep `LegalDocReadAloud` and `terms-history` working against whichever wins.
+
+**L.5.2 Acceptance capture.** Record version identifier + content hash + timestamp at each acceptance (main terms, beta addendum, DPA if executed, standing instructions). This is the evidence layer that makes the version-history page meaningful.
+
+**L.5.3 The drift ratchet.** A test asserting the rendered pages match the source documents, and a checklist gate requiring a legal-review entry whenever a new send lane, autonomy tier, data source, subprocessor, or pricing mechanic ships. Add it to the ratchet-coverage report (Part 6 §6.3).
+
+## L.6 The counsel packet
+
+Generate `docs/legal/counsel-review-packet.md`: the current documents, a plain-language summary of what changed in this wave and why, the seven open questions from the review (§11 cap structure, MA choice-of-law and Ch. 93A, arbitration economics and mass-arbitration exposure, MA 201 CMR 17.00 / WISP obligation, auto-renewal disclosure at point of sale, DPA incorporation, E-SIGN §101(c) assertion), plus any trade-offs deferred under rule L.0.2 and any product divergences found in L.1.2. Purpose: make the eventual review fast and cheap by handing counsel a prepared file rather than a pile of documents.
+
+---
+
+## Exit tests
+
+- Zero placeholders, TODOs, or bracketed text in any published legal document.
+- Every factual assertion in the three documents traces to verified product behavior or a primary source; divergences are either fixed or filed as findings.
+- ToS §6 describes the free tier and elevated-limits window as implemented; a fresh account's day-8 experience matches the text exactly.
+- Roles and Responsibilities, Customer-Connected Services, and Automated Actions sections exist; no autonomy level above draft is reachable without L.2.3 in force.
+- Beta addendum exists, is accepted separately, and its acceptance is captured with version + hash.
+- Disclaimer-coverage ratchet baselined at zero gaps; the drift test passes; a deliberate edit to the markdown fails CI until the rendered page follows.
+- `counsel-review-packet.md` exists and is current.
+- Status footers still say counsel review is required — because it still is.
+
+## What NOT to do
+
+Do not remove the sole-proprietorship disclosure. Do not assert enforceability, "compliance," or protection anywhere in the documents or the commit messages. Do not add clauses copied from another company's terms without checking they describe *this* product. Do not delete the counsel-required footer. Do not resolve any item in the counsel packet unilaterally — the packet is the deliverable, not the answer.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+## §J. Addendum E — Wave R (Responsibility Hardening)
+
+*Added 2026-08-10. Combines the **Customer-Responsibility Audit** (attestation gaps and platform-voice findings) with a **correction to Part 3 §2.4** (the mail-lane finding was wrong; the real defect is different and smaller). Slots into the Master Handoff as **Wave R**, parallel-eligible, with R.1 sharing Wave 0's priority because it gates safe public signup. Companion documents: `acreos-customer-responsibility-audit.md`, `acreos-depth-audit-part3.md`.*
+
+---
+
+## R.0 Correction of record — Part 3 §2.4 was wrong
+
+**What Part 3 claimed:** that `lobService.ts` resolves a platform `LOB_API_KEY` with no BYO/org-credential path wired, making AcreOS the mail vendor's customer of record for every counterparty letter, and that a BYO path needed to be built.
+
+**What is actually true, verified at HEAD:** the BYO architecture **is built and is correct.** `server/services/mailProvider.ts` implements `getOrgMailCredentials(organizationId)`, which reads an org-scoped, `isEnabled` Lob integration from `organization_integrations` and uses the customer's own key first. `getDefaultCredentials()` is a *fallback only*, and it is wrapped in the live-send interlock (`mail/liveSendInterlock.ts`) so the platform key resolves to test mode unless production is explicitly armed. This matches the email and SMS pattern and reflects the founder's stated design intent: **customers connect their own Lob account.**
+
+**The actual defect — narrower, and a different class:** there are **three parallel mail code paths, and only one implements the BYO resolution.**
+
+| Path | Key resolution | Called by |
+|---|---|---|
+| `services/mailProvider.ts` | **Correct** — org key first, interlocked platform fallback | `autopilot/hands/send-letter.ts`, `routes-organization.ts`, `routes-billing.ts` |
+| `services/lobService.ts` | `process.env` only, in the constructor — **no organization parameter exists anywhere in the class** | `services/communications.ts`, `services/healthCheck.ts` |
+| `services/directMail.ts` | `process.env.LOB_API_KEY` directly (line 92) | `services/communications.ts`, and others |
+
+So a customer's own key is used when a send routes through `mailProvider`, and silently is not when it routes through the other two. This is the **service-sprawl defect class** the August audit identified in slice 04 — intent implemented in one place while sibling paths route around it — and it is arguably more dangerous than a missing feature, because the architecture reads as BYO-only when read at `mailProvider`.
+
+**Therefore:** the Part 3 §2.4 remediation is superseded. Do **not** build a new BYO path. Consolidate onto the one that already exists (R.1). All other Part 3 §2.4 sub-items (purpose lanes, wedge caps, prohibited-content lint on platform-keyed sends) remain valid and attach to the consolidated path. Record this correction in the findings ledger with a pointer to this addendum so the superseded text is not executed from the Part 3 body.
+
+## R.1 Mail-path consolidation (do at Wave 0 priority — it gates safe public signup)
+
+1. **Make `mailProvider.ts` the single door to any mail vendor.** Refactor `lobService.ts` and `directMail.ts` to call through it, or retire them under the deletion-ledger process if their remaining callers can be migrated outright. Every send path must carry an `organizationId` — a mail function that cannot name the org it is sending for is the bug.
+2. **Audit `communications.ts` specifically.** It calls both non-compliant paths and is the most likely live bypass. Trace every mail-sending route from the campaign and outreach surfaces to whichever path they actually reach, and record the map in the brief.
+3. **Grep ratchet:** zero references to `LOB_API_KEY`, `LOB_LIVE_API_KEY`, or `LOB_TEST_API_KEY` outside `mailProvider.ts` and its platform-key resolver. Permitted exceptions, allowlisted explicitly: `addressValidation.ts` (address verification is a platform utility, not sending under a customer's name), `healthCheck.ts`, `credentialLivenessDetector.ts`, and setup/validation routes.
+4. **Refuse, don't fall back, for counterparty mail.** With consolidation done, an org without a connected Lob integration cannot send counterparty mail — it refuses with a connect-your-account affordance, exactly as SMS does today. The platform key remains reachable **only** for the registered wedge exception and system mail, under the existing interlock.
+5. **Wedge lane discipline** (from Part 3, still valid): per-org lifetime cap enforced server-side, recipient-address dedupe across all orgs on the platform lane, prohibited-content lint on templates, and founder approval before any platform-lane piece ships while the entity is unformed.
+6. **Exit test:** a fresh org with no Lob integration attempts a counterparty send through every reachable surface (campaign, outreach, autopilot hand, Pax action, bulk blast) and is refused in all of them with the connect affordance; the grep ratchet passes; a wedge send exhausts at the cap and refuses the next.
+
+## R.2 The Attestation Gate primitive
+
+Three strong patterns exist independently — `AtrGate.tsx` (eight Reg-Z factors or an exemption code, with a **database CHECK constraint** backstopping the gate at the data layer), `AssignmentPanel`'s two-tier acknowledgment (hard block on failures, explicit "I understand — create the draft anyway" on warnings), and `EsignConsentDialog`. Extract them as one primitive.
+
+**Shape:** `{ gateId, what the customer affirms, the exact language shown, what it unlocks, where the record is stored, optional DB-level backstop constraint }`, plus an `attestations` table capturing org, user, gate, version of the language shown, timestamp, and payload. **The ATR gate's CHECK constraint is the model** — where feasible, the gated action must be *structurally* unreachable without its attestation row, not merely UI-blocked. Ratchet: a test asserting each registered gate's action cannot execute without a matching attestation row.
+
+## R.3 Apply the gate where the responsibility trace currently breaks
+
+Ordered by value:
+
+1. **CSV import rights attestation — highest priority.** `data-import.tsx` accepts up to 50K rows of leads, properties, deals, and notes, plus communications history and document ZIPs, with **no attestation that the customer has the right to use the data.** This is the highest-volume path by which third-party personal information enters the platform. Add the gate: the customer affirms they have the lawful right to use and process this data, that its use complies with their own obligations, and that they are its controller. Store with the import job. Pair with a suppression-list prompt on first import. *(This, with R.1, is what makes anonymous public signup safe.)*
+2. **Skip-trace permissible-use attestation.** Surface the vendor's own permissible-use language at first use; capture the customer's attestation so the use-purpose representation is theirs.
+3. **Document adoption.** Any generated instrument (purchase agreements, assignments, letters, notices) gets a uniform review-and-adopt step before it can be sent or signed — the customer sees final text and affirms it. `AssignmentPanel` already does this; generalize. Natural home for the `document` disclaimer type from the coverage ratchet.
+4. **Autonomy grant.** Each graduation above draft mints a standing-instruction consent artifact (scope, thresholds, channels, effective date, policy JSON), revocable in one tap, with every autonomous action pointing at the artifact that authorized it. Depends on Wave 0's `resolveActionPolicy` (P-1) — an autonomy promise the kernel doesn't enforce makes the record of *who decided* unreliable.
+5. **Dunning arming.** `dunning_sequences.autoStart` defaults to **true** in `shared/schema.ts` — debt-collection-adjacent contact with a consumer beginning by schema default rather than customer decision. Flip the default to false, require an explicit arm behind a gate showing the exact ladder, timing, and channels before it can run. Audit sibling defaults in the same sweep; `pre_authorized_tradeoffs.autoExecute` (founder-side crisis handling) is defensible but should be a *named* pre-authorization rather than an implicit default.
+6. **Bulk-send friction.** For outbound or destructive bulk operations above a threshold: show the count, the suppression math ("1,240 selected → 1,102 sendable: 96 DNC, 31 in pipeline, 11 cooldown"), and require typed confirmation.
+
+## R.4 Platform voice — confident, but never bare
+
+**Founder ruling (2026-08-10):** the product keeps its confident voice. Do **not** relabel recommendations into neutral calculator language — an intelligent system that shows its reasoning is the differentiator; a system that reports figures without judgment is a spreadsheet. The earlier draft of this section proposed stripping "Recommended offer"; that is superseded.
+
+The rule instead: **no bare recommendation.** A number carrying the platform's endorsement must always ship with three things attached.
+
+1. **A visible basis line** — always rendered, not hidden behind a tooltip. Names the actual inputs ("Based on 6 comps within 2 miles, county assessed value, and your 55% target"), with full methodology on tap. Where an input is missing or fell back (the USDA-fallback case), the basis line says so.
+2. **A mounted disclaimer** — once per step or panel, not per field. `RequiredDisclaimer` already carries `valuation` and `financial` types; this is mounting, not building. Language in the honest register: an AI estimate from available data, not an appraisal, the customer's decision.
+3. **Preserved authorship** — the field stays editable, defaults to the suggestion, and the *customer's* number is what actually sends. This is what makes the customer the author regardless of the label, and it is the load-bearing mechanic of the three.
+
+Apply to `blind-offer-wizard.tsx` (~line 945, "Recommended offer") first, then sweep every surface that recommends, scores, or values — AVM displays, lead scores, comp analysis, lot pricing, ARV calculator, yield and payoff figures. The lint to add is **not** a banned-word list; it is a coverage check in the spirit of the disclaimer ratchet: any component rendering a recommendation-class or valuation-class figure must render a basis element and mount its disclaimer type. Bare numbers fail; confident numbers with visible reasoning pass.
+
+**For the counsel packet (L.6):** ToS §3 states Pax offers "suggestions and drafts that you review" and never "direct advice on financial decisions," while the UI labels a figure "Recommended offer." Flag this wording tension for counsel review — likely resolvable by the basis line and disclaimer, but it is a question to ask rather than an assumption to make.
+
+## R.5 Statute-bearing surfaces and actor attribution
+
+- **Statute-derived values stay informational until verified.** Redemption windows, late-fee caps, and disclosure deadlines render with source and a verify-with-your-county affordance, and dependent automations (notifications, auto-computed fees) stay gated off until Addendum B's verification completes for that jurisdiction.
+- **Per-user attribution on every witnessed action.** With VA scoping and multi-seat orgs, "the customer acted" must resolve to a named human. Every witnessed action, approval, and attestation records the acting user, not just the org — otherwise the accountability chain inside a customer's own team is invisible.
+
+---
+
+## Wave R exit tests
+
+- Every mail send path resolves credentials through `mailProvider`; the grep ratchet passes; an org without a Lob integration is refused on every reachable counterparty-send surface.
+- The `attestations` table and gate primitive exist; each registered gate's action is unreachable without its record, and at least one gate carries a DB-level backstop.
+- CSV import cannot complete without a stored rights attestation.
+- `dunning_sequences.autoStart` defaults false; arming requires an explicit gate showing the ladder.
+- No autonomy level above draft is reachable without a live standing-instruction artifact.
+- The recommendation-coverage lint passes: every recommendation- or valuation-class figure renders a visible basis line and mounts its disclaimer type, and its input field remains editable with the customer's value as what sends.
+- **The trace test:** pick any consequential action in the product at random and trace backward — a named human, a moment where they were told what they were taking on, a stored record of them affirming it, and a platform statement that described data rather than asserting a recommendation. Where the trace breaks is where the next gate goes.
