@@ -30,6 +30,7 @@ import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
 import { NoteRecordPaymentModal } from "@/components/note-record-payment-modal";
 import { NotePayoffCalculator } from "@/components/note-payoff-calculator";
+import { NotePayoffQuotesCard } from "@/components/note-payoff-quotes-card";
 import { NoteYieldPanel } from "@/components/note-yield-panel";
 import { NoteBasisSchedule } from "@/components/note-basis-schedule";
 import { NoteTinEditor } from "@/components/note-tin-editor";
@@ -793,6 +794,11 @@ export default function NoteDetailPage() {
 
         <NotePayoffCalculator noteId={note.id} />
       </div>
+
+      {/* Recorded payoff quotes + the statement PDF a closer wires against.
+          Sits under the calculator on purpose: the calculator answers a phone
+          call, this issues the document. */}
+      <NotePayoffQuotesCard noteId={note.id} />
 
       {/* Modal */}
       <NoteRecordPaymentModal

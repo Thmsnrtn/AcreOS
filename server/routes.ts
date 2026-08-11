@@ -187,6 +187,7 @@ import { registerBillingRoutes } from "./routes-billing";
 import { registerSubscriptionRoutes } from "./routes-subscription";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
+import { registerPayoffQuotePdfRoutes } from "./routes-payoff-quote-pdf";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
@@ -2243,6 +2244,11 @@ export async function registerRoutes(
   registerBorrowerRoutes(app);
   // Note Investor vertical (Phase 5 §5) — acquired-notes + payments + amort.
   registerNoteRoutes(app);
+  // Payoff-quote PDF artifact — renders a RECORDED note_payoff_quotes row.
+  // Registered after registerNoteRoutes so the recording endpoints that write
+  // those rows and the artifact that reads them stay adjacent; the paths do
+  // not overlap (/api/note-payoff-quotes/:id/pdf vs /api/notes/:id/...).
+  registerPayoffQuotePdfRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.

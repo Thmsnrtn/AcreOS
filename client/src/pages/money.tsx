@@ -8,7 +8,9 @@ import {
   TrendingUp,
   BarChart3,
   Upload,
+  Calculator,
 } from "lucide-react";
+import { useOrganization } from "@/hooks/use-organization";
 // All embedded pages are lazy-loaded so opening /money doesn't ship the
 // entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow
 // bundle. The active tab loads on mount; siblings load on click via
@@ -21,19 +23,30 @@ const FinancePage = lazy(() => import("@/pages/finance"));
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
+// CAM reconciliation worksheet — commercial-only CONTENT behind this door, not
+// a new door. Lazy so a land-investor org never downloads it.
+const CamWorksheet = lazy(() =>
+  import("@/components/finance/CamWorksheet").then((m) => ({ default: m.CamWorksheet })),
+);
 
 // Tab values now MATCH their labels (and their mounted content). Previously
 // the labels were swapped to match content while the values were left stale,
 // so a deep link to #portfolio opened the Optimizer. Old hashes are migrated
 // in getTabFromHash so existing links/bookmarks still land correctly.
-type TabValue = "notes" | "portfolio" | "optimizer" | "forecast";
+//
+// "cam" is PERSONA-GATED CONTENT, not a fifth universal tab: a CAM true-up is a
+// commercial-lease instrument and showing it to a land investor would be a door
+// onto nothing. The five customer doors are unchanged — this lives behind
+// Finance (CLAUDE.md "five fixed doors": persona changes the content behind a
+// door, never the doors themselves).
+type TabValue = "notes" | "portfolio" | "optimizer" | "forecast" | "cam";
 
 // "capital" removed 2026-07-07 (deletion ledger): the Capital tab rendered
 // unconditionally while /api/capital-markets is gated off — an erroring
 // panel for every non-founder. The page stays FROZEN behind the
 // feature_capital_markets flag at /capital-markets; restore the tab when
 // note securitization is a real revenue line (H4).
-const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast"];
+const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast", "cam"];
 
 // Legacy hash → current value. The old "finance" value rendered the Portfolio
 // page; map it forward so bookmarks don't break. "capital" maps to the door
@@ -65,11 +78,22 @@ export default function FinancePageShell() {
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
   const [importOpen, setImportOpen] = useState(false);
 
+  // businessType lives on onboardingData (the same read the sidebar and
+  // rent-roll use), not a top-level org column.
+  const { data: org } = useOrganization();
+  const isCommercial =
+    (org?.onboardingData as { businessType?: string } | null)?.businessType === "commercial";
+
   useEffect(() => {
     const handleHashChange = () => setActiveTab(getTabFromHash());
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  // A #cam deep link in a non-commercial org would otherwise select a tab whose
+  // trigger and content are both absent, leaving the door blank. Fall back to
+  // the default tab rather than render nothing.
+  const resolvedTab: TabValue = activeTab === "cam" && !isCommercial ? "notes" : activeTab;
 
   const handleTabChange = (value: string) => {
     const tab = value as TabValue;
@@ -111,7 +135,7 @@ export default function FinancePageShell() {
       {/* §2.3 generous editorial rhythm: the door's tab section stack steps up
           from space-y-6 to the bold space-y-8 (32px), matching the PageShell
           default. Layout-only. */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8" data-testid="tabs-money">
+      <Tabs value={resolvedTab} onValueChange={handleTabChange} className="space-y-8" data-testid="tabs-money">
         <TabsList className="h-12 w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
           <TabsTrigger value="notes" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-notes">
             <Banknote className="h-4 w-4" aria-hidden="true" />
@@ -129,6 +153,12 @@ export default function FinancePageShell() {
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Forecast</span>
           </TabsTrigger>
+          {isCommercial && (
+            <TabsTrigger value="cam" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-cam">
+              <Calculator className="h-4 w-4" aria-hidden="true" />
+              <span>CAM</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="notes" data-testid="tab-content-notes">
@@ -157,6 +187,14 @@ export default function FinancePageShell() {
             <CashFlowPage />
           </Suspense>
         </TabsContent>
+
+        {isCommercial && (
+          <TabsContent value="cam" data-testid="tab-content-cam">
+            <Suspense fallback={<TabFallback />}>
+              <CamWorksheet />
+            </Suspense>
+          </TabsContent>
+        )}
       </Tabs>
     </PageShell>
   );

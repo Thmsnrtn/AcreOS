@@ -201,6 +201,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-pax-insights.ts",
   "routes-pax-quality.ts",
   "routes-pax-traces.ts",
+  "routes-payoff-quote-pdf.ts",
   "routes-permit-tracker.ts",
   "routes-persona.ts",
   "routes-plan-proposals.ts",

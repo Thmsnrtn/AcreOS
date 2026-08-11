@@ -88,24 +88,51 @@ import {
   depositDeadlineCountdown,
   type DepositDeadlineResult,
 } from "@shared/regulatory/depositReturnRules";
+import {
+  NOT_AGED_ID,
+  type AgingBucketId,
+  type AgingLadder,
+  type AgingSelection,
+} from "@shared/finance/agingLadder";
+import { AgingLadderBoard, centsExact } from "@/components/aging-ladder-board";
 
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
 
+/**
+ * `/api/rent/aging` (Wave 3, 2026-08-11).
+ *
+ * `ladder` is the SHARED engine's output — the same shape `/api/notes/aging`
+ * returns, rendered by the same `<AgingLadderBoard>`. The page no longer
+ * restates the rungs or their labels; both come from `AGING_LADDER_BUCKETS`.
+ *
+ * Each charge carries the engine's OWN `daysPastDue` and `bucket`, so the
+ * "N days late" on a late-fee proposal and the rung on the board are the same
+ * number by construction. They used to be two: the board's day count came from
+ * Postgres `CURRENT_DATE` and the page's `asOf` from Node's clock.
+ */
 interface AgingResponse {
-  asOf: string;
-  totalsByBucket: Record<string, { count: number; totalCents: number }>;
+  ladder: AgingLadder;
+  scope: {
+    included: string;
+    settledChargesExcluded: number;
+    settledNote: string;
+  };
   charges: Array<{
     id: string;
-    lease_id: string;
-    charged_for_month: string;
-    due_date: string;
-    amount_cents: number;
-    balance_cents: number;
-    late_fee_cents: number;
-    legal_posture: string;
-    days_overdue: number;
+    leaseId: string;
+    chargedForMonth: string | null;
+    dueDate: string | null;
+    amountCents: number;
+    balanceCents: number;
+    lateFeeCents: number;
+    paidCents: number;
+    legalPosture: string;
+    chargeType: string;
+    /** Null when the charge could not be aged — rendered as absence, not 0. */
+    daysPastDue: number | null;
+    bucket: AgingBucketId | null;
   }>;
 }
 
@@ -181,17 +208,10 @@ interface LedgerResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Integer cents → "$1,234.56", formatted from the integer so no cent is ever
- * lost to a float. Every money figure on this page goes through this.
- */
-function centsExact(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return "—";
-  const sign = cents < 0 ? "−" : "";
-  const abs = Math.abs(cents);
-  const whole = Math.floor(abs / 100).toLocaleString("en-US");
-  return `${sign}$${whole}.${String(abs % 100).padStart(2, "0")}`;
-}
+/* `centsExact` is imported from the shared aging board (Wave 3) — this page
+   used to carry a byte-identical local copy, which is how two surfaces start
+   rounding money differently. Every money figure here goes through the one
+   formatter both books use. */
 
 function csrfHeaders(): Record<string, string> {
   const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
@@ -251,6 +271,12 @@ export default function RentRollPage() {
   useDocumentTitle("Rent roll — AcreOS");
   const [selectedLeaseId, setSelectedLeaseId] = useState<string | null>(null);
   const [feeChargeId, setFeeChargeId] = useState<string | null>(null);
+  /**
+   * Which rung the list below the board is narrowed to, or null for the whole
+   * book. This is what makes "a bucket total is the sum of rows you can open"
+   * checkable by the operator rather than a promise in a comment.
+   */
+  const [bucketFilter, setBucketFilter] = useState<AgingSelection>(null);
 
   // Commercial orgs run the SAME rent ledger, but the state statutory late-fee
   // surface is residential-only: a commercial late fee is contractual (set by
@@ -302,8 +328,16 @@ export default function RentRollPage() {
     [rules.data],
   );
 
-  const charges = aging.data?.charges ?? [];
-  const feeCharge = charges.find((c) => c.id === feeChargeId) ?? null;
+  const allCharges = aging.data?.charges ?? [];
+  // The filter uses the ENGINE's bucket assignment carried on each row, not a
+  // second day-count computed here. One computation, one answer.
+  const charges = useMemo(() => {
+    if (!bucketFilter) return allCharges;
+    if (bucketFilter === NOT_AGED_ID) return allCharges.filter((c) => c.bucket === null);
+    return allCharges.filter((c) => c.bucket === bucketFilter);
+  }, [allCharges, bucketFilter]);
+  // The fee dialog must find its charge even when the list is filtered.
+  const feeCharge = allCharges.find((c) => c.id === feeChargeId) ?? null;
 
   return (
     <PageShell label="Rent roll">
@@ -345,42 +379,65 @@ export default function RentRollPage() {
         />
       ) : aging.data ? (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-            {(["current", "d1_30", "d31_60", "d61_90", "d90_plus"] as const).map((k) => {
-              const tot = aging.data!.totalsByBucket[k] ?? { count: 0, totalCents: 0 };
-              const labels: Record<string, string> = {
-                current: "Current",
-                d1_30: "1-30 days",
-                d31_60: "31-60 days",
-                d61_90: "61-90 days",
-                d90_plus: "90+ days",
-              };
-              const tones: Record<string, string> = {
-                current: "",
-                d1_30: "text-acr-warning",
-                d31_60: "text-acr-warning",
-                d61_90: "text-acr-neg",
-                d90_plus: "text-acr-neg",
-              };
-              return (
-                <Card key={k} className="p-3">
-                  <div className="text-xs text-muted-foreground">{labels[k]}</div>
-                  <div className={`text-xl font-semibold tabular-nums ${tones[k]}`}>
-                    {centsExact(tot.totalCents)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{tot.count} charges</div>
-                </Card>
-              );
-            })}
+          {/* THE SHARED LADDER. Same component the acquired-notes book mounts
+              (client/src/components/aging-ladder-board.tsx), fed by the same
+              engine. Clicking a rung narrows the list below to exactly the rows
+              that rung's total is made of. */}
+          <div className="mb-6">
+            <AgingLadderBoard
+              ladder={aging.data.ladder}
+              testIdPrefix="rent-aging"
+              selectedBucket={bucketFilter}
+              onSelectBucket={setBucketFilter}
+              scopeNote={
+                aging.data.scope.settledChargesExcluded > 0
+                  ? `${aging.data.scope.settledChargesExcluded} fully-paid charge${
+                      aging.data.scope.settledChargesExcluded === 1 ? " is" : "s are"
+                    } not on this board — they remain on each lease ledger.`
+                  : undefined
+              }
+              emptyState={
+                <EmptyState
+                  icon={Wallet}
+                  headline="No rent charges recorded yet"
+                  subtitle="An aging board needs a ledger to age. Generate this month's charges from your leases, or set up a lease first."
+                  framed
+                  cta={{
+                    label: leases.length > 0 ? "Open a lease ledger" : "Set up a lease",
+                    onClick:
+                      leases.length > 0
+                        ? () => setSelectedLeaseId(leases[0].id)
+                        : () => {
+                            window.location.assign("/leases");
+                          },
+                    "data-testid": "rent-roll-empty-cta",
+                  }}
+                  testId="rent-roll-empty"
+                />
+              }
+            />
           </div>
 
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-acr-warning" aria-hidden="true" /> Open balances
+                <AlertTriangle className="w-4 h-4 text-acr-warn" aria-hidden="true" /> Open balances
+                {bucketFilter && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs ml-1"
+                    onClick={() => setBucketFilter(null)}
+                    data-testid="rent-aging-clear-filter"
+                  >
+                    Clear filter
+                  </Button>
+                )}
               </CardTitle>
               <CardDescription>
-                Sorted by due date, oldest first. Open a ledger to see how each payment was applied.
+                {bucketFilter
+                  ? "Showing only the rows behind the selected bucket — this list IS that bucket's total."
+                  : "Sorted by due date, oldest first. Open a ledger to see how each payment was applied."}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -388,20 +445,32 @@ export default function RentRollPage() {
                 <div className="p-4">
                   <EmptyState
                     icon={Wallet}
-                    headline="No open balances"
-                    subtitle="Every recorded charge is paid in full. Open a lease ledger to record a payment you received, or to check a deposit clock."
-                    tone="celebratory"
+                    headline={bucketFilter ? "No charges in this bucket" : "No open balances"}
+                    subtitle={
+                      bucketFilter
+                        ? "Nothing on the ledger falls in the bucket you selected. Clear the filter to see the whole book."
+                        : "Every recorded charge is paid in full. Open a lease ledger to record a payment you received, or to check a deposit clock."
+                    }
+                    tone={bucketFilter ? "default" : "celebratory"}
                     framed
-                    cta={{
-                      label: leases.length > 0 ? "Open a lease ledger" : "Set up a lease",
-                      onClick:
-                        leases.length > 0
-                          ? () => setSelectedLeaseId(leases[0].id)
-                          : () => {
-                              window.location.assign("/leases");
-                            },
-                      "data-testid": "rent-roll-empty-cta",
-                    }}
+                    cta={
+                      bucketFilter
+                        ? {
+                            label: "Clear filter",
+                            onClick: () => setBucketFilter(null),
+                            "data-testid": "rent-roll-filter-empty-cta",
+                          }
+                        : {
+                            label: leases.length > 0 ? "Open a lease ledger" : "Set up a lease",
+                            onClick:
+                              leases.length > 0
+                                ? () => setSelectedLeaseId(leases[0].id)
+                                : () => {
+                                    window.location.assign("/leases");
+                                  },
+                            "data-testid": "rent-roll-empty-cta",
+                          }
+                    }
                     testId="rent-roll-empty"
                   />
                 </div>
@@ -425,33 +494,42 @@ export default function RentRollPage() {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="font-mono text-xs">{c.lease_id.slice(0, 8)}…</div>
+                            <div className="font-mono text-xs">{c.leaseId.slice(0, 8)}…</div>
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              {String(c.charged_for_month).slice(0, 10)} · due{" "}
-                              {String(c.due_date).slice(0, 10)}
+                              {c.chargedForMonth ?? "month not recorded"} · due{" "}
+                              {c.dueDate ?? "no due date on file"}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
                             <div className="font-mono font-semibold tabular-nums">
-                              {centsExact(c.balance_cents)}
+                              {centsExact(c.balanceCents)}
                             </div>
-                            {c.late_fee_cents > 0 && (
+                            {c.lateFeeCents > 0 && (
                               <div className="text-xs text-muted-foreground tabular-nums">
-                                +{centsExact(c.late_fee_cents)} late fee
+                                +{centsExact(c.lateFeeCents)} late fee
                               </div>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center justify-between gap-3 mt-2">
-                          <Badge variant={postureTone(c.legal_posture)} className="text-xs">
-                            {c.legal_posture.replace(/_/g, " ")}
+                          <Badge variant={postureTone(c.legalPosture)} className="text-xs">
+                            {c.legalPosture.replace(/_/g, " ")}
                           </Badge>
+                          {/* Null days = the charge could not be aged. It reads
+                              "not aged", never "current" — see rule 2 in the
+                              shared engine's header. */}
                           <span
                             className={`text-xs tabular-nums ${
-                              c.days_overdue > 0 ? "text-acr-warning" : "text-muted-foreground"
+                              c.daysPastDue !== null && c.daysPastDue > 0
+                                ? "text-acr-warn"
+                                : "text-muted-foreground"
                             }`}
                           >
-                            {c.days_overdue > 0 ? `${c.days_overdue} days late` : "current"}
+                            {c.daysPastDue === null
+                              ? "not aged"
+                              : c.daysPastDue > 0
+                                ? `${c.daysPastDue} days late`
+                                : "current"}
                           </span>
                         </div>
                         <div className="flex gap-2 mt-2">
@@ -459,7 +537,7 @@ export default function RentRollPage() {
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
-                            onClick={() => setSelectedLeaseId(c.lease_id)}
+                            onClick={() => setSelectedLeaseId(c.leaseId)}
                           >
                             Open ledger
                           </Button>
@@ -494,46 +572,49 @@ export default function RentRollPage() {
                           id: "lease",
                           header: "Lease",
                           cellClassName: "font-mono text-xs",
-                          cell: (c) => `${c.lease_id.slice(0, 8)}…`,
+                          cell: (c) => `${c.leaseId.slice(0, 8)}…`,
                         },
                         {
                           id: "month",
                           header: "Month",
-                          cell: (c) => String(c.charged_for_month).slice(0, 10),
+                          cell: (c) => c.chargedForMonth ?? "—",
                         },
                         {
                           id: "due",
                           header: "Due",
-                          cell: (c) => String(c.due_date).slice(0, 10),
+                          cell: (c) => c.dueDate ?? "—",
                         },
                         {
                           id: "daysLate",
                           header: "Days late",
                           align: "right",
                           cellClassName: (c) =>
-                            `tabular-nums ${c.days_overdue > 0 ? "text-acr-warning" : ""}`,
-                          cell: (c) => c.days_overdue,
+                            `tabular-nums ${c.daysPastDue !== null && c.daysPastDue > 0 ? "text-acr-warn" : ""}`,
+                          // "not aged" is the honest cell for a charge with no
+                          // usable due date. A dash or a 0 would both read as
+                          // "on time", which is a finding nobody made.
+                          cell: (c) => (c.daysPastDue === null ? "not aged" : c.daysPastDue),
                         },
                         {
                           id: "balance",
                           header: "Balance",
                           align: "right",
                           cellClassName: "font-mono tabular-nums",
-                          cell: (c) => centsExact(c.balance_cents),
+                          cell: (c) => centsExact(c.balanceCents),
                         },
                         {
                           id: "lateFee",
                           header: "Late fee",
                           align: "right",
                           cellClassName: "font-mono tabular-nums text-muted-foreground",
-                          cell: (c) => (c.late_fee_cents > 0 ? centsExact(c.late_fee_cents) : "—"),
+                          cell: (c) => (c.lateFeeCents > 0 ? centsExact(c.lateFeeCents) : "—"),
                         },
                         {
                           id: "posture",
                           header: "Posture",
                           cell: (c) => (
-                            <Badge variant={postureTone(c.legal_posture)} className="text-xs">
-                              {c.legal_posture.replace(/_/g, " ")}
+                            <Badge variant={postureTone(c.legalPosture)} className="text-xs">
+                              {c.legalPosture.replace(/_/g, " ")}
                             </Badge>
                           ),
                         },
@@ -548,7 +629,7 @@ export default function RentRollPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-7 text-xs"
-                                onClick={() => setSelectedLeaseId(c.lease_id)}
+                                onClick={() => setSelectedLeaseId(c.leaseId)}
                                 data-testid={`button-open-ledger-${c.id}`}
                               >
                                 Open ledger
@@ -706,10 +787,10 @@ export default function RentRollPage() {
           open={feeChargeId !== null}
           onOpenChange={(v) => setFeeChargeId(v ? feeChargeId : null)}
           charge={feeCharge}
-          lease={leaseById.get(feeCharge.lease_id) ?? null}
+          lease={leaseById.get(feeCharge.leaseId) ?? null}
           rule={
-            leaseById.get(feeCharge.lease_id)
-              ? ruleByState.get(leaseById.get(feeCharge.lease_id)!.state.toUpperCase()) ?? null
+            leaseById.get(feeCharge.leaseId)
+              ? ruleByState.get(leaseById.get(feeCharge.leaseId)!.state.toUpperCase()) ?? null
               : null
           }
         />
@@ -1503,17 +1584,22 @@ function LateFeeProposalDialog({
 
   const proposal: LateFeeProposal | null = useMemo(() => {
     if (!lease) return null;
+    // A charge with no usable due date has no measurable lateness, and a
+    // late fee is a function of days late. Refusing is the only honest move:
+    // treating "not aged" as 0 days would propose a $0 fee as if it were a
+    // finding, and treating it as late would invent one.
+    if (charge.daysPastDue === null) return null;
     return proposeLateFee({
       rule: rule ? parseLateFeeRuleRow(rule) : null,
       monthlyRentCents: lease.monthlyRentCents,
-      daysLate: charge.days_overdue,
+      daysLate: charge.daysPastDue,
       // A FLOOR on the property's unit count. The client holds no unit count,
       // so the floor is 1: the proposal then computes BOTH statutory branches
       // and takes the lower fee, which cannot overcharge under either reality.
       knownUnitCountFloor: 1,
       state: lease.state,
     });
-  }, [lease, rule, charge.days_overdue]);
+  }, [lease, rule, charge.daysPastDue]);
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -1531,7 +1617,7 @@ function LateFeeProposalDialog({
     onSuccess: (res) => {
       setApplied({ feeCents: res.feeCents, explanation: res.explanation });
       queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leases", charge.lease_id, "ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", charge.leaseId, "ledger"] });
       toast({ title: `Late fee of ${centsExact(res.feeCents)} charged to the ledger` });
     },
     onError: (err: any) =>
@@ -1547,21 +1633,27 @@ function LateFeeProposalDialog({
         <DialogHeader>
           <DialogTitle>Late fee — proposal</DialogTitle>
           <DialogDescription>
-            {String(charge.charged_for_month).slice(0, 7)} · due{" "}
-            {String(charge.due_date).slice(0, 10)} · {charge.days_overdue} days late. A proposal is
-            not a charge; nothing is posted until you confirm the exact figure.
+            {charge.chargedForMonth?.slice(0, 7) ?? "month not recorded"} · due{" "}
+            {charge.dueDate ?? "no due date on file"} ·{" "}
+            {charge.daysPastDue === null ? "not aged" : `${charge.daysPastDue} days late`}. A
+            proposal is not a charge; nothing is posted until you confirm the exact figure.
           </DialogDescription>
         </DialogHeader>
 
         {!lease ? (
-          <p className="text-sm text-acr-warning">
+          <p className="text-sm text-acr-warn">
             AcreOS cannot propose a fee for this charge: its lease is not loaded, so the monthly rent
             and the jurisdiction are unknown. It will not guess either.
+          </p>
+        ) : charge.daysPastDue === null ? (
+          <p className="text-sm text-acr-warn" data-testid="late-fee-not-aged">
+            AcreOS cannot propose a fee for this charge: it has no due date on file, so there is no
+            number of days late to compute one from. Record the due date on the charge first.
           </p>
         ) : applied ? (
           <div className="space-y-2" data-testid="late-fee-applied">
             <p className="text-sm font-semibold">
-              {centsExact(applied.feeCents)} charged to the {String(charge.charged_for_month).slice(0, 7)}{" "}
+              {centsExact(applied.feeCents)} charged to the {String(charge.chargedForMonth).slice(0, 7)}{" "}
               charge.
             </p>
             <p className="text-xs text-muted-foreground">{applied.explanation}</p>

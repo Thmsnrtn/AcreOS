@@ -21,7 +21,7 @@
  * purposeful CTA. Errors use QueryErrorState with retry.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { FileText, Filter, HelpCircle, Upload } from "lucide-react";
@@ -45,6 +45,11 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
 import { formatDate } from "@/lib/format";
+// THE aging ladder — the same engine and the same board the rent ledger uses
+// (/rent-roll). Both books live behind the Finance door; neither owns a copy of
+// the 30/60/90 rungs.
+import { AgingLadderBoard, centsExact } from "@/components/aging-ladder-board";
+import { NOT_AGED_ID, type AgingLadder, type AgingSelection } from "@shared/finance/agingLadder";
 
 /**
  * Delinquency bands. Mirrors `NoteDelinquencyStatus` in
@@ -132,6 +137,28 @@ interface NotesListResponse {
   limit: number;
   offset: number;
   count: number;
+}
+
+/**
+ * `GET /api/notes/aging` — the acquired book's aging ladder.
+ *
+ * WHAT IS AGED (and what is deliberately not): the row's due date is the
+ * note's oldest unsatisfied scheduled due date, and the AMOUNT is the past-due
+ * scheduled payments net of unapplied funds — NOT the loan principal.
+ * Bucketing a whole balance into "90+ days" would assert an acceleration
+ * nobody declared. `meta` carries the working for each row so the surface can
+ * show it rather than asking the operator to trust a number.
+ */
+interface NotesAgingResponse {
+  book: string;
+  moneyUnit: string;
+  ladder: AgingLadder;
+  scope: {
+    included: string;
+    aged: string;
+    notAged: string;
+    terminalNotesExcluded: number;
+  };
 }
 
 /**
@@ -456,6 +483,50 @@ export default function NotesPage() {
 
   const notes = data?.notes ?? [];
 
+  // ── The aging ladder (Wave 3, 2026-08-11) ─────────────────────────────────
+  // A SECTION behind the existing Finance door, not a new destination. It is
+  // read-only and deliberately whole-book: the status filter above narrows the
+  // LIST, and the board says so rather than silently agreeing with it.
+  const agingQuery = useQuery<NotesAgingResponse>({
+    queryKey: ["/api/notes", "aging"],
+    queryFn: async () => {
+      const res = await fetch("/api/notes/aging", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load aging (${res.status})`);
+      return res.json();
+    },
+  });
+  const [bucketFilter, setBucketFilter] = useState<AgingSelection>(null);
+
+  /** Note ids in the selected rung, or null when no rung is selected. */
+  const bucketMemberIds = useMemo(() => {
+    const ladder = agingQuery.data?.ladder;
+    if (!ladder || !bucketFilter) return null;
+    if (bucketFilter === NOT_AGED_ID) return new Set(ladder.notAged.rows.map((r) => r.id));
+    const b = ladder.buckets.find((x) => x.id === bucketFilter);
+    return new Set((b?.rows ?? []).map((r) => r.id));
+  }, [agingQuery.data, bucketFilter]);
+
+  const visibleNotes = useMemo(
+    () => (bucketMemberIds ? notes.filter((n) => bucketMemberIds.has(n.id)) : notes),
+    [notes, bucketMemberIds],
+  );
+  // How many rows the selected rung holds that this LIST is not showing —
+  // because the status filter above hides them, or because the list is paged.
+  // Stated rather than left as an unexplained count mismatch.
+  const hiddenFromBucket =
+    bucketMemberIds !== null ? bucketMemberIds.size - visibleNotes.length : 0;
+
+  /** The selected rung's total, carried straight off the engine's output. */
+  const selectedBucketTotal = useMemo(() => {
+    const ladder = agingQuery.data?.ladder;
+    if (!ladder || !bucketFilter) return null;
+    if (bucketFilter === NOT_AGED_ID) {
+      return { cents: ladder.notAged.totalCents, complete: ladder.notAged.totalIsComplete };
+    }
+    const b = ladder.buckets.find((x) => x.id === bucketFilter);
+    return b ? { cents: b.totalCents, complete: b.totalIsComplete } : null;
+  }, [agingQuery.data, bucketFilter]);
+
   return (
     <PageShell isLoading={false} label="Acquired notes">
       <NotesImportDialog open={isImportOpen} onOpenChange={setIsImportOpen} />
@@ -516,6 +587,102 @@ export default function NotesPage() {
         </div>
       </div>
 
+      {/* ── AGING ─────────────────────────────────────────────────────────────
+          A section behind the existing Finance door — the same board the rent
+          ledger renders at /rent-roll, fed by the same engine. No new nav
+          entry, no new destination. */}
+      <section className="mb-6" aria-labelledby="notes-aging-heading">
+        <div className="flex items-baseline justify-between gap-3 mb-2">
+          <h2 id="notes-aging-heading" className="text-sm font-semibold tracking-tight">
+            Aging
+          </h2>
+          <p className="text-xs text-muted-foreground text-right max-w-xl">
+            Past-due <strong>scheduled payments</strong>, net of unapplied funds — not the loan
+            balance. Bucketing a whole principal as "90+ days" would assert an acceleration nobody
+            declared.
+          </p>
+        </div>
+
+        {agingQuery.isLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3" aria-busy="true" aria-label="Loading aging">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-24" />
+            ))}
+          </div>
+        ) : agingQuery.isError ? (
+          <QueryErrorState
+            error={agingQuery.error instanceof Error ? agingQuery.error : null}
+            onRetry={() => agingQuery.refetch()}
+            isRetrying={agingQuery.isRefetching}
+            compact
+            title="Couldn't load the aging ladder"
+            description="We hit a snag aging your book. Your notes are safe — try again."
+            testId="notes-aging-error"
+          />
+        ) : agingQuery.data ? (
+          <AgingLadderBoard
+            ladder={agingQuery.data.ladder}
+            testIdPrefix="notes-aging"
+            selectedBucket={bucketFilter}
+            onSelectBucket={setBucketFilter}
+            scopeNote="The whole book — the status filter above narrows the list, not this board."
+            emptyState={
+              <EmptyState
+                icon={FileText}
+                headline="Nothing to age yet"
+                subtitle="An aging ladder needs a serviced book. Import your notes and the ladder fills itself from each note's own schedule."
+                cta={{
+                  label: "Import notes",
+                  onClick: () => setIsImportOpen(true),
+                  "data-testid": "notes-aging-empty-cta",
+                }}
+                actionIcon={Upload}
+                testId="notes-aging-empty"
+              />
+            }
+          />
+        ) : null}
+
+        {bucketFilter && (
+          <div
+            className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+            data-testid="notes-aging-filter-note"
+          >
+            <span>
+              The list below shows the {visibleNotes.length} note
+              {visibleNotes.length === 1 ? "" : "s"} behind this bucket
+              {selectedBucketTotal !== null && (
+                <> — {selectedBucketTotal.complete ? "totalling" : "totalling at least"}{" "}
+                  <span className="tabular-nums text-foreground font-medium">
+                    {centsExact(selectedBucketTotal.cents)}
+                  </span>
+                </>
+              )}
+              .
+            </span>
+            {hiddenFromBucket > 0 && (
+              /* The count mismatch, named. A bucket total the operator cannot
+                 fully open is exactly the failure this slice exists to stop —
+                 so when the list cannot show every row, it says how many and
+                 why instead of leaving two numbers to disagree in silence. */
+              <span className="text-acr-warn" data-testid="notes-aging-hidden-note">
+                {hiddenFromBucket} more {hiddenFromBucket === 1 ? "is" : "are"} in this bucket but
+                hidden by the status filter or the page limit — clear the filter to open them.
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs"
+              onClick={() => setBucketFilter(null)}
+              data-testid="notes-aging-clear-filter"
+            >
+              Clear bucket
+            </Button>
+          </div>
+        )}
+      </section>
+
       {isLoading ? (
         <Card className="overflow-hidden">
           <div className="p-4 space-y-3" aria-busy="true" aria-label="Loading notes">
@@ -543,7 +710,22 @@ export default function NotesPage() {
           description="We couldn't load your acquired notes."
           testId="notes-retry-button"
         />
-      ) : notes.length === 0 ? (
+      ) : visibleNotes.length === 0 && bucketFilter ? (
+        /* An empty LIST under a non-empty book is a filter result, not a book
+           with no notes in it. Saying "no notes serviced yet" here would be a
+           false claim about the org's portfolio. */
+        <EmptyState
+          icon={Filter}
+          headline="No notes match this bucket and filter"
+          subtitle="The aging bucket you selected has no rows the current status filter lets through. Clear the bucket, or set the status filter back to All."
+          cta={{
+            label: "Clear bucket",
+            onClick: () => setBucketFilter(null),
+            "data-testid": "notes-bucket-empty-cta",
+          }}
+          testId="notes-bucket-empty-state"
+        />
+      ) : visibleNotes.length === 0 ? (
         <EmptyState
           icon={FileText}
           headline="No notes serviced yet"
@@ -565,7 +747,7 @@ export default function NotesPage() {
           {/* Mobile: stacked note cards — the 5-column table side-scrolls at
               phone widths. md+ renders the full table below. */}
           <ul className="md:hidden divide-y divide-border" data-testid="list-notes-mobile">
-            {notes.map((note) => (
+            {visibleNotes.map((note) => (
               <li key={note.id}>
                 <button
                   type="button"
@@ -639,7 +821,7 @@ export default function NotesPage() {
                 </tr>
               </thead>
               <tbody>
-                {notes.map((note) => (
+                {visibleNotes.map((note) => (
                   <tr
                     key={note.id}
                     className="border-t border-border hover:bg-muted/30 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"

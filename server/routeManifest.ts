@@ -244,6 +244,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-pax-insights.ts", mountPath: "/api/pax", kind: "router", export: "default" },
   { file: "routes-pax-quality.ts", mountPath: null, kind: "register", export: "registerPaxQualityRoutes" },
   { file: "routes-pax-traces.ts", mountPath: null, kind: "register", export: "registerPaxTracesRoutes" },
+  { file: "routes-payoff-quote-pdf.ts", mountPath: null, kind: "register", export: "registerPayoffQuotePdfRoutes" },
   { file: "routes-permit-tracker.ts", mountPath: null, kind: "register", export: "registerPermitTrackerRoutes" },
   { file: "routes-persona.ts", mountPath: "/api/me/persona", kind: "router", export: "default" },
   { file: "routes-plan-proposals.ts", mountPath: null, kind: "register", export: "registerPlanProposalRoutes" },

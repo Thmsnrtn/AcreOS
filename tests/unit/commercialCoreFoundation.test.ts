@@ -125,12 +125,24 @@ describe("honesty — Stage 1 stores facts, it does not fabricate the engines' n
   });
 
   it("money math is DELEGATED to the pure tested engine, not hand-rolled in the route", () => {
-    // Stage 2 adds the CAM reconciliation. The route must DELEGATE to
-    // computeCamReconciliation (behaviourally tested in camReconciliation.test.ts)
-    // and REFUSE — write nothing — when it cannot derive a share, rather than do
-    // ad-hoc money arithmetic in the handler. This is where a fabricated CAM bill
-    // would sneak in, so it is pinned.
-    expect(ledger).toContain("computeCamReconciliation(");
+    // Stage 2 adds the CAM reconciliation. The route must DELEGATE to the pure
+    // engine (behaviourally tested in camReconciliation.test.ts) and REFUSE —
+    // write nothing — when it cannot derive a share, rather than do ad-hoc money
+    // arithmetic in the handler. This is where a fabricated CAM bill would sneak
+    // in, so it is pinned.
+    //
+    // REWRITTEN (Wave 3, not deleted): the route used to call
+    // computeCamReconciliation directly. It now calls previewCamReconciliation,
+    // which gates on INPUT SUFFICIENCY first and then calls the engine — closing
+    // the case the engine alone could not catch (no recorded recoverable spend
+    // computed a $0 pool and handed the tenant a credit for everything they were
+    // billed). The invariant is unchanged and is now checked as a CHAIN rather
+    // than a single string, so neither link can be quietly cut: the route must
+    // reach the engine through the gate, and the gate must reach the engine.
+    expect(ledger).toContain("previewCamReconciliation(");
+    expect(ledger).not.toContain("computeCamReconciliation("); // the gate is not bypassed
+    const camGate = read("shared/rental/camWorksheet.ts");
+    expect(camGate).toContain("computeCamReconciliation(");
     expect(ledger).toContain("computePercentageRent(");
     expect(ledger).toContain("computeCommercialLateFee(");
     expect(ledger).toContain("computePerSqftMetrics(");

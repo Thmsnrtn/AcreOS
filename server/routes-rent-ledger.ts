@@ -109,6 +109,14 @@ import {
   renderCamStatementMarkdown,
   monthsInPeriod,
 } from "@shared/rental/camReconciliation";
+import {
+  previewCamReconciliation,
+  decideCamStatementWrite,
+  isFrozenCamStatement,
+  camStatementFingerprint,
+  CAM_STATEMENT_VERSION,
+  type CamFrozenStatement,
+} from "@shared/rental/camWorksheet";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
 import {
@@ -124,6 +132,12 @@ import {
 } from "@shared/rental/utilityBillback";
 import { computeCommercialLateFee } from "@shared/rental/commercialLateFee";
 import { computePerSqftMetrics } from "@shared/rental/perSqft";
+import {
+  bucketAging,
+  conservationHolds,
+  isCalendarDate,
+  type AgeableRow,
+} from "@shared/finance/agingLadder";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -1523,42 +1537,136 @@ export function registerRentLedgerRoutes(app: Express): void {
     }
   });
 
-  // Org-wide aging buckets — Imelda §3 portfolio: "Aging buckets are right
+  // Org-wide aging ladder — Imelda §3 portfolio: "Aging buckets are right
   // shape, wrong source. Wire them to rent-roll late-pay data."
+  //
+  // ── Wave 3 (2026-08-11): one ladder, both books ───────────────────────────
+  // This endpoint used to bucket in hand-written SQL/JS with 30/60/90 inline,
+  // and the notes book had no ladder at all. The boundaries now come from
+  // `@shared/finance/agingLadder` — the SAME engine `/api/notes/aging` uses —
+  // so the two books cannot come to disagree about what "60 days late" means.
+  //
+  // Two real defects closed with the move:
+  //   • TWO CLOCKS. The day count came from Postgres `CURRENT_DATE` while the
+  //     `asOf` printed on the board came from Node's `new Date()`. Around
+  //     midnight, in a deployment whose DB session timezone differs from the
+  //     app server's, the board was labelled with one day and bucketed by
+  //     another. There is now exactly one as-of, it is an argument, and the
+  //     SQL does no date arithmetic.
+  //   • A SILENT DROP. `balance_cents > 0` quietly removed every settled
+  //     charge from the board with no acknowledgement, so "12 charges" could
+  //     not be reconciled against a ledger showing 40. The count of settled
+  //     charges is now reported alongside the ladder as `scope`.
+  //
+  // MONEY POSTURE: read-only. This describes balances already recorded.
   app.get("/api/rent/aging", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const today = new Date().toISOString().slice(0, 10);
-      const rows = await db.execute(sql`
-        SELECT
-          rc.id, rc.lease_id, rc.charged_for_month, rc.due_date,
-          rc.amount_cents, rc.balance_cents, rc.late_fee_cents,
-          rc.legal_posture,
-          (CURRENT_DATE - rc.due_date) AS days_overdue
-        FROM rent_charges rc
-        WHERE rc.organization_id = ${orgId}
-          AND rc.balance_cents > 0
-        ORDER BY rc.due_date ASC
-      `);
+      // Explicit as-of so the operator can age the book at a period close
+      // rather than only "now". Falls back to today when absent; an
+      // unparseable value is a 400 rather than a silent snap to today, since
+      // a board labelled with a date it did not use is the exact lie the
+      // two-clock bug produced.
+      const rawAsOf = typeof req.query.asOf === "string" ? req.query.asOf.trim() : "";
+      // Shape AND validity — "2026-13-45" matches the shape and is not a day.
+      if (rawAsOf && !isCalendarDate(rawAsOf)) {
+        return Errors.badRequest(res, "asOf must be a real calendar date in YYYY-MM-DD form");
+      }
+      const asOf = rawAsOf || new Date().toISOString().slice(0, 10);
 
-      const charges = ((rows as any).rows ?? []).map((r: any) => ({
-        ...r,
-        days_overdue: Number(r.days_overdue) || 0,
+      // ORG-SCOPED AT THE QUERY. No date arithmetic here — the engine ages.
+      const open = await db
+        .select({
+          id: rentCharges.id,
+          leaseId: rentCharges.leaseId,
+          chargedForMonth: rentCharges.chargedForMonth,
+          dueDate: rentCharges.dueDate,
+          amountCents: rentCharges.amountCents,
+          balanceCents: rentCharges.balanceCents,
+          lateFeeCents: rentCharges.lateFeeCents,
+          paidCents: rentCharges.paidCents,
+          legalPosture: rentCharges.legalPosture,
+          chargeType: rentCharges.chargeType,
+          rentComponent: rentCharges.rentComponent,
+        })
+        .from(rentCharges)
+        .where(and(eq(rentCharges.organizationId, orgId), gt(rentCharges.balanceCents, 0)))
+        .orderBy(asc(rentCharges.dueDate));
+
+      // What the board does NOT show, stated rather than implied.
+      const [settled] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(rentCharges)
+        .where(and(eq(rentCharges.organizationId, orgId), lte(rentCharges.balanceCents, 0)));
+
+      const rows: AgeableRow[] = open.map((c) => ({
+        id: c.id,
+        dueDate: c.dueDate ? String(c.dueDate).slice(0, 10) : null,
+        outstandingCents: Number(c.balanceCents),
+        meta: {
+          leaseId: c.leaseId,
+          chargedForMonth: c.chargedForMonth ? String(c.chargedForMonth).slice(0, 10) : null,
+          amountCents: Number(c.amountCents),
+          paidCents: Number(c.paidCents),
+          lateFeeCents: Number(c.lateFeeCents),
+          legalPosture: c.legalPosture,
+          chargeType: c.chargeType,
+          rentComponent: c.rentComponent,
+        },
       }));
-      const buckets = {
-        current: charges.filter((c: any) => c.days_overdue <= 0),
-        d1_30: charges.filter((c: any) => c.days_overdue > 0 && c.days_overdue <= 30),
-        d31_60: charges.filter((c: any) => c.days_overdue > 30 && c.days_overdue <= 60),
-        d61_90: charges.filter((c: any) => c.days_overdue > 60 && c.days_overdue <= 90),
-        d90_plus: charges.filter((c: any) => c.days_overdue > 90),
-      };
 
-      const totalsByBucket = Object.fromEntries(Object.entries(buckets).map(([k, v]) => [
-        k,
-        { count: v.length, totalCents: v.reduce((s: number, c: any) => s + Number(c.balance_cents), 0) },
-      ]));
+      const ladder = bucketAging({ asOf, rows });
+      // The promise the board makes, checked on every response rather than only
+      // in the test suite: every row handed in came back out, and the money
+      // adds up. A false here means a bucket total is understating the book.
+      if (!conservationHolds(ladder, rows)) {
+        logger.error("rent.aging conservation failed", undefined, {
+          orgId,
+          asOf,
+          rowCount: rows.length,
+        });
+      }
 
-      return res.json({ asOf: today, totalsByBucket, charges });
+      // The flat list under the board is DERIVED from the ladder, not built
+      // alongside it. That is what makes "the bucket total is the sum of rows
+      // you can open" true by construction rather than by coincidence: a row's
+      // `daysPastDue` and its bucket are the engine's own, so the late-fee
+      // dialog's "N days late" and the board's rung can no longer disagree.
+      const agedById = new Map(
+        ladder.buckets.flatMap((b) => b.rows).map((r) => [r.id, r]),
+      );
+      const charges = open.map((c) => {
+        const aged = agedById.get(c.id) ?? null;
+        return {
+          id: c.id,
+          leaseId: c.leaseId,
+          chargedForMonth: c.chargedForMonth ? String(c.chargedForMonth).slice(0, 10) : null,
+          dueDate: c.dueDate ? String(c.dueDate).slice(0, 10) : null,
+          amountCents: Number(c.amountCents),
+          balanceCents: Number(c.balanceCents),
+          lateFeeCents: Number(c.lateFeeCents),
+          paidCents: Number(c.paidCents),
+          legalPosture: c.legalPosture,
+          chargeType: c.chargeType,
+          // Null when the charge could not be aged — the surface renders the
+          // absence, never a 0 that reads as "not late".
+          daysPastDue: aged ? aged.daysPastDue : null,
+          bucket: aged ? aged.bucket : null,
+        };
+      });
+
+      return res.json({
+        ladder,
+        scope: {
+          // Every row on the ladder is openable from the list below it, so a
+          // bucket total is always the sum of rows the operator can click.
+          included: "Every rent charge with an open balance.",
+          settledChargesExcluded: Number(settled?.count ?? 0),
+          settledNote:
+            "Charges paid in full are not on the board. They are still on each lease ledger.",
+        },
+        charges,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
@@ -1970,7 +2078,11 @@ export function registerRentLedgerRoutes(app: Express): void {
   // Stage-1 writer records an operator-entered reconciliation; the engine-
   // computed snapshot columns (byCategory, coverage, statement) stay null until
   // the reconciliation engine lands. Provenance is stamped so nothing here reads
-  // as an engine statement. Re-recording the same (pool, lease) UPSERTs.
+  // as an engine statement. Re-recording the same (pool, lease) UPSERTs — UNLESS
+  // the row is an engine-generated FROZEN statement, in which case this refuses:
+  // the (pool, lease) unique key means an operator-entered row would otherwise
+  // land on top of an exhibit a tenant was billed from and null out its
+  // statement text. See decideCamStatementWrite.
   app.post("/api/cam-pools/:poolId/reconciliations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -1987,6 +2099,31 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
         .where(and(eq(rentalLeases.id, parsed.data.leaseId), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
+
+      // FREEZE GUARD — org-scoped at the query.
+      const [existingRow] = await db.select().from(camReconciliations)
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.poolId, pool.id),
+          eq(camReconciliations.leaseId, lease.id),
+        ));
+      const operatorDecision = decideCamStatementWrite({
+        existing: existingRow ? (existingRow as CamFrozenStatement) : null,
+        incoming: {
+          proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
+          poolActualCents: parsed.data.poolActualCents ?? null,
+          recoverableShareCents: parsed.data.recoverableShareCents ?? null,
+          estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
+          deltaCents: parsed.data.deltaCents ?? null,
+        },
+        intent: "operator_entered",
+      });
+      if (operatorDecision.action === "refuse_frozen") {
+        logger.info("[W4] CAM operator entry refused — statement frozen", {
+          orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: existingRow?.id,
+        });
+        return Errors.forbidden(res, operatorDecision.reason);
+      }
 
       const [saved] = await db.insert(camReconciliations).values({
         organizationId: orgId,
@@ -2041,10 +2178,169 @@ export function registerRentLedgerRoutes(app: Express): void {
     }
   });
 
+  // ── CAM worksheet input gathering (Wave 3) ────────────────────────────────
+  // ONE reader for the reconciliation's inputs, shared by the dry-run worksheet
+  // and the generate that freezes. Two readers would eventually disagree, and a
+  // preview that disagrees with the statement it previews is worse than none.
+  // Every query below is ORG-SCOPED at the query, never filtered in the caller.
+  type CamPoolRow = typeof camExpensePools.$inferSelect;
+  type CamLeaseRow = typeof rentalLeases.$inferSelect;
+
+  /**
+   * The pool actual: recoverable OPERATING spend on the pool's property over the
+   * period. Per-POOL, not per-lease — every lease on the pool reconciles against
+   * the same actuals, so the worksheet reads this once for the whole sheet
+   * instead of once per lease. The engine re-filters to operating + recoverable
+   * categories; we hand it every row in the window.
+   */
+  async function gatherCamPoolActuals(orgId: number, pool: CamPoolRow) {
+    const expenseRows = await db
+      .select({
+        category: propertyExpenses.category,
+        amountCents: propertyExpenses.amountCents,
+        isOperating: propertyExpenses.isOperating,
+        incurredOn: propertyExpenses.incurredOn,
+      })
+      .from(propertyExpenses)
+      .where(and(
+        eq(propertyExpenses.organizationId, orgId),
+        eq(propertyExpenses.propertyId, pool.propertyId),
+        gte(propertyExpenses.incurredOn, pool.periodStart),
+        lte(propertyExpenses.incurredOn, pool.periodEnd),
+      ));
+    return {
+      poolInput: {
+        recoverableCategories: pool.recoverableCategories,
+        totalRentableSqft: pool.totalRentableSqft,
+        adminFeeBps: pool.adminFeeBps,
+        grossUpPct: pool.grossUpPct != null ? Number(pool.grossUpPct) : null,
+        periodStart: pool.periodStart,
+        periodEnd: pool.periodEnd,
+      },
+      rows: expenseRows.map((r) => ({
+        category: r.category,
+        amountCents: Number(r.amountCents),
+        isOperating: r.isOperating,
+        incurredOn: r.incurredOn,
+      })),
+    };
+  }
+
+  /**
+   * What ONE tenant was actually billed in CAM estimates over the period — the
+   * real charges first, the lease's monthly estimate only as a fallback, and an
+   * honest zero (basis "none") when neither exists. `camChargeCentsByLease` lets
+   * the worksheet pass a batch-fetched map instead of querying per lease.
+   */
+  function resolveEstimatedBilled(
+    pool: CamPoolRow,
+    lease: CamLeaseRow,
+    charges: { count: number; totalCents: number },
+  ) {
+    const periodMonths = monthsInPeriod(pool.periodStart, pool.periodEnd);
+    if (charges.count > 0) {
+      return {
+        estimatedBilledCents: charges.totalCents,
+        estimatedBilledBasis: "from_charges",
+        chargeCount: charges.count,
+      };
+    }
+    if (lease.camEstimateMonthlyCents != null && periodMonths > 0) {
+      // CLAMPED TO THE LEASE'S ACTUAL OVERLAP WITH THE POOL PERIOD.
+      //
+      // This used to multiply the monthly estimate by the POOL's month count
+      // regardless of whether the tenancy spanned it — while the worksheet
+      // deliberately selects leases by OVERLAP, on the stated grounds that "a
+      // lease that ended before the period began never occupied the space the
+      // pool covers, so billing it a share would be an invented tenancy". A
+      // lease starting in October of a calendar-year pool was therefore
+      // credited with twelve months of estimated billing, which on a real
+      // fixture produced a $6,000 "billed" figure against at most $1,500
+      // actually billed, and SIGN-FLIPPED the result into a $1,746.28 "credit
+      // due to tenant" for a tenant who in fact owed $2,753.72.
+      const overlapStart =
+        lease.startDate && lease.startDate > pool.periodStart ? lease.startDate : pool.periodStart;
+      const leaseEnd = lease.endDate ?? pool.periodEnd;
+      const overlapEnd = leaseEnd < pool.periodEnd ? leaseEnd : pool.periodEnd;
+      const overlapMonths = overlapEnd >= overlapStart ? monthsInPeriod(overlapStart, overlapEnd) : 0;
+      return {
+        estimatedBilledCents: lease.camEstimateMonthlyCents * overlapMonths,
+        // Named for what it IS. "lease_estimate" read like a record of billing;
+        // it is a projection from a lease term, and a partial-period projection
+        // is not evidence of what a tenant was actually billed — which is why
+        // the caller blocks the freeze on it below.
+        estimatedBilledBasis: overlapMonths < periodMonths ? "lease_estimate_partial" : "lease_estimate",
+        chargeCount: 0,
+        projectionMonths: overlapMonths,
+        poolMonths: periodMonths,
+      };
+    }
+    return { estimatedBilledCents: 0, estimatedBilledBasis: "none", chargeCount: 0 };
+  }
+
+  function camLeaseInput(lease: CamLeaseRow) {
+    return {
+      camProRataBps: lease.camProRataBps,
+      rentableSqft: lease.rentableSqft,
+      camBaseYearStopCents: lease.camBaseYearStopCents,
+      leaseType: lease.leaseType,
+    };
+  }
+
+  /**
+   * The CAM estimate charges recorded against the given leases in the pool's
+   * window, aggregated per lease in ONE org-scoped query. Used by both the
+   * single-lease generate and the whole-sheet worksheet, so the preview and the
+   * statement it previews can never disagree about what was billed.
+   */
+  async function gatherCamChargeTotals(orgId: number, pool: CamPoolRow, leaseIds: string[]) {
+    const byLease = new Map<string, { count: number; totalCents: number }>();
+    if (leaseIds.length === 0) return byLease;
+    const grouped = await db
+      .select({
+        leaseId: rentCharges.leaseId,
+        count: sql<number>`count(*)::int`,
+        totalCents: sql<number>`coalesce(sum(${rentCharges.amountCents}), 0)::bigint`,
+      })
+      .from(rentCharges)
+      .where(and(
+        eq(rentCharges.organizationId, orgId),
+        inArray(rentCharges.leaseId, leaseIds),
+        eq(rentCharges.chargeType, "cam"),
+        gte(rentCharges.chargedForMonth, pool.periodStart),
+        lte(rentCharges.chargedForMonth, pool.periodEnd),
+      ))
+      .groupBy(rentCharges.leaseId);
+    for (const g of grouped) {
+      byLease.set(g.leaseId, { count: Number(g.count), totalCents: Number(g.totalCents) });
+    }
+    return byLease;
+  }
+
+  /** Single-lease convenience over the three readers above (the generate path). */
+  async function gatherCamInputs(orgId: number, pool: CamPoolRow, lease: CamLeaseRow) {
+    const actuals = await gatherCamPoolActuals(orgId, pool);
+    const totals = await gatherCamChargeTotals(orgId, pool, [lease.id]);
+    const billed = resolveEstimatedBilled(
+      pool,
+      lease,
+      totals.get(lease.id) ?? { count: 0, totalCents: 0 },
+    );
+    return {
+      poolInput: actuals.poolInput,
+      rows: actuals.rows,
+      leaseInput: camLeaseInput(lease),
+      ...billed,
+    };
+  }
+
   // Engine-generated reconciliation: computes the frozen true-up from the pool's
   // recoverable property_expenses × the lease's pro-rata and FREEZES it. Refuses
-  // (400, writes nothing) when the pro-rata share cannot be derived — a CAM bill
-  // on a fabricated share is never produced. Provenance: generatedBy "engine".
+  // (400, writes nothing) when a required input is missing or the pro-rata share
+  // cannot be derived — a CAM bill on a fabricated share, or on a pool actual
+  // that is really an absence of records, is never produced. Once frozen the
+  // statement is never rewritten: a second generate returns the ISSUED statement
+  // untouched and reports what would have changed. Provenance: generatedBy "engine".
   app.post("/api/cam-pools/:poolId/reconciliations/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -2065,73 +2361,49 @@ export function registerRentLedgerRoutes(app: Express): void {
         return Errors.badRequest(res, "This lease is not on the pool's property");
       }
 
-      // The pool actual: recoverable OPERATING spend on the pool's property over
-      // the period. The engine re-filters to operating + recoverable categories;
-      // we hand it every row in the window.
-      const expenseRows = await db
-        .select({
-          category: propertyExpenses.category,
-          amountCents: propertyExpenses.amountCents,
-          isOperating: propertyExpenses.isOperating,
-          incurredOn: propertyExpenses.incurredOn,
-        })
-        .from(propertyExpenses)
-        .where(and(
-          eq(propertyExpenses.organizationId, orgId),
-          eq(propertyExpenses.propertyId, pool.propertyId),
-          gte(propertyExpenses.incurredOn, pool.periodStart),
-          lte(propertyExpenses.incurredOn, pool.periodEnd),
-        ));
+      const inputs = await gatherCamInputs(orgId, pool, lease);
 
-      // What the tenant was actually billed in CAM estimates over the period —
-      // the real charges first, the lease's monthly estimate only as a fallback,
-      // and an honest zero (basis "none") when neither exists.
-      const camCharges = await db
-        .select({ amountCents: rentCharges.amountCents })
-        .from(rentCharges)
-        .where(and(
-          eq(rentCharges.organizationId, orgId),
-          eq(rentCharges.leaseId, lease.id),
-          eq(rentCharges.chargeType, "cam"),
-          gte(rentCharges.chargedForMonth, pool.periodStart),
-          lte(rentCharges.chargedForMonth, pool.periodEnd),
-        ));
-      const periodMonths = monthsInPeriod(pool.periodStart, pool.periodEnd);
-      let estimatedBilledCents = camCharges.reduce((s, c) => s + Number(c.amountCents), 0);
-      let estimatedBilledBasis = "from_charges";
-      if (camCharges.length === 0) {
-        if (lease.camEstimateMonthlyCents != null && periodMonths > 0) {
-          estimatedBilledCents = lease.camEstimateMonthlyCents * periodMonths;
-          estimatedBilledBasis = "lease_estimate";
-        } else {
-          estimatedBilledCents = 0;
-          estimatedBilledBasis = "none";
-        }
-      }
-
-      const result = computeCamReconciliation({
-        pool: {
-          recoverableCategories: pool.recoverableCategories,
-          totalRentableSqft: pool.totalRentableSqft,
-          adminFeeBps: pool.adminFeeBps,
-          grossUpPct: pool.grossUpPct != null ? Number(pool.grossUpPct) : null,
-          periodStart: pool.periodStart,
-          periodEnd: pool.periodEnd,
-        },
-        lease: {
-          camProRataBps: lease.camProRataBps,
-          rentableSqft: lease.rentableSqft,
-          camBaseYearStopCents: lease.camBaseYearStopCents,
-          leaseType: lease.leaseType,
-        },
-        rows: expenseRows.map((r) => ({
-          category: r.category,
-          amountCents: Number(r.amountCents),
-          isOperating: r.isOperating,
-          incurredOn: r.incurredOn,
-        })),
-        estimatedBilledCents,
+      // Input sufficiency FIRST. previewCamReconciliation refuses before the
+      // engine runs when an input is missing rather than absent-as-zero, and
+      // names which one — the details payload is what the worksheet renders.
+      const preview = previewCamReconciliation({
+        pool: inputs.poolInput,
+        lease: inputs.leaseInput,
+        rows: inputs.rows,
+        estimatedBilledCents: inputs.estimatedBilledCents,
       });
+      if (preview.blocked && preview.result === null) {
+        return Errors.badRequest(
+          res,
+          "This reconciliation is missing inputs it cannot guess. Nothing was generated.",
+          { missing: preview.blocking },
+        );
+      }
+      const result = preview.result!;
+
+      // A PARTIAL-PERIOD PROJECTION IS NOT A RECORD OF WHAT WAS BILLED.
+      //
+      // When no `cam` charges exist, estimated-billed falls back to the lease's
+      // monthly estimate. That is defensible for a tenancy spanning the whole
+      // pool period; it is not evidence for one that occupied the space for
+      // part of it. And the delta is a SIGNED figure — understating what was
+      // billed flips a balance owed into a "credit due to tenant", which this
+      // lane then FREEZES as a statement that cannot be corrected in-product.
+      // So refuse the freeze and say what would make it computable. The
+      // worksheet may still preview; only the permanent exhibit is blocked.
+      if (inputs.estimatedBilledBasis === "lease_estimate_partial") {
+        return Errors.badRequest(
+          res,
+          "This lease did not occupy the space for the whole pool period, and no CAM charges are on file for it — " +
+            "so what the tenant was actually billed is not recorded, only projected. A frozen statement will not be " +
+            "generated from a projection. Post the period's CAM charges, or shorten the pool to the tenancy.",
+          {
+            estimatedBilledBasis: inputs.estimatedBilledBasis,
+            projectionMonths: inputs.projectionMonths ?? null,
+            poolMonths: inputs.poolMonths ?? null,
+          },
+        );
+      }
 
       // Honest refusal — write nothing, say exactly why.
       if (result.refusedReason) {
@@ -2142,7 +2414,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         periodStart: pool.periodStart,
         periodEnd: pool.periodEnd,
         poolKind: pool.poolKind,
-        estimatedBilledBasis,
+        estimatedBilledBasis: inputs.estimatedBilledBasis,
       });
 
       const frozen = {
@@ -2159,15 +2431,61 @@ export function registerRentLedgerRoutes(app: Express): void {
         byCategoryCents: result.byCategoryCents as Record<string, number>,
         recoverableShareCents: result.recoverableShareCents,
         estimatedBilledCents: result.estimatedBilledCents,
-        estimatedBilledBasis,
+        estimatedBilledBasis: inputs.estimatedBilledBasis,
         deltaCents: result.deltaCents,
         coverageMonths: result.coverageMonths,
         coverageComplete: result.coverageComplete,
         statementMarkdown,
-        statementVersion: "cam-v1",
+        statementVersion: CAM_STATEMENT_VERSION,
         generatedAt: new Date(),
         generatedBy: "engine",
       };
+
+      // ── THE FREEZE ────────────────────────────────────────────────────────
+      // cam_reconciliations is an IMMUTABLE statement, and not recomputing on
+      // READ is only half of that. The other half is here: once a statement has
+      // been generated, a second generate — after a re-measure, a
+      // re-categorisation, a late expense — must NOT rewrite the exhibit the
+      // tenant was billed from. The issued statement is returned untouched and
+      // the divergence is reported as drift, so the operator can see that
+      // today's figures differ and decide what to do about it OUT of band
+      // (a credit, a corrected statement with its own paper trail) rather than
+      // having the original silently restated underneath them.
+      const [existingRow] = await db.select().from(camReconciliations)
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.poolId, pool.id),
+          eq(camReconciliations.leaseId, lease.id),
+        ));
+      const decision = decideCamStatementWrite({
+        existing: existingRow ? (existingRow as CamFrozenStatement) : null,
+        incoming: frozen,
+        intent: "engine",
+      });
+      if (decision.action === "refuse_frozen") {
+        logger.info("[W4] CAM re-generate refused — statement frozen", {
+          orgId, poolId: pool.id, leaseId: lease.id,
+          reconciliationId: existingRow?.id, driftFields: decision.drift.length,
+        });
+        return res.json({
+          // Explicitly false: a caller must be able to tell "your statement was
+          // generated" from "a statement already existed and stands". Without
+          // this discriminator a 200 reads as success and a UI would announce a
+          // generation that did not happen.
+          created: false,
+          reconciliation: existingRow,
+          frozen: true,
+          fingerprint: camStatementFingerprint(existingRow as CamFrozenStatement),
+          message: decision.reason,
+          // What a statement generated today would say instead. Reported, not applied.
+          drift: decision.drift,
+          coverage: {
+            months: existingRow?.coverageMonths ?? null,
+            periodMonths: monthsInPeriod(pool.periodStart, pool.periodEnd),
+            complete: existingRow?.coverageComplete ?? null,
+          },
+        });
+      }
 
       const [saved] = await db.insert(camReconciliations).values(frozen)
         .onConflictDoUpdate({
@@ -2200,7 +2518,11 @@ export function registerRentLedgerRoutes(app: Express): void {
         deltaCents: result.deltaCents, coverageComplete: result.coverageComplete,
       });
       return res.json({
+        created: true,
         reconciliation: saved,
+        frozen: true,
+        fingerprint: saved ? camStatementFingerprint(saved as CamFrozenStatement) : null,
+        drift: [],
         coverage: {
           months: result.coverageMonths,
           periodMonths: result.periodMonths,
@@ -2228,6 +2550,172 @@ export function registerRentLedgerRoutes(app: Express): void {
           eq(camReconciliations.poolId, pool.id),
         ));
       return res.json({ reconciliations, count: reconciliations.length });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── CAM pools, org-wide (Wave 3) ──────────────────────────────────────────
+  // The worksheet's index. The existing pools reader is per-property, which
+  // forces the surface to know a property id before it can show anything; an
+  // operator opening the Finance door does not. Read-only, org-scoped.
+  app.get("/api/cam-pools", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const pools = await db
+        .select({
+          pool: camExpensePools,
+          propertyAddress: properties.address,
+        })
+        .from(camExpensePools)
+        .leftJoin(properties, eq(properties.id, camExpensePools.propertyId))
+        .where(eq(camExpensePools.organizationId, orgId))
+        .orderBy(desc(camExpensePools.periodStart));
+
+      return res.json({
+        pools: pools.map((r) => ({ ...r.pool, propertyAddress: r.propertyAddress ?? null })),
+        count: pools.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── CAM reconciliation WORKSHEET (Wave 3) ─────────────────────────────────
+  // The operator's review step, and a strict DRY RUN: it computes what each
+  // lease's true-up WOULD be and writes nothing. Three things it is careful to
+  // be honest about, because each is a way a CAM worksheet lies:
+  //
+  //   • A lease whose inputs are incomplete gets `preview.blocked` and the
+  //     NAMED missing inputs — never a number derived from a guessed
+  //     denominator or from an absence of expense records read as $0.
+  //   • A lease whose statement is already FROZEN is shown that statement, its
+  //     fingerprint, and the drift against what today's figures would say. The
+  //     frozen numbers are what the tenant was billed; the drift is advisory.
+  //   • The pool-level totals are the same ones the generate would freeze,
+  //     because both come from gatherCamInputs.
+  //
+  // MONEY POSTURE: read-only, and even the generate this precedes only produces
+  // a STATEMENT — the resulting charge lands on the rent_charges ledger, on the
+  // operator's own rails.
+  app.get("/api/cam-pools/:poolId/worksheet", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const [pool] = await db.select().from(camExpensePools)
+        .where(and(
+          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.organizationId, orgId),
+        ));
+      if (!pool) return Errors.notFound(res, "CAM pool");
+
+      const [property] = await db
+        .select({ id: properties.id, address: properties.address })
+        .from(properties)
+        .where(and(eq(properties.id, pool.propertyId), eq(properties.organizationId, orgId)));
+
+      // Every lease on the pool's property whose term OVERLAPS the pool period.
+      // A lease that ended before the period began never occupied the space the
+      // pool covers, so billing it a share would be an invented tenancy.
+      const leases = await db.select().from(rentalLeases)
+        .where(and(
+          eq(rentalLeases.organizationId, orgId),
+          eq(rentalLeases.propertyId, pool.propertyId),
+          lte(rentalLeases.startDate, pool.periodEnd),
+          // endDate null = month-to-month, still running.
+          sql`(${rentalLeases.endDate} IS NULL OR ${rentalLeases.endDate} >= ${pool.periodStart})`,
+        ))
+        .orderBy(asc(rentalLeases.startDate));
+
+      const existing = await db.select().from(camReconciliations)
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.poolId, pool.id),
+        ));
+      const existingByLease = new Map(existing.map((r) => [r.leaseId, r]));
+
+      // Two reads for the whole sheet, not two per lease: the pool's actuals are
+      // the same for every lease on it, and the CAM charges are aggregated per
+      // lease in one grouped query.
+      const actuals = await gatherCamPoolActuals(orgId, pool);
+      const chargeTotals = await gatherCamChargeTotals(orgId, pool, leases.map((l) => l.id));
+
+      const rows = [];
+      for (const lease of leases) {
+        const inputs = {
+          ...resolveEstimatedBilled(pool, lease, chargeTotals.get(lease.id) ?? { count: 0, totalCents: 0 }),
+        };
+        const preview = previewCamReconciliation({
+          pool: actuals.poolInput,
+          lease: camLeaseInput(lease),
+          rows: actuals.rows,
+          estimatedBilledCents: inputs.estimatedBilledCents,
+        });
+        const statement = existingByLease.get(lease.id) ?? null;
+        const isFrozen = isFrozenCamStatement(statement as CamFrozenStatement | null);
+        rows.push({
+          lease: {
+            id: lease.id,
+            unitLabel: lease.unitLabel,
+            startDate: lease.startDate,
+            endDate: lease.endDate,
+            status: lease.status,
+            leaseType: lease.leaseType,
+            rentableSqft: lease.rentableSqft,
+            camProRataBps: lease.camProRataBps,
+            camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
+            camBaseYearStopCents: lease.camBaseYearStopCents,
+          },
+          preview: {
+            blocked: preview.blocked,
+            missing: preview.missing,
+            blocking: preview.blocking,
+            recoverableRowCount: preview.recoverableRowCount,
+            result: preview.result,
+          },
+          estimatedBilled: {
+            cents: inputs.estimatedBilledCents,
+            basis: inputs.estimatedBilledBasis,
+            chargeCount: inputs.chargeCount,
+          },
+          statement: statement
+            ? {
+                frozen: isFrozen,
+                reconciliation: statement,
+                fingerprint: isFrozen ? camStatementFingerprint(statement as CamFrozenStatement) : null,
+                // What a statement generated today would say instead of the
+                // issued one. Advisory only — the frozen figures are the bill.
+                drift: isFrozen && preview.result
+                  ? decideCamStatementWrite({
+                      existing: statement as CamFrozenStatement,
+                      incoming: {
+                        periodStart: pool.periodStart,
+                        periodEnd: pool.periodEnd,
+                        proRataBpsUsed: preview.result.proRataBps,
+                        proRataBasis: preview.result.proRataBasis,
+                        leasedSqftUsed: preview.result.leasedSqftUsed,
+                        totalRentableSqftUsed: preview.result.totalRentableSqftUsed,
+                        poolActualCents: preview.result.poolActualCents,
+                        recoverableShareCents: preview.result.recoverableShareCents,
+                        estimatedBilledCents: preview.result.estimatedBilledCents,
+                        estimatedBilledBasis: inputs.estimatedBilledBasis,
+                        deltaCents: preview.result.deltaCents,
+                        coverageMonths: preview.result.coverageMonths,
+                        coverageComplete: preview.result.coverageComplete,
+                      },
+                      intent: "engine",
+                    }).drift
+                  : [],
+              }
+            : { frozen: false, reconciliation: null, fingerprint: null, drift: [] },
+        });
+      }
+
+      return res.json({
+        pool: { ...pool, propertyAddress: property?.address ?? null },
+        periodMonths: monthsInPeriod(pool.periodStart, pool.periodEnd),
+        rows,
+        count: rows.length,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }

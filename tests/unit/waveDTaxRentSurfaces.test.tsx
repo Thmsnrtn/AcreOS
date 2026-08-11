@@ -35,6 +35,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { queryClient } from "../../client/src/lib/queryClient";
+// The SHARED aging engine — the fixture builds `/api/rent/aging`'s ladder with
+// the same function the route uses, so this test cannot pin a shape the server
+// no longer serves.
+import { bucketAging } from "@shared/finance/agingLadder";
 
 // PageShell drags in the sidebar, topbar and the Pax rail context — none of
 // which these assertions are about.
@@ -733,48 +737,83 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
     payments: [],
   };
 
+  const RENT_AGING_AS_OF = "2026-07-11";
+
+  /**
+   * The `/api/rent/aging` body, built by the same engine the route uses.
+   *
+   * Each charge carries the engine's own `daysPastDue` and `bucket`, exactly as
+   * the route derives them — so the late-fee dialog's "N days late" here is the
+   * same number the board bucketed by, which is the whole point of the shared
+   * ladder.
+   */
+  function rentAgingBody() {
+    const open = [
+      {
+        id: JUNE_ID,
+        leaseId: LEASE_ID,
+        chargedForMonth: "2026-06-01",
+        dueDate: "2026-06-01",
+        amountCents: 140_000,
+        balanceCents: 70_050,
+        lateFeeCents: 5_000,
+        paidCents: 74_950,
+        legalPosture: "late",
+        chargeType: "base_rent",
+      },
+      {
+        id: JULY_ID,
+        leaseId: LEASE_ID,
+        chargedForMonth: "2026-07-01",
+        dueDate: "2026-07-01",
+        amountCents: 140_000,
+        balanceCents: 140_000,
+        lateFeeCents: 0,
+        paidCents: 0,
+        legalPosture: "ok",
+        chargeType: "base_rent",
+      },
+    ];
+    const ladder = bucketAging({
+      asOf: RENT_AGING_AS_OF,
+      rows: open.map((c) => ({
+        id: c.id,
+        dueDate: c.dueDate,
+        outstandingCents: c.balanceCents,
+      })),
+    });
+    const agedById = new Map(ladder.buckets.flatMap((b) => b.rows).map((r) => [r.id, r]));
+    return {
+      ladder,
+      scope: {
+        included: "Every rent charge with an open balance.",
+        settledChargesExcluded: 0,
+        settledNote:
+          "Charges paid in full are not on the board. They are still on each lease ledger.",
+      },
+      charges: open.map((c) => {
+        const aged = agedById.get(c.id) ?? null;
+        return { ...c, daysPastDue: aged ? aged.daysPastDue : null, bucket: aged ? aged.bucket : null };
+      }),
+    };
+  }
+
   function rentHandler(extra?: Handler): Handler {
     return (call) => {
       const fromExtra = extra?.(call);
       if (fromExtra) return fromExtra;
       const { url, method } = call;
       if (url === "/api/rent/aging") {
-        return {
-          body: {
-            asOf: "2026-07-11",
-            totalsByBucket: {
-              current: { count: 0, totalCents: 0 },
-              d1_30: { count: 1, totalCents: 140_000 },
-              d31_60: { count: 1, totalCents: 70_050 },
-              d61_90: { count: 0, totalCents: 0 },
-              d90_plus: { count: 0, totalCents: 0 },
-            },
-            charges: [
-              {
-                id: JUNE_ID,
-                lease_id: LEASE_ID,
-                charged_for_month: "2026-06-01",
-                due_date: "2026-06-01",
-                amount_cents: 140_000,
-                balance_cents: 70_050,
-                late_fee_cents: 5_000,
-                legal_posture: "late",
-                days_overdue: 40,
-              },
-              {
-                id: JULY_ID,
-                lease_id: LEASE_ID,
-                charged_for_month: "2026-07-01",
-                due_date: "2026-07-01",
-                amount_cents: 140_000,
-                balance_cents: 140_000,
-                late_fee_cents: 0,
-                legal_posture: "ok",
-                days_overdue: 10,
-              },
-            ],
-          },
-        };
+        // Wave 3 (2026-08-11): the endpoint now returns the SHARED engine's
+        // ladder rather than hand-bucketed `totalsByBucket`. The fixture calls
+        // the real engine instead of restating a ladder by hand, so it cannot
+        // drift from the shape the route actually serves — the same reason the
+        // route stopped hand-writing 30/60/90 in SQL.
+        //
+        // June is due 2026-06-01 (40 days past due at the fixture as-of) and
+        // July 2026-07-01 (10 days) — the same two ages this fixture always
+        // asserted, now produced by the engine rather than typed in.
+        return { body: rentAgingBody() };
       }
       if (url === "/api/leases") {
         return {

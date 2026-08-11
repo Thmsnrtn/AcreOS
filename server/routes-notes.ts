@@ -58,6 +58,15 @@ import {
   type AcquiredNoteScheduleFacts,
   type NoteDelinquencyStatus,
 } from "./services/notes/acquiredNoteSchedule";
+// THE aging ladder — one engine, shared with the rent ledger's /api/rent/aging
+// so the two books cannot come to disagree about what "60 days late" means.
+import {
+  bucketAging,
+  conservationHolds,
+  isCalendarDate,
+  scheduleWindowDue,
+  type AgeableRow,
+} from "@shared/finance/agingLadder";
 // Status derivation is owned by the nightly aging sweep and REUSED here so a
 // payment that clears arrears and the sweep can never disagree about "late".
 import {
@@ -1358,6 +1367,278 @@ export function registerNoteRoutes(app: Express): void {
           return Errors.badRequest(res, "Note number is already in use for this organization");
         }
         logger.error("notes.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Aging ladder for the acquired book ───────────────────────────────────
+  //
+  // GET /api/notes/aging — registered BEFORE /api/notes/:id (the :id matcher
+  // would otherwise capture the literal "aging"; see insurance-watch below for
+  // the same bug caught in 2026-07).
+  //
+  // ONE LADDER, BOTH BOOKS (Wave 3, 2026-08-11). The rungs and the day count
+  // come from `@shared/finance/agingLadder`, the same engine `/api/rent/aging`
+  // uses. Neither book owns a copy of 30/60/90.
+  //
+  // ── WHAT IS AGED, AND WHY IT IS NOT THE PRINCIPAL ─────────────────────────
+  // The acquired book records a SCHEDULE (`paymentDueDay`, `maturityDate`, a
+  // server-derived `nextPaymentDate`), not a per-period charge ledger. So:
+  //
+  //   • The row's DUE DATE is `nextPaymentDate` — the oldest unsatisfied
+  //     scheduled due date, already derived through `nextPaymentVerdict` and
+  //     carrying that function's anti-fabrication refusals. When it is null the
+  //     note is NOT AGED and carries the book's own reason
+  //     (`history_predates_acquisition`, `paid_through_maturity`, ...). It is
+  //     never filed as "current": current is a finding we have not made.
+  //
+  //   • The row's AMOUNT is the PAST-DUE amount — (periods that have come due
+  //     and are unsatisfied) x (the scheduled payment), net of unapplied funds
+  //     the borrower has already sent. It is deliberately NOT
+  //     `currentBalanceCents`: bucketing a whole loan principal into "90+ days"
+  //     would assert an acceleration nobody declared, against a borrower who
+  //     owes one or two payments. That is the fabrication this endpoint exists
+  //     to avoid.
+  //
+  //   • When `paymentAmountCents` is not on file the period count is known but
+  //     the dollars are not. The note still ages by its due date, its amount is
+  //     reported as UNKNOWN, and the bucket it lands in reports an INCOMPLETE
+  //     total rather than a number that silently omits it.
+  //
+  // Terminal notes (paid_off, sold) are EXCLUDED and said so — the book is done
+  // with them and aging a sold note would assert an obligation against a
+  // borrower who owes this org nothing (the same rule the nightly sweep holds).
+  //
+  // MONEY POSTURE: read-only. Describes recorded balances; collects nothing.
+  app.get(
+    "/api/notes/aging",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const rawAsOf = typeof req.query.asOf === "string" ? req.query.asOf.trim() : "";
+        // Shape AND validity, by the engine's own parser — a regex would wave
+        // through "2026-13-45" and the engine would then throw into a 500.
+        if (rawAsOf && !isCalendarDate(rawAsOf)) {
+          return Errors.badRequest(res, "asOf must be a real calendar date in YYYY-MM-DD form");
+        }
+        const asOf = rawAsOf || new Date().toISOString().slice(0, 10);
+        const asOfDate = new Date(`${asOf}T00:00:00.000Z`);
+
+        // ORG-SCOPED AT THE QUERY.
+        const book = await db
+          .select({
+            id: acquiredNotes.id,
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            status: acquiredNotes.status,
+            paymentAmountCents: acquiredNotes.paymentAmountCents,
+            paymentDueDay: acquiredNotes.paymentDueDay,
+            currentBalanceCents: acquiredNotes.currentBalanceCents,
+            unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
+            nextPaymentDate: acquiredNotes.nextPaymentDate,
+            paidThroughDate: acquiredNotes.paidThroughDate,
+            firstPaymentDate: acquiredNotes.firstPaymentDate,
+            originationDate: acquiredNotes.originationDate,
+            maturityDate: acquiredNotes.maturityDate,
+            acquisitionDate: acquiredNotes.acquisitionDate,
+            delinquencyStatus: acquiredNotes.delinquencyStatus,
+          })
+          .from(acquiredNotes)
+          .where(eq(acquiredNotes.organizationId, orgId));
+
+        // ONE ROW PER PAST-DUE PERIOD, not one per note.
+        //
+        // The first version emitted a single row per note carrying the SUM of
+        // every unsatisfied payment, dated at the OLDEST period. On a note
+        // three payments behind that filed the whole $3,000 at 88 days — the
+        // 61-90 rung — when the truth is $1,000 at 88d, $1,000 at 57d and
+        // $1,000 at 27d. The rent book, which has a real charge row per month,
+        // spreads the identical borrower reality across three rungs. Two books
+        // disagreeing about the same facts is exactly what this shared engine
+        // exists to prevent, and the bucket boundaries being shared does not
+        // make the bucket TOTALS mean the same thing unless the rows do.
+        const rows: AgeableRow[] = book.flatMap((n): AgeableRow[] => {
+          const terminal = (TERMINAL_NOTE_STATUSES as readonly string[]).includes(n.status);
+          const nextDue = n.nextPaymentDate ? String(n.nextPaymentDate).slice(0, 10) : null;
+          const scheduled = Number(n.paymentAmountCents);
+          const scheduleKnown = Number.isFinite(scheduled) && scheduled > 0;
+
+          const window = scheduleWindowDue({
+            firstUnsatisfiedDueDate: nextDue,
+            paymentDueDay: Number(n.paymentDueDay),
+            maturityDate: n.maturityDate ? String(n.maturityDate).slice(0, 10) : null,
+            asOf,
+          });
+
+          // Money the borrower has already sent that no period has consumed.
+          const unapplied = Math.max(0, Number(n.unappliedBalanceCents) || 0);
+
+          // Each refusal gets its OWN sentence. The single no-due-date sentence
+          // was false for `invalid_due_day` / `unparseable_maturity` /
+          // `anchor_does_not_match_due_day`, all of which are reachable WITH a
+          // stored due date — telling the operator "no scheduled due date on
+          // file" while one sits on the row is its own small fabrication.
+          const refusalReason = (r: NonNullable<typeof window.refusal>): string => {
+            switch (r) {
+              case "no_first_unsatisfied_due_date":
+                return "No scheduled due date on file, so no period can be counted as past due.";
+              case "unparseable_due_date":
+                return "The stored next-payment date could not be read as a date, so no period can be counted.";
+              case "invalid_due_day":
+                return "This note's payment due-day is missing or out of range, so its schedule cannot be walked.";
+              case "unparseable_maturity":
+                return "No readable maturity date, so the schedule has no contractual stop and is not walked.";
+              case "anchor_does_not_match_due_day":
+                return "The next-payment date and the payment due-day describe different schedules, so the number of periods past due cannot be established.";
+              default:
+                return "This note's schedule cannot be established, so no period can be counted as past due.";
+            }
+          };
+
+          const baseMeta = {
+            noteNumber: n.noteNumber,
+            payerName: n.payerName,
+            status: n.status,
+            // The REGULATORY band, carried alongside the AR rung so a surface
+            // can show both without conflating them. Different boundaries,
+            // different question — see the header of agingLadder.ts.
+            delinquencyStatus: n.delinquencyStatus,
+            scheduledPaymentCents: scheduleKnown ? scheduled : null,
+            unappliedCreditCents: unapplied,
+            currentBalanceCents: Number(n.currentBalanceCents),
+            cappedAtMaturity: window.cappedAtMaturity,
+          };
+
+          // Terminal notes are handed over so the engine can REPORT them as
+          // excluded rather than silently dropping them.
+          if (terminal) {
+            return [
+              {
+                id: n.id,
+                dueDate: nextDue,
+                outstandingCents: null,
+                reason: null,
+                excludedCode: `terminal_${n.status}`,
+                excludedReason:
+                  n.status === "paid_off"
+                    ? "Paid off — the book is closed on this note, so it is not aged."
+                    : "Sold — this org no longer holds the paper, so it is not aged.",
+                meta: { ...baseMeta, periodsPastDue: null, grossPastDueCents: null },
+              },
+            ];
+          }
+
+          // A refusal, or an unknown payment amount, means the money is UNKNOWN
+          // — never zero. `periodsDue` is 0 on a refusal, and multiplying it by
+          // a known payment produced a confident $0.00 past due for a note the
+          // book had just refused to date, which defeats the engine's own rule
+          // that an incomplete total must say so.
+          if (window.refusal || !scheduleKnown) {
+            return [
+              {
+                id: n.id,
+                dueDate: nextDue,
+                outstandingCents: null,
+                reason:
+                  nextDue === null
+                    ? noteNextDueReason(
+                        {
+                          nextPaymentDate: nextDue,
+                          paymentDueDay: n.paymentDueDay,
+                          firstPaymentDate: n.firstPaymentDate ? String(n.firstPaymentDate).slice(0, 10) : null,
+                          originationDate: n.originationDate ? String(n.originationDate).slice(0, 10) : null,
+                          maturityDate: n.maturityDate ? String(n.maturityDate).slice(0, 10) : null,
+                          paidThroughDate: n.paidThroughDate ? String(n.paidThroughDate).slice(0, 10) : null,
+                          acquisitionDate: n.acquisitionDate ? String(n.acquisitionDate).slice(0, 10) : null,
+                        },
+                        asOfDate,
+                      )
+                    : window.refusal
+                      ? refusalReason(window.refusal)
+                      : "This note records no scheduled payment amount, so the past-due dollars cannot be computed. The periods are counted; the money is not.",
+                excludedCode: null,
+                excludedReason: null,
+                meta: {
+                  ...baseMeta,
+                  periodsPastDue: window.refusal ? null : window.periodsDue,
+                  grossPastDueCents: null,
+                },
+              },
+            ];
+          }
+
+          // Nothing due yet — still handed over, so the note is accounted for.
+          if (window.dueDates.length === 0) {
+            return [
+              {
+                id: n.id,
+                dueDate: nextDue,
+                outstandingCents: 0,
+                reason: null,
+                excludedCode: null,
+                excludedReason: null,
+                meta: { ...baseMeta, periodsPastDue: 0, grossPastDueCents: 0 },
+              },
+            ];
+          }
+
+          // Unapplied credit is consumed OLDEST FIRST, the way a servicer
+          // applies it, so the credit retires the most delinquent period
+          // rather than being smeared across all of them.
+          let credit = unapplied;
+          return window.dueDates.map((dueDate, i) => {
+            const applied = Math.min(credit, scheduled);
+            credit -= applied;
+            return {
+              id: `${n.id}#${dueDate}`,
+              dueDate,
+              outstandingCents: Math.max(0, scheduled - applied),
+              reason: null,
+              excludedCode: null,
+              excludedReason: null,
+              meta: {
+                ...baseMeta,
+                noteId: n.id,
+                periodDueDate: dueDate,
+                periodIndex: i,
+                periodsPastDue: window.dueDates.length,
+                grossPastDueCents: scheduled,
+                creditAppliedCents: applied,
+              },
+            };
+          });
+        });
+
+        const ladder = bucketAging({ asOf, rows });
+        // Checked on every response, not only in the test suite: every note
+        // handed in came back out, and the money adds up.
+        if (!conservationHolds(ladder, rows)) {
+          logger.error("notes.aging conservation failed", undefined, {
+            orgId,
+            asOf,
+            rowCount: rows.length,
+          });
+        }
+
+        return res.json({
+          book: ACQUIRED_BOOK_ID,
+          moneyUnit: "integer_cents",
+          ladder,
+          scope: {
+            included:
+              "Every acquired note this org still holds, aged by its oldest unsatisfied scheduled due date.",
+            aged: "past-due scheduled payments, net of unapplied funds",
+            notAged:
+              "Principal is NOT aged. Bucketing a whole loan balance would assert an acceleration nobody declared.",
+            terminalNotesExcluded: ladder.excluded.count,
+          },
+        });
+      } catch (err) {
+        logger.error("notes.aging failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

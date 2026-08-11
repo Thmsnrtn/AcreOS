@@ -1,10 +1,15 @@
 {
   "name": "colon-any",
-  "description": "The `: any` type ANNOTATION is the uncounted sibling of the ratcheted `as any` cast (audit F-06-1). `: any` on a tenant key (organizationId), a money value, an auth field, or external input erases the type checker exactly as `as any` does — the leads.organizationId-widening class the as-any ratchet exists to stop, walking straight past it because that ratchet only matches the `as any` cast form. This freezes the annotation count over server/ and drives it DOWN. Remediate the tenant-key/money/auth subset first; lower baselineCount as annotations are typed away. New `: any` now fails CI.",
+  "description": "The `: any` type ANNOTATION is the uncounted sibling of the ratcheted `as any` cast (audit F-06-1). `: any` on a tenant key (organizationId), a money value, an auth field, or external input erases the type checker exactly as `as any` does \u2014 the leads.organizationId-widening class the as-any ratchet exists to stop, walking straight past it because that ratchet only matches the `as any` cast form. This freezes the annotation count over server/ and drives it DOWN. Remediate the tenant-key/money/auth subset first; lower baselineCount as annotations are typed away. New `: any` now fails CI.",
   "pattern": ":\\s*any\\b",
-  "globs": ["server/**/*.ts"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 3017,
+  "globs": [
+    "server/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "baselineCount": 3010,
   "direction": "down",
-  "lastBumpNote": "3019 -> 3018 on 2026-08-09: developer-vertical Stage 1 extraction. The `threshold?: any` annotation on routes-lot-pricing.ts's inline evaluateRules moved into the pure @shared/subdivision/lotPricing engine and was retyped to `number | string | boolean` (the lot_pricing_rules.rules schema type), so the annotation is gone from server/. Locked in per this ratchet's strictly-down rule."
+  "lastBumpNote": "3017 -> 3010 on 2026-08-11: EARNED DROP, locked in the same commit as the work that earned it, per this ratchet's own rule. Fleet 13 (Wave 3 depth-per-vertical) replaced loosely-typed rows with real interfaces across the aging ladder, the CAM worksheet and the payoff-quote renderer. Not a bypass and not a bulk sweep \u2014 the count fell out of ordinary typed construction, and the ratchet flagged it as stale-high, which is exactly the mechanism working. PRIOR NOTE \u2014 3019 -> 3018 on 2026-08-09: developer-vertical Stage 1 extraction. The `threshold?: any` annotation on routes-lot-pricing.ts's inline evaluateRules moved into the pure @shared/subdivision/lotPricing engine and was retyped to `number | string | boolean` (the lot_pricing_rules.rules schema type), so the annotation is gone from server/. Locked in per this ratchet's strictly-down rule."
 }
