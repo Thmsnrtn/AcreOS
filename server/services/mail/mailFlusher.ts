@@ -123,6 +123,13 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
     speed: ship.speed as MailShipmentSpeed,
     personalizationRequired: false,
     feature: "outreach_mail_queue",
+    // Outreach mail is always the CUSTOMER writing to THEIR counterparty, so
+    // it needs the org's own printer account (or the free-tier wedge).
+    purpose: "counterparty",
+    // This shipment's own pieces are already counted in mail_shipments by the
+    // time the flusher runs — excluding it keeps the wedge cap from refusing
+    // a shipment the queue legitimately admitted.
+    wedgeExcludeShipmentId: ship.id,
   };
 }
 

@@ -22,6 +22,7 @@ import type {
   ProviderSendResult,
 } from "../router";
 import { averageCostCentsPerPiece } from "../router";
+import { assertMailLane } from "../mailLanes";
 import { logger } from "../../../utils/logger";
 
 // Approximate Lob 2026 retail per-piece cost in cents (HTML templates).
@@ -34,16 +35,19 @@ const LOB_COSTS: Record<PieceType, number> = {
   handwritten: 350, // Lob handwriting integration premium
 };
 
-function lobApiKey(): string | null {
-  const isProd = process.env.NODE_ENV === "production";
-  return (isProd ? process.env.LOB_LIVE_API_KEY : process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY) ?? null;
-}
-
 export const lobAdapter: MailProvider = {
   name: "lob",
 
+  /**
+   * R-2: the adapter is always available; WHICH credential a given org may
+   * use is an org-scoped question answered at send time by
+   * `mail/mailLanes.assertMailLane`. This used to read the platform env keys
+   * directly, so an org with its OWN connected Lob account could not send at
+   * all when the platform key was unset — and the router would report "no
+   * providers available" rather than the truth.
+   */
   isConfigured(): boolean {
-    return Boolean(lobApiKey());
+    return true;
   },
 
   async quote(shipment: MailShipment): Promise<ProviderQuote> {
@@ -61,9 +65,15 @@ export const lobAdapter: MailProvider = {
   },
 
   async send(shipment: MailShipment): Promise<ProviderSendResult> {
-    if (!this.isConfigured()) {
-      throw new Error("Lob is not configured (LOB_LIVE_API_KEY / LOB_TEST_API_KEY unset).");
-    }
+    // THE LANE, once, for the whole batch — before a single piece is printed.
+    // Throws MailLaneRefusal, which MailRouter.route deliberately does NOT
+    // treat as a provider failure to fall through from.
+    const laneCredential = await assertMailLane({
+      organizationId: shipment.organizationId,
+      purpose: shipment.purpose,
+      pieceCount: shipment.pieces.length,
+      excludeShipmentId: shipment.wedgeExcludeShipmentId,
+    });
 
     // Defer to the legacy directMailService so the existing Pillar 1.6
     // ledger hook continues to write opex_available exactly once.
@@ -108,6 +118,8 @@ export const lobAdapter: MailProvider = {
           htmlContent: html,
           color: piece.vars?.color === "true",
           doubleSided: piece.vars?.doubleSided === "true",
+          purpose: shipment.purpose,
+          laneCredential,
         });
         pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
         totalCostCents += LOB_COSTS[piece.pieceType];
@@ -121,6 +133,8 @@ export const lobAdapter: MailProvider = {
           frontHtml: piece.vars?.frontHtml ?? piece.templateId ?? "",
           backHtml: piece.vars?.backHtml ?? "",
           size: size as "4x6" | "6x9",
+          purpose: shipment.purpose,
+          laneCredential,
         });
         pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
         totalCostCents += LOB_COSTS[piece.pieceType];

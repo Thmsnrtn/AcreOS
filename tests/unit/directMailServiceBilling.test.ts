@@ -11,6 +11,16 @@
  *
  * None of this had direct coverage. Simulation mode is also locked: no Lob
  * client construction, no billing, honest testMode.
+ *
+ * R-2 UPDATE (founder ruling 2026-08-11): question 1 gained a THIRD answer.
+ * Credential resolution moved behind `mail/mailLanes.assertMailLane`, and
+ * counterparty mail on the PLATFORM key is now allowed only inside the
+ * free-tier activation wedge. So "no BYOK ⇒ platform key" split in two:
+ *   • free-tier org inside the wedge → platform key, platform pays (the
+ *     original billing invariants below are preserved verbatim on this path);
+ *   • any other org with no connected Lob account → REFUSED, nothing printed,
+ *     nothing charged.
+ * The original assertions were rewritten to that truth, not deleted.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -18,6 +28,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const state = {
   byokKey: null as string | null,
   byokToggleActive: false,
+  /** R-2: the org's subscription tier decides whether the wedge applies. */
+  tier: "free",
+  /** R-2: lifetime non-cancelled wedge pieces already spent. */
+  piecesUsed: 0,
   platformKey: { apiKey: "test_platform_key", isTestKey: true },
   hasCredits: true,
   simulate: false,
@@ -70,6 +84,32 @@ vi.mock("../../server/services/byok/key-vault", () => ({
   getByokCredential: async () => state.byokKey,
 }));
 
+// R-2: the lane's org-credential read and its two wedge lookups.
+vi.mock("../../server/services/providers/resolveProviderCredential", () => ({
+  resolveProviderCredential: async () => state.byokKey,
+}));
+vi.mock("../../server/db", () => {
+  const chain = (rows: any[]) => {
+    const c: any = {
+      from: () => c,
+      where: () => c,
+      limit: () => c,
+      then: (res: any, rej: any) => Promise.resolve(rows).then(res, rej),
+    };
+    return c;
+  };
+  return {
+    db: {
+      select: (projection: any) => {
+        const keys = Object.keys(projection ?? {});
+        if (keys.includes("tier")) return chain([{ tier: state.tier }]);
+        if (keys.includes("used")) return chain([{ used: state.piecesUsed }]);
+        return chain([]);
+      },
+    },
+  };
+});
+
 vi.mock("../../server/services/byok/toggle", () => ({
   isByokEnabled: async () => state.byokToggleActive,
 }));
@@ -118,6 +158,8 @@ const BASE_OPTIONS = {
 beforeEach(() => {
   state.byokKey = null;
   state.byokToggleActive = false;
+  state.tier = "free";
+  state.piecesUsed = 0;
   state.platformKey = { apiKey: "test_platform_key", isTestKey: true };
   state.hasCredits = true;
   state.simulate = false;
@@ -140,7 +182,9 @@ describe("sendPostcard — payer + ledger semantics", () => {
     expect(state.opexPosts).toHaveLength(0); // their Lob bill, not our COGS
   });
 
-  it("platform key (interlock unarmed): send succeeds but is honestly testMode", async () => {
+  it("platform key inside the free-tier wedge (interlock unarmed): send succeeds but is honestly testMode", async () => {
+    state.tier = "free";
+    state.piecesUsed = 0;
     const result = await sendPostcard(BASE_OPTIONS);
 
     expect(state.lobCreateCalls[0].apiKey).toBe("test_platform_key");
@@ -154,6 +198,7 @@ describe("sendPostcard — payer + ledger semantics", () => {
   });
 
   it("platform send with insufficient credits refuses BEFORE any Lob call", async () => {
+    state.tier = "free";
     state.hasCredits = false;
 
     await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/Insufficient credits/);
@@ -162,8 +207,42 @@ describe("sendPostcard — payer + ledger semantics", () => {
   });
 
   it("passes use_type to Lob (defaults to marketing)", async () => {
+    state.tier = "free";
     await sendPostcard(BASE_OPTIONS);
     expect(state.lobCreateCalls[0].params.use_type).toBe("marketing");
+  });
+
+  // ── R-2: the third answer to "who pays" ──────────────────────────────────
+  it("PAID org with no connected Lob account: refused, nothing printed, nothing charged", async () => {
+    state.byokKey = null;
+    state.tier = "pro";
+
+    await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/Connect your Lob account/i);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(state.usageRecorded).toHaveLength(0);
+    expect(state.opexPosts).toHaveLength(0);
+  });
+
+  it("FREE org whose wedge is spent: refused, nothing printed, nothing charged", async () => {
+    state.byokKey = null;
+    state.tier = "free";
+    state.piecesUsed = 5;
+
+    await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/free letters are in the mail/i);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(state.usageRecorded).toHaveLength(0);
+    expect(state.opexPosts).toHaveLength(0);
+  });
+
+  it("BYOK org is never wedge-capped, whatever the tier or piece count", async () => {
+    state.byokKey = "live_customer_key";
+    state.byokToggleActive = true;
+    state.tier = "pro";
+    state.piecesUsed = 10_000;
+
+    const result = await sendPostcard(BASE_OPTIONS);
+    expect(result.credentialSource).toBe("organization");
+    expect(state.lobCreateCalls[0].apiKey).toBe("live_customer_key");
   });
 
   it("simulation mode: no Lob client, no billing, honest testMode", async () => {

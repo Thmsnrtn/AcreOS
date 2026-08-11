@@ -41,6 +41,32 @@ interface FinancialHealth {
   runwayStatus: "healthy" | "warning" | "critical";
 }
 
+// ─── Named pre-authorisation (founder ruling R-3, 2026-08-11) ────────────────
+//
+// `auto_execute` used to default to TRUE, so a seeded row could run an
+// unattended crisis action because a schema default said so. The founder ruled
+// that founder-side unattended handling stays available but must be a NAMED
+// grant: someone is on record as having authorised it.
+//
+// ⚠️ HONEST SCOPE: `evaluateTradeoffs()` below currently has NO call site in
+// the repo (only `seedTradeoffs` and `evaluateFinancialHealth` are reached, from
+// ceoAbsenceMode.ts and permanentSovereignty.ts). This gate therefore hardens a
+// DORMANT path — it is a correctness fix to a hazard, not a change to live
+// behaviour. Do not report it as having stopped a running automation.
+
+export interface NameableTradeoff {
+  autoExecute?: boolean | null;
+  preAuthorizedBy?: string | null;
+}
+
+/**
+ * True only when unattended execution was granted BY SOMEONE. `auto_execute`
+ * on its own — the shape every pre-R-3 row has — is not a grant.
+ */
+export function isNamedPreAuthorization(tradeoff: NameableTradeoff): boolean {
+  return Boolean(tradeoff.autoExecute) && Boolean(tradeoff.preAuthorizedBy?.trim());
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class CrisisLeadershipEngine {
@@ -49,6 +75,12 @@ class CrisisLeadershipEngine {
 
   /**
    * Seed default pre-authorized trade-offs.
+   *
+   * R-3: these seed as CANDIDATES, not grants — `autoExecute: false` and no
+   * `preAuthorizedBy`. Seeding them armed would just recreate the implicit
+   * default under a new name, and stamping a grantor here would fabricate a
+   * consent nobody gave. A founder names the grant (setting `auto_execute`
+   * AND `pre_authorized_by`) to turn one into unattended handling.
    */
   async seedTradeoffs(): Promise<void> {
     const defaults = [
@@ -57,35 +89,35 @@ class CrisisLeadershipEngine {
         condition: "Service uptime drops below 99% in a 1-hour window",
         action: "Disable non-critical features (content generation, analytics, background jobs) to preserve core functionality (auth, deal management, payments)",
         severity: "high",
-        autoExecute: true,
+        autoExecute: false,
       },
       {
         tradeoffId: "security_breach_isolation",
         condition: "Security breach or unauthorized access detected",
         action: "Immediately isolate affected systems, revoke compromised credentials, activate incident response. No data egress allowed.",
         severity: "critical",
-        autoExecute: true,
+        autoExecute: false,
       },
       {
         tradeoffId: "revenue_drop_retention",
         condition: "Daily revenue drops more than 20% compared to 7-day average",
         action: "Freeze all discretionary spending, activate retention playbooks for at-risk accounts, alert Forge + Ledger for emergency review",
         severity: "high",
-        autoExecute: true,
+        autoExecute: false,
       },
       {
         tradeoffId: "error_rate_rollback",
         condition: "API error rate exceeds 5% for more than 10 minutes",
         action: "Disable newest deployment, rollback to previous stable version, notify Sentinel + Atlas",
         severity: "high",
-        autoExecute: true,
+        autoExecute: false,
       },
       {
         tradeoffId: "ai_provider_failover",
         condition: "Primary AI provider (OpenAI) unavailable or responding >5s",
         action: "Route all AI requests to fallback provider (Anthropic). Queue non-urgent requests.",
         severity: "medium",
-        autoExecute: true,
+        autoExecute: false,
       },
     ];
 
@@ -130,16 +162,33 @@ class CrisisLeadershipEngine {
           break;
       }
 
-      if (triggered && tradeoff.autoExecute) {
+      // R-3 (founder ruling 2026-08-11): unattended crisis execution stays
+      // allowed — a 3am outage should not wait for a human — but it must be a
+      // NAMED pre-authorisation, never an implicit default. `auto_execute`
+      // alone is no longer sufficient: `pre_authorized_by` must name who
+      // granted it. A row carrying auto_execute=true from the old schema
+      // default with no grantor is escalated rather than silently run.
+      let executed = false;
+      if (triggered && isNamedPreAuthorization(tradeoff)) {
         await this.executeTradeoff(tradeoff.tradeoffId, metrics);
+        executed = true;
+      } else if (triggered && tradeoff.autoExecute) {
+        logger.warn(
+          `[Crisis] Trade-off ${tradeoff.tradeoffId} triggered with auto_execute set but NO named ` +
+            `pre-authorisation (pre_authorized_by is null) — refusing to auto-execute. ` +
+            `Name the grant to restore unattended handling.`,
+        );
       }
 
+      // `executedAt` reports what actually ran. It used to be stamped from
+      // `triggered` alone, which would now claim an execution the gate above
+      // refused — a fabricated outcome. It tracks `executed`.
       evaluations.push({
         tradeoffId: tradeoff.tradeoffId,
         triggered,
         condition: tradeoff.condition,
         action: tradeoff.action,
-        executedAt: triggered ? new Date().toISOString() : undefined,
+        executedAt: executed ? new Date().toISOString() : undefined,
       });
     }
 

@@ -2,9 +2,13 @@ import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
 import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
+import {
+  assertMailLane,
+  type MailCredential,
+  type MailPurpose,
+} from './mail/mailLanes';
 
 interface RecipientAddress {
   line1: string;
@@ -27,6 +31,15 @@ interface SendPostcardOptions {
   // default is configured — omitting it makes every send fail. Default to
   // marketing (land-owner outreach is promotional); override for transactional.
   useType?: 'marketing' | 'operational';
+  /** Purpose lane (mail/mailLanes.ts). Defaults to counterparty. */
+  purpose?: MailPurpose;
+  /**
+   * A credential ALREADY cleared by assertMailLane for this batch — passed by
+   * lobAdapter so a 500-piece shipment checks the lane once instead of 500
+   * times. Only mailLanes can mint one, so this is not a bypass: without it
+   * this function calls assertMailLane itself.
+   */
+  laneCredential?: MailCredential;
 }
 
 interface SendLetterOptions {
@@ -39,6 +52,10 @@ interface SendLetterOptions {
   doubleSided?: boolean;
   skipCredits?: boolean;
   useType?: 'marketing' | 'operational';
+  /** Purpose lane (mail/mailLanes.ts). Defaults to counterparty. */
+  purpose?: MailPurpose;
+  /** See SendPostcardOptions.laneCredential. */
+  laneCredential?: MailCredential;
 }
 
 interface SendResult {
@@ -86,56 +103,35 @@ interface LobClientResult {
   isTestKey: boolean;
 }
 
-export async function getLobClient(orgId: number): Promise<LobClientResult> {
-  // Universal BYOK (2026-05-22) — preferred path. Falls back to the
-  // legacy organization_integrations row, then platform env.
-  try {
-    const { getByokCredential } = await import('./byok/key-vault');
-    const byokKey = await getByokCredential({ organizationId: orgId, channel: 'lob' });
-    if (byokKey) {
-      logger.info(`[DirectMailService] Using BYOK Lob credential for org ${orgId}`);
-      return {
-        client: new Lob({ apiKey: byokKey }),
-        source: 'organization',
-        isTestKey: byokKey.startsWith('test_'),
-      };
-    }
-  } catch (error) {
-    logger.warn(`[DirectMailService] BYOK lookup failed for org ${orgId} — falling back to legacy`, error instanceof Error ? error : undefined);
-  }
-
-  try {
-    const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-
-    if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-      const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-        integration.credentials.encrypted,
-        orgId
-      );
-
-      if (decrypted.apiKey) {
-        logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
-        return {
-          client: new Lob({ apiKey: decrypted.apiKey }),
-          source: 'organization',
-          isTestKey: decrypted.apiKey.startsWith('test_'),
-        };
-      }
-    }
-  } catch (error) {
-    logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}`, error);
-  }
-  
-  // Platform key under the live-send interlock — test env unless armed.
-  const { apiKey, isTestKey } = resolvePlatformLobKey();
+/**
+ * R-2: credential resolution now lives behind the ONE door
+ * (`mail/mailLanes.assertMailLane`). This used to run its own three-tier
+ * cascade — BYOK vault → legacy integration → unconditional platform key —
+ * which meant a counterparty letter for an org with no connected printer
+ * account printed on AcreOS's Lob account. It now refuses instead.
+ *
+ * Throws MailLaneRefusal when the org may not send on this lane.
+ */
+export async function getLobClient(
+  orgId: number,
+  purpose: MailPurpose = 'counterparty',
+  opts: { pieceCount?: number; laneCredential?: MailCredential } = {},
+): Promise<LobClientResult> {
+  const credential =
+    opts.laneCredential ??
+    (await assertMailLane({
+      organizationId: orgId,
+      purpose,
+      pieceCount: opts.pieceCount ?? 1,
+    }));
 
   logger.info(
-    `[DirectMailService] Using platform Lob credentials for org ${orgId} (lobEnv: ${isTestKey ? "test" : "live"})`,
+    `[DirectMailService] Lob credential for org ${orgId}: source=${credential.source}, lobEnv=${credential.isTestKey ? 'test' : 'live'}`,
   );
   return {
-    client: new Lob({ apiKey }),
-    source: 'platform',
-    isTestKey,
+    client: new Lob({ apiKey: credential.apiKey }),
+    source: credential.source,
+    isTestKey: credential.isTestKey,
   };
 }
 
@@ -272,7 +268,9 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     }
   }
 
-  const { client, source, isTestKey } = await getLobClient(organizationId);
+  const { client, source, isTestKey } = await getLobClient(organizationId, options.purpose ?? 'counterparty', {
+    laneCredential: options.laneCredential,
+  });
   
   const skipCredits = options.skipCredits === true || source === 'organization';
   
@@ -347,7 +345,9 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
     }
   }
 
-  const { client, source, isTestKey } = await getLobClient(organizationId);
+  const { client, source, isTestKey } = await getLobClient(organizationId, options.purpose ?? 'counterparty', {
+    laneCredential: options.laneCredential,
+  });
   
   const skipCredits = options.skipCredits === true || source === 'organization';
   

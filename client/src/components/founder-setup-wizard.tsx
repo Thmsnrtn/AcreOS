@@ -105,7 +105,11 @@ const HINTS: Record<string, string> = {
   TWILIO_AUTH_TOKEN: "Auth token from Twilio Console",
   TWILIO_PHONE_NUMBER: "+12125550100",
   REDIS_URL: "redis://localhost:6379 or rediss://user:pass@host:6380",
-  MCP_API_KEY: "Click 'Generate' for a secure random key",
+  // MCP_API_KEY was listed here (and in GENERATE_TYPES below) but never
+  // appeared in KEYS_BY_STEP, so the wizard never rendered it. Founder ruling
+  // R-1 (2026-08-11) retired the static-key lane it belonged to along with the
+  // `/mcp` endpoint; MCP clients now authenticate with a per-org ak_live_… API
+  // key from Settings → API keys, whose scopes gate each tool.
 };
 
 const DOC_LINKS: Record<string, string> = {
@@ -119,7 +123,6 @@ const DOC_LINKS: Record<string, string> = {
 const GENERATE_TYPES: Record<string, string> = {
   SESSION_SECRET: "session-secret",
   FIELD_ENCRYPTION_KEY: "encryption-key",
-  MCP_API_KEY: "mcp-key",
 };
 
 // ─── Step definitions ─────────────────────────────────────────────────────────

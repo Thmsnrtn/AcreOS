@@ -58,15 +58,25 @@ import { deriveForPage } from "../../client/src/pages/for/derive";
 const REPO_ROOT = resolve(__dirname, "..", "..");
 
 // ---------------------------------------------------------------------------
-// The free-tier lifetime mail cap, read from the enforcing route's SOURCE so
-// this test needs no server import graph. Refuse-not-fabricate: if the
-// constant vanishes or moves, this fails loudly instead of assuming a value.
+// The free-tier lifetime mail cap, read from the enforcing SOURCE so this test
+// needs no server import graph. Refuse-not-fabricate: if the constant vanishes
+// or moves, this fails loudly instead of assuming a value.
+//
+// R-2 (2026-08-11): the constant moved from server/routes-outreach-mail.ts to
+// server/services/mail/mailLanes.ts — the single credential+lane door — because
+// the queue route was only one of four send paths and the other three were
+// uncapped. The pin was REWRITTEN to the new truth, not deleted, and gained a
+// second assertion: the route must NOT hold a rival copy of the number.
 // ---------------------------------------------------------------------------
+const mailLanesSrc = readFileSync(
+  join(REPO_ROOT, "server", "services", "mail", "mailLanes.ts"),
+  "utf8",
+);
 const outreachMailSrc = readFileSync(
   join(REPO_ROOT, "server", "routes-outreach-mail.ts"),
   "utf8",
 );
-const freePiecesMatch = outreachMailSrc.match(
+const freePiecesMatch = mailLanesSrc.match(
   /export const FREE_TIER_LIFETIME_PIECES\s*=\s*(\d+)/,
 );
 
@@ -195,13 +205,22 @@ const MATURITY_WORDS = /\bbeta\b|coming soon|early access|\bwaitlist\b|\bexperim
 // ---------------------------------------------------------------------------
 
 describe("caps substrate — the derived cap sources are real", () => {
-  it("FREE_TIER_LIFETIME_PIECES still exists on the enforcing route", () => {
+  it("FREE_TIER_LIFETIME_PIECES still exists at the enforcing chokepoint", () => {
     expect(
       freePiecesMatch,
-      "server/routes-outreach-mail.ts no longer exports FREE_TIER_LIFETIME_PIECES — " +
+      "server/services/mail/mailLanes.ts no longer exports FREE_TIER_LIFETIME_PIECES — " +
         "update this test's cap derivation to the constant's new home, never delete the check",
     ).not.toBeNull();
     expect(Number(freePiecesMatch![1])).toBeGreaterThan(0);
+  });
+
+  it("the queue route re-exports that constant rather than holding a rival copy", () => {
+    // Two definitions of one cap is how a marketing claim and an enforced
+    // limit drift apart. The route may re-export; it may not redefine.
+    expect(outreachMailSrc).not.toMatch(/export const FREE_TIER_LIFETIME_PIECES\s*=\s*\d+/);
+    expect(outreachMailSrc).toMatch(
+      /export \{ FREE_TIER_LIFETIME_PIECES \} from ["'].*mail\/mailLanes["']/,
+    );
   });
 
   it("the free pricing tile's letter count is PINNED to the enforced constant (this test is the pin)", () => {

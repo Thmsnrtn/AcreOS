@@ -1,9 +1,28 @@
-import { db } from "../db";
-import { organizationIntegrations } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+/**
+ * mailProvider — the letter/postcard API the autopilot `send_letter` hand
+ * uses. R-2 (founder ruling 2026-08-11): this file no longer resolves
+ * credentials. It asks `mail/mailLanes.assertMailLane` — the single door —
+ * exactly like every other mail path in the repo.
+ *
+ * Two defects died here:
+ *   • `getOrgMailCredentials` read `integration.credentials.apiKey` in the
+ *     CLEAR while every sibling resolver decrypted. An org whose Lob key was
+ *     stored encrypted (the normal case) therefore looked "not connected" and
+ *     fell through to the platform key — the exact re-fronting the founder
+ *     ruled out.
+ *   • `getDefaultCredentials()` was an unconditional platform fallback, so a
+ *     counterparty letter with no org credential printed on AcreOS's account.
+ *     It now refuses, naming the connect surface.
+ */
 import Lob from 'lob';
 import { logger } from "../utils/logger";
-import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
+import {
+  assertMailLane,
+  isMailLaneRefusal,
+  isPlatformMailConfigured,
+  type MailCredential,
+  type MailPurpose,
+} from './mail/mailLanes';
 
 export enum MailProvider {
   LOB = "lob",
@@ -25,7 +44,10 @@ export interface LetterOptions {
   color?: boolean;
   doubleSided?: boolean;
   description?: string;
-  organizationId?: number;
+  /** REQUIRED — a letter is always sent on behalf of a specific customer org. */
+  organizationId: number;
+  /** Defaults to counterparty: everything this API mails today is deal mail. */
+  purpose?: MailPurpose;
 }
 
 export interface PostcardOptions {
@@ -35,7 +57,9 @@ export interface PostcardOptions {
   back: string;
   size?: '4x6' | '6x9' | '6x11';
   description?: string;
-  organizationId?: number;
+  /** REQUIRED — see LetterOptions. */
+  organizationId: number;
+  purpose?: MailPurpose;
 }
 
 export interface MailResult {
@@ -47,12 +71,6 @@ export interface MailResult {
   provider: MailProvider;
   cost?: number;
   error?: string;
-}
-
-interface ProviderCredentials {
-  provider: MailProvider;
-  apiKey: string;
-  isTestKey: boolean;
 }
 
 const LOB_LETTER_COST = 0.85;
@@ -79,53 +97,6 @@ function withLobTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function getOrgMailCredentials(organizationId: number): Promise<ProviderCredentials | null> {
-  const [lobIntegration] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "lob"),
-        eq(organizationIntegrations.isEnabled, true)
-      )
-    )
-    .limit(1);
-
-  if (lobIntegration?.credentials?.apiKey) {
-    return {
-      provider: MailProvider.LOB,
-      apiKey: lobIntegration.credentials.apiKey,
-      isTestKey: lobIntegration.credentials.apiKey.startsWith('test_'),
-    };
-  }
-
-  return null;
-}
-
-function getDefaultCredentials(): ProviderCredentials | null {
-  // Platform key under the live-send interlock (mail/liveSendInterlock.ts):
-  // test environment unless production is explicitly armed. This path used
-  // to prefer the live key in EVERY environment, which would have printed
-  // real mail from dev/CI the moment the live secret existed there.
-  try {
-    const { apiKey, isTestKey } = resolvePlatformLobKey();
-    return { provider: MailProvider.LOB, apiKey, isTestKey };
-  } catch {
-    // Legacy LOB_API_KEY-only installs: honor it, but never as a live key
-    // while disarmed.
-    const legacy = process.env.LOB_API_KEY;
-    if (legacy && (legacy.startsWith('test_') || isLiveSendArmed())) {
-      return {
-        provider: MailProvider.LOB,
-        apiKey: legacy,
-        isTestKey: legacy.startsWith('test_'),
-      };
-    }
-    return null;
-  }
-}
-
 function formatAddressForLob(addr: MailAddress): any {
   return {
     name: addr.name,
@@ -139,7 +110,7 @@ function formatAddressForLob(addr: MailAddress): any {
 }
 
 async function sendLetterViaLob(
-  credentials: ProviderCredentials,
+  credentials: MailCredential,
   options: LetterOptions
 ): Promise<MailResult> {
   try {
@@ -175,7 +146,7 @@ async function sendLetterViaLob(
 }
 
 async function sendPostcardViaLob(
-  credentials: ProviderCredentials,
+  credentials: MailCredential,
   options: PostcardOptions
 ): Promise<MailResult> {
   try {
@@ -210,77 +181,59 @@ async function sendPostcardViaLob(
 }
 
 export async function sendLetter(options: LetterOptions): Promise<MailResult> {
-  let credentials: ProviderCredentials | null = null;
-
-  if (options.organizationId) {
-    credentials = await getOrgMailCredentials(options.organizationId);
-  }
-
-  if (!credentials) {
-    credentials = getDefaultCredentials();
-  }
-
-  if (!credentials) {
-    // No mail credentials configured. Only produce a mock mailing id under an
-    // explicit dev flag — never as the silent default, which would fabricate a
-    // successful send and let a real letter no-op while reporting success.
-    if (process.env.MAIL_MOCK === '1') {
-      logger.info(`[Mail] MAIL_MOCK - simulating letter to ${options.to.name}`);
-      return {
-        success: true,
-        mailingId: `mock-letter-${Date.now()}`,
-        isTestMode: true,
-        provider: MailProvider.LOB,
-      };
-    }
-    logger.warn(`[Mail] No provider configured - refusing to send letter to ${options.to.name}`);
-    return {
-      success: false,
-      error: 'mail provider not configured',
-      isTestMode: false,
-      provider: MailProvider.LOB,
-    };
-  }
-
-  logger.info(`[Mail] Sending letter via ${credentials.provider} to ${options.to.name}`);
-  return sendLetterViaLob(credentials, options);
+  return sendViaLane(options, 'letter', sendLetterViaLob);
 }
 
 export async function sendPostcard(options: PostcardOptions): Promise<MailResult> {
-  let credentials: ProviderCredentials | null = null;
+  return sendViaLane(options, 'postcard', sendPostcardViaLob);
+}
 
-  if (options.organizationId) {
-    credentials = await getOrgMailCredentials(options.organizationId);
-  }
-
-  if (!credentials) {
-    credentials = getDefaultCredentials();
-  }
-
-  if (!credentials) {
-    // No mail credentials configured. Only produce a mock mailing id under an
-    // explicit dev flag — never as the silent default, which would fabricate a
-    // successful send and let a real postcard no-op while reporting success.
-    if (process.env.MAIL_MOCK === '1') {
-      logger.info(`[Mail] MAIL_MOCK - simulating postcard to ${options.to.name}`);
-      return {
-        success: true,
-        mailingId: `mock-postcard-${Date.now()}`,
-        isTestMode: true,
-        provider: MailProvider.LOB,
-      };
-    }
-    logger.warn(`[Mail] No provider configured - refusing to send postcard to ${options.to.name}`);
+/**
+ * Shared lane → send. The lane check runs FIRST, before any credential is
+ * held and before MAIL_MOCK — a simulation flag may stop paper from printing,
+ * it may never grant an entitlement the org does not have.
+ */
+async function sendViaLane<T extends LetterOptions | PostcardOptions>(
+  options: T,
+  kind: 'letter' | 'postcard',
+  send: (credentials: MailCredential, options: T) => Promise<MailResult>,
+): Promise<MailResult> {
+  let credentials: MailCredential;
+  try {
+    credentials = await assertMailLane({
+      organizationId: options.organizationId,
+      purpose: options.purpose ?? 'counterparty',
+      pieceCount: 1,
+    });
+  } catch (err) {
+    if (!isMailLaneRefusal(err)) throw err;
+    logger.info(`[Mail] ${kind} refused by the mail lane`, {
+      metadata: { organizationId: options.organizationId, reason: err.details.reason },
+    });
     return {
       success: false,
-      error: 'mail provider not configured',
+      error: err.message,
       isTestMode: false,
       provider: MailProvider.LOB,
     };
   }
 
-  logger.info(`[Mail] Sending postcard via ${credentials.provider} to ${options.to.name}`);
-  return sendPostcardViaLob(credentials, options);
+  // Dev-only simulation. Never a silent default: without the explicit flag a
+  // missing provider refuses rather than fabricating a successful send.
+  if (process.env.MAIL_MOCK === '1') {
+    logger.info(`[Mail] MAIL_MOCK - simulating ${kind} to ${options.to.name}`);
+    return {
+      success: true,
+      mailingId: `mock-${kind}-${Date.now()}`,
+      isTestMode: true,
+      provider: MailProvider.LOB,
+    };
+  }
+
+  logger.info(
+    `[Mail] Sending ${kind} to ${options.to.name} (credential: ${credentials.source}, testEnv: ${credentials.isTestKey})`,
+  );
+  return send(credentials, options);
 }
 
 export function getProviderInfo(): {
@@ -288,10 +241,12 @@ export function getProviderInfo(): {
   default: MailProvider | null;
   costs: Record<MailProvider, { letter: number; postcard: number }>;
 } {
+  // Platform-key presence only — an ORG's ability to send is org-scoped and
+  // answered by mailLanes.mailLaneStatus(orgId), never by a process-wide read.
   const available: MailProvider[] = [];
   let defaultProvider: MailProvider | null = null;
 
-  if (process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY || process.env.LOB_API_KEY) {
+  if (isPlatformMailConfigured()) {
     available.push(MailProvider.LOB);
     defaultProvider = MailProvider.LOB;
   }

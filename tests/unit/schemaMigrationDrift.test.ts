@@ -122,7 +122,6 @@ const BASELINE_ORPHANS = new Set<string>([
   "personal_bests",
   "platform_issues",
   "playbook_evolutions",
-  "pre_authorized_tradeoffs",
   "processed_feedback",
   "product_specifications",
   "provider_cache",

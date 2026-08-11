@@ -44,6 +44,17 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     if (!to || !from || !file) {
       return { success: false, output: "send_letter: a complete 'to' + 'from' address and a 'file' (PDF URL) are required.", durationMs: Date.now() - started };
     }
+    // R-2: a mail function that cannot name the org it sends for IS the bug.
+    // organization_id used to be optional here, so an unattributed letter fell
+    // through to the platform Lob key. It is now required and validated.
+    if (!organizationId || organizationId <= 0) {
+      return {
+        success: false,
+        output:
+          "send_letter: 'organization_id' is required — every letter is mailed on behalf of a specific customer org, on that org's own connected Lob account.",
+        durationMs: Date.now() - started,
+      };
+    }
     const result = await sendLetter({ to, from, file, organizationId, description: typeof input.description === "string" ? input.description : undefined });
     if (!result.success) {
       return { success: false, output: `send_letter failed: ${result.error ?? "unknown"}`, durationMs: Date.now() - started };
@@ -63,7 +74,7 @@ registerHand({
   schema: {
     name: NAME,
     description:
-      "Mail a physical letter via Lob (the land-investor-native channel). Higher-cost + irreversible once mailed. Runs in Lob test mode until a live key is set. REQUIRES a founder tap.",
+      "Mail a physical letter via Lob (the land-investor-native channel). Higher-cost + irreversible once mailed. Sends on the ORG'S OWN connected Lob account — an org with no connected Lob integration is refused. REQUIRES a founder tap.",
     input_schema: {
       type: "object",
       properties: {
@@ -92,10 +103,13 @@ registerHand({
           required: ["name", "address_line1", "city", "state", "zip"],
         },
         file: { type: "string", description: "URL to the letter PDF." },
-        organization_id: { type: "number" },
+        organization_id: {
+          type: "number",
+          description: "The customer org this letter is mailed for. Required — it selects the org's own Lob account.",
+        },
         description: { type: "string" },
       },
-      required: ["to", "from", "file"],
+      required: ["to", "from", "file", "organization_id"],
     },
   },
   domain: "growth",

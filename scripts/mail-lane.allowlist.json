@@ -1,0 +1,110 @@
+{
+  "$comment": [
+    "R-2 mail-lane allowlist (founder ruling 2026-08-11). DERIVED FROM THE CONSOLIDATION MAP,",
+    "not from the brief: every file below was opened and classified by what it actually does with",
+    "the Lob credential env vars. Fourteen source files named LOB_* at HEAD 981e646 — the brief's",
+    "table listed three — so an allowlist written from the brief would have silently exempted the",
+    "other eleven.",
+    "",
+    "NOTHING HERE MAY SEND. Every entry is observability, registry metadata, address verification,",
+    "a webhook secret, a redaction pattern, or the one sanctioned platform-key resolver. The send",
+    "paths (mailProvider.ts, directMail.ts, directMailService.ts, mail/providers/lob.ts,",
+    "routes-campaigns.ts, communications.ts) were REMOVED from this set by routing them through",
+    "server/services/mail/mailLanes.ts; lobService.ts was deleted outright.",
+    "",
+    "This allowlist may only SHRINK. check-mail-lane.mjs fails on a stale entry in either",
+    "direction — a file that vanished, or one that no longer names a Lob credential var."
+  ],
+  "entries": [
+    {
+      "file": "server/services/mail/liveSendInterlock.ts",
+      "role": "resolver",
+      "reason": "THE platform-key resolver and the LOB_LIVE_SEND_ENABLED arm switch. The single sanctioned home for Lob credential env reads; mailLanes.ts calls it and nothing else does."
+    },
+    {
+      "file": "server/services/addressValidation.ts",
+      "role": "verification",
+      "reason": "Lob us_verifications lookups only (raw fetch, no client, no letters/postcards endpoint). A lookup on AcreOS's own account prints no paper and reaches no counterparty."
+    },
+    {
+      "file": "server/services/healthCheck.ts",
+      "role": "observability",
+      "reason": "Reports whether a platform Lob key exists for the vendor health panel. Presence read; constructs nothing."
+    },
+    {
+      "file": "server/services/founder/readinessLadder.ts",
+      "role": "observability",
+      "reason": "Launch-readiness prose telling the founder to set LOB_LIVE_SEND_ENABLED=true in production. A string in guidance copy."
+    },
+    {
+      "file": "server/services/audit/detectors/credentialLivenessDetector.ts",
+      "role": "observability",
+      "reason": "Credential-liveness audit detector; reads key presence to report staleness across all vendors uniformly."
+    },
+    {
+      "file": "server/services/configManager.ts",
+      "role": "registry",
+      "reason": "Config-key registry: names LOB_API_KEY / LOB_WEBHOOK_SECRET as metadata rows (label, hint, docUrl) for the setup surface."
+    },
+    {
+      "file": "server/services/connections/platformConnections.ts",
+      "role": "registry",
+      "reason": "Platform-connection descriptor: names the env vars a founder fills in, plus the note that the live-send interlock is deliberately separate."
+    },
+    {
+      "file": "server/services/byok/toggle.ts",
+      "role": "registry",
+      "reason": "PLATFORM_ENV_MAP — the channel→platform-env-var table, uniform across all fourteen BYOK channels."
+    },
+    {
+      "file": "server/routes-setup.ts",
+      "role": "observability",
+      "reason": "Setup wizard key validation: pings Lob with the configured key and records ok/error. Validation only — outside this lane's file set by explicit scope fence."
+    },
+    {
+      "file": "server/routes-founder-integrations.ts",
+      "role": "registry",
+      "reason": "Founder integrations catalogue: envVars/flySecretName metadata for the Lob row."
+    },
+    {
+      "file": "server/routes-founder-intelligence.ts",
+      "role": "observability",
+      "reason": "Founder intelligence readout — a boolean 'is direct mail configured' presence read."
+    },
+    {
+      "file": "server/routes/lob-webhooks.ts",
+      "role": "webhook",
+      "reason": "LOB_WEBHOOK_SECRET — inbound signature verification. Not a credential for sending."
+    },
+    {
+      "file": "server/ai/supportAgent.ts",
+      "role": "observability",
+      "reason": "Support agent answering 'does this org have direct-mail credentials' — presence read, constructs no client."
+    },
+    {
+      "file": "client/src/components/founder-setup-wizard.tsx",
+      "role": "registry",
+      "reason": "Founder setup wizard copy: names LOB_API_KEY as the secret to paste, with its dashboard URL. Client-side; no server credential access."
+    },
+    {
+      "file": "scripts/vendor-health-probe.mjs",
+      "role": "observability",
+      "reason": "Vendor health probe: reports which vendor keys are set. Ops script, no send."
+    },
+    {
+      "file": "tests/unit/liveSendInterlock.test.ts",
+      "role": "test",
+      "reason": "Pins the interlock's armed/disarmed key-selection behaviour — it must set the env vars to test them."
+    },
+    {
+      "file": "tests/unit/credentialLivenessDetector.test.ts",
+      "role": "test",
+      "reason": "Pins the credential-liveness detector, which reads Lob key presence."
+    },
+    {
+      "file": "tests/unit/mailLanes.test.ts",
+      "role": "test",
+      "reason": "The R-2 exit test: it must set and unset platform Lob keys to prove the refusal and wedge paths."
+    }
+  ]
+}

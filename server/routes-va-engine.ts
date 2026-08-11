@@ -11,6 +11,37 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
+import { getUserId } from "./types/request";
+import {
+  armSequence,
+  assertSequenceArmed,
+  disarmSequence,
+  listSequencesNeedingConfirmation,
+  listSequencesWithArming,
+} from "./services/collectionArming";
+
+/**
+ * R-3 (founder ruling 2026-08-11): arming is a decision, not a field.
+ * `auto_start` and its arming record may only change through the
+ * arm/disarm endpoints below, which disclose the exact ladder first — never
+ * through generic create/update bodies.
+ */
+const ARMING_FIELDS = [
+  "autoStart",
+  "auto_start",
+  "armedAt",
+  "armed_at",
+  "armedBy",
+  "armed_by",
+  "armedLadderDigest",
+  "armed_ladder_digest",
+] as const;
+
+function stripArmingFields<T extends Record<string, unknown>>(body: unknown): Partial<T> {
+  const out = omitProtectedFields<T>(body) as Record<string, unknown>;
+  for (const field of ARMING_FIELDS) delete out[field];
+  return out as Partial<T>;
+}
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -583,6 +614,86 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
+  // ── R-3 arming surface (Finance door → Collections tab) ──────────────────
+  // Registered BEFORE /:id so "arming" and "needs-confirmation" are not
+  // swallowed by the numeric-id route.
+
+  /** Every sequence with the disclosure the gate renders (ladder/timing/channels). */
+  api.get("/api/collection-sequences/arming", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      res.json(await listSequencesWithArming(org.id));
+    } catch (error: any) {
+      logger.error("List collection sequence arming error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  /**
+   * The confirm surface: sequences that are RUNNING but have nobody on record
+   * (armed by the pre-2026-08-11 schema default), plus ones whose ladder was
+   * edited after confirmation. These keep dispatching — the founder ruled
+   * against cutting a live collection off mid-ladder — and stay listed here
+   * until someone confirms the exact ladder.
+   */
+  api.get("/api/collection-sequences/needs-confirmation", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      res.json(await listSequencesNeedingConfirmation(org.id));
+    } catch (error: any) {
+      logger.error("List collection sequences needing confirmation error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  /**
+   * Arm or confirm. `acknowledgedDigest` is the digest of the ladder the
+   * customer had on screen — a mismatch means the steps changed between render
+   * and tap, and the confirmation is refused rather than applied to steps
+   * nobody saw.
+   */
+  api.post("/api/collection-sequences/:id/arm", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(req.params.id);
+      if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid sequence id");
+
+      const parsed = z.object({ acknowledgedDigest: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.badRequest(
+          res,
+          "acknowledgedDigest is required — arming must confirm the ladder that was shown",
+        );
+      }
+
+      const result = await armSequence(org.id, id, getUserId(req), parsed.data.acknowledgedDigest);
+      if (!result.ok) {
+        return result.code === "not_found"
+          ? Errors.notFound(res, "Collection sequence")
+          : Errors.badRequest(res, result.reason);
+      }
+      res.json(result.sequence);
+    } catch (error: any) {
+      logger.error("Arm collection sequence error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  api.post("/api/collection-sequences/:id/disarm", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(req.params.id);
+      if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid sequence id");
+
+      const result = await disarmSequence(org.id, id);
+      if (!result.ok) return Errors.notFound(res, "Collection sequence");
+      res.json(result.sequence);
+    } catch (error: any) {
+      logger.error("Disarm collection sequence error", error);
+      Errors.internal(res, error);
+    }
+  });
+
   api.get("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -601,9 +712,17 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/collection-sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      // R-3: a new sequence is born UNARMED regardless of what the body says.
+      // The client cannot self-arm at creation and skip the disclosure gate —
+      // arming happens through POST /:id/arm, which requires the digest of the
+      // ladder the customer was actually shown.
       const validated = insertCollectionSequenceSchema.parse({
-        ...req.body,
+        ...stripArmingFields(req.body),
         organizationId: org.id,
+        autoStart: false,
+        armedAt: null,
+        armedBy: null,
+        armedLadderDigest: null,
       });
       const sequence = await storage.createCollectionSequence(validated);
       res.status(201).json(sequence);
@@ -621,7 +740,11 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Collection sequence");
       }
-      const sequence = await storage.updateCollectionSequence(org.id, id, omitProtectedFields(req.body));
+      // R-3: arming fields are stripped here — a generic PATCH can edit the
+      // ladder but can never arm it. Editing the steps of an ARMED sequence
+      // changes its digest, which moves it to `armed_stale` and back into the
+      // confirm surface (it keeps running meanwhile).
+      const sequence = await storage.updateCollectionSequence(org.id, id, stripArmingFields(req.body));
       res.json(sequence);
     } catch (error: any) {
       logger.error("Update collection sequence error", error);
@@ -697,6 +820,20 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         ...req.body,
         organizationId: org.id,
       });
+
+      // R-3 chokepoint: enrolling a note begins debt-collection-adjacent
+      // contact with a CONSUMER. Refuse if the sequence is unarmed. A sequence
+      // armed under the OLD schema default passes (its live ladder is not cut
+      // off) and stays in the confirm surface until a human owns it.
+      const sequence = await storage.getCollectionSequenceById(org.id, validated.sequenceId);
+      if (!sequence) {
+        return Errors.notFound(res, "Collection sequence");
+      }
+      const armed = assertSequenceArmed(sequence);
+      if (!armed.ok) {
+        return Errors.forbidden(res, armed.reason);
+      }
+
       const enrollment = await storage.createCollectionEnrollment(validated);
       res.status(201).json(enrollment);
     } catch (error: any) {
@@ -713,7 +850,35 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Collection enrollment");
       }
-      const enrollment = await storage.updateCollectionEnrollment(org.id, id, omitProtectedFields(req.body));
+      // THE ARMING CHOKEPOINT APPLIES HERE TOO.
+      //
+      // It used to sit only on CREATE, and `omitProtectedFields` protects
+      // id/organizationId/createdAt/createdBy/updatedAt — NOT `sequenceId`,
+      // `status`, `currentStep` or `nextStepAt`. So a PATCH could repoint a
+      // dormant enrollment at an unarmed sequence and flip it active in one
+      // call, reaching precisely the state the ruling exists to make
+      // unreachable: a ladder running on a sequence no human ever armed.
+      // Editing is not a lesser act than creating.
+      const patch = omitProtectedFields(req.body) as Record<string, unknown>;
+      const ACTIVE_STATUSES = new Set(["active", "dispatching", "in_progress"]);
+      const repointing = patch.sequenceId != null;
+      const activating =
+        typeof patch.status === "string" && ACTIVE_STATUSES.has(patch.status);
+
+      if (repointing || activating) {
+        const targetSequenceId = (patch.sequenceId ?? existing.sequenceId) as number;
+        const sequence = await storage.getCollectionSequenceById(org.id, targetSequenceId);
+        if (!sequence) {
+          return Errors.notFound(res, "Collection sequence");
+        }
+        const armed = assertSequenceArmed(sequence);
+        if (!armed.ok) {
+          // Nothing is written — the refusal happens before the update.
+          return Errors.forbidden(res, armed.reason);
+        }
+      }
+
+      const enrollment = await storage.updateCollectionEnrollment(org.id, id, patch);
       res.json(enrollment);
     } catch (error: any) {
       logger.error("Update collection enrollment error", error);

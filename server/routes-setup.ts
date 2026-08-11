@@ -156,7 +156,13 @@ router.post("/delete", requireFounder, async (req: Request, res: Response) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/founder/setup/generate/:type
-// Generates secure random values for SESSION_SECRET, FIELD_ENCRYPTION_KEY, MCP_API_KEY
+// Generates secure random values for SESSION_SECRET, FIELD_ENCRYPTION_KEY.
+//
+// The "mcp-key" type (MCP_API_KEY) was removed by founder ruling R-1
+// (2026-08-11): the static-key lane it fed only ever authenticated the retired
+// `/mcp` endpoint. The surviving MCP surface (POST /api/mcp) authenticates
+// per-ORG api_keys rows (ak_live_…), which are minted with their scopes through
+// the api-keys surface — not generated as a scope-less env secret here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/generate/:type", requireFounder, async (req: Request, res: Response) => {
@@ -173,10 +179,6 @@ router.post("/generate/:type", requireFounder, async (req: Request, res: Respons
       case "encryption-key":
         value = crypto.randomBytes(32).toString("hex"); // exactly 64 hex chars
         key = "FIELD_ENCRYPTION_KEY";
-        break;
-      case "mcp-key":
-        value = crypto.randomBytes(32).toString("base64url");
-        key = "MCP_API_KEY";
         break;
       default:
         return Errors.badRequest(res, `Unknown type: ${type}`);

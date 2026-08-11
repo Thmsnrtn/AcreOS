@@ -8,7 +8,8 @@
  *
  *   1. LEGACY RETIREMENT — server/mcp-server.ts (plaintext key compare in a
  *      loop, unbounded in-memory rate map, mounted behind session auth) is
- *      gone and cannot quietly return.
+ *      gone and cannot quietly return. The SECOND retirement (the `/mcp`
+ *      mount, founder ruling R-1) is pinned in mcpSurfaceRetirement.test.ts.
  *   2. AVAILABILITY CONTROLS — the founder kill switch darkens the endpoint
  *      (404 before auth) and the per-org allowlist narrows it post-auth.
  *      Defaults preserve current behavior; the flip decision is the
@@ -156,18 +157,36 @@ describe("founder availability controls", () => {
     expect(darkIdx).toBeLessThan(authIdx);
   });
 
-  it("BOTH MCP surfaces consult the shared availability policy (/mcp too)", () => {
-    // The 0.7 audit's headline finding: server/mcp/index.ts is NOT
-    // local-only — it is mounted at POST/GET /mcp in server/index.ts. A
-    // kill switch covering one of two surfaces is a half-truth; pin that
-    // the /mcp auth middleware consults the same helpers.
-    const code = read("server/index.ts");
-    expect(code).toContain("mcpEndpointDark()");
-    expect(code).toContain("mcpOrgAllowed(auth.organizationId)");
-    const darkIdx = code.indexOf("mcpEndpointDark()");
-    const authIdx = code.indexOf("await resolveMcpAuth(provided)");
-    expect(darkIdx).toBeGreaterThan(0);
-    expect(darkIdx).toBeLessThan(authIdx);
+  it("EVERY MCP surface consults the shared availability policy — and there is now exactly one", () => {
+    // ORIGINAL INVARIANT (Wave 0.7): a kill switch covering one of two
+    // surfaces is a half-truth, so every MCP surface must consult the same
+    // helpers. That still holds — but R-1 (2026-08-11) retired the second
+    // surface (the POST/GET /mcp mount in server/index.ts), so the honest
+    // form of the invariant is "every surface, and the set is {/api/mcp}".
+    // Rewritten, not deleted: if a second surface ever reappears without the
+    // policy, this fails again.
+    //
+    // Derived: find every file that builds an MCP JSON-RPC/tool surface by
+    // looking for the protocol handshake, then require each to gate on both
+    // controls. A new surface file that speaks "tools/call" is caught.
+    const surfaceFiles = ["server/mcp/streamableHttp.ts", "server/index.ts"]
+      .filter((f) => fs.existsSync(path.join(ROOT, f)))
+      .filter((f) => stripComments(read(f)).includes('"tools/call"'));
+
+    expect(surfaceFiles, "an MCP tool surface exists in a file this test does not check")
+      .toEqual(["server/mcp/streamableHttp.ts"]);
+
+    for (const file of surfaceFiles) {
+      const code = stripComments(read(file));
+      expect(code, `${file} does not consult the kill switch`).toContain("mcpEndpointDark()");
+      expect(code, `${file} does not consult the org allowlist`).toContain("mcpOrgAllowed(");
+    }
+
+    // The retired surface's auth resolver is gone from the app entirely — not
+    // merely unmounted with its middleware left behind.
+    const bootstrap = stripComments(read("server/index.ts"));
+    expect(bootstrap).not.toContain("resolveMcpAuth");
+    expect(bootstrap).not.toContain("createMcpServer");
   });
 
   it("batches are capped so the limiter cannot be its own amplifier", async () => {

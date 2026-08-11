@@ -163,12 +163,24 @@ export class ApiQueueService {
         }
         throw new Error(`Unknown OpenAI operation: ${job.operation}`);
 
-      case 'lob':
+      case 'lob': {
+        // R-2: a queued mail job must name the org it mails for. This used to
+        // call sendPostcard(payload) with no organizationId at all, so a
+        // replayed job printed on the platform Lob key with no attribution
+        // and no lane check. The org comes off the job row (api_jobs.
+        // organization_id), which enqueue() has always populated.
         const { directMailService } = await import('./directMail');
+        const jobOrgId = job.organizationId ?? (payload.organizationId as number | undefined);
+        if (!jobOrgId) {
+          throw new Error(
+            'Lob job has no organizationId — physical mail is always sent on behalf of a specific customer org.',
+          );
+        }
         if (job.operation === 'sendPostcard') {
-          return directMailService.sendPostcard(payload as any);
+          return directMailService.sendPostcard(payload as any, 'live', jobOrgId, { purpose: 'counterparty' });
         }
         throw new Error(`Unknown Lob operation: ${job.operation}`);
+      }
 
       default:
         throw new Error(`Unknown job type: ${job.type}`);

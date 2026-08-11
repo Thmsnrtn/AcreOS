@@ -3,8 +3,7 @@ import { smsService } from './smsService';
 import { storage } from '../storage';
 import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent } from './tcpaCompliance';
 import { frequencyGateForLead, describeFrequencySkip } from './compliance/contactFrequency';
-import { lobService, LobErrorType } from './lobService';
-import { apiQueueService } from './apiQueue';
+import { isPlatformMailConfigured } from './mail/mailLanes';
 import { logger } from "../utils/logger";
 
 export interface CommunicationOptions {
@@ -19,31 +18,24 @@ export interface CommunicationResult {
   success: boolean;
   channel: string;
   messageId?: string;
-  lobMailingId?: string;
-  expectedDeliveryDate?: string;
   error?: string;
-  errorType?: LobErrorType;
+  errorType?: string;
   tcpaBlocked?: boolean;
   /** True when the contact-frequency cap refused the send. */
   frequencyCapped?: boolean;
   retriesExhausted?: boolean;
 }
 
-export interface DirectMailContent {
-  subject: string;
-  body: string;
-  htmlContent?: string;
-}
-
-const RETRY_DELAYS = [1000, 2000, 4000];
-const MAX_RETRIES = 3;
-
 export class CommunicationsService {
   async getChannelStatus(): Promise<{ email: boolean; sms: boolean; directMail: boolean }> {
     return {
       email: await emailService.isConfigured(),
       sms: smsService.isConfigured(),
-      directMail: !!process.env.LOB_API_KEY || !!process.env.LOB_TEST_API_KEY || !!process.env.LOB_LIVE_API_KEY,
+      // R-2: physical mail is org-scoped — whether THIS org can mail its
+      // counterparties is answered by mail/mailLanes.mailLaneStatus(orgId),
+      // not by a process-wide env read. This flag now reports only whether a
+      // platform mail rail exists at all.
+      directMail: isPlatformMailConfigured(),
     };
   }
 
@@ -272,212 +264,22 @@ export class CommunicationsService {
     return { sent, failed, tcpaBlocked, frequencyCapped, errors };
   }
 
-  async sendDirectMailToLead(
-    leadId: number,
-    organizationId: number,
-    content: DirectMailContent
-  ): Promise<CommunicationResult> {
-    const lead = await storage.getLead(organizationId, leadId);
-    if (!lead) {
-      return { success: false, channel: 'direct_mail', error: 'Lead not found' };
-    }
+  /**
+   * R-2 (founder ruling 2026-08-11) — the direct-mail methods that lived here
+   * (`sendDirectMailToLead`, `sendDirectMailWithRetry`, `handleDirectMailFailure`)
+   * were DELETED with `services/lobService.ts`. They were the repo's only
+   * caller of that service, they had zero callers of their own
+   * (`sendToLead` dispatches email/sms only), and lobService was the ONE Lob
+   * client with no org-credential path at all — env singletons, no
+   * organizationId anywhere. See docs/company/deletion-ledger.md.
+   *
+   * The LIVE physical-mail rails are the outreach queue
+   * (`POST /api/outreach/mail/queue` → mailFlusher → MailRouter → lobAdapter),
+   * the campaign blast (`POST /api/campaigns/:id/send-direct-mail`), the
+   * sequence cadence, and the autopilot `send_letter` hand — all four now
+   * resolve credentials through `services/mail/mailLanes.assertMailLane`.
+   */
 
-    const channelCheck = canSendViaChannel(lead, 'direct_mail');
-    if (!channelCheck.allowed) {
-      logger.info(`[Communications] Direct mail blocked for lead ${leadId}: ${channelCheck.reason}`);
-      return { 
-        success: false, 
-        channel: 'direct_mail', 
-        error: channelCheck.reason,
-        tcpaBlocked: true,
-      };
-    }
-
-    if (!lead.address || !lead.city || !lead.state || !lead.zip) {
-      return { 
-        success: false, 
-        channel: 'direct_mail', 
-        error: 'Incomplete address for direct mail' 
-      };
-    }
-
-    if (!lobService.isConfigured()) {
-      logger.error('[Communications] Lob service not configured - LOB_TEST_API_KEY or LOB_LIVE_API_KEY required');
-      return {
-        success: false,
-        channel: 'direct_mail',
-        error: 'Direct mail service not configured',
-      };
-    }
-
-    const result = await this.sendDirectMailWithRetry(leadId, organizationId, {
-      firstName: lead.firstName,
-      lastName: lead.lastName,
-      address: lead.address,
-      city: lead.city,
-      state: lead.state,
-      zip: lead.zip,
-    }, content);
-    return result;
-  }
-
-  async sendDirectMailWithRetry(
-    leadId: number,
-    organizationId: number,
-    lead: { firstName: string; lastName: string; address: string; city: string; state: string; zip: string },
-    content: DirectMailContent,
-    attempt: number = 0
-  ): Promise<CommunicationResult> {
-    const org = await storage.getOrganization(organizationId);
-    const mailMode = org?.settings?.mailMode === 'live' ? 'live' : 'test';
-
-    // Require real return address — never send mail with a fake fallback address
-    const settings = org?.settings as any || {};
-    if (!settings.companyAddress || !settings.companyCity || !settings.companyState || !settings.companyZip) {
-      return { success: false, channel: 'mail', error: "Return address not configured. Set your company address in Settings before sending direct mail." };
-    }
-    const fromAddress = {
-      name: org?.name || 'AcreOS',
-      addressLine1: settings.companyAddress,
-      city: settings.companyCity,
-      state: settings.companyState,
-      zip: settings.companyZip,
-    };
-
-    const toAddress = {
-      name: `${lead.firstName} ${lead.lastName}`,
-      addressLine1: lead.address,
-      city: lead.city,
-      state: lead.state,
-      zip: lead.zip,
-    };
-
-    logger.info(`[Communications] Sending direct mail to ${toAddress.name} at ${toAddress.addressLine1} (attempt ${attempt + 1}/${MAX_RETRIES})`);
-
-    const letterHtml = content.htmlContent || `
-      <html>
-        <body>
-          <h1>${content.subject}</h1>
-          <p>${content.body}</p>
-        </body>
-      </html>
-    `;
-
-    const lobResult = await lobService.sendLetter(
-      {
-        to: toAddress,
-        from: fromAddress,
-        file: letterHtml,
-        color: false,
-        doubleSided: false,
-      },
-      mailMode
-    );
-
-    if (lobResult.success) {
-      logger.info(`[Communications] Direct mail sent successfully to lead ${leadId}, lob_mailing_id: ${lobResult.lobMailingId}`);
-      
-      await this.recordCommunication(leadId, organizationId, 'direct_mail', {
-        subject: content.subject,
-        address: lead.address,
-        lob_mailing_id: lobResult.lobMailingId,
-        expected_delivery_date: lobResult.expectedDeliveryDate,
-        is_test_mode: lobResult.isTestMode,
-      });
-
-      return {
-        success: true,
-        channel: 'direct_mail',
-        lobMailingId: lobResult.lobMailingId,
-        expectedDeliveryDate: lobResult.expectedDeliveryDate,
-      };
-    }
-
-    logger.error(`[Communications] Direct mail failed for lead ${leadId}`, undefined, { metadata: { detail: {
-      attempt: attempt + 1,
-      errorType: lobResult.errorType,
-      error: lobResult.error,
-    } } });
-
-    if (lobResult.errorType && lobService.isRetryableError(lobResult.errorType) && attempt < MAX_RETRIES - 1) {
-      const delay = RETRY_DELAYS[attempt];
-      logger.info(`[Communications] Retrying direct mail for lead ${leadId} in ${delay}ms (attempt ${attempt + 2}/${MAX_RETRIES})`);
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return this.sendDirectMailWithRetry(leadId, organizationId, lead, content, attempt + 1);
-    }
-
-    if (attempt >= MAX_RETRIES - 1 || (lobResult.errorType && !lobService.isRetryableError(lobResult.errorType))) {
-      await this.handleDirectMailFailure(leadId, organizationId, lead, content, lobResult.errorType, lobResult.error);
-    }
-
-    return {
-      success: false,
-      channel: 'direct_mail',
-      error: lobResult.error,
-      errorType: lobResult.errorType,
-      retriesExhausted: attempt >= MAX_RETRIES - 1,
-    };
-  }
-
-  private async handleDirectMailFailure(
-    leadId: number,
-    organizationId: number,
-    lead: { firstName: string; lastName: string; address: string },
-    content: DirectMailContent,
-    errorType?: LobErrorType,
-    errorMessage?: string
-  ): Promise<void> {
-    logger.error(`[Communications] Direct mail retries exhausted for lead ${leadId}`, undefined, { metadata: { detail: {
-      errorType,
-      errorMessage,
-      recipient: `${lead.firstName} ${lead.lastName}`,
-      address: lead.address,
-    } } });
-
-    await apiQueueService.enqueue(
-      'lob',
-      'sendLetter',
-      {
-        leadId,
-        organizationId,
-        toName: `${lead.firstName} ${lead.lastName}`,
-        toAddress: lead.address,
-        subject: content.subject,
-        body: content.body,
-        failureReason: errorMessage,
-        failureType: errorType,
-      },
-      organizationId,
-      2
-    );
-
-    try {
-      await storage.createSystemAlert({
-        type: 'direct_mail_failure',
-        alertType: 'system_error',
-        severity: errorType === 'insufficient_funds' ? 'critical' : 'warning',
-        title: 'Direct Mail Send Failed',
-        message: `Failed to send direct mail to ${lead.firstName} ${lead.lastName} after ${MAX_RETRIES} retries. Error: ${errorMessage || 'Unknown error'}`,
-        organizationId,
-        relatedEntityType: 'lead',
-        relatedEntityId: leadId,
-        status: 'new',
-        metadata: {
-          leadId,
-          recipientName: `${lead.firstName} ${lead.lastName}`,
-          recipientAddress: lead.address,
-          errorType,
-          errorMessage,
-          subject: content.subject,
-          retriesAttempted: MAX_RETRIES,
-        },
-      });
-      logger.info(`[Communications] System alert created for direct mail failure to lead ${leadId}`);
-    } catch (alertError) {
-      logger.error('[Communications] Failed to create system alert', undefined, { metadata: { detail: alertError } });
-    }
-  }
 }
 
 export const communicationsService = new CommunicationsService();

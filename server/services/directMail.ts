@@ -1,9 +1,24 @@
+/**
+ * Campaign-blast direct mail. R-2 (founder ruling 2026-08-11): this file used
+ * to build its OWN Lob clients from process.env in a constructor — a third
+ * parallel credential story, and the one that made a campaign blast for an org
+ * with no connected printer account print on AcreOS's Lob key. Credentials now
+ * come from the ONE door (`mail/mailLanes.assertMailLane`); nothing here reads
+ * a Lob env key.
+ */
 import Lob from 'lob';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
+import {
+  assertMailLane,
+  mailLaneStatus,
+  resolvePlatformMailCredential,
+  type MailCredential,
+  type MailLaneStatus,
+  type MailPurpose,
+} from './mail/mailLanes';
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -82,70 +97,35 @@ export interface SendResult {
   credentialSource?: 'organization' | 'platform';
 }
 
+/**
+ * The slice of the Lob SDK address verification uses. The `lob` package's
+ * bundled types omit usVerifications, so we declare exactly what we call
+ * rather than widening the client to `any`.
+ */
+interface LobVerificationClient {
+  usVerifications: {
+    verify(params: {
+      primary_line: string;
+      secondary_line: string;
+      city: string;
+      state: string;
+      zip_code: string;
+    }): Promise<{
+      deliverability: string;
+      primary_line: string;
+      secondary_line?: string;
+      components: { city: string; state: string; zip_code: string };
+    }>;
+  };
+}
+
 export class DirectMailService {
-  private testLob: any = null;
-  private liveLob: any = null;
-  private hasTestKey: boolean = false;
-  private hasLiveKey: boolean = false;
-
-  constructor() {
-    const apiKey = process.env.LOB_API_KEY;
-    
-    if (apiKey) {
-      // Lob API keys are prefixed with 'test_' for test mode or 'live_' for production
-      if (apiKey.startsWith('test_')) {
-        this.testLob = new Lob({ apiKey });
-        this.hasTestKey = true;
-      } else if (apiKey.startsWith('live_')) {
-        this.liveLob = new Lob({ apiKey });
-        this.hasLiveKey = true;
-      } else {
-        // If no prefix, assume it's a live key
-        this.liveLob = new Lob({ apiKey });
-        this.hasLiveKey = true;
-      }
-    }
-    
-    // Also check for separate test/live keys
-    const testKey = process.env.LOB_TEST_API_KEY;
-    const liveKey = process.env.LOB_LIVE_API_KEY;
-    
-    if (testKey) {
-      this.testLob = new Lob({ apiKey: testKey });
-      this.hasTestKey = true;
-    }
-    
-    if (liveKey) {
-      this.liveLob = new Lob({ apiKey: liveKey });
-      this.hasLiveKey = true;
-    }
-  }
-
-  isAvailable(): boolean {
-    return this.hasTestKey || this.hasLiveKey;
-  }
-
-  hasTestMode(): boolean {
-    return this.hasTestKey;
-  }
-
-  hasLiveMode(): boolean {
-    return this.hasLiveKey;
-  }
-
-  getAvailableModes(): MailMode[] {
-    const modes: MailMode[] = [];
-    if (this.hasTestKey) modes.push('test');
-    if (this.hasLiveKey) modes.push('live');
-    return modes;
-  }
-
   /**
    * Degrade 'live' to 'test' while the platform live-send interlock is
    * disarmed (mail/liveSendInterlock.ts). org.settings.mailMode = 'live' is
    * a per-org preference; the interlock is the platform-wide launch gate
-   * and always wins. Callers report the returned mode so isTestMode in
-   * results never claims physical mail that didn't print.
+   * and always wins. Only meaningful for PLATFORM-credential sends — an org
+   * on its own Lob key chose its own environment by its own key prefix.
    */
   private effectiveMode(requested: MailMode): MailMode {
     if (requested === 'live' && !isLiveSendArmed()) {
@@ -155,63 +135,41 @@ export class DirectMailService {
     return requested;
   }
 
-  private getLobClient(mode: MailMode): any {
-    if (mode === 'test') {
-      if (!this.testLob) {
-        throw new Error('Test mode Lob API key not configured');
-      }
-      return this.testLob;
-    } else {
-      if (!this.liveLob) {
-        throw new Error('Live mode Lob API key not configured');
-      }
-      return this.liveLob;
-    }
+  /**
+   * Org-scoped honest status for the direct-mail settings surfaces. Replaces
+   * the old process-wide isAvailable()/hasLiveMode()/getAvailableModes()
+   * reads, which answered "does the PLATFORM hold a key" for a question that
+   * is always about one specific org.
+   */
+  async laneStatus(orgId: number): Promise<MailLaneStatus> {
+    return mailLaneStatus(orgId);
   }
 
-  async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform'; isTestKey: boolean } | null> {
-    try {
-      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-      
-      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          orgId
-        );
-        
-        if (decrypted.apiKey) {
-          logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
-          return {
-            client: new Lob({ apiKey: decrypted.apiKey }),
-            source: 'organization',
-            isTestKey: decrypted.apiKey.startsWith('test_'),
-          };
-        }
-      }
-    } catch (error) {
-      logger.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}`, error);
-    }
-    
-    return null;
-  }
-
+  /** Does this org have its OWN connected Lob credential? */
   async hasOrgLobCredentials(orgId: number): Promise<boolean> {
-    try {
-      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          orgId
-        );
-        return !!decrypted.apiKey;
-      }
-    } catch (error) {
-      logger.error(`[DirectMail] Failed to check org Lob credentials for org ${orgId}`, error);
-    }
-    return false;
+    const status = await mailLaneStatus(orgId);
+    return status.connected;
   }
 
-  async sendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+  /**
+   * Resolve the credential for a whole batch, ONCE, through the lane. Throws
+   * MailLaneRefusal when this org may not send on this lane — the caller
+   * renders the connect affordance from `err.details`.
+   */
+  async assertBatchLane(
+    orgId: number,
+    pieceCount: number,
+    purpose: MailPurpose = 'counterparty',
+  ): Promise<MailCredential> {
+    return assertMailLane({ organizationId: orgId, purpose, pieceCount });
+  }
+
+  async sendPostcard(
+    options: PostcardOptions,
+    mode: MailMode = 'live',
+    orgId?: number,
+    lane?: { credential?: MailCredential; purpose?: MailPurpose },
+  ): Promise<SendResult> {
     // Honor SIMULATION_MODE / SIMULATION_MODE_LOB / org.settings.simulationMode.
     // Previously this service relied only on Lob's own `test_*` key for safety,
     // which made the global kill-switch a lie for direct-mail. Caught 2026-05-10.
@@ -231,32 +189,8 @@ export class DirectMailService {
       };
     }
 
-    let lob: any;
-    let credentialSource: 'organization' | 'platform' = 'platform';
-    // Whether the send actually ran in Lob's test environment (no physical
-    // mail) — org keys by prefix, platform keys by interlock-degraded mode.
-    let usedTestEnv: boolean;
-
-    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
-    if (orgClient) {
-      lob = orgClient.client;
-      credentialSource = orgClient.source;
-      usedTestEnv = orgClient.isTestKey;
-    } else {
-      const effective = this.effectiveMode(mode);
-      // Outreach stop-loss gate (founder rulings #4/#5, 2026-07-28): a
-      // platform-credential LIVE send spends the founder's mail budget, so
-      // it's checked against the monthly mail+data line. Throws
-      // OutreachPausedError when paused — nothing sends, nothing is
-      // fabricated; the caller's queue item stays put. BYO-key (orgClient)
-      // and test-env sends spend nothing and are not gated.
-      if (effective === 'live') {
-        const { assertOutreachNotPaused } = await import('./outreachStopLoss');
-        await assertOutreachNotPaused('directMail.sendPostcard');
-      }
-      lob = this.getLobClient(effective);
-      usedTestEnv = effective === 'test';
-    }
+    const credential = await this.resolveSendCredential(orgId, mode, lane, 'directMail.sendPostcard');
+    const lob = new Lob({ apiKey: credential.apiKey });
 
     const result = await lob.postcards.create({
       to: {
@@ -281,17 +215,22 @@ export class DirectMailService {
     });
     
     const costCents = options.size === '4x6' ? 80 : options.size === '6x9' ? 95 : 115;
-    logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: usedTestEnv });
+    logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: credential.isTestKey });
 
     return {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
-      isTestMode: usedTestEnv,
-      credentialSource,
+      isTestMode: credential.isTestKey,
+      credentialSource: credential.source,
     };
   }
 
-  async sendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+  async sendLetter(
+    options: LetterOptions,
+    mode: MailMode = 'live',
+    orgId?: number,
+    lane?: { credential?: MailCredential; purpose?: MailPurpose },
+  ): Promise<SendResult> {
     const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
     if (shouldSimulate("lob", org)) {
       const sim = await recordSimulatedAction(
@@ -308,26 +247,8 @@ export class DirectMailService {
       };
     }
 
-    let lob: any;
-    let credentialSource: 'organization' | 'platform' = 'platform';
-    // See sendPostcard — honest test-environment tracking.
-    let usedTestEnv: boolean;
-
-    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
-    if (orgClient) {
-      lob = orgClient.client;
-      credentialSource = orgClient.source;
-      usedTestEnv = orgClient.isTestKey;
-    } else {
-      const effective = this.effectiveMode(mode);
-      // Outreach stop-loss gate — see sendPostcard for the full rationale.
-      if (effective === 'live') {
-        const { assertOutreachNotPaused } = await import('./outreachStopLoss');
-        await assertOutreachNotPaused('directMail.sendLetter');
-      }
-      lob = this.getLobClient(effective);
-      usedTestEnv = effective === 'test';
-    }
+    const credential = await this.resolveSendCredential(orgId, mode, lane, 'directMail.sendLetter');
+    const lob = new Lob({ apiKey: credential.apiKey });
 
     const result = await lob.letters.create({
       to: {
@@ -352,14 +273,70 @@ export class DirectMailService {
     });
     
     const costCents = (options.pageCount || 1) <= 1 ? 150 : 150 + ((options.pageCount || 1) - 1) * 15;
-    logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: usedTestEnv });
+    logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: credential.isTestKey });
 
     return {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
-      isTestMode: usedTestEnv,
-      credentialSource,
+      isTestMode: credential.isTestKey,
+      credentialSource: credential.source,
     };
+  }
+
+  /**
+   * The ONE credential path for this service. `orgId` is not optional in
+   * substance — assertMailLane refuses a send that cannot name its org — and
+   * the platform-key branch still passes the outreach stop-loss gate, because
+   * a platform-credential LIVE send spends the founder's mail budget.
+   */
+  private async resolveSendCredential(
+    orgId: number | undefined,
+    mode: MailMode,
+    lane: { credential?: MailCredential; purpose?: MailPurpose } | undefined,
+    site: string,
+  ): Promise<MailCredential> {
+    const credential =
+      lane?.credential ??
+      (await assertMailLane({
+        organizationId: orgId,
+        purpose: lane?.purpose ?? 'counterparty',
+        pieceCount: 1,
+      }));
+
+    if (credential.source === 'platform') {
+      // Outreach stop-loss gate (founder rulings #4/#5, 2026-07-28): a
+      // platform-credential LIVE send spends the founder's mail budget, so
+      // it's checked against the monthly mail+data line. Throws
+      // OutreachPausedError when paused — nothing sends, nothing is
+      // fabricated; the caller's queue item stays put. BYO-key and test-env
+      // sends spend nothing and are not gated.
+      // GATED ON THE KEY IN HAND, not on a requested mode.
+      //
+      // This previously also required `effectiveMode(mode) === 'live'`, which
+      // stopped describing reality once the credential resolver started
+      // returning whatever `resolvePlatformLobKey()` yields — the LIVE key
+      // whenever the interlock is armed, regardless of the mode asked for. So
+      // `mode: 'test'` skipped the stop-loss AND still got a live key: real
+      // letters printed, postage billed to AcreOS, and the monthly mail budget
+      // never consulted. A live platform key is a live platform key.
+      if (!credential.isTestKey) {
+        const { assertOutreachNotPaused } = await import('./outreachStopLoss');
+        await assertOutreachNotPaused(site);
+      }
+
+      // REFUSE rather than silently upgrade a test send to a live one. The
+      // caller asked for test mode; handing back a live platform key would
+      // print real mail under a UI that says nothing is being sent. Refusing is
+      // the only honest answer — the platform test key is the test lane, and if
+      // it is unavailable there is no test lane to use.
+      if (this.effectiveMode(mode) === 'test' && !credential.isTestKey) {
+        throw new Error(
+          'Test-mode mail was requested but only a LIVE platform credential is available. ' +
+            'Nothing was sent. Configure the platform test credential, or send in live mode deliberately.',
+        );
+      }
+    }
+    return credential;
   }
 
   calculateCost(type: MailPieceType, quantity: number = 1): number {
@@ -377,8 +354,9 @@ export class DirectMailService {
       totalCost: perPiece * recipientCount,
       recipientCount,
       pieceType,
-      // Reflect what a send would ACTUALLY do — while the interlock is
-      // disarmed a 'live' request still runs in Lob's test environment.
+      // Reflect what a PLATFORM-credential send would ACTUALLY do — while the
+      // interlock is disarmed a 'live' request still runs in Lob's test
+      // environment. An org on its own key sets its own environment.
       isTestMode: this.effectiveMode(mode) === 'test',
     };
   }
@@ -389,10 +367,14 @@ export class DirectMailService {
     deliverability: string;
     normalizedAddress?: DirectMailRecipient;
   }> {
-    // Use test mode by default for verification to save costs. The
-    // interlock also applies: without a test key and while disarmed this
-    // throws rather than silently using the live key.
-    const lob = this.getLobClient(this.hasTestKey ? 'test' : this.effectiveMode(mode));
+    // Address verification is a LOOKUP on AcreOS's own Lob account, not a
+    // send — no paper, no counterparty, so it stays on the platform key under
+    // the interlock (which pins it to Lob's test environment while disarmed).
+    const platform = resolvePlatformMailCredential();
+    if (!platform) {
+      return { isValid: false, deliverability: 'error' };
+    }
+    const lob = new Lob({ apiKey: platform.apiKey }) as unknown as LobVerificationClient;
     
     try {
       const result = await lob.usVerifications.verify({

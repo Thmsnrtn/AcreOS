@@ -62,11 +62,10 @@ const SECRETS: SecretSpec[] = [
   { key: "TWILIO_ACCOUNT_SID", required: false, description: "Twilio account SID for SMS/voice" },
   { key: "TWILIO_AUTH_TOKEN", required: false, description: "Twilio auth token" },
 
-  // MCP
-  { key: "MCP_API_KEY", required: false, description: "Bearer token for MCP endpoint authentication", productionOnly: true },
-  // T0-3 (2026-06-10): org binding for the static MCP key — org-scoped MCP
-  // tools refuse without it (per-org ak_ keys carry their own binding).
-  { key: "MCP_ORG_ID", required: false, description: "Organization id the static MCP_API_KEY is bound to" },
+  // MCP — no secrets. Founder ruling R-1 (2026-08-11) retired MCP_API_KEY and
+  // its MCP_ORG_ID binding along with the `/mcp` endpoint they authenticated.
+  // POST /api/mcp authenticates per-org api_keys rows, which carry their own
+  // org AND scopes, so there is no MCP env secret left to validate.
 
   // Error tracking
   { key: "SENTRY_DSN", required: false, description: "Sentry DSN for error tracking", productionOnly: true },

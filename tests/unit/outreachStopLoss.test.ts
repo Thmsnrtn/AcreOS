@@ -219,11 +219,35 @@ describe("source shape — the chokepoints are really gated", () => {
     expect(flusherSrc).toContain("notifyOutreachPausedOnce");
   });
 
-  it("directMail gates BOTH platform-credential live send paths (postcard + letter)", () => {
-    const matches = directMailSrc.match(/assertOutreachNotPaused\(/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-    expect(directMailSrc).toContain("assertOutreachNotPaused('directMail.sendPostcard')");
-    expect(directMailSrc).toContain("assertOutreachNotPaused('directMail.sendLetter')");
+  it("directMail gates BOTH platform-credential send paths (postcard + letter)", () => {
+    // REWRITTEN, not deleted (R-2 consolidation, 2026-08-11). This used to
+    // require TWO `assertOutreachNotPaused(` call sites, one per send path.
+    // R-2 moved credential resolution into a single `resolveSendCredential`
+    // that both paths call, so there is now ONE gate covering both — strictly
+    // better than two copies that could drift, and a count-based pin would
+    // have read the improvement as a regression.
+    //
+    // The invariant is unchanged and is now checked by construction: every
+    // send path obtains its credential through the resolver, and the resolver
+    // gates a live platform key.
+    for (const site of ["directMail.sendPostcard", "directMail.sendLetter"]) {
+      expect(
+        directMailSrc,
+        `${site} must obtain its credential through resolveSendCredential`,
+      ).toContain(`this.resolveSendCredential(orgId, mode, lane, '${site}')`);
+    }
+
+    // No send path may build a Lob client from a credential it resolved any
+    // other way — that would route around the gate entirely.
+    const lobClients = (directMailSrc.match(/new Lob\(\{ apiKey: credential\.apiKey \}\)/g) ?? []).length;
+    const resolverCalls = (directMailSrc.match(/this\.resolveSendCredential\(/g) ?? []).length;
+    expect(lobClients).toBeGreaterThanOrEqual(2);
+    expect(resolverCalls).toBeGreaterThanOrEqual(lobClients);
+
+    // And the resolver really gates — on the KEY IN HAND, not on a mode.
+    const resolver = directMailSrc.slice(directMailSrc.indexOf("private async resolveSendCredential("));
+    expect(resolver).toContain("if (!credential.isTestKey) {");
+    expect(resolver).toContain("assertOutreachNotPaused(site)");
   });
 
   it("the pause pages the founder via the real pagerService at urgent, with plain words", () => {

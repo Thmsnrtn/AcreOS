@@ -202,8 +202,14 @@ export const CREDENTIAL_DEFINITIONS: Array<{
   { key: "TWILIO_PHONE_NUMBER", service: "twilio", label: "Twilio Phone Number", isSecret: false, isRequired: false, hint: "+12125550100" },
   // Redis
   { key: "REDIS_URL", service: "redis", label: "Redis URL", isSecret: true, isRequired: false, hint: "redis://localhost:6379" },
-  // MCP
-  { key: "MCP_API_KEY", service: "mcp", label: "MCP API Key", isSecret: true, isRequired: false, hint: "Auto-generate below" },
+  // MCP — no credential entry. Founder ruling R-1 (2026-08-11) retired the
+  // static MCP_API_KEY lane with the `/mcp` endpoint it authenticated. The
+  // surviving surface (POST /api/mcp) authenticates per-ORG api_keys rows
+  // (ak_live_…) minted through the api-keys surface with explicit scopes, so
+  // there is no platform-wide MCP secret for the founder to set. Availability
+  // is still founder-controlled, but by env flag rather than credential:
+  // MCP_PUBLIC_DISABLED (kill switch) and MCP_ORG_ALLOWLIST (per-org narrowing)
+  // in server/mcp/auth.ts.
   // Data Providers
   { key: "ATTOM_API_KEY", service: "attom", label: "ATTOM Data API Key", isSecret: true, isRequired: false, hint: "apikey from attomdata.com", docUrl: "https://api.gateway.attomdata.com/docs" },
   { key: "REGRID_API_KEY", service: "regrid", label: "Regrid API Key", isSecret: true, isRequired: false, hint: "API key from regrid.com", docUrl: "https://regrid.com/api" },
@@ -234,7 +240,9 @@ export const SERVICE_GROUPS: Array<{
   { service: "twilio", label: "SMS / Phone (Twilio)", description: "Text message campaigns and call routing", icon: "Phone", required: false },
   { service: "redis", label: "Redis", description: "Job queues, real-time pub/sub, caching", icon: "Database", required: false },
   { service: "openai", label: "OpenAI (fallback)", description: "Direct OpenAI fallback if OpenRouter is unavailable", icon: "Sparkles", required: false },
-  { service: "mcp", label: "MCP API Key", description: "Internal MCP server access key", icon: "Key", required: false },
+  // No "mcp" service row: R-1 (2026-08-11) retired its only credential
+  // (MCP_API_KEY), and a service card with zero keys is a control that looks
+  // settable and does nothing.
   { service: "attom", label: "ATTOM Data", description: "Property details, valuations, and sales comparables", icon: "Building", required: false },
   { service: "regrid", label: "Regrid", description: "Parcel boundaries, owner info, and land data", icon: "MapPin", required: false },
   { service: "searchbug", label: "Searchbug (DNC scrub)", description: "Federal/state DNC + TCPA litigator scrub for outbound SMS", icon: "Phone", required: false },

@@ -39,6 +39,7 @@ import {
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { creditExamples, type CreditAction } from "@shared/billing/credit-weights";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import { FREE_TIER_LIFETIME_PIECES, freeTierMailPiecesUsed } from "./services/mail/mailLanes";
 import {
   mailRouter,
   type MailPiece,
@@ -65,23 +66,14 @@ const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"]
 // mail_shipments rows, so a cancel within the hold window gives the pieces
 // back. All witnessed-send / live-send interlocks are untouched — this only
 // widens WHO may queue, never HOW mail leaves the building.
-export const FREE_TIER_LIFETIME_PIECES = 5;
+// R-2 (2026-08-11): the cap and its counter MOVED to
+// `services/mail/mailLanes.ts` — the door every send path passes through —
+// because three other paths (campaign blast, sequence cadence, autopilot
+// hand) bypassed this route entirely and were therefore uncapped. This route
+// keeps its own pre-debit check so a refusal never writes a ledger row, but
+// it now reads the ONE definition rather than holding a second copy.
+export { FREE_TIER_LIFETIME_PIECES } from "./services/mail/mailLanes";
 
-/** Lifetime pieces a free org has already committed (cancelled excluded). */
-async function freeTierPiecesUsed(organizationId: number): Promise<number> {
-  const [agg] = await db
-    .select({
-      used: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
-    })
-    .from(mailShipments)
-    .where(
-      and(
-        eq(mailShipments.organizationId, organizationId),
-        sql`${mailShipments.status} != 'cancelled'`,
-      ),
-    );
-  return agg?.used ?? 0;
-}
 const SPEEDS = ["next_day", "standard", "batch_3d", "batch_weekly", "eddm_geo"] as const;
 
 // Recent-mail dedupe window (matches the composer warning copy).
@@ -287,6 +279,7 @@ async function buildQuote(
       pieces,
       speed,
       personalizationRequired: false,
+      purpose: "counterparty",
     });
   } catch (err) {
     logger.warn("[outreach-mail] mailRouter.quote failed", {
@@ -404,7 +397,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         // convert, not to dead-end.
         const orgTier = ((org.subscriptionTier ?? "free").toLowerCase()) as SubscriptionTier;
         if (!req.isFounder && orgTier === "free") {
-          const used = await freeTierPiecesUsed(org.id);
+          const used = await freeTierMailPiecesUsed(org.id);
           const remainingPieces = Math.max(0, FREE_TIER_LIFETIME_PIECES - used);
           if (remainingPieces === 0) {
             return Errors.limitExceeded(res, {

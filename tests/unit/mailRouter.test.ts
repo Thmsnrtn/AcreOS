@@ -80,6 +80,7 @@ function shipment(overrides: Partial<MailShipment> = {}): MailShipment {
     ],
     speed: "standard",
     personalizationRequired: false,
+  purpose: "counterparty" as const,
     ...overrides,
   };
 }

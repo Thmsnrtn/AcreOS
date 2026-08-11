@@ -103,3 +103,9 @@ walk-*.png
 w2-*.png
 persona-prod-parcelcheck-desktop.png
 .playwright-mcp/
+
+# County parcel fabrics (Wave 2.2). PMTiles archives are BUILD OUTPUT of
+# scripts/build-county-fabric.ts, not source — rebuildable from the county's
+# own open-licence service in minutes, and megabytes each. The server reads
+# whatever is in this directory (COUNTY_FABRIC_DIR overrides it).
+data/county-fabric/

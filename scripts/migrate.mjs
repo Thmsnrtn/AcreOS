@@ -9048,6 +9048,47 @@ const STATEMENTS = [
      ON "tracked_parcels" ("organization_id", "state", "county", "apn")`,
   `CREATE INDEX IF NOT EXISTS "tracked_parcels_org_created_idx"
      ON "tracked_parcels" ("organization_id", "created_at")`,
+
+  // ── R-3 — collection-sequence arming + named crisis pre-authorisation ─────
+  // Mirrors migrations/0231_collection_sequence_arming.sql + shared/schema.ts.
+  //
+  // ⚠️ There is deliberately NO `UPDATE collection_sequences SET auto_start =
+  // false` here, and there must never be one. Flipping the DEFAULT only
+  // affects future inserts; rows created under the old default keep
+  // auto_start = true with armed_at = NULL, which arming.ts classifies as
+  // `armed_unconfirmed` — it KEEPS DISPATCHING (a live collection is not cut
+  // off mid-ladder) and SURFACES in Finance → Collections until a human
+  // confirms the exact ladder. Backfilling would disarm running collections
+  // wholesale, which the founder ruled against.
+  `ALTER TABLE "collection_sequences" ALTER COLUMN "auto_start" SET DEFAULT false`,
+  `ALTER TABLE "collection_sequences" ADD COLUMN IF NOT EXISTS "armed_at" timestamp`,
+  `ALTER TABLE "collection_sequences" ADD COLUMN IF NOT EXISTS "armed_by" text`,
+  `ALTER TABLE "collection_sequences" ADD COLUMN IF NOT EXISTS "armed_ladder_digest" text`,
+  `CREATE INDEX IF NOT EXISTS "collection_sequences_org_arming_idx"
+     ON "collection_sequences" ("organization_id", "auto_start", "armed_at")`,
+
+  // Founder-side crisis trade-offs. Had no CREATE TABLE anywhere (orphan
+  // baseline) — created here so the ALTERs below actually land, and removed
+  // from both orphan baselines in the same commit.
+  `CREATE TABLE IF NOT EXISTS "pre_authorized_tradeoffs" (
+     "id" serial PRIMARY KEY,
+     "tradeoff_id" text NOT NULL UNIQUE,
+     "condition" text NOT NULL,
+     "action" text NOT NULL,
+     "severity" text NOT NULL,
+     "auto_execute" boolean NOT NULL DEFAULT false,
+     "pre_authorized_by" text,
+     "pre_authorized_at" timestamp,
+     "pre_authorization_note" text,
+     "execution_count" integer NOT NULL DEFAULT 0,
+     "last_executed_at" timestamp,
+     "is_active" boolean NOT NULL DEFAULT true,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `ALTER TABLE "pre_authorized_tradeoffs" ALTER COLUMN "auto_execute" SET DEFAULT false`,
+  `ALTER TABLE "pre_authorized_tradeoffs" ADD COLUMN IF NOT EXISTS "pre_authorized_by" text`,
+  `ALTER TABLE "pre_authorized_tradeoffs" ADD COLUMN IF NOT EXISTS "pre_authorized_at" timestamp`,
+  `ALTER TABLE "pre_authorized_tradeoffs" ADD COLUMN IF NOT EXISTS "pre_authorization_note" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

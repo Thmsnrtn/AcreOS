@@ -45,6 +45,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { StaleDataChip, StaleWhileError } from "@/lib/stale-while-error";
 import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { FinanceBook } from "@/components/finance/FinanceBook";
+import { CollectionArming } from "@/components/finance/CollectionArming";
 import { usePersona, useTerm } from "@/hooks/use-persona";
 import { AtrGate } from "@/components/AtrGate";
 import { useAuth } from "@/hooks/use-auth";
@@ -563,9 +564,13 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               (FinanceBook). This is a section within the Finance door — not a
               new top-level nav entry. */}
           <Tabs defaultValue="portfolio" className="mt-2">
-            <TabsList className="grid h-12 w-full grid-cols-2 sm:w-auto sm:inline-grid">
+            <TabsList className="grid h-12 w-full grid-cols-3 sm:w-auto sm:inline-grid">
               <TabsTrigger value="portfolio" className="min-h-11" data-testid="tab-finance-portfolio">Portfolio</TabsTrigger>
               <TabsTrigger value="book" className="min-h-11" data-testid="tab-finance-book">Book</TabsTrigger>
+              {/* R-3 (2026-08-11): the collection-sequence arming + confirm
+                  surface. A TAB inside the fixed Finance door — not a new
+                  top-level nav entry and not a new AI destination. */}
+              <TabsTrigger value="collections" className="min-h-11" data-testid="tab-finance-collections">Collections</TabsTrigger>
             </TabsList>
 
             <TabsContent value="portfolio" className="mt-4">
@@ -715,6 +720,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="collections" className="mt-4">
+              <CollectionArming />
             </TabsContent>
 
             <TabsContent value="book" className="mt-4">

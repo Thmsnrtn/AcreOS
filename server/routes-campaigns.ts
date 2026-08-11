@@ -18,7 +18,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
 import { Errors } from "./utils/errors";
-import type { AuthenticatedRequest } from "./types/request";
+import { type AuthenticatedRequest, getOrganization } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
@@ -739,13 +739,13 @@ export function registerCampaignRoutes(app: Express): void {
       const { pieceType, leadIds } = parsed.data;
 
       const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      const { isMailLaneRefusal } = await import("./services/mail/mailLanes");
       
-      // Check if org has their own Lob credentials (BYOK) - if so, skip credit check
-      const usingOrgLobCredentials = await directMailService.hasOrgLobCredentials(org.id);
-      
-      if (!usingOrgLobCredentials && !directMailService.isAvailable()) {
-        return Errors.badRequest(res, "Direct mail service not configured. Please add LOB_API_KEY or configure your own Lob API key in Integrations.");
-      }
+      // R-2: org-scoped, not process-wide. "Is a Lob key set on the server"
+      // was never the right question — this org's ability to mail its own
+      // counterparties is.
+      const laneStatus = await directMailService.laneStatus(org.id);
+      const usingOrgLobCredentials = laneStatus.connected;
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign || campaign.type !== 'direct_mail') {
@@ -828,6 +828,19 @@ export function registerCampaignRoutes(app: Express): void {
             },
           },
         });
+      }
+
+      // THE LANE, once, for the whole accepted batch — BEFORE any credit is
+      // deducted and before a single piece is printed. An org with no
+      // connected Lob account is refused here with the connect affordance;
+      // a free-tier org is held to the activation wedge across every send
+      // path, not just the outreach queue.
+      let batchCredential;
+      try {
+        batchCredential = await directMailService.assertBatchLane(org.id, validLeads.length, "counterparty");
+      } catch (laneErr) {
+        if (!isMailLaneRefusal(laneErr)) throw laneErr;
+        return Errors.limitExceeded(res, laneErr.details);
       }
 
       // Only deduct credits if NOT using org Lob credentials (BYOK)
@@ -919,7 +932,7 @@ export function registerCampaignRoutes(app: Express): void {
                 zip: lead.zip!,
               },
               from: senderAddress,
-            }, mailMode, org.id);
+            }, mailMode, org.id, { credential: batchCredential, purpose: "counterparty" });
           } else {
             result = await directMailService.sendLetter({
               file: campaign.content || '<html><body><p>Letter content</p></body></html>',
@@ -931,7 +944,7 @@ export function registerCampaignRoutes(app: Express): void {
                 zip: lead.zip!,
               },
               from: senderAddress,
-            }, mailMode, org.id);
+            }, mailMode, org.id, { credential: batchCredential, purpose: "counterparty" });
           }
 
           const expectedDeliveryDate = result.expected_delivery_date ? new Date(result.expected_delivery_date) : undefined;
@@ -948,7 +961,11 @@ export function registerCampaignRoutes(app: Express): void {
               orgId: org.id,
               userId: null,
               eventName: "first_letter_sent",
-              eventValue: { lobId: result.id, pieceType, isTestMode },
+              // The activation event records what ACTUALLY happened, not what
+              // was requested — `result.isTestMode` is the send path's own
+              // answer. Recording the request would file a real letter as a
+              // test send in the funnel.
+              eventValue: { lobId: result.id, pieceType, isTestMode: result.isTestMode ?? isTestMode },
             });
           } catch { /* non-fatal */ }
 
@@ -1109,6 +1126,7 @@ export function registerCampaignRoutes(app: Express): void {
       const usingOrgLobCredentials = await (
         await import("./services/directMail")
       ).directMailService.hasOrgLobCredentials(org.id);
+
 
       let balance = 0;
       let lettersOfRunway: number | null = null;
@@ -1382,19 +1400,38 @@ export function registerCampaignRoutes(app: Express): void {
   // ============================================
   
   // Get direct mail status and configuration
-  api.get("/api/direct-mail/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
+  api.get("/api/direct-mail/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    const org = getOrganization(req);
     const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
-    
+
+    // R-2: answered for THIS org, not for the process. `isConfigured` used to
+    // mean "a Lob key exists in the server env", which told an org with no
+    // connected printer account that it could mail.
+    const lane = await directMailService.laneStatus(org.id);
     const currentMode = org.settings?.mailMode || 'test';
-    const availableModes = directMailService.getAvailableModes();
-    
+
+    // The Lob ENVIRONMENT is a property of the credential, not a preference:
+    // a BYO key declares it by prefix (test_/live_), and the platform key is
+    // pinned to Lob's test environment until the live-send interlock arms. So
+    // "which modes are available" has exactly one honest answer per org, and
+    // reporting a live toggle the credential cannot honour would be a claim
+    // we can't back.
+    const liveCapable = lane.canSendCounterparty && lane.isTestMode === false;
+    const testCapable = lane.canSendCounterparty && lane.isTestMode === true;
+
     res.json({
-      isConfigured: directMailService.isAvailable(),
+      isConfigured: lane.canSendCounterparty,
+      credentialSource: lane.source,
+      connected: lane.connected,
+      connectUrl: lane.connectUrl,
+      wedgeRemaining: lane.wedgeRemaining,
+      refusal: lane.refusal,
       currentMode,
-      availableModes,
-      hasTestMode: directMailService.hasTestMode(),
-      hasLiveMode: directMailService.hasLiveMode(),
+      // Honest posture of the credential this org would actually use.
+      isTestMode: lane.isTestMode,
+      availableModes: liveCapable ? (["live"] as const) : testCapable ? (["test"] as const) : [],
+      hasTestMode: testCapable,
+      hasLiveMode: liveCapable,
       pricing: DIRECT_MAIL_COSTS,
       deliveryDays: directMailService.getEstimatedDeliveryDays(),
     });
@@ -1411,13 +1448,17 @@ export function registerCampaignRoutes(app: Express): void {
     const { mode } = parsed.data;
     
     const { directMailService } = await import("./services/directMail");
-    
-    // Validate the mode is available
-    if (mode === 'live' && !directMailService.hasLiveMode()) {
-      return Errors.badRequest(res, "Live mode not available - no live API key configured");
-    }
-    if (mode === 'test' && !directMailService.hasTestMode()) {
-      return Errors.badRequest(res, "Test mode not available - no test API key configured");
+
+    // R-2: the only precondition that means anything is "can this org send at
+    // all". Which Lob ENVIRONMENT a send lands in is decided by the org's own
+    // key prefix, or by the platform live-send interlock — never by this flag.
+    const lane = await directMailService.laneStatus(org.id);
+    if (!lane.canSendCounterparty) {
+      return Errors.badRequest(
+        res,
+        lane.refusal?.message ?? "Direct mail is not available for this organization.",
+        lane.refusal ?? undefined,
+      );
     }
     
     // Update organization settings. 2026-07 audit: atomic jsonb_set on the
@@ -1462,8 +1503,13 @@ export function registerCampaignRoutes(app: Express): void {
 
       const { directMailService } = await import("./services/directMail");
 
-      if (!directMailService.isAvailable()) {
-        return Errors.badRequest(res, "Direct mail service not configured");
+      const lane = await directMailService.laneStatus(org.id);
+      if (!lane.canSendCounterparty) {
+        return Errors.badRequest(
+          res,
+          lane.refusal?.message ?? "Direct mail is not available for this organization.",
+          lane.refusal ?? undefined,
+        );
       }
       
       // Calculate recipient count from IDs if provided
@@ -1520,12 +1566,12 @@ export function registerCampaignRoutes(app: Express): void {
       }
       const { line1, line2, city, state, zip } = parsed.data;
       
-      const isProduction = process.env.NODE_ENV === 'production';
-      const apiKey = isProduction 
-        ? process.env.LOB_LIVE_API_KEY 
-        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-      
-      if (!apiKey) {
+      // Address verification is a lookup on the PLATFORM Lob account (no
+      // paper, no counterparty), so it asks the platform-key resolver rather
+      // than reading env keys here. R-2 grep ratchet: no LOB_* outside
+      // mail/liveSendInterlock.ts.
+      const { isPlatformMailConfigured } = await import("./services/mail/mailLanes");
+      if (!isPlatformMailConfigured()) {
         return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
       }
 
@@ -1561,12 +1607,12 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "Maximum 100 addresses can be verified at once");
       }
       
-      const isProduction = process.env.NODE_ENV === 'production';
-      const apiKey = isProduction 
-        ? process.env.LOB_LIVE_API_KEY 
-        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-      
-      if (!apiKey) {
+      // Address verification is a lookup on the PLATFORM Lob account (no
+      // paper, no counterparty), so it asks the platform-key resolver rather
+      // than reading env keys here. R-2 grep ratchet: no LOB_* outside
+      // mail/liveSendInterlock.ts.
+      const { isPlatformMailConfigured } = await import("./services/mail/mailLanes");
+      if (!isPlatformMailConfigured()) {
         return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
       }
 

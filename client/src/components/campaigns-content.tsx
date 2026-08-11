@@ -432,8 +432,17 @@ function MailModeIndicator() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             <div>
-              <p className="font-medium">Direct mail not configured</p>
-              <p className="text-sm text-muted-foreground">Add your Lob API key in settings to enable direct mail.</p>
+              <p className="font-medium">Direct mail not available</p>
+              <p className="text-sm text-muted-foreground">
+                {mailStatus.refusal?.message ??
+                  "Connect your Lob account in Settings → Connections to send physical mail."}
+              </p>
+              <a
+                href={mailStatus.refusal?.connectUrl ?? mailStatus.connectUrl ?? "/settings/byok"}
+                className="mt-2 inline-block text-sm font-medium text-acr-accent underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              >
+                Connect your Lob account
+              </a>
             </div>
           </div>
         </CardContent>
@@ -441,7 +450,12 @@ function MailModeIndicator() {
     );
   }
 
-  const isTestMode = mailStatus.currentMode === 'test';
+  // The HONEST flag, not the preference. `currentMode` is what the org ASKED
+  // for; `isTestMode` is what the send path will actually do with the
+  // credential it can resolve. Rendering the preference produced a banner
+  // reading "Test mode / Safe — no actual mail is sent" over a path that
+  // resolved a LIVE platform key and printed real letters.
+  const isTestMode = mailStatus.isTestMode ?? (mailStatus.currentMode === 'test');
   const canSwitchToLive = mailStatus.hasLiveMode;
 
   const handleModeChange = async (checked: boolean) => {
@@ -784,7 +798,7 @@ function SendMailDialog({
 }: { 
   campaign: Campaign; 
   availableLeads: any[]; 
-  mailStatus: { isConfigured: boolean; currentMode: 'test' | 'live' };
+  mailStatus: { isConfigured: boolean; currentMode: 'test' | 'live'; isTestMode?: boolean | null };
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -838,7 +852,12 @@ function SendMailDialog({
     }
   };
 
-  const isTestMode = mailStatus.currentMode === 'test';
+  // The HONEST flag, not the preference. `currentMode` is what the org ASKED
+  // for; `isTestMode` is what the send path will actually do with the
+  // credential it can resolve. Rendering the preference produced a banner
+  // reading "Test mode / Safe — no actual mail is sent" over a path that
+  // resolved a LIVE platform key and printed real letters.
+  const isTestMode = mailStatus.isTestMode ?? (mailStatus.currentMode === 'test');
   const selectedPiece = pieceTypes.find(p => p.value === pieceType);
   const estimatedCost = selectedPiece ? selectedLeadIds.length * selectedPiece.cost : 0;
 

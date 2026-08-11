@@ -940,22 +940,52 @@ describe("fleet-12 path 3 — the MCP broker declaredSource path", () => {
     expect(screened.attributions).toContain("© OpenStreetMap contributors");
   });
 
-  it("every broker-backed MCP tool routes its result through the chokepoint", () => {
-    const src = read("server/mcp/index.ts");
-    // Derived: one brokerOk() per dataSourceBroker.lookup() call site. A new
-    // tool that returns ok(result.data) directly fails this by count.
-    const lookups = (src.match(/const result = await dataSourceBroker\.lookup\(/g) ?? []).length;
-    const routed = (src.match(/return brokerOk\(result,/g) ?? []).length;
-    expect(lookups).toBeGreaterThan(10);
-    expect(routed, "a broker lookup returns without passing its declared source").toBe(lookups);
+  /**
+   * RE-ANCHORED by R-1 (2026-08-11). This assertion used to read
+   * `server/mcp/index.ts` and require one `brokerOk(result, …)` per
+   * `dataSourceBroker.lookup(` call site — i.e. that each of that surface's 21
+   * broker-backed tools declared its provenance on the way out. That file was
+   * the retired `/mcp` endpoint's tool server and has been DELETED (founder
+   * ruling R-1: it never enforced API-key scopes, so one credential had two
+   * ladders). The tools went with it.
+   *
+   * The property being protected is not "brokerOk is called N times" — it is
+   * "no MCP tool result reaches an external agent without passing the
+   * chokepoint". That property outlives the file, so the assertion is
+   * rewritten against the ONE surviving MCP surface rather than deleted.
+   *
+   * NOTE, recorded rather than asserted: `declaredSource` — the provenance
+   * argument the deleted `brokerOk` supplied — now has NO production caller.
+   * `/api/mcp` screens by payload inspection only, and always did; the surface
+   * that declared provenance is gone rather than downgraded. The
+   * declaredSource behaviour is still pinned by the sibling tests above, which
+   * exercise `screenToolResultData` directly.
+   */
+  it("no MCP tool result leaves without passing the chokepoint", () => {
+    const src = read("server/mcp/streamableHttp.ts");
 
-    // The empty case is separated from the withheld case at the call site too.
-    expect(src).toMatch(/This is an empty result, not a withheld one/);
-    // And the two geocode tools declare the same source they print.
-    expect(src).toMatch(/const NOMINATIM_SOURCE = "OpenStreetMap Nominatim"/);
-    expect(src).toMatch(/source: NOMINATIM_SOURCE,/);
-    // A released attribution string is rendered, not dropped.
-    expect(src).toMatch(/screened\.attributions\.length/);
+    // Derived: isolate handleToolsCall and require EVERY successful-result
+    // return in it to go through toolTextResult. A new branch that returns
+    // `rpcResult(id, result.data)` directly fails this by count.
+    const start = src.indexOf("async function handleToolsCall(");
+    expect(start, "handleToolsCall not found — the surface was restructured").toBeGreaterThan(0);
+    const end = src.indexOf("\n/** Dispatch a single JSON-RPC", start);
+    const body = src.slice(start, end > start ? end : undefined);
+
+    const resultReturns = (body.match(/return rpcResult\(/g) ?? []).length;
+    const screenedReturns = (body.match(/return rpcResult\(\s*id,\s*toolTextResult\(/g) ?? []).length;
+    expect(resultReturns).toBeGreaterThan(1);
+    expect(
+      screenedReturns,
+      "a tools/call result path returns data without passing toolTextResult",
+    ).toBe(resultReturns);
+
+    // …and toolTextResult is genuinely the chokepoint, run LAST on the shape
+    // that actually ships (after envelope externalization).
+    expect(src).toMatch(/const externalized = externalizeToolData\(data\);/);
+    expect(src).toMatch(/const screened = screenToolResultData\("mcp-tool-result", externalized\);/);
+    // A released attribution/disclosure is rendered, not dropped.
+    expect(src).toMatch(/screened\.disclosure/);
   });
 });
 

@@ -1,190 +1,203 @@
 /**
- * T0-3 (2026-06-10) — MCP endpoint hardening tests.
+ * T0-3 (2026-06-10) — MCP endpoint hardening tests, RE-ANCHORED by R-1
+ * (2026-08-11).
  *
- * Covers:
- *   1. Timing-safe static-key auth (verifySecret + resolveMcpAuth): the
- *      right key is accepted, wrong keys (including different-length keys)
- *      are rejected without throwing.
- *   2. Per-org api_keys path resolves the key to ITS org.
- *   3. Org binding: org-scoped MCP tools no longer accept an
- *      organizationId argument — the bound org is injected server-side,
- *      a caller-supplied org id is ignored, and an unbound session is
- *      refused.
+ * T0-3 hardened the `/mcp` endpoint: timing-safe auth in place of a plain
+ * `!==`, and an org binding forced server-side so a caller could not smuggle
+ * another org's id in as a tool argument. Founder ruling R-1 retired that
+ * endpoint (see mcpSurfaceRetirement.test.ts for why and for the retirement
+ * pins), which would have taken these invariants down with it.
+ *
+ * They are REWRITTEN against the surviving surface, POST /api/mcp, not
+ * deleted — the property each one protects is a property of any credentialed
+ * MCP surface, and outliving the file it was first written against is the
+ * whole point:
+ *
+ *   1. TIMING-SAFE CREDENTIAL COMPARE. `verifySecret` (the arbitrary-secret
+ *      compare) was deleted with the static MCP_API_KEY lane, its only caller.
+ *      The surviving compare is `verifyHash` over persisted digests, and it
+ *      must stay constant-time and non-throwing on a length mismatch.
+ *   2. PER-ORG KEY RESOLUTION. A presented key resolves to ITS organization —
+ *      unknown, revoked and expired keys resolve to nothing.
+ *   3. ORG BINDING. The org handed to a tool handler is ALWAYS the key's org,
+ *      never a caller-supplied argument.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Mocks for the heavy transitive imports of server/mcp/index.ts ─────────
-vi.mock("../../server/storage", () => ({
-  storage: {
-    getProperties: vi.fn(async () => []),
-    getProperty: vi.fn(async () => undefined),
-    getLeads: vi.fn(async () => []),
-    getDeals: vi.fn(async () => []),
-    getNotes: vi.fn(async () => []),
-    getOrganization: vi.fn(async () => undefined),
-  },
-}));
-vi.mock("../../server/services/data-source-broker", () => ({
-  dataSourceBroker: { lookup: vi.fn(async () => ({ data: {}, source: { title: "mock" } })) },
-}));
-vi.mock("../../server/services/propertyEnrichment", () => ({
-  propertyEnrichmentService: { enrichByCoordinates: vi.fn(async () => ({})) },
+// ── Controlled intent registry (deterministic; not the live catalog) ────────
+const orgEchoIntent = {
+  name: "get_portfolio_summary",
+  description: "Read-only portfolio summary.",
+  door: "today" as const,
+  requiredScope: null,
+  approvalRequired: false,
+  inputSchema: { type: "object", properties: {} },
+  // Echoes the org it was handed, so the binding is observable.
+  handler: vi.fn(async (args: any, org: any) => ({
+    success: true,
+    data: { servedOrgId: org.id, argsSeen: args },
+  })),
+};
+
+const FAKE_INTENTS: Record<string, any> = {
+  get_portfolio_summary: orgEchoIntent,
+};
+
+vi.mock("../../server/services/appIntents", () => ({
+  listIntents: () => Object.values(FAKE_INTENTS),
+  getIntent: (name: string) => FAKE_INTENTS[name],
+  resolveInputSchema: (intent: any) => intent.inputSchema,
 }));
 
-// db is only touched by the ak_… auth path — mocked select chain below.
+// api_keys rows the mocked db returns, and the org row behind them.
 const mockApiKeyRows: any[] = [];
+const mockOrgRows: any[] = [];
+let selectCall = 0;
 vi.mock("../../server/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: () => ({
         where: () => ({
-          limit: async () => mockApiKeyRows,
+          // authenticate() selects api_keys first, then organizations.
+          limit: async () => (selectCall++ === 0 ? mockApiKeyRows : mockOrgRows),
         }),
       }),
     })),
+    insert: () => ({ values: async () => undefined }),
   },
+  dbReplica: null,
 }));
 
-import { verifySecret, hashApiKey } from "../../server/services/apiKeys";
-import { resolveMcpAuth } from "../../server/mcp/auth";
-import { createMcpServer } from "../../server/mcp/index";
-import { storage } from "../../server/storage";
+import { hashApiKey, verifyHash } from "../../server/services/apiKeys";
+import * as apiKeysModule from "../../server/services/apiKeys";
+import { __mcpInternals } from "../../server/mcp/streamableHttp";
 
-const STATIC_KEY = "test-mcp-static-key-0123456789abcdef";
+const { authenticate, dispatch } = __mcpInternals;
 
-afterEach(() => {
-  vi.unstubAllEnvs();
+const TOKEN = "ak_live_abcdefghijklmnopqrstuvwxyz123";
+
+function fakeReq(token = TOKEN) {
+  return { headers: { authorization: `Bearer ${token}` } } as any;
+}
+
+beforeEach(() => {
   vi.clearAllMocks();
   mockApiKeyRows.length = 0;
+  mockOrgRows.length = 0;
+  selectCall = 0;
 });
 
-describe("verifySecret (timing-safe compare)", () => {
-  it("accepts identical secrets", () => {
-    expect(verifySecret(STATIC_KEY, STATIC_KEY)).toBe(true);
+// ─── 1. Timing-safe credential compare ───────────────────────────────────────
+
+describe("verifyHash (timing-safe compare — the surviving credential compare)", () => {
+  it("accepts identical digests", () => {
+    const h = hashApiKey(TOKEN);
+    expect(verifyHash(h, h)).toBe(true);
   });
 
-  it("rejects a wrong secret of the same length", () => {
-    const wrong = "x".repeat(STATIC_KEY.length);
-    expect(verifySecret(wrong, STATIC_KEY)).toBe(false);
+  it("rejects a wrong digest of the same length", () => {
+    const h = hashApiKey(TOKEN);
+    const wrong = "a".repeat(h.length);
+    expect(verifyHash(wrong, h)).toBe(false);
   });
 
-  it("rejects a different-length secret without throwing", () => {
-    expect(() => verifySecret("short", STATIC_KEY)).not.toThrow();
-    expect(verifySecret("short", STATIC_KEY)).toBe(false);
-    expect(verifySecret("", STATIC_KEY)).toBe(false);
-  });
-});
-
-describe("resolveMcpAuth — static MCP_API_KEY path", () => {
-  it("accepts the right key and binds MCP_ORG_ID", async () => {
-    vi.stubEnv("MCP_API_KEY", STATIC_KEY);
-    vi.stubEnv("MCP_ORG_ID", "17");
-    const result = await resolveMcpAuth(`Bearer ${STATIC_KEY}`);
-    expect(result).toEqual({ status: "ok", organizationId: 17 });
+  it("rejects a different-length value without throwing", () => {
+    const h = hashApiKey(TOKEN);
+    expect(() => verifyHash("short", h)).not.toThrow();
+    expect(verifyHash("short", h)).toBe(false);
+    expect(verifyHash("", h)).toBe(false);
   });
 
-  it("accepts the right key with no MCP_ORG_ID → null binding", async () => {
-    vi.stubEnv("MCP_API_KEY", STATIC_KEY);
-    vi.stubEnv("MCP_ORG_ID", "");
-    const result = await resolveMcpAuth(`Bearer ${STATIC_KEY}`);
-    expect(result).toEqual({ status: "ok", organizationId: null });
-  });
-
-  it("rejects a wrong key", async () => {
-    vi.stubEnv("MCP_API_KEY", STATIC_KEY);
-    const result = await resolveMcpAuth("Bearer not-the-key");
-    expect(result.status).toBe("unauthorized");
-  });
-
-  it("rejects a missing/malformed Authorization header", async () => {
-    vi.stubEnv("MCP_API_KEY", STATIC_KEY);
-    expect((await resolveMcpAuth("")).status).toBe("unauthorized");
-    expect((await resolveMcpAuth("Basic abc")).status).toBe("unauthorized");
-  });
-
-  it("returns unconfigured when MCP_API_KEY is unset", async () => {
-    vi.stubEnv("MCP_API_KEY", "");
-    const result = await resolveMcpAuth("Bearer anything");
-    expect(result.status).toBe("unconfigured");
+  it("verifySecret is GONE — the static-secret compare left with its only caller", () => {
+    // R-1 deleted the static MCP_API_KEY lane. Keeping an exported
+    // arbitrary-secret compare with no call site is the 'built but unwired'
+    // defect; if it returns, it needs a caller and a reason.
+    expect(apiKeysModule).not.toHaveProperty("verifySecret");
   });
 });
 
-describe("resolveMcpAuth — per-org api_keys path", () => {
-  const TOKEN = "ak_live_abcdefghijklmnopqrstuvwxyz123";
+// ─── 2. Per-org key resolution ───────────────────────────────────────────────
 
-  it("resolves a valid key to its organization", async () => {
+describe("authenticate — per-org api_keys resolution", () => {
+  it("resolves a valid key to its organization and scopes", async () => {
     mockApiKeyRows.push({
+      id: 5,
       hashedKey: hashApiKey(TOKEN),
       organizationId: 42,
       revokedAt: null,
       expiresAt: null,
+      scopes: ["leads:read"],
     });
-    const result = await resolveMcpAuth(`Bearer ${TOKEN}`);
-    expect(result).toEqual({ status: "ok", organizationId: 42 });
+    mockOrgRows.push({ id: 42, name: "Acme Land Co" });
+
+    const key = await authenticate(fakeReq());
+    expect(key).not.toBeNull();
+    expect(key!.organization.id).toBe(42);
+    expect(key!.scopes).toEqual(["leads:read"]);
   });
 
   it("rejects an unknown key", async () => {
-    const result = await resolveMcpAuth(`Bearer ${TOKEN}`);
-    expect(result.status).toBe("unauthorized");
+    expect(await authenticate(fakeReq())).toBeNull();
   });
 
   it("rejects an expired key", async () => {
     mockApiKeyRows.push({
+      id: 5,
       hashedKey: hashApiKey(TOKEN),
       organizationId: 42,
       revokedAt: null,
       expiresAt: new Date(Date.now() - 1000),
+      scopes: [],
     });
-    const result = await resolveMcpAuth(`Bearer ${TOKEN}`);
-    expect(result.status).toBe("unauthorized");
+    mockOrgRows.push({ id: 42, name: "Acme Land Co" });
+    expect(await authenticate(fakeReq())).toBeNull();
+  });
+
+  it("rejects a malformed / non-ak_ token — including the retired static-key shape", async () => {
+    expect(await authenticate(fakeReq("not-a-key"))).toBeNull();
+    expect(await authenticate({ headers: {} } as any)).toBeNull();
+    // The retired lane's credential was an opaque base64url env secret. It is
+    // not merely unconfigured — it cannot even reach the key lookup.
+    expect(await authenticate(fakeReq("Zm9vYmFyYmF6cXV4MDEyMzQ1Njc4OWFiY2RlZg"))).toBeNull();
   });
 });
 
+// ─── 3. Org binding ──────────────────────────────────────────────────────────
+
 describe("MCP org binding — tools are forced to the authenticated org", () => {
-  const getTool = (server: any, name: string) =>
-    (server as any)._registeredTools[name];
-
-  it("org-scoped tool schemas no longer expose organizationId", () => {
-    const server = createMcpServer({ organizationId: 1 });
-    for (const name of [
-      "search_properties",
-      "get_property",
-      "search_leads",
-      "get_deals",
-      "get_portfolio_summary",
-    ]) {
-      const reg = getTool(server, name);
-      expect(reg, `tool ${name} should be registered`).toBeTruthy();
-      const shape = reg.inputSchema?.shape ?? {};
-      expect(Object.keys(shape)).not.toContain("organizationId");
-    }
-  });
-
   it("reads from the BOUND org even when the caller smuggles another org id", async () => {
-    const server = createMcpServer({ organizationId: 7 });
-    const reg = getTool(server, "search_properties");
-    // Caller attempts to read org 999 — the argument no longer exists in the
-    // schema, and the handler must use the session binding regardless.
-    const result = await reg.handler({ organizationId: 999, limit: 5 }, {});
-    expect(result.isError).toBeFalsy();
-    expect(storage.getProperties).toHaveBeenCalledTimes(1);
-    expect(storage.getProperties).toHaveBeenCalledWith(7);
+    const key = { organization: { id: 7, name: "Bound Org" }, scopes: [], keyId: 1 } as any;
+    const res = (await dispatch(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "get_portfolio_summary",
+          // The caller tries to redirect the read at org 999.
+          arguments: { organizationId: 999 },
+        },
+      },
+      key,
+    )) as any;
+
+    expect(orgEchoIntent.handler).toHaveBeenCalledTimes(1);
+    // The org is positional arg 2 and comes from the key, never from args.
+    expect(orgEchoIntent.handler.mock.calls[0][1]).toEqual({ id: 7, name: "Bound Org" });
+
+    const payload = JSON.parse(res.result.content[0].text);
+    expect(payload.servedOrgId).toBe(7);
+    expect(payload.servedOrgId).not.toBe(999);
   });
 
-  it("refuses org-scoped tools when the session has no org binding", async () => {
-    const server = createMcpServer();
-    const reg = getTool(server, "search_properties");
-    const result = await reg.handler({ limit: 5 }, {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/not bound to an organization/i);
-    expect(storage.getProperties).not.toHaveBeenCalled();
-  });
-
-  it("public-data tools still work without an org binding", async () => {
-    const server = createMcpServer();
-    const reg = getTool(server, "get_flood_zone");
-    const result = await reg.handler({ latitude: 35.1, longitude: -106.6 }, {});
-    expect(result.isError).toBeFalsy();
+  it("an unbound session cannot exist — every dispatch carries a resolved org", async () => {
+    // The retired surface allowed a session with NO org binding (static key,
+    // no MCP_ORG_ID) and had to refuse org-scoped tools at each handler. On
+    // /api/mcp the org is a non-optional property of the authenticated key,
+    // so the refusal is structural: no key, no dispatch at all.
+    mockApiKeyRows.length = 0; // unknown key → authenticate() returns null
+    expect(await authenticate(fakeReq())).toBeNull();
+    expect(orgEchoIntent.handler).not.toHaveBeenCalled();
   });
 });

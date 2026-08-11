@@ -90,6 +90,29 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-08-11 — **`server/services/lobService.ts` deleted** (R-2 mail-lane
+  consolidation, founder ruling 2026-08-11). It was one of FOUR parallel Lob
+  clients and the only one with **no org-credential path at all**: env
+  singletons built in a constructor, no `organizationId` anywhere, so any
+  counterparty letter it sent printed on AcreOS's own platform account. The
+  `docs/proposals/wave-0.8-mail-lanes.md` verification established it as
+  unreachable dead code; **re-verified at HEAD `981e646` before deleting** —
+  its only importer was `services/communications.ts`, whose three direct-mail
+  methods (`sendDirectMailToLead`, `sendDirectMailWithRetry`,
+  `handleDirectMailFailure`) had zero callers of their own
+  (`communicationsService.sendToLead` dispatches email/sms only; its `channel`
+  union has no `direct_mail` member). Those three methods were deleted in the
+  same commit, along with the now-producerless `'lob'` branch they fed in
+  `apiQueue` (which enqueued operation `'sendLetter'` that `executeJob` never
+  handled — dead *and* broken). The founder chose DELETE over
+  retain-with-a-laned-signature (proposal decision point 1).
+  **Replacement:** `server/services/mail/mailLanes.ts` — the single credential
+  door every remaining Lob client resolves through. **Locks landed in the same
+  commit:** `scripts/check-mail-lane.mjs` (derived gate: every `new Lob(`
+  construction must import `mail/mailLanes` and name no Lob credential env
+  var) + `tests/unit/mailLanes.test.ts` (a fresh org is refused on every
+  reachable send surface).
+
 - 2026-08-01 — **Six dead `server/jobs/*` files deleted** (dead-job wave; code
   deletions only, no git operations in-session). An adversarial verification
   confirmed all six are module orphans: zero importers static or dynamic,

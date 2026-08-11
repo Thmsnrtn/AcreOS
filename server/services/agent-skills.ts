@@ -1052,12 +1052,26 @@ const startCollectionSequenceSkill: Skill = {
       }
 
       if (!sequence) {
-        return { 
-          success: false, 
-          error: sequenceId 
-            ? "Collection sequence not found" 
-            : "No default collection sequence configured" 
+        return {
+          success: false,
+          error: sequenceId
+            ? "Collection sequence not found"
+            : "No default collection sequence configured"
         };
+      }
+
+      // R-3 (founder ruling 2026-08-11): enrolling a note begins
+      // debt-collection-adjacent contact with a CONSUMER. This skill is
+      // AI-invokable (agentTypes: ["operations"]), so it is exactly the path
+      // that must not be able to start contact off a schema default. An
+      // unarmed sequence is refused here; a sequence armed under the OLD
+      // default is allowed through on purpose so a live collection is not cut
+      // off mid-ladder, and it stays in the Finance-door confirm surface until
+      // a human owns it.
+      const { assertSequenceArmed } = await import("./collectionArming");
+      const armed = assertSequenceArmed(sequence);
+      if (!armed.ok) {
+        return { success: false, error: armed.reason };
       }
 
       const existingEnrollments = await storage.getCollectionEnrollments(context.organizationId);

@@ -645,6 +645,8 @@ export class SequenceProcessorService {
         speed: "standard",
         personalizationRequired: false,
         feature: "sequence_cadence",
+        // Cadence mail goes to the customer's leads — their counterparty.
+        purpose: "counterparty",
       });
       logger.info("[sequence-processor] Direct mail SENT", {
         metadata: { leadId: lead.id, provider: route.chosenProvider, pieceId: route.result.pieces[0]?.providerPieceId },

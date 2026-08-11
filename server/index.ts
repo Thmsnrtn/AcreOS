@@ -19,14 +19,10 @@ import { telemetryMiddleware } from "./middleware/telemetry";
 import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
-import { createMcpServer } from "./mcp/index.js";
-import { resolveMcpAuth, mcpEndpointDark, mcpOrgAllowed } from "./mcp/auth.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLimiterStore } from "./middleware/limiterRedisStore";
 import { getClientIp } from "./utils/clientIp";
 import { createHash } from "node:crypto";
-import { Errors } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
 import { getClerkAuth } from "./types/request";
@@ -484,12 +480,19 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
-// T0-3 (2026-06-10): /mcp previously sat OUTSIDE every limiter family (the
-// apiLimiter only covers /api), so an attacker could grind the bearer-key
-// check unmetered. Dedicated bucket keyed by a SHA-256 hash of the presented
-// credential (never the credential itself — see
+// T0-3 (2026-06-10), retargeted by R-1 (2026-08-11): the credential-keyed MCP
+// bucket. It originally guarded the retired POST/GET `/mcp` mount, which sat
+// outside every limiter family; that surface is gone (founder ruling R-1 —
+// see the retirement note at the /api/mcp mount in server/routes.ts), so the
+// bucket now guards the ONE surviving MCP surface, POST /api/mcp.
+//
+// `apiLimiter` below already covers /api/*, but it keys on the Clerk user id
+// with an IP fallback — an MCP client is a machine caller with no session, so
+// every key behind one NAT would share a single bucket. This bucket keys on a
+// SHA-256 hash of the presented credential (never the credential itself — see
 // memory/feedback_credential_value_handling.md) with IP fallback for
-// credential-less probes.
+// credential-less probes. Both apply to /api/mcp; the credential bucket is
+// the tighter one.
 const mcpLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
@@ -505,7 +508,7 @@ const mcpLimiter = rateLimit({
   },
   message: { message: "MCP rate limit exceeded. Please slow down and try again shortly." },
 });
-app.use("/mcp", mcpLimiter);
+app.use("/api/mcp", mcpLimiter);
 
 (async () => {
   // Migrations are NOT run from the server boot path. They run exclusively
@@ -563,89 +566,26 @@ app.use("/mcp", mcpLimiter);
     }
   })();
   
-  // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
-  // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.
+  // ── MCP surface: ONE endpoint, POST /api/mcp (server/routes.ts) ─────────
+  // The POST/GET `/mcp` mount that lived here was RETIRED by founder ruling
+  // R-1 (2026-08-11). It authenticated `ak_` keys through
+  // server/mcp/auth.ts::resolveMcpAuth but never read their `scopes` column,
+  // so a zero-scope key reached all 29 of its tools for its org — the same
+  // credential that /api/mcp gates per-tool. Two ladders for one credential;
+  // the founder removed the surface rather than patch it.
   //
-  // T0-3 (2026-06-10) hardening:
-  //   • Auth lives in server/mcp/auth.ts — timing-safe compare for the
-  //     static MCP_API_KEY (crypto.timingSafeEqual over hashed sides) plus
-  //     a per-org api_keys path (ak_live_…/ak_test_…), replacing the old
-  //     plain `!==` check.
-  //   • Every session resolves to an org binding; org-scoped tools no
-  //     longer accept an organizationId argument (see server/mcp/index.ts).
-  //     The McpServer is therefore built per-request with the bound org.
-  //   • The /mcp mount sits behind mcpLimiter (defined with the other
-  //     limiter families above) — it was previously unmetered.
-  const mcpAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // Wave 0.7: the founder availability controls cover BOTH MCP surfaces —
-      // this /mcp mount AND /api/mcp. Kill switch first (before auth and
-      // before the unconfigured disclosure), allowlist after auth resolves
-      // the org binding.
-      if (mcpEndpointDark()) {
-        Errors.notFound(res, "Endpoint");
-        return;
-      }
-      const authHeader = req.headers["authorization"] ?? "";
-      const provided = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-      const auth = await resolveMcpAuth(provided);
-      if (auth.status === "unconfigured") {
-        // Not configured — block all access until a key is set.
-        res.status(503).json({
-          error: "service_unavailable",
-          message: "MCP endpoint not configured. Set MCP_API_KEY.",
-          statusCode: 503,
-        });
-        return;
-      }
-      if (auth.status !== "ok") {
-        Errors.unauthorized(res);
-        return;
-      }
-      if (!mcpOrgAllowed(auth.organizationId)) {
-        Errors.forbidden(res, "This organization is not enabled for the MCP endpoint.");
-        return;
-      }
-      res.locals.mcpOrganizationId = auth.organizationId;
-      next();
-    } catch (e) {
-      Errors.internal(res, e);
-    }
-  };
-
-  app.post("/mcp", mcpAuthMiddleware, async (req, res) => {
-    try {
-      const boundOrgId = res.locals.mcpOrganizationId as number | null;
-      const mcpServer = createMcpServer({
-        organizationId: boundOrgId ?? undefined,
-      });
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      await mcpServer.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } catch (e: any) {
-      Errors.internal(res, e);
-    }
-  });
-  app.get("/mcp", mcpAuthMiddleware, (_req, res) => {
-    res.json({
-      name: "AcreOS MCP Server",
-      version: "1.0.0",
-      transport: "StreamableHTTP",
-      endpoint: "/mcp",
-      tools: [
-        "get_flood_zone", "get_wetlands", "get_soil_data", "get_demographics",
-        "get_public_lands", "get_natural_hazards", "get_infrastructure",
-        "get_transportation", "get_water_resources", "get_elevation", "get_climate",
-        "get_agricultural_values", "get_land_cover", "enrich_property",
-        "reverse_geocode", "geocode_address", "get_epa_data",
-        "search_properties", "get_property", "search_leads", "get_deals",
-        "get_portfolio_summary",
-        "get_cropland", "get_epa_facilities", "get_storm_history",
-        "get_plss", "get_watershed", "get_fema_nri", "get_usda_clu",
-      ],
-      description: "29 tools exposing AcreOS property intelligence and free public land data APIs",
-    });
-  });
+  // What survives, and where:
+  //   • The MCP surface itself → POST /api/mcp (mcpStreamableHttpHandler),
+  //     which resolves the key's org AND its scopes and refuses each tool the
+  //     key cannot satisfy (server/mcp/safeIntents.ts::keyMaySatisfyIntent).
+  //   • The Wave 0.7 availability controls (MCP_PUBLIC_DISABLED kill switch,
+  //     MCP_ORG_ALLOWLIST) → still enforced, now by that one handler; they are
+  //     NOT orphaned. See server/mcp/auth.ts.
+  //   • The credential-keyed rate bucket → `mcpLimiter`, retargeted at
+  //     /api/mcp with the other limiter families above.
+  // Retired with it: the static MCP_API_KEY lane (a scope-less env secret has
+  // nothing to check against a per-tool scope ladder) and the 29-tool stdio
+  // server that was server/mcp/index.ts.
 
   // Task #F-A05-2: CSP violation reporting endpoint — accepts browser reports, logs + ignores
   app.post("/api/csp-report", express.json({ type: ["application/json", "application/csp-report"] }), (req, res) => {

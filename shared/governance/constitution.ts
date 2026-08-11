@@ -307,9 +307,23 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "rails",
     source: "CLAUDE.md DO-NOT-DO list; founder decision 2026-07-17",
     enforcement: {
-      kind: "code-invariant",
-      refs: ["server/services/emailService.ts"],
-      note: "emailService purpose lanes separate system mail from counterparty mail. A dedicated ratchet test would strengthen this (GOVERNANCE DEBT).",
+      kind: "ratchet-test",
+      refs: [
+        "server/services/emailService.ts",
+        "tests/unit/emailPurposeEnforcement.test.ts",
+        "server/services/mail/mailLanes.ts",
+        "tests/unit/mailLanes.test.ts",
+        "scripts/check-mail-lane.mjs",
+      ],
+      note:
+        "BOTH rails are now laned and ratcheted. EMAIL: emailService purpose lanes + " +
+        "emailPurposeEnforcement.test.ts. PHYSICAL MAIL (R-2, founder ruling 2026-08-11): " +
+        "mail/mailLanes.assertMailLane is the single credential door — counterparty mail " +
+        "requires the org's own connected Lob account, the platform key is reachable only " +
+        "for system mail and the registered free-tier activation wedge, and " +
+        "check-mail-lane.mjs derives the gate from every Lob client construction it finds " +
+        "by grep, rather than from a hardcoded list. The previous GOVERNANCE DEBT note " +
+        "is discharged.",
     },
   },
 

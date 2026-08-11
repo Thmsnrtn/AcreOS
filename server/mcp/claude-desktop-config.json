@@ -1,31 +1,49 @@
 {
   "_comment": "AcreOS MCP Server — Claude Desktop configuration",
+  "_endpoint": "POST /api/mcp — the ONLY AcreOS MCP endpoint.",
   "_instructions": [
     "Add the 'acreos' entry under 'mcpServers' in your Claude Desktop config:",
     "  macOS:   ~/Library/Application Support/Claude/claude_desktop_config.json",
     "  Windows: %APPDATA%\\Claude\\claude_desktop_config.json",
     "",
-    "Option A — stdio (run locally against a local AcreOS dev instance):",
-    "  Requires DATABASE_URL env var pointing at your Postgres database.",
+    "Credential — an ORGANIZATION API KEY, created in AcreOS under",
+    "Settings → API keys. It looks like ak_live_… (or ak_test_… ). Copy it when",
+    "it is shown; AcreOS stores only its hash and cannot show it again.",
     "",
-    "Option B — HTTP (connect to deployed AcreOS at acreos.fly.dev):",
-    "  Use the 'url' transport pointing at the /mcp endpoint.",
-    "  (HTTP MCP support requires Claude Desktop >= 0.10 or a compatible host)"
+    "The key decides BOTH what you reach and what you can do with it:",
+    "  • its organization is the only org any tool call can read, and",
+    "  • its granted SCOPES decide which tools exist for you at all.",
+    "A key with no scopes can still call the ungated reads, and is refused",
+    "per-tool on everything else — tools/list simply will not show them.",
+    "So grant the key the read scopes you actually want Claude to have",
+    "(leads:read, properties:read, deals:read, notes:read), no more.",
+    "",
+    "Replace acreos.io below if you run AcreOS on your own domain."
+  ],
+  "_retired": [
+    "Earlier editions of this file offered two other options. Both are GONE —",
+    "if you are still running one, this is why it stopped working:",
+    "",
+    "  • 'acreos-http' pointed at https://acreos.fly.dev/mcp with a static",
+    "    MCP_API_KEY. Founder ruling R-1 (2026-08-11) retired that endpoint:",
+    "    it accepted per-org keys but never enforced their scopes, so one",
+    "    credential had two different ladders depending on which URL you used.",
+    "    Fix: use the entry above with an ak_ organization key. The static",
+    "    MCP_API_KEY is retired with it and is not accepted anywhere — a",
+    "    scope-less env secret has nothing to check against a per-tool ladder.",
+    "",
+    "  • 'acreos-stdio' ran server/mcp/index.ts as a local subprocess against",
+    "    DATABASE_URL. That module was the retired endpoint's tool server and",
+    "    has been deleted. Fix: use the entry above against your dev server."
   ],
   "mcpServers": {
-    "acreos-stdio": {
-      "_comment": "Option A: local stdio transport (runs server/mcp/index.ts as a subprocess)",
-      "command": "npx",
-      "args": ["tsx", "/path/to/AcreOS/server/mcp/index.ts"],
-      "env": {
-        "DATABASE_URL": "postgresql://user:password@localhost:5432/acreos",
-        "NODE_ENV": "development"
+    "acreos": {
+      "_comment": "Streamable HTTP transport → POST /api/mcp, org + scopes resolved from the key",
+      "url": "https://acreos.io/api/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer ak_live_REPLACE_WITH_YOUR_ORGANIZATION_API_KEY"
       }
-    },
-    "acreos-http": {
-      "_comment": "Option B: HTTP StreamableHTTP transport (connect to deployed app)",
-      "url": "https://acreos.fly.dev/mcp",
-      "transport": "http"
     }
   }
 }

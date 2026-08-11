@@ -5,11 +5,27 @@ import type { Campaign, InsertCampaign, CampaignOptimization } from "@shared/sch
 
 // Direct mail status response type
 export interface DirectMailStatus {
+  /** R-2: org-scoped — can THIS org mail its counterparties right now? */
   isConfigured: boolean;
   currentMode: 'test' | 'live';
+  /**
+   * The Lob environment is a property of the credential, not a preference, so
+   * this holds at most ONE mode: a BYO key declares it by prefix, and the
+   * platform key stays in Lob's test environment until the live-send
+   * interlock arms.
+   */
   availableModes: ('test' | 'live')[];
   hasTestMode: boolean;
   hasLiveMode: boolean;
+  /** True when a send would run in Lob's TEST environment (no paper). */
+  isTestMode: boolean | null;
+  /** 'organization' = the org's own Lob account; 'platform' = the free-tier wedge. */
+  credentialSource: 'organization' | 'platform' | null;
+  connected: boolean;
+  connectUrl: string;
+  /** Free-tier wedge pieces left, or null when the wedge does not apply. */
+  wedgeRemaining: number | null;
+  refusal: { reason: string; message: string; connectUrl?: string; upgradeUrl?: string } | null;
   pricing: Record<string, number>;
   deliveryDays: { min: number; max: number };
 }

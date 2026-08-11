@@ -5,7 +5,7 @@
   "direction": "down",
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Four counts, each strictly down-only: exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
-    "unreachedExports": 650,
+    "unreachedExports": 649,
     "tablesNoWriter": 47,
     "tablesNoReader": 57,
     "unregisteredRoutes": 1

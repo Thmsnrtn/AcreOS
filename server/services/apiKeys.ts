@@ -26,7 +26,7 @@
  * Plaid takes for `secret`s.
  */
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export type ApiScope =
   | "leads:read"
@@ -85,20 +85,14 @@ export function verifyHash(a: string, b: string): boolean {
   }
 }
 
-/**
- * T0-3 (2026-06-10): constant-time compare of two arbitrary secrets.
- *
- * Used for static-token auth paths (e.g. the /mcp bearer key) where the
- * stored side is a plaintext env secret rather than a persisted hash.
- * Both sides are SHA-256'd first so the buffers handed to
- * crypto.timingSafeEqual are always equal length — a length mismatch
- * neither throws nor leaks the expected secret's length.
- */
-export function verifySecret(provided: string, expected: string): boolean {
-  const a = createHash("sha256").update(provided).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
+// `verifySecret` (T0-3, 2026-06-10) lived here: a constant-time compare of two
+// arbitrary secrets, for static-token auth paths where the stored side was a
+// plaintext env secret rather than a persisted hash. Its only caller was the
+// static MCP_API_KEY lane in server/mcp/auth.ts, retired with the `/mcp`
+// endpoint by founder ruling R-1 (2026-08-11). Deleted rather than left
+// exported with no call site — an unreached export is the defect this repo
+// names most often. Every surviving credential path compares PERSISTED HASHES
+// through `verifyHash` above, which is timing-safe in the same way.
 
 /**
  * Generate a fresh API key.

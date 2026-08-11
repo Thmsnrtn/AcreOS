@@ -848,7 +848,7 @@ export function buildMailShipmentVerifyCriteria(
             `FREE tier, whose lifetime mail allowance is capped. Confirm the ` +
             `org's total non-cancelled mail_shipments.piece_count sum does ` +
             `not exceed the free lifetime cap (FREE_TIER_LIFETIME_PIECES in ` +
-            `server/routes-outreach-mail.ts — read the constant from source, ` +
+            `server/services/mail/mailLanes.ts — read the constant from source, ` +
             `do not assume its value). HONEST LIMIT: a founder-queued send ` +
             `legitimately bypasses the cap and the shipment row does not ` +
             `record founder status — report an overage as a finding to ` +
@@ -865,7 +865,7 @@ export function buildMailShipmentVerifyCriteria(
       check: isFree
         ? `SELECT coalesce(sum(piece_count), 0) FROM mail_shipments WHERE ` +
           `organization_id = ${f.organizationId} AND status != 'cancelled'; ` +
-          `compare against FREE_TIER_LIFETIME_PIECES in server/routes-outreach-mail.ts`
+          `compare against FREE_TIER_LIFETIME_PIECES in server/services/mail/mailLanes.ts`
         : `SELECT subscription_tier FROM organizations WHERE id = ${f.organizationId}`,
     },
   ];

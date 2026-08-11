@@ -172,7 +172,10 @@ const EGRESS_CHANNEL_REGISTRY: readonly EgressChannelSpec[] = [
   {
     channel: "mcp-tool-result",
     label: "MCP tool result",
-    wiredIn: ["server/mcp/streamableHttp.ts", "server/mcp/index.ts"],
+    // One entry, not two: `server/mcp/index.ts` was the second MCP surface's
+    // tool server and was deleted with the `/mcp` endpoint (founder ruling
+    // R-1, 2026-08-11). POST /api/mcp is the only MCP egress path left.
+    wiredIn: ["server/mcp/streamableHttp.ts"],
   },
   {
     channel: "outbound-webhook",

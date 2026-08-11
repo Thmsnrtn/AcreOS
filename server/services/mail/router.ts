@@ -18,6 +18,7 @@
 
 import { logger } from "../../utils/logger";
 import { getSetting } from "../founderSettings";
+import { isMailLaneRefusal, type MailPurpose } from "./mailLanes";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -53,6 +54,17 @@ export interface MailShipment {
   callbackUrl?: string;
   /** e.g. "lead_nurture_campaign" — propagated to per-piece ledger rows. */
   feature?: string;
+  /**
+   * Purpose lane (mail/mailLanes.ts). REQUIRED so no shipment can reach a
+   * provider without declaring whether it is the customer's deal mail
+   * (counterparty) or AcreOS's own account mail (system).
+   */
+  purpose: MailPurpose;
+  /**
+   * Flusher only — the persisted mail_shipments row this send IS, so the
+   * free-tier wedge count does not charge the shipment against itself.
+   */
+  wedgeExcludeShipmentId?: number;
 }
 
 export type MailProviderName =
@@ -231,6 +243,16 @@ export class MailRouter {
           result,
         };
       } catch (err) {
+        // A LANE REFUSAL IS NOT A PROVIDER FAILURE. Falling through to the
+        // next provider on a refusal would re-front the platform rail through
+        // a different vendor — exactly the defect this consolidation closes.
+        // Propagate it untouched so the caller renders the connect affordance.
+        if (isMailLaneRefusal(err)) {
+          logger.info(`[MailRouter] ${candidate.provider} refused by the mail lane — not falling through`, {
+            metadata: { organizationId: shipment.organizationId, reason: err.details.reason },
+          });
+          throw err;
+        }
         lastErr = err;
         logger.warn(`[MailRouter] ${candidate.provider} send failed; falling through`, {
           metadata: { error: err instanceof Error ? err.message : String(err) },

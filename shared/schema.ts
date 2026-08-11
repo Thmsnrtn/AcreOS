@@ -3316,7 +3316,29 @@ export const collectionSequences = pgTable("collection_sequences", {
   }[]>().notNull(),
   
   // Automation settings
-  autoStart: boolean("auto_start").default(true), // automatically start sequence when payment becomes overdue
+  //
+  // ARMING (founder ruling R-3, 2026-08-11). `auto_start` used to default to
+  // TRUE, so debt-collection-adjacent contact with a CONSUMER could begin
+  // because a schema default said so rather than because a customer chose it.
+  // It now defaults to FALSE: a new sequence is inert until armed through the
+  // Finance-door gate, which shows the exact ladder, timing and channels first.
+  //
+  // Rows created under the OLD default keep `auto_start = true` — migration
+  // 0231 deliberately does not backfill them. They keep running (a live
+  // collection is not cut off mid-ladder) and surface for one-tap confirmation
+  // until `armed_at` is stamped. See shared/collections/arming.ts.
+  autoStart: boolean("auto_start").default(false),
+  /** When a human armed this ladder. NULL on rows armed by the old default. */
+  armedAt: timestamp("armed_at"),
+  /** Which user armed it. NULL means nobody is on record. */
+  armedBy: text("armed_by"),
+  /**
+   * Digest of the ladder that was ON SCREEN at confirmation
+   * (`ladderDigest()`). If the steps change afterwards the sequence goes
+   * `armed_stale` and returns to the confirm surface — a confirmation is for a
+   * specific ladder, not a blank cheque.
+   */
+  armedLadderDigest: text("armed_ladder_digest"),
   pauseOnPayment: boolean("pause_on_payment").default(true),
   pauseOnContact: boolean("pause_on_contact").default(false),
   
@@ -18055,13 +18077,23 @@ export const metaLearningInsights = pgTable("meta_learning_insights", {
 
 // ─── Phase 19: Crisis Leadership & Antifragility ─────────────────────────────
 
+// Founder-side crisis handling. Unattended execution here is defensible — the
+// whole point is that a 3am outage doesn't wait for a human — but under R-3
+// (2026-08-11) it must be a NAMED pre-authorisation, not an implicit default.
+// `auto_execute` now defaults to FALSE and is only honoured when
+// `pre_authorized_by` names who granted it (see crisisLeadershipEngine.ts).
 export const preAuthorizedTradeoffs = pgTable("pre_authorized_tradeoffs", {
   id: serial("id").primaryKey(),
   tradeoffId: text("tradeoff_id").notNull().unique(),
   condition: text("condition").notNull(),
   action: text("action").notNull(),
   severity: text("severity").notNull(),
-  autoExecute: boolean("auto_execute").notNull().default(true),
+  autoExecute: boolean("auto_execute").notNull().default(false),
+  /** Who pre-authorised unattended execution. NULL = nobody; never auto-runs. */
+  preAuthorizedBy: text("pre_authorized_by"),
+  preAuthorizedAt: timestamp("pre_authorized_at"),
+  /** What the grant covers, in the grantor's words. */
+  preAuthorizationNote: text("pre_authorization_note"),
   executionCount: integer("execution_count").notNull().default(0),
   lastExecutedAt: timestamp("last_executed_at"),
   isActive: boolean("is_active").notNull().default(true),
