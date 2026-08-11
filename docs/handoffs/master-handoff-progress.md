@@ -504,6 +504,43 @@ from this file, not from memory. Updated every working session.*
 
 ---
 
+## Wave 3 — slice 13 (aging ladder · CAM worksheet · payoff-quote PDF) — ✅ SHIPPED
+
+**Shipped at `4f8b5ab`.** Three depth-per-vertical lanes, each independently
+audited. Gates verified separately: check 0 · test 0 (**11,831** passing) ·
+build 0. Manifest regenerated last. Wave 2.2 was excluded from this fleet
+because its licence decision was still open (now ruled — see R-4 below).
+
+**Six blocking findings, all fixed centrally and pinned. Every fix was
+mutation-tested rather than assumed** — the auditors' own mutations were re-run
+and each now reddens the suite.
+
+| # | What would have reached a human | Fix |
+|---|---|---|
+| 1 | **A tenant told they were owed $1,746 when they owed $2,753.** CAM's estimated-billed multiplied the lease's monthly estimate by the POOL's month count while the worksheet selects leases by OVERLAP, so an October lease in a calendar-year pool got twelve months of billing. The delta is SIGNED, so understating billing flips a balance owed into a credit — and this lane makes it a **frozen exhibit**. | Clamped to real overlap, renamed to say it is a projection, and the freeze is **refused** on a partial-period projection. |
+| 2 | **A closer wiring $0.00 and releasing a lien.** A borrower holding a deposit larger than their payoff got principal $48,250, credit $60,000, bare `TOTAL PAYOFF $0.00` — components summing to −$11,175.63, nothing saying the total was floored or the surplus returnable. | The unclamped sum is computed separately; the surplus prints as its own line. |
+| 3 | **The two books disagreeing about the same borrower.** The notes ladder filed every past-due period at the OLDEST period's age — $3,000 in the 61-90 rung where rent spreads identical facts across three rungs. | One row per period, unapplied credit consumed oldest-first. |
+| 4 | **A note the book refuses to date, reported as a known $0.00 past due** (periodsDue 0 × a known payment = a confident zero, total flagged complete). | A refusal yields an UNKNOWN amount; each refusal gets its own accurate sentence. |
+| 5 | **A hybrid schedule miscounting arrears by a full payment**, either direction — `scheduleAnchor` returns `firstPaymentDate` un-snapped while `importExport` DEFAULTS `paymentDueDay` to 1. | New refusal `anchor_does_not_match_due_day`: guessing which field is authoritative would be fabrication in whichever direction we picked. |
+| 6 | **The CAM freeze was not established by any executable test** — three mutations survived a fully green suite, two disabling the freeze on the live write path. | Behavioural pins replace the source scan. |
+
+**The pathology, in three disguises — worth carrying forward.** Every one of
+these audits found a test that was green and proved nothing: a byte-stability
+test comparing a local object literal to a snapshot *of itself* (passed even
+with the freeze policy forced to always write); a numerator gate tested with
+`rows: []`, which cannot distinguish "no rows" from "no *recoverable* rows"; and
+58 presence-checks that let the PDF's headline total be swapped for the
+principal, printing $48,250.00 at the top and $48,824.37 below. **Presence,
+counts, and imports are one-directional.** That is now three consecutive slices
+where the load-bearing defect hid behind a pin of that shape.
+
+**Ratchets moved DOWN and locked here** (as-any 1406 → **1405**, colon-any
+3017 → **3010**) — earned by ordinary typed construction, and surfaced by the
+gate flagging them *stale-high*, which is the mechanism working as designed.
+Two real eslint regressions were fixed at the occurrence, not the baseline.
+
+---
+
 ## ✅ FOUNDER RULINGS — 2026-08-11 (in-session, on presented options)
 
 Four items ruled at once. Each was blocked on a decision only the founder can
