@@ -504,6 +504,44 @@ from this file, not from memory. Updated every working session.*
 
 ---
 
+## ✅ FOUNDER RULINGS — 2026-08-11 (second set, on fleet 14's escalation)
+
+**R-5 · `/mcp` retirement SHIPS NOW; key management becomes its own slice.**
+The founder accepted that the bypass is a live security defect and that the
+stranded population is likely zero. The retirement merges; `routes-api-keys.ts`
++ a Settings surface are scheduled deliberately rather than rushed in as a
+dependency.
+
+> ⚠️ **UNSATISFIED PRE-MERGE CHECK — this is the founder's to close, not a
+> session's.** I attached a condition to my own recommendation: confirm no
+> active `ak_`/MCP traffic exists before merging. **I could not perform it** —
+> `DATABASE_URL` is unset in this environment, so no session here can read
+> `api_keys` or request logs. The repo-side evidence is consistent with zero
+> users (the wizard never rendered `MCP_API_KEY`; the only Claude Desktop config
+> is a hand-written file nothing serves; `registerApiKeyRoutes` is unmounted so
+> no key could ever have been minted through the product). **That is inference,
+> not measurement.** Anyone with prod access should confirm before or
+> immediately after deploy, and if live traffic exists, key management stops
+> being a separate slice and becomes a blocker.
+
+**R-6 · Fix and ship R-2 and R-3 now; hold R-4 for its own slice.** R-2 and R-3
+met their binding conditions and their defects are ordinary. R-4 failed its
+honesty condition and needs the coverage question rebuilt to consult actual
+fabric content rather than licence admission alone — a design fix, and the lane
+most likely to need a second audit.
+
+**Remaining work, in order:** (1) fix R-2's blocking regression (`mode='test'`
+no longer holds a platform-key send in Lob TEST; stop-loss skipped on one path);
+(2) fix R-3's two (the arming gate is bypassable via `PATCH
+/api/collection-enrollments/:id`; the "Stop this sequence" control does not
+stop it); (3) sweep the should-fix items on R-1/R-2/R-3; (4) resolve the
+`tests/unit/licenseEgress.test.ts` edit (fence-crossing vs legitimate — revert
+if it weakens a slice-12 pin); (5) manifest regen LAST, three gates one at a
+time, one commit for R-1+R-2+R-3, push, ledger. R-4 stays parked in
+`scratchpad/fleet14-*` until its own slice.
+
+---
+
 ## Fleet 14 — the four founder rulings — 🟡 BUILT, AUDITED, **NOT MERGED**
 
 **Nothing from this fleet is committed.** All four lanes built and were
