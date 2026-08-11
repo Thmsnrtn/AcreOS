@@ -504,6 +504,60 @@ from this file, not from memory. Updated every working session.*
 
 ---
 
+## ✅ FOUNDER RULINGS — 2026-08-11 (in-session, on presented options)
+
+Four items ruled at once. Each was blocked on a decision only the founder can
+make; all four came back as the recommended option. Recorded here in full
+because three of them touch standing constraints (a send lane, consumer
+contact, and a spend hard-stop), so a future session must be able to see the
+exact scope of what was authorised — and what was *not*.
+
+**R-1 · `/mcp` scope-ladder bypass → RETIRE `/mcp` in favour of `/api/mcp`.**
+The bypass (`mcp/auth.ts` accepts `ak_` keys and never enforces their scopes,
+so a zero-scope key reaches all 29 tools for its org) is closed by removing the
+surface, not by patching it. **Binding condition:** the static-key lane must be
+PRESERVED — `routes-setup.ts` and the founder setup wizard generate Claude
+Desktop configs pointing at `/mcp`, and those must be regenerated against
+`/api/mcp` in the same change, or customers' configs break silently. Expect the
+`unregistered-routes` reachability count to move; it may only go DOWN.
+
+**R-2 · Mail lanes (§D 0.8 / Wave R.1) → APPROVED.** Consolidate every mail
+path onto `mailProvider`, and **delete** the dead `lobService` under the
+deletion-ledger process rather than retaining it with a laned signature.
+Includes the refuse-don't-fall-back rule: an org with no connected Lob
+integration is refused on every counterparty-send surface with a connect
+affordance, exactly as SMS behaves today; the platform key stays reachable only
+for the registered wedge exception and system mail, under the existing
+interlock. Also folds in the `mailProvider` plaintext-credential-read bug
+(proposal decision (b)). **Binding condition:** R.1's blast radius is **14
+files** touching `LOB_*` keys, not the 3 in R.0's table (drift D-8b) — the
+consolidation MAP comes first and the grep-ratchet allowlist is written FROM
+that map, never from the brief. This authorises the consolidation; it does not
+authorise any other change to a send rail.
+
+**R-3 · `dunning_sequences.autoStart` → flip the default to FALSE for new rows,
+and surface existing armed sequences for one-tap confirmation** rather than
+either grandfathering them silently or disarming them wholesale. The point of
+the ruling is that every running sequence ends up with someone who actually
+chose it, without cutting off a live collection mid-ladder. **Binding
+conditions:** the confirm surface lives behind the existing Finance door (no new
+nav entry); the arming gate must show the exact ladder, timing and channels
+before it can run; and the sibling-default sweep is in scope —
+`pre_authorized_tradeoffs.autoExecute` becomes a *named* pre-authorisation
+rather than an implicit default.
+
+**R-4 · Wave 2.2 county fabrics → open-licence counties ONLY, no vendor spend.**
+Ship PMTiles fabrics only for counties whose data is already open-licensed, and
+prove the tiling pipeline on real data first. **Binding condition: NO paid
+parcel-data licence is authorised** — that remains a spend >$500 hard-stop and a
+recurring vendor obligation, and it was explicitly declined for now. Licence
+posture per county already exists (`county_gis_endpoints.redistributable` +
+slice 11's egress chokepoint); a county whose posture is not `yes`/`attribution`
+does not ship, and "we do not have data for this county" must stay honest rather
+than becoming "we chose not to license it".
+
+---
+
 ## Approval queue for the founder
 
 1. **Standing table-drop decision (pre-existing, surfaced not created here):**
