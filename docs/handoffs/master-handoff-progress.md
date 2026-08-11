@@ -1252,6 +1252,102 @@ integration defects were all fixed centrally before commit:
   O1 founder ask (unknown dates: insurance/domain/DKIM/vendor terms); F5-lite
   governance coverage endpoint; O2/O3 buildable parts; X-B scaffold.
 
+## Wave 2 / egress — slice 12 (click-to-identify + cache provenance) — ✅ SHIPPED
+
+**Shipped at `073e503`.** Two lanes, both adversarially audited. Gates verified
+in a separate step: check 0 · test 0 (11,671 passing) · build 0. Gate-tamper
+manifest regenerated last; only delta is the `table-count.json` hash.
+
+**Wave 2.3 — founder-approved ratchet raise.** `table-count` 756 → **757**,
+locked in the same commit as the code, reasoning in the ratchet's own
+`lastBumpNote`. This is the first baseline RAISE of the program and it went
+through the proposal path rather than around it
+(`docs/proposals/wave-2.3-tracked-parcels.md`): I refused to raise it myself,
+wrote the proposal with the alternative stated (ship identify-only, defer
+tracking), and the founder approved Option A in-session. `parcel_alerts` and
+`saved_views` were checked first and rejected for cause. Reachability held at
+baseline on all four counts, so the new table has a real reader and writer.
+
+*Its audit returned three blocking defects with one root cause* — the client
+dropped the geographic context and the server never rebuilt it: the coverage
+branches were **unreachable in production** (and inverted — a customer inside a
+covered county was asked to request coverage for it); the APN path returned
+**another county's parcel as a confident exact match**; and the point path was
+predicates AND truncation, so a parcel we genuinely hold could render as "we
+could not identify a parcel" — a fabricated negative that only appears once
+coverage gets good. All fixed. Also: a toast naming a tracked list that does
+not exist; an unwired `GET /api/tracked-parcels` + reader **removed** rather
+than shipped; an FK action omitted in Drizzle but present in both DDL artifacts
+(no ratchet compares FK actions); a test mock more permissive than its SQL.
+
+**Egress follow-ups.** Blocking: **all 21 broker-backed MCP tools returned
+`data: null` on a cache hit** — not the 8–9 the builder scoped. The broker
+stamped `title: "Cache"`, the chokepoint correctly withheld on unresolvable
+provenance, and since the cache is written on every success and read for 30
+days, that was the *normal* production path. Origin now resolves back from the
+cached row's `data_source_id`. Plus two pins that did not pin (an archive CSV
+could bypass licence screening with all tests green; the README licence carrier
+could be deleted silently).
+
+**Rewrite-not-delete, again:** one stale pin went red because the county now
+resolves. The invariant it protected — never present a far-away parcel as the
+one tapped — is what the new assertions check, plus a new case pinning that a
+tap with nothing cached nearby still refuses to name a county.
+
+### 🔴 INCIDENT — two container restarts, and what they cost
+
+Fleet 12b died mid-run (restart #2), then the replacement F2 verifier died too
+(restart #3). Journal and scratchpad survived both; **the remote is the only
+durable state** — that lesson now has three data points.
+
+What the restarts nearly cost is the point: fleet 12b's F2 lane finished its
+BUILD but its audit never ran. Under the slice-8 standing lesson that lane does
+not merge, so I re-dispatched the audit twice. It eventually returned **two
+blocking findings** — see below. Had the "builder finished, tests green" signal
+been taken as sufficient, both would have shipped.
+
+Diagnostic refinement worth keeping: the three-signal liveness test produced a
+**false positive** — a verifier working in a locked isolation worktree shows a
+frozen journal AND no main-repo writes, two of three death signals, while
+perfectly alive. The corrected test requires no writes in the repo *and* in any
+locked worktree, with `TaskOutput`/`ListAgents` as the decisive signal.
+
+### F2 slice 2 — 🟡 PARKED, audited, two blocking findings open
+
+**Not in `073e503`.** Parked as a patch (byte-identical to the audited content,
+diffstat 9/77/519/32/24/508) rather than shipped unaudited. Open:
+
+1. **BLOCKING — a delegated auto-witnessed send is written into the founder's
+   audit trail as a founder tap.** `autoWitness.runAutoWitnessSweep` calls the
+   same `approvePendingHand` a founder tap uses, and `resolveMirrorItem`
+   hardcodes `resolvedBy: 'founder_deep_surface'` — so a refund the machine sent
+   under a standing grant *while the founder was away* files under "You
+   reviewed", and the "Auto-handled" bucket never sees it. The false sentence
+   then lands in `founderModification`, which `decisionLogRag` ingests into the
+   model-read corpus. `input.approvedBy` is in scope and carries the truth.
+2. **BLOCKING — the lane's stated purpose is undelivered.** It exists because
+   the witnessed-send section is "newest-first and disconnected from severity".
+   It computes ranks, tests the rank VALUES, writes them to `urgencyScore` —
+   and renders them into a queue still ordered newest-first. The rank is
+   stored, not applied, while the page tells the founder "nothing outranks it
+   silently". Either sort the bucket or delete the claim.
+
+Six should-fix items also open (expired-tap recorded as a founder *rejection*;
+the rank keyed off a hardcoded hand-name map instead of the registry's
+`movesMoney`, so an 8th money hand would silently rank as a customer send; a
+do-nothing sentence true of the frozen card but false on the mirror row; an
+unconditional presence claim false during quiet hours; a headline count that
+double-counts mirrors; a button promising a re-raise the dedupe key forbids).
+
+**Carried to the founder queue from this audit:** `autonomousDecisionExecutor`
+writes `decisions_inbox_items` directly, bypassing the service verbs where
+`refuseIfMirror` lives, and its `HARD_STOP_TYPES` is env-driven and empty by
+default — pre-existing exposure, not introduced here. Also found and correctly
+left alone: `createFromAbuseReport` files a card with no options, so a portal
+abuse report cannot be dispositioned on the door at all.
+
+---
+
 ## Waves L / R / S — registered, pending (from the addenda packet, 2026-08-11)
 
 Registered in §D on 2026-08-11. Briefs: **§I** (Addendum D → Wave L), **§J**
