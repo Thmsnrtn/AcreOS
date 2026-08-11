@@ -542,7 +542,57 @@ time, one commit for R-1+R-2+R-3, push, ledger. R-4 stays parked in
 
 ---
 
-## Fleet 14 — the four founder rulings — 🟡 BUILT, AUDITED, **NOT MERGED**
+## Slice 14 — R-1 · R-2 · R-3 — ✅ SHIPPED at `85f30b3`
+
+Three of the four rulings are live. **R-4 is parked** per ruling R-6 (7 files in
+`scratchpad/r4-parked.tgz`, unwired from the tracked files so the tree gates
+clean). Gates verified separately: check 0 · test 0 (**11,929** passing) ·
+build 0. Manifest regenerated last.
+
+**Two defects in this slice would have cost money or trust directly:**
+
+- **A banner reading "Test mode / Safe — no actual mail is sent", over a path
+  that printed real letters** billed to AcreOS with the monthly mail budget
+  never consulted. The stop-loss was gated on `!isTestKey &&
+  effectiveMode(mode) === 'live'` — a condition that stopped describing reality
+  once the resolver began returning the live key whenever the interlock is
+  armed. Test mode both *skipped the gate* and *got a live key*. Now gated on
+  the key in hand, and a test-mode request **refuses** a live credential rather
+  than silently upgrading it.
+- **"Stop this sequence" that stopped nothing.** `disarmSequence` only flipped
+  the sequence row, and `autoStart` is consulted exactly once — on enrollment
+  CREATE — so a customer with 40 notes mid-ladder was told "No further messages
+  will be sent" while all 40 kept sending. Disarming now cancels the in-flight
+  enrollments and the toast reports the count.
+
+Also fixed: the arming chokepoint sat only on CREATE, and `omitProtectedFields`
+does not protect `sequenceId`/`status`/`currentStep`/`nextStepAt` — so a PATCH
+could repoint a dormant enrollment at an unarmed sequence and flip it active in
+one call. **Editing is not a lesser act than creating.**
+
+**Two stale pins REWRITTEN, not deleted** — and one is the lesson: the
+stop-loss pin required TWO `assertOutreachNotPaused` call sites; consolidation
+replaced them with ONE gate in the shared resolver both paths use. A
+count-based pin read a genuine improvement as a regression. It now asserts by
+construction. The `licenseEgress` MCP pin was re-anchored from the deleted
+`/mcp` tool server onto the surviving surface, and honestly records what was
+lost (`declaredSource` now has no production caller).
+
+Ratchets DOWN and locked here: colon-any 3010 → **2959**, res-status-raw
+499 → **498**. R-2's own new mail-lane gate caught my fix naming a credential
+env var inside a send path — fixed at the occurrence.
+
+> **⚠️ STILL OPEN — the R-1 pre-merge check.** Nobody in this environment can
+> close it (`DATABASE_URL` unset). Confirm no active `ak_`/MCP traffic exists.
+> If it does, key management stops being a separate slice and becomes a
+> blocker. See the R-5 ruling above.
+
+**Next:** R-4's honesty fix (its own slice, likely a second audit), then the
+key-management slice R-5 scheduled, then Wave 3 remainder / Wave 4.
+
+---
+
+## Fleet 14 — the four founder rulings — 🟡 audit record (R-4 still parked)
 
 **Nothing from this fleet is committed.** All four lanes built and were
 independently audited; the audits returned **7 blocking findings**, and **two
