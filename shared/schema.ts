@@ -6680,6 +6680,80 @@ export type InsertParcelSnapshot = z.infer<typeof insertParcelSnapshotSchema>;
 export type ParcelSnapshot = typeof parcelSnapshots.$inferSelect;
 
 // ============================================
+// TRACKED PARCELS (Wave 2.3 — "Track this parcel")
+// ============================================
+
+/**
+ * A parcel an org has chosen to WATCH from the map, before it is anything
+ * else — before it is a property in inventory, before it is a lead, before
+ * there is a deal. Tapping a parcel on the Map door and hitting "Track this
+ * parcel" writes exactly one row here.
+ *
+ * Design notes:
+ *  - The identity is the NORMALIZED (org, state, county, apn) tuple, and it is
+ *    a UNIQUE index, so idempotency is enforced by the database rather than by
+ *    a read-then-write race in the service. Tapping twice is a no-op.
+ *  - `parcelSnapshotId` is a soft pointer at the cache row the customer was
+ *    looking at when they tracked it. It is nullable ON PURPOSE: a customer
+ *    may track a parcel in a county we do not hold a snapshot for yet, and
+ *    inventing a snapshot id to satisfy a NOT NULL would be a fabrication.
+ *    It deliberately does NOT cascade: losing a snapshot row must never
+ *    silently drop what the org asked to watch. (An earlier draft of this
+ *    comment justified that with "the snapshot cache is also expiry-swept" —
+ *    nothing in the repo sweeps parcel_snapshots today. The decision is right;
+ *    the reason given for it described behaviour that does not exist, so it is
+ *    stated here as the real one: a watch outlives the cache, and a future
+ *    sweep must not change that.)
+ *  - Nothing here duplicates parcel FACTS (owner/acres/value). Those live in
+ *    parcel_snapshots with their own provenance; copying them here would
+ *    create a second, undated, unsourced copy that drifts.
+ */
+export const trackedParcels = pgTable("tracked_parcels", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // Normalized at write time: state upper-cased, county lower-cased with the
+  // trailing " county" stripped (server/services/coverageLedger normalizers).
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  apn: text("apn").notNull(),
+  // ON DELETE SET NULL, stated here as well as in both DDL artifacts: Drizzle
+  // emits NO ACTION when the action is omitted, and `db:push` builds dev/CI
+  // databases straight from this file — so leaving it off meant deleting a
+  // referenced snapshot succeeded in production and raised in dev. None of the
+  // schema/migration ratchets compare FK actions, so nothing would have caught
+  // the divergence.
+  parcelSnapshotId: integer("parcel_snapshot_id").references(() => parcelSnapshots.id, {
+    onDelete: "set null",
+  }),
+  /** Who tapped it — users.id is a text id in this schema. */
+  trackedByUserId: text("tracked_by_user_id"),
+  /** Optional customer-supplied note. Never auto-filled. */
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  // Idempotency, enforced by the DB.
+  uniqueIndex("tracked_parcels_org_parcel_key").on(
+    table.organizationId,
+    table.state,
+    table.county,
+    table.apn,
+  ),
+  // Leading-org composite index (L3 shard-readiness lint).
+  index("tracked_parcels_org_created_idx").on(table.organizationId, table.createdAt),
+]);
+
+export const insertTrackedParcelSchema = createInsertSchema(trackedParcels).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTrackedParcel = z.infer<typeof insertTrackedParcelSchema>;
+export type TrackedParcel = typeof trackedParcels.$inferSelect;
+
+// ============================================
 // PARCEL OBSERVATION LOG (Iyari — the acorn)
 // --------------------------------------------
 // Append-only, NEVER updated. Every time any path (lookup, ETL, fusion,

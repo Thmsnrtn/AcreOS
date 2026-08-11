@@ -845,10 +845,31 @@ interface PropertyBoundary {
   approximate?: boolean;
 }
 
+/**
+ * Where the customer tapped, plus the parcel identity the map ALREADY knew.
+ *
+ * `apn` is populated only when the tap landed on a rendered parcel feature
+ * that carries one (the inventory layer, or the nearby-parcels layer fetched
+ * from county GIS). It is never guessed from proximity — an APN the map made
+ * up would send the inspector looking up the wrong parcel with full
+ * confidence. When it is absent the server identifies from the point alone.
+ */
+export interface ParcelIdentifyTap {
+  lat: number;
+  lng: number;
+  apn?: string;
+}
+
 interface PropertyMapProps {
   properties: PropertyBoundary[];
   selectedPropertyId?: number;
   onPropertySelect?: (propertyId: number) => void;
+  /**
+   * Wave 2.3 click-to-identify. When provided, a plain map click (never during
+   * a measurement, which owns the click) reports the tapped point so the Map
+   * door can open the parcel inspector.
+   */
+  onParcelIdentify?: (tap: ParcelIdentifyTap) => void;
   height?: string;
   showLabels?: boolean;
   interactive?: boolean;
@@ -937,6 +958,7 @@ export function PropertyMap({
   properties,
   selectedPropertyId,
   onPropertySelect,
+  onParcelIdentify,
   height = "400px",
   showLabels = true,
   interactive = true,
@@ -2203,6 +2225,53 @@ export function PropertyMap({
     measurementClickHandlerRef.current = handleClick;
     map.current.on("click", handleClick);
   }, [clearMeasurement, updateMeasurementLayer]);
+
+  /**
+   * Wave 2.3 — click-to-identify.
+   *
+   * A plain tap on the map reports the point (and, when the tap landed on a
+   * rendered parcel feature, that feature's APN) so the Map door can open the
+   * inspector. Deliberately inert while a measurement is running: the
+   * measurement tool owns the click then, and stealing it would drop points.
+   *
+   * The APN is read from the feature the customer actually hit —
+   * `nearby-parcels-fill` is the county-GIS layer of parcels that are NOT in
+   * inventory, which is precisely the "untracked parcel" the exit line names.
+   * Nothing is inferred from proximity here; if no feature was hit we send the
+   * bare point and let the server say what it can honestly resolve.
+   */
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !onParcelIdentify) return;
+    if (measurementMode !== "none") return;
+
+    const handleIdentifyClick = (e: mapboxgl.MapMouseEvent) => {
+      const { lng, lat } = e.lngLat;
+      let apn: string | undefined;
+      try {
+        const layers = ["nearby-parcels-fill", "property-fill"].filter(
+          (id) => !!map.current?.getLayer(id),
+        );
+        if (layers.length > 0) {
+          const hits = map.current!.queryRenderedFeatures(e.point, { layers });
+          const declared = hits[0]?.properties?.apn;
+          if (typeof declared === "string" && declared.trim()) apn = declared.trim();
+        }
+      } catch (err) {
+        // A failed feature query must not swallow the tap — we simply fall
+        // back to point-only identification rather than dropping the gesture.
+        clientLogger.warn("[PropertyMap] identify feature query failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+      onParcelIdentify({ lat, lng, apn });
+    };
+
+    map.current.on("click", handleIdentifyClick);
+    const mapInstance = map.current;
+    return () => {
+      mapInstance?.off("click", handleIdentifyClick);
+    };
+  }, [mapLoaded, onParcelIdentify, measurementMode]);
 
   const toggleMeasurementUnits = useCallback(() => {
     setMeasurementUnits(prev => {

@@ -80,6 +80,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
 import {
+  ParcelInspector,
+  type ParcelIdentifyTarget,
+} from "@/components/maps/ParcelInspector";
+// Type-only (erased at build), so this does NOT pull the MapLibre vendor chunk
+// in ahead of the lazy PropertyMap boundary.
+import type { ParcelIdentifyTap } from "@/components/property-map";
+import {
   RadarChart,
   Radar,
   PolarGrid,
@@ -1056,6 +1063,25 @@ export default function MapsPage() {
   // RAFE (Tahoe Wave-2): "See a sample" — guarantees a first lookup never
   // returns empty by running a REAL enrichment on a curated data-rich parcel.
   const [samplePreviewOpen, setSamplePreviewOpen] = useState(false);
+  // Wave 2.3 click-to-identify. A plain tap on the basemap opens the parcel
+  // inspector for whatever AcreOS already holds at that point. Lives INSIDE
+  // the Map door as a sheet — no new nav entry, no new route.
+  const [identifyTarget, setIdentifyTarget] = useState<ParcelIdentifyTarget | null>(
+    null,
+  );
+  // Stable identity: PropertyMap registers/removes a MapLibre click listener
+  // keyed on this callback, so a fresh function every render would churn the
+  // listener on each keystroke in the search box.
+  const handleParcelIdentify = useCallback(
+    (tap: ParcelIdentifyTap) => {
+      // Only the APN the map ACTUALLY hit is forwarded. State/county are
+      // deliberately not sent: the resolver reports the county of the row it
+      // matched, and a client hint here would let a stray tap produce a
+      // confident sentence about a county nobody looked at.
+      setIdentifyTarget({ lat: tap.lat, lng: tap.lng, apn: tap.apn });
+    },
+    [],
+  );
   const headerSearchId = useId();
   const mobileSearchId = useId();
   const sheetStatusId = useId();
@@ -1613,6 +1639,9 @@ export default function MapsPage() {
                   interactive
                   enable3DTerrain={false}
                   showControls
+                  // An org with nothing geocoded yet is exactly who most needs
+                  // click-to-identify, so the empty state gets it too.
+                  onParcelIdentify={handleParcelIdentify}
                 />
                 {/* Bold Tahoe re-skin (Wave R, §1.4/§4): this empty-state wash
                     floats over the live basemap, so it takes the bold
@@ -1679,6 +1708,7 @@ export default function MapsPage() {
                 interactive
                 enable3DTerrain
                 showControls
+                onParcelIdentify={handleParcelIdentify}
               />
             )}
 
@@ -1748,6 +1778,17 @@ export default function MapsPage() {
       <SampleParcelPreview
         open={samplePreviewOpen}
         onOpenChange={setSamplePreviewOpen}
+      />
+
+      {/* Wave 2.3 — click-to-identify. Opened by a plain tap on the basemap
+          (see onParcelIdentify above); shows only what AcreOS already holds
+          for the tapped parcel, and offers the EXISTING inventory/deal/offer
+          flows rather than a parallel path of its own. */}
+      <ParcelInspector
+        target={identifyTarget}
+        onOpenChange={(open) => {
+          if (!open) setIdentifyTarget(null);
+        }}
       />
     </PageShell>
   );

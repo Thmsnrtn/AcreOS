@@ -235,6 +235,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-outreach-mail.ts", mountPath: null, kind: "register", export: "registerOutreachMailRoutes" },
   { file: "routes-parcel-alerts.ts", mountPath: "/api/parcel-alerts", kind: "router", export: "default" },
   { file: "routes-parcel-biography.ts", mountPath: "/api/parcel-biography", kind: "router", export: "default" },
+  { file: "routes-parcel-identify.ts", mountPath: null, kind: "register", export: "registerParcelIdentifyRoutes" },
   { file: "routes-pax-appeals.ts", mountPath: null, kind: "register", export: "registerPaxAppealRoutes" },
   { file: "routes-pax-audit.ts", mountPath: null, kind: "register", export: "registerPaxAuditRoutes" },
   { file: "routes-pax-calibration.ts", mountPath: null, kind: "register", export: "registerPaxCalibrationRoutes" },

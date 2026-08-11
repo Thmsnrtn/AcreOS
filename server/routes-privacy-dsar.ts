@@ -179,6 +179,11 @@ export function registerPrivacyDsarRoutes(app: Express): void {
               email: dsar.requesterEmail,
               exportedUserId: userId,
               recordCounts: exportData.totalRecords,
+              // The subject-access licence decision is part of the compliance
+              // record, not just a line in the file the founder forwards.
+              providerSourcedDecision: exportData.providerSourcedData.decision,
+              providerSourcedValueCount:
+                exportData.providerSourcedData.providerSourcedValueCount,
             },
           });
         } catch (auditErr) {
@@ -189,6 +194,17 @@ export function registerPrivacyDsarRoutes(app: Express): void {
         res.setHeader(
           "Content-Disposition",
           `attachment; filename="dsar-${dsar.id}-user-${userId}.json"`,
+        );
+        // Both values are fixed ASCII tokens/integers by construction, so they
+        // need no header sanitizing; the prose statement stays in the body,
+        // where res.setHeader's latin1-only rule cannot 500 the download.
+        res.setHeader(
+          "X-AcreOS-Subject-Access-Decision",
+          exportData.providerSourcedData.decision,
+        );
+        res.setHeader(
+          "X-AcreOS-Subject-Access-Provider-Values",
+          String(exportData.providerSourcedData.providerSourcedValueCount),
         );
         return res.json(exportData);
       } catch (err) {

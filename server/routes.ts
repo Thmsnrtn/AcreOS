@@ -238,6 +238,7 @@ import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
 import { registerFounderGovernanceCoverageRoutes } from "./routes-founder-governance-coverage";
 import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-eval";
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
+import { registerParcelIdentifyRoutes } from "./routes-parcel-identify";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
@@ -2371,6 +2372,10 @@ export async function registerRoutes(
   // Customer county-coverage request — /api/county-coverage/* — the "request
   // this county" CTA (maps surface) that demand-drives discovery-on-miss.
   registerCountyCoverageRoutes(app);
+  // Wave 2.3 click-to-identify — /api/parcel-identify + /api/tracked-parcels.
+  // Tapping a parcel on the Map door resolves it against the snapshot cache we
+  // already hold (no provider call, no credits) and lets the org watch it.
+  registerParcelIdentifyRoutes(app);
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);

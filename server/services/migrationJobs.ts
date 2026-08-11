@@ -57,7 +57,18 @@ import {
   exportPropertiesToCSV,
   exportDealsToCSV,
   exportNotesToCSV,
+  getLeadsData,
+  getPropertiesData,
+  getDealsData,
+  getNotesData,
 } from "./importExport";
+import {
+  PROVIDER_DERIVED_RECORD_FIELDS,
+  csvHeaderCarriesProviderRegion,
+  screenRecordForExport,
+  withholdingNotice,
+  type WithheldRegion,
+} from "./licenseEgress";
 
 const deflateRaw = promisify(zlib.deflateRaw);
 
@@ -865,10 +876,184 @@ designed to be portable to other CRMs.
 3. \`attachments/\` is laid out as \`/attachments/{entityType}/{entityId}/{filename}\`.
    Walk the directory and re-upload via your CRM's attachment API.
 
+## Data licensing
+
+{licenseSection}
+
 Generated: {timestamp}
 Organization ID: {orgId}
 Schema version: 1
 `;
+
+// ─── License-aware egress for the portability archive ────────────────────────
+// The `everything` ZIP is redistribution: the customer downloads it and loads
+// it into another CRM. Slice 11 wired the CSV/report/webhook/PDF doors but not
+// this one, so provider-derived regions could ride out inside the archive
+// unexamined. Every entity payload now goes through the chokepoint, and the
+// notice rides INSIDE the archive (LICENSE-NOTICE.md + a README section) —
+// a ZIP has no response header a human ever reads.
+
+const ARCHIVE_CHANNEL = "portability-archive" as const;
+
+const normalizeColumn = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/** Quote-aware split of one CSV line into raw cell values. */
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      cells.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  cells.push(cur);
+  return cells;
+}
+
+/**
+ * Screen one archive CSV against the rows behind it.
+ *
+ * The columns whose provenance may not leave are REMOVED FROM THE FILE, not
+ * merely announced. A trailing `# …` notice that claimed a withholding while
+ * the bytes were still in the CSV would be the same lie this chokepoint exists
+ * to stop — so the notice is emitted only for columns this function actually
+ * deleted, and it is emitted whenever it deleted any.
+ *
+ * Exported because `runExportJob` is I/O-bound and untestable in a unit suite;
+ * this is the part with the judgement in it, and `licenseEgress.test.ts`
+ * exercises it directly.
+ */
+export function screenArchiveCsv(
+  csv: string,
+  rows: readonly Record<string, unknown>[],
+): { csv: string; withheld: WithheldRegion[] } {
+  // Fixed column projections carry no provider-derived region today, so most
+  // archives skip the row read entirely. This is a live check, not a comment:
+  // the day a writer grows such a column, the rows get screened for real.
+  if (!csvHeaderCarriesProviderRegion(csv)) return { csv, withheld: [] };
+
+  const withheld: WithheldRegion[] = [];
+  for (const row of rows) {
+    const { screen } = screenRecordForExport(ARCHIVE_CHANNEL, row);
+    withheld.push(...screen.withheld);
+  }
+
+  const lines = csv.split("\n");
+  const header = splitCsvLine(lines[0] ?? "");
+  const doomed = new Set<number>();
+  for (let i = 0; i < header.length; i++) {
+    const key = normalizeColumn(header[i]);
+    if (
+      PROVIDER_DERIVED_RECORD_FIELDS.some((f) => key === normalizeColumn(f)) &&
+      withheld.some((w) => normalizeColumn(w.path) === key)
+    ) {
+      doomed.add(i);
+    }
+  }
+
+  // Nothing this file carries was actually withheld — claim nothing.
+  if (doomed.size === 0) return { csv, withheld: [] };
+
+  const kept = lines.map((line, idx) => {
+    if (idx > 0 && line.trim() === "") return line;
+    return splitCsvLine(line)
+      .filter((_, i) => !doomed.has(i))
+      .map(csvEscape)
+      .join(",");
+  });
+
+  const relevant = withheld.filter((w) =>
+    [...doomed].some((i) => normalizeColumn(header[i]) === normalizeColumn(w.path)),
+  );
+  const notice = withholdingNotice(ARCHIVE_CHANNEL, relevant);
+  return {
+    csv: notice ? `${kept.join("\n")}\n# ${notice}` : kept.join("\n"),
+    withheld: relevant,
+  };
+}
+
+/**
+ * The archive's own disclosure: the README section (always) and a
+ * LICENSE-NOTICE.md entry (only when something was actually removed).
+ *
+ * The nothing-withheld sentence is a CHECKED negative, not a shrug — it names
+ * the regions that were looked for and the two limits of the check, so a
+ * reader can tell "we checked and found none" from "nobody checked".
+ *
+ * It says "none of them HELD A VALUE we are not permitted to pass on", not
+ * "none of these columns appears": `screenArchiveCsv` also returns nothing
+ * withheld when a provider-derived column IS present but every row's value in
+ * it is null or resolves to a releasable source. The stronger sentence would
+ * be false in exactly that case, which is the case a future CSV writer
+ * creates.
+ */
+export function buildArchiveLicenseDisclosure(
+  withheld: readonly WithheldRegion[],
+): { readmeSection: string; notice: string | null; entries: ZipEntry[] } {
+  const notice = withholdingNotice(ARCHIVE_CHANNEL, withheld);
+  if (!notice || withheld.length === 0) {
+    return {
+      notice: null,
+      entries: [],
+      readmeSection:
+        `No field was withheld from this archive on data-licence grounds. Every CSV in it was\n` +
+        `checked against the provider-derived regions AcreOS records — ` +
+        `${PROVIDER_DERIVED_RECORD_FIELDS.join(", ")} —\n` +
+        `and none of them held a value we are not permitted to pass on, so the licence screen\n` +
+        `removed nothing.\n\n` +
+        `Two limits, stated so this is not read as a stronger claim than it is:\n` +
+        `1. \`attachments/\` holds files you uploaded. They are your own records, not vendor\n` +
+        `   feeds, and are not screened on licence grounds.\n` +
+        `2. A column a data provider populated but that AcreOS stores WITHOUT recording which\n` +
+        `   provider produced it cannot be screened against a contract we cannot identify.`,
+    };
+  }
+
+  const lines = [
+    "# Data licence notice",
+    "",
+    notice,
+    "",
+    "## What was removed, and why",
+    "",
+    "| Field | Source | Reason |",
+    "| --- | --- | --- |",
+    ...withheld.map(
+      (w) => `| ${w.label} | ${w.source} | ${w.reason} |`,
+    ),
+    "",
+    "These fields were produced by third-party data providers whose contracts do not permit",
+    "us to redistribute them, or were stored without a record of which provider produced them",
+    "— in which case we withhold rather than guess. Everything else in this archive is",
+    "unchanged.",
+    "",
+  ].join("\n");
+
+  return {
+    notice,
+    entries: [{ name: "LICENSE-NOTICE.md", data: Buffer.from(lines, "utf8") }],
+    readmeSection:
+      `${notice}\n\nSee \`LICENSE-NOTICE.md\` in this archive for the per-field list and the reason for each.`,
+  };
+}
 
 async function runExportJob(job: ExportJob): Promise<void> {
   try {
@@ -881,36 +1066,71 @@ async function runExportJob(job: ExportJob): Promise<void> {
     const orgId = job.organizationId;
     const counts: Record<string, number> = {};
     const archiveEntries: ZipEntry[] = [];
+    const archiveWithheld: WithheldRegion[] = [];
+
+    /**
+     * Add one CSV to the archive after the chokepoint has had it. `loadRows`
+     * is only called when the file's header actually carries a
+     * provider-derived column, so the ordinary archive costs no extra query.
+     */
+    const addCsvEntry = async (
+      name: string,
+      countKey: string,
+      csv: string,
+      loadRows: () => Promise<Record<string, unknown>[]>,
+    ): Promise<void> => {
+      // Row count comes from the file as WRITTEN, before any notice line is
+      // appended — otherwise a withheld field would inflate the count by one.
+      counts[countKey] = csv.split("\n").length - 1;
+      const rows = csvHeaderCarriesProviderRegion(csv) ? await loadRows() : [];
+      const screened = screenArchiveCsv(csv, rows);
+      archiveWithheld.push(...screened.withheld);
+      archiveEntries.push({ name, data: Buffer.from(screened.csv, "utf8") });
+    };
+
+    // communications.csv / audit-log.csv are built here from fixed projections
+    // that hold no entity record to re-read; the header probe short-circuits
+    // before the loader, and the loader says so rather than returning a lie.
+    const noEntityRows = async (): Promise<Record<string, unknown>[]> => [];
 
     if (requestedTypes.has("leads")) {
-      const csv = await exportLeadsToCSV(orgId);
-      archiveEntries.push({ name: "leads.csv", data: Buffer.from(csv, "utf8") });
-      counts.leads = csv.split("\n").length - 1;
+      await addCsvEntry("leads.csv", "leads", await exportLeadsToCSV(orgId), () =>
+        getLeadsData(orgId) as Promise<Record<string, unknown>[]>,
+      );
     }
     if (requestedTypes.has("properties")) {
-      const csv = await exportPropertiesToCSV(orgId);
-      archiveEntries.push({ name: "properties.csv", data: Buffer.from(csv, "utf8") });
-      counts.properties = csv.split("\n").length - 1;
+      await addCsvEntry(
+        "properties.csv",
+        "properties",
+        await exportPropertiesToCSV(orgId),
+        () => getPropertiesData(orgId) as Promise<Record<string, unknown>[]>,
+      );
     }
     if (requestedTypes.has("deals")) {
-      const csv = await exportDealsToCSV(orgId);
-      archiveEntries.push({ name: "deals.csv", data: Buffer.from(csv, "utf8") });
-      counts.deals = csv.split("\n").length - 1;
+      await addCsvEntry("deals.csv", "deals", await exportDealsToCSV(orgId), () =>
+        getDealsData(orgId) as Promise<Record<string, unknown>[]>,
+      );
     }
     if (requestedTypes.has("notes")) {
-      const csv = await exportNotesToCSV(orgId);
-      archiveEntries.push({ name: "notes.csv", data: Buffer.from(csv, "utf8") });
-      counts.notes = csv.split("\n").length - 1;
+      await addCsvEntry("notes.csv", "notes", await exportNotesToCSV(orgId), () =>
+        getNotesData(orgId) as Promise<Record<string, unknown>[]>,
+      );
     }
     if (requestedTypes.has("communications")) {
-      const csv = await buildCommunicationsCsv(orgId);
-      archiveEntries.push({ name: "communications.csv", data: Buffer.from(csv, "utf8") });
-      counts.communications = csv.split("\n").length - 1;
+      await addCsvEntry(
+        "communications.csv",
+        "communications",
+        await buildCommunicationsCsv(orgId),
+        noEntityRows,
+      );
     }
     if (requestedTypes.has("audit-log")) {
-      const csv = await buildAuditLogCsv(orgId);
-      archiveEntries.push({ name: "audit-log.csv", data: Buffer.from(csv, "utf8") });
-      counts.auditLog = csv.split("\n").length - 1;
+      await addCsvEntry(
+        "audit-log.csv",
+        "auditLog",
+        await buildAuditLogCsv(orgId),
+        noEntityRows,
+      );
     }
 
     if (includeAttachments) {
@@ -940,24 +1160,34 @@ async function runExportJob(job: ExportJob): Promise<void> {
       counts.attachments = attachmentCount;
     }
 
+    const licence = buildArchiveLicenseDisclosure(archiveWithheld);
+
     const schemaJson = {
       schemaVersion: 1,
       organizationId: orgId,
       generatedAt: new Date().toISOString(),
       counts,
       params,
+      // Always present, so a machine reader can tell "checked, nothing
+      // withheld" from "never checked". Null means the former.
+      licenseNotice: licence.notice,
+      licenseWithheldCount: archiveWithheld.length,
     };
     archiveEntries.push({
       name: "schema.json",
       data: Buffer.from(JSON.stringify(schemaJson, null, 2), "utf8"),
     });
+    archiveEntries.push(...licence.entries);
     archiveEntries.push({
       name: "README.md",
       data: Buffer.from(
-        README_TEMPLATE.replace("{timestamp}", new Date().toISOString()).replace(
-          "{orgId}",
-          String(orgId)
-        ),
+        // The licence section is DATA (it interpolates vendor names and
+        // withholding reasons), so it goes in through a replacer function.
+        // As a replacement STRING, a `$&`/`$'` sequence inside a vendor name
+        // would silently rewrite the README around it.
+        README_TEMPLATE.replace("{timestamp}", new Date().toISOString())
+          .replace("{orgId}", String(orgId))
+          .replace("{licenseSection}", () => licence.readmeSection),
         "utf8"
       ),
     });

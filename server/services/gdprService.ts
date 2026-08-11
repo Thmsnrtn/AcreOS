@@ -35,6 +35,10 @@ import {
 import { eq, and, count, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
+import {
+  subjectAccessDisclosure,
+  type SubjectAccessDisclosure,
+} from "./licenseEgress";
 
 /** Safety limit to prevent unbounded memory usage on very large accounts */
 const MAX_EXPORT_RECORDS = 100_000;
@@ -56,6 +60,19 @@ type GdprExportData = {
     messages: number;
     supportTickets: number;
   };
+  /**
+   * What this export did about provider-sourced data, stated in the artifact.
+   *
+   * `leads.enrichmentData` and `deals.enrichmentData` are provider-derived
+   * jsonb regions and were shipping here completely unexamined — the egress
+   * chokepoint had never been asked about this door. It is asked now, and the
+   * answer for THIS channel is "include, and say so": see
+   * `subjectAccessDisclosure` in licenseEgress.ts for the decision and its
+   * reasoning. The block is always present, including when nothing
+   * provider-sourced was found, so a reader can tell "we checked and found
+   * none" from "nobody checked".
+   */
+  providerSourcedData: SubjectAccessDisclosure;
 };
 
 type DeletionReport = {
@@ -114,6 +131,27 @@ export async function exportUserData(userId: string): Promise<GdprExportData> {
     db.select({ count: count() }).from(supportTickets).where(eq(supportTickets.userId, userId)),
   ]);
 
+  // Ask the egress chokepoint about every exported row before any of it
+  // leaves. This channel RELEASES what a redistribution channel would withhold
+  // (Art. 15 is an obligation to the data subject, not a redistribution
+  // right), so the payload below is unmodified — but the artifact now carries
+  // the answer instead of shipping vendor-derived bytes silently.
+  //
+  // `properties` is passed as the empty list this export actually ships (see
+  // the TODO above — properties carry no per-user assignment, so none is in
+  // scope). It is passed rather than omitted so the disclosure's `coverage`
+  // block shows `properties: 0 rows` explicitly: a reader must be able to tell
+  // "we examined your property records and found no vendor data" from "no
+  // property records were in this export at all", and only the second is true.
+  const providerSourcedData = subjectAccessDisclosure({
+    leads: userLeads as Record<string, unknown>[],
+    deals: userDeals as Record<string, unknown>[],
+    properties: [],
+    tasks: userTasks as Record<string, unknown>[],
+    messages: userMessages as Record<string, unknown>[],
+    supportTickets: userTickets as Record<string, unknown>[],
+  });
+
   return {
     exportedAt: new Date().toISOString(),
     user: safeUser,
@@ -123,6 +161,7 @@ export async function exportUserData(userId: string): Promise<GdprExportData> {
     tasks: userTasks,
     messages: userMessages,
     supportTickets: userTickets,
+    providerSourcedData,
     totalRecords: {
       leads: leadCount[0]?.count ?? 0,
       deals: dealCount[0]?.count ?? 0,

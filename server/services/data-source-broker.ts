@@ -451,7 +451,10 @@ export class DataSourceBroker {
     });
   }
 
-  private async getCachedResult(lookupKey: string, sourceId?: number): Promise<{ data: any; cachedAt: Date } | null> {
+  private async getCachedResult(
+    lookupKey: string,
+    sourceId?: number,
+  ): Promise<{ data: any; cachedAt: Date; dataSourceId: number | null } | null> {
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() - CACHE_DURATION_DAYS);
 
@@ -469,9 +472,44 @@ export class DataSourceBroker {
       return {
         data: results[0].data,
         cachedAt: results[0].fetchedAt || new Date(),
+        dataSourceId: results[0].dataSourceId ?? null,
       };
     }
     return null;
+  }
+
+  /**
+   * The source a cached row came FROM.
+   *
+   * A cache hit is not a change of provenance — the bytes still originated at
+   * whichever upstream served them, and the licence that governs them is that
+   * upstream's. Stamping `title: "Cache"` on the way out erased that, and the
+   * egress chokepoint (licenseEgress.ts) correctly reads an unresolvable title
+   * as `review-required` and withholds the payload. Since the cache is written
+   * on every successful lookup and read for 30 days, that made the SECOND and
+   * every later call for a given key return null — the normal production path
+   * for all 21 broker-backed MCP tools, not an edge case.
+   *
+   * So resolve the real source back. `BUILTIN_FEDERAL_SOURCE_ID` rebuilds the
+   * same virtual source the live path builds; a real id reads the row. If it
+   * resolves to nothing (a deleted source, an id we no longer recognise) we
+   * return null and the caller keeps the honest "Cache" title, which fails
+   * closed at the chokepoint — unresolved provenance withholds, as designed.
+   */
+  private async resolveCachedSource(
+    dataSourceId: number | null,
+    category: LookupCategory,
+  ): Promise<DataSource | null> {
+    if (dataSourceId === null) return null;
+    if (dataSourceId === BUILTIN_FEDERAL_SOURCE_ID) {
+      return this.buildVirtualFederalSource(category);
+    }
+    const rows = await db
+      .select()
+      .from(dataSources)
+      .where(eq(dataSources.id, dataSourceId))
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   private async cacheResult(sourceId: number, lookupKey: string, data: any, state?: string, county?: string): Promise<void> {
@@ -603,12 +641,16 @@ export class DataSourceBroker {
     if (!options.forceRefresh) {
       const cached = await this.getCachedResult(lookupKey);
       if (cached) {
+        const origin = await this.resolveCachedSource(cached.dataSourceId, category);
         return {
           success: true,
           data: cached.data,
           source: {
-            id: 0,
-            title: "Cache",
+            id: origin?.id ?? 0,
+            // The upstream that actually served these bytes, so the licence
+            // that governs them travels with them. Only an unresolvable
+            // origin falls back to "Cache" — and that withholds downstream.
+            title: origin?.title ?? "Cache",
             tier: "cached",
             costCents: 0,
           },

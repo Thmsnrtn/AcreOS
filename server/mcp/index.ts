@@ -31,8 +31,16 @@ import { screenToolResultData } from "../services/licenseEgress.js";
  * `enrichmentData`) are withheld and the result SAYS so, rather than handing
  * an MCP host bytes we may not redistribute.
  *
- * `declaredSource` is for call sites that hold a real `LookupResult.source`;
- * omitted, only the unstamped provider regions are screened.
+ * `declaredSource` is for call sites that hold a real source name. Every
+ * broker-backed tool passes `result.source.title` (through `brokerOk` below) —
+ * the same string the tool already prints to the host — so this screen is no
+ * longer a near no-op on the one channel that hands bytes to a third party.
+ *
+ * A title the license register cannot resolve fails CLOSED: the result becomes
+ * `{ data: null, _license: … }` with the reason on the first line, never a
+ * silent empty object. See BROKER_TITLE_TO_REGISTER_SOURCE in licenseEgress.ts
+ * for which broker titles reconcile to a register key and which deliberately
+ * do not.
  */
 function ok(data: unknown, note?: string, declaredSource?: string | null) {
   const screened = screenToolResultData(
@@ -43,9 +51,15 @@ function ok(data: unknown, note?: string, declaredSource?: string | null) {
   const body = screened.disclosure
     ? { data: screened.data, _license: screened.disclosure }
     : screened.data;
+  // A released `attribution`-postured source (ODbL/OSM) must carry its
+  // attribution string out with it, or the posture check passes while the
+  // licence is still breached.
+  const credit = screened.attributions.length
+    ? screened.attributions.join(" · ")
+    : null;
   const header = screened.disclosure
     ? `${note ? `${note}\n` : ""}${screened.disclosure.notice}`
-    : note;
+    : [note, credit].filter(Boolean).join("\n") || undefined;
   return {
     content: [
       {
@@ -57,6 +71,58 @@ function ok(data: unknown, note?: string, declaredSource?: string | null) {
     ],
   };
 }
+
+/** The shape of a `dataSourceBroker.lookup()` result these tools consume. */
+interface BrokerToolResult {
+  success: boolean;
+  data: unknown;
+  source: { title: string };
+  fallbacksUsed?: string[];
+}
+
+/**
+ * Broker-backed tool results, with the EMPTY case separated from the WITHHELD
+ * case.
+ *
+ * The broker stamps a source title on results that carry no data at all — a
+ * retired category ("HIFLD (discontinued)"), a miss ("None"), a thrown lookup
+ * ("Error"), an unkeyed optional source. Handing those to `ok()` with a
+ * declared source made the chokepoint screen a title attached to nothing and
+ * report "1 field withheld from this MCP tool result", which is a suppression
+ * notice for bytes that never existed — and it buried the real reason (the
+ * upstream is dead, or returned nothing) under a licence story.
+ *
+ * So: no data → say there is no data, name the source we tried and the
+ * broker's own reason. Data → `ok()` screens it against the declared source,
+ * and an unresolvable source still fails closed there.
+ */
+function brokerOk(result: BrokerToolResult, note: string) {
+  if (!result.success || result.data === null || result.data === undefined) {
+    const why = result.fallbacksUsed?.length
+      ? result.fallbacksUsed.join("; ")
+      : "no configured upstream returned data for this location";
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `${note}\nNo data was returned. Source attempted: ${result.source.title}. Reason: ${why}\n` +
+            `This is an empty result, not a withheld one — nothing was suppressed on data-licence grounds.`,
+        },
+      ],
+    };
+  }
+  return ok(result.data, note, result.source.title);
+}
+
+/**
+ * The source name the two geocode tools already stamp into their own payloads.
+ * Declared once so the printed provenance and the provenance the chokepoint is
+ * asked about cannot drift apart. It reconciles to the register's
+ * "OpenStreetMap" (ODbL) entry, so results are released WITH the ODbL
+ * attribution rather than released bare.
+ */
+const NOMINATIM_SOURCE = "OpenStreetMap Nominatim";
 
 function err(message: string) {
   return {
@@ -136,7 +202,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("flood_zone", { latitude, longitude });
-        return ok(result.data, `Flood zone data via ${result.source.title}`);
+        return brokerOk(result, `Flood zone data via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -154,7 +220,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("wetlands", { latitude, longitude });
-        return ok(result.data, "NWI Wetlands data:");
+        return brokerOk(result, "NWI Wetlands data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -172,7 +238,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("soil", { latitude, longitude });
-        return ok(result.data, "USDA Soil Survey data:");
+        return brokerOk(result, "USDA Soil Survey data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -191,7 +257,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude, state }) => {
       try {
         const result = await dataSourceBroker.lookup("demographics", { latitude, longitude, state });
-        return ok(result.data, "Census ACS 5-Year Estimates:");
+        return brokerOk(result, "Census ACS 5-Year Estimates:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -209,7 +275,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("public_lands", { latitude, longitude });
-        return ok(result.data, "Public Lands data (BLM/NPS/USFS):");
+        return brokerOk(result, "Public Lands data (BLM/NPS/USFS):");
       } catch (e: any) {
         return err(e.message);
       }
@@ -227,7 +293,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("natural_hazards", { latitude, longitude });
-        return ok(result.data, "Natural Hazards assessment:");
+        return brokerOk(result, "Natural Hazards assessment:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -245,7 +311,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("infrastructure", { latitude, longitude });
-        return ok(result.data, "Infrastructure within 10 miles:");
+        return brokerOk(result, "Infrastructure within 10 miles:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -263,7 +329,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("transportation", { latitude, longitude });
-        return ok(result.data, "Transportation data:");
+        return brokerOk(result, "Transportation data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -281,7 +347,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("water_resources", { latitude, longitude });
-        return ok(result.data, "Water resources data:");
+        return brokerOk(result, "Water resources data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -299,7 +365,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("elevation", { latitude, longitude });
-        return ok(result.data, "Elevation data:");
+        return brokerOk(result, "Elevation data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -317,7 +383,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("climate", { latitude, longitude });
-        return ok(result.data, "30-year climate normals:");
+        return brokerOk(result, "30-year climate normals:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -337,7 +403,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude, state, county }) => {
       try {
         const result = await dataSourceBroker.lookup("agricultural_values", { latitude, longitude, state, county });
-        return ok(result.data, "USDA agricultural land values:");
+        return brokerOk(result, "USDA agricultural land values:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -355,7 +421,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("land_cover", { latitude, longitude });
-        return ok(result.data, "NLCD 2021 land cover:");
+        return brokerOk(result, "NLCD 2021 land cover:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -414,8 +480,8 @@ export function createMcpServer(options: McpServerOptions = {}) {
           osmType: data.osm_type,
           category: data.category,
           type: data.type,
-          source: "OpenStreetMap Nominatim",
-        }, "Reverse geocode result:");
+          source: NOMINATIM_SOURCE,
+        }, "Reverse geocode result:", NOMINATIM_SOURCE);
       } catch (e: any) {
         return err(e.message);
       }
@@ -451,9 +517,10 @@ export function createMcpServer(options: McpServerOptions = {}) {
             importance: r.importance,
             address: r.address,
             type: r.type,
-            source: "OpenStreetMap Nominatim",
+            source: NOMINATIM_SOURCE,
           })),
-          `Geocode results for "${address}":`
+          `Geocode results for "${address}":`,
+          NOMINATIM_SOURCE,
         );
       } catch (e: any) {
         return err(e.message);
@@ -472,7 +539,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("environmental", { latitude, longitude });
-        return ok(result.data, "EPA environmental data:");
+        return brokerOk(result, "EPA environmental data:");
       } catch (e: any) {
         return err(e.message);
       }
@@ -667,7 +734,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("cropland", { latitude, longitude });
-        return ok(result.data, `Cropland data via ${result.source.title}`);
+        return brokerOk(result, `Cropland data via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -685,7 +752,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("epa_frs", { latitude, longitude });
-        return ok(result.data, `EPA FRS facilities via ${result.source.title}`);
+        return brokerOk(result, `EPA FRS facilities via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -704,7 +771,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude, state }) => {
       try {
         const result = await dataSourceBroker.lookup("storm_history", { latitude, longitude, state });
-        return ok(result.data, `Storm history via ${result.source.title}`);
+        return brokerOk(result, `Storm history via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -722,7 +789,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("plss", { latitude, longitude });
-        return ok(result.data, `PLSS via ${result.source.title}`);
+        return brokerOk(result, `PLSS via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -740,7 +807,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("watershed", { latitude, longitude });
-        return ok(result.data, `Watershed via ${result.source.title}`);
+        return brokerOk(result, `Watershed via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -758,7 +825,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("fema_nri", { latitude, longitude });
-        return ok(result.data, `FEMA NRI via ${result.source.title}`);
+        return brokerOk(result, `FEMA NRI via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -776,7 +843,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ latitude, longitude }) => {
       try {
         const result = await dataSourceBroker.lookup("usda_clu", { latitude, longitude });
-        return ok(result.data, `USDA CLU via ${result.source.title}`);
+        return brokerOk(result, `USDA CLU via ${result.source.title}`);
       } catch (e: any) {
         return err(e.message);
       }

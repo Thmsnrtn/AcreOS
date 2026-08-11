@@ -9025,6 +9025,29 @@ const STATEMENTS = [
    WHERE "access_token" IS NOT NULL
      AND "access_token_expires_at" IS NULL`,
   `ALTER TABLE "notes" ALTER COLUMN "access_token_expires_at" SET DEFAULT (now() + interval '365 days')`,
+
+  // ── Wave 2.3 — tracked_parcels ────────────────────────────────────────────
+  // Mirrors migrations/0230_tracked_parcels.sql + shared/schema.ts.
+  // The parcel an org WATCHES from the Map door before it is inventory, a lead
+  // or a deal. The unique index is load-bearing: it is what makes the
+  // "Track this parcel" tap idempotent, so the optimistic client mutation can
+  // honestly promise a double-tap changes nothing.
+  `CREATE TABLE IF NOT EXISTS "tracked_parcels" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "apn" text NOT NULL,
+     "parcel_snapshot_id" integer REFERENCES "parcel_snapshots"("id") ON DELETE SET NULL,
+     "tracked_by_user_id" text,
+     "note" text,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "tracked_parcels_org_parcel_key"
+     ON "tracked_parcels" ("organization_id", "state", "county", "apn")`,
+  `CREATE INDEX IF NOT EXISTS "tracked_parcels_org_created_idx"
+     ON "tracked_parcels" ("organization_id", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

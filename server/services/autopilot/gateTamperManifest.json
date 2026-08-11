@@ -17,7 +17,7 @@
     "scripts/ratchets/run-scheduled-jobs-linecount.json": "e5fcbc8182134bd80ca1381119ec0ae80c1bcc1263607d1ba7c4d88bb62ffc8b",
     "scripts/ratchets/sql-raw.json": "1be7bbc51b44bc77405588cf48664c5a7c6a84714779b6380a9a3fd0c0ae74e2",
     "scripts/ratchets/storage-linecount.json": "11e4fd2b5fed0eb0e88715b966427de3f06d8c2d1447d0c556f4453b03328cd0",
-    "scripts/ratchets/table-count.json": "40456bffd50440ceeecd8284868cb51d7b7c1d6676f18e0d8f46f5e9e45ddd70",
+    "scripts/ratchets/table-count.json": "d6feb6508813459758ee724da679a52d76e1f3f84978310378ef69c7c9df35e7",
     "scripts/regenerate-gate-manifest.mjs": "a0ce22a1401f2190b8533aecc22bf8215b32f9be631baf45e0f06ac6a35bca4c",
     "server/services/autopilot/codeChangeGate.ts": "3fc5a984c93dd54757c4cec3ac6cabc43491f1a2e1da2c58c996af70b39d7742",
     "server/services/autopilot/gateTamperWatch.ts": "18700aec9de7dad62cdbd7c881dff7497bf903d01537763a8d4810dc0c854a24",

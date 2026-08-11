@@ -192,6 +192,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-outreach-mail.ts",
   "routes-parcel-alerts.ts",
   "routes-parcel-biography.ts",
+  "routes-parcel-identify.ts",
   "routes-pax-appeals.ts",
   "routes-pax-audit.ts",
   "routes-pax-calibration.ts",
