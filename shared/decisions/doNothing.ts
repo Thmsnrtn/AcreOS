@@ -75,10 +75,33 @@ export const DO_NOTHING_CONTRACTS: Record<string, string> = {
     "If you never answer: nothing is applied — your reply is never acted on until you " +
     "confirm the reading here. This waits for your tap.",
 
+  /*
+   * TWO sentences, not one, and the split is load-bearing.
+   *
+   * This text is written in the FROZEN CARD's voice ("the draft still waits
+   * right here"), and it used to render verbatim on the mirror ROW as well —
+   * where it was both self-referential ("its row in the ranked queue" IS the
+   * row you are reading) and, after a TTL, simply false: the mirror is a
+   * snapshot whose only staleness closer is a once-a-day sweep, so for up to
+   * ~24h the row could say the draft still waits while the frozen card had
+   * already dropped off the page. A sentence pointing at a control that is no
+   * longer rendered is exactly the class of claim this contract exists to
+   * prevent.
+   */
   witnessed_send:
     "If you never answer: nothing sends. The draft expires after 24 hours and can never " +
     "send after that — the autopilot would have to re-draft it for a fresh approval. The " +
-    "one exception is a step-away witness grant you issued yourself.",
+    "one exception is a step-away witness grant you issued yourself. Its row in the ranked " +
+    "queue is a mirror of this card: if you've switched the autonomous executor on it may " +
+    "clear that ROW and log it under Auto-handled, but it can never send the draft — the " +
+    "draft still waits right here, because this card reads the frozen action directly.",
+
+  witnessed_send_mirror:
+    "If you never answer: nothing sends from this row — it carries no buttons. It is a " +
+    "mirror, filed here so the draft carries a rank instead of sitting wherever it " +
+    "happened to land. The card above the queue is what reads the frozen action and is " +
+    "the only place it can be sent. If that card is gone, the draft has already expired " +
+    "or been dealt with, and this row is a record rather than something waiting on you.",
 
   founder_ask:
     "If you never answer: the agent never acts on an unanswered question — it does the " +
@@ -117,6 +140,25 @@ export const DO_NOTHING_CONTRACTS: Record<string, string> = {
     "itself when you rule there. If you've switched the autonomous executor on, it may " +
     "clear this mirror card and log it under Auto-handled — but the appeal itself still " +
     "waits for your verdict on the Appeals queue.",
+
+  // F2 slice 2 — the dated-obligation countdown. Verified source:
+  //   server/services/datedObligations.ts is a STATIC registry; no code path
+  //   changes a `due` date or removes a row — only a code edit does. The card
+  //   is NATIVE with actionPayload null, so no disposition verb can discharge
+  //   the obligation, and decisionsInbox.resolveDischargedObligationCards is
+  //   the ONLY thing that closes an open card (it closes one exactly when the
+  //   registry no longer lists that row at that date). The milestones are
+  //   DEFAULT_PAGE_THRESHOLDS = [14, 7, 2, 0] unless a row overrides them, and
+  //   founderBriefing.sendDailyBriefing sweeps once a day; the past-due
+  //   milestone files exactly one card because the dedupe key is
+  //   (obligationKey, milestone, due) at ANY status.
+  dated_obligation:
+    "If you never answer: the date still arrives — nothing on this card moves it. This is " +
+    "a countdown, not a discharge: a fresh card is filed at each remaining milestone " +
+    "(14, 7, 2 and 0 days out by default) and once more when it goes past due, and a card " +
+    "closes itself only when the obligations registry stops listing that row at that date. " +
+    "Answering records your decision; discharging the obligation is a separate, real act. " +
+    `${EXECUTOR_CAVEAT}`,
 
   recourse_draft:
     "If you never answer: no reply goes to the customer — the drafted reply just waits " +

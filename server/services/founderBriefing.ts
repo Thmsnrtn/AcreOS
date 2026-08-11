@@ -176,6 +176,38 @@ async function writeBriefingWithAI(
 }
 
 export async function sendDailyBriefing(): Promise<void> {
+  // F2 slice 2 (handoff P6 §3, "one decision queue") — the daily decision-queue
+  // sweep runs BEFORE the email gates below, deliberately: the queue card is
+  // the founder's record and must not depend on FOUNDER_EMAIL being configured
+  // or on today's briefing not having been sent yet. Both calls are idempotent
+  // (milestone-keyed dedupe / expiry-keyed resolution) and best-effort — a
+  // queue failure must never stop the briefing.
+  //
+  //   syncDatedObligationCards        — files ONE countdown card per obligation
+  //     per page milestone, using the SAME milestone gate as the alertSpine
+  //     pager below, and closes cards whose registry row was discharged.
+  //   resolveExpiredWitnessedSendMirrors — closes witnessed-send mirror cards
+  //     whose frozen draft aged past its 24h TTL (an untouched draft ages out
+  //     with no event of its own, so nothing else would close the card).
+  try {
+    const { decisionsInboxService } = await import("./decisionsInbox");
+    const obligations = await decisionsInboxService.syncDatedObligationCards(new Date());
+    const expired = await decisionsInboxService.resolveExpiredWitnessedSendMirrors(new Date());
+    if (obligations.filed || obligations.resolved || expired.resolved) {
+      logger.info("[FounderBriefing] decision-queue sweep", {
+        metadata: {
+          obligationCardsFiled: obligations.filed,
+          obligationCardsClosed: obligations.resolved,
+          expiredSendMirrorsClosed: expired.resolved,
+        },
+      });
+    }
+  } catch (err) {
+    logger.warn("[FounderBriefing] decision-queue sweep failed", {
+      metadata: { detail: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
   if (FOUNDER_EMAILS.length === 0) {
     logger.warn("[FounderBriefing] No FOUNDER_EMAIL configured — skipping briefing");
     return;

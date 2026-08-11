@@ -27,6 +27,57 @@ import { logger } from "../../utils/logger";
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * F2 slice 2 (handoff P6 §3, "one decision queue") — keep the founder's ONE
+ * ranked queue in step with this store.
+ *
+ * A frozen hand is a decision inflow: it gets a MIRROR card in the decisions
+ * queue so it carries a rank against everything else waiting (a frozen refund
+ * should not sit below a marketing email just because it was drafted later).
+ * The card is presence + rank only — the disposition control stays here, where
+ * the content hash is re-verified before anything sends.
+ *
+ * Both hooks are BEST-EFFORT by contract, and deliberately so in both
+ * directions: a mirror failure must never turn a freeze into a send (or into a
+ * refusal), and it must never fail a founder's approval either. Dynamic import
+ * keeps the decisions service out of this module's import graph — hands/ is
+ * loaded by the dispatch executor at tool-call time and must stay light.
+ */
+async function mirrorPendingHand(pendingActionId: number): Promise<void> {
+  try {
+    const { decisionsInboxService } = await import("../decisionsInbox");
+    await decisionsInboxService.createFromPendingHand(pendingActionId);
+  } catch (err) {
+    logger.warn(
+      "[autopilot/pendingHands] decisions-queue mirror failed (the frozen action is unaffected)",
+      err instanceof Error ? err : undefined,
+    );
+  }
+}
+
+async function resolvePendingHandMirror(
+  pendingActionId: number,
+  status: "approved" | "rejected" | "auto_resolved",
+  detail: string,
+  resolvedBy?: string,
+): Promise<void> {
+  try {
+    const { decisionsInboxService } = await import("../decisionsInbox");
+    await decisionsInboxService.resolveMirrorItem({
+      itemType: "witnessed_send",
+      sourceId: pendingActionId,
+      status,
+      detail,
+      resolvedBy,
+    });
+  } catch (err) {
+    logger.warn(
+      "[autopilot/pendingHands] decisions-queue mirror resolution failed",
+      err instanceof Error ? err : undefined,
+    );
+  }
+}
+
+/**
  * Freeze a hand call for the founder's approval. Reuses an identical live
  * pending row (same hand + content hash) so a re-proposed draft doesn't mint a
  * second approval target. Best-effort: returns null on DB failure (the caller
@@ -54,7 +105,13 @@ export async function proposePendingHand(input: {
         ),
       );
     const live = existing.find((r) => r.expiresAt && r.expiresAt.getTime() > now);
-    if (live) return live;
+    if (live) {
+      // Re-mirror the reused row too: createFromPendingHand dedupes on an open
+      // card, so this is a no-op when the card exists and a self-heal when an
+      // earlier mirror attempt failed.
+      await mirrorPendingHand(live.id);
+      return live;
+    }
 
     const [row] = await db
       .insert(autopilotPendingActions)
@@ -70,6 +127,7 @@ export async function proposePendingHand(input: {
       })
       .returning();
     logger.info("[autopilot/pendingHands] action frozen for founder approval", { metadata: { id: row.id, handName: input.handName } });
+    await mirrorPendingHand(row.id);
     return row;
   } catch (err) {
     logger.warn("[autopilot/pendingHands] propose failed (will refuse instead)", err instanceof Error ? err : undefined);
@@ -91,6 +149,17 @@ export type ApprovalOutcome =
 export async function approvePendingHand(input: {
   id: number;
   approvedBy: string;
+  /**
+   * HOW this approval happened. Required rather than defaulted, because the
+   * default was the bug: `autoWitness` taps through this exact function under
+   * a standing grant, and with no way to tell the two apart the mirror
+   * recorded a machine send as `founder_deep_surface` — a founder review that
+   * never occurred, filed under "You reviewed" and then ingested into the
+   * model-read corpus by `decisionLogRag`.
+   *
+   * `approvedBy` already carried the truth here; nothing read it.
+   */
+  via: "founder_tap" | "witness_grant";
   now?: number;
 }): Promise<ApprovalOutcome> {
   const now = input.now ?? Date.now();
@@ -102,6 +171,17 @@ export async function approvePendingHand(input: {
     if (action.status === "pending") {
       await db.update(autopilotPendingActions).set({ status: "expired" }).where(and(eq(autopilotPendingActions.id, input.id), eq(autopilotPendingActions.status, "pending")));
     }
+    // NOT "rejected". The founder tapped APPROVE; the draft merely aged out.
+    // Recording a rejection here would put a decline the founder never made
+    // into the decision log's "You reviewed" bucket — the same fabrication the
+    // sweep path is already pinned against (`expect(status).not.toBe(
+    // "rejected")`), which simply was not applied to this second expiry path.
+    await resolvePendingHandMirror(
+      input.id,
+      "auto_resolved",
+      "The frozen draft passed its 24-hour approval window and can never send. Nothing was sent.",
+      "witnessed_send_expired",
+    );
     return { outcome: "expired" };
   }
 
@@ -144,6 +224,24 @@ export async function approvePendingHand(input: {
     contentHash: action.contentHash,
   });
   logger.info("[autopilot/pendingHands] action executed after founder approval", { metadata: { id: input.id, handName: action.handName } });
+  // The audit trail must distinguish a tap from a delegation. A send made
+  // under a standing grant while the founder was away belongs in the
+  // "Auto-handled" bucket — what the system did in your absence — not in
+  // "You reviewed".
+  if (input.via === "witness_grant") {
+    await resolvePendingHandMirror(
+      input.id,
+      "auto_resolved",
+      `Sent under a witness grant you issued — ${action.handName} executed without a tap from you. Authorised by: ${input.approvedBy}.`,
+      "witness_grant_delegated",
+    );
+  } else {
+    await resolvePendingHandMirror(
+      input.id,
+      "approved",
+      `Approved and sent from the witnessed-send card on Decisions — ${action.handName} executed on your tap.`,
+    );
+  }
   return { outcome: "executed", result: resultSummary };
 }
 
@@ -154,7 +252,14 @@ export async function rejectPendingHand(id: number): Promise<{ outcome: "rejecte
     .set({ status: "rejected" })
     .where(and(eq(autopilotPendingActions.id, id), eq(autopilotPendingActions.status, "pending")))
     .returning();
-  if (updated.length > 0) return { outcome: "rejected" };
+  if (updated.length > 0) {
+    await resolvePendingHandMirror(
+      id,
+      "rejected",
+      "Rejected from the witnessed-send card on Decisions — the autopilot will not send this.",
+    );
+    return { outcome: "rejected" };
+  }
   const [cur] = await db.select().from(autopilotPendingActions).where(eq(autopilotPendingActions.id, id));
   if (!cur) return { outcome: "not_found" };
   if (cur.status === "executed") return { outcome: "already_executed" };

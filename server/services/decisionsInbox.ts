@@ -2,9 +2,11 @@ import { db } from "../db";
 import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
   organizations, paxDecisionAppeals, paxRefusalPayloads, recourseDrafts,
+  autopilotPendingActions,
 } from "@shared/schema";
 import { eq, and, desc, gte, isNull, or, lt, sql } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
+import { getHand } from "./autopilot/hands/registry";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { arbitrateFounderInterrupt } from "./founderInterruptArbiter";
@@ -121,25 +123,29 @@ export function sanitizeDecisionOptions(
 }
 
 /**
- * F2 slice 1 (handoff P6 §3 — "one decision queue") — MIRROR CARDS.
+ * F2 slices 1–2 (handoff P6 §3 — "one decision queue") — MIRROR CARDS.
  *
- * Two founder decision inflows that previously lived ONLY on their deep
- * surfaces are mirrored into the decisions door as cards with links back:
+ * Founder decision inflows that live on their own disposition surface are
+ * mirrored into the decisions door as cards pointing back at that surface:
  *
  *   appeal_review   ← pax_decision_appeals   (/founder/appeals — a customer
  *                     is waiting on an upheld/reversed verdict)
  *   recourse_draft  ← recourse_drafts        (/founder/recourse — a drafted
  *                     personal reply to a negative signal, same-hour doctrine)
+ *   witnessed_send  ← autopilot_pending_actions (slice 2 — a hand the autopilot
+ *                     drafted and FROZE; the "Waiting on you to send" control
+ *                     on the Decisions door owns the tap)
  *
  * Deliberately an ADAPTER, not a data migration: the deep stores stay the
  * system of record and their surfaces keep the full disposition forms
- * (verdict + reviewNotes + customerMessage; edit-and-send). The mirror card
- * carries presence + ranking + a deep link; it never executes anything
- * (actionPayload is always null) and it resolves ITSELF when the deep
- * surface disposes the source row (see resolveMirrorItem + the hooks in
- * routes-founder-appeals.ts / routes-founder-recourse.ts). The door's
- * generic approve/reject/override refuse mirror cards and point at the deep
- * surface (routes-founder-intelligence.ts).
+ * (verdict + reviewNotes + customerMessage; edit-and-send; the frozen args +
+ * content-hash re-verification). The mirror card carries presence + ranking +
+ * a pointer; it never executes anything (actionPayload is always null) and it
+ * resolves ITSELF when the source row is disposed (see resolveMirrorItem +
+ * the hooks in routes-founder-appeals.ts / routes-founder-recourse.ts /
+ * autopilot/pendingHands.ts). The door's generic approve/reject/override
+ * refuse mirror cards and point at the owning surface
+ * (routes-founder-intelligence.ts + refuseIfMirror at the service altitude).
  */
 export const MIRRORED_QUEUE_ITEM_TYPES = {
   appeal_review: {
@@ -151,6 +157,32 @@ export const MIRRORED_QUEUE_ITEM_TYPES = {
     deepLink: "/founder/recourse",
     surfaceName: "Recourse",
     bundleKey: "sourceRecourseDraftId",
+  },
+  /**
+   * F2 slice 2 — the witnessed-send queue. The disposition control is the
+   * "Waiting on you to send" card ON the Decisions door itself (it renders the
+   * frozen args verbatim so the founder reads EXACTLY what will send) and it
+   * posts to /api/founder/autopilot/pending-actions/:id/{approve,reject},
+   * which re-verifies the sha256 content hash and fires executeHandWitnessed.
+   *
+   * MIRROR, never NATIVE, for a safety reason and not a stylistic one: the
+   * queue's generic approve runs `executeAction` against the registered agent
+   * executors, which know nothing about the frozen args or the content hash.
+   * Approving a frozen hand from the queue would mark the card approved while
+   * the send never happened — the exact "silent hiding" the slice-5 mirror
+   * rule exists to prevent. So refuseIfMirror covers it and the card never
+   * carries an actionPayload.
+   *
+   * deepLink is the door itself because the control lives there; the card
+   * therefore does NOT put a `deepLink` in its contextBundle (that would
+   * render a link back to the page you are already on). The pointer is a
+   * sentence in recommendedAction instead. The registry entry still supplies
+   * refuseMirrorDisposition's message.
+   */
+  witnessed_send: {
+    deepLink: "/founder/decisions",
+    surfaceName: "Waiting on you to send",
+    bundleKey: "sourcePendingActionId",
   },
 } as const;
 export type MirroredQueueItemType = keyof typeof MIRRORED_QUEUE_ITEM_TYPES;
@@ -212,6 +244,134 @@ const RECOURSE_SIGNAL_CARD_META: Record<string, { label: string; urgencyScore: n
   detractor_nps: { label: "A detractor NPS score", urgencyScore: 75 },
   low_support_rating: { label: "A low support rating", urgencyScore: 70 },
 };
+
+/**
+ * F2 slice 2 — inflow A: the AUTOPILOT PENDING HANDS (witnessed-send) queue.
+ *
+ * itemType deliberately equals the class key the door already uses for the
+ * witnessed-send section, so `doNothingContract("witnessed_send")` — the
+ * verified sentence about the 24h TTL and "nothing sends without your tap" —
+ * covers the mirror card and the frozen card identically and can never drift
+ * between them.
+ */
+export const WITNESSED_SEND_ITEM_TYPE = "witnessed_send";
+
+/**
+ * Per-hand rank for the witnessed-send mirror. Grounded in the REGISTERED
+ * hands (server/services/autopilot/hands/*: apply_refund, dunning_action,
+ * run_ad_campaign, send_email, send_sms, send_push, send_letter) and in each
+ * spec's own `movesMoney` flag — not invented bands.
+ *
+ * Placement inside the existing severity/urgency grammar, so a frozen draft
+ * cannot jump the queue by accident:
+ *   80 money hands  — level with a BILLING support escalation (the customer's
+ *                     money), below a cancellation-recourse reply (85), below
+ *                     a critical churn/alert/P0 (90-95).
+ *   62 customer sends — above a general support escalation (50) because a
+ *                     drafted outward message is time-sensitive, below every
+ *                     high-risk class.
+ * An UNKNOWN hand (a newly registered one this map has not been taught) falls
+ * back to the customer-send band and says so in the card, rather than being
+ * silently ranked as if it were understood.
+ */
+const WITNESSED_SEND_CARD_META: Record<
+  string,
+  { riskLevel: "medium" | "high"; urgencyScore: number; whatItDoes: string }
+> = {
+  apply_refund: { riskLevel: "high", urgencyScore: 80, whatItDoes: "moves money (a refund)" },
+  dunning_action: { riskLevel: "high", urgencyScore: 80, whatItDoes: "moves money (a charge retry)" },
+  run_ad_campaign: { riskLevel: "high", urgencyScore: 80, whatItDoes: "spends money (ad budget)" },
+  send_email: { riskLevel: "medium", urgencyScore: 62, whatItDoes: "sends a customer-facing email" },
+  send_sms: { riskLevel: "medium", urgencyScore: 62, whatItDoes: "sends a customer-facing SMS" },
+  send_push: { riskLevel: "medium", urgencyScore: 62, whatItDoes: "sends a customer-facing push" },
+  send_letter: { riskLevel: "medium", urgencyScore: 62, whatItDoes: "sends a physical letter" },
+};
+
+const WITNESSED_SEND_FALLBACK = {
+  riskLevel: "medium" as const,
+  urgencyScore: 62,
+  whatItDoes: "is a hand this queue has not been taught to describe",
+};
+
+/**
+ * The rank band for a hand this queue has no entry for.
+ *
+ * The map above is keyed by hand NAME, which means it duplicates a fact the
+ * registry already owns. Register an eighth money-moving hand and the frozen
+ * card is correctly witnessed — `registry.ts` forces `requiresApproval` for
+ * exactly these hands — but it would rank 62/medium, alongside a marketing
+ * email, silently and forever. Since ranking IS the reason the mirror exists,
+ * that is the one thing the fallback must not get wrong.
+ *
+ * So derive the band from the registry, using the same predicate `autoWitness`
+ * uses to decide a hand moves money. The name map keeps only what it is
+ * genuinely better at: the human sentence describing what the hand does.
+ */
+function witnessedSendBandFor(handName: string): {
+  riskLevel: "medium" | "high";
+  urgencyScore: number;
+} {
+  try {
+    const spec = getHand(handName);
+    const movesMoney = spec?.movesMoney === true || spec?.domain === "finance";
+    if (movesMoney) return { riskLevel: "high", urgencyScore: 80 };
+  } catch {
+    /* registry unavailable → fall through to the conservative default */
+  }
+  return { riskLevel: WITNESSED_SEND_FALLBACK.riskLevel, urgencyScore: WITNESSED_SEND_FALLBACK.urgencyScore };
+}
+
+/**
+ * F2 slice 2 — inflow B: the DATED-OBLIGATION COUNTDOWNS (handoff P6 §3,
+ * "the dated-obligation countdowns (Part 5 §3)").
+ *
+ * NATIVE, not a mirror: server/services/datedObligations.ts is a STATIC
+ * registry (a handful of rows in code), so there is no deep surface that
+ * "disposes" a row — nothing to link to and nothing to resolve the card from
+ * a tap. The queue row IS the founder's record of the decision, so every
+ * disposition verb works on it directly.
+ *
+ * Honesty contract, stated on the card itself: answering the card does NOT
+ * discharge the obligation. The date passes regardless; the alertSpine pager
+ * keeps firing at each milestone (that is a separate PROMPT channel — see the
+ * same pattern on support P0s), and the card only closes ITSELF when the
+ * registry row is actually discharged (removed, or its `due` moved) — see
+ * resolveDischargedObligationCards.
+ */
+export const DATED_OBLIGATION_ITEM_TYPE = "dated_obligation";
+
+/**
+ * A stable per-obligation anchor. Deliberately the SAME derivation the
+ * alertSpine dedupeKey uses in founderBriefing.ts (envVar where one exists,
+ * else a slug of the what-line) so the card and the page refer to the same
+ * thing by the same name.
+ */
+export function datedObligationKey(o: { what: string; envVar?: string }): string {
+  return o.envVar ?? o.what.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+/**
+ * The milestone label for a countdown card. Mirrors founderBriefing's
+ * dedupeKey suffix exactly: the days-left threshold, or "overdue" past due.
+ */
+export function datedObligationMilestone(daysLeft: number): string {
+  return daysLeft < 0 ? "overdue" : String(daysLeft);
+}
+
+/**
+ * Countdown rank. Kept BELOW the fire classes (critical_alert 95, support P0
+ * 95, critical churn 90-100) so a calendar row can never outrank a live
+ * incident, and level with a cancellation-recourse reply (85) at ≤2 days.
+ */
+function datedObligationRank(daysLeft: number): {
+  riskLevel: "medium" | "high" | "critical";
+  urgencyScore: number;
+} {
+  if (daysLeft < 0) return { riskLevel: "critical", urgencyScore: 90 };
+  if (daysLeft <= 2) return { riskLevel: "critical", urgencyScore: 85 };
+  if (daysLeft <= 7) return { riskLevel: "high", urgencyScore: 60 };
+  return { riskLevel: "medium", urgencyScore: 40 };
+}
 
 /**
  * Thrown when a terminal disposition verb is invoked on a MIRROR card. The
@@ -1040,6 +1200,377 @@ export const decisionsInboxService = {
   },
 
   /**
+   * F2 slice 2 (inflow A) — mirror a FROZEN AUTOPILOT HAND
+   * (autopilot_pending_actions) into the one ranked queue. Called best-effort
+   * from pendingHands.proposePendingHand right after the freeze; a mirror
+   * failure must never turn a freeze into a send or a refusal.
+   *
+   * Class B through the arbiter (a drafted outward action is a real interrupt
+   * the founder must see). Dedupe: one OPEN (pending/deferred) card per frozen
+   * action via contextBundle.sourcePendingActionId — proposePendingHand itself
+   * reuses an identical live row, so a re-proposed draft cannot mint a second
+   * card either.
+   *
+   * FREE-TEXT DISCIPLINE (same rule as createFromAppeal): the frozen `args`
+   * hold the actual outbound body, recipient addresses and subjects. This
+   * row's sophieAnalysis feeds model-read surfaces (decisionLogRag,
+   * companyMind), so NONE of it is copied here — not even the machine-written
+   * summary, which embeds the recipient. The verbatim stays where the founder
+   * reads it before tapping: the "Waiting on you to send" card.
+   */
+  async createFromPendingHand(
+    pendingActionId: number,
+    opts?: { now?: number },
+  ): Promise<{ itemId: number | null; created: boolean }> {
+    const now = opts?.now ?? Date.now();
+    const action = await db.query.autopilotPendingActions.findFirst({
+      where: eq(autopilotPendingActions.id, pendingActionId),
+    });
+    if (!action) return { itemId: null, created: false };
+    // Only a LIVE frozen action earns a card: an approved/executed/rejected
+    // row is already disposed, and an expired one can never send (TTL_MS), so
+    // mirroring either would resurrect a decided item.
+    if (action.status !== "pending") return { itemId: null, created: false };
+    if (!action.expiresAt || action.expiresAt.getTime() <= now) {
+      return { itemId: null, created: false };
+    }
+
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, WITNESSED_SEND_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'sourcePendingActionId' = ${String(pendingActionId)}`,
+      ),
+    });
+    // Dedupe predicate re-applied in process so unit tests pin the
+    // open-card-only semantics independent of the SQL layer (A1 pattern).
+    if (
+      existing &&
+      existing.itemType === WITNESSED_SEND_ITEM_TYPE &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      Number(existing.contextBundle?.sourcePendingActionId) === pendingActionId
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    // Prose from the name map (it is the better source for a human sentence);
+    // RANK from the registry, so an unmapped money-moving hand cannot quietly
+    // rank as a customer send.
+    const named = WITNESSED_SEND_CARD_META[action.handName];
+    const band = named
+      ? { riskLevel: named.riskLevel, urgencyScore: named.urgencyScore }
+      : witnessedSendBandFor(action.handName);
+    const meta = {
+      riskLevel: band.riskLevel,
+      urgencyScore: band.urgencyScore,
+      whatItDoes: named?.whatItDoes ?? WITNESSED_SEND_FALLBACK.whatItDoes,
+    };
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Frozen send awaiting your tap: ${action.handName} (#${pendingActionId})`,
+      {
+        itemType: WITNESSED_SEND_ITEM_TYPE,
+        pendingActionId,
+        handName: action.handName,
+        domain: action.domain ?? undefined,
+      },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: WITNESSED_SEND_ITEM_TYPE,
+      riskLevel: meta.riskLevel,
+      urgencyScore: meta.urgencyScore,
+      sophieAnalysis:
+        `The autopilot drafted a "${action.handName}" hand` +
+        `${action.domain ? ` in the ${action.domain} domain` : ""} and FROZE it — it ` +
+        `${meta.whatItDoes}, so it sends only on your tap. Nothing has been sent.`,
+      recommendedAction:
+        'Read the exact text on the "Waiting on you to send" card on this page — that card ' +
+        "carries the frozen wording verbatim and the Approve & send / Reject buttons. " +
+        "This card is its place in the ranked queue; it clears itself when you decide there.",
+      recommendedActionLabel: "Review the frozen send",
+      // Nothing executes from this card. The ONLY executor is
+      // executeHandWitnessed, reached through approvePendingHand, which
+      // re-verifies the content hash first.
+      actionPayload: null,
+      organizationId: null,
+      ownerAgentCodename: this.inferAgent(WITNESSED_SEND_ITEM_TYPE),
+      contextBundle: {
+        sourcePendingActionId: pendingActionId,
+        handName: action.handName,
+        domain: action.domain ?? null,
+        // No deepLink key on purpose — the control is on this same page, and a
+        // link back to /founder/decisions from /founder/decisions is noise.
+        disposeOn: 'the "Waiting on you to send" card on this page',
+        expiresAt: action.expiresAt.toISOString(),
+        handKnownToQueue: Object.prototype.hasOwnProperty.call(
+          WITNESSED_SEND_CARD_META,
+          action.handName,
+        ),
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
+   * F2 slice 2 (inflow A) — close every witnessed-send mirror whose frozen
+   * action has passed its 24h TTL. approvePendingHand/rejectPendingHand
+   * resolve the card on a founder tap; an untouched draft simply ages out with
+   * no event, so this sweep is what keeps an un-actionable card from sitting
+   * in "Needs you" forever. Called from the daily founderBriefing sweep, so a
+   * card can linger at most one sweep past expiry.
+   *
+   * Resolved as "auto_resolved" with resolvedBy "witnessed_send_expired", NOT
+   * as "rejected": the decision-log buckets send any human-ish resolvedBy to
+   * the "You reviewed" bucket, and the founder did not review this — it aged
+   * out untouched. "Auto-handled" is the only bucket that is true of it, and
+   * the reason line states plainly that nothing was sent (never that the
+   * founder declined it).
+   */
+  async resolveExpiredWitnessedSendMirrors(
+    now = new Date(),
+  ): Promise<{ resolved: number }> {
+    const open = await db.query.decisionsInboxItems.findMany({
+      where: and(
+        eq(decisionsInboxItems.itemType, WITNESSED_SEND_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+      ),
+    });
+    let resolved = 0;
+    for (const row of open) {
+      if (row.itemType !== WITNESSED_SEND_ITEM_TYPE) continue;
+      if (row.status !== "pending" && row.status !== "deferred") continue;
+      const expiresAtRaw = row.contextBundle?.expiresAt;
+      const expiresAt = typeof expiresAtRaw === "string" ? Date.parse(expiresAtRaw) : NaN;
+      // A card with no readable expiry is left ALONE — refusing to guess beats
+      // closing a live send on a parse failure.
+      if (!Number.isFinite(expiresAt) || expiresAt > now.getTime()) continue;
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "auto_resolved",
+          resolvedAt: now,
+          resolvedBy: "witnessed_send_expired",
+          founderModification:
+            "The frozen draft passed its 24-hour approval window and can never send. " +
+            "Nothing was sent; the autopilot must re-draft it for a fresh approval.",
+          updatedAt: now,
+        })
+        .where(eq(decisionsInboxItems.id, row.id));
+      resolved += 1;
+    }
+    return { resolved };
+  },
+
+  /**
+   * F2 slice 2 (inflow B) — file ONE countdown card for a dated obligation at
+   * ONE page milestone. NATIVE (see DATED_OBLIGATION_ITEM_TYPE): every
+   * disposition verb works on it, but nothing executes — actionPayload is
+   * always null, so the founder's tap IS the action, exactly like conflict_memo
+   * and shadow_promotion_request.
+   *
+   * Dedupe is on (obligationKey, milestone, due) at ANY status, not just open
+   * cards: once the founder has answered the T-7 card, the sweep must not
+   * re-ask it tomorrow, and the past-due milestone (which the daily sweep hits
+   * every day) must file exactly one card. Renewing the registry row moves
+   * `due`, which changes the identity and starts a fresh countdown — which is
+   * the correct behavior, not a bug.
+   */
+  async createFromDatedObligation(input: {
+    what: string;
+    due: string;
+    owner: string;
+    kind: string;
+    note: string;
+    daysLeft: number;
+    envVar?: string;
+    vendor?: string;
+    soleSourceFor?: string;
+  }): Promise<{ itemId: number | null; created: boolean }> {
+    const obligationKey = datedObligationKey(input);
+    const milestone = datedObligationMilestone(input.daysLeft);
+
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, DATED_OBLIGATION_ITEM_TYPE),
+        sql`${decisionsInboxItems.contextBundle}->>'obligationKey' = ${obligationKey}`,
+        sql`${decisionsInboxItems.contextBundle}->>'milestone' = ${milestone}`,
+        sql`${decisionsInboxItems.contextBundle}->>'due' = ${input.due}`,
+      ),
+    });
+    // Predicate re-applied in process (A1 pattern) — and note it deliberately
+    // ignores status: an ANSWERED milestone is never re-asked.
+    if (
+      existing &&
+      existing.itemType === DATED_OBLIGATION_ITEM_TYPE &&
+      existing.contextBundle?.obligationKey === obligationKey &&
+      existing.contextBundle?.milestone === milestone &&
+      existing.contextBundle?.due === input.due
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const rank = datedObligationRank(input.daysLeft);
+    const whenLine =
+      input.daysLeft < 0
+        ? `was due ${input.due} and is now ${Math.abs(input.daysLeft)} day(s) PAST DUE`
+        : `falls due ${input.due}, in ~${input.daysLeft} day(s)`;
+
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Dated obligation: ${input.what} (${milestone})`,
+      { itemType: DATED_OBLIGATION_ITEM_TYPE, obligationKey, milestone, due: input.due },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: DATED_OBLIGATION_ITEM_TYPE,
+      riskLevel: rank.riskLevel,
+      urgencyScore: rank.urgencyScore,
+      sophieAnalysis:
+        `${input.what} ${whenLine}. Owner: ${input.owner}.` +
+        `${input.soleSourceFor ? ` It is the sole source for ${input.soleSourceFor}.` : ""}` +
+        ` ${input.note}`,
+      recommendedAction:
+        "Discharge it (renew the credential, do the review), then update or remove its row " +
+        "in server/services/datedObligations.ts in the same change — that registry is the " +
+        "record, and this card closes itself once the row no longer falls due on this date. " +
+        "Answering the card records your decision; it does not move the date.",
+      recommendedActionLabel: "Review obligation",
+      // Nothing executes: the registry is static code, so there is no action to
+      // run. The founder's tap IS the record.
+      actionPayload: null,
+      organizationId: null,
+      ownerAgentCodename: this.inferAgent(DATED_OBLIGATION_ITEM_TYPE),
+      contextBundle: {
+        // Tap-sized options are what make a NATIVE card actually answerable on
+        // the door — founder-decisions.tsx renders buttons ONLY from
+        // contextBundle.options, so a native card without them is a card the
+        // founder cannot dispose. Both labels name the founder's own assertion,
+        // never a system claim: nothing here discharges the obligation, and the
+        // approve route reports executed:false so the toast says so.
+        options: sanitizeDecisionOptions([
+          { key: "discharged", label: "Done — I've discharged it" },
+          { key: "not_yet", label: "Not yet — raise it at the next milestone" },
+        ]),
+        obligationKey,
+        milestone,
+        due: input.due,
+        daysLeft: input.daysLeft,
+        kind: input.kind,
+        owner: input.owner,
+        ...(input.envVar ? { envVar: input.envVar } : {}),
+        ...(input.vendor ? { vendor: input.vendor } : {}),
+        ...(input.soleSourceFor ? { soleSourceFor: input.soleSourceFor } : {}),
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item?.id ?? null, created: true };
+  },
+
+  /**
+   * F2 slice 2 (inflow B) — the countdown's SELF-RESOLUTION. An open card is
+   * closed when the static registry no longer carries that obligation at that
+   * date: the row was removed (discharged) or its `due` was moved (renewed).
+   * That is the only "disposition" a static registry can express, so it is the
+   * only thing this reads — it never guesses from the calendar alone.
+   *
+   * Resolved as "auto_resolved" with resolvedBy "obligation_registry" so it
+   * lands in Auto-handled (truthfully: nothing needed the founder) rather than
+   * in "You reviewed".
+   */
+  async resolveDischargedObligationCards(
+    liveObligations: Array<{ what: string; due: string; envVar?: string }>,
+    now = new Date(),
+  ): Promise<{ resolved: number }> {
+    const live = new Set(
+      liveObligations.map((o) => `${datedObligationKey(o)}::${o.due}`),
+    );
+    const open = await db.query.decisionsInboxItems.findMany({
+      where: and(
+        eq(decisionsInboxItems.itemType, DATED_OBLIGATION_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+      ),
+    });
+    let resolved = 0;
+    for (const row of open) {
+      if (row.itemType !== DATED_OBLIGATION_ITEM_TYPE) continue;
+      if (row.status !== "pending" && row.status !== "deferred") continue;
+      const key = row.contextBundle?.obligationKey;
+      const due = row.contextBundle?.due;
+      // A card whose identity is unreadable is left ALONE rather than closed on
+      // a guess (refuse-not-fabricate).
+      if (typeof key !== "string" || typeof due !== "string") continue;
+      if (live.has(`${key}::${due}`)) continue;
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "auto_resolved",
+          resolvedAt: now,
+          resolvedBy: "obligation_registry",
+          founderModification:
+            "The obligations registry no longer lists this row at this date — it was " +
+            "discharged or renewed, so the countdown card closed itself.",
+          updatedAt: now,
+        })
+        .where(eq(decisionsInboxItems.id, row.id));
+      resolved += 1;
+    }
+    return { resolved };
+  },
+
+  /**
+   * F2 slice 2 (inflow B) — the whole countdown sweep in one call, so the
+   * producer (founderBriefing.ts, the existing daily loop that already pages
+   * on these same milestones through alertSpine) adds exactly one line.
+   *
+   * Uses the SAME milestone gate as the pager (`daysLeft < 0 ||
+   * pageThresholdsFor(o).includes(daysLeft)`) so the card and the page fire
+   * together and neither invents an occasion the other does not recognize.
+   */
+  async syncDatedObligationCards(
+    now = new Date(),
+  ): Promise<{ filed: number; resolved: number }> {
+    const { DATED_OBLIGATIONS, imminentObligations, pageThresholdsFor } =
+      await import("./datedObligations");
+
+    let filed = 0;
+    for (const o of imminentObligations(now, 14)) {
+      const atMilestone = o.daysLeft < 0 || pageThresholdsFor(o).includes(o.daysLeft);
+      if (!atMilestone) continue;
+      const res = await this.createFromDatedObligation({
+        what: o.what,
+        due: o.due,
+        owner: o.owner,
+        kind: o.kind,
+        note: o.note,
+        daysLeft: o.daysLeft,
+        envVar: o.envVar,
+        vendor: o.vendor,
+        soleSourceFor: o.soleSourceFor,
+      });
+      if (res.created) filed += 1;
+    }
+
+    const { resolved } = await this.resolveDischargedObligationCards(
+      DATED_OBLIGATIONS.map((o) => ({ what: o.what, due: o.due, envVar: o.envVar })),
+      now,
+    );
+    return { filed, resolved };
+  },
+
+  /**
    * X-A slice 1 — file a portal abuse report as a NATIVE decisions-door item
    * (one event hop: the portal's report POST → this row). Class B through the
    * arbiter like every machine-initiated insert; riskLevel high — a person on
@@ -1257,8 +1788,21 @@ export const decisionsInboxService = {
   async resolveMirrorItem(input: {
     itemType: MirroredQueueItemType;
     sourceId: number;
-    status: "approved" | "rejected";
+    status: "approved" | "rejected" | "auto_resolved";
     detail: string;
+    /**
+     * WHO actually closed this. Defaults to the founder's own surface, which
+     * was the only possibility when this was written — and that assumption
+     * became a lie the moment a standing witness grant could approve a hand
+     * while the founder was asleep. A machine send recorded as
+     * `founder_deep_surface` files under "You reviewed" in the decision log,
+     * so the "Auto-handled" bucket — whose entire purpose is *what the system
+     * did in your absence* — never sees it, and the false sentence is then
+     * ingested by `decisionLogRag` into the model-read corpus.
+     *
+     * Callers that are NOT a founder tap must say so.
+     */
+    resolvedBy?: string;
   }): Promise<{ resolved: boolean; itemId: number | null }> {
     const meta = MIRRORED_QUEUE_ITEM_TYPES[input.itemType];
     const existing = await db.query.decisionsInboxItems.findFirst({
@@ -1286,7 +1830,7 @@ export const decisionsInboxService = {
       .set({
         status: input.status,
         resolvedAt: new Date(),
-        resolvedBy: "founder_deep_surface",
+        resolvedBy: input.resolvedBy ?? "founder_deep_surface",
         founderModification: normalizeDispositionReason(input.detail) ?? null,
         updatedAt: new Date(),
       })
@@ -1396,6 +1940,14 @@ export const decisionsInboxService = {
       // reason she owns shadow_promotion_request: only the founder's tap
       // settles a question about what the machine should do.
       conflict_memo: "solene",
+      // F2 slice 2 — the witnessed-send mirror. Solene owns it: the frozen
+      // hand came from HER dispatch executor, and only the founder's tap
+      // (approvePendingHand → executeHandWitnessed) ever sends it.
+      witnessed_send: "solene",
+      // F2 slice 2 — dated-obligation countdowns are a reliability signal (a
+      // known calendar date passing with nothing watching), which is the same
+      // class Sentinel owns for critical_alert.
+      dated_obligation: "sentinel_devops",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

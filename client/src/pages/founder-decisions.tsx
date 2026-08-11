@@ -561,7 +561,13 @@ function DecisionRowCard({
           className="text-micro text-muted-foreground mt-3"
           data-testid={`decision-do-nothing-${row.id}`}
         >
-          {doNothingContract(row.itemType)}
+          {/* A mirror row needs the MIRROR's sentence. The shared
+              `witnessed_send` text is written in the frozen card's voice —
+              "the draft still waits right here" — which is self-referential
+              and, once the frozen card has expired off the page, untrue. */}
+          {doNothingContract(
+            row.itemType === "witnessed_send" ? "witnessed_send_mirror" : row.itemType,
+          )}
         </p>
       )}
 
@@ -834,6 +840,23 @@ function WitnessedSendQueue() {
         <p className="text-xs text-muted-foreground">
           The autopilot drafted these but won't send anything until you approve. Read each one — Approve
           fires the real send; Reject discards it.
+        </p>
+        {/* F2 slice 2 — each frozen action also carries a mirror row in the
+            ranked queue below, so a drafted refund can't sit behind a drafted
+            marketing email just because it was drafted later. Naming the
+            relationship on both surfaces is the point: one waiting action, one
+            place it can actually be sent. */}
+        {/* Two words changed from "Each of these also appears", and the reason
+            is worth keeping: that was an UNCONDITIONAL claim with at least two
+            ordinary exceptions. A card filed during founder quiet hours is
+            deferred by the interrupt arbiter and lands in Deferred, not in the
+            ranked queue; and any hand frozen before this shipped has no mirror
+            row at all. "Are filed into" describes what the code does; "each of
+            these appears" described what it does most of the time. */}
+        <p className="text-micro text-muted-foreground" data-testid="witnessed-send-queue-mirror-note">
+          These are filed into the ranked queue below so they carry a rank, and can't sit behind
+          something less urgent just because it was drafted later. That row carries no buttons —
+          this card is the only place a send happens.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -1247,6 +1270,20 @@ export default function FounderDecisionsPage() {
             const meta = BUCKET_META[key];
             const count = data.summary[key] ?? 0;
             const Icon = meta.icon;
+            // The witnessed-send mirrors are deliberately present twice — once
+            // as the frozen card that can actually send, once as a queue row
+            // that carries the rank. That is a design choice, but it made the
+            // page's own arithmetic misleading: three frozen hands and two
+            // other cards read as "3 waiting to send" and "5 need you", i.e.
+            // five obligations counted as eight. Name the overlap rather than
+            // hide it — subtracting would make the bucket's count disagree
+            // with the rows it opens, which is a worse lie.
+            const mirroredInThisBucket =
+              key === "needsYou"
+                ? (data.buckets.needsYou ?? []).filter(
+                    (r) => r.itemType === "witnessed_send",
+                  ).length
+                : 0;
             return (
               <button
                 key={key}
@@ -1263,6 +1300,14 @@ export default function FounderDecisionsPage() {
                   <span className="font-medium">{meta.label}</span>
                 </div>
                 <div className="text-2xl font-bold mt-1">{count}</div>
+                {mirroredInThisBucket > 0 ? (
+                  <div
+                    className="text-micro text-muted-foreground"
+                    data-testid="bucket-mirror-overlap-note"
+                  >
+                    includes {mirroredInThisBucket} shown above
+                  </div>
+                ) : null}
               </button>
             );
           })}

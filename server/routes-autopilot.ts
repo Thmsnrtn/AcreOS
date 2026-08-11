@@ -935,7 +935,7 @@ export function registerAutopilotRoutes(app: Express): void {
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
       try {
         const { approvePendingHand } = await import("./services/autopilot/pendingHands");
-        const outcome = await approvePendingHand({ id, approvedBy: getUserId(req) });
+        const outcome = await approvePendingHand({ id, approvedBy: getUserId(req), via: "founder_tap" });
         switch (outcome.outcome) {
           case "not_found":
             return Errors.notFound(res, "Pending action");

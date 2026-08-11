@@ -71,6 +71,18 @@ describe("doNothingContract — every known class has a sentence", () => {
       // by founder routes; never expire).
       "appeal_review",
       "recourse_draft",
+      // F2 slice 2 (2026-08-11) — behavior verified against
+      // datedObligations.ts (a STATIC registry with no runtime writer, so a
+      // tap can never discharge an obligation) and
+      // resolveDischargedObligationCards (the sole self-closer, which closes
+      // exactly when a (key, due) pair leaves the registry).
+      "dated_obligation",
+      // The mirror ROW's own sentence, distinct from the frozen card's
+      // `witnessed_send` above. Verified against the resolution paths in
+      // pendingHands.ts: the row carries no buttons and cannot send, and it
+      // outlives the frozen card by up to one sweep interval — so it must not
+      // claim the draft "still waits right here".
+      "witnessed_send_mirror",
     ]) {
       expect(KNOWN_TYPES).toContain(t);
     }
@@ -226,9 +238,24 @@ describe("doNothingContract — server and client consume the same shared module
   });
 
   it("the page renders the sentence on needs-you cards, the witnessed-send queue, and open asks", () => {
-    expect(pageSrc).toContain("doNothingContract(row.itemType)");
+    // REWRITTEN, not deleted (fleet-12b audit). This asserted the literal
+    // `doNothingContract(row.itemType)`, which the audit showed was the bug in
+    // miniature: passing the row's OWN itemType meant a witnessed-send MIRROR
+    // row rendered the FROZEN CARD's sentence — "the draft still waits right
+    // here" — which is self-referential on the row and becomes untrue once the
+    // frozen card expires off the page. The row now maps to its own class.
+    //
+    // The invariant the pin exists for is unchanged: every one of these three
+    // surfaces renders a do-nothing sentence from the shared module, and none
+    // of them hand-rolls its own copy.
+    expect(pageSrc).toContain("doNothingContract(");
+    expect(pageSrc).toMatch(
+      /doNothingContract\(\s*row\.itemType === "witnessed_send" \? "witnessed_send_mirror" : row\.itemType,?\s*\)/,
+    );
     expect(pageSrc).toContain('doNothingContract("witnessed_send")');
     expect(pageSrc).toContain('doNothingContract("founder_ask")');
+    // The two witnessed-send surfaces must not converge back onto one string.
+    expect(pageSrc).toContain("witnessed_send_mirror");
     // Muted rendering — the contract is ambient truth, not a headline.
     expect(pageSrc).toMatch(
       /text-micro text-muted-foreground[^>]*"\s*data-testid=\{`decision-do-nothing-\$\{row\.id\}`\}/,

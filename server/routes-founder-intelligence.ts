@@ -1664,6 +1664,26 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
       }
     }
 
+    // RANK THE QUEUE. The rows arrive newest-first because that is how they
+    // were selected, and until now nothing re-ordered them — so the page told
+    // the founder "nothing outranks it silently" while a frozen refund drafted
+    // yesterday sat below a marketing email drafted this morning. Every
+    // producer already computes an urgencyScore; it was stored and never
+    // applied, which is worse than not computing it, because the copy sold a
+    // ranking that did not exist.
+    //
+    // Highest urgency first; ties fall back to newest-first, so the previous
+    // ordering survives exactly where the rank cannot distinguish two rows.
+    // Only `needsYou` is ranked: the other buckets are history, and history
+    // reads chronologically.
+    const rankedNeedsYou = [...needsYou].sort((a, b) => {
+      const byUrgency = (b.urgencyScore ?? 0) - (a.urgencyScore ?? 0);
+      if (byUrgency !== 0) return byUrgency;
+      return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
+    });
+    needsYou.length = 0;
+    needsYou.push(...rankedNeedsYou);
+
     // Outcome rollup for the "auto-handled" bucket — the honest answer
     // to "have the decisions the system made turned out well?"
     const scored = autoHandled.filter((r) => typeof r.outcomeScore === "number");

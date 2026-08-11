@@ -148,7 +148,16 @@ export async function runAutoWitnessSweep(
 
     const approver = `${verdict.attribution.grantee} (delegated by ${verdict.attribution.grantor} via witness-grant #${verdict.attribution.grantId})`;
     try {
-      const outcome = await approvePendingHand({ id: action.id, approvedBy: approver, now });
+      // `via` is what keeps this delegated tap out of the founder's
+      // "You reviewed" bucket — the grantee's name in `approvedBy` is the
+      // record, but only this flag makes the decision log tell the truth
+      // about whether a human was actually there.
+      const outcome = await approvePendingHand({
+        id: action.id,
+        approvedBy: approver,
+        via: "witness_grant",
+        now,
+      });
       if (outcome.outcome === "executed") {
         result.witnessed++;
         result.decisions.push({ pendingId: action.id, handName: action.handName, outcome: "witnessed", reason: verdict.reason });
