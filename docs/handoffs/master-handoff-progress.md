@@ -504,6 +504,88 @@ from this file, not from memory. Updated every working session.*
 
 ---
 
+## Fleet 14 — the four founder rulings — 🟡 BUILT, AUDITED, **NOT MERGED**
+
+**Nothing from this fleet is committed.** All four lanes built and were
+independently audited; the audits returned **7 blocking findings**, and **two
+lanes FAILED their binding founder condition**. The standing rule — a lane that
+ships around its condition does not merge, however good the rest is — is what
+holds this out of the branch.
+
+Work preserved at `scratchpad/fleet14-tracked.patch` (223 KB) +
+`fleet14-untracked.tgz` (19 files), against base `981e646`.
+
+### R-1 retire `/mcp` — ❌ BINDING CONDITION NOT MET · **NEEDS A FOUNDER RULING**
+
+The retirement itself is clean and well-tested. The problem is upstream of the
+code, and it invalidates a premise the ruling rested on.
+
+**The ruling assumed static-key users could be preserved by repointing their
+configs at `/api/mcp`. They cannot.** `/api/mcp`'s `authenticate()` accepts only
+`ak_(live|test)_` tokens; a scope-less env secret has nothing to check against a
+per-tool scope ladder. Making it work would either re-create an unscoped
+credential — the exact defect being removed — or grant the static key zero
+scopes and refuse it everything.
+
+**Worse, and this is the blocking finding: there is no way to obtain an `ak_`
+key at all.** The regenerated config tells a stranded customer to create an
+organization API key under Settings → API keys. That surface does not exist.
+`server/routes-api-keys.ts` is the only writer of the `apiKeys` table and
+`registerApiKeyRoutes` **is never called** — its own header says so, the route
+manifest allowlists it as an orphan, and the reachability ratchet counts it
+under `unregistered-routes`. There is no client UI (`/api/admin/api-keys` has
+zero references in `client/src`). `server/api-v1/*` is likewise unmounted.
+
+So this is not a loud break with a migration path. **It is a capability
+termination with no path back**, and every route out crosses a standing
+decision — mounting key management needs an explicit carve-out from *no public
+API before ~25/50 customers*. Escalated rather than shipped.
+
+*Mitigating fact, verified: the wizard NEVER rendered `MCP_API_KEY` — it was in
+`HINTS`/`GENERATE_TYPES` but absent from `KEYS_BY_STEP`, a dead entry. The only
+Claude Desktop config in the repo is a hand-written static file nothing reads or
+serves. The stranded population may be zero. That should be confirmed against
+real usage before the ruling, not assumed.*
+
+Also recorded: the brief's own premise was wrong twice — `routes-setup.ts`
+generates no config file (it mints a random key VALUE only), and `/mcp` was
+never in the route manifest, so "gone from the manifest" and "unregistered-routes
+moves DOWN" were both no-ops. The repo won; the lane satisfied the condition's
+INTENT via a derived repo-wide sweep instead.
+
+### R-2 mail consolidation — ✅ binding condition MET · 1 blocking, fixable
+
+Audit could find no way the allowlist was written from the brief rather than
+from the map. One real regression to fix before merge: `mode='test'` no longer
+keeps a platform-key send in Lob's TEST environment, and the outreach stop-loss
+is skipped on one path. Plus 3 should-fix, 4 notes.
+
+### R-3 dunning arming — ✅ all five conditions MET · 2 blocking, fixable
+
+Both blocking findings are the house pattern:
+1. **The arming chokepoint is only on CREATE.** `PATCH
+   /api/collection-enrollments/:id` walks straight around it — so the gate the
+   ruling exists to install can be bypassed by editing instead of creating.
+2. **The off switch asserts what the code has not established** — a control
+   labelled "Stop this sequence" that does not do that.
+
+### R-4 open-licence county fabrics — ❌ HONESTY CONDITION NOT MET · 3 blocking
+
+Conditions 1–3 verified met against the code (no paid vendor, admission is
+`postureMayLeave` with no "pending" state, attribution refused without credit).
+**Condition 4 — the honesty condition — failed, in exactly the way it was
+written to prevent:**
+1. **The fabric draws parcel boundaries for counties whose own inspector, on
+   the same screen, says we have no parcel data for them.** One surface
+   contradicting another about the same county is the defect the condition
+   named.
+2. `fabricCoverageForCounty` answers the customer-facing coverage question from
+   **licence admission alone**, never consulting what is actually in the fabric.
+3. A `--county`-scoped build is written under, and published as, the **whole
+   statewide layer**.
+
+---
+
 ## Wave 3 — slice 13 (aging ladder · CAM worksheet · payoff-quote PDF) — ✅ SHIPPED
 
 **Shipped at `4f8b5ab`.** Three depth-per-vertical lanes, each independently
