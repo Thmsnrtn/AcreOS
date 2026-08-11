@@ -1312,10 +1312,42 @@ frozen journal AND no main-repo writes, two of three death signals, while
 perfectly alive. The corrected test requires no writes in the repo *and* in any
 locked worktree, with `TaskOutput`/`ListAgents` as the decisive signal.
 
-### F2 slice 2 — 🟡 PARKED, audited, two blocking findings open
+### F2 slice 2 — ✅ SHIPPED at `977e170` (slice 12b), both blocking findings closed
 
-**Not in `073e503`.** Parked as a patch (byte-identical to the audited content,
-diffstat 9/77/519/32/24/508) rather than shipped unaudited. Open:
+Parked out of `073e503` rather than shipped unaudited, then fixed and shipped
+once the audit landed. Gates verified separately: check 0 · test 0 (**11,702**
+passing) · build 0. Manifest regenerated last.
+
+**Both blocking findings were the same class in opposite directions — a surface
+asserting what the code had not established.** That is now eight slices running.
+
+1. **Fixed — a machine send is no longer recorded as a founder review.**
+   `approvePendingHand` takes a **required** `via: "founder_tap" |
+   "witness_grant"` (required rather than defaulted, because the default *was*
+   the bug), and the delegated path resolves as `auto_resolved` /
+   `witness_grant_delegated`. `approvedBy` had carried the truth all along and
+   nothing read it. Second instance of the same class, also fixed: tapping
+   Approve on an expired draft recorded a founder *rejection* — the founder
+   tapped approve, the draft aged out.
+2. **Fixed — the queue is now actually ranked.** `needsYou` sorts by
+   `urgencyScore` with a recency tiebreak, so a frozen refund drafted yesterday
+   outranks a marketing email drafted this morning. The rank had been computed,
+   tested, and stored — and never applied, while the page said "nothing
+   outranks it silently".
+
+Also fixed: the rank derives from the registry's `movesMoney` rather than a
+hardcoded hand-name map (an eighth money hand would have ranked beside a
+marketing email, silently, forever); the mirror row gets its own do-nothing
+sentence; the unconditional presence claim is now conditional; the summary
+strip names the deliberate double-count instead of hiding it.
+
+**Three pins rewritten, not deleted** — and one of them is the lesson of this
+slice: a call-**count** pin proved every disposition resolved *something* and
+nothing about *what was written*, which is exactly how both blocking defects
+stayed green through a full suite. Counts are one-directional; shape assertions
+replaced it.
+
+*Historical record of what the audit found (the two items above, as reported):*
 
 1. **BLOCKING — a delegated auto-witnessed send is written into the founder's
    audit trail as a founder tap.** `autoWitness.runAutoWitnessSweep` calls the
@@ -1332,14 +1364,14 @@ diffstat 9/77/519/32/24/508) rather than shipped unaudited. Open:
    stored, not applied, while the page tells the founder "nothing outranks it
    silently". Either sort the bucket or delete the claim.
 
-Six should-fix items also open (expired-tap recorded as a founder *rejection*;
+All six should-fix items were also closed (expired-tap recorded as a founder *rejection*;
 the rank keyed off a hardcoded hand-name map instead of the registry's
 `movesMoney`, so an 8th money hand would silently rank as a customer send; a
 do-nothing sentence true of the frozen card but false on the mirror row; an
 unconditional presence claim false during quiet hours; a headline count that
 double-counts mirrors; a button promising a re-raise the dedupe key forbids).
 
-**Carried to the founder queue from this audit:** `autonomousDecisionExecutor`
+**Carried to the founder queue from this audit (NOT fixed — pre-existing):** `autonomousDecisionExecutor`
 writes `decisions_inbox_items` directly, bypassing the service verbs where
 `refuseIfMirror` lives, and its `HARD_STOP_TYPES` is env-driven and empty by
 default — pre-existing exposure, not introduced here. Also found and correctly
