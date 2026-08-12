@@ -179,6 +179,69 @@ describe("every destructive route enforces its declared permission", () => {
   });
 });
 
+/**
+ * Non-delete routes whose permission was ALSO unenforced.
+ *
+ * Found by continuing the same audit past the delete verbs. Each is a mutation
+ * that `member`, `va` and `viewer` are denied by the role table and could
+ * perform anyway.
+ */
+const PRIVILEGED_ROUTES = [
+  {
+    file: "server/routes-organization.ts",
+    match: 'api.post("/api/organization/seats/purchase"',
+    permission: "canManageBilling",
+    // Creates a Stripe checkout session and writes stripeCustomerId onto the
+    // org. NOT a silent charge — completing it requires card entry — but it is
+    // a billing action that mutates billing state, started by a role the owner
+    // denied billing access to. canManageBilling is true for OWNER ONLY, not
+    // even admin.
+  },
+  {
+    file: "server/routes-organization.ts",
+    match: 'api.patch("/api/organization/ai-settings"',
+    permission: "canAccessSettings",
+  },
+] as const;
+
+describe("privileged non-delete mutations enforce their permission too", () => {
+  it("finds every route it claims to check (vacuity guard)", () => {
+    for (const r of PRIVILEGED_ROUTES) {
+      expect(
+        registration(code(r.file), r.match).length,
+        `${r.match} not found — renamed?`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("names the permission in the route's own middleware chain", () => {
+    for (const r of PRIVILEGED_ROUTES) {
+      expect(
+        registration(code(r.file), r.match),
+        `${r.match} does not enforce ${r.permission}`,
+      ).toContain(`requirePermission("${r.permission}")`);
+    }
+  });
+
+  it("the settings endpoint is gated by FIELD, not wholesale", () => {
+    // PATCH /api/organization/settings mixes per-org UI state any member
+    // legitimately toggles (showTips, checklistDismissed) with org-wide
+    // operational settings (mailMode, timezone, currency) that canAccessSettings
+    // exists to deny. Gating the whole route would stop a member dismissing
+    // their own checklist — a real regression to fix a real gap.
+    const src = code("server/routes-organization.ts");
+    const h = src.slice(src.indexOf('api.patch("/api/organization/settings"'));
+    expect(h).toContain("attachPermissionContext()");
+    expect(h).toMatch(/ORG_WIDE_SETTINGS = \["mailMode", "timezone", "currency"\]/);
+    expect(h).toMatch(/touchesOrgWide && !\(req as AuthenticatedRequest\)\.permissionContext\?\.permissions\.canAccessSettings/);
+    // The benign fields must NOT be in the refused set.
+    const set = h.slice(h.indexOf("ORG_WIDE_SETTINGS"), h.indexOf("touchesOrgWide"));
+    for (const benign of ["showTips", "checklistDismissed", "notificationsConfigured"]) {
+      expect(set, `${benign} must stay writable by a member`).not.toContain(benign);
+    }
+  });
+});
+
 describe("no destructive permission is declared and then never consulted", () => {
   const perms = code("server/utils/permissions.ts");
 

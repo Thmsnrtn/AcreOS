@@ -2147,3 +2147,73 @@ how "read-only" stops being true.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 662 files, 8,705 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 33 — Three privileged mutations, including a billing one · this commit
+
+**Audit requirement:** precedence #1 (authorization), and the founder's standing
+rule that money boundaries are founder-controlled.
+
+**Files:** `server/routes-organization.ts` (3 routes),
+`tests/unit/destructivePermissionCoverage.test.ts` (+3 tests).
+
+Continuing the audit past the delete verbs found three more unenforced
+mutations, all in `routes-organization.ts`:
+
+| Route | Permission | Denied to |
+|---|---|---|
+| `POST /api/organization/seats/purchase` | `canManageBilling` | **everyone but `owner`** — including `admin` |
+| `PATCH /api/organization/ai-settings` | `canAccessSettings` | member, va, viewer |
+| `PATCH /api/organization/settings` (partly) | `canAccessSettings` | member, va, viewer |
+
+### The billing one, described precisely
+
+`seats/purchase` creates a Stripe checkout session and writes `stripeCustomerId`
+onto the organization, with no permission gate at all.
+
+**It is NOT a silent charge** — completing a checkout session requires someone to
+enter a card, so no money moved without a human. Saying otherwise would overstate
+it. What it IS: a billing action that mutates billing state, startable by a role
+the owner explicitly denied billing access to. `canManageBilling` is true for
+`owner` ONLY — not even `admin` — which is exactly the shape of a deliberately
+narrow money boundary, and nothing enforced it.
+
+### The settings endpoint is gated by FIELD, not wholesale
+
+`PATCH /api/organization/settings` mixes two kinds of thing: per-org UI state any
+member legitimately toggles (`showTips`, `checklistDismissed`,
+`notificationsConfigured`) and org-wide operational settings (`mailMode`,
+`timezone`, `currency`) that `canAccessSettings` exists to deny.
+
+Gating the whole route would have stopped a member dismissing their own
+checklist — **a real regression to fix a real gap**, which is the trade a blunt
+gate makes and the reason blunt gates get reverted. Only the org-wide subset is
+refused. Splitting the endpoint is the right long-term shape; this is the honest
+fix that costs nobody anything today, and a test asserts the benign fields stay
+writable so a later tightening cannot quietly swallow them.
+
+### Where the audit now stands
+
+Thirteen permissions had zero `requirePermission` sites when this thread started.
+Resolved as:
+
+- **Fixed by gating** (units 31, 33): `canDeleteProperties`, `canDeleteDeals`,
+  `canDeleteNotes`, `canManageBilling`, `canAccessSettings`.
+- **Fixed structurally** (unit 32): every `canEdit*` and `canCreate*` — `viewer`
+  was the only role they denied, and the read-only gate covers all of them at
+  once, including routes nobody has written yet.
+- **Enforced by another mechanism, verified**: `canManageTeam` (team role change
+  and invitations use `requireAdminOrAbove()`), `canDeleteOrg` (founder-only
+  under `/api/admin`, MFA + exact-name confirmation).
+- **No exposure**: `canViewLeads` is true for every role, so nothing is denied.
+- **Still unenforced, and recorded rather than guessed at**: `canImportData`,
+  `canExportData`, `canAssignLeads`. These deny member/va/viewer; viewer is now
+  covered by the read-only gate, so the residual question is member/va on import,
+  export and lead assignment. Left for a session that can check each route's
+  real caller rather than gating on a pattern match.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 662 files, 8,708 tests, 1 skipped, 0 failures.**
+Mutation-tested: removing the billing gate, and folding a benign field into the
+org-wide set, each fail.

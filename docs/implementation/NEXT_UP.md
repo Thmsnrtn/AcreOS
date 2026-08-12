@@ -195,10 +195,20 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     edit leads, properties, deals and notes. Closed with ONE gate chained at the
     `getOrCreateOrg` chokepoint (deny-by-default, so the next write route is
     covered automatically), 14 behavioural tests, fails CLOSED.
+33. **SECURITY** — three more unenforced mutations, including
+    `POST /api/organization/seats/purchase` (creates a Stripe checkout session
+    and writes `stripeCustomerId`; `canManageBilling` is OWNER-ONLY and nothing
+    checked it). `PATCH /api/organization/settings` is gated by FIELD, not
+    wholesale, so a member can still dismiss their own checklist.
+
+**Residual, recorded not guessed:** `canImportData`, `canExportData` and
+`canAssignLeads` are still unenforced. Viewer is covered by unit 32's gate, so
+the open question is member/va on import, export and lead assignment — check
+each route's real caller rather than gating on a pattern match.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 662 files, 8,705 tests, 1 skipped, 0 failures.**
+suite green — 662 files, 8,708 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
