@@ -699,3 +699,45 @@ rather than only in this ledger.
 
 **Also verified this commit:** the FULL unit suite — **653 files, 8,508 tests,
 1 skipped, 0 failures** — covering all thirteen units.
+
+---
+
+## Unit 14 — A third engine, and the rule that actually matters · this commit
+
+**Audit requirement:** BK23 (deterministic economics kernel), BI92 (cross-strategy
+comparison happens through normalised scenario outputs), BI182 (explicit units).
+
+**Files:** `server/services/economics/engines/flipMao.ts`, `engines/index.ts`,
+`shared/economics/scenario.ts` (`requireNumber`, two flip metrics),
+`shared/architecture/canon.ts`. Tests: 38 in the scenario suite (8 new).
+
+**Which flip function to wrap was the real decision.** Two exist.
+`calculateFlipAnalysis` is the legacy 70%-rule version and its own file header
+warns its numbers read HIGH by construction — it ignores acquisition closing
+costs and carry. `computeMao` is the honest one: net profit is `null` (not zero,
+not optimistic) when an input it needs is absent, holding cost has no invented
+default, and it reports which price the profit was computed against. Its
+null-not-zero discipline is already exactly what the Scenario contract requires,
+so it maps across with no translation layer that could quietly fill a gap.
+
+**The flip engine deliberately REUSES `profit`, `roi` and `total_cost`** rather
+than minting flip-specific twins. That corrected a framing error from unit 12: a
+test there read as though non-overlap between engines were a virtue. It is not.
+Cross-strategy comparison happens through normalised outputs (BI92) and dies the
+moment two engines name the same quantity differently. The test was rewritten to
+say what it actually means — land and note happen to measure different
+quantities — and a new test asserts the rule that matters: **every** registered
+engine speaks the one metric vocabulary, and engine ids are unique.
+
+**A 100x error caught by writing the adapter.** `computeMao` reports
+`netRoiPct` as a PERCENT; the registry's `roi` metric is a RATIO. Storing 25
+under a ratio label would compare against a land deal's 0.25 and read as a 100x
+better return. Converted at the boundary, with a test asserting the stored value
+is a ratio.
+
+**`requireNumber` added** alongside `requireCents`. A percentage is legitimately
+fractional (7.5%); money is not. One shared helper would either let fractional
+cents through or refuse a valid rate.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
+78/78 across the three affected suites.

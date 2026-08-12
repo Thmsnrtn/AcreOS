@@ -89,8 +89,12 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     end: evidence → scenario → decision → outcome.** 22 tests.
 12. **Second economics engine** (BI191) — the registry is passed in rather than
     global, so `note_payoff` registers from server-side without relocating
-    statute-adjacent code. Two structurally different engines, overlapping in
-    no metric.
+    statute-adjacent code.
+13. **`days` MetricUnit** — corrected a unit mislabel while no row was yet
+    persisted.
+14. **Third engine** (`flip_mao`) — reuses profit/roi/total_cost so a flip and
+    a land deal are comparable; caught a percent-vs-ratio 100x error at the
+    adapter boundary.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -115,10 +119,16 @@ previous plan was taken — the registry is passed in rather than global — so 
 regulated code moved.
 
 In order:
-- **Flip / BRRRR / multifamily NOI** — each computes inline today. Extract to a
-  pure function, add an `EngineSpec` with a `compute`, and register it in
-  `server/services/economics/engines/index.ts`. The pattern is now two examples
-  deep, so this is mechanical rather than exploratory.
+- **BRRRR and multifamily NOI engines.** Flip is done (`flip_mao`, wrapping
+  `computeMao`). The pattern is now three examples deep and mechanical: find the
+  function that already owns the arithmetic, wrap it in an `EngineSpec`, reuse
+  `profit`/`roi`/`total_cost` where the quantity is the same, and register it in
+  `server/services/economics/engines/index.ts`. **Check the units at the
+  boundary** — wrapping flip caught a percent stored under a ratio label, which
+  would have read as a 100x better return next to a land deal.
+  `computeRentalReturns` in `flipUnderwriting.ts` is the honest rental function
+  (it reports `expenseBasis`); prefer it over `calculateRentalAnalysis`, whose
+  40% expense fallback is an unlabelled assumption.
 - **Prompt for outcomes.** Nothing asks a customer to record one, so the
   Decision→Outcome loop closes only when someone chooses to close it. The
   founder plane's due-outcome sweep (`outcomeLedger` / `decisionEval`) is the

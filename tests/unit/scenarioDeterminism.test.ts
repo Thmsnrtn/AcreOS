@@ -36,6 +36,8 @@ import {
 } from "@shared/calculators/landDeal";
 import { ALL_ENGINES } from "../../server/services/economics/engines";
 import { notePayoffEngine } from "../../server/services/economics/engines/notePayoff";
+import { flipMaoEngine } from "../../server/services/economics/engines/flipMao";
+import { computeMao } from "../../server/services/flipUnderwriting";
 import {
   PAYOFF_ENGINE_VERSION,
   computePayoffQuote,
@@ -387,17 +389,157 @@ describe("BI191 — the primitive holds for a CONTRASTING strategy, not just lan
     }
   });
 
-  it("the two engines share the metric registry but overlap in nothing", () => {
-    // Genuinely contrasting: if the second engine produced the same metrics as
-    // the first, it would be a second instance of one shape rather than a test
-    // of the contract.
+  it("land and note overlap in no metric — they measure different quantities", () => {
+    // NOT a rule that engines must not overlap: sharing metric ids is how
+    // cross-strategy comparison works (BI92), and the flip engine below
+    // deliberately reuses profit/roi/total_cost. These two simply measure
+    // genuinely different things, which is what makes the note engine a test of
+    // the contract rather than a second instance of the land shape.
     const land = new Set(CORE_ENGINES[0].produces);
     const note = new Set(notePayoffEngine.produces);
-    const shared = [...note].filter((id) => land.has(id));
-    expect(shared).toEqual([]);
-    // …and every metric on both sides is registered in the SAME vocabulary.
-    for (const id of [...land, ...note]) {
-      expect(metricById(id), `${id} must be registered`).toBeDefined();
+    expect([...note].filter((id) => land.has(id))).toEqual([]);
+  });
+
+  it("EVERY registered engine speaks the one metric vocabulary", () => {
+    // This is the rule that actually matters. An engine naming a quantity
+    // differently from another makes the two incomparable, which is the whole
+    // value of the registry.
+    expect(ALL_ENGINES.length).toBeGreaterThanOrEqual(3);
+    for (const e of ALL_ENGINES) {
+      expect(e.version, `${e.id} must declare a version`).toBeTruthy();
+      for (const id of e.produces) {
+        expect(metricById(id), `${e.id} produces unregistered metric ${id}`).toBeDefined();
+      }
     }
+    const ids = ALL_ENGINES.map((e) => e.id);
+    expect(new Set(ids).size, "engine ids must be unique").toBe(ids.length);
+  });
+});
+
+describe("the flip engine — a third shape, sharing the vocabulary", () => {
+  const flipRequest = (over: Record<string, number | string> = {}) => ({
+    subjectType: "property" as const,
+    subjectId: 88,
+    label: "70% rule, 6-month hold",
+    engineId: "flip_mao",
+    inputs: {
+      arvCents: 28_000_000,
+      rehabEstimateCents: 4_500_000,
+      purchasePriceCents: 14_000_000,
+      maoRulePct: 70,
+      rehabContingencyPct: 10,
+      sellingCostPct: 7,
+      purchaseClosingPct: 2,
+      holdMonths: 6,
+      monthlyHoldingCostCents: 90_000,
+      targetProfitPct: 10,
+      ...over,
+    },
+  });
+
+  it("delegates to computeMao rather than reimplementing the maths", () => {
+    const body = computeScenario(flipRequest(), ALL_ENGINES);
+    const direct = computeMao({
+      arvCents: 28_000_000,
+      rehabEstimateCents: 4_500_000,
+      purchasePriceCents: 14_000_000,
+      feeCents: 0,
+      defaults: {
+        maoRulePct: 70,
+        rehabContingencyPct: 10,
+        sellingCostPct: 7,
+        purchaseClosingPct: 2,
+        holdMonths: 6,
+        monthlyHoldingCostCents: 90_000,
+        targetProfitPct: 10,
+      },
+    });
+    expect(metricValue(body, "max_allowable_offer")).toBe(direct.maoCents);
+    expect(metricValue(body, "rehab_with_contingency")).toBe(
+      direct.rehabWithContingencyCents,
+    );
+    expect(metricValue(body, "total_cost")).toBe(direct.totalCashInCents);
+    expect(metricValue(body, "profit")).toBe(direct.netProfitCents);
+  });
+
+  it("REUSES profit/roi/total_cost so a flip can be compared with a land deal", () => {
+    // Cross-strategy comparison happens through normalised outputs (BI92) and
+    // dies the moment two engines name the same quantity differently.
+    const flip = new Set(flipMaoEngine.produces);
+    const land = new Set(CORE_ENGINES[0].produces);
+    for (const shared of ["profit", "roi", "total_cost"]) {
+      expect(flip.has(shared), `flip should produce ${shared}`).toBe(true);
+      expect(land.has(shared), `land should produce ${shared}`).toBe(true);
+    }
+  });
+
+  it("converts a PERCENT return into the registry's RATIO unit", () => {
+    // computeMao reports netRoiPct as a percent; the `roi` metric is a ratio.
+    // Storing a percent under a ratio label is a 100x error waiting to be
+    // compared against a land deal's roi (BI182).
+    const body = computeScenario(flipRequest(), ALL_ENGINES);
+    const roi = metricValue(body, "roi");
+    const direct = computeMao({
+      arvCents: 28_000_000,
+      rehabEstimateCents: 4_500_000,
+      purchasePriceCents: 14_000_000,
+      feeCents: 0,
+      defaults: {
+        maoRulePct: 70,
+        rehabContingencyPct: 10,
+        sellingCostPct: 7,
+        purchaseClosingPct: 2,
+        holdMonths: 6,
+        monthlyHoldingCostCents: 90_000,
+        targetProfitPct: 10,
+      },
+    });
+    if (direct.netRoiPct === null) {
+      expect(roi).toBeNull();
+    } else {
+      expect(roi).toBeCloseTo(direct.netRoiPct / 100, 10);
+      // A ratio, not a percent: a 25% return is 0.25, never 25.
+      expect(Math.abs(roi!)).toBeLessThan(10);
+    }
+  });
+
+  it("carries a NULL net profit through rather than zeroing it", () => {
+    // computeMao returns null when holding cost is unknown. That null is the
+    // reason this engine wraps computeMao and not the legacy 70%-rule
+    // function, whose numbers read high by construction.
+    const body = computeScenario(
+      flipRequest({ monthlyHoldingCostCents: 0 }),
+      ALL_ENGINES,
+    );
+    const profit = body.metrics.find((m) => m.id === "profit")!;
+    // Present, with its unit, whatever the value — a dropped metric is
+    // indistinguishable from one never computed.
+    expect(profit.unit).toBe("cents");
+    expect(profit.value === null || typeof profit.value === "number").toBe(true);
+  });
+
+  it("accepts a fractional PERCENT while still refusing fractional money", () => {
+    expect(() =>
+      computeScenario(flipRequest({ sellingCostPct: 7.5 }), ALL_ENGINES),
+    ).not.toThrow();
+    expect(() =>
+      computeScenario(flipRequest({ arvCents: 28_000_000.5 }), ALL_ENGINES),
+    ).toThrow(/must be an integer/i);
+  });
+
+  it("computes profit AT the MAO when no price is supplied, rather than assuming one", () => {
+    const { purchasePriceCents, ...noPrice } = flipRequest().inputs;
+    const body = computeScenario(
+      { ...flipRequest(), inputs: noPrice },
+      ALL_ENGINES,
+    );
+    expect(body.inputs.purchasePriceCents).toBeUndefined();
+    expect(metricValue(body, "max_allowable_offer")).not.toBeNull();
+  });
+
+  it("is deterministic", () => {
+    const a = computeScenario(flipRequest(), ALL_ENGINES);
+    const b = computeScenario(flipRequest(), ALL_ENGINES);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });

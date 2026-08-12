@@ -677,9 +677,14 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "rather than reimplementing it) — which is what BI191 actually asks for: a " +
         "land-only implementation exposing generic labels does not satisfy the " +
         "architecture. They share the metric vocabulary and overlap in NO metric, " +
-        "pinned by a test. REMAINING GAP: flip, BRRRR and multifamily NOI still " +
-        "compute inline, outside the registry, so a large share of the product's " +
-        "financial numbers remain unversioned and unpersisted.",
+        "pinned by a test. THREE engines are registered — land_deal (cash-flow " +
+        "series), note_payoff (day-count accrual) and flip_mao (MAO net of " +
+        "closing and carry) — and flip deliberately REUSES profit/roi/total_cost " +
+        "so a flip and a land deal are comparable (BI92). Every engine delegates " +
+        "to the arithmetic that already owns it rather than reimplementing it. " +
+        "REMAINING GAP: BRRRR and multifamily NOI still compute inline, outside " +
+        "the registry, so a share of the product's financial numbers remain " +
+        "unversioned and unpersisted.",
     },
   },
   {

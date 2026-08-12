@@ -149,6 +149,25 @@ export const METRICS: readonly MetricSpec[] = [
     unit: "days",
     higherIsBetter: true,
   },
+
+  // ── Flip metrics ──
+  // Note that the flip engine deliberately REUSES `profit`, `roi` and
+  // `total_cost` rather than minting flip-specific twins. Cross-strategy
+  // comparison happens through normalised scenario outputs (BI92), and it dies
+  // the moment two engines name the same quantity differently. Only genuinely
+  // flip-specific quantities get their own ids.
+  {
+    id: "max_allowable_offer",
+    label: "Maximum allowable offer",
+    unit: "cents",
+    higherIsBetter: true,
+  },
+  {
+    id: "rehab_with_contingency",
+    label: "Rehab budget incl. contingency",
+    unit: "cents",
+    higherIsBetter: false,
+  },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
@@ -394,6 +413,26 @@ export function metric(id: string, value: number | null): ScenarioMetric {
     throw new ScenarioEngineError(`Unregistered metric "${id}"`);
   }
   return { id, value, unit: spec.unit };
+}
+
+/**
+ * A non-money numeric input — a percentage, a rate, a count.
+ *
+ * Separate from `requireCents` on purpose: a percentage is legitimately
+ * fractional (7.5%), while money is not. Sharing one helper would either let
+ * fractional cents through or refuse a valid rate.
+ */
+export function requireNumber(
+  inputs: Record<string, number | string>,
+  key: string,
+): number {
+  const v = inputs[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new ScenarioEngineError(
+      `Scenario input "${key}" is required and must be a finite number`,
+    );
+  }
+  return v;
 }
 
 /** An ISO-8601 date input. Refused rather than defaulted when malformed. */
