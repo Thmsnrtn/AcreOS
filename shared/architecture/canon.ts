@@ -716,6 +716,7 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "tests/unit/outwardActionIdempotency.test.ts",
         "tests/unit/outwardActionCoverage.test.ts",
         "tests/unit/goldenLoopOneFailure.test.ts",
+        "tests/unit/goldenLoopOneCustomer.test.ts",
         "server/services/autopilot/proofReceipt.ts",
         "server/services/customerMoneyRouting.ts",
         "tests/unit/moneyCustodyHardStop.test.ts",

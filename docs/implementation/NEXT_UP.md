@@ -117,10 +117,17 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     nothing) was recorded `ambiguous` and PERMANENTLY poisoned the idempotency
     key; and `resolveClaims` would FABRICATE a conflict if handed an unfiltered
     claim set. Both fixed, both verified by reverting the fix.
+19. **The tenancy golden loop** (Section VII B) — isolation across all four
+    canonical layers. Isolation was CORRECT; the record was not:
+    `freezeScenarioRefs` silently skipped ids it could not read, so a decision
+    citing two scenarios was written with one and read as complete. Now refuses
+    WITHOUT distinguishing "another tenant's" from "does not exist", so there is
+    no id oracle and no silent loss. **A mutation test also caught one of my own
+    assertions being vacuous** — see the ledger.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 655 files, 8,582 tests, 1 skipped, 0 failures.**
+suite green — 656 files, 8,596 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -146,19 +153,20 @@ see §6a. Grep for the function that already owns the maths BEFORE planning the
 adapter; if there is no such function, there is no gap.
 
 In order:
-- **Write the REMAINING golden loops (Section VII B and D).** A(property) and
-  C(failure) are done and found three real defects between them — see §3 items
-  17–18. Still unwritten: **B) One Complete Customer** (signup → org → persona →
-  first decision, which crosses tenancy and is therefore the one where an
-  isolation defect would show) and **D) One Complete Learning Loop** (many
-  decisions → calibration, which does not exist yet and so is a build, not just
-  a test).
-  **The technique is the point, not the file:** every input must be the previous
-  layer's REAL output, and the failure branches matter more than the happy ones.
-  A test that hand-builds the fixture for the layer below cannot see a seam,
-  which is exactly why four green per-layer suites hid the frozen-forecast loss
-  for five units. Three of the four defects this technique has found so far were
-  invisible to every existing per-layer test.
+- **Section VII(D) — One Complete Learning Loop.** The last of the four, and the
+  only one that is a BUILD rather than a test: calibration across many decisions
+  does not exist. A single variance says one forecast missed; calibration says
+  *this operator's resale assumptions run 12% optimistic*, which is the thing
+  worth knowing. Start from the founder plane's `decisionEval` sweep — do not
+  invent a second. Its honest hard part is refusing to report a calibration from
+  three outcomes, and there is now a vocabulary for that (`unmeasured`,
+  `unpredicted`, categorical confidence).
+  **The technique earned its place:** four of the five defects this program has
+  found came from golden loops, and every one was invisible to the per-layer
+  suites — because each hand-builds the fixture for the layer below. Every input
+  must be the previous layer's REAL output, the failure branches matter more
+  than the happy ones, and **mutation-test the assertions**: one of unit 19's
+  own tenancy assertions passed against a deliberately nullable tenant key.
 - **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
   zero references under `client/src`. The engines are reachable and persistable
   and nothing persists. The customer calculators compute for DISPLAY only, so a

@@ -1100,3 +1100,90 @@ window brittleness is gone.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 655 files, 8,582 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 19 — One Complete Customer: the tenancy loop · this commit
+
+**Audit requirement:** Master Audit Section VII(B). Also source-of-truth
+precedence #1 — tenant isolation outranks every other consideration in this
+program.
+
+**Files:** `tests/unit/goldenLoopOneCustomer.test.ts` (new, 14 tests),
+`server/services/economics/scenarioStore.ts` (`UnavailableScenarioError`),
+`server/services/decisions/decisionStore.ts`, `server/routes-decisions.ts`,
+`shared/architecture/canon.ts`.
+
+### Why these four layers are unusually exposed
+
+- `evidence_claims.subject_id` carries NO foreign key — deliberately, so a
+  `parcel` claim can be recorded before Parcel has a table. Nothing at the
+  database level stops a claim being keyed to another tenant's property id, so
+  **the org column is doing all of the work.**
+- A decision cites scenarios BY ID and an outcome cites a decision BY ID. Those
+  are the two places one tenant's record could embed another tenant's numbers.
+- All four tables are append-only. A leak here is not something you clean up
+  afterwards; it is frozen into an immutable record.
+
+### The finding: isolation was right, the RECORD was not
+
+`freezeScenarioRefs` **silently skipped** ids it could not read. The org scoping
+was correct — a foreign scenario was never frozen, and that part needed no
+change. But a decision citing two scenarios, one foreign or simply mistyped, was
+written with one, and `describeFooting` then reported "1 scenario(s)" as though
+that had always been the whole story.
+
+That is the same defect as unit 17's frozen-forecast loss, on the record a human
+reads two years later to reconstruct what a decision rested on: **an incomplete
+record that reads as complete.**
+
+The old justification — refusing loudly would leak that a foreign row exists —
+assumed a choice between leaking and losing. **There is a third option: refuse
+WITHOUT distinguishing.** `UnavailableScenarioError` names no id and says nothing
+about whether the id belongs to another tenant or does not exist, so no oracle is
+created and no citation is quietly dropped. It also catches the far more common
+case — a plain typo — which previously produced a decision silently justified by
+nothing at all. Citations are de-duplicated first, so citing one scenario twice
+is not counted as a missing one, and the route maps it to a 400 rather than a 500.
+
+### My own test was vacuous, and a mutation test caught it
+
+The "every canonical table declares organization_id NOT NULL" assertion used a
+120-character window after the column name. Deliberately making the tenant key
+NULLABLE **did not fail it** — the window had matched the NEXT column's
+`.notNull()`.
+
+**A vacuous tenancy assertion is worse than none, because it reads as proof.**
+Rewritten to slice the column's own declaration (ending at the next column, not
+at the first comma — `.references(..., { onDelete: "cascade" })` contains one,
+which broke the first correction too), and re-verified against the same mutation.
+It also now asserts the cascade, so deleting a tenant cannot orphan its records.
+
+Every structural assertion in this file was mutation-tested rather than trusted:
+removing an org predicate from a canonical read fails it, and so does the
+nullable tenant key.
+
+### Also pinned
+
+- **`organizationId` is the FIRST parameter of every exported store function.**
+  Not style: a tenant key arriving third, after two ids, is one argument-order
+  slip from being someone else's, and TypeScript cannot catch a swap between two
+  `number`s.
+- Every read filters by org; both insert shapes stamp it (the BULK shape is
+  followed through its row builder, since that is where a tenant key is most
+  easily lost — the stamping happens somewhere else entirely).
+- The org is never accepted from a request body — the zod schemas must not even
+  admit the field.
+- An outcome resolves its decision THROUGH the org and takes the subject FROM it,
+  so it can never claim to be about a different property than the decision it
+  grades.
+- The pure resolution layer takes no org at all, and the test pins that it does
+  not try to: a second, weaker isolation boundary that could disagree with the
+  real one is a liability, not defence in depth. Handed two tenants' claims it
+  reports `conflict` rather than silently picking one.
+- A frozen decision body carries no organization id — the tenant lives in the
+  ROW, so there is no second copy to drift from the column queries filter on.
+- Every canonical index leads with the org column.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 656 files, 8,596 tests, 1 skipped, 0 failures.**

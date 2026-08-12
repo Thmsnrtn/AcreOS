@@ -32,6 +32,7 @@ import {
   DECISION_SUBJECT_TYPES,
   describeFooting,
 } from "@shared/decisions/snapshot";
+import { UnavailableScenarioError } from "./services/economics/scenarioStore";
 import {
   UnknownDecisionError,
   outcomesForDecision,
@@ -111,6 +112,12 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
       snapshot: recorded.body,
     });
   } catch (err) {
+    // Citing a scenario this org cannot read is a CALLER error, not a server
+    // fault. The message deliberately does not say whether the id belongs to
+    // another tenant or does not exist — see UnavailableScenarioError.
+    if (err instanceof UnavailableScenarioError) {
+      return Errors.badRequest(res, err.message);
+    }
     Errors.internal(res, err);
   }
 });

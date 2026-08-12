@@ -115,26 +115,67 @@ export async function scenariosForSubject(
 }
 
 /**
+ * Raised when a decision cites a scenario this organization cannot use.
+ *
+ * THE MESSAGE NAMES NO IDS AND DRAWS NO DISTINCTION, deliberately. "Belongs to
+ * another tenant" and "does not exist" must be indistinguishable from outside,
+ * or the error becomes an oracle for probing which sequential ids are real.
+ */
+export class UnavailableScenarioError extends Error {
+  constructor(missingCount: number) {
+    super(
+      `${missingCount} of the cited scenario(s) are not available in this ` +
+        `organization. A decision must not be recorded against economics it ` +
+        `cannot actually cite — correct the reference and retry.`,
+    );
+    this.name = "UnavailableScenarioError";
+  }
+}
+
+/**
  * Build the frozen references a DecisionSnapshot stores.
  *
- * Silently skips ids that do not belong to this org — a decision must never
- * freeze a reference to another tenant's economics, and refusing loudly here
- * would leak the existence of a foreign row.
+ * A decision must never freeze a reference to another tenant's economics, and
+ * this never does — the query is org-scoped, so a foreign row is unreadable
+ * here. That part was always right.
+ *
+ * WHAT CHANGED: it used to SILENTLY SKIP the ids it could not read. The
+ * isolation was correct and the record was not. A decision citing two scenarios,
+ * one of them foreign or mistyped, was written with one — and `describeFooting`
+ * then reported "1 scenario(s)" as though that had always been the whole story.
+ * An incomplete record that reads as complete is the same defect the frozen-
+ * forecast loss was, and this is the record a human reads two years later to
+ * reconstruct what a decision rested on.
+ *
+ * The old justification — that refusing loudly would leak the existence of a
+ * foreign row — assumed a choice between leaking and losing. There is a third
+ * option: refuse WITHOUT distinguishing. `UnavailableScenarioError` says nothing
+ * about whether the id belongs to another org or simply does not exist, so no
+ * oracle is created, and the decision is never quietly footed on less than it
+ * claims. It also now catches the far more common case of a plain typo, which
+ * previously produced a decision silently justified by nothing at all.
  */
 export async function freezeScenarioRefs(
   organizationId: number,
   scenarioIds: readonly number[],
 ): Promise<FrozenScenarioRef[]> {
   if (scenarioIds.length === 0) return [];
+  // Deduplicate first: citing the same scenario twice is harmless, and counting
+  // the repeat as "missing" would refuse a legitimate request.
+  const wanted = [...new Set(scenarioIds)];
   const rows = await db
     .select()
     .from(scenarios)
     .where(
       and(
         eq(scenarios.organizationId, organizationId),
-        inArray(scenarios.id, [...scenarioIds]),
+        inArray(scenarios.id, wanted),
       ),
     )
     .limit(SCENARIO_READ_CAP);
+
+  if (rows.length !== wanted.length) {
+    throw new UnavailableScenarioError(wanted.length - rows.length);
+  }
   return rows.map((row) => freezeScenarioRef(row.id, rowToBody(row)));
 }

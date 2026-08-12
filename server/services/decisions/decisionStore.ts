@@ -86,9 +86,13 @@ export async function recordDecision(
    * Scenarios whose economics justified this choice. Resolved to frozen
    * references HERE rather than accepted pre-frozen, for the same reason the
    * evidence is gathered here: a caller that hands over pre-computed numbers
-   * can hand over any numbers at all. Ids belonging to another org are silently
-   * skipped — a decision must never freeze a reference to another tenant's
-   * economics, and refusing loudly would leak that the row exists.
+   * can hand over any numbers at all.
+   *
+   * An id this org cannot read — another tenant's, or simply wrong — raises
+   * `UnavailableScenarioError` rather than being dropped. The decision must
+   * never freeze another tenant's economics AND must never quietly record fewer
+   * scenarios than it was told it rested on; see freezeScenarioRefs for why
+   * those are not in tension.
    */
   scenarioIds: readonly number[] = [],
 ): Promise<RecordedDecision> {
