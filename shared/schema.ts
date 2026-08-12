@@ -152,6 +152,19 @@ export const organizations = pgTable("organizations", {
       order: string[];
       visibility: Record<string, boolean>;
     };
+    // Per-org simulation kill-switch — layer 3 of server/utils/simulationMode.ts
+    // ("the single source of truth for no real-world side effects"). Read by
+    // isOrgSimulated(); when true, no mail, SMS, email or webhook leaves the
+    // building for this org.
+    //
+    // It was NOT declared here while being read as `(org as any).settings
+    // .simulationMode`, which meant the safety flag was outside the contract
+    // its own column publishes: any typed write of `settings` composed from
+    // this type could not carry it, and a write that REPLACED rather than
+    // merged would have silently disarmed it with nothing to report. Every
+    // writer merges today — `tests/unit/orgSettingsMerge.test.ts` derives that
+    // from source and keeps it true.
+    simulationMode?: boolean;
   }>(),
   // Free trial tracking
   trialStartedAt: timestamp("trial_started_at"), // When trial began

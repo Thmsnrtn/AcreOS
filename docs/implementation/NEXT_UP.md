@@ -306,11 +306,21 @@ mediates, a name mismatch is caught by tsc or by the parse. Where the server
 persists a client-supplied structure verbatim, the two ends can disagree
 forever and nothing errors.
 
-So: **find the routes that persist client-supplied structures into jsonb without
-validating them.** That is the remaining surface of this class. A key-name sweep
-does NOT find it — one was attempted against all client mutation payloads and
-returned zero, and it was wrong: `enabled` appears in ~100 server files, just
-never in the code that reads that endpoint. Presence-anywhere is not the test.
+**THREE DETECTORS FOR THIS CLASS HAVE BEEN BUILT AND ALL THREE FAILED.** Do not
+rebuild them; read this instead.
+
+| detector | result | why it failed |
+|---|---|---|
+| client payload keys absent from all server source | **0 hits, and wrong** | `enabled` — the unit 41 defect — appears in ~100 server files, just never in the code reading that endpoint. **Presence-anywhere is not the test.** |
+| handlers that mention `req.body` and write a jsonb-named column with no zod parse | 165 hits | the conjunction is far too weak; most were server-constructed audit metadata |
+| field reads on a typed jsonb column that its `$type<>` never declares | 235 hits | `metadata`, `settings`, `result`, `items`, `checks` are among the most common local identifiers in the repo — name-collision swamps the signal |
+
+Precision here needs **field-level dataflow**, not grep. If you attempt it again,
+attempt it with a TypeScript AST pass, and know the yield is unproven: the third
+detector's 235 hits produced exactly one real finding (unit 43), and that came
+from hand-checking the entries whose names sounded safety-relevant. **Sorting the
+noise by consequence and hand-checking the top of it beat improving the
+detector.** That is probably the right technique for this class in general.
 
 ### The second webhook rail — recorded in BLOCKERS as B8, not a task
 

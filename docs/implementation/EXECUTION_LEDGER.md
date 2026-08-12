@@ -2945,3 +2945,84 @@ Worth noting for its own sake: the check that caught the bad claim was **reading
 what this program had already written down**, not a fresh investigation. §6a of
 NEXT_UP records it alongside the BRRRR correction — one is the rule failing, the
 other is the rule working, and both are cheap only if the notes are read.
+
+---
+
+## Unit 43 — A safety kill-switch outside its own column's contract · this commit
+
+**Files:** `shared/schema.ts`, `server/storage/orgRepo.ts`,
+`scripts/ratchets/as-any.json`, `tests/unit/orgSettingsMerge.test.ts` (new,
+9 tests).
+
+### Two sweeps that failed, and the one hand-check that paid
+
+NEXT_UP pointed at the precondition units 41–42 shared: *client-supplied
+structures persisted into opaque jsonb*. Two detectors were built for it and
+**both were too noisy to be findings**, which is worth recording as plainly as a
+success:
+
+- *Unvalidated jsonb mutations* — 165 hits. The conjunction "handler mentions
+  `req.body`" AND "a key matches a jsonb column name" is far too weak; most hits
+  were server-constructed audit metadata.
+- *Undeclared field accesses on typed jsonb columns* — 235 hits after filtering
+  array built-ins. `metadata`, `settings`, `result`, `items` and `checks` are
+  among the most common local identifiers in the codebase, so name-collision
+  swamps the signal. Precision here needs field-level dataflow, not grep.
+
+An earlier sweep in the same thread returned **zero** and was also wrong: it
+looked for client payload keys absent from all server source, and `enabled` — the
+unit 41 defect — appears in ~100 server files, just never in the code that reads
+that endpoint. **Presence-anywhere is not the test.** All three are recorded in
+NEXT_UP so the next session does not rebuild them.
+
+One hit from the second sweep survived a hand-check, and it was worth the two
+that did not.
+
+### The finding
+
+`server/utils/simulationMode.ts` calls itself "the single source of truth for no
+real-world side effects" and names three layers. The third is
+`org.settings.simulationMode`: when true, no mail, SMS, email or webhook leaves
+the building for that org.
+
+**It was not declared in `organizations.settings.$type<>`**, and was read as
+`(org as any)?.settings?.simulationMode`. So the flag that disarms every
+outbound rail sat outside the contract its own column publishes:
+
+1. No typed write composed from that type could carry it.
+2. A write that assigned `settings` wholesale rather than spreading would drop
+   it — and every gate downstream would then read `false` and start sending for
+   real. Nothing errors, nothing logs, and the first symptom is real mail
+   arriving from an org that was supposed to be simulated.
+
+### A verified negative, then made enforceable
+
+**Every writer merges today** — checked by hand across `routes-organization`
+(which also `.strict()`-parses its patch), `services/onboarding` (seven sites)
+and `storage/orgRepo`. So this is a latent gap, not a live defect, and the entry
+says so.
+
+What it is NOT is a safe gap to leave unpinned: `settings: { ...x }` and
+`settings: { ... }` differ by three characters, the difference is invisible at
+every individual call site, and only one of them preserves a safety flag. So the
+field is now declared (the cast is gone, `as-any` 1405 → 1404, lowered in the
+same commit) and a test derives the write set from source and requires each to
+spread.
+
+### The scan states its own blind spot
+
+It classifies inline object literals. A write that passes a precomputed value —
+`settings: merged`, which is what the customer-facing PATCH does — cannot be
+classified without following dataflow. Those are **collected separately and
+registered**, not skipped: an unclassifiable write is not a safe one. The single
+registered site has its merge asserted directly, one line from the write.
+
+The first version of the scan also flagged `supportAgent.ts:1517`, which builds
+a read-only diagnostics response. The fix was to tighten the scan to model an
+actual org write, **not** to weaken the assertion — a checker that reports safe
+code as broken is how a safety test gets deleted.
+
+### Verification
+
+Three mutations, each caught: a write that replaces instead of merging; the
+settings PATCH dropping its merge; and undeclaring `simulationMode`.
