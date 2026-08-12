@@ -994,3 +994,109 @@ has never been seen to fail is a hypothesis about a test, not a regression gate.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 654 files, 8,565 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 18 — One Complete Failure, and the two defects it found · this commit
+
+**Audit requirement:** Master Audit Section VII(C) — "One Complete Failure".
+Also BI74 (idempotency at the action/provider boundary), AU28 (refuse after an
+unknown outcome), canonical law 3 (unknown and conflict are valid states) and the
+repo's refuse-not-fabricate rule.
+
+**Files:** `tests/unit/goldenLoopOneFailure.test.ts` (new, 19 tests),
+`server/services/actions/outwardAction.ts` (`ProviderNotContactedError` +
+classification), `server/services/directMailService.ts` (both credit paths),
+`shared/evidence/claim.ts` (`resolveClaims` self-filters),
+`shared/architecture/canon.ts`, and one test in `outwardActionIdempotency`
+rewritten.
+
+### Why the failing loop is worth more than the succeeding one
+
+VII(A) proved the happy path composes. But fabrication, fail-open defaults and
+silent coercions do not live on the success path — nobody writes `?? 0` for a
+value that arrived. They live in the branches that run when a provider times out,
+a balance is short, or a payload comes back half-attributed. So this file traces
+the three failures the system will actually meet: a PARTIAL provider payload, a
+CONFLICT between two authorities, and an outward action whose outcome is UNKNOWN.
+
+It found two defects.
+
+### Defect 1 — a credit refusal permanently poisoned the idempotency key
+
+`withOutwardAction` records any unclassified throw as `ambiguous`, which is the
+correct DEFAULT and was the wrong ANSWER for a whole class of failures. A
+transport's exec body runs several steps before it touches the provider —
+resolving credentials, checking a balance — and every one can throw.
+
+`checkCreditsAndRecord` only READS the balance (it deducts nothing, despite the
+name), and Lob has not been called. Yet an org that ran out of credits got a
+**permanently poisoned key**: top up, retry under the same durable
+`mailing-order:{orderId}:lead:{leadId}` key, and meet `ActionAmbiguousError`
+forever — with a message instructing the operator to reconcile against a provider
+that never heard of the request. The letter could never be sent under its own key
+again.
+
+**Severity, stated honestly: this failed SAFE.** Nothing double-sent and no money
+moved. It was an operational dead end requiring human intervention, not a
+duplicate letter. But it sat on the money-spending path, and the code comment
+already NAMED the distinction ("paths that ran BEFORE Lob accepted anything ... or
+from the Lob call itself") without acting on it — the knowledge was present and
+unenforced, which is the condition this program exists to end.
+
+**Fix:** `ProviderNotContactedError`, classified as `failed` (retryable). **The
+polarity is the design.** A transport must PROVE it never reached the provider by
+raising the type; everything else stays ambiguous. Defaulting the other way —
+assuming no contact unless proven otherwise — is how a second letter reaches a
+real mailbox. Classification is by TYPE, never by sniffing an error message, and
+a test asserts no `.message.includes(` appears in the classifier.
+
+The Lob call itself is deliberately NOT reclassified, and a test pins that too: a
+network failure there may or may not have printed a letter, which is the case the
+entire ledger exists for.
+
+### Defect 2 — `resolveClaims` could FABRICATE a conflict
+
+Found by an assertion that handed `resolveClaims` the whole claim set, which is
+what a caller who forgot to pre-filter would do. The function's contract is "every
+claim for this (subject, predicate)" and it trusted the caller entirely — so an
+APN and an acreage were read as two rival answers for the flood zone, returning
+`conflict`: a confident, user-visible, entirely invented disagreement between
+sources that never disagreed.
+
+**Not a live bug** — the one production caller (`resolveFact`) filters via
+`claimsForPredicate`, and that was verified before claiming anything. But the
+safety of the evidence read path rested on a convention nothing enforced, and
+*no fabrication is not a rule a pure function should delegate to its callers.*
+
+**Fix:** `resolveClaims` filters by predicate itself. Filtering rather than
+throwing, because it yields the CORRECT answer for the predicate asked about,
+where a throw would turn a caller's extra rows into a 500 on a read path.
+
+### Both fixes verified adversarially
+
+Reverting either fix fails 4 tests across the two suites. A test written after a
+fix and never seen to fail is a hypothesis about a test.
+
+### A rewritten test, again
+
+`outwardActionIdempotency`'s "an unclassified throw is recorded ambiguous, never
+failed" sliced a fixed 900-character window after `exec()`; the new guarded
+branch pushed the assertion out of it. **Rewritten, not deleted**, and made
+stronger: it now asserts the ORDER of the two outcomes — the typed `failed` is
+guarded and comes first, the `ambiguous` fallback is unguarded and comes last.
+If those were ever reversed, an unknown outcome would become retryable. The
+window brittleness is gone.
+
+### Also pinned by this file
+
+- A partial run still produces a usable record: refusing the whole thing because
+  one category lost attribution is the opposite error.
+- A conflict reaches the decision AS a conflict, never flattened to unknown —
+  "we never looked" and "we looked twice and got two answers" call for different
+  next actions.
+- Last-write-wins is refused: the later-fetched county GIS value does not beat
+  FEMA, so an answer never depends on lookup order.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 655 files, 8,582 tests, 1 skipped, 0 failures.**

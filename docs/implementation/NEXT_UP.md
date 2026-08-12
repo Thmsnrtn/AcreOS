@@ -111,10 +111,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     metrics, so an engine's hold-period forecast never reached the decision and
     the variance called a real prediction "unpredicted". A decision now freezes
     every metric its engine predicted.
+18. **The failing golden loop** (Section VII C) — a partial payload, a conflict
+    between two authorities, and an outward action whose outcome is unknown. It
+    found **two** defects: a credit refusal (which contacts nobody and charges
+    nothing) was recorded `ambiguous` and PERMANENTLY poisoned the idempotency
+    key; and `resolveClaims` would FABRICATE a conflict if handed an unfiltered
+    claim set. Both fixed, both verified by reverting the fix.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 654 files, 8,565 tests, 1 skipped, 0 failures.**
+suite green — 655 files, 8,582 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -140,20 +146,19 @@ see §6a. Grep for the function that already owns the maths BEFORE planning the
 adapter; if there is no such function, there is no gap.
 
 In order:
-- **Write the OTHER golden loops (Section VII B/C/D).** VII(A) One Complete
-  Property is done and immediately found a real defect — see §3 item 17. The
-  same technique is unused on the other three: **B) One Complete Customer**
-  (signup → org → persona → first decision), **C) One Complete Failure** (a
-  provider times out mid-enrichment: what does evidence record, what does the
-  decision say, does an outward action end `ambiguous` rather than `failed`),
-  and **D) One Complete Learning Loop** (many decisions → calibration). C is the
-  highest value of the three: the failure paths are where fabrication and
-  fail-open bugs actually live, and `outwardAction`'s `ambiguous` state has never
-  been exercised against a real transport.
+- **Write the REMAINING golden loops (Section VII B and D).** A(property) and
+  C(failure) are done and found three real defects between them — see §3 items
+  17–18. Still unwritten: **B) One Complete Customer** (signup → org → persona →
+  first decision, which crosses tenancy and is therefore the one where an
+  isolation defect would show) and **D) One Complete Learning Loop** (many
+  decisions → calibration, which does not exist yet and so is a build, not just
+  a test).
   **The technique is the point, not the file:** every input must be the previous
-  layer's REAL output. A test that hand-builds the fixture for the layer below
-  cannot see a seam, which is exactly why four green per-layer suites hid the
-  frozen-forecast loss for five units.
+  layer's REAL output, and the failure branches matter more than the happy ones.
+  A test that hand-builds the fixture for the layer below cannot see a seam,
+  which is exactly why four green per-layer suites hid the frozen-forecast loss
+  for five units. Three of the four defects this technique has found so far were
+  invisible to every existing per-layer test.
 - **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
   zero references under `client/src`. The engines are reachable and persistable
   and nothing persists. The customer calculators compute for DISPLAY only, so a

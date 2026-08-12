@@ -86,6 +86,40 @@ export class ActionAmbiguousError extends OutwardActionError {
   }
 }
 
+/**
+ * The action provably never reached the provider, so retrying is SAFE.
+ *
+ * This exists because "ambiguous" is the right DEFAULT and the wrong ANSWER for
+ * a whole class of failures. A transport's exec body typically runs several
+ * steps before it touches the provider — resolving credentials, checking a
+ * credit balance, validating an address — and every one of those can throw. An
+ * unclassified throw is recorded as `ambiguous`, which permanently refuses every
+ * later attempt on that key until a human reconciles.
+ *
+ * For a genuine mid-flight timeout that is exactly right. For "insufficient
+ * credits" it is a trap: nothing was sent, nothing was charged, no provider was
+ * contacted — and yet topping up the balance and retrying would hit
+ * `ActionAmbiguousError` forever, with a message telling the operator to
+ * reconcile against a provider that never heard of the request. A recoverable
+ * refusal becomes a permanent dead end, and the letter can never be sent under
+ * its own durable key.
+ *
+ * THE POLARITY IS DELIBERATE. A transport must PROVE it did not contact the
+ * provider by throwing this type; everything else stays ambiguous. Defaulting
+ * the other way — assuming no contact unless proven otherwise — is how a second
+ * letter reaches a real mailbox.
+ *
+ * Throw this ONLY from code that runs strictly before the provider call. If a
+ * request has left the process, it is not this error, however certain the
+ * failure looks.
+ */
+export class ProviderNotContactedError extends OutwardActionError {
+  constructor(message: string, readonly cause?: Error) {
+    super(message);
+    this.name = "ProviderNotContactedError";
+  }
+}
+
 /** The same idempotency key was reused for materially different content. */
 export class ActionKeyReusedError extends OutwardActionError {
   constructor(kind: string, key: string) {
@@ -310,10 +344,25 @@ export async function withOutwardAction<T>(
   try {
     outcome = await exec();
   } catch (err) {
-    // An exception that escaped `exec` without being classified is, by
+    const error = err instanceof Error ? err : new Error(String(err));
+
+    // A transport that PROVES it never reached the provider gets `failed`, which
+    // is retryable. Without this, a pre-flight refusal (no credits, no
+    // credentials) permanently poisons the key: every later attempt would meet
+    // ActionAmbiguousError and be told to reconcile against a provider that
+    // never heard of the request.
+    if (error instanceof ProviderNotContactedError) {
+      await markClaim(claimId, "failed", null, error.message);
+      logger.warn(
+        `[outward-action] ${spec.actionKind}:${spec.idempotencyKey} refused before ` +
+          `contacting the provider — recorded FAILED (retryable): ${error.message}`,
+      );
+      throw error;
+    }
+
+    // Anything else that escaped `exec` without being classified is, by
     // definition, an outcome we do not know. Treat it as AMBIGUOUS rather than
     // failed — the conservative reading is the one that does not double-send.
-    const error = err instanceof Error ? err : new Error(String(err));
     await markClaim(claimId, "ambiguous", null, error.message);
     logger.error(
       `[outward-action] ${spec.actionKind}:${spec.idempotencyKey} threw without ` +

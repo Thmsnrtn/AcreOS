@@ -295,7 +295,15 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
   if (!skipCredits) {
     const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
     if (!creditCheck.hasCredits) {
-      throw new Error(creditCheck.errorMessage);
+      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
+      // deducts nothing despite its name), and Lob has not been called. Typing
+      // this as ProviderNotContactedError records the claim `failed` rather than
+      // `ambiguous`, so topping up the balance and retrying under the SAME
+      // durable key works. An unclassified throw here would poison the key
+      // permanently and tell the operator to reconcile against a provider that
+      // never heard of the request.
+      const { ProviderNotContactedError } = await import('./actions/outwardAction');
+      throw new ProviderNotContactedError(creditCheck.errorMessage!);
     }
   }
   
@@ -373,12 +381,19 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         return { status: "succeeded", externalId: result.lobId, result };
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        // performLetterSend throws only from paths that ran BEFORE Lob accepted
-        // anything (credit refusal, client config) or from the Lob call itself.
-        // The Lob call is the ambiguous one: a network failure there may or may
-        // not have printed a letter, so it is deliberately NOT classified
-        // "failed" — withOutwardAction records an unclassified throw as
-        // AMBIGUOUS, which refuses retry until someone reconciles.
+        // performLetterSend throws from two materially different places, and the
+        // difference decides whether this key is retryable ever again.
+        //
+        //  · BEFORE Lob is contacted — a credit refusal. That path now throws
+        //    ProviderNotContactedError, which withOutwardAction records `failed`,
+        //    so a retry after topping up succeeds under the same durable key.
+        //  · FROM the Lob call itself — genuinely ambiguous. A network failure
+        //    there may or may not have printed a letter, so it stays
+        //    unclassified and is recorded AMBIGUOUS, refusing retry until
+        //    someone reconciles.
+        //
+        // Rethrowing unchanged is what preserves that distinction: the type
+        // carries it, so this handler must not flatten it into a plain Error.
         throw error;
       }
     },
@@ -437,7 +452,15 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
   if (!skipCredits) {
     const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
     if (!creditCheck.hasCredits) {
-      throw new Error(creditCheck.errorMessage);
+      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
+      // deducts nothing despite its name), and Lob has not been called. Typing
+      // this as ProviderNotContactedError records the claim `failed` rather than
+      // `ambiguous`, so topping up the balance and retrying under the SAME
+      // durable key works. An unclassified throw here would poison the key
+      // permanently and tell the operator to reconcile against a provider that
+      // never heard of the request.
+      const { ProviderNotContactedError } = await import('./actions/outwardAction');
+      throw new ProviderNotContactedError(creditCheck.errorMessage!);
     }
   }
   

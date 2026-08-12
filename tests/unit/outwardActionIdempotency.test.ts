@@ -225,13 +225,33 @@ describe("the boundary is wired into the money path", () => {
   });
 
   it("an unclassified throw is recorded ambiguous, never failed", () => {
+    // REWRITTEN (not deleted) when ProviderNotContactedError landed. This used
+    // to slice a fixed 900-char window after `exec()` and look for the ambiguous
+    // markClaim; adding a guarded `failed` branch above it pushed the line out
+    // of the window. The invariant is unchanged and the assertion is now both
+    // stronger and not brittle to formatting.
+    //
+    // The catch block now has exactly two outcomes, and the ORDER is the safety
+    // property: a transport that PROVES it never reached the provider gets
+    // `failed` (retryable), and everything else falls through to `ambiguous`.
+    // If those were reversed — or if the ambiguous fallback were ever guarded —
+    // an unknown outcome would become retryable and could double-send.
     const src = fs.readFileSync(
       path.join(ROOT, "server/services/actions/outwardAction.ts"),
       "utf8",
     );
     const catchBlock = src.slice(src.indexOf("outcome = await exec()"));
-    // The conservative reading of "we don't know what happened" is the one that
-    // does not double-send.
-    expect(catchBlock.slice(0, 900)).toContain('markClaim(claimId, "ambiguous"');
+    const guarded = catchBlock.indexOf("error instanceof ProviderNotContactedError");
+    const failed = catchBlock.indexOf('markClaim(claimId, "failed"');
+    const ambiguous = catchBlock.indexOf('markClaim(claimId, "ambiguous"');
+
+    expect(ambiguous).toBeGreaterThan(-1);
+    // The only `failed` in the catch is inside the type guard...
+    expect(guarded).toBeGreaterThan(-1);
+    expect(failed).toBeGreaterThan(guarded);
+    // ...and the ambiguous fallback comes AFTER it, as the unguarded default.
+    expect(ambiguous).toBeGreaterThan(failed);
+    // Classification is by TYPE, never by sniffing an error message.
+    expect(catchBlock).not.toMatch(/\.message\s*\.\s*(includes|match|indexOf)\(/);
   });
 });

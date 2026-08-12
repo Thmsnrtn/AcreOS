@@ -715,6 +715,7 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "shared/schema/outward-actions.ts",
         "tests/unit/outwardActionIdempotency.test.ts",
         "tests/unit/outwardActionCoverage.test.ts",
+        "tests/unit/goldenLoopOneFailure.test.ts",
         "server/services/autopilot/proofReceipt.ts",
         "server/services/customerMoneyRouting.ts",
         "tests/unit/moneyCustodyHardStop.test.ts",
@@ -725,7 +726,19 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "keyed uniquely on (org, kind, key) with an atomic INSERT ... ON CONFLICT " +
         "claim, a pure execute/replay/refuse classifier, and a terminal `ambiguous` " +
         "state that refuses retry after an unknown outcome (AU28) rather than " +
-        "guessing. Both physical-mail transports route through it, and the " +
+        "guessing. `ambiguous` is the DEFAULT for any unclassified throw, and a " +
+        "transport must PROVE it never reached the provider (by raising " +
+        "ProviderNotContactedError) to get the retryable `failed` state instead — " +
+        "the polarity matters, because assuming no contact unless proven " +
+        "otherwise is how a second letter reaches a real mailbox. That " +
+        "distinction came from tracing the failure path end to end " +
+        "(goldenLoopOneFailure.test.ts, Section VII C): a credit refusal, which " +
+        "contacts nobody and charges nothing, was being recorded ambiguous and " +
+        "PERMANENTLY poisoning the idempotency key — topping up and retrying met " +
+        "ActionAmbiguousError forever, telling the operator to reconcile against " +
+        "a provider that never heard of the request. It failed SAFE (no double " +
+        "send, no money moved) but was an operational dead end on the " +
+        "money-spending path. Both physical-mail transports route through it, and the " +
         "BULK-MAIL path (routes-campaigns.ts — highest volume and spend) now " +
         "passes a durable `mailing-order:{orderId}:lead:{leadId}` key. REMAINING " +
         "GAP: two send sites stay unprotected — apiQueue.ts (unreachable today, " +

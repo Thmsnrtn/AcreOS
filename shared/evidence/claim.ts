@@ -485,9 +485,25 @@ export function resolveClaims(
     };
   }
 
+  // Resolve ONLY claims about the predicate that was asked for.
+  //
+  // The caller is expected to have filtered already (`claimsForPredicate` does),
+  // so this is belt-and-braces — but the failure mode it removes is the worst
+  // kind available here. Handed a mixed claim set, the grouping below would read
+  // an APN and an acreage as two rival answers for the flood zone and return
+  // `conflict`: a confident, user-visible, entirely FABRICATED disagreement
+  // between sources that never disagreed. A safety property that depends on
+  // every caller remembering a convention is not a safety property, and
+  // "no fabrication" is not a rule a pure function should delegate upward.
+  //
+  // Filtering is the right response rather than throwing: it yields the CORRECT
+  // answer for the predicate asked about, where a throw would turn a caller's
+  // extra rows into a 500 on a read path.
+  const forPredicate = claims.filter((c) => c.predicate === predicate);
+
   // Never resolve using claims we had not fetched yet at `asOf`. This is the
   // whole of as-of reconstruction.
-  const visible = claims.filter((c) => c.fetchedAt.getTime() <= asOf.getTime());
+  const visible = forPredicate.filter((c) => c.fetchedAt.getTime() <= asOf.getTime());
 
   // A `null` value means "the source was asked and had no answer". Those claims
   // are evidence OF ABSENCE and must not become a candidate value.
