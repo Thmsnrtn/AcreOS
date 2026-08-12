@@ -67,10 +67,25 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
    **zero**.
 5. **Governed side effects** — `outward_actions` claim ledger + pure
    execute/replay/refuse classifier + terminal `ambiguous` state, wired into
-   `directMailService.sendLetter`. 22 tests.
+   both mail transports. 22 tests, plus a down-only adoption ratchet.
+6. **Ratchet correction** — the coverage ratchet was measuring the wrong one of
+   two same-named `directMailService` modules; fixed so it cannot be satisfied
+   by a no-op.
+7. **Security** — the `/api/admin` MFA gate protected 2 of 7 surfaces because it
+   was registered below five of them. Moved above all of them, with a
+   source-order regression gate.
 
-Gate state at last commit: `npm run check` PASS, tsc clean, reachability at
-baseline 654, every ratchet at baseline.
+Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
+reachability at baseline 654, every ratchet at baseline, and the **full unit
+suite green — 651 files, 8,455 tests, 1 skipped, 0 failures.**
+
+A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
+ran against the repo during this program. Its most valuable output was the
+adversarial pass: it caught the MFA ordering defect (unit 7), and it correctly
+refuted a large number of its own layer reports, several of which had been
+generated against a tree that this program was actively changing underneath
+them. Treat any inherited "ABSENT" finding as needing re-verification against
+HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 

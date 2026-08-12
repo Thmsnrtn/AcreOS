@@ -78,3 +78,88 @@ history.
 
 **Unblock:** not blocked by anything external — blocked by sequencing. Do
 Opportunity + Relationship first.
+
+---
+
+## B5 — `communications.ts` direct-mail retry can double-print
+
+**What:** `CommunicationsService.sendDirectMailWithRetry` (server/services/
+communications.ts:323) recurses up to `MAX_RETRIES = 3` around
+`lobService.sendLetter`. `lobService` catches provider errors internally and
+returns `{ success: false, errorType }`, so a network failure *after* Lob
+accepted the letter is classified retryable and the code sends again. That is a
+real double-print path, and it is the exact scenario `outward_actions` was built
+for.
+
+**Why not fixed in this session:** two reasons, both about doing it right rather
+than fast.
+
+1. **Key semantics are a product decision.** A key of `lead:{id}` blocks a
+   deliberate second mailing to the same lead months later. A key of
+   `lead:{id}+contentHash` blocks re-sending the *identical* letter — arguably
+   correct, arguably not. Choosing wrong silently suppresses mail a customer
+   meant to send, which is a worse failure than the one being fixed.
+2. **Availability posture on a money path.** `withOutwardAction` writes to the
+   database before the provider call. If that write fails, mail that previously
+   would have sent now fails. Whether the boundary should fail-open or
+   fail-closed on *its own* infrastructure is a founder call, not an
+   implementation detail.
+
+**A safe interim exists:** thread a key generated once at the top of
+`sendDirectMail` through the recursion. Retries within the chain are then
+deduped (the live bug is fixed) while a later deliberate re-send generates a new
+key (no behaviour change). It protects the in-process chain only, which is
+exactly the scope of the bug, since process death ends the chain anyway.
+
+**Unblock:** founder answer on (1) and (2). The interim above needs neither and
+could ship first.
+
+---
+
+## B6 — the direct-mail recovery queue can never drain
+
+**What:** `communications.ts:438` enqueues
+`apiQueueService.enqueue('lob', 'sendLetter', …)` when direct-mail retries are
+exhausted. `apiQueue.executeJob` handles **only** `operation === 'sendPostcard'`
+for `type === 'lob'` (server/services/apiQueue.ts:168) and throws
+`Unknown Lob operation: sendLetter` otherwise. Every such job therefore fails
+its 2 retries and lands in `failed`, permanently.
+
+**Consequence:** the recovery path for mail that failed all three send attempts
+is dead. Nothing is lost silently — the jobs are visibly `failed` — but the
+recovery they exist to perform never happens.
+
+**Why not fixed in this session:** implementing `sendLetter` in `executeJob`
+would make previously-dead jobs start printing physical mail. Dormant sends
+firing on deploy is precisely the class of change that must not be made blind,
+without a database to inspect the existing `api_jobs` backlog.
+
+**Unblock:** inspect the `api_jobs` backlog for `type='lob'` rows, decide
+whether any should still be sent, then implement the operation. The
+outward-action boundary should be applied at the same time — `job.id` is the
+natural idempotency key, since the queue retries that exact row.
+
+---
+
+## B7 — findings from the reconnaissance sweep, recorded not actioned
+
+Verified by the adversarial pass and left for a later unit:
+
+- **`costBasisTracker.ts` and `taxOptimizationEngine.ts` have zero callers.**
+  `routes.ts:2166` records why: *"routes-tax-optimization deleted 2026-07-29
+  (Nothing-lies wave A)"*. The `cost_basis` table itself is real, migrated and
+  org-scoped — it is the closest thing the repo has to a **Holding**, which
+  makes it a MIGRATE candidate rather than a DELETE one.
+- **`registerPublicApiV1` has zero callers**, and `routes-api-keys.ts` is
+  orphaned (the repo's own `routeManifest.ts` says so). Plausibly deliberate
+  under the "no public API before ~50 customers" expansion gate — worth
+  confirming rather than assuming.
+- **`parcel_snapshots` has no index array** yet is read on `(state, county,
+  apn)` and `(source, sourceId)`.
+- **`notes_receivable` has zero inserts** repo-wide and is read by
+  `kpiStreamingService.ts`.
+- **`properties` has no unique `(organizationId, apn)`** — the identity
+  constraint the Reality Graph work will need.
+- **Two same-named mail transports** (`directMail.ts` class vs
+  `directMailService.ts` functions) — see `ARCHITECTURE_DELTA.md`, disposition
+  MERGE.
