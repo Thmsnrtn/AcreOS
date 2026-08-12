@@ -9062,6 +9062,45 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_subject_idx" ON "decision_snapshots" ("organization_id", "subject_type", "subject_id", "decided_at")`,
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_decided_idx" ON "decision_snapshots" ("organization_id", "decided_at")`,
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_kind_idx" ON "decision_snapshots" ("organization_id", "kind", "decided_at")`,
+
+  // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
+  // ONE new table — scripts/ratchets/table-count.json 758 -> 759. Mirrors
+  // migrations/0229_outward_actions.sql + shared/schema/outward-actions.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: canonical law 8 + BI74 place idempotency
+  // at the ACTION/PROVIDER boundary. server/middleware/idempotency.ts is
+  // HTTP-REQUEST-scoped and protects a client retrying a POST; it does nothing
+  // for the case that costs money — a background JOB retrying after a partial
+  // success, which never passes through an HTTP request.
+  // directMailService.sendLetter() deducts credits, posts the piece cost to the
+  // ledger, then calls Lob; a crash between Lob accepting and the result being
+  // recorded makes the retry deduct credits AGAIN, post cost AGAIN, and print a
+  // SECOND physical letter to a real seller. preMailDedupe.ts does not catch it
+  // (audience policy, not retry safety).
+  //
+  // The UNIQUE (organization_id, action_kind, idempotency_key) index IS the
+  // mechanism: INSERT ... ON CONFLICT DO NOTHING means exactly one caller wins.
+  // Unlike evidence_claims / decision_snapshots this table is MUTABLE, because
+  // it is operational state rather than history (BI76 — claims, receipts,
+  // decisions and outcomes are different things). The 'ambiguous' status is
+  // terminal and refuses retry (AU28): a timeout after the request left is
+  // neither success nor failure, and guessing is how a second letter gets
+  // printed.
+  `CREATE TABLE IF NOT EXISTS "outward_actions" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "action_kind" text NOT NULL,
+    "idempotency_key" text NOT NULL,
+    "request_hash" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'in_flight',
+    "external_id" text,
+    "attempts" integer NOT NULL DEFAULT 1,
+    "last_error" text,
+    "claimed_at" timestamp NOT NULL DEFAULT now(),
+    "completed_at" timestamp
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "outward_actions_org_kind_key_uk" ON "outward_actions" ("organization_id", "action_kind", "idempotency_key")`,
+  `CREATE INDEX IF NOT EXISTS "outward_actions_org_status_idx" ON "outward_actions" ("organization_id", "status", "claimed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

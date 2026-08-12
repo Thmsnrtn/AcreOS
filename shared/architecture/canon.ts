@@ -681,16 +681,27 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
     enforcement: {
       kind: "partial",
       refs: [
-        "server/middleware/idempotency.ts",
+        "server/services/actions/outwardAction.ts",
+        "shared/schema/outward-actions.ts",
+        "tests/unit/outwardActionIdempotency.test.ts",
+        "tests/unit/outwardActionCoverage.test.ts",
         "server/services/autopilot/proofReceipt.ts",
         "server/services/customerMoneyRouting.ts",
         "tests/unit/moneyCustodyHardStop.test.ts",
+        "server/middleware/idempotency.ts",
       ],
       note:
-        "Money custody is hard-gated and the founder plane has hash-chained receipts, " +
-        "but idempotency is an HTTP-REQUEST-level middleware, not an ACTION/provider " +
-        "boundary key (BI74). emailService, smsService, lobService and " +
-        "directMailService carry no idempotency key, so a retried job can double-send.",
+        "The ACTION/provider-boundary primitive now exists (BI74): `outward_actions` " +
+        "keyed uniquely on (org, kind, key) with an atomic INSERT ... ON CONFLICT " +
+        "claim, a pure execute/replay/refuse classifier, and a terminal `ambiguous` " +
+        "state that refuses retry after an unknown outcome (AU28) rather than " +
+        "guessing. directMailService.sendLetter routes through it. REMAINING GAP, " +
+        "and it is the whole gap: NO CALL SITE passes an idempotencyKey yet — four " +
+        "physical-mail sites are still unprotected, including a RETRY QUEUE " +
+        "(apiQueue.ts), which is the exact shape of the defect. Email, SMS and " +
+        "e-sign are not covered by the boundary at all. " +
+        "tests/unit/outwardActionCoverage.test.ts holds the unprotected count " +
+        "down-only so adoption is measured rather than assumed.",
     },
   },
   {

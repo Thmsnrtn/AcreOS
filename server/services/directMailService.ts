@@ -39,6 +39,22 @@ interface SendLetterOptions {
   doubleSided?: boolean;
   skipCredits?: boolean;
   useType?: 'marketing' | 'operational';
+  /**
+   * Stable key for THIS logical letter, derived from durable domain identity
+   * (a campaign piece id, a note-payment notice id) — never a random value,
+   * which would defeat the mechanism on the retry it exists to protect.
+   *
+   * When supplied, the credit deduction, the Lob call and the ledger posting
+   * all happen at most once per key: a job that dies after Lob accepted the
+   * letter cannot deduct credits again, post cost again, and print a SECOND
+   * physical letter to a real seller. See
+   * server/services/actions/outwardAction.ts.
+   *
+   * Optional so existing callers keep working unchanged. The count of send
+   * sites that DON'T pass one is ratcheted down by
+   * tests/unit/outwardActionCoverage.test.ts.
+   */
+  idempotencyKey?: string;
 }
 
 interface SendResult {
@@ -319,7 +335,74 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
   }
 }
 
+/**
+ * Print and mail a physical letter.
+ *
+ * When `options.idempotencyKey` is present this runs through the outward-action
+ * boundary, so the whole consequential body — credit deduction, the Lob call
+ * and the ledger posting — happens at most once per key. On a replay it THROWS
+ * `LetterAlreadySentError` carrying the real Lob id rather than returning a
+ * fabricated SendResult: we do not know the original expected-delivery date at
+ * replay time, and inventing one would be exactly the fabrication
+ * scripts/check-no-fabrication.mjs exists to prevent.
+ */
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
+  if (!options.idempotencyKey) return performLetterSend(options);
+
+  const { withOutwardAction } = await import("./actions/outwardAction");
+  return withOutwardAction<SendResult>(
+    {
+      organizationId: options.organizationId,
+      actionKind: "physical_mail.letter",
+      idempotencyKey: options.idempotencyKey,
+      // Everything that materially defines the piece. Reusing the key with
+      // different content must be caught, not silently suppressed.
+      payload: {
+        recipientName: options.recipientName,
+        recipientAddress: options.recipientAddress,
+        senderIdentity: options.senderIdentity,
+        htmlContent: options.htmlContent,
+        color: options.color ?? false,
+        doubleSided: options.doubleSided ?? false,
+        useType: options.useType ?? 'marketing',
+      },
+    },
+    async () => {
+      try {
+        const result = await performLetterSend(options);
+        return { status: "succeeded", externalId: result.lobId, result };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        // performLetterSend throws only from paths that ran BEFORE Lob accepted
+        // anything (credit refusal, client config) or from the Lob call itself.
+        // The Lob call is the ambiguous one: a network failure there may or may
+        // not have printed a letter, so it is deliberately NOT classified
+        // "failed" — withOutwardAction records an unclassified throw as
+        // AMBIGUOUS, which refuses retry until someone reconciles.
+        throw error;
+      }
+    },
+    (externalId) => {
+      throw new LetterAlreadySentError(options.idempotencyKey!, externalId);
+    },
+  );
+}
+
+/**
+ * Raised when a letter for this idempotency key was already printed. Carries
+ * the real Lob id so the caller can record the send instead of repeating it.
+ */
+export class LetterAlreadySentError extends Error {
+  constructor(readonly idempotencyKey: string, readonly lobId: string | null) {
+    super(
+      `Letter for idempotency key "${idempotencyKey}" was already sent` +
+        (lobId ? ` (Lob id ${lobId})` : "") +
+        `. Not printing a second copy.`,
+    );
+  }
+}
+
+async function performLetterSend(options: SendLetterOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing' } = options;
 
   logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);

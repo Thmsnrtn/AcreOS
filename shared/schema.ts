@@ -18580,3 +18580,9 @@ export * from "./schema/evidence";
 // authority, and the Strategy Pack version in force. Immutable by contract:
 // later evidence and later outcomes append context, they never rewrite it.
 export * from "./schema/decision-snapshots";
+
+// The consequential-action claim ledger (canonical law 8, BI74). One row per
+// logical outward action under a unique (org, kind, key) index — the atomic
+// claim that stops a retried job double-sending. Mutable operational state, NOT
+// history: the immutable proof of an action is a receipt, a separate artifact.
+export * from "./schema/outward-actions";

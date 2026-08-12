@@ -65,47 +65,45 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
    checkable, inside `npm run check`. 12 tests run the real script against
    synthetic repos to prove it bites. Drove the unenforced-fitness ratchet to
    **zero**.
+5. **Governed side effects** — `outward_actions` claim ledger + pure
+   execute/replay/refuse classifier + terminal `ambiguous` state, wired into
+   `directMailService.sendLetter`. 22 tests.
 
 Gate state at last commit: `npm run check` PASS, tsc clean, reachability at
 baseline 654, every ratchet at baseline.
 
 ## 4. The next highest-value unblocked task
 
-**Governed side effects — idempotency at the outward action boundary.**
+**Adopt the outward-action boundary at the four unprotected send sites.**
 
-Why it is next: it is the highest-consequence remaining `partial` fitness
-function (real money and real counterparty relationships), and canonical law 8
-depends on it. The canonical dependency chain puts it at layer 6, immediately
-after Decision Memory at layer 5.
+The primitive landed in unit 5 and is adopted at **zero** call sites. That is
+recorded honestly as a ratchet, not as a caveat:
+`tests/unit/outwardActionCoverage.test.ts`,
+`UNPROTECTED_SEND_SITES_BASELINE = 4`.
 
-The precise, verified gap:
+Do them in this order:
 
-- `server/middleware/idempotency.ts` is **HTTP-request-scoped** (an
-  `Idempotency-Key` header, 24h TTL, in-memory fallback). BI74 requires the key
-  at the **Action/provider boundary**, carried through the WorkflowRun.
-- `emailService`, `smsService`, `lobService`, `directMailService` and
-  `mailProvider` carry **no idempotency key at all** — verified by grep. A
-  retried job can double-send. `preMailDedupe.ts` is an *audience* policy
-  (don't mail your own parcel, don't re-mail within 90 days), not retry safety.
-- A genuinely excellent receipt primitive already exists —
-  `server/services/autopilot/proofReceipt.ts`, hash-chained,
-  prediction-sealed, constitution-versioned, TenantScope-attributed — but only
-  on the **founder autopilot plane**. No customer outward action emits one.
+1. **`server/services/apiQueue.ts` — `sendPostcard`.** A *retry queue* calling
+   an unprotected send is the exact shape of the defect, so this is the one
+   that can actually fire today.
+2. **`server/routes-campaigns.ts` — `sendLetter` + `sendPostcard`.** The
+   bulk-mail path: highest volume, highest spend.
+3. **`server/services/communications.ts` — `lobService.sendLetter`.**
 
-Recommended shape (do NOT build a second receipt system):
+Each needs an `idempotencyKey` derived from **durable domain identity** — a
+campaign piece id, a mailing-order piece id — never a random value, which would
+defeat the mechanism on the retry it exists to protect. `mailing_order_pieces`
+already exists and is the natural key source for the campaign path. Lower the
+baseline in the same commit.
 
-1. One durable claim ledger keyed `(orgId, actionKind, idempotencyKey)` with an
-   atomic claim (`INSERT ... ON CONFLICT DO NOTHING`), so a retry after a
-   partial success returns the recorded result instead of re-sending.
-2. Handle the **ambiguous outcome** explicitly (AU28): provider timeout after
-   the request left is neither success nor failure and must not silently retry.
-3. Wire the highest-consequence path first — physical mail via Lob costs real
-   money per piece.
-4. Add a ratchet enumerating outward-send call sites and holding the
-   *unprotected* count down-only. That is the compounding part: it converts
-   BL3's "governed side effects" from prose into a number that must shrink.
+Then widen `PROTECTABLE_SENDS` to cover email, SMS and e-sign, which the ratchet
+does not count yet and which its header says so explicitly.
 
-Note the table-count ratchet is strict down-only (currently 758, north star
+After that, the dependency chain says **Scenario** (layer 4) — a persisted,
+versioned economic hypothesis, so a decision can freeze a reference to the
+economics as well as the evidence. See `MASTER_PLAN.md` §5.
+
+Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in
 `scripts/ratchets/table-count.json`.
 

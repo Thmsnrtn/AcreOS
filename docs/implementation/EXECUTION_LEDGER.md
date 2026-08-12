@@ -231,3 +231,70 @@ baseline stays at 0 — a new fitness function may only be registered *with*
 enforcement.
 
 **Gates:** `npm run check` PASS (now 22 lints).
+
+---
+
+## Unit 5 — Governed side effects: action-boundary idempotency · this commit
+
+**Audit requirement:** canonical law 8, BI74 (idempotency at the action/provider
+boundary), BI75 (receipts), BK36 (Audit 034 "Idempotency & Side-Effect Safety"),
+AU28 (ambiguous outcome), BI148 SLO "no duplicate consequential action after
+retry".
+
+**Premise verified first — and it is a concrete money-losing defect, not a
+theoretical one.** `server/middleware/idempotency.ts` is HTTP-request-scoped: an
+`Idempotency-Key` header, 24h TTL, in-memory fallback. It protects a *client*
+retrying a POST. It does nothing for the case that costs money — a background
+**job** retrying after a partial success, which never passes through an HTTP
+request. `directMailService.sendLetter()` deducts credits, posts the Lob piece
+cost to the ledger, then calls Lob; a crash between Lob accepting the letter and
+the result being recorded makes the retry deduct credits again, post cost again,
+and **print a second physical letter to a real seller**. `preMailDedupe.ts` does
+not catch it — that is an audience policy, not retry safety.
+
+**Files:** `shared/schema/outward-actions.ts`,
+`migrations/0229_outward_actions.sql`, `scripts/migrate.mjs` (mirror),
+`server/services/actions/outwardAction.ts`,
+`server/services/directMailService.ts` (wiring),
+`shared/schema.ts` (barrel), `scripts/ratchets/table-count.json` (758→759),
+`shared/architecture/canon.ts`.
+
+**Tests:** 22 pass (18 semantics + 4 coverage).
+
+**Architectural decisions:**
+- **The classifier is pure.** `classifyExisting(existing, hash)` is the entire
+  safety property, and a property that can only be tested against a live
+  database is one that will not be tested. The branches that matter most — a
+  concurrent in-flight claim, an unknown outcome, a key reused with different
+  content — are one-liners in the test.
+- **`ambiguous` is terminal and refuses.** AU28: a timeout *after* the request
+  left is neither success nor failure. Most implementations treat it as failure
+  and retry, which is exactly how a double-send happens.
+- **An unclassified throw records `ambiguous`, not `failed`.** The conservative
+  reading of "we don't know what happened" is the one that does not double-send.
+- **Payload-hash mismatch is checked before status.** A reused key is a caller
+  bug in every status; replaying a stale success for new content would silently
+  *suppress* a send the caller wanted.
+- **This table is deliberately MUTABLE**, unlike `evidence_claims` and
+  `decision_snapshots`. It is operational state, not history. BI76: claims,
+  receipts, decisions and outcomes are different things and must not collapse
+  into one log. The immutable proof remains a receipt.
+- **Replay throws rather than fabricating a `SendResult`.** The original
+  expected-delivery date is unknown at replay time, and inventing one is exactly
+  what `check-no-fabrication.mjs` exists to prevent.
+
+**Remaining risk, stated as a number rather than a caveat:** the primitive is
+available and **adopted at zero call sites**.
+`tests/unit/outwardActionCoverage.test.ts` holds `UNPROTECTED_SEND_SITES_BASELINE
+= 4` down-only — routes-campaigns (×2), apiQueue (a *retry queue* calling an
+unprotected send, the exact defect shape), and communications. Email, SMS and
+e-sign are not covered by the ratchet at all, and the test says so in its own
+header rather than implying coverage it does not have.
+
+**Correction made during the unit:** the first baseline said 5 and named
+`mail/providers/lob.ts`. Running the scanner showed 4, and that file calls
+`directMail.ts`, a different module. Baseline and comment corrected to the
+verified truth.
+
+**Gates:** `npm run check` PASS (22 lints) · reachability at baseline 654 · all
+ratchets at baseline · 22/22 new tests.
