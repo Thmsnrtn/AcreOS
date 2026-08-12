@@ -587,26 +587,42 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Create a task
-  app.post("/api/va/tasks", ...auth, (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const task = vaManagement.createTask({ ...req.body, organizationId: org.id });
-      res.json(task);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
+  // Create a task — REFUSED, because it never stored one.
+  //
+  // `vaManagement.createTask` is a PURE FUNCTION: it stamps an id and
+  // timestamps onto its input and returns the object. Nothing persisted it.
+  // `VA_TASKS_KEY = "va_tasks"` is declared in that module and never used, and
+  // no code anywhere in the repo writes `settings.va_tasks` — the only write is
+  // a jsonb_set inside `/api/va/tasks/:id/verify`, which read-modify-writes an
+  // array nothing ever populates.
+  //
+  // So this returned 200 with a task-shaped object that existed only in the
+  // response body. A caller could not tell a stored record from a fabricated
+  // one, which is the whole reason 501 is the honest answer and 200 was not.
+  // See BLOCKERS B9 — building the persistence layer, or removing the
+  // subsystem, is a founder decision; continuing to claim a save is not.
+  app.post("/api/va/tasks", ...auth, (_req: Request, res: Response) => {
+    return Errors.notImplemented(
+      res,
+      "VA tasks are not stored. There is no persistence layer behind this " +
+        "endpoint — no code writes organizations.settings.va_tasks — so a task " +
+        "created here would exist only in this response. See BLOCKERS B9.",
+    );
   });
 
-  // Update a task
-  app.put("/api/va/tasks/:id", ...auth, (req: Request, res: Response) => {
-    try {
-      const { task, updates } = req.body;
-      const updated = vaManagement.updateTask(task, updates);
-      res.json(updated);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
+  // Update a task — REFUSED for the same reason, and one more.
+  //
+  // It took `{ task, updates }` FROM THE REQUEST BODY, merged them in memory
+  // and returned the result. It never read or wrote storage, and it ignored
+  // `:id` entirely — the caller supplied the record it was "updating", so the
+  // endpoint was a merge function with a URL.
+  app.put("/api/va/tasks/:id", ...auth, (_req: Request, res: Response) => {
+    return Errors.notImplemented(
+      res,
+      "VA tasks are not stored, so there is nothing here to update. This " +
+        "endpoint merged two objects from the request body and ignored :id " +
+        "entirely. See BLOCKERS B9.",
+    );
   });
 
   logger.info("✅ Elite feature routes registered");

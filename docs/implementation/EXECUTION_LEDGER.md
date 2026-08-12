@@ -3441,3 +3441,69 @@ because the assertion only checked that it was set *after* the call, and the
 catch block is also after the call. Strengthened to require it inside the `try`
 body, then the mutation fails. The mutation was verified to have applied before
 that conclusion was drawn, which is the only reason the weak assertion surfaced.
+
+---
+
+## Unit 49 — A create that stored nothing, returning 200 · this commit
+
+**Files:** `server/utils/errors.ts`, `server/routes-elite-features.ts`,
+`docs/implementation/BLOCKERS.md` (B9),
+`tests/unit/vaTaskPersistence.test.ts` (new, 7 tests).
+
+### Found by pointing unit 48's question at the rest of the blob
+
+Unit 48 asked *"does anything read this back?"* of `va_escalations`. Asking it
+of the neighbouring keys found something larger: **the VA task subsystem does
+not work end to end**, and two of its routes said otherwise.
+
+`vaManagement.createTask` is a **pure function** — it stamps an id and
+timestamps onto its input and returns the object. `POST /api/va/tasks` returned
+that object with a 200. Nothing persisted it, and nothing could:
+`VA_TASKS_KEY = "va_tasks"` is declared in that module and **never used**, with
+a `SOP_LIBRARY_KEY` beside it in the same state. Those two constants are the
+persistence layer that was never written.
+
+`PUT /api/va/tasks/:id` was worse in a second way: it took `{ task, updates }`
+**from the request body**, merged them in memory, returned the result, and
+**ignored `:id` entirely**. The caller supplied the record it was "updating". A
+merge function with a URL.
+
+Everything downstream inherits it — `/api/va/metrics` and `/api/va/audit-trail`
+compute over an array nothing populates, `/api/va/tasks/:id/verify` can never
+find a task, and `GET /api/va/scheduled` reads a key with **exactly one
+reference in the entire repository**, that read. No client calls any of them.
+
+### What was fixed, and the line drawn
+
+A caller could not tell a stored record from a fabricated one. That is the
+constitution's fabrication rule at the API boundary, and removing it is not a
+product decision — so both writes now refuse with **501** and a message naming
+what is missing.
+
+`Errors.notImplemented` was added for it. `badRequest` would blame the caller's
+input and `serviceUnavailable` would promise it works again later; neither is
+true. Same justification as unit 41's `Errors.unprocessable`, and the
+`res-status-raw` ratchet stays at baseline rather than being raised.
+
+**Nothing else was touched.** Building persistence means a table, a migration
+and a UI; removing the subsystem means deleting six reachable API routes. Both
+are founder decisions (**BLOCKERS B9**), and either would discard a refusal
+written in the meantime.
+
+The read routes were left alone **deliberately**: `[]` and zeros are accurate
+for an empty collection. What is wrong is that the collection can never be
+non-empty — the same decision, not a separate defect. Asserting them broken
+would be asserting a product opinion.
+
+### The test guards the premise in both directions
+
+It pins the refusals, and it pins **why** they are correct: `VA_TASKS_KEY` used
+exactly once (its declaration), `createTask` still reaching no storage, and
+`settings.va_tasks` having exactly one writer. Each of those failing means the
+subsystem may have grown persistence — at which point the message says to
+replace the refusals with the real implementation rather than leave them.
+
+### Verification
+
+Three mutations, each caught: restoring the lying 200; `createTask` beginning to
+persist; and a new writer of `settings.va_tasks` appearing.

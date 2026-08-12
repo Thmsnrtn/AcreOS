@@ -124,6 +124,22 @@ export const Errors = {
   },
 
   /**
+   * 501 for an endpoint that exists but does not do the thing it names.
+   *
+   * Reserved for a route whose backing implementation is genuinely absent — not
+   * for a temporary outage (`serviceUnavailable`) and not for bad input
+   * (`badRequest`). Returning 200 with a plausible object instead is the
+   * failure this exists to replace: a caller cannot tell a stored record from a
+   * fabricated one, and every downstream decision inherits the lie.
+   *
+   * The message must name WHAT is missing, so the response is actionable rather
+   * than merely honest.
+   */
+  notImplemented(res: Response, message: string, opts?: ErrorOptions): void {
+    sendError(res, 501, "NOT_IMPLEMENTED", message, undefined, buildDocsUrl(opts));
+  },
+
+  /**
    * 422 for a request that is perfectly well-formed but cannot be carried out
    * in the system's current state — as distinct from `badRequest` (the input is
    * wrong) and `validationFailed` (named fields are wrong). The caller has

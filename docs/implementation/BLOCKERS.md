@@ -225,3 +225,57 @@ Do not wire the five uncalled convenience wrappers
 this is decided. Adding emitters to the legacy rail is precisely the change that
 would make it expensive to retire — and `webhookEventCatalogue.test.ts` will
 force the catalogue to admit it the moment anyone does.
+
+---
+
+## B9 — The VA task subsystem does not work, end to end
+
+**Found:** unit 48→49, by following unit 48's question ("does anything read this
+back?") across the rest of `organizations.settings`.
+**Blocked on:** a founder decision — build the persistence layer, or remove the
+subsystem. Not a technical unknown; every fact below is verified at HEAD.
+
+### `organizations.settings.va_tasks` has NO CREATOR anywhere
+
+`services/vaManagement.ts` declares `const VA_TASKS_KEY = "va_tasks"` — and
+**never uses it**. `SOP_LIBRARY_KEY` beside it is likewise declared and unused.
+Those two constants are the persistence layer that was never written.
+
+The only write to the key in the entire repo is a `jsonb_set` inside
+`POST /api/va/tasks/:id/verify`, which read-modify-writes an array that nothing
+ever populates.
+
+### What each route actually does
+
+| route | what it does | what it looks like |
+|---|---|---|
+| `POST /api/va/tasks` | `createTask` is a **pure function** — stamps an id and timestamps and returns the object. Nothing saved. | 200 with a task-shaped body |
+| `PUT /api/va/tasks/:id` | takes `{ task, updates }` **from the request body**, merges them in memory, returns the result. Never touches storage. **Ignores `:id` entirely.** | 200 with an updated task |
+| `GET /api/va/metrics` | computes over `settings.va_tasks`, which is always `[]` | zeros, reading as measurements |
+| `GET /api/va/audit-trail` | same array | an empty trail |
+| `POST /api/va/tasks/:id/verify` | read-modify-writes that array | can never find a task |
+| `GET /api/va/scheduled` | reads `settings.va_scheduled_tasks` — **one reference in the whole repo**, this read. No writer exists. | always `[]` |
+
+**No client caller for any of them.** `command-center.tsx` calls a different VA
+route family (`/api/va/agents`, `/api/va/actions`, `/api/va/briefings/latest`).
+
+### What unit 49 changed, and what it deliberately did not
+
+The two routes that **claimed a save** now refuse with 501 and a message naming
+what is missing. A caller could not previously tell a stored record from a
+fabricated one, and that is not a product decision — it is a lie, and removing
+it is in scope.
+
+Everything else is left alone. Building persistence means a table, a migration
+and a UI; removing the subsystem means deleting six reachable API routes. **Both
+are the founder's call**, and either would discard a refusal written in the
+meantime, so nothing further was invented.
+
+The read-side routes were NOT changed: `[]` and zeros are accurate for an empty
+collection. What is wrong there is that the collection can never be non-empty,
+which is the same decision above rather than a separate defect.
+
+### The related item
+
+`va_scheduled_tasks` should be resolved with this one. A read with no writer
+anywhere is the same subsystem's other half, and the same two answers apply.

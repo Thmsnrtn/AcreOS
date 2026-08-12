@@ -389,12 +389,15 @@ the log is bounded at 200. **The retention trim is safe only because delivery
 now happens elsewhere** — which is exactly why unit 47 declined to cap it, and
 the ordering is asserted rather than commented.
 
-`va_tasks` and `va_scheduled_tasks` still deserve the type declaration (unit 43's
-rule — a field outside its column's type cannot be carried by a typed write and
-can be erased by one), and `services/vaManagement.ts` should be read first since
-it owns the `va_tasks` key and a `sop_library` key beside it. `va_tasks` uses an
-atomic `jsonb_set` write (a 2026-07 audit fixed its read-modify-write race) —
-preserve that.
+**`va_tasks` and `va_scheduled_tasks` turned out to be a much bigger finding
+than a typing gap — see BLOCKERS B9 (unit 49).** The VA task subsystem does not
+work end to end: `VA_TASKS_KEY` is declared and never used, `createTask` is a
+pure function whose result was returned with a 200 and never saved, and
+`PUT /api/va/tasks/:id` merged two client-supplied objects and ignored `:id`.
+Both writes now refuse with 501; everything else waits on a founder decision to
+build the persistence layer or remove the subsystem. **Do not add the type
+declarations as a tidy-up** — declaring a shape for a collection nothing creates
+would make the subsystem look more finished than it is.
 
 `vaWorkflowBounds.test.ts` pins all three as still reached through `as any`, with
 an INVERTED assertion that fails the day one is fixed — so the work announces
