@@ -672,20 +672,35 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "with no path from computeScenario to a model call, pinned by a test that " +
         "greps the module for model/fetch references, so BL3's fail condition (\"a " +
         "model response is required to reproduce a financial result\") is " +
-        "structurally impossible there. FOUR structurally different engines are " +
+        "structurally impossible there. FIVE structurally different engines are " +
         "registered — land_deal (cash-flow series), note_payoff (date-driven " +
-        "day-count accrual), flip_mao (MAO net of closing and carry) and " +
-        "rental_returns (NOI, cap rate, cash flow, GRM) — which is what BI191 " +
-        "actually asks for: a land-only implementation exposing generic labels does " +
-        "not satisfy the architecture. They share ONE metric vocabulary, so flip and " +
-        "rental deliberately REUSE profit/roi/total_cost and a flip, a hold and a " +
-        "land deal stay comparable (BI92). Every engine DELEGATES to the arithmetic " +
+        "day-count accrual), flip_mao (MAO net of closing and carry), " +
+        "rental_returns (single-asset NOI, cap rate, cash flow, GRM) and " +
+        "multifamily_noi (operated-asset NOI, cap rate, DSCR, expense ratio) — " +
+        "which is what BI191 actually asks for: a land-only implementation exposing " +
+        "generic labels does not satisfy the architecture. They share ONE metric " +
+        "vocabulary, so flip and rental REUSE profit/roi/total_cost and multifamily " +
+        "REUSES annual_noi/cap_rate/monthly_cash_flow, keeping a flip, a hold and a " +
+        "land deal comparable (BI92) — while multifamily deliberately does NOT reuse " +
+        "total_cost, because its denominator is a valuation and a held building's " +
+        "market value is not what it cost. Every engine DELEGATES to the arithmetic " +
         "that already owns it rather than reimplementing it, and an engine may " +
-        "DECLARE its own assumptions — rental_returns names its 40%-of-rent expense " +
-        "substitution as a platform-default rather than letting it vanish into a " +
-        "measured-looking NOI. REMAINING GAP: BRRRR and multifamily NOI still " +
-        "compute inline, outside the registry, so a share of the product's " +
-        "financial numbers remain unversioned and unpersisted.",
+        "DECLARE its own assumptions: rental_returns names its 40%-of-rent expense " +
+        "substitution as a platform-default, and multifamily_noi separates a " +
+        "platform ratio from an operator's own override, flags a thin ledger as " +
+        "partial coverage, and names an assessed valuation as a non-market " +
+        "denominator. multifamily_noi is also the first engine that REFUSES: an " +
+        "unmeasured commercial building yields null op-ex, NOI, cap rate and " +
+        "expense ratio rather than a fabricated 40%-of-rent figure. " +
+        "REMAINING GAP — ADOPTION, not capability: every engine is reachable " +
+        "through POST /api/scenarios, but no client surface calls it (verified " +
+        "2026-08-12: zero references to /api/scenarios under client/src). The " +
+        "customer-facing calculators still compute these numbers for DISPLAY and " +
+        "persist nothing, so a figure a customer acted on is reconstructable only " +
+        "where a decision happened to freeze a scenario reference. " +
+        "(Corrected 2026-08-12: an earlier revision of this note claimed BRRRR " +
+        "computed inline. It does not exist in this repo at all — the string " +
+        "appears nowhere outside this file. The live repo wins over a plan.)",
     },
   },
   {

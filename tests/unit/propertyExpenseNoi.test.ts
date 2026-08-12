@@ -34,6 +34,7 @@ import path from "path";
 import {
   summarizeMeasuredOpEx,
   isMeasuredCoverageComplete,
+  computeNoi,
   ASSUMED_OPEX_BPS,
   type MeasurableExpenseRow,
 } from "../../shared/rental/noi";
@@ -237,11 +238,26 @@ describe("the route wires the measured op-ex correctly", () => {
   });
 
   it("cap rate is built from the resulting NOI, which is null when op-ex is unavailable", () => {
-    // NOI/cap rate fall away (null) rather than being fabricated when op-ex is
-    // unavailable — an unmeasured commercial property.
-    expect(INV_CODE).toMatch(/noiMonthly = opExMonthly !== null \? monthlyRentCollected - opExMonthly : null/);
-    expect(INV_CODE).toMatch(/noiAnnual = noiMonthly !== null \? noiMonthly \* 12 : null/);
+    // REWRITTEN (not deleted) when the `multifamily_noi` scenario engine landed.
+    // The subtraction used to be an inline ternary here and was pinned by
+    // grepping for it. Registering the engine gave `collections - opEx` a second
+    // caller, so it was extracted to shared/rental/noi.ts:computeNoi — the same
+    // move decideOperatingExpense made in Wave 4, and for the same reason.
+    //
+    // The INVARIANT this test has always existed to protect is unchanged: NOI
+    // and cap rate fall AWAY (null) rather than being fabricated when op-ex is
+    // unavailable — an unmeasured commercial property. It is now asserted
+    // BEHAVIOURALLY against the extracted function rather than by matching a
+    // source expression, so it cannot go stale the next time the code moves.
+    expect(INV_CODE).toContain("computeNoi({");
     expect(INV_CODE).toMatch(/noiAnnual \/ marketValue/);
+
+    // A null op-ex propagates to a null NOI — NOT to an NOI equal to rent.
+    expect(computeNoi({ monthlyRentCollectedCents: 500_000, opExMonthlyCents: null }))
+      .toEqual({ noiMonthlyCents: null, noiAnnualCents: null });
+    // And a known op-ex still subtracts and annualises exactly as before.
+    expect(computeNoi({ monthlyRentCollectedCents: 500_000, opExMonthlyCents: 200_000 }))
+      .toEqual({ noiMonthlyCents: 300_000, noiAnnualCents: 3_600_000 });
   });
 
   it("exposes opExMonthsCovered (coverage completeness) on the payload", () => {

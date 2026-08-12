@@ -184,6 +184,35 @@ export const METRICS: readonly MetricSpec[] = [
     unit: "ratio",
     higherIsBetter: false,
   },
+
+  // ── Multifamily / operated-asset metrics ──
+  // The multifamily engine REUSES annual_noi, cap_rate, monthly_cash_flow and
+  // gross_rent_multiplier — the quantities are the same ones a single rental
+  // produces, and minting twins would break the cross-strategy comparison BI92
+  // asks for. It does NOT reuse `total_cost`: its denominator is a VALUATION,
+  // and a held building's market value is not what it cost. Only the three
+  // quantities below are genuinely new.
+  {
+    id: "annual_operating_expense",
+    label: "Annual operating expense",
+    unit: "cents",
+    higherIsBetter: false,
+  },
+  {
+    id: "operating_expense_ratio",
+    label: "Operating expense ratio",
+    unit: "ratio",
+    higherIsBetter: false,
+  },
+  {
+    // NOI over debt service. Written from the AcreOS customer's perspective
+    // (the owner), for whom more coverage is better — the same perspective rule
+    // the note metrics above are written under.
+    id: "dscr",
+    label: "Debt service coverage ratio",
+    unit: "ratio",
+    higherIsBetter: true,
+  },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
@@ -467,6 +496,42 @@ export function requireNumber(
     );
   }
   return v;
+}
+
+/**
+ * An OPTIONAL money input: the integer cents, or null when the caller omitted
+ * it. Absence stays absence — it is never coerced to 0, because for most of
+ * these engines a zero and an unknown lead to very different numbers (an
+ * omitted expense figure means "unknown", and an operating expense of zero
+ * would produce an NOI equal to gross rent).
+ */
+export function optionalCents(
+  inputs: Record<string, number | string>,
+  key: string,
+): number | null {
+  return inputs[key] === undefined ? null : requireCents(inputs, key);
+}
+
+/**
+ * A string input constrained to a known set — a basis, a class, a convention.
+ *
+ * Refused rather than defaulted, for the same reason `requireIsoDate` refuses a
+ * malformed date: silently falling back to the first allowed value would make
+ * an unrecognised discriminator produce a confident number computed under a
+ * basis the caller never chose.
+ */
+export function requireOneOf<T extends string>(
+  inputs: Record<string, number | string>,
+  key: string,
+  allowed: readonly T[],
+): T {
+  const v = inputs[key];
+  if (typeof v !== "string" || !(allowed as readonly string[]).includes(v)) {
+    throw new ScenarioEngineError(
+      `Scenario input "${key}" must be one of: ${allowed.join(", ")}`,
+    );
+  }
+  return v as T;
 }
 
 /** An ISO-8601 date input. Refused rather than defaulted when malformed. */

@@ -100,6 +100,10 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     assumptions: only the engine knows it substituted a 40%-of-rent expense
     ratio, and without a way to say so the substitution vanishes into a
     measured-looking NOI.
+16. **Fifth engine** (`multifamily_noi`) — the first engine allowed to REFUSE:
+    an unmeasured commercial building yields null op-ex/NOI/cap rate rather than
+    a fabricated 40%-of-rent figure. Four distinct assumption declarations.
+    **Also corrected a false gap claim of my own** — see the warning below.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -115,27 +119,35 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Finish the engine registry (BRRRR), then prompt for outcomes.**
+**The engine registry is DONE. Stop adding engines. The gap is ADOPTION.**
 
-BI191 is satisfied at the contract level: four structurally different engines
-(`land_deal` cash-flow series, `note_payoff` day-count accrual, `flip_mao`,
-`rental_returns`) share ONE metric vocabulary, so a flip, a hold and a land deal
+BI191 is satisfied: five structurally different engines (`land_deal` cash-flow
+series, `note_payoff` day-count accrual, `flip_mao`, `rental_returns`,
+`multifamily_noi`) share ONE metric vocabulary, so a flip, a hold and a land deal
 are comparable through normalised outputs (BI92). The registry is passed in
 rather than global, so no statute-adjacent code moved.
 
+**Do not add a sixth engine without first finding real inline arithmetic to
+wrap.** Unit 16 nearly built a BRRRR engine for a feature that does not exist —
+see §6a. Grep for the function that already owns the maths BEFORE planning the
+adapter; if there is no such function, there is no gap.
+
 In order:
-- **BRRRR / multifamily NOI engines.** The pattern is four examples deep and
-  mechanical: find the function that already owns the arithmetic, wrap it in an
-  `EngineSpec`, reuse `profit`/`roi`/`total_cost`/`annual_noi` where the
-  quantity is the same, register it in
-  `server/services/economics/engines/index.ts`. Three rules learned the hard way:
-  (a) **check units at the boundary** — two of four adapters found a percent
-  being stored under a ratio label, a silent 100x; (b) **prefer the honest
-  function** where two exist — the one that reports what it substituted or
-  returns `null` for unknown, not the one that returns a confident number;
-  (c) if the engine substitutes a default, **declare it** via the
-  `assumptions` the `compute` return now carries, with
-  `origin: "platform-default"`.
+- **Prove the golden loop end to end (Section VII A).** Every layer now exists —
+  `evidence_claims` → `scenarios` → `decision_snapshots` → `outcomes` — and each
+  has its own tests, but **nothing exercises all four in one pass.** Write the
+  One Complete Property integration test: record evidence from a provider
+  payload, compute a scenario, freeze a decision over both, record an outcome,
+  and assert the variance projects against what was frozen. This is the highest
+  value work available because it is the shape of defect this repo produces most
+  (`CLAUDE.md`: "built but unwired"), and per-layer green tests are exactly what
+  hides it.
+- **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
+  zero references under `client/src`. The engines are reachable and persistable
+  and nothing persists. The customer calculators compute for DISPLAY only, so a
+  number a customer acted on is reconstructable only where a decision happened to
+  freeze it. Fix inside the existing Deals/Map surfaces — **never a new nav
+  entry** (five fixed doors).
 - **Prompt for outcomes.** Nothing asks a customer to record one, so the
   Decision→Outcome loop closes only when someone chooses to close it. The
   founder plane's due-outcome sweep (`outcomeLedger` / `decisionEval`) is the
@@ -179,6 +191,22 @@ acting on any of these:
 | Evidence has no provenance | Acquisition-side provenance is strong (`LookupResult`, `DATA_LICENSE_REGISTER`); it died at the *write*, which is now fixed |
 | No kernel/pack seam | Exists (`autopilot/domainPack.ts` + `check-kernel-boundary.mjs`) — on the founder plane; the customer side still has none |
 | README names Pax/Sophie/Atlas | Still true, and still worth reconciling — but there are more agent identities than the README lists |
+
+## 6a. Claims THIS PROGRAM made that HEAD disproved
+
+The rule in §6 — verify a premise before implementing it — is easy to apply to
+the audit's stale claims and hard to apply to one's own. It has already failed
+once here, so it is recorded with the same weight:
+
+| This program wrote | HEAD says |
+|---|---|
+| "BRRRR still computes inline, outside the registry" (`canon.ts`, units 12–15) | **`BRRRR` appears nowhere in this repository.** The only occurrence of the string was that note. There was no inline arithmetic to register because there is no BRRRR feature. Corrected in unit 16. |
+
+The lesson is not "be careful with gap notes." It is that **a gap note is a
+factual claim about the repo and decays exactly like the audit's do.** Before
+implementing any item from §4, grep for the thing it says exists. A remaining-gap
+sentence written three units ago has the same standing as an audit written
+against a stale snapshot: none, until re-verified.
 
 ## 7. Standing verification discipline
 

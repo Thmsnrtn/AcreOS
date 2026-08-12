@@ -38,7 +38,14 @@ import { ALL_ENGINES } from "../../server/services/economics/engines";
 import { notePayoffEngine } from "../../server/services/economics/engines/notePayoff";
 import { flipMaoEngine } from "../../server/services/economics/engines/flipMao";
 import { rentalReturnsEngine } from "../../server/services/economics/engines/rentalReturns";
+import { multifamilyNoiEngine } from "../../server/services/economics/engines/multifamilyNoi";
 import { computeMao, computeRentalReturns } from "../../server/services/flipUnderwriting";
+import {
+  TRAILING_12_WINDOW_MONTHS,
+  computeNoi,
+  decideOperatingExpense,
+  isMeasuredCoverageComplete,
+} from "@shared/rental/noi";
 import {
   PAYOFF_ENGINE_VERSION,
   computePayoffQuote,
@@ -656,6 +663,282 @@ describe("the rental engine — an engine that DECLARES its own assumption", () 
   it("is deterministic", () => {
     const a = computeScenario(rentalRequest(), ALL_ENGINES);
     const b = computeScenario(rentalRequest(), ALL_ENGINES);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe("the multifamily engine — the first engine allowed to REFUSE", () => {
+  /** A 12-unit building collecting $18,400/mo, valued at $2.4m. */
+  function mfRequest(over: Record<string, number | string> = {}): ComputeScenarioRequest {
+    return {
+      subjectType: "property",
+      subjectId: 77,
+      label: "Trailing 12",
+      engineId: "multifamily_noi",
+      inputs: {
+        monthlyRentCollectedCents: 1_840_000,
+        valuationCents: 240_000_000,
+        valuationBasis: "market",
+        structureClass: "residential",
+        measuredOpExRowCount: 0,
+        measuredOpExMonthsCovered: 0,
+        ...over,
+      },
+    };
+  }
+
+  it("is registered and produces every metric it declares", () => {
+    const body = computeScenario(mfRequest(), ALL_ENGINES);
+    expect(body.engineId).toBe("multifamily_noi");
+    expect(body.engineVersion).toBe(multifamilyNoiEngine.version);
+    for (const id of multifamilyNoiEngine.produces) {
+      expect(body.metrics.some((m) => m.id === id), `missing ${id}`).toBe(true);
+    }
+  });
+
+  it("delegates the op-ex DECISION rather than reimplementing it", () => {
+    // The adapter must produce exactly what shared/rental/noi.ts decides. If it
+    // ever diverges, two places in the product would disagree about what a
+    // building's operating expense is.
+    const body = computeScenario(mfRequest(), ALL_ENGINES);
+    const direct = decideOperatingExpense({
+      hasMeasured: false,
+      measuredOpExMonthlyCents: 0,
+      opExBps: undefined,
+      isCommercial: false,
+      monthlyRentCollectedCents: 1_840_000,
+    });
+    expect(metricValue(body, "annual_operating_expense")).toBe(
+      direct.opExMonthlyCents! * 12,
+    );
+  });
+
+  it("shares ONE NOI definition with the analytics route", () => {
+    // Adding this engine briefly gave `collections - opEx` a second home. The
+    // subtraction now lives in shared/rental/noi.ts and BOTH callers use it —
+    // pinned here and by a source assertion below, because two copies of a
+    // definition drift and the two would then disagree about one building.
+    const body = computeScenario(mfRequest(), ALL_ENGINES);
+    const { noiAnnualCents } = computeNoi({
+      monthlyRentCollectedCents: 1_840_000,
+      opExMonthlyCents: Math.round((1_840_000 * 4000) / 10000),
+    });
+    expect(metricValue(body, "annual_noi")).toBe(noiAnnualCents);
+
+    const route = fs.readFileSync(
+      path.join(ROOT, "server/routes-investor-analytics.ts"),
+      "utf8",
+    );
+    expect(route).toContain("computeNoi({");
+    expect(route).not.toMatch(/noiMonthly\s*=\s*.*monthlyRentCollected\s*-\s*opExMonthly/);
+  });
+
+  // ── The refusal ───────────────────────────────────────────────────────────
+
+  it("REFUSES to invent an op-ex for an unmeasured commercial building", () => {
+    // The residential 40%-of-collections rule is meaningless under a triple-net
+    // or gross lease, so noi.ts declines rather than guessing. Every figure that
+    // depends on op-ex must fall away with it — a null NOI beside a confident
+    // cap rate would be worse than either.
+    const body = computeScenario(
+      mfRequest({ structureClass: "commercial" }),
+      ALL_ENGINES,
+    );
+    for (const id of [
+      "annual_operating_expense",
+      "annual_noi",
+      "cap_rate",
+      "operating_expense_ratio",
+    ]) {
+      expect(metricValue(body, id), `${id} must be null, not a guess`).toBeNull();
+    }
+    // And it invents no assumption to paper over the refusal: nothing was
+    // assumed, so nothing is declared.
+    expect(body.assumptions).toEqual([]);
+  });
+
+  it("the refusal is explained by the inputs it persists, not by a narration field", () => {
+    // A later reader reconstructs WHY from the verbatim inputs — which is the
+    // reason normalisedInputs are stored at all.
+    const body = computeScenario(
+      mfRequest({ structureClass: "commercial" }),
+      ALL_ENGINES,
+    );
+    expect(body.inputs.structureClass).toBe("commercial");
+    expect(body.inputs.measuredOpExRowCount).toBe(0);
+    expect(body.inputs.opExBps).toBeUndefined();
+  });
+
+  it("still computes what does NOT depend on op-ex", () => {
+    // GRM is price over gross rent and needs no expense figure. Nulling it too
+    // would be a different lie — refusing to answer a question that was asked
+    // and is answerable.
+    const body = computeScenario(
+      mfRequest({ structureClass: "commercial" }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "gross_rent_multiplier")).toBeCloseTo(
+      240_000_000 / (1_840_000 * 12),
+      10,
+    );
+  });
+
+  it("a commercial building WITH measured expenses computes normally", () => {
+    // The refusal is about absent data, not about being commercial.
+    const body = computeScenario(
+      mfRequest({
+        structureClass: "commercial",
+        measuredOpExRowCount: 40,
+        measuredOpExMonthsCovered: 12,
+        measuredOpExMonthlyCents: 700_000,
+      }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "annual_noi")).toBe((1_840_000 - 700_000) * 12);
+    expect(body.assumptions).toEqual([]); // measured and complete — nothing assumed
+  });
+
+  // ── Three provenances, three different declarations ───────────────────────
+
+  it("names the 40% fallback as the PLATFORM's default", () => {
+    const a = computeScenario(mfRequest(), ALL_ENGINES).assumptions;
+    const opex = a.find((x) => x.key === "operating_expense")!;
+    expect(opex.origin).toBe("platform-default");
+    expect(opex.value).toBe("40% of collections");
+  });
+
+  it("names an operator's ratio override as the OPERATOR's, not the platform's", () => {
+    // Both are ratios rather than measurements, but only one is the customer's
+    // own judgement. Collapsing them is how a platform default comes to read as
+    // what the customer believed.
+    const a = computeScenario(mfRequest({ opExBps: 3200 }), ALL_ENGINES).assumptions;
+    const opex = a.find((x) => x.key === "operating_expense")!;
+    expect(opex.origin).toBe("user");
+    expect(opex.value).toBe("32% of collections");
+  });
+
+  it("declares a MEASURED but thin ledger as partial coverage", () => {
+    // A real ledger spanning three months is a real but PARTIAL slice.
+    // Annualising it silently is the "thin ledger reading as a complete one"
+    // failure noi.ts names in its own header.
+    const a = computeScenario(
+      mfRequest({
+        measuredOpExRowCount: 9,
+        measuredOpExMonthsCovered: 3,
+        measuredOpExMonthlyCents: 500_000,
+      }),
+      ALL_ENGINES,
+    ).assumptions;
+    const cov = a.find((x) => x.key === "operating_expense_coverage")!;
+    expect(cov.origin).toBe("derived");
+    expect(cov.value).toBe(`3/${TRAILING_12_WINDOW_MONTHS} months`);
+    // The op-ex itself is NOT re-declared: it was measured, not assumed.
+    expect(a.some((x) => x.key === "operating_expense")).toBe(false);
+  });
+
+  it("declares NOTHING when the ledger is measured and complete", () => {
+    const a = computeScenario(
+      mfRequest({
+        measuredOpExRowCount: 48,
+        measuredOpExMonthsCovered: 12,
+        measuredOpExMonthlyCents: 500_000,
+      }),
+      ALL_ENGINES,
+    ).assumptions;
+    expect(a).toEqual([]);
+  });
+
+  it("holds the coverage rule to the SHARED predicate, not a local >= 12", () => {
+    // Whatever isMeasuredCoverageComplete says is complete must be what the
+    // engine treats as complete, or the server label and this record could
+    // disagree about the same building.
+    for (const months of [0, 3, 11, 12, 13]) {
+      const declared = computeScenario(
+        mfRequest({
+          measuredOpExRowCount: 4,
+          measuredOpExMonthsCovered: months,
+          measuredOpExMonthlyCents: 500_000,
+        }),
+        ALL_ENGINES,
+      ).assumptions.some((x) => x.key === "operating_expense_coverage");
+      expect(declared, `months=${months}`).toBe(!isMeasuredCoverageComplete(months));
+    }
+  });
+
+  // ── The denominator ───────────────────────────────────────────────────────
+
+  it("declares an ASSESSED valuation, because a cap rate on one is a different number", () => {
+    // The route this generalises falls back `marketValue ?? assessedValue`. An
+    // assessment is a taxing authority's figure on its own cycle and method.
+    const a = computeScenario(
+      mfRequest({ valuationBasis: "assessed" }),
+      ALL_ENGINES,
+    ).assumptions;
+    const basis = a.find((x) => x.key === "valuation_basis")!;
+    expect(basis.value).toBe("assessed");
+    expect(basis.basis).toContain("not a market valuation");
+  });
+
+  it("declares nothing about the denominator when it IS a market value", () => {
+    const a = computeScenario(mfRequest(), ALL_ENGINES).assumptions;
+    expect(a.some((x) => x.key === "valuation_basis")).toBe(false);
+  });
+
+  it("refuses an unrecognised basis rather than defaulting to the first one", () => {
+    // Silently falling back would produce a confident cap rate computed under a
+    // basis the caller never chose.
+    expect(() =>
+      computeScenario(mfRequest({ valuationBasis: "zestimate" }), ALL_ENGINES),
+    ).toThrow(ScenarioEngineError);
+  });
+
+  it("does NOT reuse total_cost — a valuation is not what the building cost", () => {
+    // Putting two different quantities under one metric id is the same class of
+    // error as storing a percent under a ratio label.
+    expect(multifamilyNoiEngine.produces).not.toContain("total_cost");
+  });
+
+  // ── DSCR and cash flow ────────────────────────────────────────────────────
+
+  it("computes DSCR and cash flow only when debt service is supplied", () => {
+    const without = computeScenario(mfRequest(), ALL_ENGINES);
+    expect(metricValue(without, "dscr")).toBeNull();
+    expect(metricValue(without, "monthly_cash_flow")).toBeNull();
+
+    const withDebt = computeScenario(
+      mfRequest({ debtServiceMonthlyCents: 800_000 }),
+      ALL_ENGINES,
+    );
+    const noiMonthly = 1_840_000 - Math.round((1_840_000 * 4000) / 10000);
+    expect(metricValue(withDebt, "monthly_cash_flow")).toBe(noiMonthly - 800_000);
+    expect(metricValue(withDebt, "dscr")).toBeCloseTo(noiMonthly / 800_000, 10);
+  });
+
+  it("treats zero debt service as no coverage question, not as infinite coverage", () => {
+    // noi / 0 is Infinity, which renders as a number and means nothing.
+    const body = computeScenario(
+      mfRequest({ debtServiceMonthlyCents: 0 }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "dscr")).toBeNull();
+    // Cash flow, however, is perfectly well defined at zero debt service.
+    expect(metricValue(body, "monthly_cash_flow")).toBe(
+      1_840_000 - Math.round((1_840_000 * 4000) / 10000),
+    );
+  });
+
+  it("refuses a measured row count with no measured figure", () => {
+    expect(() =>
+      computeScenario(
+        mfRequest({ measuredOpExRowCount: 5, measuredOpExMonthsCovered: 5 }),
+        ALL_ENGINES,
+      ),
+    ).toThrow(ScenarioEngineError);
+  });
+
+  it("is deterministic", () => {
+    const a = computeScenario(mfRequest(), ALL_ENGINES);
+    const b = computeScenario(mfRequest(), ALL_ENGINES);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });

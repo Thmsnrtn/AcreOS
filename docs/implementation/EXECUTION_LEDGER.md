@@ -796,3 +796,105 @@ get their own ids.
 
 **Gates:** `npm run check` PASS (22 gates) · tsc clean · reachability at all four
 baselines · 64/64 across the scenario and canon suites.
+
+---
+
+## Unit 16 — A fifth engine, the first one allowed to refuse · this commit
+
+**Audit requirement:** BK23 (deterministic economics kernel), BI92 (comparison
+through normalised outputs), BI182 (explicit units), BI191 (contrasting Strategy
+Pack fixtures), and the repo's own refuse-not-fabricate rule.
+
+**Files:** `server/services/economics/engines/multifamilyNoi.ts` (new),
+`engines/index.ts`, `shared/economics/scenario.ts` (three metrics; `optionalCents`
+and `requireOneOf`), `shared/rental/noi.ts` (`computeNoi` extracted),
+`server/routes-investor-analytics.ts`, `shared/architecture/canon.ts`.
+Tests: 20 new in the scenario suite, 1 rewritten in `propertyExpenseNoi`.
+
+### The planned item did not exist
+
+`NEXT_UP` said "BRRRR and multifamily NOI still compute inline". **Half of that
+was false.** `BRRRR` appears NOWHERE in this repository — the only occurrence of
+the string, before this commit, was in the gap note I had written in `canon.ts`.
+There was no inline BRRRR arithmetic to register because there is no BRRRR
+feature.
+
+Section I of the mission is explicit that the live repo wins over a plan and that
+a recommendation whose premise is false must not be implemented. That rule is
+easiest to apply to someone else's stale claim and hardest to apply to one's own,
+which is precisely why it is worth recording: **the false premise was mine, three
+units old, and it would have produced a plausible engine for a product feature
+that does not exist.** The claim is now corrected in `canon.ts` with the
+correction dated and its reason stated, rather than quietly deleted.
+
+The multifamily half was true, and it is what shipped.
+
+### Why this engine is different from the previous four
+
+It is the **first engine permitted to decline**. `shared/rental/noi.ts` already
+refuses to invent an operating expense for an UNMEASURED COMMERCIAL building: the
+residential 40%-of-collections rule of thumb is meaningless under a triple-net or
+gross lease, so op-ex is null and NOI, cap rate and DSCR fall away rather than
+being fabricated. The adapter propagates that all the way out — `annual_noi`,
+`cap_rate`, `operating_expense_ratio` and `annual_operating_expense` are all
+null, and **no assumption is declared, because nothing was assumed**. It still
+computes GRM, which needs no expense figure; nulling that too would be a
+different dishonesty — refusing a question that was asked and is answerable.
+
+**The null carries no reason field, deliberately.** `normalisedInputs` is
+persisted verbatim, so `structureClass: "commercial"` with
+`measuredOpExRowCount: 0` and no `opExBps` fully explains the refusal to any
+later reader. Widening the persisted metric shape to narrate it would be a
+shape-version bump bought for a need nobody has measured; a test pins that the
+inputs do the explaining.
+
+### Four provenances, four different declarations
+
+Unit 15 let an engine declare ONE assumption. This engine shows the mechanism was
+not over-built:
+
+| Situation | Declared as | Origin |
+|---|---|---|
+| No records, no override | 40% of collections | `platform-default` |
+| Operator supplied a RATIO | that ratio | `user` |
+| Records exist but span < 12 mo | `N/12 months` coverage | `derived` |
+| Denominator is an ASSESSED value | the basis | `derived` |
+| Records complete, market value | *(nothing)* | — |
+
+The first two are the distinction `origin` exists for: both are ratios rather
+than measurements, but only one is the customer's own judgement, and the route
+being generalised makes exactly the same point in its own comment. The third is
+`noi.ts`'s "a thin ledger must not read as a complete one" rule surviving into
+the persisted record. The fourth came from reading the route: it falls back
+`marketValue ?? assessedValue`, and an assessment is a taxing authority's figure
+produced on its own cycle — a cap rate built on one is not comparable to a cap
+rate built on a market value.
+
+The coverage rule is asserted against the SHARED predicate across 0/3/11/12/13
+months rather than a local `>= 12`, so the scenario record and the server label
+cannot come to disagree about the same building.
+
+### It deliberately does NOT reuse `total_cost`
+
+Three reuses (`annual_noi`, `cap_rate`, `monthly_cash_flow`,
+`gross_rent_multiplier` — four) and three new ids. But `total_cost` was refused:
+this engine's denominator is a VALUATION, and a held building's market value is
+not what it cost. Reusing the id would put two different quantities under one
+label — the same class of error as the percent-under-a-ratio-label bug two
+earlier adapters hit, just harder to see. A test pins the absence.
+
+### The duplication this unit created, and removed
+
+Writing the adapter gave `collections - opEx` a second home. It was extracted to
+`shared/rental/noi.ts:computeNoi` and BOTH callers now use it — the same move
+`decideOperatingExpense` made in Wave 4, for the same reason.
+
+**An existing test pinned the inline expression I removed** (`propertyExpenseNoi`
+grepped the route source for the exact ternary). Per the wave-discipline rule, it
+was **rewritten, not deleted**: the invariant it protects — NOI and cap rate fall
+away rather than being fabricated when op-ex is unavailable — is now asserted
+BEHAVIOURALLY against the extracted pure function, so it cannot go stale the next
+time the code moves.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 653 files, 8,544 tests, 1 skipped, 0 failures.**
