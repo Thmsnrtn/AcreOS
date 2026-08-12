@@ -560,23 +560,45 @@ export function metricValue(body: ScenarioBody, id: string): number | null {
 }
 
 /**
- * The compact reference a DecisionSnapshot freezes.
+ * The reference a DecisionSnapshot freezes.
  *
- * It carries the headline numbers as well as the id, so a decision stays
- * readable even if the scenario row is later unreachable — the same reasoning
- * that makes a frozen fact store its resolved value alongside its claim ids.
+ * It carries the numbers as well as the id, so a decision stays readable even if
+ * the scenario row is later unreachable — the same reasoning that makes a frozen
+ * fact store its resolved value alongside its claim ids.
+ *
+ * IT FREEZES EVERY METRIC THE ENGINE PRODUCED, and that is a correction.
+ * -----------------------------------------------------------------------
+ * This used to freeze a `headline` of three ids — profit, roi, irr — on the
+ * theory that a reference should be compact. The golden-loop test
+ * (tests/unit/goldenLoopOneProperty.test.ts) is what exposed the cost: the land
+ * engine predicts `hold_months`, the property sold a month late, and the
+ * variance reported hold_months as **"unpredicted"** — a factual claim about the
+ * decision that was simply FALSE. Nobody had failed to forecast the hold; the
+ * forecast had been dropped on the way into the record.
+ *
+ * That is the mislabel canonical law 3 exists to prevent, one layer over:
+ * "not predicted" and "predicted but not retained" are different facts, and
+ * collapsing them teaches the wrong lesson from a real miss. No per-layer test
+ * could see it — each one hand-built the fixture for the layer below, so the
+ * loss only appears when a real engine's output is carried all the way to a real
+ * variance.
+ *
+ * Compactness was never the reason the numbers were frozen; READABILITY and
+ * DURABILITY were, and both are served better by keeping all of them. Engines
+ * currently produce at most eight metrics, so there is no size argument either.
  */
 export interface FrozenScenarioRef {
   scenarioId: number;
   label: string;
   engineId: string;
   engineVersion: string;
-  /** A small, fixed set of headline metrics — not the whole output. */
-  headline: ScenarioMetric[];
+  /**
+   * Every metric the engine produced, verbatim. A decision must be able to say
+   * what it predicted — including the predictions that later turned out wrong,
+   * which are the ones worth learning from.
+   */
+  predicted: ScenarioMetric[];
 }
-
-/** Metrics worth carrying into a decision record. */
-const HEADLINE_METRIC_IDS = ["profit", "roi", "irr"] as const;
 
 export function freezeScenarioRef(
   scenarioId: number,
@@ -587,8 +609,6 @@ export function freezeScenarioRef(
     label: body.label,
     engineId: body.engineId,
     engineVersion: body.engineVersion,
-    headline: body.metrics.filter((m) =>
-      (HEADLINE_METRIC_IDS as readonly string[]).includes(m.id),
-    ),
+    predicted: [...body.metrics],
   };
 }

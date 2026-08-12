@@ -163,7 +163,7 @@ export function computeVariance(
 ): MetricVariance[] {
   const predicted = new Map<string, number | null>();
   for (const s of frozenScenarios) {
-    for (const m of s.headline) {
+    for (const m of s.predicted) {
       // When a decision cited several scenarios, the FIRST one that carries a
       // metric wins. Averaging rival hypotheses would invent a forecast nobody
       // actually made.

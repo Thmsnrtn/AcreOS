@@ -325,7 +325,7 @@ describe("immutability is structural, not conventional", () => {
         label: "Base case",
         engineId: "land_deal",
         engineVersion: "land-deal-1",
-        headline: [{ id: "profit", value: 2_406_000, unit: "cents" }],
+        predicted: [{ id: "profit", value: 2_406_000, unit: "cents" }],
       },
     ]);
     expect(withEconomics.scenarios).toHaveLength(1);

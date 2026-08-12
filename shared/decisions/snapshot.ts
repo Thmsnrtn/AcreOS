@@ -207,7 +207,8 @@ export interface DecisionSnapshotBody {
    * Without this, a decision records "offer $42,000" and the arithmetic behind
    * the number lives nowhere — you can reconstruct what the investor believed
    * about the PARCEL and not what they believed about the DEAL. Each reference
-   * carries the engine version and the headline metrics, so the record stays
+   * carries the engine version and every metric the engine predicted, so the
+   * record stays
    * readable even if the scenario row later becomes unreachable — the same
    * reasoning that makes a frozen fact store its resolved value alongside its
    * claim ids.

@@ -117,8 +117,10 @@ export const decisionSnapshots = pgTable(
     unknowns: jsonb("unknowns").$type<FrozenUnknown[]>().notNull().default([]),
     /**
      * The economics that justified the choice. Each reference carries the
-     * engine VERSION and the headline metrics, so the record stays readable
-     * even if the scenario row later becomes unreachable. An empty list is a
+     * engine VERSION and EVERY metric the engine predicted, so the record stays
+     * readable even if the scenario row later becomes unreachable — and so a
+     * forecast can never be lost between the engine and the outcome, which is
+     * how a real prediction came to read as "unpredicted". An empty list is a
      * valid and common state — many decisions (a `pass` on a parcel that failed
      * a hard filter) are made without running economics at all, and recording
      * an empty list says exactly that.

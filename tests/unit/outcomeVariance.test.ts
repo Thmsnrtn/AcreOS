@@ -37,7 +37,7 @@ function scenarioRef(over: Partial<FrozenScenarioRef> = {}): FrozenScenarioRef {
     label: "Base case",
     engineId: "land_deal",
     engineVersion: "land-deal-1",
-    headline: [
+    predicted: [
       { id: "profit", value: 2_400_000, unit: "cents" },
       { id: "roi", value: 0.55, unit: "ratio" },
       { id: "irr", value: 0.72, unit: "ratio" },
@@ -118,7 +118,7 @@ describe("variance is a projection over what was FROZEN", () => {
       }),
       [
         scenarioRef({
-          headline: [{ id: "breakeven_sale", value: 4_500_000, unit: "cents" }],
+          predicted: [{ id: "breakeven_sale", value: 4_500_000, unit: "cents" }],
         }),
       ],
     );
@@ -130,8 +130,8 @@ describe("variance is a projection over what was FROZEN", () => {
   it("takes the FIRST scenario that carries a metric rather than averaging rivals", () => {
     // Averaging two competing hypotheses would invent a forecast nobody made.
     const v = computeVariance(outcome([{ id: "profit", value: 1_000_000 }]), [
-      scenarioRef({ label: "Base", headline: [{ id: "profit", value: 2_400_000, unit: "cents" }] }),
-      scenarioRef({ label: "Slow", headline: [{ id: "profit", value: 800_000, unit: "cents" }] }),
+      scenarioRef({ label: "Base", predicted: [{ id: "profit", value: 2_400_000, unit: "cents" }] }),
+      scenarioRef({ label: "Slow", predicted: [{ id: "profit", value: 800_000, unit: "cents" }] }),
     ]);
     expect(v.find((x) => x.metricId === "profit")!.predicted).toBe(2_400_000);
   });
@@ -150,7 +150,7 @@ describe("unmeasured and unpredicted are different facts", () => {
 
   it("marks a measured-but-never-predicted metric as unpredicted, not as a miss", () => {
     const v = computeVariance(outcome([{ id: "hold_months", value: 11 }]), [
-      scenarioRef({ headline: [{ id: "profit", value: 2_400_000, unit: "cents" }] }),
+      scenarioRef({ predicted: [{ id: "profit", value: 2_400_000, unit: "cents" }] }),
     ]);
     expect(v.find((x) => x.metricId === "hold_months")!.state).toBe("unpredicted");
   });
@@ -179,7 +179,7 @@ describe("no confident-looking meaningless numbers", () => {
   it("omits the relative delta when the prediction was zero", () => {
     // delta / 0 is Infinity, which renders as a number and means nothing.
     const v = computeVariance(outcome([{ id: "profit", value: 500 }]), [
-      scenarioRef({ headline: [{ id: "profit", value: 0, unit: "cents" }] }),
+      scenarioRef({ predicted: [{ id: "profit", value: 0, unit: "cents" }] }),
     ]);
     const profit = v.find((x) => x.metricId === "profit")!;
     expect(profit.state).toBe("compared");

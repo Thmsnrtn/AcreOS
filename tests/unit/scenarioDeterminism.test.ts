@@ -276,7 +276,7 @@ describe("assumptions keep their origin across the scenario boundary", () => {
 });
 
 describe("the reference a decision freezes", () => {
-  it("carries the headline numbers alongside the id", () => {
+  it("carries the numbers alongside the id", () => {
     // So a decision stays readable even if the scenario row is later
     // unreachable — the same reasoning that makes a frozen fact store its
     // resolved value alongside its claim ids.
@@ -284,13 +284,38 @@ describe("the reference a decision freezes", () => {
     const ref = freezeScenarioRef(77, body);
     expect(ref.scenarioId).toBe(77);
     expect(ref.engineVersion).toBe(LAND_DEAL_ENGINE_VERSION);
-    expect(ref.headline.map((m) => m.id).sort()).toEqual(["irr", "profit", "roi"]);
     expect(ref.label).toBe("Base case");
   });
 
-  it("does not carry the entire output — a reference is not a copy", () => {
-    const ref = freezeScenarioRef(77, computeScenario(request()));
-    expect(ref.headline.length).toBeLessThan(METRICS.length);
+  it("freezes EVERY metric the engine produced, not a chosen few", () => {
+    // REWRITTEN (not deleted). This used to assert the ref carried exactly
+    // ["irr","profit","roi"] and was "not a copy" of the output. The golden-loop
+    // test disproved that design: the land engine predicts `hold_months`, the
+    // decision dropped it, and the variance two layers later reported
+    // hold_months as "unpredicted" — a claim about the decision that was false.
+    //
+    // The invariant the old pair of tests protected — a reference must carry
+    // enough to stay readable without the scenario row — survives and is
+    // STRONGER. What is gone is the arbitrary three-id cut that silently lost
+    // forecasts. Derived from the body, so it cannot go stale as engines change.
+    const body = computeScenario(request());
+    const ref = freezeScenarioRef(77, body);
+    expect(ref.predicted.map((m) => m.id)).toEqual(body.metrics.map((m) => m.id));
+    expect(ref.predicted).toEqual(body.metrics);
+    // Still a subset of the vocabulary — an engine emits what it produces, and
+    // the registry is deliberately larger than any one engine.
+    expect(ref.predicted.length).toBeLessThan(METRICS.length);
+  });
+
+  it("a metric the engine predicted can never come back as `unpredicted`", () => {
+    // The regression this whole change exists to prevent, asserted directly at
+    // the seam rather than only end to end.
+    const body = computeScenario(request());
+    const ref = freezeScenarioRef(77, body);
+    const frozenIds = new Set(ref.predicted.map((m) => m.id));
+    for (const id of engineById(LAND_DEAL_ENGINE_ID)!.produces) {
+      expect(frozenIds.has(id), `${id} was predicted but not frozen`).toBe(true);
+    }
   });
 });
 

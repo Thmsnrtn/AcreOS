@@ -839,6 +839,7 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "server/services/autopilot/proofReceipt.ts",
         "server/services/autopilot/decisionEval.ts",
         "tests/unit/autopilotDecisionEval.test.ts",
+        "tests/unit/goldenLoopOneProperty.test.ts",
       ],
       note:
         "The founder plane seals a prediction into the receipt hash and scores it " +
@@ -847,7 +848,17 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "scenarios justified the choice, and `outcomes` records what actually " +
         "happened — with variance computed as a PURE PROJECTION over the frozen " +
         "refs, never stored, so a later recomputation cannot change how a past " +
-        "decision looks. REMAINING GAP: nothing PROMPTS a customer to record an " +
+        "decision looks. The loop is now exercised END TO END by " +
+        "goldenLoopOneProperty.test.ts (Section VII A): one property carried from " +
+        "a raw provider payload through evidence, resolution, economics, decision " +
+        "and outcome, where every input is the PREVIOUS layer's real output and " +
+        "nothing is hand-built. That test immediately earned its keep — it found " +
+        "that freezeScenarioRef kept only three 'headline' metrics, so an engine's " +
+        "hold-period forecast never reached the decision and the variance reported " +
+        "it as \"unpredicted\", a claim about the decision that was false. Per-layer " +
+        "tests could not see it because each built its own fixture for the layer " +
+        "below. A decision now freezes EVERY metric its engine predicted. " +
+        "REMAINING GAP: nothing PROMPTS a customer to record an " +
         "outcome, so the loop closes only when someone chooses to close it. A " +
         "due-outcome sweep (the founder plane already has one in " +
         "outcomeLedger/decisionEval) is the next step, and calibration across " +

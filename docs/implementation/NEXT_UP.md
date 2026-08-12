@@ -104,10 +104,17 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     an unmeasured commercial building yields null op-ex/NOI/cap rate rather than
     a fabricated 40%-of-rent figure. Four distinct assumption declarations.
     **Also corrected a false gap claim of my own** — see the warning below.
+17. **The golden loop** (Section VII A) — one property carried from a raw
+    provider payload through evidence → resolution → economics → decision →
+    outcome, with every input the previous layer's REAL output. It found a real
+    defect in twenty minutes: `freezeScenarioRef` kept only three "headline"
+    metrics, so an engine's hold-period forecast never reached the decision and
+    the variance called a real prediction "unpredicted". A decision now freezes
+    every metric its engine predicted.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 653 files, 8,508 tests, 1 skipped, 0 failures.**
+suite green — 654 files, 8,565 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -133,15 +140,20 @@ see §6a. Grep for the function that already owns the maths BEFORE planning the
 adapter; if there is no such function, there is no gap.
 
 In order:
-- **Prove the golden loop end to end (Section VII A).** Every layer now exists —
-  `evidence_claims` → `scenarios` → `decision_snapshots` → `outcomes` — and each
-  has its own tests, but **nothing exercises all four in one pass.** Write the
-  One Complete Property integration test: record evidence from a provider
-  payload, compute a scenario, freeze a decision over both, record an outcome,
-  and assert the variance projects against what was frozen. This is the highest
-  value work available because it is the shape of defect this repo produces most
-  (`CLAUDE.md`: "built but unwired"), and per-layer green tests are exactly what
-  hides it.
+- **Write the OTHER golden loops (Section VII B/C/D).** VII(A) One Complete
+  Property is done and immediately found a real defect — see §3 item 17. The
+  same technique is unused on the other three: **B) One Complete Customer**
+  (signup → org → persona → first decision), **C) One Complete Failure** (a
+  provider times out mid-enrichment: what does evidence record, what does the
+  decision say, does an outward action end `ambiguous` rather than `failed`),
+  and **D) One Complete Learning Loop** (many decisions → calibration). C is the
+  highest value of the three: the failure paths are where fabrication and
+  fail-open bugs actually live, and `outwardAction`'s `ambiguous` state has never
+  been exercised against a real transport.
+  **The technique is the point, not the file:** every input must be the previous
+  layer's REAL output. A test that hand-builds the fixture for the layer below
+  cannot see a seam, which is exactly why four green per-layer suites hid the
+  frozen-forecast loss for five units.
 - **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
   zero references under `client/src`. The engines are reachable and persistable
   and nothing persists. The customer calculators compute for DISPLAY only, so a

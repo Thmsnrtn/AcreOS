@@ -898,3 +898,99 @@ time the code moves.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 653 files, 8,544 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 17 — The golden loop, and the lie it found in 20 minutes · this commit
+
+**Audit requirement:** Master Audit Section VII(A) — "One Complete Property":
+identity → evidence → provenance/conflict → economics → scenario →
+DecisionSnapshot → outcome → learning. Also canonical law 3 (unknown is a valid
+state, and mislabelling it is the failure) and law 9 (outcomes append learning).
+
+**Files:** `tests/unit/goldenLoopOneProperty.test.ts` (new, 20 tests),
+`shared/economics/scenario.ts` (`freezeScenarioRef`), `shared/outcomes/outcome.ts`,
+`shared/decisions/snapshot.ts`, `shared/schema/decision-snapshots.ts`,
+`shared/architecture/canon.ts`, plus three test files rewritten to the new truth.
+
+### Why write it at all — every layer was already green
+
+Units 2, 3, 9, 11 each shipped with a thorough test file, and all of them passed.
+That is precisely the condition under which this repo's most common defect hides.
+`CLAUDE.md` names it — "built but unwired" — and per-layer tests are structurally
+blind to it, because **each one hand-builds the fixture for the layer below.** A
+test that writes its own `FrozenScenarioRef` proves the decision layer reads the
+shape it was handed. It proves nothing about whether the scenario layer PRODUCES
+that shape, or produces all of it.
+
+So the rule for this file: **every input is the previous layer's real output.**
+The only hand-built object is the provider payload at the top, which is the only
+thing that genuinely originates outside the system. It is deliberately imperfect
+in the two ways real payloads are — a value with no provenance entry, and a
+DERIVED AcreOS risk score sitting beside the raw flood zone — and both must be
+dropped by the anti-corruption boundary without the loop filling the holes.
+
+The whole chain is pure: no database, no clock, milliseconds, runs on every
+`npm test`. That is a dividend of having written each layer as a pure isomorphic
+module with the I/O pushed into thin stores, and it is worth naming as a payoff
+of that decision rather than a happy accident.
+
+### What it found immediately
+
+**A real prediction was being reported as "unpredicted".**
+
+`freezeScenarioRef` froze a `headline` of three metric ids — profit, roi, irr —
+on the unexamined theory that a reference should be compact. The land engine also
+predicts `hold_months`. The test property was forecast at 9 months and sold at
+10. The variance reported `hold_months` as **`unpredicted`**.
+
+That is a factual claim about the decision, and it was false. Nobody had failed
+to forecast the hold; the forecast was dropped between the engine and the record.
+It is exactly the mislabel law 3 forbids, one layer over — *"not predicted"* and
+*"predicted but not retained"* are different facts — and it destroyed the single
+clearest learning signal the run produced: a one-month overrun on a nine-month
+plan.
+
+**No per-layer test could have caught it.** `outcomeVariance.test.ts` hand-wrote
+its `headline` array, so it always contained whatever the test needed. The loss
+only appears when a real engine's output travels all the way to a real variance.
+
+**Fix:** a decision now freezes EVERY metric its engine predicted, and the field
+is renamed `headline` → `predicted`, which is what it actually is. Compactness
+was never the reason those numbers were frozen — readability and durability were,
+and both are served better by keeping all of them. Engines produce at most eight
+metrics, so there was no size argument either. Renaming was free only because no
+row has been deployed; the same pre-customer window the `days_accrued` unit fix
+used, and it closes on first deploy.
+
+**Three tests were rewritten rather than deleted**, per wave discipline. The
+sharpest was `scenarioDeterminism`'s pair asserting the ref carried exactly
+`["irr","profit","roi"]` and was "not a copy" of the output — the tests that
+PINNED the defect as intended behaviour. Their real invariant (a reference must
+carry enough to stay readable without the scenario row) survives and is stronger;
+what is gone is the arbitrary three-id cut. The replacement is DERIVED from the
+engine's `produces` list, so it cannot go stale as engines change.
+
+### The fix was verified adversarially, not assumed
+
+The new assertions were re-run against a deliberately reverted
+`freezeScenarioRef`: **2 tests fail, 18 pass.** A test written after a fix that
+has never been seen to fail is a hypothesis about a test, not a regression gate.
+
+### Also pinned by this file
+
+- **One subject identity** carried from provider payload to variance — if any
+  seam silently re-keyed the subject, the chain would stay green per-layer while
+  comparing two different parcels.
+- **The refusal survives to the record:** a value dropped for having no named
+  source reaches the decision as an absent predicate, never as `false`.
+- **As-of reconstruction:** re-resolving at an earlier instant returns `unknown`
+  for everything — different date, not a different code path.
+- **Mounting WITH middleware:** each layer's router is asserted mounted behind
+  `isAuthenticated` AND `getOrCreateOrg`, since every one of these tables is
+  tenant-scoped and a mount without org scoping is a tenancy hole, not a typo.
+- **Migration presence** for all four tables — a schema table with no CREATE in
+  `scripts/migrate.mjs` 500s on deploy, which this repo has shipped before.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 654 files, 8,565 tests, 1 skipped, 0 failures.**
