@@ -28,6 +28,7 @@ import { lotPricingRules, properties } from "@shared/schema";
 import {
   deriveBasePerAcreCents as deriveBasePerAcreCentsPure,
   computeLotPricingGrid,
+  LOT_PRICING_ENGINE_VERSION,
 } from "@shared/subdivision/lotPricing";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -35,6 +36,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { formatCents } from "@shared/finance/cents";
 
 const ruleSchema = z.object({
   attribute: z.string().min(1).max(64),
@@ -319,8 +321,125 @@ export function registerLotPricingRoutes(app: Express): void {
           }
         });
 
+        // ── Canonical loop: this lock is a DECISION, and it was unrecorded ──
+        //
+        // The transaction above wrote every child lot's listPrice. That is the
+        // asking price the market sees — the moment these numbers stop being a
+        // preview and become an act, which is the criterion for adoption.
+        //
+        // `lockedGrid` preserves the OUTPUT and none of the reasoning. `rules`
+        // and `basePriceSource` sit in the SAME MUTABLE ROW this statement just
+        // updated, so editing the rules tomorrow leaves the grid intact and
+        // destroys the explanation for it; the derived base-per-acre and the
+        // engine version were never stored anywhere. That is exactly the state
+        // Decision Memory exists for, and the mirror image of the note-payoff
+        // path, which must NOT adopt because it already owns its own reasoning.
+        //
+        // Recorded AFTER the transaction, deliberately. Recording first would
+        // let a failed lock leave behind an immutable snapshot asserting a
+        // price change that never happened — and a decision record is not
+        // rewritable. A lock with no snapshot is a gap; a snapshot with no lock
+        // is a lie. Best-effort for the same reason the offer path is: the
+        // operator's pricing must not fail because the reasoning could not be
+        // written, and a null link says so honestly.
+        let decisionSnapshotId: number | null = null;
+        try {
+          const { recordDecision } = await import("./services/decisions/decisionStore");
+          const overridden = lockedGrid.filter((r) => r.override);
+          const totalAskingCents = lockedGrid.reduce((n, r) => n + r.askingPriceCents, 0);
+
+          const decision = await recordDecision(orgId, {
+            subjectType: "property",
+            subjectId: parentId,
+            // The closed DECISION_KINDS set already carries this: "price — set
+            // or change an asking/offer price". No new kind invented.
+            kind: "price",
+            choice:
+              `Lock asking prices on ${lockedGrid.length} lot(s) — ` +
+              `${formatCents(totalAskingCents)} total`,
+            rationale:
+              `Base ${formatCents(basePerAcre)}/acre from ${rules.basePriceSource}, ` +
+              `${(rules.rules ?? []).length} premium rule(s), ` +
+              `${overridden.length} operator override(s). ` +
+              `Each lot's listPrice was set from this grid.`,
+            actorType: "user",
+            actorRef: userId,
+            // The real authority: this route is reachable only behind
+            // isAuthenticated + getOrCreateOrg, and it prices the org's own
+            // parcels. Naming a generic "system" here would be false (BI72).
+            authority: "org_member:lot_pricing_lock",
+            strategyPackId: null,
+            strategyPackVersion: null,
+            assumptions: [
+              {
+                key: "base_per_acre_cents",
+                value: basePerAcre,
+                unit: "cents",
+                // A fixed $/acre is the operator's own number; an AVM-derived
+                // one is the platform's. Flattening the two would let a
+                // platform figure read later as what the customer believed.
+                origin: rules.basePriceSource === "fixed_per_acre" ? "user" : "derived",
+                basis: `basePriceSource=${rules.basePriceSource}`,
+              },
+              {
+                key: "engine_version",
+                value: LOT_PRICING_ENGINE_VERSION,
+                origin: "platform-default",
+                basis: "shared/subdivision/lotPricing.ts",
+              },
+              // The rule set VERBATIM. It lives in a mutable column, so a copy
+              // here is the only thing that survives the operator editing it.
+              ...(rules.rules ?? []).map((r, i) => ({
+                key: `rule_${i}`,
+                value: `${r.attribute} ${r.operator} ${String(r.threshold ?? "")} → ${r.premiumPct}`,
+                origin: "user" as const,
+                basis: r.label ?? "operator premium rule",
+              })),
+            ],
+            // An override IS the option not taken, and the rules-derived price
+            // is genuinely available — which makes these real alternatives
+            // rather than the empty list most decisions honestly carry.
+            alternatives: overridden.map((r) => {
+              const derived = computeLotPricingGrid(basePerAcre, facts, rules.rules ?? [])
+                .find((g) => g.childParcelId === r.childParcelId);
+              return {
+                choice:
+                  `Lot ${r.childParcelId} at the rules-derived ` +
+                  `${formatCents(derived?.askingPriceCents ?? r.basePriceCents)}`,
+                reason: `Operator priced it at ${formatCents(r.askingPriceCents)} instead`,
+              };
+            }),
+            // Deliberately null, and NOT an oversight. A review date is what
+            // later makes the loop ASK for an outcome, and the outcome
+            // vocabulary (acquired / sold / offer_accepted / offer_rejected /
+            // abandoned) is shaped for a single position resolving. A price set
+            // across N child lots resolves as "how many sold, at what", which
+            // none of those answers expresses. Asking a question whose answers
+            // do not fit is worse than not asking; see NEXT_UP.
+            reviewDueAt: null,
+          });
+          decisionSnapshotId = decision.id;
+
+          await db
+            .update(lotPricingRules)
+            .set({ lockedDecisionSnapshotId: decision.id })
+            .where(and(
+              eq(lotPricingRules.id, rules.id),
+              eq(lotPricingRules.organizationId, orgId),
+            ));
+        } catch (err) {
+          logger.error(
+            "[SD-5] pricing grid locked but its reasoning was NOT recorded",
+            err instanceof Error ? err : undefined,
+          );
+        }
+
         logger.info("[SD-5] pricing grid locked", { orgId, userId, parentId, lotCount: lockedGrid.length });
-        return res.json({ lockedGrid, lockedAt: new Date().toISOString() });
+        return res.json({
+          lockedGrid,
+          lockedAt: new Date().toISOString(),
+          decisionSnapshotId,
+        });
       } catch (err) {
         return Errors.internal(res, err);
       }

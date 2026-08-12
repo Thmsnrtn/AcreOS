@@ -3026,3 +3026,105 @@ code as broken is how a safety test gets deleted.
 
 Three mutations, each caught: a write that replaces instead of merging; the
 settings PATCH dropping its merge; and undeclaring `simulationMode`.
+
+---
+
+## Unit 44 — Adoption reaches a second product surface · this commit
+
+**Files:** `shared/subdivision/lotPricing.ts`, `shared/schema/subdivision.ts`,
+`shared/finance/cents.ts`, `server/routes-lot-pricing.ts`,
+`migrations/0234_lot_pricing_decision_link.sql`, `scripts/migrate.mjs`,
+`tests/unit/lotPricingDecision.test.ts` (new, 16 tests),
+`tests/unit/canonicalLoopAdoption.test.ts` (baseline 4 → 5).
+
+### The surface, and why it passes a criterion three candidates failed
+
+`POST /api/parcels/:id/pricing-rules/lock` writes every child lot's
+`listPrice` — the asking price the market sees. Verified reachable end to end
+before anything was built: the registrar is called at `routes.ts:2281`, the page
+is routed at `/lot-pricing`, and it calls the lock endpoint.
+
+The rule, as sharpened by unit 29: **adopt where the reasoning would otherwise
+be LOST; never where an equivalent versioned record already owns it.**
+
+`lockedGrid` preserved the OUTPUT — base, premium, asking price, override flag —
+and none of the reasoning:
+
+- `rules` and `basePriceSource` live in the **same mutable row the lock
+  updates**. Editing the rules tomorrow leaves the grid intact and destroys its
+  explanation. That is *historical decisions preserve what was known*, violated
+  by construction rather than by oversight: there was nowhere else for them to
+  live.
+- The derived base-per-acre was never stored at all — you cannot tell whether a
+  lock used the parent's AVM or an operator's fixed $/acre.
+- No engine version, though the arithmetic sits in a versionable pure module.
+
+**The exact mirror of the note payoff path**, which `MUST_NOT_ADOPT` pins
+*because* `note_payoff_quotes` already carries `engine_version` NOT NULL and
+verbatim `engine_input_json`. One owns its reasoning and must not gain a second
+owner; the other had none.
+
+### What the snapshot freezes
+
+The three things the row cannot keep — base-per-acre (origin `user` for a fixed
+$/acre, `derived` for an AVM one, because flattening them would let a platform
+figure read back as what the customer believed), the engine version, and the
+rule set **verbatim**. Kind `price`, from the closed `DECISION_KINDS` set, which
+already read *"set or change an asking/offer price"* — no new kind invented.
+Authority names the capability (`org_member:lot_pricing_lock`), never a generic
+system actor (BI72).
+
+Operator overrides become real **alternatives**: the rules-derived price
+genuinely was on offer, so these are choices not taken rather than the empty
+list most decisions honestly carry.
+
+### Ordering, and why it differs from unit 22
+
+Unit 22 records BEFORE its insert because the decision id must be in the INSERT.
+Here the link is a follow-up UPDATE, so the decision is recorded **after the
+transaction commits**. Recording first would let a failed lock leave an
+immutable snapshot asserting a price change that never happened — and a decision
+record is not rewritable. **A lock with no snapshot is a gap; a snapshot with no
+lock is a lie.** Best-effort, so the operator's pricing never fails because the
+reasoning could not be written; a null link says so honestly.
+
+### Two things deliberately NOT done
+
+**No Scenario, and no sixth engine.** A per-lot price grid carries none of the
+shared metrics — no `total_cost`, no `profit`, no `cap_rate`. Adding an engine so
+this surface could produce a Scenario would move the adoption count without
+helping a customer, which is the failure an up-only ratchet invites rather than
+prevents. A test asserts the absence.
+
+**No review date.** A review date is what later makes the loop ASK for an
+outcome, and the outcome vocabulary (`acquired` / `sold` / `offer_accepted` /
+`offer_rejected` / `abandoned`) is shaped for a single position resolving. A
+price set across N child lots resolves as *"how many sold, at what"*, which none
+of those expresses. Asking a question whose answers do not fit is worse than not
+asking. Recorded as the next honest step rather than papered over.
+
+### The mutation that exposed a bad assertion
+
+Six mutations were run and **every one was verified to have actually applied** —
+which is the only reason this was caught. Deleting the frozen rule copy left the
+test passing: the assertion matched `rules.rules ?? []).map`, and the same text
+appears in the grid computation twenty lines earlier, because the handler window
+had been sliced to end-of-file. **A window drawn wider than the thing it
+inspects** is this program's most repeated self-inflicted defect, and this is the
+fifth instance. The assertion now matches the key the frozen copy emits, and the
+window ends at the next route registration.
+
+The other five: recording before the transaction; flattening the base origin;
+dropping the org scope on the link write; replacing the engine version; and
+adding a Scenario (the ratchet-gaming move). A seventh attempt was a bad
+mutation, not a passing test — it imported `recordScenario` without calling it.
+
+### Incidental
+
+`formatCents` now has a canonical home in `shared/finance/cents.ts` beside
+`dollarsFromCents`. Four other copies exist and **only two are the same
+function**: the two `shared/rental/*` ones are byte-identical, but
+`wonBidToCertificate.ts` renders negatives as `$-1,234.56` and
+`MRRTrajectory.tsx` ABBREVIATES ($1.2M / $3.4K) — a different function wearing
+the same name. They were left alone rather than unified blindly; recorded in
+NEXT_UP.

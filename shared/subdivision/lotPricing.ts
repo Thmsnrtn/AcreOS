@@ -25,6 +25,17 @@
 // ============================================================================
 
 /**
+ * The engine's version, frozen into the decision recorded at lock time.
+ *
+ * The lock writes each lot's `listPrice` — an act, not a projection — and until
+ * now recorded only the OUTPUT grid. Without a version, a later change to the
+ * premium arithmetic makes an old lock unexplainable: the stored numbers stay,
+ * and the rule that produced them cannot be reconstructed. Bump this whenever
+ * the computation changes, never for a comment or a rename.
+ */
+export const LOT_PRICING_ENGINE_VERSION = "lot-pricing-1";
+
+/**
  * A single premium rule. Mirrors lot_pricing_rules.rules (shared/schema/
  * subdivision.ts): match `attribute` against a per-lot fact with `operator`
  * and (for the comparison operators) `threshold`, and on a match add the

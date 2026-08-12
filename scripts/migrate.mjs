@@ -9090,6 +9090,13 @@ const STATEMENTS = [
   // deletion. The read resolves through the org-scoped getDecision instead.
   `ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "decision_snapshot_id" integer`,
 
+  // ── 0234 lot_pricing_rules.locked_decision_snapshot_id ─────────────────────
+  // No new table. Mirrors migrations/0234_lot_pricing_decision_link.sql.
+  // The lock writes each child lot's list_price — an act — while locked_grid
+  // preserves only the output. The rules and base source that produced it live
+  // in the same mutable row, so this is the link to the frozen reasoning.
+  `ALTER TABLE "lot_pricing_rules" ADD COLUMN IF NOT EXISTS "locked_decision_snapshot_id" integer`,
+
   // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
   // ONE new table — scripts/ratchets/table-count.json 758 -> 759. Mirrors
   // migrations/0229_outward_actions.sql + shared/schema/outward-actions.ts.

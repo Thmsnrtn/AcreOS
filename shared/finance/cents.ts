@@ -37,6 +37,27 @@ export function dollarsFromCents(cents: number): number {
  * Sum a list of decimal money values in integer cents. The safe
  * replacement for `values.reduce((s, v) => s + parseFloat(v), 0)`.
  */
+/**
+ * cents → "$1,234.56", with a real minus sign for negatives. Locale-independent
+ * on purpose: `toLocaleString` renders differently per runtime ICU build, so a
+ * figure frozen into a decision record would not read back identically.
+ *
+ * This is the canonical home. Four other `formatCents` exist and only TWO of
+ * them are the same function — `shared/rental/camReconciliation.ts` and
+ * `shared/rental/utilityBillback.ts` are byte-identical to this;
+ * `server/services/wonBidToCertificate.ts` uses `toLocaleString` and renders
+ * negatives as `$-1,234.56`; and `client/.../MRRTrajectory.tsx` ABBREVIATES
+ * ($1.2M / $3.4K), which is a different function wearing the same name. They
+ * are left alone rather than unified blindly — see NEXT_UP.
+ */
+export function formatCents(cents: number): string {
+  const neg = cents < 0;
+  const s = (Math.abs(cents) / 100).toFixed(2);
+  const [int, frac] = s.split(".");
+  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${neg ? "−" : ""}$${withCommas}.${frac}`;
+}
+
 export function sumCents(values: Array<string | number | null | undefined>): number {
   let total = 0;
   for (const v of values) total += centsFromDecimal(v);

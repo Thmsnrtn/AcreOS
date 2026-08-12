@@ -289,6 +289,22 @@ export const lotPricingRules = pgTable(
       override?: boolean;
     }>>(),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
+    /**
+     * The decision snapshot recorded when this grid was locked.
+     *
+     * `lockedGrid` preserves the OUTPUT — base, premium and asking price per
+     * lot. It preserves none of the reasoning: `rules` and `basePriceSource`
+     * live in this same MUTABLE row, so editing them after a lock leaves the
+     * grid intact and destroys the explanation for it, and the derived
+     * base-per-acre and engine version were never stored at all.
+     *
+     * A plain integer, not a foreign key, for the same reason as
+     * `offers.decision_snapshot_id`: decision_snapshots cascades on org delete
+     * and this row's own parent does not, so an FK would couple two different
+     * deletion lifetimes. Null means the lock predates this link, or the
+     * recording failed — never that no reasoning existed.
+     */
+    lockedDecisionSnapshotId: integer("locked_decision_snapshot_id"),
 
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

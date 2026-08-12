@@ -322,6 +322,20 @@ from hand-checking the entries whose names sounded safety-relevant. **Sorting th
 noise by consequence and hand-checking the top of it beat improving the
 detector.** That is probably the right technique for this class in general.
 
+### A small consolidation, sized and left alone (unit 44)
+
+`formatCents` now has a canonical home in `shared/finance/cents.ts`, beside
+`dollarsFromCents`. Four other copies exist and **only two are the same
+function** — `shared/rental/camReconciliation.ts` and
+`shared/rental/utilityBillback.ts` are byte-identical to the canonical one, but
+`server/services/wonBidToCertificate.ts` renders negatives as `$-1,234.56` and
+`client/src/components/dashboard/MRRTrajectory.tsx` ABBREVIATES ($1.2M / $3.4K),
+which is a different function wearing the same name.
+
+So a blind "de-duplicate formatCents" sweep would change two behaviours. The two
+true duplicates can point at the canonical one safely; the other two need a
+different name, not a merge.
+
 ### The second webhook rail — recorded in BLOCKERS as B8, not a task
 
 There is a complete second webhook system (`webhook_subscriptions`,
@@ -406,6 +420,26 @@ In order:
   a deal advancing to won/closed, an acquisition being recorded. **Do not add a
   surface just to move the ratchet** — that is optimising for the number rather
   than the customer, which is the failure the ratchet exists to detect.
+
+  **Unit 44 found one and the ratchet is now at 5:** the subdivision
+  **lot-pricing lock** (`POST /api/parcels/:id/pricing-rules/lock`). It writes
+  every child lot's `listPrice`, and `lockedGrid` preserved only the OUTPUT —
+  the `rules` and `basePriceSource` that produced it live in the SAME MUTABLE
+  ROW the lock updates, so editing them afterwards leaves the grid and destroys
+  its explanation. The exact mirror of the note-payoff path in `MUST_NOT_ADOPT`.
+
+  It records **no Scenario**, deliberately: a per-lot price grid carries no
+  `total_cost`, `profit` or `cap_rate`, and adding a sixth engine so it could
+  would be the ratchet-gaming move. A test asserts the absence.
+
+  **The verified next step it produced — a real gap, not a task to invent:**
+  the lock passes `reviewDueAt: null`, so it never prompts for an outcome. The
+  reason is that `OUTCOME_KINDS` (`acquired` / `sold` / `offer_accepted` /
+  `offer_rejected` / `abandoned` / `still_open`) is shaped for a SINGLE POSITION
+  resolving, and a price set across N child lots resolves as *"how many sold, at
+  what"*. **Extending the outcome vocabulary is the blocking work** — asking a
+  question whose available answers do not fit is worse than not asking. Do not
+  wire a review date here until that is done.
 
   **(c) Measure actuals somewhere — VERIFIED as a build, not a wiring job.**
   Unit 27 checked the premise: **no column in this repo holds what a deal

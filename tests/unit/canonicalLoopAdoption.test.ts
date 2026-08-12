@@ -66,6 +66,21 @@ const ADOPTING_SURFACES = [
     // customer that answering is pointless.
     writes: ["/api/decisions/calibration"],
   },
+  {
+    file: "server/routes-lot-pricing.ts",
+    what: "locking a subdivision's asking-price grid",
+    // The lock writes every child lot's listPrice — the price the market sees,
+    // and the moment the grid stops being a preview. `lockedGrid` preserved the
+    // OUTPUT and none of the reasoning: `rules` and `basePriceSource` live in
+    // the SAME MUTABLE ROW the lock updates, so editing them afterwards leaves
+    // the grid intact and destroys its explanation. The mirror image of the
+    // note payoff path in MUST_NOT_ADOPT below, which already owns its own.
+    //
+    // No scenario, deliberately: a per-lot price grid is not expressed in the
+    // shared metric vocabulary, and inventing a sixth engine to satisfy this
+    // list is exactly the failure an up-only count invites.
+    writes: ["recordDecision("],
+  },
 ] as const;
 
 /**
@@ -76,7 +91,7 @@ const ADOPTING_SURFACES = [
  * what it did — which is precisely the regression the canonical layers exist to
  * prevent, and it would otherwise be invisible.
  */
-const ADOPTING_SURFACE_BASELINE = 4;
+const ADOPTING_SURFACE_BASELINE = 5;
 
 /**
  * Surfaces that look like adoption candidates and MUST NOT become ones.
