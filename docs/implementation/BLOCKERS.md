@@ -418,3 +418,53 @@ customer feature (an org advertises its own listing)?
 
 Nothing in unit 50 assumes an answer, and both answers keep the gate until the
 second one is actually built.
+
+---
+
+## B12 — A KILLed subsystem whose API is still mounted
+
+**Found:** unit 52, by the component-name detector added to the Pax-ambient
+ratchet.
+**Blocked on:** a founder decision — execute the deletion, or reactivate the
+surface. **Not touched in the meantime**; the client door stays frozen.
+
+### The state
+
+`docs/company/deletion-ledger.md` carries a **KILL** verdict on the standalone
+negotiation copilot: *"Duplicate of the orchestrator, flagged off, no nav"*,
+naming three artifacts — `routes-negotiation.ts`, `negotiationCopilotService`,
+and `pages/negotiation-copilot.tsx` (607 lines). The orchestrator it duplicates
+(`services/negotiationOrchestrator.ts`) is separately **FREEZE (wired)** and
+lives on inside Pax through `routes-core-ai.ts`.
+
+The client half is enforced: `/negotiation` is in `FROZEN_ROUTES`, which
+`resolveRouteEnabled` checks *before* every other rule including the fail-open
+ones, so an unseeded flags table cannot un-hide it.
+
+The server half is not. `server/routes.ts:1343` mounts
+`app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter)`
+— reachable by any authenticated user of any org, with no flag check and no
+freeze equivalent. The page is unreachable; the API it called is not.
+
+### Why unit 52 stopped at recording it
+
+Unit 49's line: these routes do something real, so removing them removes
+**capability**, not a lie — which is the founder's call, not a test author's.
+The deletion ledger is the instrument for making it, and the ledger's execution
+rule already prescribes the shape (`Errors.gone` — a permanent-failure signal,
+not a 404 that reads as a routing bug).
+
+### The two ways out
+
+1. **Execute the KILL.** Delete the router, the service and the page; leave the
+   `Errors.gone` stub the deletion-ledger rule prescribes; drop `/negotiation`
+   from `FROZEN_ROUTES` in the same commit (the freeze entry exists to hide a
+   route that still resolves — `/vision-ai` is already the reverse case: frozen,
+   with its `<Route>` long gone). Lower the route/table ratchets in the same
+   commit.
+2. **Reactivate it.** Then it is a second AI destination and the constitution
+   applies: it goes behind `/ai` as a section, or behind the Deals door as a
+   tab on the deal it negotiates — not back to a top-level route.
+
+Either way `tests/unit/paxStaysAmbient.test.ts` fails on the change and asks for
+the decision to be stated, which is the point.

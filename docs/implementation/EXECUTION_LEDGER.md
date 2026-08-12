@@ -3673,3 +3673,100 @@ The conversion broke two tests, and both were right to break:
 Five mutations, each caught: reverting the marketplace to `featureGate`; making
 the ladder gate fail open; reintroducing the enterprise bypass; mounting the
 public API v1; and reverting the registry entry to `prose-only`.
+
+---
+
+## Unit 52 — The last prose-only entry, and the AI destination nobody could see · this commit
+
+**Files:** `shared/governance/constitution.ts`,
+`tests/unit/paxStaysAmbient.test.ts` (new, 11 tests).
+
+Closes the **second and last** `prose-only` entry in the constitution registry.
+`ai.pax-stays-ambient` — *"No new AI destinations — Pax stays ambient fabric
+behind the existing doors, never a separate app-within-the-app"* — carried the
+note *"Enforced by the five-door ratchet indirectly (no new top-level entry). No
+dedicated Pax-surface gate."*
+
+**Indirect** is the whole problem. The five-door ratchet governs what appears in
+the NAV. A second AI destination that renders its own page and is reached by a
+link, an email redirect or a typed URL — never appearing in the sidebar at all —
+passes that ratchet untouched while being exactly the app-within-the-app the
+rule forbids.
+
+### The first draft passed, and was wrong twice over
+
+It matched on **path names** and reported "one destination, two aliases folding
+into it". Both halves were false. Adding a second detector — the **name of the
+component the route renders** — produced the real picture:
+
+| route | renders | verdict |
+| --- | --- | --- |
+| `/ai` | `PaxPage` | the door |
+| `/pax` | `Redirect /ai` | alias |
+| `/ai-team` | `Redirect /ai#agents` | alias |
+| `/agents` | `Redirect /ai#agents` | alias — *path says nothing about AI* |
+| `/command-center` | `Redirect /ai#chat` | alias — *likewise* |
+| `/settings/pax` | `PaxControlsPage` | behind the Settings door |
+| `/negotiation` | `NegotiationCopilotPage` | **a second destination** |
+
+`/negotiation` is a 607-line AI surface — objection detection, counter-offer
+suggestion, strategy recommendation, session workflow — at a **top-level route,
+rendering its own page**. It is in no nav module and nothing in the client links
+to it, which is precisely why the five-door ratchet never saw it. A path-name
+check does not see it either: the path is a business noun, and only the
+component name says "Copilot".
+
+### It is not a live violation — and that distinction is the finding
+
+`docs/company/deletion-ledger.md` carries a **KILL** verdict on it ("Duplicate
+of the orchestrator, flagged off, no nav"), the orchestrator itself lives on
+inside Pax via `routes-core-ai.ts`, and `shared/feature-freeze.ts` hard-denies
+the route ahead of every fail-open rule in `resolveRouteEnabled`. So the rule is
+upheld **by the freeze, not by absence** — which is a materially different fact
+from the one the first draft asserted, and the difference is one `FROZEN_ROUTES`
+edit wide. `isRouteEnabled` fails **open** (unseeded flags table → show
+everything); the freeze list is checked before that, and is the only thing
+standing between this page and any authenticated user typing the URL.
+
+The test now says so: the exemption is **listed rather than inferred** (a filter
+would have quietly absorbed a second and third frozen AI page), and unfreezing
+`/negotiation` fails here with a message pointing at the ledger's reactivation
+criterion. Inverted, like `FOUNDER_ROUTE_BASELINE` — a test cannot know whether
+the standalone copilot should come back, but it can make coming back a decision
+somebody reads a message about.
+
+`/api/negotiation` is still **mounted** (`routes.ts:1343`, auth + org only) under
+a KILL verdict whose client door is frozen. Recorded as **B12**; not touched
+here, because unit 49's line holds — the routes do something real, so removing
+them removes capability rather than a lie, and that is the founder's call.
+
+### Verification
+
+Seven mutations, each verified to apply before its result was believed, each
+caught:
+
+1. `/pax` renders `PaxPage` instead of redirecting → 2 failures.
+2. `/ai-team` redirects to `/today` → alias check fails.
+3. `"/ai"` removed from `PROTECTED_DOOR_ROUTES` → protected-door check fails.
+4. The registry entry flipped back to `prose-only` → 2 failures.
+5. `/negotiation` removed from `FROZEN_ROUTES` → 2 failures.
+6. `/settings/pax` promoted to `/pax-controls` → 3 failures.
+7. `NegotiationCopilotPage` renamed so the component detector stops matching →
+   the **vacuity guard** fails.
+
+Mutation 7 is the one worth keeping. The vacuity guard asserts `/negotiation` is
+among the routes found, so the component detector cannot be silently neutered:
+without it the file would revert to the path-only check that missed the surface,
+and would keep passing while doing less.
+
+An earlier attempt at mutation 4 inserted an unused marker into the entry — the
+diff was non-empty, so the harness accepted it, and the suite stayed green. That
+is a **no-op mutation reported as a survived one**; it was redone as a real
+`kind:` flip anchored to the entry. Verifying that a mutation applies is not the
+same as verifying it changes the thing under test.
+
+**No `prose-only` entries remain in the registry.** Every founder decision now
+has an automated backstop, and the final assertion fails if a new decision is
+added without one — which is the moment to write the gate, not later.
+
+`npm run check` EXIT=0 · `tests/unit` 678 files, 8900 passed, 1 skipped.

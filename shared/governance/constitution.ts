@@ -317,9 +317,28 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "ai-surface",
     source: "CLAUDE.md DO-NOT-DO list",
     enforcement: {
-      kind: "prose-only",
-      refs: ["CLAUDE.md"],
-      note: "Enforced by the five-door ratchet indirectly (no new top-level entry). No dedicated Pax-surface gate. GOVERNANCE DEBT (not a hard stop).",
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/paxStaysAmbient.test.ts",
+        "client/src/lib/sidebar-hidden-routes.ts",
+        "shared/feature-freeze.ts",
+        "CLAUDE.md",
+      ],
+      note:
+        "Was prose-only, backed only by the five-door ratchet INDIRECTLY. That " +
+        "ratchet governs the NAV, so a second AI destination reached by a link " +
+        "or a typed URL — never appearing in the sidebar — passed it untouched " +
+        "while being exactly the app-within-the-app this forbids. Now asserted " +
+        "directly: /ai is the one destination that renders, every other " +
+        "AI-named customer route must redirect INTO it, and /ai must stay a " +
+        "protected door. The check matches on the RENDERED COMPONENT as well " +
+        "as the path, which is what found /negotiation — a 607-line standalone " +
+        "copilot at a top-level route that no path-name scan sees, in no nav " +
+        "module, linked from nowhere. It carries a deletion-ledger KILL " +
+        "verdict and is hard-denied by shared/feature-freeze.ts, so the rule " +
+        "holds today BY THE FREEZE rather than by absence; unfreezing it fails " +
+        "the ratchet. The founder plane is deliberately out of scope — it has " +
+        "its own four-doors rule and an explicit admin namespace.",
     },
   },
 ] as const;

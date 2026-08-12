@@ -284,6 +284,32 @@ access to it and unassigning revokes access** — it exfiltrates by exactly the
 mechanism the assigned-leads gate exists to control. Three paths accepted an
 assignee from anyone, and it is now gated (including `assignedTo: null`).
 
+### Units 47–52, the same pattern at higher stakes
+
+| unit | what | why it survived |
+|---|---|---|
+| 47 | three more **unbounded collections** in the org settings jsonb blob | the column has no validation, so nothing bounded them |
+| 48 | VA **escalations recorded but never delivered** | the write succeeded, so every caller looked correct |
+| 49 | VA task routes **returned a plausible object and stored nothing** | a 200 with a shaped body is indistinguishable from a save |
+| 50 | **any member of any org could buy ads** on AcreOS's own ad account | the founder's "be the rail, not the provider" ruling had been applied to ACH twenty lines below and never to ads |
+| 51 | a **subscription tier could buy past the expansion ladder** — `featureGate`'s enterprise bypass, plus fail-OPEN on a flag-store error | the escape hatches are correct for a product flag and wrong for a governance gate |
+| 52 | a **second AI destination** (`/negotiation`, 607 lines) that no path-name scan and no nav ratchet could see | it is in no nav module and nothing links to it — held only by the freeze list |
+
+**The technique that produced 50–52** is the one recorded in §4: *find a rule the
+repo has already written down — a founder ruling, a closed vocabulary, a deleted
+subsystem note — and enumerate the surfaces it should cover.*
+`shared/governance/constitution.ts` is that list made machine-readable, and it
+flagged its own weakest entries as **`prose-only`**. There were two. Units 51 and
+52 closed both: **no `prose-only` entries remain**, and the final assertion in
+`paxStaysAmbient.test.ts` fails if a new decision is added without a gate.
+
+**Unit 52 also added a detector worth reusing.** A surface is named for the
+business problem it solves, not for the machinery inside it — so scanning route
+PATHS finds nothing, and scanning the COMPONENT each route renders finds the
+surface. `/negotiation` renders `NegotiationCopilotPage`. The same asymmetry
+should be expected anywhere a rule is written in the vocabulary of the machinery
+(AI, payment, export, delete) and the surfaces are named for the domain.
+
 Gate state at last commit: `npm run check` exit 0, tsc clean, reachability at
 all four baselines, every ratchet at baseline, and the **full unit suite green —
 672 files, 8,836 tests, 1 skipped, 0 failures.**
@@ -698,3 +724,17 @@ npm run check > /tmp/check.log 2>&1; echo "EXIT=$?"
 
 The same applies to any gate whose signal is the exit code rather than the last
 lines of output.
+
+**A mutation that applies is not a mutation that tests anything.** Unit 52's
+harness required the mutated file to differ from the original before it believed
+the result — and still accepted a no-op: an unused marker inserted into the
+constitution entry produced a real diff, so the harness ran the suite, the suite
+stayed green, and the assertion looked survived-and-therefore-weak. It was
+neither; the mutation never touched the value under test. Anchor each mutation to
+the **exact expression the assertion reads**, and treat "diff is non-empty" as a
+precondition, not as evidence.
+
+**A truncated grep can turn a live finding into a dismissed one.** Unit 50 nearly
+concluded `routes-elite-features.ts` was dead code because `| head -3` cut the
+output above `routes.ts:2544`, where `registerEliteFeatureRoutes(app)` is called.
+Never truncate a reachability check.
