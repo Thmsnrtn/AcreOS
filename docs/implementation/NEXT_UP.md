@@ -94,7 +94,7 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 651 files, 8,455 tests, 1 skipped, 0 failures.**
+suite green — 653 files, 8,508 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -119,10 +119,14 @@ In order:
   pure function, add an `EngineSpec` with a `compute`, and register it in
   `server/services/economics/engines/index.ts`. The pattern is now two examples
   deep, so this is mechanical rather than exploratory.
-- **Add a `days` MetricUnit.** `days_accrued` currently carries unit `months`
-  with an apology in a comment, because widening `MetricUnit` touches a type
-  already persisted in `scenarios.metrics` and `outcomes.actuals`. Small,
-  correct, and needs a migration-aware read.
+- **Prompt for outcomes.** Nothing asks a customer to record one, so the
+  Decision→Outcome loop closes only when someone chooses to close it. The
+  founder plane's due-outcome sweep (`outcomeLedger` / `decisionEval`) is the
+  pattern to study — do not invent a second one.
+- **Calibration across decisions** — the layer above a single variance.
+- **SMS + e-sign transports**, then widen `PROTECTABLE_SENDS` to count them.
+  The transport must be wired FIRST, or the ratchet becomes unlowerable and its
+  own test fails.
 - **Prompt for outcomes.** Nothing asks a customer to record one, so the loop
   closes only when someone chooses to close it. The founder plane's due-outcome
   sweep (`outcomeLedger` / `decisionEval`) is the pattern to study.

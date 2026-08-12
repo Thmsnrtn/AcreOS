@@ -64,6 +64,15 @@ function request(over: Partial<ComputeScenarioRequest> = {}): ComputeScenarioReq
 }
 
 describe("the registry is coherent", () => {
+  it("declares a `days` unit rather than mislabelling a day count as months", () => {
+    // BI182: comparing a figure in one unit with one in another produces a
+    // number that looks plausible and is wrong. `days_accrued` shipped briefly
+    // as `months` with an apology in a comment; correcting it was free only
+    // because `scenarios` and `outcomes` have never been deployed, so no
+    // persisted row carries the wrong label. That window closes on first deploy.
+    expect(metricById("days_accrued")?.unit).toBe("days");
+  });
+
   it("every metric declares a unit and a direction", () => {
     // BI182: an undimensioned money figure is how cents get compared with
     // dollars and produce a number that looks plausible and is wrong by 100x.

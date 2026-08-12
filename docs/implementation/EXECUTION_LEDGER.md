@@ -671,3 +671,31 @@ its own module and a test). Un-exported; the test reads `notePayoffEngine.id`.
 
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
 88/88 across the four affected suites.
+
+---
+
+## Unit 13 — Correct the `days` unit while it is still free · this commit
+
+**Small, and worth its own entry for the reason rather than the change.**
+
+Unit 12 shipped `days_accrued` carrying unit `months`, with an apology in a
+comment, because widening `MetricUnit` touches a type persisted in
+`scenarios.metrics` and `outcomes.actuals`. That was the wrong call, and the
+correction is one line.
+
+BI182 requires explicit units precisely because comparing a figure in one unit
+with one in another produces a number that looks plausible and is wrong. A
+mislabelled unit with a comment explaining the mislabel is still a mislabelled
+unit — the comment protects the next reader of the source, not the next reader
+of the number.
+
+**Correcting it was free HERE and only here.** `scenarios` and `outcomes` are
+new tables that have never been deployed, so no persisted row carries the wrong
+label. That is the pre-customer window BI104 describes, and it closes on first
+deploy. Deferring would have converted a one-line fix into a data migration.
+
+A test pins the unit so it cannot regress, and the reasoning lives in the code
+rather than only in this ledger.
+
+**Also verified this commit:** the FULL unit suite — **653 files, 8,508 tests,
+1 skipped, 0 failures** — covering all thirteen units.

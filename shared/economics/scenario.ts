@@ -91,7 +91,7 @@ export interface ScenarioAssumption {
  * value, and the failure it prevents is real — comparing a figure in cents with
  * one in dollars produces a number that looks plausible and is wrong by 100x.
  */
-export type MetricUnit = "cents" | "ratio" | "months" | "percent";
+export type MetricUnit = "cents" | "ratio" | "months" | "days" | "percent";
 
 export interface MetricSpec {
   id: string;
@@ -146,18 +146,19 @@ export const METRICS: readonly MetricSpec[] = [
   {
     id: "days_accrued",
     label: "Days accrued",
-    unit: "months", // no `days` unit exists; see the note below
+    unit: "days",
     higherIsBetter: true,
   },
 ] as const;
 
-// NOTE ON `days_accrued`'s UNIT: the MetricUnit union has no `days` member, and
-// widening it is a schema-shaped change to a type already persisted in
-// `scenarios.metrics` and `outcomes.actuals`. Rather than silently mislabel the
-// figure, it is carried as the nearest existing time unit and flagged here.
-// Adding a `days` unit is a small, correct follow-up — it just is not free, and
-// pretending the unit is right would be exactly the kind of quiet
-// dimensional lie BI182 exists to prevent.
+// `days` was added to MetricUnit the moment it was needed rather than deferred.
+// It shipped briefly mislabelled as `months` with an apology in a comment; that
+// is a dimensional lie of the exact kind BI182 exists to prevent (BI182: store
+// explicit units — comparing a figure in one unit with one in another produces
+// a number that looks plausible and is wrong). Correcting it was free HERE and
+// only here: `scenarios` and `outcomes` are new tables that have never been
+// deployed, so no persisted row carries the wrong label. That window is the
+// pre-customer advantage BI104 describes, and it closes on first deploy.
 
 const METRIC_BY_ID = new Map(METRICS.map((m) => [m.id, m]));
 
