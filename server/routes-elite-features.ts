@@ -16,6 +16,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requireFounder } from "./auth/clerkAuth";
 import { addMonths } from "./utils/dateUtils";
 
 // Services
@@ -33,6 +34,13 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
 const auth = [isAuthenticated, getOrCreateOrg];
+
+/**
+ * Daily ceiling on the PLATFORM ad account, in cents. $500/day — the same
+ * figure as the constitution's founder-only spend hard-stop, deliberately.
+ * Raising it is a code change someone has to justify, not a request field.
+ */
+const MAX_DAILY_AD_BUDGET_CENTS = 50_000;
 
 export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
@@ -301,7 +309,25 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/meta-ads/campaigns", ...auth, async (req: Request, res: Response) => {
+  // FOUNDER-ONLY, and it should have been from the start.
+  //
+  // `metaAdsService` posts to graph.facebook.com against META_AD_ACCOUNT_ID
+  // with META_ACCESS_TOKEN — ONE PLATFORM AD ACCOUNT FOR ALL ORGS. So a
+  // campaign created here spends AcreOS's money, and this route was gated by
+  // `[isAuthenticated, getOrCreateOrg]` alone: any member, va or viewer of any
+  // organization could open it, name their own `dailyBudgetCents`, and bill it
+  // to the platform. No cap, no credit deduction, no simulation guard.
+  //
+  // The founder has already ruled on this exact shape, IN THIS FILE, twenty
+  // lines below: the ACTUM ACH endpoints were deleted on 2026-07-29 ("be the
+  // rail, not the provider") because one platform ACTUM_MERCHANT_ID for all
+  // orgs meant money moving on AcreOS's own account. The ads routes are the
+  // same pattern and were not brought under the same ruling — a rule applied
+  // to some surfaces and not others, at the highest stakes in the repo.
+  //
+  // Gated rather than deleted: deleting live routes is the founder's call and
+  // the ACTUM precedent says that is how it gets made. See BLOCKERS B11.
+  app.post("/api/meta-ads/campaigns", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const {
         propertyId, campaignName, dailyBudgetCents, targetStates, targetZipCodes,
@@ -309,6 +335,23 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         primaryText, callToAction
       } = req.body;
       const org = req.organization;
+
+      // A ceiling on a number that goes straight into `daily_budget`. The
+      // founder gate makes this the founder's own spend, which is exactly why
+      // a typo is still worth catching: the constitution's hard-stop is
+      // "spends >$500 are founder-only", not "spends are unbounded once a
+      // founder is on the call".
+      const budget = Number(dailyBudgetCents);
+      if (!Number.isInteger(budget) || budget <= 0) {
+        return Errors.badRequest(res, "dailyBudgetCents must be a positive integer number of cents");
+      }
+      if (budget > MAX_DAILY_AD_BUDGET_CENTS) {
+        return Errors.badRequest(
+          res,
+          `dailyBudgetCents ${budget} exceeds the ${MAX_DAILY_AD_BUDGET_CENTS}-cent daily ceiling ` +
+            `on the platform ad account. Raise the ceiling deliberately, in code, rather than per request.`,
+        );
+      }
       const result = await metaAdsService.createLandListingCampaign({
         propertyId, orgId: org.id, campaignName, dailyBudgetCents,
         targetStates, targetZipCodes, targetRadiusMiles, targetLat, targetLng,
@@ -329,7 +372,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/meta-ads/sync-catalog", ...auth, async (req: Request, res: Response) => {
+  // Founder-only for the same reason: it writes into the PLATFORM catalog on
+  // the platform's ad account, using the platform token.
+  app.post("/api/meta-ads/sync-catalog", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
       const { catalogId } = req.body;

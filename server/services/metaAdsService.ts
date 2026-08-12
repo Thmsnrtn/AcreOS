@@ -263,9 +263,52 @@ export interface CreateLandAdCampaignInput {
   callToAction?: "LEARN_MORE" | "CONTACT_US" | "APPLY_NOW" | "GET_OFFER";
 }
 
+/**
+ * The result of asking for a campaign.
+ *
+ * A discriminated shape, not a fabricated one. Returning plausible-looking
+ * campaign ids for a simulated run would be exactly the invented-identifier
+ * failure the no-fabrication rule exists to stop — a caller could not tell a
+ * real campaign from a suppressed one, and would go on to poll stats for an
+ * ad that does not exist.
+ */
+export type LandListingCampaignResult =
+  | { simulated: true; campaignId: null; adSetId: null; adId: null }
+  | { simulated: false; campaignId: string; adSetId: string; adId: string };
+
 export async function createLandListingCampaign(
   input: CreateLandAdCampaignInput
-): Promise<{ campaignId: string; adSetId: string; adId: string }> {
+): Promise<LandListingCampaignResult> {
+  // SPEND GUARD, and it runs FIRST — before getAdAccountId(), which throws
+  // when the env var is absent.
+  //
+  // This is the only rail in the repo that buys advertising, and it buys it on
+  // the PLATFORM ad account (META_AD_ACCOUNT_ID) with the PLATFORM token — not
+  // the org's own connected account. Every other outbound rail here checks
+  // simulation before acting; this one did not, so a dev, CI or staging boot
+  // with those env vars present would have bought real ads. `ads` is now a
+  // simulated category and is in the global default set, like every other
+  // spend rail.
+  {
+    const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+    const { storage } = await import("../storage");
+    const org = await storage.getOrganization(input.orgId).catch(() => null);
+    if (shouldSimulate("ads", org)) {
+      await recordSimulatedAction(
+        "ads",
+        "createLandListingCampaign",
+        {
+          orgId: input.orgId,
+          propertyId: input.propertyId,
+          dailyBudgetCents: input.dailyBudgetCents,
+          campaignName: input.campaignName,
+        },
+        org,
+      );
+      return { simulated: true, campaignId: null, adSetId: null, adId: null };
+    }
+  }
+
   const adAccountId = getAdAccountId();
 
   // Step 1: Create Campaign
@@ -359,6 +402,7 @@ export async function createLandListingCampaign(
   });
 
   return {
+    simulated: false,
     campaignId: campaign.id,
     adSetId: adSet.id,
     adId: ad.id,

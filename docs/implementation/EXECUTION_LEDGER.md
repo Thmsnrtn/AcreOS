@@ -3507,3 +3507,67 @@ replace the refusals with the real implementation rather than leave them.
 
 Three mutations, each caught: restoring the lying 200; `createTask` beginning to
 persist; and a new writer of `settings.va_tasks` appearing.
+
+---
+
+## Unit 50 — Any member could buy ads on AcreOS's own account · this commit
+
+**Files:** `server/routes-elite-features.ts`,
+`server/services/metaAdsService.ts`, `server/utils/simulationMode.ts`,
+`docs/implementation/BLOCKERS.md` (B11),
+`tests/unit/adSpendAuthority.test.ts` (new, 11 tests).
+
+### The finding
+
+`POST /api/meta-ads/campaigns` took `dailyBudgetCents` from the request body and
+handed it to a service that POSTs `daily_budget` to `graph.facebook.com` against
+**`META_AD_ACCOUNT_ID` with `META_ACCESS_TOKEN`** — one platform ad account for
+every organization. Gated by `[isAuthenticated, getOrCreateOrg]` and nothing
+else: any member, va or viewer of any org could name their own budget and bill
+it to the platform. No cap, no credit deduction, no simulation guard.
+
+**The founder had already ruled on this exact shape, in this file.** Twenty
+lines below sits the note recording the 2026-07-29 deletion of the ACTUM ACH
+endpoints under *"be the rail, not the provider"* — one platform
+`ACTUM_MERCHANT_ID` for all orgs. The ads routes are the same pattern and were
+never brought under it. Units 30–46's shape at the highest stakes in the repo,
+and the only one denominated in dollars per day.
+
+### Three protections, each for a different failure
+
+- **`requireFounder`** — spending the platform's money is a platform decision,
+  and the constitution names it ("spends >$500 are founder-only").
+- **A $500/day ceiling in code.** The gate does not make it redundant: the rule
+  is *spends over $500 are founder-only*, not *unbounded once a founder is on
+  the call*, and a typo in a cents field is three orders of magnitude from its
+  intent. Asserted to be checked BEFORE the service call.
+- **`ads` as a simulated category**, in the global default set with every other
+  spend rail. The guard runs **before `getAdAccountId()`**, which throws when
+  the env var is absent — a guard placed after it would never run in exactly
+  the environments that most need it, and a test pins the ordering.
+
+A simulated run returns `{ simulated: true, campaignId: null }`. Returning
+plausible ids would be the no-fabrication rule broken at the worst place: a
+caller could not tell a real campaign from a suppressed one and would poll stats
+for an ad that does not exist. The return type is a discriminated union so
+callers cannot ignore it.
+
+### Not deleted, and the near-miss that decided it
+
+The ACTUM precedent says deletion is the founder's call (**B11**), and unit 49's
+line holds: these routes do something real, so removing them removes capability
+rather than a lie.
+
+**A truncated grep nearly buried this.** `grep ... | head -3` returned three
+comment matches and no registration, and the first conclusion was "the file is
+dead, so this is not live". `routes.ts:2544` calls
+`registerEliteFeatureRoutes(app)` — the real answer was below the cut. The
+lesson is narrow and worth keeping: **`head` on a reachability check can turn a
+live finding into a dismissed one**, and reachability is exactly the question
+where a partial answer is worse than none.
+
+### Verification
+
+Five mutations, each caught: dropping the founder gate; removing the cap;
+moving the simulation guard after `getAdAccountId()`; dropping `ads` from the
+global default set; and fabricating a campaign id on a simulated run.

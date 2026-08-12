@@ -349,3 +349,72 @@ applied to it, and this route is first in line.
 **Until then, do not "tidy" this handler.** Making it locally correct is the
 change most likely to be wasted, and the float math is the visible symptom of
 the model question rather than the defect itself.
+
+---
+
+## B11 — Meta ads spend on the platform's own ad account
+
+**Found:** unit 50, by asking whether `routes-elite-features.ts`'s remaining
+POST routes shared the shape units 49–50 had already found there twice.
+**Blocked on:** a founder decision — delete these routes, or connect them to the
+ORG's own ad account. **Gated and capped in the meantime** (unit 50); the
+decision itself is not taken here.
+
+### What it was
+
+`POST /api/meta-ads/campaigns` took `dailyBudgetCents` from the request body
+and passed it to `metaAdsService.createLandListingCampaign`, which POSTs
+`daily_budget` to `graph.facebook.com/v21.0` against **`META_AD_ACCOUNT_ID`
+using `META_ACCESS_TOKEN`** — one platform ad account for every organization.
+
+Gated by `[isAuthenticated, getOrCreateOrg]` and nothing else. **Any member, va
+or viewer of any org** could name their own daily budget and bill it to the
+platform. No cap. No credit deduction, so no cost attribution. No simulation
+guard — `ads` was not even a `SimulatedCategory`, so a dev, CI or staging boot
+with those env vars present would have bought real advertising.
+
+### The founder already ruled on this shape, in this file
+
+Twenty lines below the ads routes is the comment block recording the 2026-07-29
+deletion of the ACTUM ACH endpoints under *"be the rail, not the provider"*:
+they used **one platform `ACTUM_MERCHANT_ID` for all orgs**, so customer money
+would have moved on AcreOS's own merchant account.
+
+The Meta ads routes are the same pattern — one platform account for all orgs —
+and were never brought under the ruling. A rule applied to some surfaces and not
+others, at the highest stakes in the repository: this one is denominated in
+dollars per day.
+
+### What unit 50 did, and why not more
+
+- **`requireFounder`** on campaign creation and catalog sync. Spending the
+  platform's money is a platform decision, and the constitution's hard-stop
+  ("spends >$500 are founder-only") names it.
+- **A $500/day ceiling** in code — the same figure as the hard-stop. The founder
+  gate does not make it redundant: the rule is *spends over $500 are
+  founder-only*, not *spends are unbounded once a founder is on the call*, and a
+  typo in a cents field is three orders of magnitude from its intent.
+- **`ads` as a simulated category**, in the global default set alongside stripe,
+  lob, sms, email and webhooks. A simulated run returns
+  `{ simulated: true, campaignId: null }` — **not invented ids**, which would
+  leave a caller polling stats for an ad that does not exist.
+
+**Not deleted.** The ACTUM precedent says deletion is how the founder makes that
+call, and unit 49's line applies: these routes do something real, so removing
+them removes capability rather than a lie.
+
+### The question
+
+Is paid advertising a platform activity (founder buys ads for AcreOS) or a
+customer feature (an org advertises its own listing)?
+
+- **Platform activity** → the gate is the right permanent answer, and the
+  routes should probably move under `/api/founder/*` with the rest of the
+  instrument namespace.
+- **Customer feature** → it must run on the ORG's own connected ad account,
+  exactly as "be the rail, not the provider" required of payments. Fronting the
+  platform's ad account for customer listings is the same re-fronting the
+  email-sender ruling forbids, and it has no cost recovery today.
+
+Nothing in unit 50 assumes an answer, and both answers keep the gate until the
+second one is actually built.
