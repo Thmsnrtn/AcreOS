@@ -17,6 +17,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { scenarios } from "@shared/schema";
+import { ALL_ENGINES } from "./engines";
 import {
   computeScenario,
   freezeScenarioRef,
@@ -63,7 +64,9 @@ export async function recordScenario(
   organizationId: number,
   req: ComputeScenarioRequest,
 ): Promise<StoredScenario> {
-  const body = computeScenario(req);
+  // The FULL registry — core (shared) engines plus the server-side ones. See
+  // ./engines/index.ts for why the note engine cannot live in shared/.
+  const body = computeScenario(req, ALL_ENGINES);
 
   const [row] = await db
     .insert(scenarios)

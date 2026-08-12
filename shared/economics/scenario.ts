@@ -120,7 +120,44 @@ export const METRICS: readonly MetricSpec[] = [
     higherIsBetter: false,
   },
   { id: "hold_months", label: "Hold period", unit: "months", higherIsBetter: false },
+
+  // ── Note / lending metrics (the second engine's vocabulary) ──
+  // A LOWER payoff is better for the BORROWER and worse for the note HOLDER.
+  // `higherIsBetter` is written from the perspective of the AcreOS customer,
+  // who is the note holder — the investor whose scenario this is.
+  {
+    id: "payoff_total",
+    label: "Total payoff",
+    unit: "cents",
+    higherIsBetter: true,
+  },
+  {
+    id: "accrued_interest",
+    label: "Accrued interest",
+    unit: "cents",
+    higherIsBetter: true,
+  },
+  {
+    id: "principal_balance",
+    label: "Principal balance",
+    unit: "cents",
+    higherIsBetter: true,
+  },
+  {
+    id: "days_accrued",
+    label: "Days accrued",
+    unit: "months", // no `days` unit exists; see the note below
+    higherIsBetter: true,
+  },
 ] as const;
+
+// NOTE ON `days_accrued`'s UNIT: the MetricUnit union has no `days` member, and
+// widening it is a schema-shaped change to a type already persisted in
+// `scenarios.metrics` and `outcomes.actuals`. Rather than silently mislabel the
+// figure, it is carried as the nearest existing time unit and flagged here.
+// Adding a `days` unit is a small, correct follow-up — it just is not free, and
+// pretending the unit is right would be exactly the kind of quiet
+// dimensional lie BI182 exists to prevent.
 
 const METRIC_BY_ID = new Map(METRICS.map((m) => [m.id, m]));
 
@@ -159,9 +196,35 @@ export interface EngineSpec {
   label: string;
   /** Metric ids this engine produces. Every one must be in METRICS. */
   produces: string[];
+  /**
+   * The arithmetic. PURE — no I/O, no clock, no randomness. It also normalises
+   * its own inputs and returns the exact set it consumed, so the persisted
+   * `inputs` are what the engine actually used rather than whatever the caller
+   * happened to send.
+   */
+  compute(inputs: Record<string, number | string>): {
+    metrics: ScenarioMetric[];
+    normalisedInputs: Record<string, number | string>;
+  };
 }
 
-export const ENGINES: readonly EngineSpec[] = [
+/**
+ * The engines that live in `shared/` and can therefore run on either side.
+ *
+ * NOT the whole registry, and that is deliberate. Some engines are legitimately
+ * server-side — the note payoff engine implements statute-adjacent arithmetic
+ * and lives under `server/services/`, while `scripts/check-boundaries.mjs` rule
+ * S1 forbids shared/ importing server/. Rather than move regulated code to
+ * satisfy a module boundary, the registry is passed IN: a caller composes the
+ * set it can legally see, and `computeScenario` refuses anything outside the
+ * set it was handed. The closure guarantee survives — it becomes per-call
+ * rather than global — and there is still no path from computeScenario to a
+ * model.
+ *
+ * This mirrors the kernel/pack seam `server/services/autopilot/domainPack.ts`
+ * already uses on the founder plane rather than inventing a second shape.
+ */
+export const CORE_ENGINES: readonly EngineSpec[] = [
   {
     id: LAND_DEAL_ENGINE_ID,
     version: LAND_DEAL_ENGINE_VERSION,
@@ -176,11 +239,42 @@ export const ENGINES: readonly EngineSpec[] = [
       "breakeven_sale",
       "hold_months",
     ],
+    compute(inputs) {
+      const calcInputs: CalculatorInputs = {
+        purchaseCents: requireCents(inputs, "purchaseCents"),
+        closingAtBuyCents: requireCents(inputs, "closingAtBuyCents"),
+        holdingPerMonthCents: requireCents(inputs, "holdingPerMonthCents"),
+        holdMonths: requireCents(inputs, "holdMonths"),
+        marketingCents: requireCents(inputs, "marketingCents"),
+        salePriceCents: requireCents(inputs, "salePriceCents"),
+        closingAtSaleCents: requireCents(inputs, "closingAtSaleCents"),
+      };
+      if (calcInputs.holdMonths < 1) {
+        throw new ScenarioEngineError("holdMonths must be at least 1");
+      }
+      const out: CalculatorOutputs = computeLandDeal(calcInputs);
+      return {
+        normalisedInputs: { ...calcInputs },
+        metrics: [
+          metric("total_cost", out.totalCostInCents),
+          metric("net_proceeds", out.netProceedsCents),
+          metric("profit", out.profitCents),
+          metric("roi", out.roi),
+          metric("annualized_return", out.annualizedReturn),
+          metric("irr", out.irr),
+          metric("breakeven_sale", out.breakevenSaleCents),
+          metric("hold_months", calcInputs.holdMonths),
+        ],
+      };
+    },
   },
-] as const;
+];
 
-export function engineById(id: string): EngineSpec | undefined {
-  return ENGINES.find((e) => e.id === id);
+export function engineById(
+  id: string,
+  engines: readonly EngineSpec[] = CORE_ENGINES,
+): EngineSpec | undefined {
+  return engines.find((e) => e.id === id);
 }
 
 // ── The scenario ──────────────────────────────────────────────────────────
@@ -196,8 +290,14 @@ export interface ScenarioBody {
   engineVersion: string;
   strategyPackId: string | null;
   strategyPackVersion: string | null;
-  /** The verbatim inputs, so the number can be recomputed and defended later. */
-  inputs: Record<string, number>;
+  /**
+   * The verbatim inputs, so the number can be recomputed and defended later.
+   *
+   * `string` is admitted for DATES (ISO-8601) and enum-like discriminators. It
+   * is NOT a loophole for money: `requireCents` refuses anything that is not an
+   * integer, so a dollar amount cannot arrive as "42000.50" and be accepted.
+   */
+  inputs: Record<string, number | string>;
   assumptions: ScenarioAssumption[];
   metrics: ScenarioMetric[];
 }
@@ -207,7 +307,7 @@ export interface ComputeScenarioRequest {
   subjectId: number;
   label: string;
   engineId: string;
-  inputs: Record<string, number>;
+  inputs: Record<string, number | string>;
   assumptions?: ScenarioAssumption[];
   strategyPackId?: string | null;
   strategyPackVersion?: string | null;
@@ -216,8 +316,8 @@ export interface ComputeScenarioRequest {
 /** Raised when a request names an engine or inputs the registry cannot honour. */
 export class ScenarioEngineError extends Error {}
 
-function requireCents(
-  inputs: Record<string, number>,
+export function requireCents(
+  inputs: Record<string, number | string>,
   key: string,
 ): number {
   const v = inputs[key];
@@ -245,8 +345,11 @@ function requireCents(
  * the persisted `inputs` under the persisted `engineVersion` and must get the
  * persisted `metrics` back.
  */
-export function computeScenario(req: ComputeScenarioRequest): ScenarioBody {
-  const engine = engineById(req.engineId);
+export function computeScenario(
+  req: ComputeScenarioRequest,
+  engines: readonly EngineSpec[] = CORE_ENGINES,
+): ScenarioBody {
+  const engine = engineById(req.engineId, engines);
   if (!engine) {
     throw new ScenarioEngineError(
       `Unknown scenario engine "${req.engineId}". Financial numbers come from ` +
@@ -254,40 +357,17 @@ export function computeScenario(req: ComputeScenarioRequest): ScenarioBody {
     );
   }
 
-  if (engine.id !== LAND_DEAL_ENGINE_ID) {
-    // Unreachable while ENGINES has one entry, but written as a hard failure
-    // rather than a fallthrough so adding an engine to the registry without
-    // wiring its computation fails loudly instead of silently returning zeros.
+  const { metrics, normalisedInputs } = engine.compute(req.inputs);
+
+  // An engine that silently omits a metric it declared would produce a scenario
+  // that looks complete and is not. Catch it at write time, not read time.
+  const produced = new Set(metrics.map((m) => m.id));
+  const missing = engine.produces.filter((id) => !produced.has(id));
+  if (missing.length > 0) {
     throw new ScenarioEngineError(
-      `Engine "${engine.id}" is registered but has no computation wired.`,
+      `Engine "${engine.id}" declares ${missing.join(", ")} but did not emit them.`,
     );
   }
-
-  const calcInputs: CalculatorInputs = {
-    purchaseCents: requireCents(req.inputs, "purchaseCents"),
-    closingAtBuyCents: requireCents(req.inputs, "closingAtBuyCents"),
-    holdingPerMonthCents: requireCents(req.inputs, "holdingPerMonthCents"),
-    holdMonths: requireCents(req.inputs, "holdMonths"),
-    marketingCents: requireCents(req.inputs, "marketingCents"),
-    salePriceCents: requireCents(req.inputs, "salePriceCents"),
-    closingAtSaleCents: requireCents(req.inputs, "closingAtSaleCents"),
-  };
-  if (calcInputs.holdMonths < 1) {
-    throw new ScenarioEngineError("holdMonths must be at least 1");
-  }
-
-  const out: CalculatorOutputs = computeLandDeal(calcInputs);
-
-  const metrics: ScenarioMetric[] = [
-    metric("total_cost", out.totalCostInCents),
-    metric("net_proceeds", out.netProceedsCents),
-    metric("profit", out.profitCents),
-    metric("roi", out.roi),
-    metric("annualized_return", out.annualizedReturn),
-    metric("irr", out.irr),
-    metric("breakeven_sale", out.breakevenSaleCents),
-    metric("hold_months", calcInputs.holdMonths),
-  ];
 
   return {
     shapeVersion: SCENARIO_SHAPE_VERSION,
@@ -298,20 +378,39 @@ export function computeScenario(req: ComputeScenarioRequest): ScenarioBody {
     engineVersion: engine.version,
     strategyPackId: req.strategyPackId ?? null,
     strategyPackVersion: req.strategyPackVersion ?? null,
-    // Store what the engine actually consumed, not what the caller sent — an
-    // extra field in the request must not read later as an input to the maths.
-    inputs: { ...calcInputs },
+    // What the engine actually consumed, not what the caller sent — an extra
+    // field in the request must not read later as an input to the maths.
+    inputs: normalisedInputs,
     assumptions: req.assumptions ?? [],
     metrics,
   };
 }
 
-function metric(id: string, value: number | null): ScenarioMetric {
+/** Build one metric, validated against the shared registry. */
+export function metric(id: string, value: number | null): ScenarioMetric {
   const spec = metricById(id);
   if (!spec) {
     throw new ScenarioEngineError(`Unregistered metric "${id}"`);
   }
   return { id, value, unit: spec.unit };
+}
+
+/** An ISO-8601 date input. Refused rather than defaulted when malformed. */
+export function requireIsoDate(
+  inputs: Record<string, number | string>,
+  key: string,
+): Date {
+  const v = inputs[key];
+  if (typeof v !== "string") {
+    throw new ScenarioEngineError(
+      `Scenario input "${key}" is required and must be an ISO-8601 date string`,
+    );
+  }
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) {
+    throw new ScenarioEngineError(`Scenario input "${key}" is not a valid date: ${v}`);
+  }
+  return d;
 }
 
 // ── Reading a scenario ────────────────────────────────────────────────────

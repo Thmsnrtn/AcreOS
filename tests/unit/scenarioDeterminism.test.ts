@@ -18,7 +18,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  ENGINES,
+  CORE_ENGINES,
   METRICS,
   SCENARIO_SHAPE_VERSION,
   ScenarioEngineError,
@@ -34,6 +34,12 @@ import {
   LAND_DEAL_ENGINE_VERSION,
   computeLandDeal,
 } from "@shared/calculators/landDeal";
+import { ALL_ENGINES } from "../../server/services/economics/engines";
+import { notePayoffEngine } from "../../server/services/economics/engines/notePayoff";
+import {
+  PAYOFF_ENGINE_VERSION,
+  computePayoffQuote,
+} from "../../server/services/notePaymentMath";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -71,8 +77,8 @@ describe("the registry is coherent", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("every engine produces only registered metrics", () => {
-    for (const e of ENGINES) {
+  it("every core engine produces only registered metrics", () => {
+    for (const e of CORE_ENGINES) {
       expect(e.version, `${e.id} must declare a version`).toBeTruthy();
       for (const id of e.produces) {
         expect(metricById(id), `${e.id} produces unregistered metric ${id}`).toBeDefined();
@@ -266,5 +272,123 @@ describe("the reference a decision freezes", () => {
   it("does not carry the entire output — a reference is not a copy", () => {
     const ref = freezeScenarioRef(77, computeScenario(request()));
     expect(ref.headline.length).toBeLessThan(METRICS.length);
+  });
+});
+
+describe("BI191 — the primitive holds for a CONTRASTING strategy, not just land", () => {
+  // "Every core primitive must pass contrasting Strategy Pack fixtures. A
+  // land-only implementation that happens to expose generic labels does not
+  // satisfy the architecture." A registry with one land engine is a land-shaped
+  // abstraction pretending to be general, so these run the SECOND engine —
+  // structurally different: date-driven day-count accrual rather than a
+  // cash-flow series, with dates as inputs rather than only money.
+
+  const noteRequest = (over: Record<string, number | string> = {}) => ({
+    subjectType: "deal" as const,
+    subjectId: 7,
+    label: "Payoff at 90 days",
+    engineId: notePayoffEngine.id,
+    inputs: {
+      principalBalanceCents: 4_000_000,
+      annualRateBps: 987.5, // 9.875% — deliberately fractional
+      accrualStartDate: "2026-01-01T00:00:00.000Z",
+      payoffDate: "2026-04-01T00:00:00.000Z",
+      ...over,
+    },
+  });
+
+  it("computes through the composed registry, not the core one", () => {
+    // The note engine lives server-side (statute-adjacent arithmetic), so the
+    // CORE set must NOT know it — that is the boundary working, not a bug.
+    expect(() => computeScenario(noteRequest())).toThrow(ScenarioEngineError);
+    const body = computeScenario(noteRequest(), ALL_ENGINES);
+    expect(body.engineId).toBe(notePayoffEngine.id);
+  });
+
+  it("reads its version FROM the engine that owns the arithmetic", () => {
+    // A version duplicated away from its formula is a stamp that lies.
+    const body = computeScenario(noteRequest(), ALL_ENGINES);
+    expect(body.engineVersion).toBe(PAYOFF_ENGINE_VERSION);
+  });
+
+  it("does not reimplement the payoff maths — it agrees with the one engine", () => {
+    // Two implementations of the same money formula is exactly the duplication
+    // canonical law 1 forbids.
+    const body = computeScenario(noteRequest(), ALL_ENGINES);
+    const direct = computePayoffQuote({
+      principalBalanceCents: 4_000_000,
+      annualRateBps: 987.5,
+      accrualStartDate: new Date("2026-01-01T00:00:00.000Z"),
+      payoffDate: new Date("2026-04-01T00:00:00.000Z"),
+      unappliedCreditCents: 0,
+      lateFeesOutstandingCents: 0,
+      payoffFeeCents: 0,
+    });
+    expect(metricValue(body, "payoff_total")).toBe(direct.totalPayoffCents);
+    expect(metricValue(body, "accrued_interest")).toBe(direct.accruedInterestCents);
+    expect(metricValue(body, "days_accrued")).toBe(direct.daysAccrued);
+  });
+
+  it("accepts a FRACTIONAL rate while still refusing fractional money", () => {
+    // 9.875% arrives as 987.5 bps from the servicing table — legitimately not
+    // an integer. Money is a different rule and stays strict.
+    expect(() => computeScenario(noteRequest(), ALL_ENGINES)).not.toThrow();
+    expect(() =>
+      computeScenario(noteRequest({ principalBalanceCents: 4_000_000.5 }), ALL_ENGINES),
+    ).toThrow(/must be an integer/i);
+  });
+
+  it("refuses a payoff date before the accrual start", () => {
+    // A negative accrual period would produce a payoff smaller than principal —
+    // a number that looks like a discount and is a bug.
+    expect(() =>
+      computeScenario(
+        noteRequest({ payoffDate: "2025-06-01T00:00:00.000Z" }),
+        ALL_ENGINES,
+      ),
+    ).toThrow(/must not precede/i);
+  });
+
+  it("refuses a malformed date rather than defaulting it to now", () => {
+    expect(() =>
+      computeScenario(noteRequest({ accrualStartDate: "last Tuesday" }), ALL_ENGINES),
+    ).toThrow(/not a valid date/i);
+    expect(() =>
+      computeScenario(noteRequest({ accrualStartDate: 20260101 }), ALL_ENGINES),
+    ).toThrow(/ISO-8601 date string/i);
+  });
+
+  it("round-trips dates as ISO strings so the stored inputs stay re-runnable", () => {
+    const body = computeScenario(noteRequest(), ALL_ENGINES);
+    expect(body.inputs.accrualStartDate).toBe("2026-01-01T00:00:00.000Z");
+    expect(body.inputs.payoffDate).toBe("2026-04-01T00:00:00.000Z");
+  });
+
+  it("is deterministic, like every engine must be", () => {
+    const a = computeScenario(noteRequest(), ALL_ENGINES);
+    const b = computeScenario(noteRequest(), ALL_ENGINES);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it("emits every metric it declares", () => {
+    const body = computeScenario(noteRequest(), ALL_ENGINES);
+    const produced = new Set(body.metrics.map((m) => m.id));
+    for (const id of notePayoffEngine.produces) {
+      expect(produced.has(id), `declared ${id} but did not emit it`).toBe(true);
+    }
+  });
+
+  it("the two engines share the metric registry but overlap in nothing", () => {
+    // Genuinely contrasting: if the second engine produced the same metrics as
+    // the first, it would be a second instance of one shape rather than a test
+    // of the contract.
+    const land = new Set(CORE_ENGINES[0].produces);
+    const note = new Set(notePayoffEngine.produces);
+    const shared = [...note].filter((id) => land.has(id));
+    expect(shared).toEqual([]);
+    // …and every metric on both sides is registered in the SAME vocabulary.
+    for (const id of [...land, ...note]) {
+      expect(metricById(id), `${id} must be registered`).toBeDefined();
+    }
   });
 });

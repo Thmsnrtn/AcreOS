@@ -607,3 +607,67 @@ to study. Calibration across many decisions is not built at all.
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
 40/40 across the affected suites. Canon: outcome role-table → canonical,
 objects-without-home 11 → **10**.
+
+---
+
+## Unit 12 — A second, contrasting economics engine (BI191) · this commit
+
+**Audit requirement:** BI191 — *"Every core primitive must pass contrasting
+Strategy Pack fixtures. A land-only implementation that happens to expose
+generic labels does not satisfy the architecture."*
+
+**Why this mattered:** unit 9 shipped the economics layer with exactly ONE
+registered engine. A registry containing one land engine is a land-shaped
+abstraction pretending to be general, and the only way to find out is to make a
+structurally different engine fit it.
+
+**The obstacle, and how it was resolved.** The obvious second engine is
+`note_payoff`, which is already versioned and already persists its inputs — but
+it lives in `server/services/notePaymentMath.ts` and implements
+statute-adjacent arithmetic, while `check-boundaries.mjs` rule S1 forbids
+`shared/` importing `server/`. Rather than relocate regulated money code to
+satisfy a module boundary, **the registry is now passed IN**:
+`shared/economics/scenario.ts` exports `CORE_ENGINES` (the shared-side engines)
+and `computeScenario(req, engines)` refuses anything outside the set it was
+handed. The closure guarantee survives — it becomes per-call rather than global
+— and there is still no path from a scenario computation to a model.
+
+This is the same kernel/pack seam `server/services/autopilot/domainPack.ts`
+already uses on the founder plane, rather than a second shape.
+
+**Files:** `shared/economics/scenario.ts` (EngineSpec gains `compute`;
+`ENGINES` → `CORE_ENGINES`; `requireIsoDate`, `metric`, `requireCents`
+exported), `server/services/economics/engines/{index,notePayoff}.ts`,
+`server/services/economics/scenarioStore.ts`, `server/routes-scenarios.ts`,
+`shared/schema/scenarios.ts` (inputs widened to `number | string`).
+
+**Tests:** 29 (10 new cross-engine).
+
+**Architectural decisions:**
+- **The adapter does NOT reimplement the maths.** It delegates to
+  `computePayoffQuote` and a test asserts they agree exactly. Two
+  implementations of the same money formula is the duplication law 1 forbids.
+- **The version is read FROM the owning engine** (`PAYOFF_ENGINE_VERSION`),
+  never copied. A version that can drift from its formula is a stamp that lies.
+- **Inputs widened to `number | string` for DATES only.** `requireCents` still
+  refuses any non-integer, so `"42000.50"` cannot slip through as money — a test
+  pins both halves. A fractional *rate* is accepted, because 9.875% legitimately
+  arrives as 987.5 bps from the servicing table.
+- **`computeScenario` now verifies an engine emitted everything it declared.**
+  An engine that silently omits a declared metric produces a scenario that looks
+  complete and is not — caught at write time rather than read time.
+- **A test asserts the two engines overlap in NO metric.** If the second engine
+  produced the same outputs as the first it would be a second instance of one
+  shape, not a test of the contract.
+
+**Honest note left in the code:** `days_accrued` is carried with unit `months`
+because `MetricUnit` has no `days` member, and widening that union touches a
+type already persisted in two tables. The mismatch is flagged in a comment
+rather than silently shipped — pretending the unit is right is exactly the
+dimensional lie BI182 exists to prevent.
+
+**Reachability caught one export again** (`NOTE_PAYOFF_ENGINE_ID`, read only by
+its own module and a test). Un-exported; the test reads `notePayoffEngine.id`.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
+88/88 across the four affected suites.

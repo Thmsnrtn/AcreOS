@@ -84,7 +84,7 @@ export const scenarios = pgTable(
     strategyPackVersion: text("strategy_pack_version"),
 
     /** The verbatim inputs the engine consumed. The defence of the number. */
-    inputs: jsonb("inputs").$type<Record<string, number>>().notNull(),
+    inputs: jsonb("inputs").$type<Record<string, number | string>>().notNull(),
     assumptions: jsonb("assumptions").$type<ScenarioAssumption[]>().notNull().default([]),
     /** Computed outputs. A null value means UNDEFINED, never zero. */
     metrics: jsonb("metrics").$type<ScenarioMetric[]>().notNull().default([]),

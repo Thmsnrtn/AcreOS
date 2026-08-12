@@ -31,11 +31,12 @@ import {
   scenariosForSubject,
 } from "./services/economics/scenarioStore";
 import {
-  ENGINES,
   METRICS,
   SCENARIO_SUBJECT_TYPES,
   ScenarioEngineError,
+  type EngineSpec,
 } from "@shared/economics/scenario";
+import { ALL_ENGINES } from "./services/economics/engines";
 
 const router = Router();
 
@@ -52,8 +53,10 @@ const computeSchema = z.object({
   subjectId: z.number().int().positive(),
   label: z.string().min(1),
   engineId: z.string().min(1),
-  // Inputs only. Never outputs — see the file header.
-  inputs: z.record(z.string(), z.number()),
+  // Inputs only. Never outputs — see the file header. Strings are admitted for
+  // ISO dates; the engines' own requireCents refuses a non-integer money value,
+  // so this is not a loophole for "42000.50".
+  inputs: z.record(z.string(), z.union([z.number(), z.string()])),
   assumptions: z.array(assumptionSchema).default([]),
   strategyPackId: z.string().nullable().default(null),
   strategyPackVersion: z.string().nullable().default(null),
@@ -62,7 +65,7 @@ const computeSchema = z.object({
 // GET /api/scenarios/engines — what the platform can compute, and in what units
 router.get("/engines", (_req: AuthenticatedRequest, res: Response) => {
   res.json({
-    engines: ENGINES.map((e) => ({
+    engines: ALL_ENGINES.map((e: EngineSpec) => ({
       id: e.id,
       version: e.version,
       label: e.label,

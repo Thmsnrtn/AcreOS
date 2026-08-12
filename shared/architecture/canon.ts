@@ -671,10 +671,15 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "with no path from computeScenario to a model call, pinned by a test that " +
         "greps the module for model/fetch references, so BL3's fail condition (\"a " +
         "model response is required to reproduce a financial result\") is " +
-        "structurally impossible there. REMAINING GAP: only ONE engine is registered " +
-        "(land_deal). Every other vertical's arithmetic — flip, BRRRR, multifamily " +
-        "NOI, note payoff — still computes outside the registry, so most financial " +
-        "numbers in the product remain unversioned and unpersisted.",
+        "structurally impossible there. TWO structurally different engines are now " +
+        "registered — land_deal (cash-flow series) and note_payoff (date-driven " +
+        "day-count accrual, delegating to the existing statute-adjacent engine " +
+        "rather than reimplementing it) — which is what BI191 actually asks for: a " +
+        "land-only implementation exposing generic labels does not satisfy the " +
+        "architecture. They share the metric vocabulary and overlap in NO metric, " +
+        "pinned by a test. REMAINING GAP: flip, BRRRR and multifamily NOI still " +
+        "compute inline, outside the registry, so a large share of the product's " +
+        "financial numbers remain unversioned and unpersisted.",
     },
   },
   {

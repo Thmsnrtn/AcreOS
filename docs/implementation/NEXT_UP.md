@@ -87,6 +87,10 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 11. **Outcome** (layer 7) — `outcomes` + variance as a pure projection over
     what the decision froze. **The customer-side canonical loop now runs end to
     end: evidence → scenario → decision → outcome.** 22 tests.
+12. **Second economics engine** (BI191) — the registry is passed in rather than
+    global, so `note_payoff` registers from server-side without relocating
+    statute-adjacent code. Two structurally different engines, overlapping in
+    no metric.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -102,40 +106,23 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Register a second economics engine** — the highest-value remaining item.
+**Register the remaining vertical engines**, then prompt for outcomes.
 
-The scenario layer landed with exactly ONE registered engine (`land_deal`), so
-BI191's requirement is not yet met: *"Every core primitive must pass contrasting
-Strategy Pack fixtures. A land-only implementation that happens to expose
-generic labels does not satisfy the architecture."* Until a second, structurally
-different engine is registered, the economics kernel is a land-shaped
-abstraction that merely looks generic.
+BI191 is now satisfied at the contract level: two structurally different engines
+(`land_deal`, a cash-flow series; `note_payoff`, date-driven day-count accrual)
+share one metric vocabulary and overlap in no metric. Option (b) from the
+previous plan was taken — the registry is passed in rather than global — so no
+regulated code moved.
 
-**The obstacle is real and worth knowing before you start.** The obvious
-candidate is `note_payoff`: `server/services/notePaymentMath.ts` is already
-versioned (`PAYOFF_ENGINE_VERSION`) and already persists its inputs. But it
-lives in `server/`, and `shared/economics/scenario.ts` cannot import it —
-`scripts/check-boundaries.mjs` rule S1 forbids shared/ importing server/. Two
-honest options:
-
-  a) **Move the payoff math to `shared/`.** It is pure. But it is a
-     statute-implementing money engine (Reg-Z / RESPA adjacent, see
-     `shared/governance/statuteRegister.ts`), so moving it is not a cosmetic
-     refactor and deserves its own unit with its own verification.
-  b) **Split the registry**: `shared/economics/scenario.ts` keeps the CONTRACT
-     (metrics, units, the ScenarioBody shape, the closed-registry rule) while
-     engines register from either side through a typed seam. This is the better
-     architecture — it is the same kernel/pack shape
-     `server/services/autopilot/domainPack.ts` already uses on the founder
-     plane — and it does not move regulated code.
-
-  **(b) is recommended.** Note that `computeScenario` currently hard-fails on
-  any engine id other than `land_deal`, deliberately, so adding a registry entry
-  without wiring its computation fails loudly rather than returning zeros.
-
-Then, in order:
+In order:
 - **Flip / BRRRR / multifamily NOI** — each computes inline today. Extract to a
-  pure function, register it, and the numbers become defensible.
+  pure function, add an `EngineSpec` with a `compute`, and register it in
+  `server/services/economics/engines/index.ts`. The pattern is now two examples
+  deep, so this is mechanical rather than exploratory.
+- **Add a `days` MetricUnit.** `days_accrued` currently carries unit `months`
+  with an apology in a comment, because widening `MetricUnit` touches a type
+  already persisted in `scenarios.metrics` and `outcomes.actuals`. Small,
+  correct, and needs a migration-aware read.
 - **Prompt for outcomes.** Nothing asks a customer to record one, so the loop
   closes only when someone chooses to close it. The founder plane's due-outcome
   sweep (`outcomeLedger` / `decisionEval`) is the pattern to study.
