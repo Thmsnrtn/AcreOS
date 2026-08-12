@@ -8966,6 +8966,55 @@ const STATEMENTS = [
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "dual_agency_side" text`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_acknowledged_at" timestamp`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_doc_ref" text`,
+
+  // ── 0227 evidence_claims: the Evidence Fabric's atomic truth primitive ─────
+  // ONE new table — scripts/ratchets/table-count.json 756 -> 757. Mirrors
+  // migrations/0227_evidence_claims.sql + shared/schema/evidence.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: before this row type, provenance
+  // survived the FETCH and died at the WRITE. LookupResult already carried
+  // provider/source/confidence/classification/sourceAsOf, and
+  // propertyEnrichment.savePropertyEnrichment() collapsed all of it into one
+  // `properties.enrichment_data` JSONB blob that OVERWROTE the previous one —
+  // no per-field provenance, no observation history, no conflict, no as-of
+  // reconstruction. Three canonical laws (shared/architecture/canon.ts) were
+  // unsatisfiable as a result: evidence-known (2), unknown-is-valid (3),
+  // decisions-immutable (6). This is the single table those three laws need.
+  //
+  // It is ONE table and not five deliberately: the source registry already
+  // exists as CODE (server/services/providers/data-licenses.ts), the predicate
+  // vocabulary is a typed registry (shared/evidence/claim.ts), and resolution
+  // is a pure recomputable projection — so no evidence_sources,
+  // evidence_predicates or resolved_values table is needed (Law 11).
+  //
+  // APPEND-ONLY: no updated_at column. Re-observing a fact INSERTs; nothing
+  // UPDATEs. subject_id carries NO foreign key because subject_type may be
+  // 'parcel', which has no table yet — recording it now makes the eventual
+  // Parcel/Property split a backfill, not a rewrite of history.
+  `CREATE TABLE IF NOT EXISTS "evidence_claims" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "predicate" text NOT NULL,
+    "value_kind" text NOT NULL,
+    "value_text" text,
+    "value_number" double precision,
+    "value_bool" boolean,
+    "provider" text NOT NULL,
+    "source" text NOT NULL,
+    "authority" text NOT NULL,
+    "observed_at" timestamp,
+    "fetched_at" timestamp NOT NULL DEFAULT now(),
+    "provider_confidence" integer,
+    "license" text,
+    "cost_cents" integer NOT NULL DEFAULT 0,
+    "raw_fragment" jsonb
+  )`,
+  // Org-LEADING per the shard-readiness invariant (check-org-leading-index.mjs).
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "fetched_at")`,
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_predicate_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "predicate", "fetched_at")`,
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_provider_idx" ON "evidence_claims" ("organization_id", "provider", "fetched_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

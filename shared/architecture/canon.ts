@@ -490,19 +490,10 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     id: "evidence-claim",
     purpose: "source-backed assertion about reality",
     layer: "evidence-fabric",
-    status: "absent",
-    tables: [],
-    gap:
-      "THE largest canonical gap. The ACQUISITION side is strong — LookupResult " +
-      "(server/services/providers/types.ts) already carries provider, source, " +
-      "confidence, DataClassification, fetchedAt, sourceAsOf and stale, and " +
-      "DATA_LICENSE_REGISTER already carries rights/redistribution per source. But " +
-      "NONE of it is persisted as claims: propertyEnrichment.savePropertyEnrichment() " +
-      "collapses the whole result into a single `properties.enrichmentData` JSONB blob " +
-      "that OVERWRITES the previous one. There is no per-field provenance, no " +
-      "observation history, no conflict representation and no as-of reconstruction. " +
-      "Laws 2, 3 and 6 are all unsatisfiable until this exists.",
-    disposition: "BUILD",
+    status: "canonical",
+    tables: ["evidence_claims"],
+    gap: "",
+    disposition: "KEEP_HARDEN",
   },
   {
     id: "scenario",
@@ -623,15 +614,27 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
     enforcement: {
       kind: "partial",
       refs: [
+        "shared/evidence/claim.ts",
+        "shared/schema/evidence.ts",
+        "server/services/evidence/evidenceStore.ts",
+        "server/services/evidence/enrichmentToClaims.ts",
+        "tests/unit/evidenceResolution.test.ts",
+        "tests/unit/enrichmentToClaims.test.ts",
         "server/services/providers/types.ts",
         "server/services/providers/data-licenses.ts",
         "scripts/check-no-fabrication.mjs",
       ],
       note:
-        "LookupResult carries source/confidence/classification/sourceAsOf and the " +
-        "license register carries rights, but none of it is PERSISTED per field — " +
-        "propertyEnrichment collapses it into an overwritten JSONB blob. Traceability " +
-        "survives the fetch and dies at the write.",
+        "The Evidence Fabric now EXISTS and is wired: `evidence_claims` persists " +
+        "source-attributed, append-only claims and the deterministic policy in " +
+        "shared/evidence/claim.ts resolves them into a recomputable current answer " +
+        "with unknown/conflict/stale as first-class states. REMAINING GAP: only the " +
+        "property-enrichment write path emits claims. Every other write that sets a " +
+        "material factual column (bulk import, manual edit, due-diligence, " +
+        "residential comps, the AVM/ARV surfaces) still writes an unattributed value " +
+        "straight onto the canonical row. Until those paths route through claims — " +
+        "and until a lint bars new ones — a material field can still exist with no " +
+        "identifiable source.",
     },
   },
   {

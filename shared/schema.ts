@@ -18566,3 +18566,10 @@ export * from "./schema/team-improvement";
 // request table lives in ./schema/compliance with its verification siblings.)
 export * from "./schema/market-watchlist";
 export * from "./schema/outreach-ab";
+
+// The Evidence Fabric's one table (Master Audit BI13/BI14). EvidenceClaim is
+// the atomic truth primitive: a source-backed assertion with provenance,
+// observation time, freshness, rights and cost. The canonical "current answer"
+// is a recomputable projection over these rows, produced by the deterministic
+// policy in shared/evidence/claim.ts — not a column anything overwrites.
+export * from "./schema/evidence";

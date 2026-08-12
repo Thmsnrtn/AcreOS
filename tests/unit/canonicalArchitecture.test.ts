@@ -73,8 +73,13 @@ const UNENFORCED_FITNESS_BASELINE = 2;
  *   That 4-of-18 number is the single most useful fact in this file: it says
  *   the repo's breadth (752 tables) has been built on a Reality Graph that was
  *   never made canonical. Every entry above is additive work, not a rewrite.
+ * 2026-08-12 (14 -> 13): evidence-claim now has a canonical home. The Evidence
+ *   Fabric landed as ONE table (`evidence_claims`, append-only) plus a pure
+ *   deterministic resolution policy (shared/evidence/claim.ts), wired into the
+ *   property-enrichment write path. unknown, conflict and stale are now
+ *   representable states rather than coerced defaults.
  */
-const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 14;
+const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 13;
 
 /**
  * The fixed cardinalities declared by the audit. These are not ratchets — they
@@ -185,7 +190,14 @@ describe("canon registry — shape", () => {
 
   it("exposes working lookup helpers", () => {
     expect(layerById("evidence-fabric")?.ordinal).toBe(3);
-    expect(objectById("evidence-claim")?.status).toBe("absent");
+    // Pinned to a still-absent object rather than a hardcoded status for one
+    // that has since been built. The invariant under test is "the lookup
+    // returns the registry's real classification", not "evidence-claim is
+    // absent" — the latter was true when this was written and is now false
+    // (the Evidence Fabric landed). Rewriting the assertion to the new truth,
+    // rather than deleting it, is CLAUDE.md wave discipline #4.
+    expect(objectById("decision-snapshot")?.status).toBe("absent");
+    expect(objectById("evidence-claim")?.status).toBe("canonical");
     expect(fitnessById("tenant-isolation")?.enforcement.kind).toBe("code-invariant");
     expect(layerById("nope")).toBeUndefined();
   });

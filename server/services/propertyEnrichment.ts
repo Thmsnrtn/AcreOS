@@ -3,6 +3,8 @@ import { storage } from "../storage";
 import type { Property, Lead } from "@shared/schema";
 import { recordSourceSuccess, recordSourceFailure } from "./dataQualityMonitor";
 import { logger } from "../utils/logger";
+import { claimsFromEnrichment } from "./evidence/enrichmentToClaims";
+import { recordClaims } from "./evidence/evidenceStore";
 
 export interface EnrichmentResult {
   propertyId?: number;
@@ -893,6 +895,34 @@ export class PropertyEnrichmentService {
       logger.info(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, completeness=${completeness.score}%, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
       logger.error("Failed to save property enrichment", error);
+    }
+
+    // ── Evidence Fabric (Master Audit BI13) ────────────────────────────────
+    // The write above is the LEGACY path: it collapses the whole run into one
+    // `enrichmentData` JSONB blob and overwrites the previous one, so per-field
+    // provenance, observation history and conflict all die at this line. That
+    // blob still has readers, so it stays.
+    //
+    // This records the same run APPEND-ONLY as source-attributed claims, which
+    // is what makes canonical laws 2 (evidence-known), 3 (unknown-is-valid) and
+    // 6 (decisions-immutable) satisfiable. Only values carrying named
+    // provenance become claims — an enrichment that attributed nothing yields
+    // zero claims, which is the honest result.
+    //
+    // Deliberately AFTER the legacy write and in its own try/catch: evidence
+    // recording must never be able to fail an enrichment that already
+    // succeeded. A dropped claim degrades provenance; a thrown error would
+    // degrade the product.
+    try {
+      const claims = claimsFromEnrichment(propertyId, enrichment);
+      if (claims.length > 0) {
+        const written = await recordClaims(organizationId, claims);
+        logger.info(
+          `[PropertyEnrichment] Recorded ${written} evidence claim(s) for propertyId=${propertyId}, orgId=${organizationId}`,
+        );
+      }
+    } catch (error) {
+      logger.error("Failed to record evidence claims for property enrichment", error);
     }
   }
   
