@@ -182,3 +182,52 @@ suites · reachability at baseline 654.
 | Fully unenforced fitness functions | 2 | **1** |
 | Tables | 756 | 758 (both bumps justified in the ratchet note) |
 | New tests | — | **73** |
+
+---
+
+## Unit 4 — Infrastructure restraint gate · this commit
+
+**Audit requirement:** BI56 (the non-canonical primitive list), BI152 (the New
+Database Test), BI57/BI61 (vector infrastructure and the one primary relational
+database), BL7 ("What Not to Build Merely Because These Audits Mention It"),
+canonical law 11.
+
+**Premise verified first:** the repo *passes* BI56 today — 165 dependencies,
+zero graph DBs, vector services, streaming buses, warehouses, k8s clients,
+service meshes or search clusters. So this is a **preventative** gate, not a
+remediation one, and the exception list is legitimately empty.
+
+**Files:** `scripts/check-infrastructure-restraint.mjs` (new),
+`tests/unit/infrastructureRestraint.test.ts` (new), `package.json` (wired into
+`npm run check`), `shared/architecture/canon.ts`,
+`tests/unit/canonicalArchitecture.test.ts` (baseline 1 → 0).
+
+**Tests:** 12 pass. They run the **real script** against synthetic repos in a
+temp directory, because a check that only ever passes is indistinguishable from
+one that cannot fail — the most likely way for a green gate to be silently
+broken.
+
+**They caught two genuine bugs in the gate itself:**
+
+1. A `\b` word-boundary anchor before `@` meant `@kubernetes/client-node` and
+   `@elastic/elasticsearch` could never match — the two scoped-package rules
+   were dead on arrival.
+2. A dependency-only scan missed `image: elasticsearch:8` in a compose file.
+   Infrastructure arrives through **config** at least as often as through npm.
+
+Fixed by splitting each rule into `dep` (package names) and `infra` (service and
+image names), so a bare word can be matched in config without false-positiving
+on prose.
+
+**Deliberate non-overreach:** pgvector is **not** banned. A Postgres extension
+runs inside the one primary relational database, so it is a derived index rather
+than an alternate system of record — permitted by BI57 and required by BI61. A
+gate that banned it would be wrong and would be disabled within a week. A
+standalone vector *service* remains banned, and a test pins both halves.
+
+**Effect:** `unenforced-fitness` ratchet **1 → 0**. Every one of the audit's
+twelve fitness functions now has at least partial automated enforcement, and the
+baseline stays at 0 — a new fitness function may only be registered *with*
+enforcement.
+
+**Gates:** `npm run check` PASS (now 22 lints).

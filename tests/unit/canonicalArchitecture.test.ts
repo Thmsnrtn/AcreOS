@@ -61,8 +61,20 @@ const ROOT = path.resolve(__dirname, "../..");
  *   asserts the snapshot still reports what was believed then.
  *   `infrastructure-restraint` remains the last fully unenforced one — BI152's
  *   New Database Test is still advisory.
+ * 2026-08-12 (1 -> 0): `infrastructure-restraint` is now enforced.
+ *   scripts/check-infrastructure-restraint.mjs runs inside `npm run check` and
+ *   makes BI152's New Database Test a gate: every banned primitive is scanned
+ *   for in package.json AND deploy config, and anything found must carry a
+ *   written MEASURED need. Twelve tests run the real script against synthetic
+ *   repos to prove it bites — and caught two genuine bugs in it (a `\b` anchor
+ *   before `@` made the kubernetes and elasticsearch rules unmatchable, and a
+ *   dependency-only scan missed `image: elasticsearch:8` in compose config).
+ *
+ *   EVERY fitness function now has at least partial automated enforcement.
+ *   This baseline stays at 0: a new fitness function may only be registered
+ *   with enforcement, or the count fails.
  */
-const UNENFORCED_FITNESS_BASELINE = 1;
+const UNENFORCED_FITNESS_BASELINE = 0;
 
 /**
  * Canonical objects (BI12) that do not yet have a canonical home — i.e. status

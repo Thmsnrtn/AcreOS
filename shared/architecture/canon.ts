@@ -803,13 +803,24 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
     title: "Infrastructure restraint",
     failCondition: "A new primitive is introduced without a measured requirement.",
     enforcement: {
-      kind: "unenforced",
-      refs: [],
+      kind: "lint",
+      refs: [
+        "scripts/check-infrastructure-restraint.mjs",
+        "tests/unit/infrastructureRestraint.test.ts",
+      ],
       note:
-        "No gate. BI56 names the non-canonical primitives (graph DB, vector DB, " +
-        "Kafka, warehouse, k8s, service mesh, microservice-per-module, dedicated " +
-        "search cluster); a dependency/config ratchet could make BI152 (the New " +
-        "Database Test) checkable instead of advisory.",
+        "BI152's New Database Test is now a gate inside `npm run check`: every " +
+        "banned primitive (graph DB, standalone vector service, streaming bus, " +
+        "warehouse, k8s, service mesh, search cluster) is scanned for in both " +
+        "package.json AND deploy config, and anything found must carry a written " +
+        "MEASURED need in REGISTERED_EXCEPTIONS. It is preventative, not " +
+        "remedial — the repo passes today with 165 dependencies and zero banned " +
+        "primitives, and the exception list is empty. The gate deliberately does " +
+        "NOT ban pgvector: a Postgres extension is a derived index inside the one " +
+        "primary relational database (BI57/BI61), not an alternate system of " +
+        "record. Twelve tests run the real script against synthetic repos to prove " +
+        "it bites, because a check that only ever passes is indistinguishable from " +
+        "one that cannot fail.",
     },
   },
 ] as const;

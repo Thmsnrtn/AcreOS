@@ -25,7 +25,7 @@ These are the audit's own pass/fail criteria, so they lead.
 | 9 | Profile extensibility | PARTIAL | `business-types.ts` is a maturity registry, not a Pack contract. A real kernel/pack seam exists (`domainPack.ts`) but on the founder plane |
 | 10 | Founder operability | PARTIAL | `operations-runbook.md`, `INCIDENT_RESPONSE.md`, `routes-founder-dlq.ts`. Not every failure class has an audited domain repair capability (BI180) |
 | 11 | Outcome learning | PARTIAL | Founder plane is best-in-class (sealed prediction in `proofReceipt`, `decisionEval.ts`). Customer plane has no gradeable forecast |
-| 12 | Infrastructure restraint | **MISSING** | No gate. BI152's New Database Test is advisory only. The last fully unenforced one |
+| 12 | Infrastructure restraint | **IMPLEMENTED+VERIFIED** | `scripts/check-infrastructure-restraint.mjs` in `npm run check` + `infrastructureRestraint.test.ts` (12 tests running the real script against synthetic repos). Repo passes with 0 banned primitives across 165 deps; exception list empty |
 
 ## Canonical object set (BI12)
 

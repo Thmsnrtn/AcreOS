@@ -47,7 +47,7 @@ see §6.
 Two ratchets track convergence, both down-only, both in
 `tests/unit/canonicalArchitecture.test.ts`:
 
-- `UNENFORCED_FITNESS_BASELINE = 1` (was 2)
+- `UNENFORCED_FITNESS_BASELINE = 0` (was 2) — **every fitness function now has automated enforcement**
 - `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 12` (was 14)
 
 ## 3. What has been completed, and what proves it
@@ -61,6 +61,10 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 3. **Decision Memory** (`c863bf1`) — `decision_snapshots` (immutable) + freeze
    function + API. 18 tests, the central one mutating evidence underneath a
    recorded decision and asserting it does not change meaning.
+4. **Infrastructure restraint gate** — BI152's New Database Test made
+   checkable, inside `npm run check`. 12 tests run the real script against
+   synthetic repos to prove it bites. Drove the unenforced-fitness ratchet to
+   **zero**.
 
 Gate state at last commit: `npm run check` PASS, tsc clean, reachability at
 baseline 654, every ratchet at baseline.
