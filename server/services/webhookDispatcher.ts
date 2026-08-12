@@ -118,12 +118,68 @@ export async function getWebhookEndpoints(organizationId: number): Promise<Webho
 }
 
 /**
+ * The endpoints as an API RESPONSE — with the signing secret removed.
+ *
+ * `WebhookEndpoint.secret` is the HMAC key every outbound delivery is signed
+ * with. `GET /api/webhooks` returned the stored objects verbatim, so any
+ * authenticated member of the org — including a `viewer` — could read it, while
+ * the PUT that sets it is admin-only.
+ *
+ * A leaked signing secret is worse than leaked data: it grants the ability to
+ * FORGE deliveries, so someone holding it can inject fabricated deal and lead
+ * events into the customer's own downstream systems while the signature
+ * verifies. That is capability, not information.
+ *
+ * The fix is redaction rather than a gate. Everyone in the org may legitimately
+ * need to see WHICH webhooks are configured and whether they are active; nobody
+ * needs to read the secret back — not even an owner, who had it when they set
+ * it. A write-only secret is the standard shape and it keeps the read useful.
+ *
+ * `hasSecret` is reported so the UI can still say "signing is configured"
+ * without carrying the value.
+ *
+ * NOT used by the dispatcher — `getWebhookEndpoints` above stays unredacted
+ * because signing genuinely needs the key.
+ */
+export type RedactedWebhookEndpoint = Omit<WebhookEndpoint, "secret"> & {
+  hasSecret: boolean;
+};
+
+export async function getWebhookEndpointsForDisplay(
+  organizationId: number,
+): Promise<RedactedWebhookEndpoint[]> {
+  const endpoints = await getWebhookEndpoints(organizationId);
+  return endpoints.map(({ secret, ...rest }) => ({
+    ...rest,
+    hasSecret: typeof secret === "string" && secret.length > 0,
+  }));
+}
+
+/**
  * Save webhook endpoints for an org.
+ *
+ * PRESERVES an existing secret when the incoming endpoint does not carry one.
+ *
+ * This is load-bearing, not a nicety. The client GETs the endpoint list and PUTs
+ * it back, so once the read is redacted a naive save would write `secret:
+ * undefined` over every configured key — silently disabling signature
+ * verification on every downstream integration, with no error anywhere. Matching
+ * is by `url`, which is the endpoint's identity in this shape.
  */
 export async function saveWebhookEndpoints(
   organizationId: number,
   endpoints: WebhookEndpoint[]
 ): Promise<void> {
+  // Carry forward any secret the caller did not send. See the note above: the
+  // read is redacted, so an unchanged endpoint arrives back without its key.
+  const stored = await getWebhookEndpoints(organizationId);
+  const secretByUrl = new Map(
+    stored.filter((e) => e.secret).map((e) => [e.url, e.secret as string]),
+  );
+  endpoints = endpoints.map((e) =>
+    e.secret ? e : { ...e, ...(secretByUrl.has(e.url) ? { secret: secretByUrl.get(e.url) } : {}) },
+  );
+
   const [existing] = await db
     .select()
     .from(organizationIntegrations)

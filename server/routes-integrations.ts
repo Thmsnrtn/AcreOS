@@ -1685,8 +1685,12 @@ export function registerIntegrationRoutes(app: Express): void {
   api.get("/api/webhooks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { getWebhookEndpoints } = await import("./services/webhookDispatcher");
-      const endpoints = await getWebhookEndpoints(org.id);
+      // REDACTED read: the stored objects carry the HMAC signing secret, and
+      // returning it let any authenticated member (a viewer included) read a key
+      // that lets its holder FORGE deliveries into the org's own systems. The
+      // PUT that sets it is admin-only; the read was not.
+      const { getWebhookEndpointsForDisplay } = await import("./services/webhookDispatcher");
+      const endpoints = await getWebhookEndpointsForDisplay(org.id);
       res.json(endpoints);
     } catch (err: any) {
       Errors.internal(res, err);

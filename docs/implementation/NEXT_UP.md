@@ -230,6 +230,17 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     wrong half. Gated; test asserts the premise (the scope is still denied to
     member/va/viewer, and the column still holds PII) as well as the gate.
 
+38. **SECURITY — a CREDENTIAL, not data.** Generalising unit 37 found eight
+    same-path read/write asymmetries; **seven were correct design** (reading
+    leads while denied delete is how permissions work — gating those on a
+    pattern match would break the product). The eighth: `GET /api/webhooks`
+    returned `WebhookEndpoint.secret`, the HMAC signing key, to any org member.
+    A leaked signing secret grants the ability to FORGE deliveries into the
+    customer's downstream systems. Fixed by REDACTION not a gate (nobody needs
+    to read it back), removed not masked, **and** by preserving it on write —
+    the client round-trips this list, so redaction alone would have silently
+    blanked every key on the next save.
+
 **One residual, recorded not guessed:** `canAssignLeads` is still unenforced.
 Assignment happens through several surfaces (the lead PUT's `assignedTo`, bulk
 update, the round-robin assigner) and needs each caller checked rather than a
@@ -238,7 +249,7 @@ neither destroys, exfiltrates nor spends.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 664 files, 8,725 tests, 1 skipped, 0 failures.**
+suite green — 665 files, 8,734 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

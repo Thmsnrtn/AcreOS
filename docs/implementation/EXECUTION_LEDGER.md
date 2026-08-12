@@ -2476,3 +2476,77 @@ still look gated.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 664 files, 8,725 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 38 — A signing secret readable by any org member · this commit
+
+**Files:** `server/services/webhookDispatcher.ts`,
+`server/routes-integrations.ts`, `tests/unit/webhookSecretRedaction.test.ts`
+(new, 9 tests).
+
+### Found by generalising unit 37
+
+Unit 37's defect — a guarded write with an unguarded read on the same path —
+generalises, so the next step was to scan for it across every route. Eight
+same-path asymmetries came back.
+
+**Seven were not defects**, and saying so matters as much as the eighth: a role
+that may read leads but not delete them is exactly how permissions are supposed
+to work. Reading `/api/leads` while being denied `canDeleteLeads` is correct
+design, and gating those reads on a pattern match would have broken the product
+to satisfy a scanner. The filter is not "is the read unguarded" — it is **what
+does the read actually expose**.
+
+### The eighth
+
+`WebhookEndpoint.secret` is the HMAC key every outbound delivery is signed with.
+`GET /api/webhooks` returned the stored objects verbatim, so any authenticated
+member — a `viewer` included — could read it, while the `PUT` that sets it is
+`requireAdminOrAbove()`.
+
+**A leaked signing secret is worse than leaked data.** It grants the ability to
+FORGE deliveries: whoever holds it can inject fabricated deal and lead events
+into the customer's own downstream systems, and the signature will verify. That
+is capability, not information — a different category from every other finding in
+this program, even though the defect shape is identical to unit 37's.
+
+Intra-org, since the read is org-scoped. But a secret's blast radius is not
+bounded by where it leaked from.
+
+### Redaction, not a gate
+
+Everyone in the org may legitimately need to see which webhooks are configured
+and whether they are active. Nobody needs to read the secret back — **not even an
+owner, who had it when they set it.** A write-only secret keeps the read useful
+and removes the exposure; a gate would do the opposite of both. `hasSecret` is
+reported so the UI can still say "signing is configured".
+
+The secret is **removed, not masked**. A masked value is still a field a client
+can round-trip and save as the literal mask, replacing a real key with four
+asterisks. Absent is the only shape that cannot be written back by accident, and
+a test pins it.
+
+### The half that was easy to forget
+
+`client/src/pages/webhooks.tsx` GETs the endpoint list and PUTs it straight back.
+Redacting the read **without preserving on write** would have written
+`secret: undefined` over every configured key on the next save — silently
+disabling signature verification on every downstream integration, raising no
+error anywhere and showing nothing in the UI.
+
+So `saveWebhookEndpoints` now carries forward a stored secret when the incoming
+endpoint omits one, matched by `url`. Three tests bound that behaviour so
+preservation cannot become something worse: an explicit new secret still
+REPLACES (rotation must stay possible), a brand-new endpoint does not inherit
+another's key, and changing an endpoint's URL does not carry the old key to a
+destination the operator never signed for.
+
+The dispatcher's own reader stays unredacted — signing genuinely needs the key,
+and redacting the shared function would have broken outbound webhooks outright.
+
+Mutation-tested: masking instead of removing, and dropping the preservation, each
+fail.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 665 files, 8,734 tests, 1 skipped, 0 failures.**
