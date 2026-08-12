@@ -854,6 +854,8 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "server/services/autopilot/decisionEval.ts",
         "tests/unit/autopilotDecisionEval.test.ts",
         "tests/unit/goldenLoopOneProperty.test.ts",
+        "shared/outcomes/calibration.ts",
+        "tests/unit/calibrationAcrossDecisions.test.ts",
       ],
       note:
         "The founder plane seals a prediction into the receipt hash and scores it " +
@@ -872,11 +874,24 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "it as \"unpredicted\", a claim about the decision that was false. Per-layer " +
         "tests could not see it because each built its own fixture for the layer " +
         "below. A decision now freezes EVERY metric its engine predicted. " +
-        "REMAINING GAP: nothing PROMPTS a customer to record an " +
-        "outcome, so the loop closes only when someone chooses to close it. A " +
+        "Calibration across many decisions now exists too " +
+        "(Section VII D): `shared/outcomes/calibration.ts` aggregates variances " +
+        "per METRIC — a predicted number against an actual number, which is a " +
+        "different kind of thing from decisionEval\u0027s probability-vs-binary " +
+        "Brier score, so its DISCIPLINE is reused rather than its arithmetic. " +
+        "The load-bearing part is the refusal: below six compared outcomes it " +
+        "reports `insufficient` with every derived field ABSENT (not null), " +
+        "because six is the smallest n at which even a unanimous direction " +
+        "clears a two-sided sign test at 0.05. It uses medians so one runaway " +
+        "deal cannot define the number, gates any directional claim on that " +
+        "sign test, carries the predicted-but-never-measured count so a thin " +
+        "sample cannot read as a thick one, and emits NO overall score — one " +
+        "number mixing a cents metric with a ratio metric is arithmetic on " +
+        "incompatible units. REMAINING GAP: nothing PROMPTS a customer to record " +
+        "an outcome, so the loop closes only when someone chooses to close it. A " +
         "due-outcome sweep (the founder plane already has one in " +
-        "outcomeLedger/decisionEval) is the next step, and calibration across " +
-        "many decisions is not built at all.",
+        "outcomeLedger/decisionEval) is the next step, and no client surface " +
+        "calls GET /api/decisions/calibration yet.",
     },
   },
   {

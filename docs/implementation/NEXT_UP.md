@@ -124,10 +124,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     WITHOUT distinguishing "another tenant's" from "does not exist", so there is
     no id oracle and no silent loss. **A mutation test also caught one of my own
     assertions being vacuous** — see the ledger.
+20. **Calibration** (Section VII D) — `shared/outcomes/calibration.ts` +
+    `GET /api/decisions/calibration`. Per-metric forecast bias across many
+    outcomes. The load-bearing part is the REFUSAL: below six compared outcomes
+    it reports `insufficient` with every derived field absent, because six is
+    the smallest n at which a unanimous direction clears a sign test at 0.05.
+    **All four golden loops (VII A–D) are now done.**
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 656 files, 8,596 tests, 1 skipped, 0 failures.**
+suite green — 657 files, 8,619 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -153,20 +159,30 @@ see §6a. Grep for the function that already owns the maths BEFORE planning the
 adapter; if there is no such function, there is no gap.
 
 In order:
-- **Section VII(D) — One Complete Learning Loop.** The last of the four, and the
-  only one that is a BUILD rather than a test: calibration across many decisions
-  does not exist. A single variance says one forecast missed; calibration says
-  *this operator's resale assumptions run 12% optimistic*, which is the thing
-  worth knowing. Start from the founder plane's `decisionEval` sweep — do not
-  invent a second. Its honest hard part is refusing to report a calibration from
-  three outcomes, and there is now a vocabulary for that (`unmeasured`,
-  `unpredicted`, categorical confidence).
-  **The technique earned its place:** four of the five defects this program has
-  found came from golden loops, and every one was invisible to the per-layer
-  suites — because each hand-builds the fixture for the layer below. Every input
-  must be the previous layer's REAL output, the failure branches matter more
-  than the happy ones, and **mutation-test the assertions**: one of unit 19's
-  own tenancy assertions passed against a deliberately nullable tenant key.
+- **Prompt for outcomes — the loop's last open end, and now the binding one.**
+  Every layer exists and all four golden loops close, but **nothing asks a
+  customer to record an outcome**, so the loop only closes when someone chooses
+  to close it. Calibration therefore computes over whatever happens to have been
+  volunteered, which is a biased sample by construction (people record the deals
+  they remember, and memorable usually means extreme). Study the founder plane's
+  due-outcome sweep (`outcomeLedger` / `decisionEval`) — **do not invent a
+  second**. The honest hard part is picking WHEN a decision is due for an
+  outcome without nagging, and refusing to treat "no answer" as "no outcome".
+- **Adoption: still no client surface calls any canonical-layer API.** Verified
+  again 2026-08-12 — zero references to `/api/scenarios`, `/api/decisions` or
+  `/api/decisions/calibration` under `client/src`. This is now the single
+  largest gap in the program: five engines, four layers, four closed loops, and
+  the customer-facing calculators still compute for DISPLAY and persist nothing.
+  Fix inside the existing Deals/Finance/Map surfaces — **never a new nav entry**.
+
+**On the technique, which has earned its place:** five of the six defects this
+program has found came from golden loops, and every one was invisible to the
+per-layer suites — because each hand-builds the fixture for the layer below.
+Every input must be the previous layer's REAL output; the failure branches matter
+more than the happy ones; and **mutation-test the assertions themselves** — unit
+19's tenancy check passed against a deliberately nullable tenant key, and unit
+20 found unit 19's read-filter regex would have missed the very next query
+written.
 - **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
   zero references under `client/src`. The engines are reachable and persistable
   and nothing persists. The customer calculators compute for DISPLAY only, so a

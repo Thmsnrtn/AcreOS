@@ -81,9 +81,15 @@ describe("every canonical store is organization-scoped by construction", () => {
 
   it("filters EVERY read by organizationId", () => {
     // Each `.from(table)` must sit in a query that also mentions the org column.
+    //
+    // The pattern matches `.select(` with ANY argument, not just `.select()`.
+    // It was first written for the bare form, and adding a projected read
+    // (`.select({ id, scenarios })` in the calibration sweep) would have slipped
+    // past it silently — a tenancy check with a shape-specific pattern quietly
+    // stops covering the next query anyone writes.
     for (const rel of CANONICAL_STORES) {
       const src = code(rel);
-      const selects = [...src.matchAll(/db\s*\n?\s*\.select\(\)[\s\S]{0,600}?;/g)];
+      const selects = [...src.matchAll(/db\s*\n?\s*\.select\([\s\S]{0,900}?;/g)];
       expect(selects.length, `${rel} has no selects?`).toBeGreaterThan(0);
       for (const [q] of selects) {
         expect(q, `${rel}: a select with no org predicate`).toMatch(

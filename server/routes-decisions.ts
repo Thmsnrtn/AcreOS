@@ -35,10 +35,15 @@ import {
 import { UnavailableScenarioError } from "./services/economics/scenarioStore";
 import {
   UnknownDecisionError,
+  calibrationForOrganization,
   outcomesForDecision,
   recordOutcome,
 } from "./services/outcomes/outcomeStore";
 import { OUTCOME_KINDS, OutcomeMetricError } from "@shared/outcomes/outcome";
+import {
+  MIN_COMPARISONS_FOR_DIRECTION,
+  describeCalibration,
+} from "@shared/outcomes/calibration";
 
 const router = Router();
 
@@ -118,6 +123,38 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     if (err instanceof UnavailableScenarioError) {
       return Errors.badRequest(res, err.message);
     }
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * GET /api/decisions/calibration
+ *
+ * The layer above a single variance (Master Audit Section VII D): how this
+ * organization's FORECASTS have tended to miss, per metric, across every
+ * outcome it has recorded.
+ *
+ * Registered before `/:id` by convention. It is not strictly required here —
+ * that route is digit-constrained (`/:id(\d+)`), so a literal path cannot be
+ * swallowed by it — but the ordering is what `scripts/check-route-order.mjs`
+ * looks for and what a reader expects.
+ *
+ * API surface only. Calibration renders inside the existing Deals/Finance
+ * surfaces; the five customer doors do not grow a sixth.
+ */
+router.get("/calibration", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const report = await calibrationForOrganization(organizationId);
+    res.json({
+      calibration: report,
+      // One honest line per metric, including "not enough measured outcomes
+      // yet" — which is the whole sentence when the sample cannot support a
+      // claim, rather than a hedged version of one.
+      summary: describeCalibration(report),
+      minComparisonsForDirection: MIN_COMPARISONS_FOR_DIRECTION,
+    });
+  } catch (err) {
     Errors.internal(res, err);
   }
 });

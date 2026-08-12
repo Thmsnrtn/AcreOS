@@ -1187,3 +1187,107 @@ nullable tenant key.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 656 files, 8,596 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 20 — Calibration: the layer above a single variance · this commit
+
+**Audit requirement:** Master Audit Section VII(D) — "One Complete Learning
+Loop". Also BI178 (an outcome observes; it does not score the decision) and the
+refuse-not-fabricate rule, which is the whole design here.
+
+**Files:** `shared/outcomes/calibration.ts` (new, pure),
+`server/services/outcomes/outcomeStore.ts` (`calibrationForOrganization`),
+`server/routes-decisions.ts` (`GET /api/decisions/calibration`),
+`shared/architecture/canon.ts`, `tests/unit/calibrationAcrossDecisions.test.ts`
+(new, 23 tests).
+
+### Why this is not an extension of decisionEval
+
+The standing instruction is to extend the founder plane's sweep rather than
+invent a second one, so the first work was checking whether it fits. It does not,
+and the reason is worth recording: `autopilot/decisionEval.ts` scores a
+PROBABILITY against a binary success/failure vote, via Brier. That is the right
+shape for "was the autopilot's confidence warranted".
+
+This measures a predicted NUMBER against an actual NUMBER — $58,000 forecast
+against $54,000 realised — across many decisions, per metric. Brier does not
+apply and neither does a hit rate. What IS reused is decisionEval's *discipline*,
+which is the transferable part: a hard cold-start floor, a refusal to emit a
+number the data cannot support, and no aggregate score. Neither module imports
+the other's arithmetic, and a test asserts calibration.ts imports no server-side
+code while still NAMING decisionEval in its header so the relationship is
+findable by anyone who greps for either.
+
+### The floor is derived, not chosen
+
+This module is a number generator pointed at a small sample, and everything it
+produces looks authoritative: a percentage, a direction, a p-value. "Your resale
+assumptions run 12% optimistic" from four deals is fabrication wearing a
+statistic's clothes, and it is worse than silence because it will change how
+someone prices their next offer.
+
+So `MIN_COMPARISONS_FOR_DIRECTION = 6`, and **six is derived rather than picked**.
+Direction is a two-sided sign test: `n` comparisons all missing the same way has
+probability `2 × 2^-n` under an unbiased forecaster. At n=6 that is 0.031 — the
+first n at which even a UNANIMOUS result clears 0.05. At n=5 it is 0.0625, so
+five outcomes cannot establish a direction however lopsided they look. A floor
+chosen because it felt right would be exactly the fabrication the module exists
+to prevent, so it sits at the point below which no evidence is possible. Tests
+pin both probabilities.
+
+Below the floor every derived field is **absent, not null** — a null renders as
+"—" in some views and as 0 in others; an absent key cannot be rendered as a zero.
+
+### The rest of the honesty budget
+
+- **Median, never mean.** Seven deals 10% under and one that came in 20x gives a
+  mean relative error of ~+2.4 — a number describing nothing that happened.
+- **A suggestive lean is `centred`.** 7 of 10 one way is p=0.34. Naming that a
+  bias is how noise becomes advice. The categorical claim is gated on the sign
+  test; the raw counts and the p-value are always shown so a reader can judge.
+- **`optimistic` respects `higherIsBetter`.** A break-even sale price forecast
+  BELOW what it turned out to be was the *favourable* forecast, even though the
+  number was smaller. This is where the metric registry earns its keep again.
+- **The summary line takes its direction from the median DELTA, never from the
+  bias word** — those agree only for higher-is-better metrics, and deriving
+  "above/below" from the bias would state the opposite of what happened for every
+  lower-is-better metric. (Caught while writing it; the first draft was wrong.)
+- **Unmeasured and zero-predicted counts are carried, not dropped.** A metric
+  forecast forty times and measured eight has a calibration built on eight
+  points, and a reader who cannot see that reads it as forty.
+- **`unpredicted` does not count against the forecasts that were made** — it is a
+  fact about coverage, and mixing it in would make a well-calibrated operator
+  look worse for having recorded an extra actual. A metric that was ONLY ever
+  unpredicted is absent from the report entirely rather than listed as
+  "insufficient", which would invite a reader to think a forecast had been
+  attempted and fallen short.
+- **No overall score.** One number mixing a cents metric with a ratio metric is
+  arithmetic on incompatible units, and it would hide which measurement is thin.
+  A test pins the report's key set to exactly three fields.
+
+### Two corrections this unit made to earlier work
+
+**The outcomeStore header became false.** It claimed the module "never touches
+`decisionSnapshots` at all" — true until calibration needed to read the forecasts
+it grades. Corrected rather than left as a comfortable overstatement: the real
+invariant is **no WRITE path**, and an inflated claim makes it harder to see which
+part is load-bearing. `outcomeVariance.test.ts` already pins the write ban
+directly, so nothing was weakened.
+
+**My own tenancy regex from unit 19 would have missed this query.** It matched
+`db.select()` — the bare form — and the calibration sweep uses a projected
+`.select({ id, scenarios })`. The new read would have slipped past the
+"filters EVERY read by organizationId" check silently. Broadened to `.select(`
+with any argument. A tenancy check with a shape-specific pattern quietly stops
+covering the next query anyone writes, which is the same class of decay as a
+stale allowlist.
+
+The calibration read touches two tables and therefore has two chances to leak.
+The decision fetch is scoped to the org **independently** rather than trusting the
+ids carried on the outcome rows — those ids came from this org's own outcomes so
+they should already be this org's decisions, but "should" is not an isolation
+boundary and the cost of asking again is one predicate. Two queries, not N+1.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 657 files, 8,619 tests, 1 skipped, 0 failures.**
