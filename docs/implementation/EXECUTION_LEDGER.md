@@ -3320,8 +3320,21 @@ finding on a second field.
 
 `routes-va-engine.ts` holds **three more** undeclared collections in the same
 blob — `va_tasks`, `va_escalations`, `va_scheduled_tasks` — each read through
-`(orgRecord as any).settings`, each with no cap and no delete path. They are the
-same defect and are **NOT fixed here**.
+`(orgRecord as any).settings`, and **NOT fixed here**.
+
+A correction, made while writing this up: they were first recorded as three
+identical repetitions of this defect. Mapping each read back to its route showed
+otherwise — only `va_escalations` appends (`POST /api/va/escalate`); `va_tasks`
+is modified in place and its key is owned by `services/vaManagement.ts`; and
+`va_scheduled_tasks` is read-only in this file. **One confirmed unbounded
+appender, not three.**
+
+And it needs a DIFFERENT fix from this one, which is why it was not folded in:
+`va_escalations` is a **log**, and refusing to record an escalation past a cap
+is the wrong bound — you cannot decline to escalate. A log wants retention or
+its own table, and choosing between them is a design call rather than a
+mechanical repeat. Pasting this unit's cap onto it would be the wrong answer
+arrived at quickly.
 
 Shipping one of four is exactly the inconsistency this program has spent units
 30–46 fixing, so it is not left implicit: a deliberately **inverted** assertion

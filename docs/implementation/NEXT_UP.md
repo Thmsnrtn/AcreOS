@@ -368,21 +368,37 @@ repetitions of a fix that is already written down.
 (`getOrCreateOrg` → `getOrganizationByOwner`). `routes-va-engine.ts` keeps four
 customer-writable arrays in it. Unit 47 fixed **one**:
 
-| collection | declared in `$type<>` | cap | delete path |
+**A CORRECTION TO THIS ENTRY'S FIRST DRAFT, made before it shipped.** It listed
+all three siblings as "no cap, no delete", implying three identical repetitions
+of unit 47. Mapping each read back to its route showed that is wrong, and the
+difference changes what the right fix is:
+
+| collection | declared | writer IN THIS FILE | actually grows? |
 |---|---|---|---|
-| `va_workflows` | ✅ (unit 47) | ✅ 50 | ✅ (unit 47) |
-| `va_tasks` | ❌ `as any` | ❌ | ❌ |
-| `va_escalations` | ❌ `as any` | ❌ | ❌ |
-| `va_scheduled_tasks` | ❌ `as any` | ❌ | ❌ |
+| `va_workflows` | ✅ (unit 47) | `POST /api/va/workflows` | fixed — cap 50 + delete |
+| `va_escalations` | ❌ `as any` | `POST /api/va/escalate` **appends** | **yes — the real one** |
+| `va_tasks` | ❌ `as any` | `/api/va/tasks/:id/verify` modifies IN PLACE; the key is owned by `services/vaManagement.ts` | not from these routes |
+| `va_scheduled_tasks` | ❌ `as any` | read-only here (`GET /api/va/scheduled`) | not from these routes |
 
-Follow unit 47 exactly: declare the field, cap it, **and ship the delete path in
-the same change** — a cap without one is a wall, which is worse than the
-unbounded growth it replaces. `va_tasks` already uses an atomic `jsonb_set`
-write (a 2026-07 audit fixed its read-modify-write race), so preserve that.
+**So there is ONE confirmed unbounded appender left, not three** — and it needs a
+different fix from unit 47's, which is why it was not done in the same stretch:
 
-`vaWorkflowBounds.test.ts` pins all three as unfixed with an INVERTED assertion
-that fails the day one is fixed — so the work announces itself rather than
-sitting in prose.
+> `va_escalations` is a **LOG**, not a definition set. Refusing to record an
+> escalation past a cap is the wrong bound — you cannot decline to escalate. A
+> log wants **retention** (keep the most recent N, or move it to a table with an
+> index), and choosing between those is a design call rather than a mechanical
+> repeat of unit 47. Do not paste the workflow cap onto it.
+
+`va_tasks` and `va_scheduled_tasks` still deserve the type declaration (unit 43's
+rule — a field outside its column's type cannot be carried by a typed write and
+can be erased by one), and `services/vaManagement.ts` should be read first since
+it owns the `va_tasks` key and a `sop_library` key beside it. `va_tasks` uses an
+atomic `jsonb_set` write (a 2026-07 audit fixed its read-modify-write race) —
+preserve that.
+
+`vaWorkflowBounds.test.ts` pins all three as still reached through `as any`, with
+an INVERTED assertion that fails the day one is fixed — so the work announces
+itself rather than sitting in prose.
 
 ### A small consolidation, sized and left alone (unit 44)
 
