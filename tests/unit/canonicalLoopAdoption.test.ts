@@ -345,12 +345,64 @@ describe("the customer is finally ASKED — and the asking is honest", () => {
     expect(stripComments(card)).not.toMatch(/dismiss|snooze|remind me later/i);
   });
 
-  it("asks for NO numbers", () => {
-    // An outcome's `actuals` are MEASUREMENTS. A figure typed into a prompt
-    // three months later to clear a card is not one, and the variance layer
-    // reporting `unmeasured` is the true answer until something measures it.
-    expect(card).toMatch(/actuals:\s*\[\]/);
-    expect(card).not.toMatch(/<Input/);
+  it("never COERCES a number — the sharper form of asking for none", () => {
+    // REWRITTEN (not deleted). This used to assert the card contained no
+    // `<Input` at all. That was right about a nagging prompt and wrong as a
+    // blanket rule: applied as one it left the calibration layer permanently
+    // unable to measure anything, because nothing else in the product records
+    // what a deal actually returned (unit 27 verified: no actual*/realized*
+    // column exists anywhere in the schema).
+    //
+    // The invariant that assertion existed to protect is unchanged and is now
+    // asserted directly: absence stays absence. A blank field submits no
+    // actuals at all, and the metric stays `unmeasured`.
+    const code = stripComments(card);
+    expect(code).toMatch(/cents === null\s*\n?\s*\?\s*\{\}/);
+    // Never coerced to zero — a realised profit of exactly zero is a real and
+    // different fact from an unmeasured one, and the variance layer rests on
+    // that distinction.
+    expect(code).not.toMatch(/dollarsToCents\([^)]*\)\s*\?\?\s*0/);
+    expect(code).not.toMatch(/value:\s*cents\s*\?\?\s*0/);
+    // Nothing is required and nothing is pre-filled.
+    expect(code).toMatch(/placeholder="Optional"/);
+    expect(code).not.toMatch(/required/);
+  });
+
+  it("only asks where a number is a real MEASUREMENT", () => {
+    const code = stripComments(card);
+    // Each entry is bounded by the NEXT entry, not by a fixed window. A
+    // 200-character slice from `offer_rejected` ran into `acquired`, which does
+    // measure — so the assertion failed against correct code. Reading past the
+    // subject is the same mistake the catchBody helper above exists to avoid.
+    const entry = (kind: string): string => {
+      const at = code.indexOf(`kind: "${kind}"`);
+      const next = code.indexOf('kind: "', at + 1);
+      return next === -1 ? code.slice(at) : code.slice(at, next);
+    };
+    // `still_open` must never carry one: an unresolved position has no realised
+    // number by definition. Nor may an answer that resolves the position
+    // without revealing a number.
+    for (const kind of ["still_open", "offer_rejected", "offer_accepted", "abandoned"]) {
+      expect(entry(kind), kind).not.toContain("measures:");
+    }
+    // The two that DO measure, so this cannot pass by measuring nothing at all.
+    for (const kind of ["acquired", "sold"]) {
+      expect(entry(kind), kind).toContain("measures:");
+    }
+    // And the metrics asked for must be ones the deciding engine PREDICTED, so
+    // the variance is a genuine comparison rather than two unrelated numbers.
+    expect(code).toMatch(/metricId: "total_cost"/);
+    expect(code).toMatch(/metricId: "profit"/);
+    const flip = read("server/services/economics/engines/flipMao.ts");
+    expect(flip).toContain('"total_cost"');
+    expect(flip).toContain('"profit"');
+  });
+
+  it("an answer with nothing to measure still submits in one click", () => {
+    // Adding the field must cost the operator nothing when there is nothing to
+    // measure — otherwise the prompt gets slower for everyone to serve a case
+    // that does not apply.
+    expect(stripComments(card)).toMatch(/if \(a\.measures\) \{/);
   });
 
   it("never pre-selects an answer", () => {

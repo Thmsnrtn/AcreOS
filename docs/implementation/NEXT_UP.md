@@ -161,10 +161,18 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     Before this, every decision the offer path recorded had `reviewDueAt: null`,
     so not one could ever reach the Today prompt: the loop was complete and had
     a dead spot. Nothing is pre-selected and "no set date" is a real answer.
+27. **A verified negative** — no column in this repo holds what a deal actually
+    returned, so calibration could only ever report `unmeasured`. Recorded
+    rather than built on.
+28. **Calibration finally has something to measure** — ONE optional amount on
+    the OutcomePrompt, only on terminal answers, only for a metric the engine
+    predicted, never coerced (blank → no actuals → still `unmeasured`, never 0).
+    Reverses unit 24's "asks for no numbers" to the sharper rule it should
+    always have been: **never coerce, not never ask.**
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,674 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,676 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

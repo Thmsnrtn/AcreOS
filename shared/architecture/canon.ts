@@ -927,8 +927,13 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "— behind the Today door as a CARD, not a sixth nav entry. It offers " +
         "`still_open` as a real answer rather than a dismissal (a card you can " +
         "only silence by claiming a result manufactures results), asks for NO " +
-        "numbers (a figure typed to clear a card is not a measurement, so the " +
-        "metrics stay honestly `unmeasured`), pre-selects nothing, and shows how " +
+        "ONE optional number, and only where it is a real measurement — a " +
+        "TERMINAL answer, for a metric the deciding engine actually predicted, " +
+        "never coerced (blank submits no actuals and the metric stays honestly " +
+        "`unmeasured`, and it is never read as 0, since a realised profit of " +
+        "exactly zero is a different fact). `still_open` can never carry one: " +
+        "an unresolved position has no realised number by definition. It " +
+        "pre-selects nothing, and shows how " +
         "many times it has already asked. And finally TOLD: " +
         "ForecastCalibration.tsx renders /api/decisions/calibration behind the " +
         "Deals door, printing describeCalibration\u0027s sentences VERBATIM and " +

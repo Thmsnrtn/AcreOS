@@ -1781,3 +1781,67 @@ is **never coerce**, not **never ask**.
 
 `still_open` must never gain the field — an unresolved position has no realised
 number by definition.
+
+---
+
+## Unit 28 — Giving calibration something to measure · this commit
+
+**Audit requirement:** the learning loop must actually learn. Implements the
+shape unit 27 verified and recommended.
+
+**Files:** `client/src/components/today/OutcomePrompt.tsx`,
+`shared/architecture/canon.ts`, `tests/unit/canonicalLoopAdoption.test.ts`
+(one test rewritten, two added).
+
+### Reversing my own rule, and why that is not a reversal
+
+Unit 24 shipped this card asking for **no numbers at all**, on the reasoning that
+a figure typed to make a card disappear is not a measurement. That reasoning is
+correct about a nagging prompt and **wrong as a blanket rule** — and applied as
+one it left the calibration layer permanently unable to measure anything, since
+unit 27 verified that nothing else in the product records what a deal actually
+returned.
+
+**The rule worth keeping is NEVER COERCE, not NEVER ASK.** So one optional amount
+is asked, under three constraints that make it a measurement rather than a
+formality:
+
+1. **Only on a TERMINAL answer.** `still_open` can never carry one — an
+   unresolved position has no realised number by definition. Nor can an answer
+   that resolves the position without revealing a number (a rejected offer, a
+   walk-away).
+2. **Only for a metric the deciding engine actually PREDICTED** — `profit` for a
+   sale, `total_cost` for an acquisition, both produced by `flip_mao`. Asking for
+   a number nothing forecast would produce two unrelated figures filed together,
+   not a variance. A test cross-checks both ids against the engine's `produces`.
+3. **Always optional.** Blank submits no `actuals` at all and the metric stays
+   `unmeasured` — exactly the state it was in before. Nothing is pre-filled,
+   nothing is required, and an answer with nothing to measure still submits in
+   one click, so the field costs nothing to operators it does not apply to.
+
+**Absence is never coerced to zero.** A realised profit of exactly zero is a real
+and different fact from an unmeasured one, and the entire variance layer rests on
+that distinction. The mutation omits `actuals` entirely rather than sending `0`,
+and a test asserts there is no `?? 0` anywhere near it.
+
+### The test that pinned the old rule, rewritten
+
+`asks for NO numbers` asserted the card contained no `<Input` at all. **Rewritten,
+not deleted**: the invariant it protected — absence stays absence — is now
+asserted directly and more sharply, against the coercion rather than against the
+existence of a field. Mutation-tested: coercing blank to `0`, and letting
+`still_open` carry a measurement, each fail.
+
+### A window bug in my own new test
+
+`only asks where a number is a real MEASUREMENT` sliced 200 characters from each
+answer entry, and the slice from `offer_rejected` ran into `acquired` — which
+does measure — so it **failed against correct code**. Each entry is now bounded by
+the next one. This is the third time in this program a fixed-size source window
+has read past its subject; the lesson is the same each time and is now written
+into the helper's own comment: *a source assertion that reads past its subject is
+not stricter, it is wrong.* The rewrite also asserts the two answers that DO
+measure, so the test cannot pass by measuring nothing at all.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 659 files, 8,676 tests, 1 skipped, 0 failures.**

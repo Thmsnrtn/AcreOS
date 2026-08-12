@@ -23,10 +23,27 @@
  * observation, which is exactly what the immutable decision record needs to
  * stay honest about a position that has not resolved.
  *
- * It also asks for NO NUMBERS. An outcome's `actuals` are measurements, and a
- * figure typed into a prompt three months later to make a card disappear is not
- * a measurement. The metrics stay `unmeasured` — which is true — until something
- * measures them.
+ * THE RULE IS NEVER COERCE, NOT NEVER ASK
+ * ---------------------------------------
+ * This card originally asked for no numbers at all, reasoning that a figure
+ * typed to make a card disappear is not a measurement. That reasoning is right
+ * about a nagging prompt and wrong as a blanket rule — and applied as one it
+ * left the calibration layer permanently unable to measure anything, because
+ * nothing else in the product records what a deal actually returned (verified:
+ * `deals.analysisResults` are forecasts, `lead_conversions.dealValue` is keyed
+ * to a lead for model attribution, and no `actual*`/`realized*` column exists).
+ *
+ * So ONE optional amount is asked, and only where it is a real measurement:
+ *
+ *   · only on a TERMINAL answer — `still_open` never gets it, because an
+ *     unresolved position has no realised number by definition;
+ *   · only for a metric the deciding engine actually PREDICTED, so the variance
+ *     it produces is a genuine comparison rather than two unrelated numbers;
+ *   · always optional — blank submits `actuals: []` and the metric stays
+ *     `unmeasured`, which is exactly the honest state it was in before.
+ *
+ * Nothing is pre-filled and nothing is required. The card can still be answered
+ * fully without typing a digit.
  */
 
 import { useState } from "react";
@@ -35,6 +52,8 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -73,14 +92,65 @@ interface DueResponse {
  * a card you can only silence by claiming a result is a card that manufactures
  * results.
  */
-const ANSWERS = [
+interface Answer {
+  kind: string;
+  label: string;
+  summary: string;
+  /**
+   * The registered metric this answer can MEASURE, when it can measure one.
+   *
+   * Both ids below are produced by the flip engine that records these
+   * decisions, so the resulting variance compares a forecast against its own
+   * realised value. An answer that resolves the position without revealing a
+   * number — a rejected offer, a walk-away — carries none, because there is
+   * nothing true to ask for.
+   */
+  measures?: { metricId: string; question: string; hint: string };
+}
+
+const ANSWERS: readonly Answer[] = [
   { kind: "offer_accepted", label: "Accepted", summary: "The offer was accepted." },
   { kind: "offer_rejected", label: "Rejected", summary: "The offer was rejected." },
-  { kind: "acquired", label: "Acquired", summary: "The purchase closed." },
-  { kind: "sold", label: "Sold", summary: "The position was exited." },
+  {
+    kind: "acquired",
+    label: "Acquired",
+    summary: "The purchase closed.",
+    measures: {
+      metricId: "total_cost",
+      question: "What did it actually cost to acquire?",
+      hint: "All-in: price, closing, anything you paid to take it down.",
+    },
+  },
+  {
+    kind: "sold",
+    label: "Sold",
+    summary: "The position was exited.",
+    measures: {
+      metricId: "profit",
+      question: "What did you actually make?",
+      hint: "Net of everything. A loss is fine — enter it with a minus sign.",
+    },
+  },
   { kind: "abandoned", label: "Walked away", summary: "Pursued, then dropped without a transaction." },
+  // NEVER measurable: an unresolved position has no realised number.
   { kind: "still_open", label: "Still open", summary: "Checked in; the position has not resolved." },
 ] as const;
+
+/**
+ * Dollars typed by a human → integer cents, or null when there is no number.
+ *
+ * Null means "they did not answer", never zero: a realised profit of exactly
+ * zero is a real and different fact from an unmeasured one, and the whole
+ * variance layer rests on that distinction. Negative is allowed — a loss is a
+ * measurement.
+ */
+function dollarsToCents(value: string): number | null {
+  const cleaned = value.replace(/[$,\s]/g, "");
+  if (cleaned === "") return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+}
 
 /** How the choice reads when the decision's own text is long. */
 function shortChoice(choice: string): string {
@@ -90,20 +160,35 @@ function shortChoice(choice: string): string {
 export function OutcomePrompt() {
   const { toast } = useToast();
   const [answering, setAnswering] = useState<number | null>(null);
+  /**
+   * A terminal answer chosen that CAN carry a measurement, held while the
+   * operator decides whether to give one. Nothing is submitted until they
+   * confirm, and confirming with the field blank is a complete answer.
+   */
+  const [measuring, setMeasuring] = useState<
+    { decisionSnapshotId: number; answer: Answer } | null
+  >(null);
+  const [amountField, setAmountField] = useState("");
 
   const { data, isLoading, isError, error, refetch } = useQuery<DueResponse>({
     queryKey: ["/api/decisions/due"],
   });
 
   const record = useMutation({
-    mutationFn: async (vars: { decisionSnapshotId: number; kind: string; summary: string }) => {
+    mutationFn: async (vars: {
+      decisionSnapshotId: number;
+      kind: string;
+      summary: string;
+      /** Omitted entirely when the operator gave no number. */
+      actuals?: Array<{ id: string; value: number }>;
+    }) => {
       await apiRequest("POST", `/api/decisions/${vars.decisionSnapshotId}/outcomes`, {
         kind: vars.kind,
         summary: vars.summary,
-        // No actuals. See the file header: a number typed to clear a card is
-        // not a measurement, and the variance layer reporting `unmeasured` is
-        // the honest answer until something measures it.
-        actuals: [],
+        // Empty unless the operator actually measured something. An absent
+        // number stays absent: the variance layer then reports `unmeasured`,
+        // which is true, rather than a zero nobody observed.
+        actuals: vars.actuals ?? [],
         observedAt: new Date().toISOString(),
       });
     },
@@ -111,6 +196,8 @@ export function OutcomePrompt() {
       queryClient.invalidateQueries({ queryKey: ["/api/decisions/due"] });
       queryClient.invalidateQueries({ queryKey: ["/api/decisions/calibration"] });
       setAnswering(null);
+      setMeasuring(null);
+      setAmountField("");
       toast({
         title: vars.kind === "still_open" ? "Noted — still open" : "Outcome recorded",
         description:
@@ -227,7 +314,74 @@ export function OutcomePrompt() {
                     )}
                   </p>
 
-                  {answering === d.id ? (
+                  {measuring?.decisionSnapshotId === d.id ? (
+                    /* An answer is chosen and it CAN carry a measurement.
+                       Optional: submitting blank is a complete answer and
+                       leaves the metric `unmeasured`, which is true. */
+                    <div className="space-y-2 pt-1">
+                      <Label
+                        htmlFor={`outcome-amount-${d.id}`}
+                        className="text-sm font-medium"
+                      >
+                        {measuring.answer.measures!.question}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {measuring.answer.measures!.hint} Leave it blank if you
+                        would rather not say — we'll record what happened without
+                        a number.
+                      </p>
+                      <Input
+                        id={`outcome-amount-${d.id}`}
+                        inputMode="decimal"
+                        placeholder="Optional"
+                        value={amountField}
+                        onChange={(e) => setAmountField(e.target.value)}
+                        className="max-w-[14rem]"
+                        data-testid={`outcome-amount-${d.id}`}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={record.isPending}
+                          onClick={() => {
+                            const cents = dollarsToCents(amountField);
+                            record.mutate({
+                              decisionSnapshotId: d.id,
+                              kind: measuring.answer.kind,
+                              summary: measuring.answer.summary,
+                              // Absent stays absent. Never coerced to 0 — a
+                              // realised profit of exactly zero is a real and
+                              // different fact from an unmeasured one.
+                              ...(cents === null
+                                ? {}
+                                : {
+                                    actuals: [
+                                      {
+                                        id: measuring.answer.measures!.metricId,
+                                        value: cents,
+                                      },
+                                    ],
+                                  }),
+                            });
+                          }}
+                          data-testid={`outcome-confirm-${d.id}`}
+                        >
+                          {record.isPending ? "Recording…" : "Record it"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setMeasuring(null);
+                            setAmountField("");
+                          }}
+                          data-testid={`outcome-back-${d.id}`}
+                        >
+                          Back
+                        </Button>
+                      </div>
+                    </div>
+                  ) : answering === d.id ? (
                     <div
                       className="flex flex-wrap gap-2 pt-1"
                       role="group"
@@ -239,13 +393,22 @@ export function OutcomePrompt() {
                           size="sm"
                           variant={a.kind === "still_open" ? "outline" : "secondary"}
                           disabled={record.isPending}
-                          onClick={() =>
+                          onClick={() => {
+                            // An answer that can carry a measurement opens the
+                            // optional field; every other answer submits
+                            // straight away, so adding the field costs the
+                            // operator nothing when there is nothing to measure.
+                            if (a.measures) {
+                              setAmountField("");
+                              setMeasuring({ decisionSnapshotId: d.id, answer: a });
+                              return;
+                            }
                             record.mutate({
                               decisionSnapshotId: d.id,
                               kind: a.kind,
                               summary: a.summary,
-                            })
-                          }
+                            });
+                          }}
                           data-testid={`outcome-answer-${a.kind}-${d.id}`}
                         >
                           {a.label}
