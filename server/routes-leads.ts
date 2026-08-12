@@ -21,6 +21,12 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+// ONE owner for the assigned-leads rule. It was hand-copied into five places
+// and missing from four write paths — see server/utils/assignedLeadGate.ts.
+import {
+  assertAssignedLeadWritable,
+  refuseBulkLeadWrite,
+} from "./utils/assignedLeadGate";
 import { assertUserIsOrgMember } from "./utils/orgScope";
 import { createLeadContract } from "@shared/contracts";
 // Wave B "Wire the engine" — lead.* workflow events. Fire-and-forget: these
@@ -657,18 +663,12 @@ export function registerLeadRoutes(app: Express): void {
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) return Errors.notFound(res, "Lead");
 
-      // Lens 48 — `viewOnlyAssignedLeads` was enforced on GET /api/leads
-      // but NOT on the PUT path. A VA gated to assigned-leads-only could
-      // mutate any lead in the org by guessing the numeric id. Re-assert
-      // here so the gate holds across read AND write.
-      const context = (req as AuthenticatedRequest).permissionContext;
-      const callerId = req.user?.id ?? null;
-      if (context?.permissions.viewOnlyAssignedLeads) {
-        const assignedTo = (existingLead as any).assignedTo;
-        if (assignedTo == null || String(assignedTo) !== String(callerId)) {
-          return Errors.forbidden(res, "You can only modify leads assigned to you");
-        }
-      }
+      // Lens 48 — `viewOnlyAssignedLeads` was enforced on GET /api/leads but
+      // not on the PUT path. This was the first write to re-assert it, with a
+      // hand-written copy of the check; that copy is now the SHARED gate, since
+      // three more writes turned out to be missing it entirely and five copies
+      // of a security rule is five chances to forget the sixth.
+      if (assertAssignedLeadWritable(req as AuthenticatedRequest, res, existingLead as { assignedTo?: unknown })) return;
 
       const validated = updateLeadSchema.parse(req.body);
 
@@ -752,7 +752,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
   
-  api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req, res) => {
     const org = req.organization;
     const leadId = Number(req.params.id);
     if (isNaN(leadId)) {
@@ -762,6 +762,10 @@ export function registerLeadRoutes(app: Express): void {
     if (!existingLead) {
       return Errors.notFound(res, "Lead");
     }
+    // `canDeleteLeads` says this person may delete leads; it does NOT say WHICH.
+    // Without this a VA restricted to their own leads could delete any lead in
+    // the org by guessing a numeric id.
+    if (assertAssignedLeadWritable(req as AuthenticatedRequest, res, existingLead as { assignedTo?: unknown })) return;
 
     // Soft delete: set deletedAt instead of hard deleting
     const user = req.user as any;
@@ -786,7 +790,7 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   // Restore a soft-deleted lead
-  api.patch("/api/leads/:id/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.patch("/api/leads/:id/restore", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
     const leadId = Number(req.params.id);
     if (isNaN(leadId)) {
@@ -800,6 +804,8 @@ export function registerLeadRoutes(app: Express): void {
     if (!lead) {
       return Errors.notFound(res, "Lead");
     }
+    // Restoring is a write like any other. It had NO permission gate at all.
+    if (assertAssignedLeadWritable(req as AuthenticatedRequest, res, lead)) return;
 
     const [restored] = await db.update(leads).set({
       deletedAt: null,
@@ -874,7 +880,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req, res) => {
     try {
       const org = req.organization;
       const parsed = bulkLeadIdsSchema.safeParse(req.body);
@@ -882,6 +888,10 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids } = parsed.data;
+      // Refused outright rather than filtered to the caller's own leads: a bulk
+      // call that quietly does less than it was asked reports success for work
+      // it did not do. Same choice routes-bulk.ts already made.
+      if (refuseBulkLeadWrite(req as AuthenticatedRequest, res, "Bulk lead deletes")) return;
 
       const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
       
@@ -905,7 +915,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/leads/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/leads/bulk-update", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     try {
       const org = req.organization;
       const parsed = bulkLeadUpdateSchema.safeParse(req.body);
@@ -913,6 +923,9 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids, updates } = parsed.data;
+      // Without this a restricted VA could push every lead in the org to
+      // "deleted" status through an arbitrary id array.
+      if (refuseBulkLeadWrite(req as AuthenticatedRequest, res)) return;
 
       // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
       // transition gate below and the per-lead workflow-event diff after the

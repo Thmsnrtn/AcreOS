@@ -1898,3 +1898,85 @@ endpoint are exploratory (no act), the public land calculator has no tenant, and
 the note payoff path already owns its state. **Adding a surface to move a number
 would be optimising for the ratchet rather than for the customer**, which is the
 failure the ratchet exists to detect in others.
+
+---
+
+## Unit 30 — Security: four lead write paths bypassed a configured permission · this commit
+
+**Audit requirement:** source-of-truth precedence #1 — safety, security and
+authorization outrank everything else in this program.
+
+**Files:** `server/utils/assignedLeadGate.ts` (new),
+`server/routes-leads.ts` (5 paths), `scripts/ratchets/as-any.json` (1407 → 1406),
+`tests/unit/assignedLeadGateCoverage.test.ts` (new, 9 tests).
+
+### The defect
+
+`team_members.viewOnlyAssignedLeads` is a restriction an org owner sets
+deliberately, and which is forced on for the `va` role. It was enforced on
+`GET /api/leads`, `GET /api/leads/paginated`, `PUT /api/leads/:id` and the
+`/api/bulk/leads/*` routes — and **missing from four writes**:
+
+| Path | What guarded it |
+|---|---|
+| `DELETE /api/leads/:id` | `canDeleteLeads` only — which says the caller may delete leads, not WHICH |
+| `PATCH /api/leads/:id/restore` | nothing at all |
+| `POST /api/leads/bulk-delete` | `canDeleteLeads` only |
+| `POST /api/leads/bulk-update` | nothing at all |
+
+A VA restricted to their own leads could delete, restore or mass-update any lead
+in the org by guessing a numeric id, and the two bulk paths accepted an arbitrary
+id array.
+
+**Severity, stated honestly: INTRA-ORG, not cross-tenant.** Every affected path is
+already org-scoped, so nothing crossed an organization boundary. What was
+bypassed is a permission the org's own owner configured — a real boundary, and
+not the same thing as a tenant leak.
+
+### Why it was invisible
+
+Exactly the shape of the `/api/admin` MFA defect found earlier in this program: a
+correct gate applied to some surfaces and not others. Each route reads fine on
+its own; the gap only appears when the surfaces are enumerated and checked
+together. **Five hand-written copies of a security rule is not five times the
+safety — it is five chances to forget the sixth**, and the sixth through ninth
+were forgotten.
+
+### The fix, and one thing it deliberately does not do
+
+The rule now has ONE owner. `assertAssignedLeadWritable` checks a single lead
+against its assignee; `refuseBulkLeadWrite` **refuses a bulk write outright
+rather than filtering it to the caller's own leads** — a bulk call that quietly
+does less than it was asked reports success for work it did not do, and that is
+harder to notice than a refusal. That was already `routes-bulk.ts`'s choice; this
+generalises it rather than inventing a second answer.
+
+An **unassigned** lead is not writable by a restricted caller. Treating "assigned
+to nobody" as "assigned to everybody" would void the restriction for exactly the
+leads most likely to be unclaimed.
+
+Four paths also lacked `attachPermissionContext()`. Without it the check
+`context?.permissions.viewOnlyAssignedLeads` yields `undefined`, the condition is
+falsy, and the gate **fails open** — so the middleware is asserted alongside the
+call rather than assumed.
+
+### The test found that the fix was incomplete
+
+Written before the last edit, it failed on `PUT /api/leads/:id` — which still
+carried its own hand-written copy. That is the test doing its job: the unit's
+claim was "one owner", and two owners is not one. Migrating it removed an
+`(existingLead as any).assignedTo`, so the **as-any ratchet dropped 1407 → 1406
+and was lowered in the same commit** per its strictly-down rule. The shared gate
+takes a structural `{ assignedTo?: unknown }` rather than an `any` erase — it
+needs one field, so it does not need the row's whole type and must not destroy it.
+
+### Mutation-tested against all three failure modes
+
+Removing the bulk refusal (reintroducing the original defect), computing the
+single-lead gate but ignoring its result, and treating an unassigned lead as
+writable — each fails. The suite also carries a **vacuity guard**: if a route is
+renamed, the file fails rather than silently checking nothing, which is the
+failure mode of every source-scanning security test.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 660 files, 8,686 tests, 1 skipped, 0 failures.**

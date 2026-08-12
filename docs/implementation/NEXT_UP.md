@@ -175,10 +175,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     `engine_input_json`, so a Scenario there would be a SECOND owner of the same
     state. `MUST_NOT_ADOPT` encodes it, and the guard checks its own
     justification so the exemption cannot outlive its reason.
+30. **SECURITY** — `viewOnlyAssignedLeads` was enforced on reads and on
+    `PUT /api/leads/:id`, and **missing from four writes** (`DELETE /:id`,
+    `PATCH /:id/restore`, `bulk-delete`, `bulk-update`). A restricted VA could
+    delete, restore or mass-update any lead in the org by id. Intra-org, not
+    cross-tenant. Rule given ONE owner (`server/utils/assignedLeadGate.ts`) +
+    a 9-test coverage gate with a vacuity guard. as-any ratchet 1407 → 1406.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,677 tests, 1 skipped, 0 failures.**
+suite green — 660 files, 8,686 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
