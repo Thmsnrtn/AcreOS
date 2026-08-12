@@ -174,6 +174,16 @@ export interface DecisionSnapshotInput {
   alternatives: FrozenAlternative[];
   /** Non-evidence unknowns. Evidence unknowns are derived automatically. */
   additionalUnknowns?: FrozenUnknown[];
+
+  /**
+   * When the decision-maker expects to KNOW whether this worked.
+   *
+   * Null is a real and common answer, recorded rather than implied. Supplying it
+   * is what later lets the loop ASK for an outcome, which nothing otherwise does
+   * — so a decision with no review date simply never prompts, which is correct
+   * for the many that have no natural one.
+   */
+  reviewDueAt?: Date | null;
 }
 
 /** The frozen record. Every field is immutable once written. */
@@ -218,6 +228,13 @@ export interface DecisionSnapshotBody {
    * recording an empty list says exactly that.
    */
   scenarios: FrozenScenarioRef[];
+
+  /**
+   * When the decision-maker expected to know whether this worked. Null when no
+   * natural review date exists — recorded explicitly, so a decision that will
+   * never be reviewed is distinguishable from one whose review was forgotten.
+   */
+  reviewDueAt: Date | null;
 }
 
 /**
@@ -301,6 +318,7 @@ export function freezeDecision(
       ...(input.additionalUnknowns ?? []),
     ],
     scenarios: [...scenarios],
+    reviewDueAt: input.reviewDueAt ?? null,
   };
 }
 

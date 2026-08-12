@@ -1291,3 +1291,85 @@ boundary and the cost of asking again is one predicate. Two queries, not N+1.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 657 files, 8,619 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 21 — The outcome prompt: the loop's last open end · this commit
+
+**Audit requirement:** Master Audit Section VII (the loop must CLOSE, not merely
+be closeable). Also BI5 (Founder OS is a control plane, not a second product
+database) and canonical law 6 (a historical decision preserves what was known).
+
+**Files:** `shared/schema/decision-snapshots.ts` (`review_due_at` + org-leading
+index), `migrations/0232_decision_review_due.sql`, `scripts/migrate.mjs`,
+`shared/decisions/snapshot.ts`, `server/services/decisions/decisionStore.ts`
+(`decisionsDueForOutcome`), `server/routes-decisions.ts` (`GET /api/decisions/due`),
+`shared/architecture/canon.ts`, `tests/unit/outcomePrompt.test.ts` (new, 20 tests).
+
+### Why this was the binding gap, not a nicety
+
+Every layer worked and nothing ever ASKED for an outcome, so the loop closed only
+when someone spontaneously chose to close it. That is not merely incomplete —
+**it silently biases everything built above it.** People record the deals they
+remember, and memorable usually means extreme: the one that tripled and the one
+that went to zero. A calibration computed over volunteered outcomes measures what
+someone remembers, not how they forecast. Unit 20 built a careful instrument and
+pointed it at a self-selected sample; this is what makes it a measurement.
+
+### The design is borrowed; the table is not
+
+`server/services/outcomeLedger.ts` already solved the hard half on the founder
+plane, and the transferable idea is precise: **the review date is written by the
+CREATOR at decision time, never guessed later by a heuristic.** The person making
+the call knows whether they will know in thirty days or two years. A rule that
+guessed would nag about a long land hold and stay silent on a flip.
+
+What is NOT reused is its table. `decisions_inbox_items` is founder
+control-plane state, and BI5 forbids Founder OS owning customer investment truth.
+So the pattern moves onto `decision_snapshots.review_due_at` and the founder's
+queue is left untouched — asserted, because "reuse the pattern" is one slip from
+"edit the founder's queue".
+
+### The honesty decisions
+
+- **Null is a real answer.** Many decisions have no natural review date, and a
+  decision that will never be reviewed must stay distinguishable from one whose
+  review was forgotten. The API deliberately has **no default** — a 30-day
+  fallback would manufacture a due date the customer never chose and make the
+  sweep nag about every decision ever recorded, which is how a prompt earns being
+  ignored. A test pins the absence of `.default(`.
+- **Immutability survives.** "Too soon to tell" is not an edit to the due date;
+  it is a `still_open` OUTCOME, which appends. `still_open` already existed in
+  `OUTCOME_KINDS` and, before this unit, appeared nowhere in server or client
+  code — the vocabulary was there and unused.
+- **Only a TERMINAL outcome closes the question.** Treating `still_open` as
+  resolution would drop every unsettled position; treating it as silence would
+  ask again as though never answered. It is counted and shown instead.
+- **Oldest question first.** The longest-unanswered decision is the one whose
+  outcome is least likely to be remembered later.
+- **The sweep cannot write.** A prompt that could write into the learning layer
+  would be a fabrication engine pointed at exactly the records that must remain
+  observations. Asserted directly.
+- **No `?? new Date()` anywhere.** The result asserts non-null off the
+  `isNotNull` predicate rather than defaulting to a date nobody chose.
+
+### The `pass` case is the whole point
+
+The schema's own comment says a pass's outcome — "the parcel sold for 3x nine
+months later" — is the single most valuable and least recorded fact in an
+investor's history. It is also the one nobody ever volunteers, because there is
+no deal in the pipeline to remind them. So the sweep filters on **nothing but
+due-ness and resolution**: no kind filter, no subject-type filter, no "only if it
+became a deal". A prompt that covered only decisions that turned into deals would
+systematically miss the most informative half of the record. Two tests pin the
+absence of those filters.
+
+### Mutation-tested, as now standard
+
+Making `still_open` count as resolution, and dropping the `isNotNull` guard so
+dateless decisions would be nagged about, each fail the suite. The tenancy
+assertion counts org predicates across all three queries (main, subquery,
+interim) rather than assuming.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 658 files, 8,639 tests, 1 skipped, 0 failures.**

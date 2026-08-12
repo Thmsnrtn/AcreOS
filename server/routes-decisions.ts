@@ -22,6 +22,7 @@ import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import {
+  decisionsDueForOutcome,
   decisionsForSubject,
   getDecision,
   recordDecision,
@@ -90,6 +91,15 @@ const recordSchema = z.object({
    * over pre-computed numbers can hand over any numbers at all.
    */
   scenarioIds: z.array(z.number().int().positive()).default([]),
+  /**
+   * When the decision-maker expects to know whether this worked.
+   *
+   * Optional, and OMITTING it means "no natural review date" rather than
+   * "default to 30 days". A default here would manufacture a due date the
+   * customer never chose, and the sweep would then nag about every decision
+   * ever recorded — which is how a prompt earns being ignored.
+   */
+  reviewDueAt: z.coerce.date().nullable().optional(),
 });
 
 // POST /api/decisions
@@ -123,6 +133,35 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     if (err instanceof UnavailableScenarioError) {
       return Errors.badRequest(res, err.message);
     }
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * GET /api/decisions/due
+ *
+ * The decisions whose review date has passed and which have no RESOLVED
+ * outcome — the missing end of the canonical loop (Master Audit Section VII).
+ *
+ * Until this existed, nothing ever ASKED for an outcome, so the loop closed only
+ * when someone spontaneously chose to close it. That is not merely incomplete:
+ * it biases everything built above it, because the outcomes a person volunteers
+ * are the memorable ones and memorable usually means extreme. A calibration over
+ * volunteered outcomes measures what someone remembers, not how they forecast.
+ *
+ * Read-only. Being asked for an outcome must never create one.
+ */
+router.get("/due", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const due = await decisionsDueForOutcome(organizationId);
+    res.json({
+      due,
+      // The count is the list's length, not a separate query — two numbers that
+      // can disagree are worse than one.
+      count: due.length,
+    });
+  } catch (err) {
     Errors.internal(res, err);
   }
 });

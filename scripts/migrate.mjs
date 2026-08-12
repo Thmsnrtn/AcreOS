@@ -9063,6 +9063,21 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_decided_idx" ON "decision_snapshots" ("organization_id", "decided_at")`,
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_kind_idx" ON "decision_snapshots" ("organization_id", "kind", "decided_at")`,
 
+  // ── 0232 decision_snapshots.review_due_at: the outcome PROMPT ──────────────
+  // No new table. Mirrors migrations/0232_decision_review_due.sql.
+  //
+  // The missing end of the canonical loop: every layer worked and nothing ever
+  // ASKED for an outcome, so the loop closed only when someone spontaneously
+  // chose to close it — which silently biases the calibration above it, because
+  // volunteered outcomes are the memorable ones and memorable means extreme.
+  //
+  // Nullable, and null is a real answer: many decisions have no natural review
+  // date and never prompt. The date is frozen at decision time by the person
+  // making the call, never guessed later by a heuristic that would nag about a
+  // long land hold and stay silent on a flip.
+  `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "review_due_at" timestamp`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_review_due_idx" ON "decision_snapshots" ("organization_id", "review_due_at")`,
+
   // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
   // ONE new table — scripts/ratchets/table-count.json 758 -> 759. Mirrors
   // migrations/0229_outward_actions.sql + shared/schema/outward-actions.ts.

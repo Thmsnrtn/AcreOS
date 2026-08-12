@@ -855,6 +855,7 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "tests/unit/autopilotDecisionEval.test.ts",
         "tests/unit/goldenLoopOneProperty.test.ts",
         "shared/outcomes/calibration.ts",
+        "tests/unit/outcomePrompt.test.ts",
         "tests/unit/calibrationAcrossDecisions.test.ts",
       ],
       note:
@@ -887,11 +888,22 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "sign test, carries the predicted-but-never-measured count so a thin " +
         "sample cannot read as a thick one, and emits NO overall score — one " +
         "number mixing a cents metric with a ratio metric is arithmetic on " +
-        "incompatible units. REMAINING GAP: nothing PROMPTS a customer to record " +
-        "an outcome, so the loop closes only when someone chooses to close it. A " +
-        "due-outcome sweep (the founder plane already has one in " +
-        "outcomeLedger/decisionEval) is the next step, and no client surface " +
-        "calls GET /api/decisions/calibration yet.",
+        "incompatible units. The loop is also now ASKED to close: " +
+        "`decision_snapshots.review_due_at` is frozen at decision time and " +
+        "GET /api/decisions/due lists decisions past due with no TERMINAL " +
+        "outcome. That mattered more than it looks — volunteered outcomes are a " +
+        "biased sample by construction (people record the deals they remember, " +
+        "and memorable means extreme), so a calibration over them measured what " +
+        "someone remembered rather than how they forecast. The review date is " +
+        "written BY THE DECISION-MAKER, never guessed by a heuristic that would " +
+        "nag about a long land hold and stay silent on a flip; null is a real " +
+        "answer and never prompts; `still_open` counts as an interim " +
+        "observation rather than either resolution or silence; and the sweep " +
+        "cannot write, so being asked for an outcome can never create one. The " +
+        "design is borrowed from the founder plane\u0027s outcomeLedger; its " +
+        "control-plane table is NOT (BI5). REMAINING GAP: adoption — no client " +
+        "surface calls /api/decisions/due or /api/decisions/calibration yet, so " +
+        "the prompt exists and nothing renders it.",
     },
   },
   {

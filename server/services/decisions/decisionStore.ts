@@ -17,9 +17,9 @@
  *            → …later… outcome (appended, never merged back)
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, eq, desc, isNotNull, lte, ne, notInArray } from "drizzle-orm";
 import { db } from "../../db";
-import { decisionSnapshots } from "@shared/schema";
+import { decisionSnapshots, outcomes } from "@shared/schema";
 import {
   freezeDecision,
   type DecisionSnapshotBody,
@@ -55,6 +55,7 @@ function rowToBody(
     alternatives: row.alternatives,
     unknowns: row.unknowns,
     scenarios: row.scenarios,
+    reviewDueAt: row.reviewDueAt,
   };
 }
 
@@ -136,6 +137,7 @@ export async function recordDecision(
       alternatives: body.alternatives,
       unknowns: body.unknowns,
       scenarios: body.scenarios,
+      reviewDueAt: body.reviewDueAt,
     })
     .returning();
 
@@ -182,5 +184,107 @@ export async function decisionsForSubject(
     id: row.id,
     decidedAt: row.decidedAt,
     body: rowToBody(row),
+  }));
+}
+
+/** Cap on one due sweep. A tenant past this has a different problem. */
+const DUE_READ_CAP = 200;
+
+export interface DecisionDueForOutcome {
+  id: number;
+  decidedAt: Date;
+  reviewDueAt: Date;
+  subjectType: DecisionSubjectType;
+  subjectId: number;
+  kind: string;
+  choice: string;
+  /** How many interim `still_open` observations have already been recorded. */
+  interimObservations: number;
+}
+
+/**
+ * Decisions whose review date has passed and which have no RESOLVED outcome.
+ *
+ * This is the missing end of the canonical loop. Every layer below it works, and
+ * until now nothing ever ASKED for an outcome — so the loop closed only when
+ * someone spontaneously chose to close it. That is not merely incomplete; it
+ * silently biases everything built on top, because the outcomes a person
+ * volunteers are the memorable ones, and memorable usually means extreme. A
+ * calibration computed over volunteered outcomes measures what someone
+ * remembers, not how they forecast.
+ *
+ * THE HONEST PARTS
+ * ----------------
+ * · A decision with NO review date never appears. Null means the decision-maker
+ *   expected no moment of knowing, and inventing one for them would be the
+ *   nagging that makes a prompt worth ignoring.
+ * · Only a TERMINAL outcome closes it. A `still_open` observation is a real
+ *   answer to "what happened?" — it just is not the last one — so it is counted
+ *   and shown rather than treated as silence.
+ * · Ordered by the OLDEST due date first, so the longest-unanswered question is
+ *   the one asked, not the newest and freshest in mind.
+ * · Nothing here writes. Being asked for an outcome must never create one, and a
+ *   sweep that could would be a fabrication engine pointed at the learning layer.
+ */
+export async function decisionsDueForOutcome(
+  organizationId: number,
+  asOf: Date = new Date(),
+): Promise<DecisionDueForOutcome[]> {
+  // Decisions this org has already RESOLVED. `still_open` is deliberately not
+  // in this set: an interim observation does not answer the question.
+  const resolved = db
+    .select({ id: outcomes.decisionSnapshotId })
+    .from(outcomes)
+    .where(
+      and(
+        eq(outcomes.organizationId, organizationId),
+        ne(outcomes.kind, "still_open"),
+      ),
+    );
+
+  const rows = await db
+    .select()
+    .from(decisionSnapshots)
+    .where(
+      and(
+        eq(decisionSnapshots.organizationId, organizationId),
+        isNotNull(decisionSnapshots.reviewDueAt),
+        lte(decisionSnapshots.reviewDueAt, asOf),
+        notInArray(decisionSnapshots.id, resolved),
+      ),
+    )
+    .orderBy(asc(decisionSnapshots.reviewDueAt))
+    .limit(DUE_READ_CAP);
+
+  if (rows.length === 0) return [];
+
+  // How many interim observations each already carries, so the prompt can say
+  // "checked twice, still open" instead of asking as though never answered.
+  const interim = await db
+    .select({ id: outcomes.decisionSnapshotId })
+    .from(outcomes)
+    .where(
+      and(
+        eq(outcomes.organizationId, organizationId),
+        eq(outcomes.kind, "still_open"),
+      ),
+    )
+    .limit(DUE_READ_CAP * 10);
+  const interimCount = new Map<number, number>();
+  for (const o of interim) {
+    interimCount.set(o.id, (interimCount.get(o.id) ?? 0) + 1);
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    decidedAt: row.decidedAt,
+    // Non-null by the isNotNull predicate above; the assertion states that
+    // rather than defaulting to a date nobody chose.
+    reviewDueAt: row.reviewDueAt!,
+    subjectType: row.subjectType,
+    subjectId: row.subjectId,
+    kind: row.kind,
+    choice: row.choice,
+    interimObservations: interimCount.get(row.id) ?? 0,
   }));
 }

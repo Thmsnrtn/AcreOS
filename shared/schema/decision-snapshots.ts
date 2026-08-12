@@ -128,6 +128,26 @@ export const decisionSnapshots = pgTable(
     scenarios: jsonb("scenarios").$type<FrozenScenarioRef[]>().notNull().default([]),
 
     decidedAt: timestamp("decided_at").notNull().defaultNow(),
+
+    /**
+     * When the decision-maker expected to KNOW whether this worked.
+     *
+     * Frozen at decision time like everything else here, and null is a real,
+     * common answer — many decisions have no natural review date, and recording
+     * null says that rather than implying one was forgotten.
+     *
+     * It is the answer to "when is a decision due for an outcome" and it is
+     * deliberately NOT a heuristic computed later. The person making the call
+     * knows whether they will know in thirty days or two years; a rule that
+     * guessed would nag about a long land hold and stay silent on a flip. This
+     * is the same shape the founder plane's outcome ledger uses (a checkInDate
+     * written by the creator, `server/services/outcomeLedger.ts`) — the pattern
+     * is reused, the founder's control-plane table is not (BI5).
+     *
+     * The row stays immutable. "Too soon to tell" is not an edit to this date;
+     * it is a `still_open` OUTCOME, which appends.
+     */
+    reviewDueAt: timestamp("review_due_at"),
   },
   (table) => [
     // Dominant read: "this property's decision history, newest first" —
@@ -142,6 +162,13 @@ export const decisionSnapshots = pgTable(
     index("decision_snapshots_org_decided_idx").on(
       table.organizationId,
       table.decidedAt,
+    ),
+    // "What is due for an outcome" — the prompt sweep. Org-LEADING, and it
+    // deliberately indexes rows whose reviewDueAt is null too: they are the
+    // majority and Postgres would otherwise scan them on every due query.
+    index("decision_snapshots_org_review_due_idx").on(
+      table.organizationId,
+      table.reviewDueAt,
     ),
     // "Every pass we made this quarter" — the decision-quality read.
     index("decision_snapshots_org_kind_idx").on(
