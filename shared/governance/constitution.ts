@@ -261,9 +261,22 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "expansion-gate",
     source: "docs/company/roadmap-2026-07.md; CLAUDE.md DO-NOT-DO list",
     enforcement: {
-      kind: "prose-only",
-      refs: ["docs/company/roadmap-2026-07.md"],
-      note: "Enforced today by the marketplace/API surfaces staying feature-flagged off. No automated customer-count gate. GOVERNANCE DEBT (not a hard stop).",
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/expansionLadder.test.ts",
+        "server/middleware/featureGate.ts",
+        "docs/company/roadmap-2026-07.md",
+      ],
+      note:
+        "Was prose-only, and the note claimed both surfaces were simply " +
+        "'feature-flagged off'. Half true: the public API is genuinely " +
+        "unmounted (registerPublicApiV1 has no caller), but the marketplace sat " +
+        "behind featureGate, whose enterprise-tier bypass let a SUBSCRIPTION " +
+        "TIER override the ladder and whose flag-store catch failed OPEN. It " +
+        "now uses requireLadderFlag: founder bypass kept, tier bypass dropped, " +
+        "fails closed. No automated customer-count gate exists — the ratchet " +
+        "instead fails the moment either surface is switched on, and says to " +
+        "confirm the threshold and change the assertion deliberately.",
     },
   },
 

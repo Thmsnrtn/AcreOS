@@ -134,7 +134,7 @@ import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
 import { correlationIdMiddleware } from "./middleware/correlationId";
 
 // Feature flag gate middleware
-import { featureGate } from "./middleware/featureGate";
+import { featureGate, requireLadderFlag } from "./middleware/featureGate";
 
 // MCP handler
 import { mcpHandler } from "./mcp-server";
@@ -1328,7 +1328,12 @@ export async function registerRoutes(
   // ============================================
   // ROUTER-BASED FEATURE ROUTES
   // ============================================
-  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, featureGate("feature_marketplace"), marketplaceRouter);
+  // requireLadderFlag, not featureGate: the marketplace is gated by the
+  // approved expansion ladder ("no marketplace before ~25 customers"), which is
+  // a founder decision. featureGate lets an enterprise-tier org bypass the flag
+  // and fails OPEN when the flag store errors — reasonable for a product flag,
+  // wrong for a governance gate. See tests/unit/expansionLadder.test.ts.
+  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), marketplaceRouter);
   app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
   app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
   app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);

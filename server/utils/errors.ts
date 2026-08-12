@@ -124,6 +124,26 @@ export const Errors = {
   },
 
   /**
+   * 404 for a surface that exists but is not switched on for this caller.
+   *
+   * A gated feature is not a missing entity, so `notFound` is the wrong copy —
+   * "we couldn't find that Feature, it may have been deleted or moved between
+   * organizations" is three false suggestions about a route that is simply off.
+   * 404 rather than 403 is deliberate and predates this helper: a feature the
+   * caller is not in the cohort for should not advertise its own existence.
+   */
+  featureUnavailable(res: Response, opts?: ErrorOptions): void {
+    sendError(
+      res,
+      404,
+      "FEATURE_NOT_AVAILABLE",
+      "That feature isn't available on this account.",
+      undefined,
+      buildDocsUrl(opts),
+    );
+  },
+
+  /**
    * 501 for an endpoint that exists but does not do the thing it names.
    *
    * Reserved for a route whose backing implementation is genuinely absent — not

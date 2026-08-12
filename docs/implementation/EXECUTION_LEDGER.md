@@ -3571,3 +3571,105 @@ where a partial answer is worse than none.
 Five mutations, each caught: dropping the founder gate; removing the cap;
 moving the simulation guard after `getAdAccountId()`; dropping `ads` from the
 global default set; and fabricating a campaign id on a simulated run.
+
+---
+
+## Unit 51 — A subscription tier could buy past the expansion ladder · this commit
+
+**Files:** `server/middleware/featureGate.ts`, `server/routes.ts`,
+`shared/governance/constitution.ts`,
+`tests/unit/expansionLadder.test.ts` (new, 10 tests).
+
+### Picked by the technique, not by a scan
+
+The previous unit's write-up concluded that the thing which works on this
+codebase is *find a rule the repo has already written down and enumerate the
+surfaces it should cover*. `shared/governance/constitution.ts` is that list,
+made machine-readable, and it flags its own weakest entries as **`prose-only`**
+— recorded, relying on vigilance. There were two. This is one of them.
+
+`expansion.marketplace-25-api-50` — *"no marketplace before ~25 customers, no
+public API before ~50"* — carried the note: *"Enforced today by the
+marketplace/API surfaces staying feature-flagged off. No automated
+customer-count gate. GOVERNANCE DEBT."*
+
+Checked against HEAD, that note was **half true**, and the wrong half mattered.
+
+### The API side was fine; the marketplace side was not
+
+`registerPublicApiV1` has zero callers, so `server/api-v1/*` is unmounted (B8),
+and `/api/v1/*` is only a passthrough rewriting to `/api/*`. Genuinely off.
+
+The marketplace was mounted behind `featureGate("feature_marketplace")`, and
+`requireFlag` — which `featureGate` aliases — carries two escape hatches:
+
+1. **An enterprise-tier bypass.** Its own comment calls it back-compat for
+   legacy reseller / white-label routes. Applied to the marketplace it meant a
+   **subscription tier silently overrode a founder decision** — a paid plan
+   buying its way past the ladder.
+2. **Failing OPEN when the flag store throws** (*"DB unavailable — fail open to
+   avoid breaking the app during initial setup"*). Kind for a product flag; for
+   an expansion gate it means a transient database error opens the marketplace.
+
+Neither is a bug in `requireFlag`. Both are wrong for a governance gate, which
+is the distinction the fix rests on.
+
+### `requireLadderFlag`
+
+Founder bypass **kept** — the founder must be able to look at the surface they
+are deciding about, and a test asserts it so a later "tighten everything" pass
+does not remove it as though it were the same kind of hole. Tier bypass dropped.
+Fails closed.
+
+A contrast guard asserts that ordinary `requireFlag` still HAS its escape
+hatches: if it were tightened too, the two gates would be redundant and should
+be collapsed rather than maintained as a distinction that no longer exists.
+
+### Inverted, because the threshold is unmeasurable from a test
+
+A test cannot know the customer count, so it cannot assert "25 has not been
+reached". It fails the moment either surface is switched on and says to confirm
+the threshold, update the registry, and change the assertion **deliberately** —
+the `FOUNDER_ROUTE_BASELINE` shape.
+
+The constitution entry moves `prose-only` → `ratchet-test`, and its note now
+records what the old one got wrong. **One of the two remaining prose-only
+entries is closed**; the other (`ai.pax-stays-ambient`) is enforced indirectly by
+the five-door ratchet and needs a different instrument.
+
+### The ratchet asked for a better fix than the one intended
+
+`requireLadderFlag` needed two 404 responses, and `res-status-raw` went 505 →
+507. The rule is *fix the occurrence, not the baseline* — so rather than raise
+it, `Errors.featureUnavailable` was added and **all three** raw
+`res.status(404).json({ message: "Feature not available" })` calls in
+`featureGate.ts` were converted, including the two that predate this unit.
+Baseline 505 → **504**.
+
+`notFound` was the wrong helper to reuse: *"we couldn't find that Feature — it
+may have been deleted, archived, or moved between organizations"* makes three
+false suggestions about a route that is simply off. 404 rather than 403 is kept
+and predates this work — a feature the caller is not in the cohort for should
+not advertise its own existence.
+
+### Two assertions rewritten to the new truth, neither deleted
+
+The conversion broke two tests, and both were right to break:
+
+- `tests/unit/featureGate.test.ts` pinned the exact body
+  `{ message: "Feature not available" }` — the only refusal shape in the API
+  that did not conform to the documented `{ error, message, statusCode }`
+  envelope. The **invariant** it protects (404, `next()` not called) is
+  unchanged, so the assertion was rewritten rather than dropped.
+- This unit's own "fails CLOSED" check asserted the literal `"404"` in the
+  handler, and broke the moment `res.status(404)` became
+  `Errors.featureUnavailable`. That is an assertion coupled to *where the number
+  is written* rather than to what the code does. It now asserts the refusal, and
+  a second test asserts the helper really is a 404 — the property still holds
+  end to end, across two checks instead of one.
+
+### Verification
+
+Five mutations, each caught: reverting the marketplace to `featureGate`; making
+the ladder gate fail open; reintroducing the enterprise bypass; mounting the
+public API v1; and reverting the registry entry to `prose-only`.
