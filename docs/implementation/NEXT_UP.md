@@ -152,10 +152,14 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     program; units 2–23 were entirely server-side. `still_open` is an answer,
     not a dismissal; it asks for no numbers; it pre-selects nothing. Adoption
     ratchet 2 → 3.
+25. **…and finally TOLD** — `ForecastCalibration.tsx` behind the Deals door,
+    printing `describeCalibration`'s sentences VERBATIM and computing no
+    direction client-side. **The customer-side loop is now complete end to
+    end.** Adoption ratchet 3 → 4.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,666 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,673 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

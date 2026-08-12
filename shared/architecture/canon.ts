@@ -929,9 +929,18 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "only silence by claiming a result manufactures results), asks for NO " +
         "numbers (a figure typed to clear a card is not a measurement, so the " +
         "metrics stay honestly `unmeasured`), pre-selects nothing, and shows how " +
-        "many times it has already asked. REMAINING GAP: no client surface " +
-        "renders /api/decisions/calibration, so the customer is now asked but " +
-        "still never told what their forecasts are doing.",
+        "many times it has already asked. And finally TOLD: " +
+        "ForecastCalibration.tsx renders /api/decisions/calibration behind the " +
+        "Deals door, printing describeCalibration\u0027s sentences VERBATIM and " +
+        "computing no direction client-side — a client that paraphrased would " +
+        "eventually paraphrase the refusal away, and \u0022trending optimistic " +
+        "(early data)\u0022 is exactly the sentence the six-outcome floor exists " +
+        "to prevent. The customer-side loop is now complete end to end: a real " +
+        "surface records the reasoning, the resolution records the outcome, the " +
+        "customer is asked what happened, and they are shown what their " +
+        "forecasts do. REMAINING GAP: only ONE product surface (the fix-and-flip " +
+        "offer path) enters the loop — every other calculator still computes for " +
+        "display and persists nothing.",
     },
   },
   {

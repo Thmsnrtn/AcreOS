@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { ForecastCalibration } from "@/components/deals/ForecastCalibration";
 import { plural, usd } from "@/lib/format";
 import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
@@ -1078,6 +1079,15 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
         onConfirm={handleBulkStageUpdate}
         isLoading={isBulkStageUpdating}
       />
+
+      {/* ── How your forecasts are tracking (the learning loop's other half) ──
+          The Today card asks what happened; this is what the answers are FOR.
+          Without it the customer feeds an instrument they can never see, which
+          teaches them that answering is pointless. It lives behind Deals
+          because the decisions being calibrated are offers, passes and
+          acquisitions — and NOT on Today, which is for what needs attention
+          now. A section behind an existing door, never a sixth entry. */}
+      {!embedded && <ForecastCalibration />}
     </PageShell>
   );
 }

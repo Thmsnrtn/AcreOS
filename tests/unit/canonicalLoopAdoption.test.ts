@@ -59,6 +59,13 @@ const ADOPTING_SURFACES = [
     // server-side: the customer was never asked and never told.
     writes: ["/api/decisions/due", "/outcomes`"],
   },
+  {
+    file: "client/src/components/deals/ForecastCalibration.tsx",
+    what: "the Deals panel that shows what the answers were for",
+    // The other half of the same loop. Asking without ever telling teaches a
+    // customer that answering is pointless.
+    writes: ["/api/decisions/calibration"],
+  },
 ] as const;
 
 /**
@@ -69,7 +76,7 @@ const ADOPTING_SURFACES = [
  * what it did — which is precisely the regression the canonical layers exist to
  * prevent, and it would otherwise be invisible.
  */
-const ADOPTING_SURFACE_BASELINE = 3;
+const ADOPTING_SURFACE_BASELINE = 4;
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -349,5 +356,62 @@ describe("the customer is finally ASKED — and the asking is honest", () => {
     // Six unlabelled buttons in a row are meaningless out of visual context.
     expect(card).toMatch(/role="group"/);
     expect(card).toMatch(/aria-label=\{`Record what happened to/);
+  });
+});
+
+describe("...and finally TOLD — without paraphrasing the refusal away", () => {
+  const panel = read("client/src/components/deals/ForecastCalibration.tsx");
+
+  it("renders the SERVER's sentences verbatim", () => {
+    // The single most important property here. The server already refuses to
+    // claim a direction below the floor, already says "not enough measured
+    // outcomes yet" as a whole sentence rather than a hedged claim, and already
+    // never says a decision was good or bad. A client that paraphrased would
+    // eventually paraphrase the refusal away — "trending optimistic (early
+    // data)" is exactly the sentence the floor exists to prevent, and nothing
+    // would catch it.
+    expect(panel).toContain("summary[i]");
+    expect(panel).toContain("m.factors.join(");
+  });
+
+  it("never computes a direction client-side", () => {
+    // No arithmetic on the numbers at all: no thresholds, no percentages
+    // derived here. Every claim is the server's.
+    const code = stripComments(panel);
+    expect(code).not.toMatch(/medianRelativeError\s*[<>*/+-]/);
+    expect(code).not.toMatch(/directionProbability\s*[<>]/);
+    expect(code).not.toMatch(/comparedCount\s*[<>]=?\s*\d/);
+  });
+
+  it("gates the direction label on the server's own `state`", () => {
+    // `insufficient` must never render as a finding.
+    expect(panel).toMatch(/m\.state !== "calibrated"/);
+    expect(panel).toMatch(/not enough yet/);
+  });
+
+  it("styles `no clear direction` and `not enough yet` alike, and quietly", () => {
+    // Neither is a result. Styling "not enough data" like a conclusion is how a
+    // reader comes away with one.
+    expect(panel).toMatch(/bias === "centred"\) return "outline"/);
+  });
+
+  it("states the floor and the BI178 caveat in the UI, not just in the code", () => {
+    expect(panel).toMatch(/only claimed once \{floor\}/);
+    expect(panel).toMatch(/a good\s*\n?\s*decision can have a bad outcome/);
+  });
+
+  it("lives behind Deals, not on Today and not as a sixth door", () => {
+    expect(read("client/src/pages/deals.tsx")).toContain("<ForecastCalibration />");
+    expect(read("client/src/pages/today.tsx")).not.toContain("ForecastCalibration");
+    expect(read("client/src/components/layout-sidebar.tsx")).not.toContain("Calibration");
+  });
+
+  it("uses the house states and the real animation variant", () => {
+    expect(panel).toContain("<Skeleton");
+    expect(panel).toContain("<EmptyState");
+    expect(panel).toContain("<QueryErrorState");
+    // hidden/visible — `animate="show"` leaves the list stuck at opacity 0.
+    expect(panel).toContain('animate="visible"');
+    expect(panel).not.toContain('animate="show"');
   });
 });

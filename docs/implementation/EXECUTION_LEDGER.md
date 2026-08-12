@@ -1617,3 +1617,51 @@ ratchet — the first draft used a bare `"Cancel"` where the repo keeps one verb
 vocabulary in `@/lib/labels`) · tsc clean · reachability at all four baselines ·
 **full unit suite 659 files, 8,666 tests, 1 skipped, 0 failures.** Mutation-tested:
 removing `still_open` and dropping the calibration invalidation each fail.
+
+---
+
+## Unit 25 — …and finally told · this commit
+
+**Audit requirement:** the learning loop must be visible to the person it is
+about. Also BI178.
+
+**Files:** `client/src/components/deals/ForecastCalibration.tsx` (new),
+`client/src/pages/deals.tsx`, `shared/architecture/canon.ts`,
+`tests/unit/canonicalLoopAdoption.test.ts` (ratchet 3 → 4, +7 tests).
+
+Unit 24 asked the customer what happened. Until this, the answers fed an
+instrument they could never see — which is an efficient way to teach someone that
+answering is pointless.
+
+### The one property that matters: it paraphrases nothing
+
+`summary` comes straight from `describeCalibration` and is printed as-is. The
+server already refuses to claim a direction below six compared outcomes, already
+says "not enough measured outcomes yet" as a whole sentence rather than a hedged
+claim, and already never says a decision was good or bad.
+
+**A client that paraphrased would eventually paraphrase the refusal away.**
+"Trending optimistic (early data)" is precisely the sentence the floor exists to
+prevent, it reads as helpful, and no server-side test would ever catch it. So the
+panel does no arithmetic on the numbers at all — a test asserts there is no
+comparison against `medianRelativeError`, `directionProbability` or
+`comparedCount` anywhere in it. Every claim is the server's.
+
+The direction badge is gated on the server's own `state`, and `no clear
+direction` is styled identically to `not enough yet` and more quietly than a real
+finding — **neither is a result, and styling "not enough data" like a conclusion
+is how a reader comes away with one.** The `factors` line is always shown,
+including when refusing, so "not enough yet" is never a bare assertion.
+
+The floor and the BI178 caveat ("a good decision can have a bad outcome") are
+stated in the UI, not only in the code.
+
+### Behind Deals, not Today
+
+The decisions being calibrated are offers, passes and acquisitions. And Today is
+for what needs attention *now* — a calibration is a reference view you consult,
+not a task. Putting it there would have competed with the prompt that actually
+needs answering. A section behind an existing door; nothing added to the sidebar.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 659 files, 8,673 tests, 1 skipped, 0 failures.**
