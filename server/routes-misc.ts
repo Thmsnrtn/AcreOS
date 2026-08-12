@@ -15,6 +15,10 @@ import { verifyTwilioSignature } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { withIdempotency } from "./services/webhook-idempotency";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import {
+  readIntegrationCredentials,
+  sealIntegrationCredentials,
+} from "./services/integrationCredentials";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -694,11 +698,21 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const statuses = await Promise.all(
         services.map(async (service) => {
           const integration = await storage.getOrganizationIntegration(org.id, service);
+          // Reads whichever shape the key is stored in. This panel used to read
+          // the plaintext field only, so it reported "not configured" for any
+          // key set through POST /api/integrations/:provider — and, once keys
+          // are encrypted at rest, would have reported it for every key.
+          const creds = readIntegrationCredentials<{ apiKey?: string }>(
+            integration,
+            org.id,
+            `${service} status`,
+          );
+          const apiKey = creds?.apiKey;
           return {
             provider: service,
-            isConfigured: !!integration?.credentials?.apiKey,
-            maskedKey: integration?.credentials?.apiKey
-              ? integration.credentials.apiKey.slice(0, 3) + "..." + integration.credentials.apiKey.slice(-4)
+            isConfigured: !!apiKey,
+            maskedKey: apiKey
+              ? apiKey.slice(0, 3) + "..." + apiKey.slice(-4)
               : undefined,
             lastValidatedAt: integration?.lastValidatedAt?.toISOString(),
             validationError: integration?.validationError,
@@ -733,11 +747,24 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // create and update paths internally (keyed on organizationId+provider).
       const existing = await storage.getOrganizationIntegration(org.id, service);
 
+      // This route wrote the key IN THE CLEAR, while POST /api/integrations
+      // encrypted the same key for the same five providers. It is a credential:
+      // it is sealed, like every other credential in this column.
+      //
+      // The merge is onto the DECRYPTED bag rather than onto `existing.
+      // credentials`, which is what the previous version could not do — it
+      // merged onto the raw column, so an org with an envelope ended up with
+      // both shapes and two halves of the codebase reading different keys.
+      const merged = {
+        ...(readIntegrationCredentials(existing, org.id, `${service} save`) ?? {}),
+        apiKey,
+      };
+
       await storage.upsertOrganizationIntegration({
         organizationId: org.id,
         provider: service,
         isEnabled: true,
-        credentials: existing ? { ...existing.credentials, apiKey } : { apiKey },
+        credentials: sealIntegrationCredentials(merged, org.id),
         lastValidatedAt: new Date(),
         validationError: null,
       });

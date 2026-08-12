@@ -42,6 +42,7 @@ import { logger } from "../utils/logger";
 import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 import { getOrgAutonomyLevel, checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
 import { getIdentityForSend } from "./orgEmailIdentity";
+import { readIntegrationCredentials } from "./integrationCredentials";
 import {
   buildBorrowerLetter,
   buildBorrowerNotice,
@@ -412,7 +413,17 @@ export class FinanceAgentService {
         storage.getOrganizationIntegration(orgId, "aws_ses").catch(() => null),
         getIdentityForSend(orgId).catch(() => null),
       ]);
-      const byoSes = !!integration?.isEnabled && !!integration?.credentials?.encrypted;
+      // Read the same way emailService resolves these credentials, and require
+      // the same two fields it requires. The old check asked only whether an
+      // envelope existed, so it answered "connected" for a row whose envelope
+      // held neither key, and "not connected" for credentials stored in the
+      // other shape.
+      const ses = readIntegrationCredentials<{
+        accessKeyId?: string;
+        secretAccessKey?: string;
+      }>(integration, orgId, "aws_ses identity check");
+      const byoSes =
+        !!integration?.isEnabled && !!ses?.accessKeyId && !!ses?.secretAccessKey;
       return byoSes || !!identity;
     } catch (error) {
       logger.warn("[FinanceAgent] Could not verify the org's sending identity — treating as absent", {

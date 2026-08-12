@@ -2647,3 +2647,107 @@ Unit 38's test file was **updated, not deleted**, per wave discipline: the
 persisted secret is now an envelope, so its assertions decrypt before comparing.
 Every invariant it pinned — rotation still replaces, a new endpoint inherits
 nothing, a changed URL does not carry the old key — survives unchanged.
+
+---
+
+## Unit 40 — Charged for the key we then ignored · this commit
+
+**Files:** `server/services/integrationCredentials.ts` (new),
+`server/routes-misc.ts`, `server/routes-integrations.ts`,
+`server/routes-properties.ts`, `server/services/mailProvider.ts`,
+`server/services/parcel.ts`, `server/services/comps.ts`,
+`server/services/directMail.ts`, `server/services/directMailService.ts`,
+`server/services/emailService.ts`, `server/services/financeAgent.ts`,
+`server/services/providers/resolveProviderCredential.ts`,
+`tests/unit/integrationCredentialShape.test.ts` (new, 14 tests).
+
+### Found by asking unit 39's question of the neighbouring column
+
+Unit 39 asked "having stopped the API returning this secret, where else does it
+exist?" Asking the same of `organization_integrations.credentials` — the column
+the webhook secret lives in — turned up a second plaintext credential, and then
+something considerably worse than plaintext.
+
+**Two writers, two shapes:**
+
+| route | shape |
+|---|---|
+| `POST /api/integrations/:provider` | `{ encrypted: "<envelope>" }` |
+| `POST /api/settings/save-api-key` | `{ apiKey: "sk_live_..." }` — **in the clear** |
+
+Same five providers (lob, regrid, twilio, sendgrid, rapidapi). The second is
+the route behind the BYOK panel in Settings — the one a customer actually uses.
+**Nothing in the client calls the first.**
+
+### The readers were split down the middle
+
+- `.encrypted` only — `comps.ts`, `directMail.ts`, `directMailService.ts`,
+  `emailService.ts`, `resolveProviderCredential.ts`, `routes-properties.ts`,
+  `financeAgent.ts`, and seven test/validate routes.
+- `.apiKey` only — `mailProvider.ts`, `parcel.ts`, the BYOK status route.
+
+So a key set through the panel was invisible to almost everything, and the
+consequences compound:
+
+- **comps and directMail did not find it**, so the org's lookups and mail ran on
+  the PLATFORM's key. AcreOS paid a vendor bill for a customer who had supplied
+  their own account.
+- **`routes-properties` decided whether to charge credits with
+  `credentials?.encrypted`**, so that same customer was ALSO billed ten cents a
+  comps query for lookups their own key was meant to cover. **Charged for a key
+  they gave us and we then ignored** — two halves of one wrong answer, and the
+  reason this unit is named for the billing rather than the encryption.
+- `hasConnectedSendingIdentity` reported no connected sending identity for an
+  org that had connected one.
+- `POST /api/integrations/:provider/test` read `.encrypted` unguarded and handed
+  `undefined` to `JSON.parse` — a 500 instead of an answer.
+
+This is the units 30–38 class again — a rule applied to some surfaces and not
+others — except the rule is a data shape rather than a permission, and the cost
+lands on the customer's invoice rather than their privacy.
+
+### One accessor, and the gate reads the same way as the use
+
+`readIntegrationCredentials()` returns the credentials whichever shape they are
+in; `sealIntegrationCredentials()` is the only way to write. Both writers seal,
+every reader reads through the accessor.
+
+There is deliberately **no cheap "does this org have a key?" helper** that
+answers without decrypting. That shortcut is precisely what the credit gate
+used, and a gate that answers differently from the code it gates is the entire
+defect. The gate now resolves the credential exactly as the query does, so they
+cannot disagree.
+
+**Plaintext wins a conflict, on evidence rather than taste.**
+`upsertOrganizationIntegration` replaces `credentials` wholesale, while
+save-api-key merged onto whatever was there — so an envelope write erases a
+plaintext sibling, and a plaintext sibling can only have been written *after* an
+envelope. Both present therefore means the plaintext value is the newer one.
+Fields are merged rather than chosen, so anything only the envelope holds
+survives; blank plaintext fields are dropped first, so an empty form field
+cannot blank a real key.
+
+### What was deliberately NOT swept in
+
+`stripeConnectAccountId` reads in `stripeConnect.ts`, `routes-billing.ts`,
+`achMandateSetup.ts` and `customerMoneyRouting.ts` are an **identifier**, not a
+secret, and `findOrganizationIntegrationByCredential` looks orgs up by it. Left
+exactly as they were. Saying so matters as much as the fix: sweeping them would
+have broken a lookup to satisfy a pattern.
+
+Two sites still read the raw shape on purpose and are registered with reasons:
+`indexAnalyzer.ts` (round-trips a platform report as plain JSON through the
+`encrypted` slot — never a credential), and the two `routes-integrations`
+display surfaces, which must distinguish "configured but unreadable" from "not
+configured" because the accessor deliberately returns null for both and
+reporting "not configured" for a key the org really set would be false.
+
+### Verification
+
+The registry derives the reader set **from source**, because the defect is
+invisible file by file — every one of those readers looks correct alone — and a
+hand-written list is how the set got out of sync to begin with.
+
+Three mutations, each caught: reintroducing a raw read in an unregistered file;
+reverting save-api-key to a plaintext write; reverting the credit gate to
+`.encrypted` (caught twice, by two independent assertions).

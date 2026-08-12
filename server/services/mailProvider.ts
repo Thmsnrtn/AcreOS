@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
+import { readIntegrationCredentials } from './integrationCredentials';
 
 export enum MailProvider {
   LOB = "lob",
@@ -92,11 +93,21 @@ async function getOrgMailCredentials(organizationId: number): Promise<ProviderCr
     )
     .limit(1);
 
-  if (lobIntegration?.credentials?.apiKey) {
+  // Reads either shape. This function saw ONLY the plaintext field, and
+  // directMail.ts saw only the envelope, so which of an org's own Lob keys got
+  // used — or whether the platform key got used instead, with AcreOS paying the
+  // bill — depended on which module happened to send the mail.
+  const creds = readIntegrationCredentials<{ apiKey?: string }>(
+    lobIntegration,
+    organizationId,
+    "lob mail credentials",
+  );
+
+  if (creds?.apiKey) {
     return {
       provider: MailProvider.LOB,
-      apiKey: lobIntegration.credentials.apiKey,
-      isTestKey: lobIntegration.credentials.apiKey.startsWith('test_'),
+      apiKey: creds.apiKey,
+      isTestKey: creds.apiKey.startsWith('test_'),
     };
   }
 

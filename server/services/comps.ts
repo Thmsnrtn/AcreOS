@@ -4,7 +4,7 @@
  */
 
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 
 async function logRegridApiUsage(
@@ -177,12 +177,12 @@ async function getRegridCredentials(orgId?: number): Promise<RegridCredentials |
     try {
       const integration = await storage.getOrganizationIntegration(orgId, 'regrid');
       
-      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          orgId
-        );
-        
+      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
+        integration,
+        orgId,
+        'regrid (comps)',
+      );
+      if (integration && integration.isEnabled && decrypted) {
         if (decrypted.apiKey) {
           logger.info(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
           return {

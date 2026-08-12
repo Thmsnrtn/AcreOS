@@ -1,6 +1,6 @@
 import Lob from 'lob';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
@@ -202,12 +202,12 @@ export class DirectMailService {
     try {
       const integration = await storage.getOrganizationIntegration(orgId, 'lob');
       
-      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          orgId
-        );
-        
+      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
+        integration,
+        orgId,
+        'lob (directMail)',
+      );
+      if (integration && integration.isEnabled && decrypted) {
         if (decrypted.apiKey) {
           logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
           return {
@@ -227,11 +227,12 @@ export class DirectMailService {
   async hasOrgLobCredentials(orgId: number): Promise<boolean> {
     try {
       const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          orgId
-        );
+      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
+        integration,
+        orgId,
+        'lob (directMail)',
+      );
+      if (integration && integration.isEnabled && decrypted) {
         return !!decrypted.apiKey;
       }
     } catch (error) {

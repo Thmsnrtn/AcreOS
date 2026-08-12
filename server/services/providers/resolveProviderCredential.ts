@@ -54,11 +54,17 @@ export async function resolveProviderCredential(
   try {
     const { storage } = await import("../../storage");
     const integration = await storage.getOrganizationIntegration(organizationId, opts.legacyProvider);
-    const encrypted = integration?.isEnabled ? integration.credentials?.encrypted : undefined;
-    if (encrypted) {
-      const { decryptJsonCredentials } = await import("../fieldEncryption");
-      const creds = decryptJsonCredentials<Record<string, string>>(encrypted, organizationId);
-      const value = creds[opts.legacyField];
+    if (integration?.isEnabled) {
+      const { readIntegrationCredentials } = await import("../integrationCredentials");
+      // Either stored shape. This read looked only for an envelope, so a key
+      // set through the BYOK panel in Settings — stored in the clear — was
+      // invisible to the canonical resolver and every provider behind it.
+      const creds = readIntegrationCredentials<Record<string, string>>(
+        integration,
+        organizationId,
+        `legacy ${opts.legacyProvider}`,
+      );
+      const value = creds?.[opts.legacyField];
       if (value) return value;
     }
   } catch (err) {

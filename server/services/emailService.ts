@@ -1,6 +1,6 @@
 import { SESClient, SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
 import { filterSuppressed } from "./emailSuppressions";
@@ -211,17 +211,20 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
     
-    if (!integration || !integration.isEnabled || !integration.credentials?.encrypted) {
+    if (!integration || !integration.isEnabled) {
       return null;
     }
-    
-    const decrypted = decryptJsonCredentials<{
-      accessKeyId: string;
-      secretAccessKey: string;
+
+    const decrypted = readIntegrationCredentials<{
+      accessKeyId?: string;
+      secretAccessKey?: string;
       region?: string;
       fromEmail?: string;
       fromName?: string;
-    }>(integration.credentials.encrypted, orgId);
+    }>(integration, orgId, 'aws_ses');
+    if (!decrypted) {
+      return null;
+    }
     
     if (!decrypted.accessKeyId || !decrypted.secretAccessKey) {
       return null;

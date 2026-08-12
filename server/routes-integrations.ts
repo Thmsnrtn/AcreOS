@@ -25,23 +25,22 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const integrations = await storage.getOrganizationIntegrations(org.id);
       
-      const { maskApiKey, decryptJsonCredentials } = await import('./services/fieldEncryption');
-      
+      const { maskApiKey } = await import('./services/fieldEncryption');
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+
       const masked = integrations.map(i => {
-        let maskedKey = '';
-        if (i.credentials?.encrypted) {
-          try {
-            const decrypted = decryptJsonCredentials<{ apiKey?: string }>(i.credentials.encrypted, org.id);
-            maskedKey = maskApiKey(decrypted.apiKey);
-          } catch {
-            maskedKey = '****';
-          }
-        }
+        // Either stored shape. Keyed on `.encrypted` alone, this reported "not
+        // configured" for every key saved through the BYOK panel in Settings.
+        const creds = readIntegrationCredentials<{ apiKey?: string }>(i, org.id, i.provider);
+        const apiKey = creds?.apiKey;
+        // An envelope we cannot open is still a configured key; saying "not
+        // configured" would be false. Shown as configured but unreadable.
+        const unreadable = !!(i.credentials as { encrypted?: string } | null)?.encrypted && !creds;
         return {
           ...i,
-          credentials: i.credentials?.encrypted ? {
+          credentials: apiKey || unreadable ? {
             hasApiKey: true,
-            maskedKey,
+            maskedKey: apiKey ? maskApiKey(apiKey) : '****',
           } : null,
         };
       });
@@ -64,24 +63,20 @@ export function registerIntegrationRoutes(app: Express): void {
         return res.json({ provider, isEnabled: false, isConfigured: false });
       }
       
-      const { maskApiKey, decryptJsonCredentials } = await import('./services/fieldEncryption');
-      
-      let maskedKey = '';
-      if (integration.credentials?.encrypted) {
-        try {
-          const decrypted = decryptJsonCredentials<{ apiKey?: string }>(integration.credentials.encrypted, org.id);
-          maskedKey = maskApiKey(decrypted.apiKey);
-        } catch {
-          maskedKey = '****';
-        }
-      }
-      
+      const { maskApiKey } = await import('./services/fieldEncryption');
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+
+      const creds = readIntegrationCredentials<{ apiKey?: string }>(integration, org.id, provider);
+      const apiKey = creds?.apiKey;
+      const unreadable =
+        !!(integration.credentials as { encrypted?: string } | null)?.encrypted && !creds;
+
       res.json({
         ...integration,
-        isConfigured: !!integration.credentials?.encrypted,
-        credentials: integration.credentials?.encrypted ? {
+        isConfigured: !!apiKey || unreadable,
+        credentials: apiKey || unreadable ? {
           hasApiKey: true,
-          maskedKey,
+          maskedKey: apiKey ? maskApiKey(apiKey) : '****',
         } : null,
       });
     } catch (err: any) {
@@ -105,15 +100,13 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, `Invalid provider. Must be one of: ${validProviders.join(', ')}`);
       }
 
-      const { encryptJsonCredentials } = await import('./services/fieldEncryption');
-
-      const encryptedCredentials = encryptJsonCredentials({ apiKey, ...settings }, org.id);
+      const { sealIntegrationCredentials } = await import('./services/integrationCredentials');
 
       const integration = await storage.upsertOrganizationIntegration({
         organizationId: org.id,
         provider,
         isEnabled: true,
-        credentials: { encrypted: encryptedCredentials },
+        credentials: sealIntegrationCredentials({ apiKey, ...settings }, org.id),
         settings: settings || {},
       });
 
@@ -154,15 +147,20 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const integration = await storage.getOrganizationIntegration(org.id, provider);
       
-      if (!integration || !integration.credentials) {
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+      const credentials = readIntegrationCredentials<{ apiKey: string }>(
+        integration,
+        org.id,
+        `${provider} test`,
+      );
+
+      // Was `decryptJsonCredentials(credentials.encrypted)` guarded only by
+      // "are there credentials at all", so a key stored in the other shape
+      // reached JSON.parse as `undefined` and threw a 500 instead of saying
+      // what was wrong.
+      if (!credentials?.apiKey) {
         return Errors.badRequest(res, `${provider} is not configured`);
       }
-      
-      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-      const credentials = decryptJsonCredentials<{ apiKey: string }>(
-        (integration.credentials as any).encrypted,
-        org.id
-      );
       
       let testResult = { success: false, message: '' };
       
@@ -386,12 +384,13 @@ export function registerIntegrationRoutes(app: Express): void {
       let dnsRecords: any[] = [];
       let sendgridDomainId: string | undefined;
       
-      if (integration?.credentials?.encrypted) {
-        const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-        const credentials = decryptJsonCredentials<{ apiKey: string }>(
-          integration.credentials.encrypted,
-          org.id
-        );
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+      const credentials = readIntegrationCredentials<{ apiKey: string }>(
+        integration,
+        org.id,
+        'sendgrid',
+      );
+      if (credentials?.apiKey) {
         
         try {
           const sgResponse = await fetch('https://api.sendgrid.com/v3/whitelabel/domains', {
@@ -480,15 +479,15 @@ export function registerIntegrationRoutes(app: Express): void {
       }
 
       const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
-      if (!integration?.credentials?.encrypted) {
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+      const credentials = readIntegrationCredentials<{ apiKey: string }>(
+        integration,
+        org.id,
+        'sendgrid',
+      );
+      if (!credentials?.apiKey) {
         return Errors.badRequest(res, "SendGrid not configured");
       }
-      
-      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-      const credentials = decryptJsonCredentials<{ apiKey: string }>(
-        integration.credentials.encrypted,
-        org.id
-      );
       
       const validateResponse = await fetch(
         `https://api.sendgrid.com/v3/whitelabel/domains/${domainRecord.sendgridDomainId}/validate`,
@@ -598,13 +597,14 @@ export function registerIntegrationRoutes(app: Express): void {
 
       if (domainRecord.sendgridDomainId) {
         const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
-        if (integration?.credentials?.encrypted) {
+        const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+        const credentials = readIntegrationCredentials<{ apiKey: string }>(
+          integration,
+          org.id,
+          'sendgrid',
+        );
+        if (credentials?.apiKey) {
           try {
-            const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-            const credentials = decryptJsonCredentials<{ apiKey: string }>(
-              integration.credentials.encrypted,
-              org.id
-            );
 
             await fetch(
               `https://api.sendgrid.com/v3/whitelabel/domains/${domainRecord.sendgridDomainId}`,
@@ -666,15 +666,15 @@ export function registerIntegrationRoutes(app: Express): void {
       const { areaCode, contains, country } = req.query;
       
       const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-      if (!integration?.credentials?.encrypted) {
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+      const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
+        integration,
+        org.id,
+        'twilio',
+      );
+      if (!credentials?.accountSid || !credentials?.authToken) {
         return Errors.badRequest(res, "Twilio not configured. Add your Twilio credentials in Settings.");
       }
-      
-      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-      const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
-        integration.credentials.encrypted,
-        org.id
-      );
       
       const countryCode = (country as string) || 'US';
       const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/AvailablePhoneNumbers/${countryCode}/Local.json`);
@@ -727,15 +727,15 @@ export function registerIntegrationRoutes(app: Express): void {
       }
       
       const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-      if (!integration?.credentials?.encrypted) {
+      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+      const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
+        integration,
+        org.id,
+        'twilio',
+      );
+      if (!credentials?.accountSid || !credentials?.authToken) {
         return Errors.badRequest(res, "Twilio not configured");
       }
-      
-      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-      const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
-        integration.credentials.encrypted,
-        org.id
-      );
       
       const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
       
@@ -858,13 +858,14 @@ export function registerIntegrationRoutes(app: Express): void {
 
       if (phoneRecord.twilioSid) {
         const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-        if (integration?.credentials?.encrypted) {
+        const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+        const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
+          integration,
+          org.id,
+          'twilio',
+        );
+        if (credentials?.accountSid && credentials?.authToken) {
           try {
-            const { decryptJsonCredentials } = await import('./services/fieldEncryption');
-            const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
-              integration.credentials.encrypted,
-              org.id
-            );
 
             const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
 

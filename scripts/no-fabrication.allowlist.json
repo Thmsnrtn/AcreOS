@@ -99,7 +99,7 @@
     },
     {
       "file": "server/services/emailService.ts",
-      "line": 377,
+      "line": 380,
       "category": "id",
       "note": "MIME multipart boundary string — entropy for uniqueness."
     },

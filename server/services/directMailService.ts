@@ -2,7 +2,7 @@ import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
 import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
 
@@ -123,12 +123,12 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'lob');
 
-    if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-      const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-        integration.credentials.encrypted,
-        orgId
-      );
-
+    const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
+      integration,
+      orgId,
+      'lob (directMailService)',
+    );
+    if (integration && integration.isEnabled && decrypted) {
       if (decrypted.apiKey) {
         logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
         return {

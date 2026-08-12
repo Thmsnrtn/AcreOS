@@ -263,6 +263,32 @@ HEAD before it is acted on.
 
 **Two threads are open. Read both before choosing.**
 
+**THREAD A HAS EXTENDED PAST PERMISSIONS (units 36–40).** The pattern that drove
+units 30–35 — *a rule that existed and was applied to some surfaces and not
+others* — kept producing findings after the permission surfaces ran out, because
+the pattern is not really about permissions:
+
+- **unit 36** — the first CROSS-TENANT leak (a founder route with no founder guard).
+- **unit 37** — a guarded write with an unguarded read (`tenant_pii_read`).
+- **unit 38** — the same shape on a CREDENTIAL: the webhook signing secret was
+  readable by any org member. Capability, not information.
+- **unit 39** — the same credential, the OTHER exposure: stored in the column in
+  plaintext. *Fixing an API leak says nothing about where the value lives.*
+- **unit 40** — the neighbouring column, same question: two writers wrote two
+  shapes and the readers were split between them, so a customer's own provider
+  key was invisible to most consumers. The platform paid their vendor bill AND
+  charged them credits for the same lookup.
+
+**The question that generated 39 and 40 is worth reusing:** *having fixed how a
+value is RETURNED, ask where else it is written, stored, mirrored or read.* An
+exposure fixed at one boundary is not the same value made safe.
+
+**The one that generated 40 specifically:** *does anything WRITE this in a
+different shape than the code reading it expects?* Split reader/writer shapes are
+invisible file-by-file and obvious the moment the set is enumerated — which is
+why unit 40's registry derives the reader set from source, and why a
+hand-written list is what let the split persist.
+
 **THREAD A — SECURITY (units 30–35), now complete except one recorded residual.**
 Six units, six findings, all the same defect: *a rule that existed and was applied
 to some surfaces and not others.* The MFA gate protected 2 of 7 admin routes; the
@@ -420,3 +446,15 @@ From `CLAUDE.md`, and it has bitten this repo repeatedly: **a green agent report
 is a hypothesis.** Run the gates yourself. Hunt "built but unwired" specifically
 — new route files never mounted, services with zero call sites, schema without
 migrations. `npm run lint:reachability` catches it and caught this program twice.
+
+**Never pipe `npm run check` into `tail`.** The pipeline's exit code is `tail`'s,
+so the run reports success while a ratchet is failing several lines above the
+part you read. That happened in unit 39: `colon-any` was over baseline and the
+command reported exit 0. Redirect to a file and echo `$?`:
+
+```
+npm run check > /tmp/check.log 2>&1; echo "EXIT=$?"
+```
+
+The same applies to any gate whose signal is the exit code rather than the last
+lines of output.
