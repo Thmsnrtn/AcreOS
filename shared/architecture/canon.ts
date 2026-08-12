@@ -695,13 +695,16 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "keyed uniquely on (org, kind, key) with an atomic INSERT ... ON CONFLICT " +
         "claim, a pure execute/replay/refuse classifier, and a terminal `ambiguous` " +
         "state that refuses retry after an unknown outcome (AU28) rather than " +
-        "guessing. directMailService.sendLetter routes through it. REMAINING GAP, " +
-        "and it is the whole gap: NO CALL SITE passes an idempotencyKey yet — four " +
-        "physical-mail sites are still unprotected, including a RETRY QUEUE " +
-        "(apiQueue.ts), which is the exact shape of the defect. Email, SMS and " +
-        "e-sign are not covered by the boundary at all. " +
+        "guessing. Both physical-mail transports route through it, and the " +
+        "BULK-MAIL path (routes-campaigns.ts — highest volume and spend) now " +
+        "passes a durable `mailing-order:{orderId}:lead:{leadId}` key. REMAINING " +
+        "GAP: two send sites stay unprotected — apiQueue.ts (unreachable today, " +
+        "and wiring it would change which Lob credentials are used) and " +
+        "communications.ts (a live double-print path whose key semantics and " +
+        "fail-open/closed posture are founder decisions; BLOCKERS.md B5/B6). " +
+        "Email, SMS and e-sign are not covered by the boundary at all. " +
         "tests/unit/outwardActionCoverage.test.ts holds the unprotected count " +
-        "down-only so adoption is measured rather than assumed.",
+        "down-only (4 -> 2) so adoption is measured rather than assumed.",
     },
   },
   {

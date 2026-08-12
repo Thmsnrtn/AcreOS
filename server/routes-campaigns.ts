@@ -738,7 +738,7 @@ export function registerCampaignRoutes(app: Express): void {
       }
       const { pieceType, leadIds } = parsed.data;
 
-      const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      const { directMailService, DIRECT_MAIL_COSTS, MailAlreadySentError } = await import("./services/directMail");
       
       // Check if org has their own Lob credentials (BYOK) - if so, skip credit check
       const usingOrgLobCredentials = await directMailService.hasOrgLobCredentials(org.id);
@@ -903,6 +903,16 @@ export function registerCampaignRoutes(app: Express): void {
       for (const lead of validLeads) {
         const recipientName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner';
         
+        // Idempotency key for THIS piece (canonical law 8, BI74). Derived from
+        // durable domain identity that already exists BEFORE the send:
+        // `mailingOrder` was created above the loop and `lead.id` is a stable
+        // row. Scoping to the ORDER — not just the lead — is what makes this
+        // safe: retrying this send batch is suppressed, while a later,
+        // deliberate mailing to the same lead creates a NEW mailing order and
+        // therefore a new key. A lead-only key would have silently blocked the
+        // second touch.
+        const pieceIdempotencyKey = `mailing-order:${mailingOrder.id}:lead:${lead.id}`;
+
         try {
           let result: any;
           if (pieceType.startsWith('postcard_')) {
@@ -919,6 +929,7 @@ export function registerCampaignRoutes(app: Express): void {
                 zip: lead.zip!,
               },
               from: senderAddress,
+              idempotencyKey: pieceIdempotencyKey,
             }, mailMode, org.id);
           } else {
             result = await directMailService.sendLetter({
@@ -931,6 +942,7 @@ export function registerCampaignRoutes(app: Express): void {
                 zip: lead.zip!,
               },
               from: senderAddress,
+              idempotencyKey: pieceIdempotencyKey,
             }, mailMode, org.id);
           }
 
@@ -974,6 +986,20 @@ export function registerCampaignRoutes(app: Express): void {
             expectedDeliveryDate,
           });
         } catch (err: any) {
+          // A replay is NOT a failure. The outward-action boundary throws
+          // MailAlreadySentError when a piece for this key was already printed
+          // — recording that as `failed` would understate the sent count and,
+          // worse, invite an operator to re-send something already in the post.
+          // The error carries the real Lob id, so the piece is recorded as sent.
+          if (err instanceof MailAlreadySentError) {
+            logger.warn(
+              `[Campaigns] Piece ${pieceIdempotencyKey} was already sent (Lob id ${err.lobId ?? 'unknown'}) — not printing a second copy`,
+            );
+            sendResults.push({ leadId: lead.id, success: true, lobId: err.lobId ?? undefined, isTest: isTestMode });
+            if (err.lobId) lobJobIds.push(err.lobId);
+            continue;
+          }
+
           sendResults.push({ leadId: lead.id, success: false, error: err.message });
 
           // Create mailing order piece record for failed send

@@ -85,15 +85,38 @@ const PROTECTABLE_SENDS = [
  *                                    of the defect and is the first to fix.
  *     server/services/communications.ts  lobService.sendLetter
  *
+ * 2026-08-12 (4 -> 2): the two bulk-mail sites in server/routes-campaigns.ts
+ *   now pass `idempotencyKey: mailing-order:{orderId}:lead:{leadId}`. That key
+ *   was the whole unblock: both rows exist BEFORE the send, and scoping to the
+ *   ORDER rather than the lead is what makes it safe — retrying this batch is
+ *   suppressed, while a later deliberate mailing to the same lead creates a new
+ *   mailing order and therefore a new key. A lead-only key would have silently
+ *   blocked the second touch, which is a worse failure than the one being
+ *   fixed. The replay path is handled too: MailAlreadySentError is recorded as
+ *   SENT (carrying the real Lob id), not as a failure, so the sent count cannot
+ *   understate and no operator is invited to re-send something already posted.
+ *
+ *   The remaining two are genuinely blocked, not merely undone — see
+ *   docs/implementation/BLOCKERS.md B5 and B6:
+ *     server/services/apiQueue.ts        sendPostcard — unreachable today (no
+ *                                        enqueue site produces that operation)
+ *                                        and wiring it needs an orgId the call
+ *                                        does not pass, which would change
+ *                                        which Lob credentials are used.
+ *     server/services/communications.ts  lobService.sendLetter — a live
+ *                                        double-print path, but its key
+ *                                        semantics and the boundary's
+ *                                        fail-open/closed posture on a money
+ *                                        path are founder decisions.
+ *
  * HONEST SCOPE: this ratchet covers the PHYSICAL MAIL transports only
  * (directMailService + lobService), because that is where a duplicate costs
  * money per piece and reaches a real counterparty. Email (`emailService`), SMS
- * (`smsService`), the `directMail.ts` / `mailProvider.ts` wrappers and e-sign
- * are equally consequential and are NOT yet counted here. Widening
- * PROTECTABLE_SENDS to cover them is the next increment; doing it now would
- * have produced a baseline nobody could act on in one change.
+ * (`smsService`), `mailProvider.ts` and e-sign are equally consequential and
+ * are NOT yet counted here. Widening PROTECTABLE_SENDS to cover them is the
+ * next increment.
  */
-const UNPROTECTED_SEND_SITES_BASELINE = 4;
+const UNPROTECTED_SEND_SITES_BASELINE = 2;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

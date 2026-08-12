@@ -389,3 +389,42 @@ The existing `lint:route-order` gate does not catch this class — it looks for
 swallowed literal routes, not middleware that sorts below what it guards.
 
 **Gates:** `npm run check` PASS · 45/45 across the five affected suites.
+
+---
+
+## Unit 8 — Adoption: the bulk-mail path is now protected · this commit
+
+**Audit requirement:** the same as unit 5 — BI148's SLO "no duplicate
+consequential action after retry". A boundary nothing calls satisfies nothing.
+
+**The unblock was the key, and it turned out not to need a founder decision.**
+Unit 5 recorded adoption as blocked because the idempotency key semantics looked
+like a product call: a `lead:{id}` key blocks a deliberate second mailing months
+later, and a content-hash key blocks re-sending an identical letter. Both
+silently suppress mail a customer meant to send — a worse failure than the one
+being fixed.
+
+Re-reading the flow dissolved it. `mailingOrder` is created **above** the send
+loop and `lead.id` is a stable row, so `mailing-order:{orderId}:lead:{leadId}`
+is available *before* the send and scopes correctly: retrying **this batch** is
+suppressed, while a later deliberate mailing creates a **new** mailing order and
+therefore a new key. The concern was real; the answer was in the code.
+
+**Files:** `server/routes-campaigns.ts`, `shared/architecture/canon.ts`,
+`tests/unit/outwardActionCoverage.test.ts` (baseline 4 → 2).
+
+**The replay path matters as much as the claim.** `MailAlreadySentError` is now
+caught explicitly and recorded as **sent**, carrying the real Lob id — not as a
+failure. Recording a replay as failed would understate the sent count and invite
+an operator to re-send something already in the post, turning a safety mechanism
+into the cause of the exact duplicate it exists to prevent.
+
+**Remaining two are genuinely blocked, not merely undone:**
+- `apiQueue.ts` — unreachable today (nothing enqueues that operation), and
+  wiring it needs an `orgId` the call does not pass, which would change which
+  Lob credentials are used. See B6.
+- `communications.ts` — a live double-print path, but its key semantics and the
+  boundary's fail-open/closed posture on a money path are founder calls. See B5.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
+22/22 outward-action + 18/18 canon.

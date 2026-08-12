@@ -74,6 +74,8 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 7. **Security** — the `/api/admin` MFA gate protected 2 of 7 surfaces because it
    was registered below five of them. Moved above all of them, with a
    source-order regression gate.
+8. **Adoption** — the bulk-mail path now passes a durable
+   `mailing-order:{orderId}:lead:{leadId}` key; adoption ratchet 4 → 2.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -89,34 +91,28 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Adopt the outward-action boundary at the four unprotected send sites.**
+**Scenario (layer 4)** — a persisted, versioned economic hypothesis, so a
+decision can freeze a reference to the economics as well as the evidence.
 
-The primitive landed in unit 5 and is adopted at **zero** call sites. That is
-recorded honestly as a ratchet, not as a caveat:
-`tests/unit/outwardActionCoverage.test.ts`,
-`UNPROTECTED_SEND_SITES_BASELINE = 4`.
+The mail-adoption work is done as far as it safely goes: the bulk-mail path is
+protected and `UNPROTECTED_SEND_SITES_BASELINE` is down to **2**. Both
+remaining sites are blocked on founder decisions, not on effort — see
+`BLOCKERS.md` B5 and B6. Widening `PROTECTABLE_SENDS` to email/SMS/e-sign is a
+smaller follow-on that needs no decision.
 
-Do them in this order:
+Why Scenario next: `decision_snapshots` currently freezes evidence and
+assumptions but has nowhere to point for the ECONOMICS that justified the
+choice. Today a decision records "offer $42,000" and the reasoning behind the
+number lives nowhere. `scenario_simulations` and `scenario_outcome_comparisons`
+are founder-plane autopilot tables and must not be reused (BI5).
 
-1. **`server/services/apiQueue.ts` — `sendPostcard`.** A *retry queue* calling
-   an unprotected send is the exact shape of the defect, so this is the one
-   that can actually fire today.
-2. **`server/routes-campaigns.ts` — `sendLetter` + `sendPostcard`.** The
-   bulk-mail path: highest volume, highest spend.
-3. **`server/services/communications.ts` — `lobService.sendLetter`.**
-
-Each needs an `idempotencyKey` derived from **durable domain identity** — a
-campaign piece id, a mailing-order piece id — never a random value, which would
-defeat the mechanism on the retry it exists to protect. `mailing_order_pieces`
-already exists and is the natural key source for the campaign path. Lower the
-baseline in the same commit.
-
-Then widen `PROTECTABLE_SENDS` to cover email, SMS and e-sign, which the ratchet
-does not count yet and which its header says so explicitly.
-
-After that, the dependency chain says **Scenario** (layer 4) — a persisted,
-versioned economic hypothesis, so a decision can freeze a reference to the
-economics as well as the evidence. See `MASTER_PLAN.md` §5.
+Note the shape that already exists and should be copied rather than reinvented:
+`server/services/notePaymentMath.ts` carries `PAYOFF_ENGINE_VERSION` and
+`PAYOFF_DAY_COUNT_CONVENTION`, persisted to `note_payoff_quotes.engine_version`
+(NOT NULL) alongside `engine_input_json` — "the verbatim input snapshot so the
+number can be recomputed and defended years later". That is the deterministic
+versioned-calculation pattern the audit asks for (BK23), already exemplary in
+one vertical. Scenario should generalise it, not invent a second one.
 
 Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in
