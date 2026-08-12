@@ -156,10 +156,15 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     printing `describeCalibration`'s sentences VERBATIM and computing no
     direction client-side. **The customer-side loop is now complete end to
     end.** Adoption ratchet 3 → 4.
+26. **The loop actually turns** — the analyzer now ASKS "when will you know?"
+    at the moment of drafting, and the offer route accepts and records it.
+    Before this, every decision the offer path recorded had `reviewDueAt: null`,
+    so not one could ever reach the Today prompt: the loop was complete and had
+    a dead spot. Nothing is pre-selected and "no set date" is a real answer.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,673 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,674 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -213,12 +218,6 @@ In order:
   `LandDealCalculator.tsx` (the public embeddable marketing tool — no org, no
   tenant to record against). Look for a moment that WRITES something: a deal
   advancing a stage, an acquisition being recorded, a note being originated.
-
-  **(b) Ask for the review date in the UI.** `reviewDueAt` is null on every
-  decision the offer path records, because nothing in the request carries one —
-  so those decisions never reach the Today prompt. The server correctly refuses
-  to invent a date; the client has to ASK for one. This is the single cheapest
-  thing that would make the loop actually turn for a real customer.
 
   **(c) Measure actuals somewhere.** Every outcome recorded so far carries
   `actuals: []` — honestly, since nothing measures profit at offer acceptance.

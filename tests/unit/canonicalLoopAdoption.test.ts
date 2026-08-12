@@ -184,12 +184,41 @@ describe("the offer surface records reasoning the way the contract requires", ()
     expect(block).toMatch(/stampAssumptionSources\(mao\.assumptions,\s*resolved\.sources\)/);
   });
 
-  it("does NOT invent a review date", () => {
-    // An offer's fate is usually known within weeks, so a review date would be
-    // useful — and nothing in this request carries one. Defaulting would
-    // manufacture a date the operator never chose, which is what the outcome
-    // prompt exists to refuse. Null is the honest record until the UI asks.
-    expect(block).toMatch(/reviewDueAt:\s*null/);
+  it("records the review date the OPERATOR chose, and never invents one", () => {
+    // REWRITTEN (not deleted) when the analyzer began asking. This used to pin
+    // `reviewDueAt: null` — correct while nothing carried a date, and it would
+    // now pin the loop permanently shut. The invariant it protected is
+    // unchanged and is asserted at both ends: the server never defaults, and
+    // the client never pre-selects.
+    expect(block).toMatch(/reviewDueAt:\s*parsed\.data\.reviewDueAt \?\? null/);
+
+    // The schema accepts it, with NO default — a 30-day fallback would
+    // manufacture a date the operator never chose and make the Today prompt
+    // nag about every offer ever drafted.
+    const src2 = read("server/routes-flip-analyzer.ts");
+    expect(src2).toMatch(/reviewDueAt: z\.coerce\s*\n?\s*\.date\(\)\s*\n?\s*\.nullable\(\)\s*\n?\s*\.optional\(\)/);
+    expect(src2).not.toMatch(/reviewDueAt[\s\S]{0,120}\.default\(/);
+    // A past date is refused: it would make the decision due the instant it was
+    // recorded, which is a client bug rather than anything an operator meant.
+    expect(src2).toMatch(/A review date must be in the future/);
+  });
+
+  it("the analyzer ASKS, and pre-selects nothing", () => {
+    // The loop only turns if someone supplies a date, and the server correctly
+    // refuses to invent one — so the client has to ask. It asks at the moment
+    // of drafting, when the operator actually knows how long a seller takes.
+    //
+    // Nothing is pre-selected: a chip selected by default would manufacture a
+    // date on the server's behalf, defeating the refusal it is paired with.
+    // "No set date" is a real, equally-weighted answer rather than a skip.
+    const page = read("client/src/pages/flip-analyzer.tsx");
+    expect(page).toMatch(/useState<number \| null \| undefined>\(\s*undefined,?\s*\)/);
+    expect(page).toMatch(/label: "No set date", days: null/);
+    expect(page).toContain("reviewDueAt:");
+    // The question is a labelled group, not six bare buttons.
+    expect(page).toMatch(/<fieldset/);
+    expect(page).toMatch(/<legend/);
+    expect(page).toMatch(/aria-pressed=/);
   });
 
   it("can never fail the offer it is recording", () => {

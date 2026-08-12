@@ -130,6 +130,25 @@ const offerSchema = maoSchema.extend({
    * server-recomputed MAO — the server does not trust a client-supplied price.
    */
   offerCents: z.coerce.number().int().positive(),
+  /**
+   * When the operator expects to know how this went.
+   *
+   * Optional and nullable, with NO default. Omitting it means "no natural
+   * review date" — never "assume 30 days". A default here would manufacture a
+   * date the operator never chose and make the Today prompt nag about every
+   * offer ever drafted, which is how a prompt earns being ignored.
+   *
+   * A date in the past is refused rather than accepted: it would make the
+   * decision due for an outcome the instant it was recorded, which is a
+   * client bug and not something an operator can have meant.
+   */
+  reviewDueAt: z.coerce
+    .date()
+    .nullable()
+    .optional()
+    .refine((d) => d == null || d.getTime() > Date.now(), {
+      message: "A review date must be in the future.",
+    }),
 });
 
 const compsSchema = z.object({
@@ -597,13 +616,13 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
               strategyPackVersion: null,
               assumptions: [],
               alternatives: [],
-              // NULL, deliberately. An offer's fate is usually known within
-              // weeks, so a review date would be useful — but nothing in this
-              // request carries one, and defaulting would manufacture a date the
-              // operator never chose, which is exactly what the outcome prompt
-              // refuses to do. The UI should ASK; until it does, null is the
-              // honest record.
-              reviewDueAt: null,
+              // What the operator said, or null when they said there is no
+              // natural review date. Never defaulted: a manufactured date would
+              // make the Today prompt nag about every offer ever drafted, which
+              // is exactly what the outcome prompt refuses to do. The analyzer
+              // asks this at the moment of drafting, when the operator actually
+              // knows how long a seller takes.
+              reviewDueAt: parsed.data.reviewDueAt ?? null,
             },
             new Date(),
             [scenario.id],

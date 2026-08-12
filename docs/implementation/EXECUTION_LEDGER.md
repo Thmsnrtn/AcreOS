@@ -1665,3 +1665,63 @@ needs answering. A section behind an existing door; nothing added to the sidebar
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 659 files, 8,673 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 26 — The loop actually turns: asking when they'll know · this commit
+
+**Audit requirement:** Section VII — the loop must CLOSE in practice, not merely
+be closeable.
+
+**Files:** `client/src/pages/flip-analyzer.tsx`,
+`server/routes-flip-analyzer.ts` (schema + use),
+`tests/unit/canonicalLoopAdoption.test.ts` (one test rewritten, one added).
+
+### The loop was complete and could never turn
+
+Units 22–25 closed the customer-side loop end to end, and it had a quiet dead
+spot: **every decision the offer path recorded carried `reviewDueAt: null`**, so
+not one of them could ever reach the Today prompt. The prompt existed, the
+calibration existed, the recording existed — and nothing would ever appear.
+
+The server was right to refuse: unit 21 established that a manufactured review
+date makes the prompt nag about every decision ever recorded, which is how a
+prompt earns being ignored. The missing half was that **someone has to ask**, and
+nothing did.
+
+### And the client would have asked into a void
+
+Adding the question to the analyzer was not enough. The offer route's zod schema
+did not accept `reviewDueAt` and the handler hardcoded `null` — so the client
+would have collected an answer, sent it, and had it silently dropped. Checking
+the receiving end rather than assuming it is the whole discipline of this
+program's "built but unwired" rule, and it applied to my own two-sided change.
+
+### Where the question goes, and what it refuses
+
+Asked at the moment of DRAFTING, because that is when the operator actually
+knows — they are looking at the offer and have a view on how long a seller takes.
+
+- **Nothing is pre-selected.** A chip selected by default would manufacture a
+  date on the server's behalf, defeating the exact refusal it is paired with.
+- **"No set date" carries equal weight** — an answer, not a skip. A decision with
+  no date never prompts, which is correct for the many that have no natural one,
+  and never answering sends the same `null`.
+- **Four fixed choices, not a date picker.** Mirrors the founder ledger's
+  `checkInDays: 30 | 90` shape; a picker is friction at exactly the moment
+  friction makes someone skip the question, and the honest answers are coarse.
+- **A past date is refused** server-side: it would make the decision due the
+  instant it was recorded, which is a client bug rather than anything an operator
+  could have meant.
+
+### A test that pinned the dead spot, rewritten
+
+`does NOT invent a review date` asserted `reviewDueAt: null` — correct while
+nothing carried a date, and it would have pinned the loop permanently shut.
+**Rewritten, not deleted**: the invariant is unchanged and is now asserted at
+BOTH ends — the server never defaults (no `.default(`), and the client never
+pre-selects. Mutation-tested: adding a server default, or pre-selecting 30 days
+in the client, each fail.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 659 files, 8,674 tests, 1 skipped, 0 failures.**
