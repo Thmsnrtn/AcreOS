@@ -1725,3 +1725,59 @@ in the client, each fail.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 659 files, 8,674 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 27 — A verified negative: nothing measures a realised number · this commit
+
+**No code change.** The queued item was "measure actuals somewhere". Checking its
+premise against HEAD before implementing disproved it, and the disproof is worth
+more than a rushed build on top of it.
+
+### What was checked, and what HEAD says
+
+Every outcome recorded so far carries `actuals: []` — honestly, because accepting
+an offer measures none of what was forecast. The queued fix assumed a realised
+number existed somewhere to record. **It does not, anywhere a decision can
+reference.**
+
+| Candidate | What it actually is |
+|---|---|
+| `deals.analysisResults` | FORECASTS. `expectedSalePrice`, `netProfit`, `roiPercent` are all projections written at analysis time — the same kind of number a Scenario already holds, not a measurement of what happened. |
+| `lead_conversions.dealValue` / `profitMargin` | Genuinely realised, and in a different plane: keyed to a LEAD for model-training attribution, with no path to a decision. |
+| `offers` | Amounts offered, never amounts realised. |
+
+Searched for `actualSalePrice`, `actual_sale`, `realizedProfit`,
+`realized_profit`, `actualProfit`, `actual_profit` across the schema: **zero
+hits.** There is no column in this repository holding what a deal actually
+returned.
+
+### The consequence, stated plainly
+
+`GET /api/decisions/calibration` will report every metric `unmeasured` forever
+until some surface records a realised number against a decision. The instrument
+is correct, tested and honest — and it currently has nothing to measure. That is
+not a defect in it; it is the next piece of work, and it is a BUILD.
+
+### Why `lead_conversions` was not wired to it
+
+It is the only realised money in the repo, and linking it would mean matching a
+lead conversion to a decision by property or lead id — a heuristic. Unit 23
+refused exactly that reasoning when linking outcomes to decisions ("a property
+with two offers makes property-matching a coin flip") and added a real
+`decision_snapshot_id` column instead. Reaching for the heuristic here because it
+is the only thing available would undo that discipline, and a calibration built
+on mis-matched pairs is worse than one that honestly says `unmeasured`.
+
+### The recommended shape, for the next session
+
+The **`OutcomePrompt` card is the right place**, and it does not contradict unit
+24's "asks for NO numbers" rule — that rule exists so a figure is never typed
+under mild duress to make a card disappear. An OPTIONAL amount on a TERMINAL
+answer ("Sold" / "Acquired") is different: it is asked at the one moment the
+operator genuinely knows, and leaving it blank sends `actuals: []` and keeps the
+metric `unmeasured`, which is the same honest outcome as today. The rule to keep
+is **never coerce**, not **never ask**.
+
+`still_open` must never gain the field — an unresolved position has no realised
+number by definition.

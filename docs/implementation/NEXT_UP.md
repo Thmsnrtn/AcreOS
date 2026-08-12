@@ -219,10 +219,28 @@ In order:
   tenant to record against). Look for a moment that WRITES something: a deal
   advancing a stage, an acquisition being recorded, a note being originated.
 
-  **(c) Measure actuals somewhere.** Every outcome recorded so far carries
-  `actuals: []` — honestly, since nothing measures profit at offer acceptance.
-  Until some surface records a realised number, calibration will always report
-  `unmeasured`. The natural moment is a deal closing/reselling.
+  **(c) Measure actuals somewhere — VERIFIED as a build, not a wiring job.**
+  Unit 27 checked the premise: **no column in this repo holds what a deal
+  actually returned.** `deals.analysisResults` are forecasts
+  (`expectedSalePrice`, `netProfit` are projections); `lead_conversions.dealValue`
+  is realised but keyed to a LEAD for ML attribution with no path to a decision;
+  `offers` holds amounts offered, never realised. Zero hits for
+  `actualSalePrice` / `realizedProfit` / `actualProfit` across the schema.
+  So calibration will report `unmeasured` forever until something records one.
+
+  **Do NOT link `lead_conversions` by property or lead id.** It is the only
+  realised money in the repo and the match would be a heuristic — the exact
+  reasoning unit 23 refused when it added a real `decision_snapshot_id` column
+  rather than matching offers to decisions by property. A calibration built on
+  mis-matched pairs is worse than one that honestly says `unmeasured`.
+
+  **Recommended shape:** an OPTIONAL amount field on the `OutcomePrompt` card,
+  shown only for TERMINAL answers ("Sold"/"Acquired"). This does not contradict
+  unit 24's "asks for NO numbers" — that rule exists so a figure is never typed
+  under duress to clear a card. Asked at the one moment the operator genuinely
+  knows, and blank → `actuals: []` → still `unmeasured`, the rule to keep is
+  **never coerce**, not **never ask**. `still_open` must never gain the field:
+  an unresolved position has no realised number by definition.
 
   **A note on UI gates, learned in unit 24.** The client has its own ratchets
   and they bite: `acreos/prefer-verbs-canon` (one verb vocabulary in
