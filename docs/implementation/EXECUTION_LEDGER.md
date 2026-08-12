@@ -2408,3 +2408,71 @@ below its registrar, each fail.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 663 files, 8,720 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 37 — A protected write with an unprotected read · this commit
+
+**Files:** `server/routes-leads.ts` (3 routes),
+`tests/unit/piiScopeSymmetry.test.ts` (new, 5 tests).
+
+### The defect
+
+`server/middleware/roleScope.ts` defines `tenant_pii_read` and
+`tenant_pii_write` — "SSN, prior addresses, screening results" — and denies both
+to `member`, `va` and `viewer`.
+
+`POST /api/skip-traces` carried `requireScope("tenant_pii_write")`. The three
+READS, **twenty lines above it in the same file**, carried nothing:
+
+```
+GET /api/skip-traces
+GET /api/skip-traces/:id
+GET /api/skip-traces/lead/:leadId
+```
+
+`skip_traces.results` is typed `{ phones, emails, addresses }` — phone numbers,
+email addresses and address history for a real person. So the scope stopped a
+denied role from ORDERING a skip trace and let them read every one the
+organization had already bought.
+
+**Reads are what exfiltrate.** A write gate without its matching read gate is the
+most misleading shape in an authorization system, because the surface looks
+considered: somebody thought about the scope, named it correctly, and applied it
+to the wrong half.
+
+Same class as units 30, 31 and 34 — a rule that exists and is applied to some
+surfaces and not others — and the sharpest instance, because the protected and
+unprotected routes are neighbours.
+
+### A note on the scope model, checked before acting
+
+`roleScope.ts` reads like an aspirational feature — its header describes
+bookkeepers, attorneys and family co-owners, none of which are real roles
+(`OrgRole` is `owner | admin | member | viewer | va`). That would have made
+enforcing it premature.
+
+It is not aspirational: `ROLE_SCOPES` maps **exactly the five real roles**, and
+the denial of `tenant_pii_read` to member/va/viewer is a live rule. Worth
+checking, because "this feature isn't finished" would have been a plausible and
+wrong reason to leave PII reads open.
+
+### The test asserts the premise, not just the gate
+
+Three of the five assertions check things other than the middleware: that the
+scope really is denied to member/va/viewer AND granted to owner/admin (a gate
+that locks everyone out is also broken), and that `skip_traces.results` still
+carries contact data at all. **An authorization test whose subject has quietly
+stopped being sensitive is enforcing a rule with no reason left.**
+
+The read gate is asserted separately from the general "every route has a scope"
+check, deliberately: the write was already gated when this was found, so a single
+combined assertion would pass on three of four and its failure message would not
+say which half was missing.
+
+Mutation-tested: removing one read gate fails, and quietly granting `viewer` the
+scope fails — the second is the subtler regression, because the routes would
+still look gated.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 664 files, 8,725 tests, 1 skipped, 0 failures.**

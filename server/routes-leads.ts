@@ -1745,20 +1745,25 @@ export function registerLeadRoutes(app: Express): void {
   // SKIP TRACES (Phase 2.4)
   // ============================================
 
-  api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // tenant_pii_read: skip-trace RESULTS are the PII the scope names —
+  // phone numbers, email addresses and address history for a real person.
+  // The WRITE three routes below was gated `tenant_pii_write`; these reads
+  // were not, and reads are what exfiltrate. `tenant_pii_read` is denied to
+  // member, va and viewer.
+  api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
     const org = req.organization;
     const traces = await storage.getSkipTraces(org.id);
     res.json(traces);
   });
 
-  api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
     const org = req.organization;
     const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
     if (!trace) return Errors.notFound(res, "Skip trace");
     res.json(trace);
   });
 
-  api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
     const org = req.organization;
     const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
     res.json(trace || null);

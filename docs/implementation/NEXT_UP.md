@@ -222,6 +222,14 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     rule. Note: writing it produced three large false-positive counts
     (378/322/20) before the right answer — verify every candidate by hand.
 
+37. **SECURITY** — `POST /api/skip-traces` was scoped `tenant_pii_write`; the
+    three READS twenty lines above it had no scope at all. `skip_traces.results`
+    holds phones, emails and address history. **Reads are what exfiltrate** — a
+    protected write with an unprotected read is the most misleading shape there
+    is, because someone clearly thought about the scope and applied it to the
+    wrong half. Gated; test asserts the premise (the scope is still denied to
+    member/va/viewer, and the column still holds PII) as well as the gate.
+
 **One residual, recorded not guessed:** `canAssignLeads` is still unenforced.
 Assignment happens through several surfaces (the lead PUT's `assignedTo`, bulk
 update, the round-robin assigner) and needs each caller checked rather than a
@@ -230,7 +238,7 @@ neither destroys, exfiltrates nor spends.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 663 files, 8,720 tests, 1 skipped, 0 failures.**
+suite green — 664 files, 8,725 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
