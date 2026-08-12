@@ -416,8 +416,20 @@ In order:
     `engine_input_json`). Wiring it creates a second owner. Enforced by
     `MUST_NOT_ADOPT` in the adoption test.
 
-  So look for a moment that writes something AND currently loses the reasoning:
-  a deal advancing to won/closed, an acquisition being recorded. **Do not add a
+  So look for a moment that writes something AND currently loses the reasoning.
+  **The deal close was the obvious candidate and unit 45 REFUSED it** — see
+  `BLOCKED_ON_A_REAL_LINK` in the adoption test. Summary: a closing deal writes
+  `acceptedAmount`, a genuinely realised sale price, but nothing links the deal
+  back to the decision that produced its offer (`offers` has no `dealId`,
+  `deals` has no `offerId` or `decisionSnapshotId`, and no code path creates a
+  deal FROM an offer). The only shared key is `propertyId`, and pairing on it is
+  the mis-matched-pairs failure unit 23 refused. **The refusal unblocks itself:
+  the test fails the day either link column is added.**
+
+  Also worth knowing before hunting: **a realised sale price DOES exist** in
+  `deals.acceptedAmount` on close, already fed to the valuation training corpus.
+  Unit 27's negative — nothing records a realised RETURN — stands, but do not
+  repeat its search for `actualSalePrice` / `realizedProfit`. **Do not add a
   surface just to move the ratchet** — that is optimising for the number rather
   than the customer, which is the failure the ratchet exists to detect.
 
@@ -432,14 +444,31 @@ In order:
   `total_cost`, `profit` or `cap_rate`, and adding a sixth engine so it could
   would be the ratchet-gaming move. A test asserts the absence.
 
-  **The verified next step it produced — a real gap, not a task to invent:**
-  the lock passes `reviewDueAt: null`, so it never prompts for an outcome. The
-  reason is that `OUTCOME_KINDS` (`acquired` / `sold` / `offer_accepted` /
-  `offer_rejected` / `abandoned` / `still_open`) is shaped for a SINGLE POSITION
-  resolving, and a price set across N child lots resolves as *"how many sold, at
-  what"*. **Extending the outcome vocabulary is the blocking work** — asking a
-  question whose available answers do not fit is worse than not asking. Do not
-  wire a review date here until that is done.
+  **Why it prompts for no outcome — and a correction to how unit 44 first
+  stated it.** The lock passes `reviewDueAt: null`. Unit 44's ledger entry said
+  the blocker was the OUTCOME_KINDS vocabulary being shaped for a single
+  position; reading `OutcomePrompt.tsx` afterwards showed that is imprecise and
+  the real reason is stronger:
+
+  > **A decision with no Scenario has nothing for an outcome to be measured
+  > against.** Calibration compares a *predicted* metric to a *realised* one.
+  > The lock records no Scenario (correctly — a price grid carries none of the
+  > shared metrics), so even a perfectly-fitting outcome kind would yield a
+  > measurement with no forecast to compare it to.
+
+  `OutcomePrompt`'s `ANSWERS` table compounds it: `measures` is keyed to KIND
+  alone (`sold` → `profit`, `acquired` → `total_cost`), and its own comment
+  justifies that with *"both ids are produced by the flip engine that records
+  these decisions"* — true when the flip analyzer was the only recorder, and no
+  longer true in general. Nothing is broken today only because the lock never
+  sets a review date, so the prompt still sees flip decisions exclusively.
+
+  **So lot pricing is deliberately decision-only: the reasoning is preserved,
+  and no calibration is claimed.** That is a complete state, not a half-built
+  one. Making it calibratable is a real design question — whether a price grid
+  becomes a Scenario with a per-lot metric vocabulary — with weight, and it
+  should be decided rather than drifted into. Do NOT wire a review date here
+  first; that would produce an unanswerable question.
 
   **(c) Measure actuals somewhere — VERIFIED as a build, not a wiring job.**
   Unit 27 checked the premise: **no column in this repo holds what a deal

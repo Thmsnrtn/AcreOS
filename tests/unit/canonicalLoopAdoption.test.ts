@@ -111,6 +111,51 @@ const ADOPTING_SURFACE_BASELINE = 5;
  * record. `shared/economics/scenario.ts` names it in its own header as the
  * pattern the Scenario layer GENERALISES rather than replaces.
  */
+/**
+ * Surfaces that SHOULD adopt and structurally cannot yet.
+ *
+ * Distinct from MUST_NOT_ADOPT below, and the distinction matters: that list
+ * says *never — another versioned record already owns this state*. This one
+ * says *not until a real link exists*, and each entry names the missing column.
+ *
+ * THE DEAL CLOSE IS THE STANDING EXAMPLE, and it is the most tempting surface
+ * in the repo. `PUT /api/deals/:id` transitioning to `closed` writes
+ * `acceptedAmount` — a REALISED sale price, already fed to the valuation
+ * training corpus as arm's-length ground truth. That is exactly the realised
+ * number unit 27 went looking for and did not find, because it searched the
+ * schema for `actualSalePrice` / `realizedProfit` / `actualProfit` and the value
+ * is stored under a name that does not say "actual".
+ *
+ * So the close could resolve the decision that produced the offer — except
+ * **there is no link to it**. `offers` has no `dealId`, `deals` has no
+ * `offerId` and no `decisionSnapshotId`, and no code path anywhere creates a
+ * deal FROM an offer (deals are created by the AI tools, the importer and the
+ * sample seeder, independently). The only shared key is `propertyId`.
+ *
+ * Matching on `propertyId` is precisely what unit 23 refused when it added a
+ * real `decision_snapshot_id` column rather than pairing offers to decisions by
+ * property: one property carries many offers over time, so the pairing would be
+ * a guess, and **a calibration built on mis-matched pairs is worse than one that
+ * honestly reports `unmeasured`.**
+ *
+ * THIS REGISTRY UNBLOCKS ITSELF. The assertion is that the link is still
+ * missing — so the day someone adds it, this fails and says the surface can now
+ * adopt. A refusal that cannot notice its own reason disappearing is just a
+ * hardcoded no.
+ */
+const BLOCKED_ON_A_REAL_LINK = [
+  {
+    file: "server/routes-deals.ts",
+    what: "a deal closing, which writes a realised acceptedAmount",
+    missing: "deals has no decisionSnapshotId and no offerId; offers has no dealId",
+    /** Columns whose ARRIVAL means the block is over. */
+    unblockedBy: [
+      { table: "deals", column: "decisionSnapshotId" },
+      { table: "offers", column: "dealId" },
+    ],
+  },
+] as const;
+
 const MUST_NOT_ADOPT = [
   {
     file: "server/routes-notes.ts",
@@ -613,5 +658,61 @@ describe("...and finally TOLD — without paraphrasing the refusal away", () => 
     // hidden/visible — `animate="show"` leaves the list stuck at opacity 0.
     expect(panel).toContain('animate="visible"');
     expect(panel).not.toContain('animate="show"');
+  });
+});
+
+describe("surfaces that should adopt and structurally cannot yet", () => {
+  const schema = read("shared/schema.ts");
+
+  function tableBlock(table: string): string {
+    const at = schema.indexOf(`export const ${table} = pgTable("`);
+    expect(at, `${table} not found in shared/schema.ts`).toBeGreaterThan(-1);
+    // To the next table declaration, so a neighbouring table's column cannot
+    // satisfy an assertion about this one — the window-too-wide defect this
+    // program has now shipped five times.
+    const next = schema.indexOf("export const ", at + 20);
+    return next === -1 ? schema.slice(at) : schema.slice(at, next);
+  }
+
+  it("names a reason and an unblocking condition for each entry", () => {
+    for (const b of BLOCKED_ON_A_REAL_LINK) {
+      expect(b.missing.length, `${b.file} is blocked with no stated reason`).toBeGreaterThan(30);
+      expect(b.unblockedBy.length, `${b.file} can never become unblocked`).toBeGreaterThan(0);
+    }
+  });
+
+  it("the link really is still missing — and this fails when it arrives", () => {
+    // Deliberately inverted. When someone adds deals.decisionSnapshotId or
+    // offers.dealId, this test FAILS and tells them the surface can now record
+    // an outcome against the decision that produced the offer. A refusal that
+    // cannot notice its own reason disappearing is just a hardcoded no.
+    for (const b of BLOCKED_ON_A_REAL_LINK) {
+      for (const { table, column } of b.unblockedBy) {
+        expect(
+          tableBlock(table).includes(`${column}:`),
+          `${table}.${column} now EXISTS. ${b.file} (${b.what}) was blocked only ` +
+            `because there was no non-heuristic path from the deal back to the ` +
+            `decision that produced its offer. There is one now — wire the ` +
+            `outcome, add the surface to ADOPTING_SURFACES, raise the baseline, ` +
+            `and delete this entry.`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("no heuristic link is being used in the meantime", () => {
+    // The failure mode this registry exists to prevent is not inaction — it is
+    // someone pairing a deal to a decision through propertyId because both
+    // happen to have one. Unit 23 refused exactly that.
+    for (const b of BLOCKED_ON_A_REAL_LINK) {
+      const src = read(b.file);
+      expect(
+        src.includes("recordOutcome(") || src.includes("recordDecision("),
+        `${b.file} now records a canonical decision or outcome, but ` +
+          `${b.missing}. If this is a real link, unblock the entry above; if it ` +
+          `matches on propertyId, it is the mis-matched-pairs failure unit 23 ` +
+          `refused — one property carries many offers over time.`,
+      ).toBe(false);
+    }
   });
 });

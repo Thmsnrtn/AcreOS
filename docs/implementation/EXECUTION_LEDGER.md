@@ -3097,11 +3097,22 @@ helping a customer, which is the failure an up-only ratchet invites rather than
 prevents. A test asserts the absence.
 
 **No review date.** A review date is what later makes the loop ASK for an
-outcome, and the outcome vocabulary (`acquired` / `sold` / `offer_accepted` /
-`offer_rejected` / `abandoned`) is shaped for a single position resolving. A
-price set across N child lots resolves as *"how many sold, at what"*, which none
-of those expresses. Asking a question whose answers do not fit is worse than not
-asking. Recorded as the next honest step rather than papered over.
+outcome. The first draft of this entry said the blocker was `OUTCOME_KINDS`
+being shaped for a single position; re-reading `OutcomePrompt.tsx` immediately
+afterwards showed that is imprecise, and the real reason is stronger:
+**a decision with no Scenario has nothing for an outcome to be measured
+against.** Calibration compares a predicted metric to a realised one, and this
+decision predicts none — so even a perfectly-fitting kind would produce a
+measurement with no forecast to compare it to.
+
+`OutcomePrompt`'s `ANSWERS` table compounds it: `measures` is keyed to KIND
+alone, justified in its own comment by *"both ids are produced by the flip
+engine that records these decisions"* — true when the analyzer was the only
+recorder, no longer true in general. Nothing is broken today only because this
+lock never sets a review date.
+
+So lot pricing is **deliberately decision-only**: the reasoning is preserved and
+no calibration is claimed. Corrected in NEXT_UP rather than left standing.
 
 ### The mutation that exposed a bad assertion
 
@@ -3128,3 +3139,64 @@ function**: the two `shared/rental/*` ones are byte-identical, but
 `MRRTrajectory.tsx` ABBREVIATES ($1.2M / $3.4K) — a different function wearing
 the same name. They were left alone rather than unified blindly; recorded in
 NEXT_UP.
+
+---
+
+## Unit 45 — A refusal that unblocks itself · this commit
+
+**Files:** `tests/unit/canonicalLoopAdoption.test.ts` (+3 tests, new
+`BLOCKED_ON_A_REAL_LINK` registry).
+
+### The most tempting surface in the repo, checked and refused
+
+NEXT_UP named the deal close as the next adoption candidate. It is better than
+it looks and still wrong, and both halves are worth recording.
+
+**Better than it looks:** `PUT /api/deals/:id` transitioning to `closed` writes
+`acceptedAmount` — a **realised sale price**, already fed to the valuation
+training corpus as arm's-length ground truth. That is precisely the realised
+number **unit 27 searched for and did not find**: it looked for
+`actualSalePrice` / `realizedProfit` / `actualProfit` across the schema, and the
+value is stored under a name that does not say "actual". Unit 27's negative was
+about a realised *return* and stands; but a realised *price* does exist, and the
+next session should not repeat the search.
+
+**Still wrong:** there is **no link** from the deal to the decision that
+produced its offer. `offers` has no `dealId`, `deals` has no `offerId` and no
+`decisionSnapshotId`, and **no code path anywhere creates a deal FROM an
+offer** — deals are created by the AI tools, the importer and the sample seeder,
+independently. The only shared key is `propertyId`.
+
+Matching on `propertyId` is exactly what unit 23 refused when it added a real
+`decision_snapshot_id` column instead of pairing offers to decisions by
+property. One property carries many offers over time, so the pairing is a guess,
+and **a calibration built on mis-matched pairs is worse than one that honestly
+reports `unmeasured`.**
+
+### Why this is a test and not a paragraph
+
+A verified negative recorded only in prose decays exactly like an audit claim —
+§6a of NEXT_UP exists because this program has already shipped one that HEAD
+disproved. So the refusal is asserted, and asserted **inverted**: the test
+requires the link to be MISSING.
+
+The day someone adds `deals.decisionSnapshotId` or `offers.dealId`, this test
+FAILS, and its message says the surface can now record an outcome against the
+decision that produced its offer, and to wire it. **A refusal that cannot notice
+its own reason disappearing is just a hardcoded no.**
+
+A second assertion catches the other failure mode, which is not inaction: it
+fails if `routes-deals.ts` starts recording a decision or outcome while the link
+is still absent — i.e. if someone pairs a deal to a decision through
+`propertyId` because both happen to have one.
+
+`BLOCKED_ON_A_REAL_LINK` is deliberately a **different registry** from
+`MUST_NOT_ADOPT`. That one says *never — another versioned record already owns
+this state*. This one says *not until a real link exists*, and names the exact
+column whose arrival ends the block.
+
+### Verification
+
+Two mutations, both caught: adding `deals.decisionSnapshotId` (the refusal
+notices the block is over), and wiring a recorder while the link is still
+missing (the heuristic-pairing guard).
