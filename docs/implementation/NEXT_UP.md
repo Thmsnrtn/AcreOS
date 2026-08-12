@@ -241,15 +241,17 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     the client round-trips this list, so redaction alone would have silently
     blanked every key on the next save.
 
-**One residual, recorded not guessed:** `canAssignLeads` is still unenforced.
-Assignment happens through several surfaces (the lead PUT's `assignedTo`, bulk
-update, the round-robin assigner) and needs each caller checked rather than a
-pattern match. It is the mildest of the set — reassigning a lead inside an org
-neither destroys, exfiltrates nor spends.
+**The residual is CLOSED (unit 46).** `canAssignLeads` was recorded here as
+"the mildest of the set — reassigning a lead inside an org neither destroys,
+exfiltrates nor spends." That was wrong, and worth recording as wrong: for a
+`va` or anyone carrying `viewOnlyAssignedLeads`, **assigning a lead grants
+access to it and unassigning revokes access** — it exfiltrates by exactly the
+mechanism the assigned-leads gate exists to control. Three paths accepted an
+assignee from anyone, and it is now gated (including `assignedTo: null`).
 
-Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
-reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 665 files, 8,734 tests, 1 skipped, 0 failures.**
+Gate state at last commit: `npm run check` exit 0, tsc clean, reachability at
+all four baselines, every ratchet at baseline, and the **full unit suite green —
+672 files, 8,836 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -360,8 +362,13 @@ declared and never consulted; `canExportData` reached 1 of 10 exports (a viewer
 could ZIP the whole org); `canImportData` reached 0 of 13. **None was a missing
 rule.** If you look for more security work, look for *unenforced* rules, not
 absent ones — enumerate a surface and check it as a set, because route-by-route
-review cannot see this class at all. Only `canAssignLeads` remains, and it is the
-mildest.
+review cannot see this class at all.
+
+**THREAD A IS COMPLETE (unit 46).** The last residual, `canAssignLeads`, was the
+class at its limit — declared for every role, exposed by the UI hook so the
+control is hidden, and checked by **no route at all**. Every declared permission
+this program found unenforced is now enforced, and each fix ships with a
+registry that derives its surface from source.
 
 **THREAD B — ADOPTION (units 22–29), the canonical loop's reach.**
 
