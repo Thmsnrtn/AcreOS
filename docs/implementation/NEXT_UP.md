@@ -39,17 +39,18 @@ see §6.
 | **evidence-claim** | **canonical** ✅ | `evidence_claims`, this program |
 | **decision-snapshot** | **canonical** ✅ | `decision_snapshots`, this program |
 | property, parcel, document | conflated | `properties` god table |
-| party, holding, instrument, plan, action-receipt, outcome | role-table | scattered |
+| **outcome** | **canonical** ✅ | `outcomes`, this program |
+| party, holding, instrument, plan, action-receipt | role-table | scattered |
 | **scenario** | **canonical** ✅ | `scenarios`, this program |
 | relationship, opportunity | absent | — |
 
-**7 of 18 canonical objects now have a canonical home (was 4).**
+**8 of 18 canonical objects now have a canonical home (was 4).**
 
 Two ratchets track convergence, both down-only, both in
 `tests/unit/canonicalArchitecture.test.ts`:
 
 - `UNENFORCED_FITNESS_BASELINE = 0` (was 2) — **every fitness function now has automated enforcement**
-- `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 11` (was 14)
+- `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 10` (was 14)
 
 ## 3. What has been completed, and what proves it
 
@@ -83,6 +84,9 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 10. **Honest send coverage** — `emailService.sendEmail` accepts a key; the
     coverage ratchet widened 2 → 61 because the measurement got honest, not
     because anything got worse.
+11. **Outcome** (layer 7) — `outcomes` + variance as a pure projection over
+    what the decision froze. **The customer-side canonical loop now runs end to
+    end: evidence → scenario → decision → outcome.** 22 tests.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -98,29 +102,47 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Register a second economics engine**, then **Outcome** (layer 7).
+**Register a second economics engine** — the highest-value remaining item.
 
-The scenario layer landed with exactly ONE registered engine (`land_deal`).
-That is honest — it is the one deterministic calculator that already existed and
-was already used — but it means most financial numbers in the product are still
-unversioned and unpersisted. The highest-value follow-ons, in order:
+The scenario layer landed with exactly ONE registered engine (`land_deal`), so
+BI191's requirement is not yet met: *"Every core primitive must pass contrasting
+Strategy Pack fixtures. A land-only implementation that happens to expose
+generic labels does not satisfy the architecture."* Until a second, structurally
+different engine is registered, the economics kernel is a land-shaped
+abstraction that merely looks generic.
 
-1. **Register `note_payoff`.** `server/services/notePaymentMath.ts` is already
-   versioned and already persists its inputs; bringing it into `ENGINES` is
-   mostly registration, and it proves the registry generalises across verticals
-   rather than being a land-shaped abstraction.
-2. **Flip / BRRRR / multifamily NOI.** Each currently computes inline. Extract
-   to a pure function, register it, and the numbers become defensible.
-3. **Outcome (layer 7).** `decision_snapshots` and `scenarios` now capture the
-   prediction; nothing yet records what ACTUALLY happened and compares. The
-   founder plane already does this well (a prediction sealed into
-   `proofReceipt`'s hash, graded later by `decisionEval.ts`) — study that, do
-   not invent a second mechanism. Note law 9: an Outcome REFERENCES a snapshot,
-   it never edits one.
+**The obstacle is real and worth knowing before you start.** The obvious
+candidate is `note_payoff`: `server/services/notePaymentMath.ts` is already
+versioned (`PAYOFF_ENGINE_VERSION`) and already persists its inputs. But it
+lives in `server/`, and `shared/economics/scenario.ts` cannot import it —
+`scripts/check-boundaries.mjs` rule S1 forbids shared/ importing server/. Two
+honest options:
 
-Also still open and needing no decision: wiring `smsService` (~10 sites) and
-e-sign, then widening `PROTECTABLE_SENDS` to count them — the transport must be
-wired FIRST, or the ratchet becomes unlowerable and its own test fails.
+  a) **Move the payoff math to `shared/`.** It is pure. But it is a
+     statute-implementing money engine (Reg-Z / RESPA adjacent, see
+     `shared/governance/statuteRegister.ts`), so moving it is not a cosmetic
+     refactor and deserves its own unit with its own verification.
+  b) **Split the registry**: `shared/economics/scenario.ts` keeps the CONTRACT
+     (metrics, units, the ScenarioBody shape, the closed-registry rule) while
+     engines register from either side through a typed seam. This is the better
+     architecture — it is the same kernel/pack shape
+     `server/services/autopilot/domainPack.ts` already uses on the founder
+     plane — and it does not move regulated code.
+
+  **(b) is recommended.** Note that `computeScenario` currently hard-fails on
+  any engine id other than `land_deal`, deliberately, so adding a registry entry
+  without wiring its computation fails loudly rather than returning zeros.
+
+Then, in order:
+- **Flip / BRRRR / multifamily NOI** — each computes inline today. Extract to a
+  pure function, register it, and the numbers become defensible.
+- **Prompt for outcomes.** Nothing asks a customer to record one, so the loop
+  closes only when someone chooses to close it. The founder plane's due-outcome
+  sweep (`outcomeLedger` / `decisionEval`) is the pattern to study.
+- **Calibration across decisions** — the layer above a single variance.
+- **SMS + e-sign transports**, then widen `PROTECTABLE_SENDS` to count them.
+  The transport must be wired FIRST, or the ratchet becomes unlowerable and its
+  own test fails.
 
 Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in

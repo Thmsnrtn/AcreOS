@@ -32,6 +32,12 @@ import {
   DECISION_SUBJECT_TYPES,
   describeFooting,
 } from "@shared/decisions/snapshot";
+import {
+  UnknownDecisionError,
+  outcomesForDecision,
+  recordOutcome,
+} from "./services/outcomes/outcomeStore";
+import { OUTCOME_KINDS, OutcomeMetricError } from "@shared/outcomes/outcome";
 
 const router = Router();
 
@@ -166,6 +172,80 @@ router.get("/:subjectType/:subjectId", async (req: AuthenticatedRequest, res: Re
         // told.
         footing: describeFooting(d.body),
         unknowns: d.body.unknowns,
+      })),
+    });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── Outcomes: what actually happened (canonical law 9) ────────────────────
+//
+// Mounted under /api/decisions/:id/outcomes rather than a top-level
+// /api/outcomes, because an outcome has no meaning apart from the decision it
+// grades — the URL says so, and there is no way to POST one without naming a
+// decision this org owns.
+//
+// There is NO update and NO delete: outcomes append learning, they do not
+// rewrite history. And nothing on this path can edit the decision itself.
+
+const outcomeSchema = z.object({
+  kind: z.enum(OUTCOME_KINDS),
+  summary: z.string().min(1),
+  actuals: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        // null means NOT MEASURED. It never means zero, so the schema must
+        // accept it explicitly rather than coercing a missing value.
+        value: z.number().nullable(),
+      }),
+    )
+    .default([]),
+  /** When it was OBSERVED — not when it was recorded. */
+  observedAt: z.coerce.date(),
+});
+
+// POST /api/decisions/:id/outcomes
+router.post("/:id(\\d+)/outcomes", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const parsed = outcomeSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error);
+
+    const stored = await recordOutcome(organizationId, {
+      decisionSnapshotId: Number(req.params.id),
+      ...parsed.data,
+    });
+    res.json({ id: stored.id, observedAt: stored.observedAt, outcome: stored.body });
+  } catch (err) {
+    if (err instanceof UnknownDecisionError) return Errors.notFound(res, "Decision");
+    // An unregistered metric is a caller error, and saying so precisely is the
+    // difference between a fixable 400 and a mysterious 500.
+    if (err instanceof OutcomeMetricError) return Errors.badRequest(res, err.message);
+    Errors.internal(res, err);
+  }
+});
+
+// GET /api/decisions/:id/outcomes — with variance against the FROZEN scenarios
+router.get("/:id(\\d+)/outcomes", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const list = await outcomesForDecision(organizationId, Number(req.params.id));
+    res.json({
+      decisionSnapshotId: Number(req.params.id),
+      outcomes: list.map((o) => ({
+        id: o.id,
+        observedAt: o.observedAt,
+        recordedAt: o.recordedAt,
+        kind: o.body.kind,
+        summary: o.body.summary,
+        actuals: o.body.actuals,
+        // Computed on read against what the decision FROZE, never against a
+        // live scenario row — a later recomputation must not change how a past
+        // decision looks.
+        variance: o.variance,
+        varianceSummary: o.varianceSummary,
       })),
     });
   } catch (err) {

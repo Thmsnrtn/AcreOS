@@ -108,8 +108,13 @@ const UNENFORCED_FITNESS_BASELINE = 0;
  *   ASSUMPTIONS in force, AND the ECONOMICS that justified it. Before this a
  *   snapshot could record "offer $42,000" with the arithmetic behind the number
  *   living nowhere at all.
+ * 2026-08-12 (11 -> 10): outcome now has a canonical home (`outcomes`,
+ *   append-only, referencing the decision it graded). The customer-side
+ *   canonical loop now runs end to end for the first time: evidence → scenario
+ *   → decision → outcome, with variance as a pure projection over what the
+ *   decision FROZE rather than a stored number that could drift.
  */
-const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 11;
+const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 10;
 
 /**
  * The fixed cardinalities declared by the audit. These are not ratchets — they

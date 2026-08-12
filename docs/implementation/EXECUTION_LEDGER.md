@@ -545,3 +545,65 @@ transport wired before it can be counted without making the ratchet unlowerable.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at
 baseline 654 · 40/40 across the three affected suites.
+
+---
+
+## Unit 11 — Outcome: the loop closes · this commit
+
+**Audit requirement:** BI1 (the canonical loop ends in OUTCOME → LEARNING),
+AA8 (the Decision–Outcome graph as a compounding moat), BI178 (an outcome is an
+observation, not retroactive validation), canonical law 9.
+
+**Premise verified first:** `outcome_telemetry` is org-scoped but shaped around
+AGENT performance (`contributingFactors: agentActions, messagesSent,
+responseTime`) and carries **no decision reference**; `outcome_calibrations` is
+keyed by agent codename. Both are the agent/founder learning loop. An investment
+outcome that cannot point at the decision it graded is not the canonical Outcome
+at all (BI76).
+
+**Files:** `shared/outcomes/outcome.ts`, `shared/schema/outcomes.ts`,
+`migrations/0231_outcomes.sql`, `scripts/migrate.mjs`,
+`server/services/outcomes/outcomeStore.ts`, `server/routes-decisions.ts`
+(nested outcome routes), `shared/architecture/canon.ts`. Ratchet 760 → 761.
+
+**Tests:** 22 (18 variance + 4 structural law-9 checks).
+
+**Architectural decisions:**
+- **Variance is a PURE PROJECTION, never a column.** A stored variance is a
+  third number that can drift from the two it derives from, and "improving" it
+  later would silently restate how good a past decision looked. It is computed
+  against the scenario references the decision **froze** — not against live
+  scenario rows, which would let a recomputation change the past.
+- **`decision_snapshot_id` IS a real foreign key** — the opposite of the choice
+  made for `evidence_claims`, `decision_snapshots` and `scenarios`, all of which
+  must *survive* their subject. An outcome without its decision is meaningless:
+  nothing to compare against, nothing to teach. The FK is right here for exactly
+  the reason it was wrong there.
+- **`unmeasured` and `unpredicted` are distinct states.** "We never measured the
+  IRR" and "we never predicted the IRR" are different facts about a customer's
+  own record-keeping, and collapsing them destroys the signal telling them which
+  habit to fix. A predicted-but-unmeasured metric stays **visible** — silently
+  dropping it is how "we predicted five things and checked one" comes to read as
+  a clean scorecard.
+- **The summary never judges the decision** (BI178). A test asserts the output
+  contains none of good/bad/wrong/correct/mistake. A record that scores
+  decisions by their results teaches an investor to be lucky rather than right.
+- **No `relative` when the prediction was zero** — `delta / 0` is Infinity,
+  which renders as a confident-looking number and means nothing.
+- **The subject is read FROM the decision**, not accepted from the caller. An
+  outcome claiming a different property than the decision it grades is two
+  unrelated facts filed together.
+- **Law 9 is structural:** the outcome store imports only `getDecision` from the
+  decision store — never `recordDecision` — and a test pins that.
+
+**Reachability caught one speculative export** (`outcomesForSubject`, no
+consumer). Deleted rather than kept, same as in unit 2.
+
+**Remaining gap (named in the fitness function):** nothing PROMPTS a customer to
+record an outcome, so the loop closes only when someone chooses to close it. The
+founder plane already has a due-outcome sweep (`outcomeLedger`/`decisionEval`)
+to study. Calibration across many decisions is not built at all.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
+40/40 across the affected suites. Canon: outcome role-table → canonical,
+objects-without-home 11 → **10**.

@@ -552,14 +552,10 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     id: "outcome",
     purpose: "actual realized result/event",
     layer: "outcome-learning",
-    status: "role-table",
-    tables: ["outcome_telemetry", "outcome_calibrations"],
-    gap:
-      "Outcome capture exists on the founder/autopilot plane. There is no customer-side " +
-      "Outcome that links back to an investment decision and records what actually " +
-      "happened, so the Decision → Outcome → calibration loop cannot close for the " +
-      "customer.",
-    disposition: "BUILD",
+    status: "canonical",
+    tables: ["outcomes"],
+    gap: "",
+    disposition: "KEEP_HARDEN",
   },
 ] as const;
 
@@ -820,8 +816,16 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
       ],
       note:
         "The founder plane seals a prediction into the receipt hash and scores it " +
-        "later — genuinely best-in-class. The CUSTOMER plane has no equivalent: no " +
-        "investment forecast is recorded in a form that can be graded.",
+        "later. The CUSTOMER plane now has its own loop: `scenarios` records the " +
+        "forecast with its engine version, `decision_snapshots` freezes which " +
+        "scenarios justified the choice, and `outcomes` records what actually " +
+        "happened — with variance computed as a PURE PROJECTION over the frozen " +
+        "refs, never stored, so a later recomputation cannot change how a past " +
+        "decision looks. REMAINING GAP: nothing PROMPTS a customer to record an " +
+        "outcome, so the loop closes only when someone chooses to close it. A " +
+        "due-outcome sweep (the founder plane already has one in " +
+        "outcomeLedger/decisionEval) is the next step, and calibration across " +
+        "many decisions is not built at all.",
     },
   },
   {

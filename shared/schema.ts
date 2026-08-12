@@ -18592,3 +18592,10 @@ export * from "./schema/outward-actions";
 // that engine's version, the verbatim inputs and the outputs. Immutable —
 // re-running the maths inserts a new row; a stored scenario never changes.
 export * from "./schema/scenarios";
+
+// The learning layer's one table (Master Audit BI1/AA8). An Outcome records
+// what ACTUALLY happened, referencing the DecisionSnapshot it graded. Variance
+// is deliberately NOT a column — it is a pure projection over the scenario
+// references the decision already froze (law 9: outcomes append, they do not
+// rewrite history).
+export * from "./schema/outcomes";

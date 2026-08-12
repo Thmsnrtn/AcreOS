@@ -9142,6 +9142,36 @@ const STATEMENTS = [
   // every existing snapshot reads as "no scenario computed" — which is the
   // truth for all of them.
   `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "scenarios" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+
+  // ── 0231 outcomes: the learning layer, closing the canonical loop ──────────
+  // ONE new table — scripts/ratchets/table-count.json 760 -> 761. Mirrors
+  // migrations/0231_outcomes.sql + shared/schema/outcomes.ts.
+  //
+  // WHY THE BUMP IS EARNED: decision_snapshots froze what was known and
+  // predicted, scenarios froze the arithmetic, and NOTHING recorded what the
+  // world then did — an investor's own history was a pile of forecasts nobody
+  // ever graded. AA8 names the Decision->Outcome graph as a compounding moat.
+  //
+  // decision_snapshot_id IS a real FK, unlike the deliberately unconstrained
+  // subject_id on evidence_claims / decision_snapshots / scenarios: those must
+  // survive their subject, whereas an outcome WITHOUT its decision is
+  // meaningless. Variance is NOT a column — it is a pure projection over the
+  // scenario refs the decision already froze (law 9).
+  `CREATE TABLE IF NOT EXISTS "outcomes" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "shape_version" integer NOT NULL DEFAULT 1,
+    "decision_snapshot_id" integer NOT NULL REFERENCES "decision_snapshots"("id") ON DELETE CASCADE,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "kind" text NOT NULL,
+    "summary" text NOT NULL,
+    "actuals" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "observed_at" timestamp NOT NULL,
+    "recorded_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "outcomes_org_decision_idx" ON "outcomes" ("organization_id", "decision_snapshot_id", "observed_at")`,
+  `CREATE INDEX IF NOT EXISTS "outcomes_org_subject_idx" ON "outcomes" ("organization_id", "subject_type", "subject_id", "observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
