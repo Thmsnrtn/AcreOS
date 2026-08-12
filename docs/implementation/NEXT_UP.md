@@ -169,10 +169,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     predicted, never coerced (blank → no actuals → still `unmeasured`, never 0).
     Reverses unit 24's "asks for no numbers" to the sharper rule it should
     always have been: **never coerce, not never ask.**
+29. **A surface that must NOT adopt** — the note payoff path looks like the
+    obvious next adoption candidate and wiring it would be a defect:
+    `note_payoff_quotes` already persists `engine_version` + verbatim
+    `engine_input_json`, so a Scenario there would be a SECOND owner of the same
+    state. `MUST_NOT_ADOPT` encodes it, and the guard checks its own
+    justification so the exemption cannot outlive its reason.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,676 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,677 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -218,14 +224,27 @@ In order:
 
   **Next, in order of value:**
 
-  **(a) Widen adoption to a second product surface.** Exactly ONE product path
-  enters the loop — the fix-and-flip offer. Every other calculator still
-  computes for display and persists nothing. Apply unit 22's criterion to pick
-  the next: *record where a number stops being exploratory and becomes an act.*
-  Do NOT wire `POST /api/flip-analyzer/rental` (a comparison, no act) or
-  `LandDealCalculator.tsx` (the public embeddable marketing tool — no org, no
-  tenant to record against). Look for a moment that WRITES something: a deal
-  advancing a stage, an acquisition being recorded, a note being originated.
+  **(a) Widen adoption to a second product surface — but the criterion is
+  sharper than it was.** Unit 22 said *record where a number stops being
+  exploratory and becomes an act*. Unit 29 found that necessary and NOT
+  sufficient. The full rule:
+
+  > **Adopt where the reasoning would otherwise be LOST. Do not adopt where an
+  > equivalent versioned record already owns that state.**
+
+  Candidates already checked and REJECTED, with reasons — do not re-litigate:
+  - `POST /api/flip-analyzer/rental` and `/mao` — exploratory, no act.
+  - `LandDealCalculator.tsx` — the public embeddable marketing tool, no org, no
+    tenant to record against.
+  - **The note payoff path** — already owns its state
+    (`note_payoff_quotes.engine_version` NOT NULL + verbatim
+    `engine_input_json`). Wiring it creates a second owner. Enforced by
+    `MUST_NOT_ADOPT` in the adoption test.
+
+  So look for a moment that writes something AND currently loses the reasoning:
+  a deal advancing to won/closed, an acquisition being recorded. **Do not add a
+  surface just to move the ratchet** — that is optimising for the number rather
+  than the customer, which is the failure the ratchet exists to detect.
 
   **(c) Measure actuals somewhere — VERIFIED as a build, not a wiring job.**
   Unit 27 checked the premise: **no column in this repo holds what a deal

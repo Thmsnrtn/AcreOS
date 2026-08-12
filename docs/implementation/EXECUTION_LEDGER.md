@@ -1845,3 +1845,56 @@ measure, so the test cannot pass by measuring nothing at all.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 659 files, 8,676 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 29 — A surface that must NOT adopt, and why · this commit
+
+**Audit requirement:** canonical law 1 — canonical state has ONE owner. Also the
+repo's standing "do not build a second X" discipline.
+
+**Files:** `tests/unit/canonicalLoopAdoption.test.ts` (+1 test, `MUST_NOT_ADOPT`).
+
+### The up-only ratchet had a failure mode
+
+`ADOPTING_SURFACE_BASELINE` counts product surfaces that record into the
+canonical loop and may only grow. That is the right pressure and it has a hole:
+**it can be satisfied by wiring the wrong thing.**
+
+Looking for a second adoption surface, the note payoff path is the obvious
+candidate — `note_payoff` is a registered engine, `POST :id/payoff/quotes` is
+unambiguously an act (the quote becomes a document a borrower is given), and it
+is the most economics-shaped route in the product. Wiring it would have raised
+the ratchet and looked like progress.
+
+It would have been a defect. `note_payoff_quotes` persists `engine_version` (NOT
+NULL), `day_count_convention` and the VERBATIM `engine_input_json` alongside
+every output — it is already a complete, recomputable, defensible economics
+record. `shared/economics/scenario.ts` names it in its own header as **the
+pattern the Scenario layer generalises**, not one it replaces. Recording a
+Scenario there would create a SECOND owner of the same canonical state.
+
+### The criterion, sharpened
+
+Unit 22 said: record where a number stops being exploratory and becomes an act.
+That is necessary and not sufficient. The full rule:
+
+> **Adopt where the reasoning would otherwise be LOST. Do not adopt where an
+> equivalent versioned record already owns that state.**
+
+`MUST_NOT_ADOPT` encodes it, so the ratchet cannot be satisfied harmfully. The
+guard also **checks its own justification** — it asserts `notes-vertical.ts`
+really does declare `engine_version` NOT NULL and `engine_input_json`, so the
+exemption cannot outlive the reason for it. An allowlist entry whose rationale
+has silently stopped being true is how every stale exemption in this repo began.
+
+Mutation-tested: adding a `recordScenario(` call to `routes-notes.ts` fails it.
+
+### What this unit deliberately did NOT do
+
+It did not wire a second surface. The remaining candidates were checked against
+the sharpened criterion and none passed: the rental comparison and the MAO
+endpoint are exploratory (no act), the public land calculator has no tenant, and
+the note payoff path already owns its state. **Adding a surface to move a number
+would be optimising for the ratchet rather than for the customer**, which is the
+failure the ratchet exists to detect in others.

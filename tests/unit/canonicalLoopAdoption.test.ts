@@ -78,6 +78,32 @@ const ADOPTING_SURFACES = [
  */
 const ADOPTING_SURFACE_BASELINE = 4;
 
+/**
+ * Surfaces that look like adoption candidates and MUST NOT become ones.
+ *
+ * An up-only count of adopting surfaces has a failure mode: it can be satisfied
+ * by wiring the wrong thing. The criterion is not "this route writes something"
+ * — it is **the reasoning would otherwise be LOST**. Where an equivalent
+ * versioned record already owns that state, adding a Scenario creates a SECOND
+ * owner of the same canonical state, which canonical law 1 forbids and which
+ * this repo's whole "do not build a second X" discipline exists to prevent.
+ *
+ * The note payoff path is the standing example, and it is the one most likely
+ * to be wired by mistake because it is the most obviously economics-shaped
+ * route in the product. `note_payoff_quotes` persists `engine_version` (NOT
+ * NULL), `day_count_convention` and the VERBATIM `engine_input_json` alongside
+ * every output — it is already a complete, recomputable, defensible economics
+ * record. `shared/economics/scenario.ts` names it in its own header as the
+ * pattern the Scenario layer GENERALISES rather than replaces.
+ */
+const MUST_NOT_ADOPT = [
+  {
+    file: "server/routes-notes.ts",
+    why: "note_payoff_quotes already persists engine_version + engine_input_json",
+    ownedBy: "shared/schema/notes-vertical.ts",
+  },
+] as const;
+
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
@@ -129,6 +155,28 @@ describe("a real customer surface writes into the canonical loop", () => {
     expect(ADOPTING_SURFACES.length).toBeGreaterThanOrEqual(
       ADOPTING_SURFACE_BASELINE,
     );
+  });
+
+  it("does not adopt where an equivalent record ALREADY owns the state", () => {
+    // The sharper form of unit 22's criterion, learned by checking the note
+    // payoff path and deciding NOT to wire it. "This route writes something" is
+    // not the test; "the reasoning would otherwise be lost" is.
+    const adopting = new Set(ADOPTING_SURFACES.map((s) => s.file));
+    for (const forbidden of MUST_NOT_ADOPT) {
+      expect(
+        adopting.has(forbidden.file),
+        `${forbidden.file} must NOT adopt — ${forbidden.why}`,
+      ).toBe(false);
+      // And it must not have quietly grown a scenario/decision write anyway.
+      const src = read(forbidden.file);
+      expect(src, `${forbidden.file} records a scenario`).not.toContain("recordScenario(");
+      expect(src, `${forbidden.file} records a decision`).not.toContain("recordDecision(");
+      // The claim that it already owns the state is itself checked, so this
+      // exemption cannot outlive the reason for it.
+      const owner = read(forbidden.ownedBy);
+      expect(owner).toMatch(/engineVersion: text\("engine_version"\)[\s\S]{0,40}\.notNull\(\)/);
+      expect(owner).toContain('engineInputJson: jsonb("engine_input_json")');
+    }
   });
 
   it("counts PRODUCT surfaces, not the canonical layers' own endpoints", () => {
