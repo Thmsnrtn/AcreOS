@@ -3275,3 +3275,66 @@ dropping `attachPermissionContext` from the create route.
 **Thread A is now complete.** Every declared permission this program found
 unenforced is enforced, and each fix ships with a registry that derives its
 surface from source.
+
+---
+
+## Unit 47 — An uncapped, undeletable array on the hot read path · this commit
+
+**Files:** `shared/schema.ts`, `server/routes-va-engine.ts`,
+`tests/unit/vaWorkflowBounds.test.ts` (new, 10 tests).
+
+### Three things wrong at once, and the third is why it matters
+
+`POST /api/va/workflows` appended a customer-authored workflow to
+`organizations.settings.va_workflows`:
+
+1. **No cap.** Every workflow ever created accumulated in one jsonb blob.
+2. **No delete and no update.** Create-and-list only, so it could only grow.
+3. **On the hot read path.** `getOrCreateOrg` resolves the org through
+   `getOrganizationByOwner`, which is `db.select()` with no column list — a
+   `SELECT *` on `organizations`. So this array is fetched on **every
+   org-scoped request the product makes**, not when someone opens the VA screen.
+
+Any one is survivable. Together, a customer who uses the feature makes every one
+of their own requests slower, permanently, with no way to undo it and nothing
+reporting it.
+
+The webhook endpoint list, in the neighbouring blob, has capped at 10 since it
+was written. **The rule existed and this surface did not apply it** — the shape
+units 30–46 kept finding, this time about resource bounds rather than
+permissions.
+
+### The cap and the delete shipped together
+
+A cap on a collection that cannot be pruned is not a fix, it is a wall: the org
+reaches 50 once and can never create another workflow. That is a **worse**
+outcome than the unbounded growth it replaces, and it is the obvious half-fix to
+make here — so `DELETE /api/va/workflows/:id` ships in the same change, reports
+`notFound` rather than dressing a no-op as a deletion, and preserves the rest of
+the settings blob (the invariant unit 43 derives from source).
+
+`va_workflows` is also now declared in the settings `$type<>` — unit 43's
+finding on a second field.
+
+### One of four, said out loud
+
+`routes-va-engine.ts` holds **three more** undeclared collections in the same
+blob — `va_tasks`, `va_escalations`, `va_scheduled_tasks` — each read through
+`(orgRecord as any).settings`, each with no cap and no delete path. They are the
+same defect and are **NOT fixed here**.
+
+Shipping one of four is exactly the inconsistency this program has spent units
+30–46 fixing, so it is not left implicit: a deliberately **inverted** assertion
+pins all three as still-unfixed and **fails the day someone fixes one**, at
+which point they extend this file rather than leave a half-true comment. The
+same technique as `BLOCKED_ON_A_REAL_LINK` in unit 45.
+
+The reason for stopping at one is context budget, not judgement about the other
+three: each needs its own cap, delete path and type declaration, and a
+half-finished sweep across four is worse than one complete fix plus an honest,
+enforced record of the remainder.
+
+### Verification
+
+Three mutations, each caught: removing the cap, removing the delete route, and
+raising the cap to a decorative 100,000.

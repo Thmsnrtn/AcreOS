@@ -152,6 +152,40 @@ export const organizations = pgTable("organizations", {
       order: string[];
       visibility: Record<string, boolean>;
     };
+    /**
+     * VA workflow definitions, authored by the customer.
+     *
+     * Stored here rather than in a table of their own, which is the shape that
+     * makes the cap below load-bearing: `organizations` is SELECTed in full on
+     * EVERY org-scoped request (getOrCreateOrg → getOrganizationByOwner), so
+     * this array rides along on every read the product does. It had no cap and
+     * no delete path — only create and list — so it grew forever.
+     *
+     * Declared here rather than reached through `(org as any).settings`, for
+     * the same reason as `simulationMode` below: a field outside its column's
+     * own type cannot be carried by a typed write and can be erased by one.
+     */
+    va_workflows?: Array<{
+      id: string;
+      organizationId: number;
+      createdByUserId?: string | null;
+      name: string;
+      description?: string;
+      triggerType?: string;
+      triggerConfig?: Record<string, unknown>;
+      steps: Array<{
+        stepNumber: number;
+        title?: string;
+        category?: string;
+        description?: string;
+        assignToRole?: string;
+        estimatedMinutes?: number;
+        dependsOnStep?: number | null;
+      }>;
+      status?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    }>;
     // Per-org simulation kill-switch — layer 3 of server/utils/simulationMode.ts
     // ("the single source of truth for no real-world side effects"). Read by
     // isOrgSimulated(); when true, no mail, SMS, email or webhook leaves the

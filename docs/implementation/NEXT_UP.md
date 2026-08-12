@@ -359,6 +359,31 @@ from hand-checking the entries whose names sounded safety-relevant. **Sorting th
 noise by consequence and hand-checking the top of it beat improving the
 detector.** That is probably the right technique for this class in general.
 
+### THREE MORE unbounded collections in the org settings blob (unit 47)
+
+The clearest remaining piece of ordinary work, and it is three near-identical
+repetitions of a fix that is already written down.
+
+`organizations.settings` is `SELECT *`-ed on every org-scoped request
+(`getOrCreateOrg` → `getOrganizationByOwner`). `routes-va-engine.ts` keeps four
+customer-writable arrays in it. Unit 47 fixed **one**:
+
+| collection | declared in `$type<>` | cap | delete path |
+|---|---|---|---|
+| `va_workflows` | ✅ (unit 47) | ✅ 50 | ✅ (unit 47) |
+| `va_tasks` | ❌ `as any` | ❌ | ❌ |
+| `va_escalations` | ❌ `as any` | ❌ | ❌ |
+| `va_scheduled_tasks` | ❌ `as any` | ❌ | ❌ |
+
+Follow unit 47 exactly: declare the field, cap it, **and ship the delete path in
+the same change** — a cap without one is a wall, which is worse than the
+unbounded growth it replaces. `va_tasks` already uses an atomic `jsonb_set`
+write (a 2026-07 audit fixed its read-modify-write race), so preserve that.
+
+`vaWorkflowBounds.test.ts` pins all three as unfixed with an INVERTED assertion
+that fails the day one is fixed — so the work announces itself rather than
+sitting in prose.
+
 ### A small consolidation, sized and left alone (unit 44)
 
 `formatCents` now has a canonical home in `shared/finance/cents.ts`, beside

@@ -2007,6 +2007,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/va/workflows — create multi-step workflow
+  /** Bounded because this array lives in a blob read on every request. */
+  const MAX_VA_WORKFLOWS = 50;
+
   api.post("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -2040,15 +2043,28 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       };
 
       const orgRecord = await storage.getOrganization(org.id);
-      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
-      workflows.push(workflow);
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
+
+      // BOUNDED, because of where these live. `organizations.settings` is
+      // SELECTed in full on every org-scoped request (getOrCreateOrg →
+      // getOrganizationByOwner), so this array rides along on every read the
+      // product does — and this route had no cap and no delete path, only
+      // create and list, so it grew forever. The webhook endpoint list in the
+      // neighbouring blob has capped at 10 since it was written.
+      if (workflows.length >= MAX_VA_WORKFLOWS) {
+        return Errors.badRequest(
+          res,
+          `Maximum ${MAX_VA_WORKFLOWS} VA workflows per organization. ` +
+            `Delete one you no longer use first.`,
+        );
+      }
 
       await storage.updateOrganization(org.id, {
         settings: {
-          ...(orgRecord as any)?.settings,
-          va_workflows: workflows,
+          ...(orgRecord?.settings ?? {}),
+          va_workflows: [...workflows, workflow],
         },
-      } as any);
+      });
 
       res.status(201).json({ success: true, workflow });
     } catch (error: any) {
@@ -2062,10 +2078,41 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const orgRecord = await storage.getOrganization(org.id);
-      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
       res.json({ workflows });
     } catch (error: any) {
       logger.error("Get workflows error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // DELETE /api/va/workflows/:id — remove one.
+  //
+  // Added WITH the cap, not after it. A cap on a collection that cannot be
+  // pruned is a wall: the org reaches it once and can never create another
+  // workflow, which is a worse outcome than the unbounded growth it replaces.
+  api.delete("/api/va/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const orgRecord = await storage.getOrganization(org.id);
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
+      const remaining = workflows.filter((w) => w.id !== req.params.id);
+
+      // Say so rather than reporting a no-op as a deletion.
+      if (remaining.length === workflows.length) {
+        return Errors.notFound(res, "Workflow");
+      }
+
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord?.settings ?? {}),
+          va_workflows: remaining,
+        },
+      });
+
+      res.json({ success: true, deleted: req.params.id, remaining: remaining.length });
+    } catch (error: any) {
+      logger.error("Delete workflow error", error);
       Errors.internal(res, error);
     }
   });
