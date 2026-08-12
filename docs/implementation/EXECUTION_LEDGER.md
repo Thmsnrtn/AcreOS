@@ -1554,3 +1554,66 @@ line shift.
 baselines · **full unit suite 659 files, 8,658 tests, 1 skipped, 0 failures.**
 Mutation-tested: recording on every patch rather than transitions, and throwing
 from the bookkeeping catch, each fail.
+
+---
+
+## Unit 24 — The customer is finally asked · this commit
+
+**Audit requirement:** the loop must close where the customer is. Also the
+five-fixed-doors rule and the UI patterns in `CLAUDE.md`.
+
+**Files:** `client/src/components/today/OutcomePrompt.tsx` (new),
+`client/src/pages/today.tsx`, `shared/architecture/canon.ts`,
+`tests/unit/canonicalLoopAdoption.test.ts` (ratchet 2 → 3, +8 tests).
+
+**The first CLIENT surface in the whole program.** Units 2–23 were entirely
+server-side: the loop could be entered by an API caller and by two server
+routes, and the customer was never asked anything and never told anything.
+
+### Why a Today card and not a route
+
+The customer nav is five fixed doors and no new surface may become a sixth. This
+is an ATTENTION item — "three decisions are waiting on you" — and Today is the
+attention door, so it is a card there. Nothing was added to `NAV_MODULES` or
+`nav-items.ts`, and a test asserts both.
+
+### What it refuses to do
+
+- **`still open` is an ANSWER, not a dismissal**, and there is deliberately no
+  dismiss control. A card you can only silence by claiming a result is a card
+  that manufactures results. "Still open" appends an interim observation, which
+  is what the immutable record needs to stay honest about an unresolved position
+  — and the server already counts those, so the card can say "checked 2× already"
+  rather than asking as though for the first time. That is the difference between
+  a prompt and a nag.
+- **It asks for NO numbers.** An outcome's `actuals` are measurements, and a
+  figure typed into a prompt three months later to clear a card is not one. The
+  metrics stay `unmeasured` — which is true — until something measures them. A
+  test pins the absence of any `<Input`.
+- **It pre-selects nothing.** A default selection is a guess wearing the user's
+  signature.
+
+### A real user-facing bug, caught by an existing gate
+
+The card used `animate="show"`. The shared variants are named `hidden`/`visible`,
+so **the entire list would have rendered stuck at opacity 0** — a card that shows
+nothing and throws nothing, the hardest kind of front-end defect to notice.
+`animationVariantNames.test.ts` caught it in the full-suite run. That test exists
+because this has happened before, which is the argument for keeping narrow
+gates like it.
+
+### Two of my own test bugs, fixed
+
+- The adoption ratchet's assertion appended `(` to each claimed write, which
+  suits a function name and made the check **unsatisfiable** for a client surface
+  whose writes are URLs. The entries now carry their exact literal.
+- The "no dismissal" assertion scanned the whole file, including the header
+  paragraph explaining *why* there is no dismiss — so it failed on the prose that
+  documents the rule. It now strips comments first, like every other
+  code-must-hold assertion in the file.
+
+**Gates:** `npm run check` PASS (22 lints, including the client-side eslint
+ratchet — the first draft used a bare `"Cancel"` where the repo keeps one verb
+vocabulary in `@/lib/labels`) · tsc clean · reachability at all four baselines ·
+**full unit suite 659 files, 8,666 tests, 1 skipped, 0 failures.** Mutation-tested:
+removing `still_open` and dropping the calibration invalidation each fail.

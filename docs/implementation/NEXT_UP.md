@@ -147,10 +147,15 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     `offer_accepted` / `offer_rejected` outcome against it, with NO actuals
     (accepting resolves the offer; it measures nothing that was forecast).
     Adoption ratchet 1 → 2.
+24. **The customer is finally ASKED** — `OutcomePrompt.tsx`, a Today card
+    rendering `GET /api/decisions/due`. The first CLIENT surface in the whole
+    program; units 2–23 were entirely server-side. `still_open` is an answer,
+    not a dismissal; it asks for no numbers; it pre-selects nothing. Adoption
+    ratchet 2 → 3.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,658 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,666 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -189,11 +194,25 @@ In order:
   no org and no auth — there is no tenant to record against. An in-app land
   surface needs finding first, and it may not exist, in which case say so.
 
-  The real next candidate is **(c) client rendering.** Still zero references to
-  `/api/decisions/due` or `/api/decisions/calibration` under `client/src` — the
-  outcome prompt and the calibration exist and nothing shows them, so the
-  customer is never asked and never told. Inside the existing
-  Deals/Finance/Today doors: **never a new nav entry**, and Pax stays ambient.
+  **Next: render the CALIBRATION.** Unit 24 wired the asking half
+  (`/api/decisions/due` → a Today card). The customer is now asked and still
+  never TOLD: nothing under `client/src` calls `/api/decisions/calibration`, so
+  the answers they give feed an instrument they cannot see. That is the
+  remaining half of the same loop, and it belongs behind **Deals** or
+  **Finance** as a section — not on Today, which is for what needs attention
+  now, and a calibration is a reference view. Render `describeCalibration`'s
+  lines verbatim rather than inventing a new phrasing: the server already
+  refuses to claim a direction below six comparisons, and a client that
+  paraphrases will eventually paraphrase that refusal away.
+  **Never a new nav entry**, and Pax stays ambient.
+
+  **A note on UI gates, learned in unit 24.** The client has its own ratchets
+  and they bite: `acreos/prefer-verbs-canon` (one verb vocabulary in
+  `@/lib/labels` — a bare `"Cancel"` fails), and `animationVariantNames` (the
+  shared stagger variants are `hidden`/`visible`; `animate="show"` leaves the
+  whole list stuck at opacity 0 and throws nothing). Copy an existing Today card
+  as the template — `ParcelAlerts.tsx` is the closest — and run the full suite,
+  not just the new file's test.
 
   **The lesson unit 22 paid for:** every gate passed for seven units while the
   loop had no customers. `lint:reachability` was satisfied because the routes

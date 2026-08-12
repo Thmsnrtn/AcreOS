@@ -922,9 +922,16 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "every calibration above it, and it records NO actuals: accepting " +
         "resolves the OFFER and measures none of what was forecast, so profit " +
         "and ROI stay `unmeasured` until the deal closes and resells. " +
-        "REMAINING GAP: still no CLIENT code calls " +
-        "/api/decisions/due or /api/decisions/calibration, so the prompt and the " +
-        "calibration exist and nothing renders them.",
+        "The CUSTOMER is finally asked: the Today card " +
+        "OutcomePrompt.tsx renders GET /api/decisions/due and records the answer " +
+        "— behind the Today door as a CARD, not a sixth nav entry. It offers " +
+        "`still_open` as a real answer rather than a dismissal (a card you can " +
+        "only silence by claiming a result manufactures results), asks for NO " +
+        "numbers (a figure typed to clear a card is not a measurement, so the " +
+        "metrics stay honestly `unmeasured`), pre-selects nothing, and shows how " +
+        "many times it has already asked. REMAINING GAP: no client surface " +
+        "renders /api/decisions/calibration, so the customer is now asked but " +
+        "still never told what their forecasts are doing.",
     },
   },
   {

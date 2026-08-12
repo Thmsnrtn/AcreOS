@@ -43,14 +43,21 @@ const ADOPTING_SURFACES = [
     // Drafting an offer is the moment the number stops being exploratory and
     // becomes a document. Recording on every MAO recompute would fill the
     // tables with keystrokes instead.
-    writes: ["recordScenario", "recordDecision"],
+    writes: ["recordScenario(", "recordDecision("],
   },
   {
     file: "server/routes-va-engine.ts",
     what: "an offer resolving to accepted or rejected",
     // The other end of the same surface. Without it the decisions unit 22
     // records are ungradeable: something has to observe what happened.
-    writes: ["recordOutcome"],
+    writes: ["recordOutcome("],
+  },
+  {
+    file: "client/src/components/today/OutcomePrompt.tsx",
+    what: "the Today card that asks what happened",
+    // The first CLIENT surface in the loop. Everything before it was
+    // server-side: the customer was never asked and never told.
+    writes: ["/api/decisions/due", "/outcomes`"],
   },
 ] as const;
 
@@ -62,10 +69,19 @@ const ADOPTING_SURFACES = [
  * what it did — which is precisely the regression the canonical layers exist to
  * prevent, and it would otherwise be invisible.
  */
-const ADOPTING_SURFACE_BASELINE = 2;
+const ADOPTING_SURFACE_BASELINE = 3;
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
+}
+
+/** Source minus comments — a rule must hold in CODE, not in the prose about it. */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
+    .join("\n");
 }
 
 /**
@@ -90,9 +106,10 @@ describe("a real customer surface writes into the canonical loop", () => {
     for (const surface of ADOPTING_SURFACES) {
       const src = read(surface.file);
       for (const fn of surface.writes) {
-        expect(src, `${surface.file} (${surface.what}) does not call ${fn}`).toContain(
-          `${fn}(`,
-        );
+        // The literal is exact rather than having `(` appended: a client
+        // surface's write is a URL, not a function call, and appending `(`
+        // silently made this assertion unsatisfiable for one.
+        expect(src, `${surface.file} (${surface.what}) does not reach ${fn}`).toContain(fn);
       }
     }
   });
@@ -265,5 +282,72 @@ describe("the loop CLOSES on that surface — the offer is gradeable", () => {
     const body = catchBody(block, 0);
     expect(body).toContain("logger.warn");
     expect(body).not.toMatch(/throw|Errors\./);
+  });
+});
+
+describe("the customer is finally ASKED — and the asking is honest", () => {
+  const card = read("client/src/components/today/OutcomePrompt.tsx");
+  const today = read("client/src/pages/today.tsx");
+
+  it("is rendered on Today, not behind a sixth door", () => {
+    // The customer nav is five fixed doors and no new surface may become a
+    // sixth. This is an attention item and Today is the attention door, so it
+    // is a CARD there — nothing is added to NAV_MODULES.
+    expect(today).toContain("<OutcomePrompt />");
+    expect(read("client/src/components/layout-sidebar.tsx")).not.toContain("OutcomePrompt");
+    expect(read("client/src/lib/nav-items.ts")).not.toContain("outcome");
+  });
+
+  it("offers `still open` as an ANSWER, never a dismissal", () => {
+    // A card you can only silence by claiming a result is a card that
+    // manufactures results. "Still open" appends an interim observation, which
+    // is what the immutable record needs to stay honest about an unresolved
+    // position — and there is deliberately no "dismiss".
+    expect(card).toContain('kind: "still_open"');
+    // Comments stripped: the header explains WHY there is no dismiss, so
+    // scanning the prose finds the word it exists to forbid.
+    expect(stripComments(card)).not.toMatch(/dismiss|snooze|remind me later/i);
+  });
+
+  it("asks for NO numbers", () => {
+    // An outcome's `actuals` are MEASUREMENTS. A figure typed into a prompt
+    // three months later to clear a card is not one, and the variance layer
+    // reporting `unmeasured` is the true answer until something measures it.
+    expect(card).toMatch(/actuals:\s*\[\]/);
+    expect(card).not.toMatch(/<Input/);
+  });
+
+  it("never pre-selects an answer", () => {
+    // A default selection is a guess wearing a user's signature. The panel opens
+    // with nothing chosen.
+    expect(card).toMatch(/useState<number \| null>\(null\)/);
+    expect(card).not.toMatch(/defaultValue=|defaultChecked/);
+  });
+
+  it("shows how many times it has already asked", () => {
+    // Someone who has answered "still open" twice is being asked a third time.
+    // Saying so is the difference between a prompt and a nag.
+    expect(card).toContain("interimObservations");
+  });
+
+  it("uses the house loading, empty and error states rather than a spinner", () => {
+    expect(card).toContain("<Skeleton");
+    expect(card).toContain("<EmptyState");
+    expect(card).toContain("<QueryErrorState");
+    expect(card).toContain("staggerContainer");
+  });
+
+  it("invalidates the calibration when an outcome lands", () => {
+    // The whole reason to ask is that the answer feeds calibration. A stale
+    // calibration after recording would show the customer a number that no
+    // longer reflects what they just told us.
+    expect(card).toContain('queryKey: ["/api/decisions/calibration"]');
+    expect(card).toContain('queryKey: ["/api/decisions/due"]');
+  });
+
+  it("labels the answer group for a screen reader", () => {
+    // Six unlabelled buttons in a row are meaningless out of visual context.
+    expect(card).toMatch(/role="group"/);
+    expect(card).toMatch(/aria-label=\{`Record what happened to/);
   });
 });
