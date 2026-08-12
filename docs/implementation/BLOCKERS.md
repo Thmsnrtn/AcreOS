@@ -163,3 +163,65 @@ Verified by the adversarial pass and left for a later unit:
 - **Two same-named mail transports** (`directMail.ts` class vs
   `directMailService.ts` functions) — see `ARCHITECTURE_DELTA.md`, disposition
   MERGE.
+
+---
+
+## B8 — A second webhook rail exists, fully built and entirely unmounted
+
+**Found:** unit 42, while deriving the webhook event catalogue.
+**Blocked on:** a founder decision, at a trigger that has not fired.
+
+**A correction first, because this entry was nearly written wrong.** The draft
+said "two customer-facing rails, both reachable today." `B7` already recorded
+that `registerPublicApiV1` has zero callers, and checking HEAD confirmed it: the
+public rail is **not mounted at all**. The §6a rule caught a claim of this
+program's own making before it shipped. What follows is the verified state.
+
+### What is actually live
+
+| | legacy rail | public v1 rail |
+|---|---|---|
+| store | `organization_integrations.credentials.endpoints` (jsonb) | `webhook_subscriptions` (real table) |
+| registrar | mounted | `registerPublicApiV1` — **never called** |
+| API | `/api/webhooks` | `/api/v1/webhooks` — see below |
+| UI | Settings → Webhooks (live) | `client/src/pages/settings/api-keys.tsx` — **not routed in App.tsx**, and it calls `/api/admin/api-keys` in the unmounted `routes-api-keys.ts` |
+| events declared | 36 | 8 |
+| **events emitted** | **1** — `lead.created`, `routes-leads.ts` | 3, but from `server/api-v1/*` files that are never registered |
+| signing | `X-AcreOS-Signature: sha256=<hex>` | `AcreOS-Signature: t=…,v1=…` (Stripe-style) |
+| retries / DLQ / delivery log | 3 in-process attempts, none, none | 5 attempts + backoff table, DLQ, `webhook_delivery_log` |
+
+**`/api/v1/*` is not the public API.** `routes.ts` mounts
+`app.use("/api/v1/{*splat}", …)` as a passthrough that rewrites `/api/v1/x` to
+`/api/x`. So a client calling `/api/v1/webhooks` today reaches the **legacy**
+route. The versioned prefix is an alias, not a separate surface.
+
+So there is one live rail with one emitter, and one complete, better-engineered
+rail sitting unmounted — which is **consistent with the expansion ladder**: *no
+public API before ~50 customers*. This is deferred infrastructure behaving
+correctly, not rot.
+
+### The decision, when the trigger fires
+
+At ~50 customers the public API is mounted. At that moment the Settings →
+Webhooks panel points at the weaker rail, and someone must choose whether
+customer-facing webhooks move to `webhook_subscriptions` (durable rows, delivery
+log, DLQ, Stripe-compatible signatures) or stay where they are. Either answer
+migrates live integration config, which is why it is not a refactor.
+
+### What was done instead, and why none of it is wasted
+
+Units 38–42 hardened the live rail without assuming an answer: the signing
+secret is redacted from reads and encrypted at rest, endpoints added through the
+panel actually fire, an unsignable endpoint is refused rather than delivered to
+unsigned, the event vocabulary is shared and validated, and non-live events are
+badged honestly. Every one of those is behaviour the survivor needs, and none
+deepens the duplication.
+
+### The one thing NOT to do
+
+Do not wire the five uncalled convenience wrappers
+(`webhookLeadStatusChanged`, `webhookDealCreated`, `webhookDealStageChanged`,
+`webhookPaymentReceived`, `webhookCampaignResponse`) into product code before
+this is decided. Adding emitters to the legacy rail is precisely the change that
+would make it expensive to retire — and `webhookEventCatalogue.test.ts` will
+force the catalogue to admit it the moment anyone does.

@@ -1711,6 +1711,49 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Maximum 10 webhook endpoints per organization");
       }
 
+      // Nothing validated this payload, which is the precondition for the two
+      // defects found in this area: the client and the server disagreed about
+      // both the ACTIVE flag's name and the EVENT vocabulary, and the column
+      // accepted either happily because it is opaque jsonb. A subscription to
+      // an event the dispatcher has never heard of is stored, displayed as
+      // ticked, and can never arrive — so it is refused here, by name, instead.
+      const {
+        isKnownWebhookEvent,
+        LEGACY_EVENT_RENAMES,
+        LEGACY_EVENTS_DROPPED,
+      } = await import("@shared/webhooks/catalogue");
+      const unknown = new Set<string>();
+      for (const ep of endpoints) {
+        if (!ep || typeof ep.url !== "string" || ep.url.length === 0) {
+          return Errors.badRequest(res, "Every webhook endpoint needs a url");
+        }
+        if (ep.events === "all") continue;
+        if (!Array.isArray(ep.events)) {
+          return Errors.badRequest(
+            res,
+            `Webhook endpoint ${ep.url}: events must be an array, or the string "all"`,
+          );
+        }
+        for (const e of ep.events) {
+          // Legacy names are accepted and repaired on the way in — they are the
+          // same intent under a name this codebase used to offer.
+          if (typeof e !== "string") { unknown.add(String(e)); continue; }
+          if (isKnownWebhookEvent(e)) continue;
+          if (e in LEGACY_EVENT_RENAMES) continue;
+          if (LEGACY_EVENTS_DROPPED.includes(e)) continue;
+          unknown.add(e);
+        }
+      }
+      if (unknown.size > 0) {
+        return Errors.badRequest(
+          res,
+          `Unknown webhook event(s): ${[...unknown].sort().join(", ")}. ` +
+            "A subscription to an event AcreOS does not emit would be stored and " +
+            "never delivered, so it is refused rather than accepted silently.",
+          { unknownEvents: [...unknown].sort() },
+        );
+      }
+
       const { saveWebhookEndpoints } = await import("./services/webhookDispatcher");
       await saveWebhookEndpoints(org.id, endpoints);
       res.json({ success: true, count: endpoints.length });

@@ -32,6 +32,11 @@ import { Verbs } from "@/lib/labels";
 import { SkeletonList } from "@/components/ui/skeleton-list";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import {
+  WEBHOOK_EVENT_CHOICES,
+  WEBHOOK_EVENT_GROUPS,
+  isLiveWebhookEvent,
+} from "@shared/webhooks/catalogue";
 
 interface WebhookEndpoint {
   url: string;
@@ -48,25 +53,15 @@ interface WebhookEndpoint {
   description?: string;
 }
 
-const ALL_EVENTS = [
-  { id: "lead.created", label: "Lead created", group: "Leads" },
-  { id: "lead.updated", label: "Lead updated", group: "Leads" },
-  { id: "lead.status_changed", label: "Lead status changed", group: "Leads" },
-  { id: "property.created", label: "Property created", group: "Properties" },
-  { id: "property.updated", label: "Property updated", group: "Properties" },
-  { id: "deal.created", label: "Deal created", group: "Deals" },
-  { id: "deal.closed", label: "Deal closed", group: "Deals" },
-  { id: "deal.status_changed", label: "Deal status changed", group: "Deals" },
-  { id: "payment.received", label: "Payment received", group: "Finance" },
-  { id: "payment.late", label: "Payment late", group: "Finance" },
-  { id: "campaign.sent", label: "Campaign sent", group: "Marketing" },
-  { id: "offer.sent", label: "Offer sent", group: "Marketing" },
-  { id: "offer.accepted", label: "Offer accepted", group: "Marketing" },
-  { id: "task.created", label: "Task created", group: "Tasks" },
-  { id: "task.completed", label: "Task completed", group: "Tasks" },
-];
-
-const EVENT_GROUPS = Array.from(new Set(ALL_EVENTS.map(e => e.group)));
+// The event picker is DERIVED from the shared catalogue, not hand-written.
+// It used to be a local list, and it had drifted: six of its fifteen events —
+// offer.sent, offer.accepted, deal.status_changed, payment.late,
+// property.updated, task.created — did not exist in the server's vocabulary at
+// all. Ticking one stored a string nothing would ever match, and this panel
+// showed it ticked. Four were near-miss renames of real events, which is what
+// made it survive: the list looked right, and nothing compared the two.
+const ALL_EVENTS = WEBHOOK_EVENT_CHOICES;
+const EVENT_GROUPS = WEBHOOK_EVENT_GROUPS;
 
 export default function WebhooksPage() {
   useDocumentTitle("Webhooks");
@@ -358,6 +353,22 @@ export default function WebhooksPage() {
                             onCheckedChange={v => toggleEvent(v as boolean, ev.id)}
                           />
                           <Label htmlFor={ev.id} className="text-xs cursor-pointer">{ev.label}</Label>
+                          {/*
+                            Says which subscriptions can actually arrive. Only
+                            events with a real dispatch call site fire today;
+                            offering the rest unmarked presents a subscription
+                            that cannot deliver as if it worked. Same discipline
+                            as the workflow builder's "Not yet live" badge.
+                          */}
+                          {!isLiveWebhookEvent(ev.id) && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] py-0 px-1 font-normal text-muted-foreground"
+                              title="Nothing emits this event yet. You can subscribe now — it will start delivering when the event ships."
+                            >
+                              Not yet live
+                            </Badge>
+                          )}
                         </div>
                       ))}
                     </div>

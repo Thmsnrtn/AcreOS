@@ -23,53 +23,19 @@ import { createHmac } from "crypto";
 import { logger } from "../utils/logger";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
 import { encrypt, decrypt, isEncrypted } from "./fieldEncryption";
+import {
+  type WebhookEventId,
+  normalizeSubscribedEvents,
+} from "@shared/webhooks/catalogue";
 
-export type WebhookEventType =
-  // Lead lifecycle
-  | 'lead.created'
-  | 'lead.updated'
-  | 'lead.deleted'
-  | 'lead.responded'
-  | 'lead.status_changed'
-  | 'lead.score_changed'
-  // Deal lifecycle
-  | 'deal.created'
-  | 'deal.stage_changed'
-  | 'deal.closed_won'
-  | 'deal.closed_lost'
-  | 'deal.closed'
-  | 'deal.offer_sent'
-  | 'deal.offer_accepted'
-  // Property
-  | 'property.created'
-  | 'property.enriched'
-  | 'property.lcs_updated'
-  // Note lifecycle
-  | 'note.created'
-  | 'note.payment_received'
-  | 'note.payment_overdue'
-  | 'note.paid_off'
-  | 'note.delinquent'
-  // Payment
-  | 'payment.received'
-  | 'payment.overdue'
-  | 'payment.failed'
-  // Campaign
-  | 'campaign.sent'
-  | 'campaign.response_received'
-  | 'campaign.response'
-  // Marketplace
-  | 'listing.created'
-  | 'listing.offer_received'
-  | 'listing.sold'
-  // System
-  | 'deal_feed.generated'
-  | 'compliance.alert'
-  | 'agent.action_taken'
-  // Legacy
-  | 'sms.reply'
-  | 'sequence.completed'
-  | 'task.completed';
+/**
+ * The event vocabulary now lives in `@shared/webhooks/catalogue`, so the
+ * settings panel offers exactly what the dispatcher understands. It used to be
+ * declared here and hand-copied into the client, and the two had drifted: six
+ * of the fifteen events a customer could subscribe to did not exist on the
+ * wire at all.
+ */
+export type WebhookEventType = WebhookEventId;
 
 export interface WebhookEndpoint {
   url: string;
@@ -173,7 +139,17 @@ async function readStoredEndpoints(organizationId: number): Promise<StoredWebhoo
  */
 function openSecret(stored: StoredWebhookEndpoint): WebhookEndpoint {
   const { secret, enabled, ...withoutSecret } = stored;
-  const rest = { ...withoutSecret, isActive: isEndpointActive(stored) };
+  const rest = {
+    ...withoutSecret,
+    isActive: isEndpointActive(stored),
+    // Subscriptions stored under names the old picker offered but the wire
+    // never carried — `offer.accepted` for `deal.offer_accepted`, and three
+    // more. Normalised here so an existing customer's subscription starts
+    // matching without them having to re-tick a box. See the catalogue.
+    events: Array.isArray(stored.events)
+      ? (normalizeSubscribedEvents(stored.events) as WebhookEventId[])
+      : stored.events,
+  };
   if (!secret) return { ...rest };
   if (!isEncrypted(secret)) return { ...rest, secret };
   try {
@@ -246,6 +222,11 @@ export async function getWebhookEndpointsForDisplay(
     return {
       ...rest,
       isActive: isEndpointActive(e),
+      // Same normalisation as the dispatcher's read: the panel must show the
+      // subscription that will actually be matched, not the one on disk.
+      events: Array.isArray(e.events)
+        ? (normalizeSubscribedEvents(e.events) as WebhookEventId[])
+        : e.events,
       hasSecret: typeof secret === "string" && secret.length > 0,
     };
   });
@@ -338,7 +319,13 @@ export async function saveWebhookEndpoints(
     // One name for one fact. `enabled` is accepted (an older client build may
     // still send it) and normalised away, never stored alongside `isActive` —
     // two fields for one state is how they came to disagree.
-    const rest = { ...withoutDerived, isActive: isEndpointActive(e) };
+    const rest = {
+      ...withoutDerived,
+      isActive: isEndpointActive(e),
+      events: Array.isArray(e.events)
+        ? (normalizeSubscribedEvents(e.events) as WebhookEventId[])
+        : e.events,
+    };
     // `||` not `??`, deliberately: an empty-string secret is far more likely to
     // be a blank form field than an intent to turn signing off, and this
     // function exists to stop a key being destroyed by accident. Clearing a

@@ -289,6 +289,45 @@ invisible file-by-file and obvious the moment the set is enumerated — which is
 why unit 40's registry derives the reader set from source, and why a
 hand-written list is what let the split persist.
 
+**Units 41–42 are the same question asked of NAMES rather than shapes**, and the
+webhooks panel answered it twice:
+
+- **unit 41** — the panel wrote `enabled`, the dispatcher read `isActive`. Every
+  endpoint added through the UI was structurally incapable of firing, and the
+  UI badged it "Active".
+- **unit 42** — the panel offered 15 events, 6 of which did not exist on the
+  wire (4 were near-miss renames of real ones), and of the 36 declared events
+  exactly ONE has an emitter.
+
+**THE PRECONDITION IS WORTH REMEMBERING, because it tells you where to look
+next:** both survived because the payload crossed the wire into an **opaque
+jsonb column with no validation**. Where a zod schema or a typed table column
+mediates, a name mismatch is caught by tsc or by the parse. Where the server
+persists a client-supplied structure verbatim, the two ends can disagree
+forever and nothing errors.
+
+So: **find the routes that persist client-supplied structures into jsonb without
+validating them.** That is the remaining surface of this class. A key-name sweep
+does NOT find it — one was attempted against all client mutation payloads and
+returned zero, and it was wrong: `enabled` appears in ~100 server files, just
+never in the code that reads that endpoint. Presence-anywhere is not the test.
+
+### The second webhook rail — recorded in BLOCKERS as B8, not a task
+
+There is a complete second webhook system (`webhook_subscriptions`,
+`publicWebhookDispatcher`, `server/api-v1/*`) that is **entirely unmounted**:
+`registerPublicApiV1` has zero callers, its UI page is not routed, and
+`/api/v1/*` is only a passthrough alias that rewrites to `/api/*`. That is the
+expansion ladder working — *no public API before ~50 customers* — not rot.
+
+Read **B8** before touching webhooks. The short version: one live rail with one
+emitter, one better-engineered rail waiting for its trigger, and the decision
+between them is founder-level because either answer migrates live integration
+config. Units 38–42 hardened the live rail without assuming an answer.
+
+**Do not wire the five uncalled convenience wrappers into product code.** Adding
+emitters to the legacy rail is the change that makes it expensive to retire.
+
 **THREAD A — SECURITY (units 30–35), now complete except one recorded residual.**
 Six units, six findings, all the same defect: *a rule that existed and was applied
 to some surfaces and not others.* The MFA gate protected 2 of 7 admin routes; the
@@ -433,6 +472,12 @@ once here, so it is recorded with the same weight:
 | This program wrote | HEAD says |
 |---|---|
 | "BRRRR still computes inline, outside the registry" (`canon.ts`, units 12–15) | **`BRRRR` appears nowhere in this repository.** The only occurrence of the string was that note. There was no inline arithmetic to register because there is no BRRRR feature. Corrected in unit 16. |
+| "Two customer-facing webhook rails, both reachable today" (unit 42, draft) | **The public rail is not mounted at all.** `registerPublicApiV1` has zero callers, its UI page is not routed in `App.tsx`, and `/api/v1/*` is a passthrough alias to `/api/*`. Caught before the entry shipped — by re-reading `BLOCKERS.md` B7, which had already recorded it. Corrected in B8. |
+
+The second row is the rule working rather than failing, and it is recorded for
+the same reason: **the check that caught it was reading what this program had
+already written down.** A prior unit's verified finding is worth as much as a
+fresh grep, and cheaper.
 
 The lesson is not "be careful with gap notes." It is that **a gap note is a
 factual claim about the repo and decays exactly like the audit's do.** Before

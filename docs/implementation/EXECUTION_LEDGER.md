@@ -2845,3 +2845,103 @@ beat the stored one, and reverting the client to `enabled`.
 The client assertion strips comments before checking, because the interface's
 doc comment mentions `enabled` on purpose — with a vacuity guard, since the
 assertion would otherwise pass against an empty string.
+
+---
+
+## Unit 42 — Fourteen of fifteen subscriptions could never arrive · this commit
+
+**Files:** `shared/webhooks/catalogue.ts` (new),
+`server/services/webhookDispatcher.ts`, `server/routes-integrations.ts`,
+`client/src/pages/webhooks.tsx`, `tests/unit/webhookEventCatalogue.test.ts`
+(new, 16 tests).
+
+### Found by asking unit 41's question of the next field along
+
+Unit 41 was a name mismatch on the ACTIVE flag. The obvious follow-up was
+whether the same payload's other field — the event list — agreed at both ends.
+It did not, and then the answer got worse twice.
+
+**First: six of the fifteen events the panel offered did not exist.** The
+dispatcher declared a 36-member union; the client had a hand-written 15-event
+picker; they overlapped by nine. Ticking `offer.sent`, `offer.accepted`,
+`deal.status_changed`, `payment.late`, `property.updated` or `task.created`
+stored a string nothing would ever match, and the panel showed it ticked.
+
+Four of the six are **near-miss renames** of real events —
+`deal.offer_sent`, `deal.offer_accepted`, `deal.stage_changed`,
+`payment.overdue`. That is what let it survive: every name is plausible, the
+list looks right, and nothing anywhere compared the two.
+
+**Second, and larger: of the 36 declared events, exactly ONE has a dispatch call
+site.** `lead.created`, from `routes-leads.ts`. The dispatcher exports five more
+convenience wrappers — `webhookLeadStatusChanged`, `webhookDealCreated`,
+`webhookDealStageChanged`, `webhookPaymentReceived`, `webhookCampaignResponse` —
+and **none of them is called from anywhere**. So even after unit 41 made
+endpoints capable of firing, one of the picker's boxes describes an event that
+can actually arrive.
+
+### Not hidden — said
+
+Hiding the thirteen would be the wrong fix: a customer may reasonably subscribe
+now to something that ships later, which is exactly what the workflow builder
+allows. So the panel **badges** every non-live event, and the catalogue is the
+one place both ends read.
+
+The liveness claim is **derived from call sites**, not listed. `CLAUDE.md`
+records why: Wave B wired four event lanes and added one to
+`shared/workflow-live-triggers.ts`, leaving six genuinely-firing triggers badged
+"Not yet live" while every agent reported success. So the test scans `server/`
+for both dispatch shapes — the direct `dispatchWebhook(org, 'x', …)` call and
+each convenience wrapper AT ITS CALL SITE, never at its definition — and
+requires `LIVE_WEBHOOK_EVENTS` to equal the derived set **in both directions**.
+Shipping an emitter without updating the catalogue fails; claiming an event is
+live without an emitter fails.
+
+### Legacy subscriptions: repaired, dropped, or kept — three different answers
+
+- The four near-miss renames are **normalised on read** (and on write, and on
+  the display path, so the panel shows the subscription that will actually be
+  matched). That is not rewriting intent; `offer.accepted` and
+  `deal.offer_accepted` are the same intent under a name the wire never carried.
+- `property.updated` and `task.created` have no counterpart and are **dropped**.
+  They were inert from the moment they were stored, and inventing a destination
+  would be a guess about what the customer meant.
+- An event name this codebase does not recognise at all is **kept**. This
+  function repairs names *we* got wrong; something unrecognised is the
+  customer's, and quietly deleting a customer's configuration is a worse failure
+  than leaving it unmatched.
+
+### The precondition, closed
+
+`PUT /api/webhooks` validated `Array.isArray(endpoints)` and a length cap.
+Nothing else. That is the precondition for both unit 41 and unit 42: an opaque
+jsonb column will accept any shape, so two ends can disagree indefinitely with
+no error anywhere. The route now refuses a genuinely unknown event **by name**,
+with the list in the message — accepting a subscription that cannot be delivered
+is the silent failure this whole area kept producing.
+
+### Verification
+
+Four mutations, each caught: claiming an event is live with no emitter; shipping
+an emitter without listing it (the Wave B direction); putting a phantom event
+back in the picker; and hardcoding a second list in the client.
+
+### What this did NOT do — and a claim it nearly shipped
+
+A second, complete webhook system exists (`webhook_subscriptions`,
+`publicWebhookDispatcher`, `server/api-v1/*`), and the first draft of blocker B8
+described it as a **second live rail**. That was wrong, and this program's own
+records caught it: `BLOCKERS.md` B7 had already noted that `registerPublicApiV1`
+has zero callers. Checking HEAD confirmed it — the public rail is **entirely
+unmounted**, its UI page is not routed in `App.tsx`, and `/api/v1/*` is only a
+passthrough alias that rewrites to `/api/*`, so `/api/v1/webhooks` reaches the
+LEGACY route.
+
+Which is the expansion ladder working — *no public API before ~50 customers* —
+rather than rot. The decision between the rails belongs to the moment that
+trigger fires, and it is recorded in **B8**, not taken here.
+
+Worth noting for its own sake: the check that caught the bad claim was **reading
+what this program had already written down**, not a fresh investigation. §6a of
+NEXT_UP records it alongside the BRRRR correction — one is the rule failing, the
+other is the rule working, and both are cheap only if the notes are read.
