@@ -359,6 +359,23 @@ from hand-checking the entries whose names sounded safety-relevant. **Sorting th
 noise by consequence and hand-checking the top of it beat improving the
 detector.** That is probably the right technique for this class in general.
 
+### Two note-payment data models — BLOCKERS B10, read before touching note money
+
+`notes`/`payments` (decimal strings, `parseFloat`) and
+`acquired_notes`/`note_payments` (integer cents) both exist, both have writers,
+and the house rule in `shared/finance/cents.ts` applies to one of them.
+
+`POST /api/notes/:id/record-payment` respects neither: it reimplements the
+principal/interest split in floats while `splitPaymentCents` exists and three of
+the four payment recorders use it, and it does a bare insert plus a separate
+update where `storage.createPayment` would give a transaction with a row lock.
+It has no client caller — the modal uses the cents-family route.
+
+**It was deliberately not fixed**, and B10 explains why: making it a correct
+writer of the legacy model is work thrown away if that model is being retired,
+and refusing it (unit 49's answer) is wrong because this route genuinely
+persists. Unit 49's routes stored nothing, so refusing removed only a lie.
+
 ### THREE MORE unbounded collections in the org settings blob (unit 47)
 
 The clearest remaining piece of ordinary work, and it is three near-identical

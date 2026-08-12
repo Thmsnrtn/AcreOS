@@ -279,3 +279,73 @@ which is the same decision above rather than a separate defect.
 
 `va_scheduled_tasks` should be resolved with this one. A read with no writer
 anywhere is the same subsystem's other half, and the same two answers apply.
+
+---
+
+## B10 — Two note-payment data models, and one writer that respects neither rule
+
+**Found:** unit 49→50, by asking whether `routes-elite-features.ts`'s other
+routes shared the shape unit 49 fixed.
+**Blocked on:** an architectural decision with founder weight — which note data
+model is canonical. **Not attempted here**, deliberately: this is money code and
+this session has no `DATABASE_URL`, so a rewrite could not be integration-tested.
+
+### Two families, both live
+
+| | legacy | cents family |
+|---|---|---|
+| tables | `notes`, `payments` (`shared/schema.ts`) | `acquired_notes`, `note_payments` (`shared/schema/notes-vertical.ts`) |
+| money | `numeric("current_balance")` — decimal strings, read with `parseFloat` | `bigint("current_balance_cents")` — integer cents |
+| writers | `achAutopay`, `atrSafeHarbor`, `propertyTaxService`, `noteRepo`, `routes-borrower`, `routes-elite-features` | `routes-notes`, `routes-servicer`, `portfolioPnl`, `form1098Batch`, `investorStatementBatch`, `servicerRemittance` |
+
+The house rule in `shared/finance/cents.ts` is explicit — *money is SUMMED and
+COMPARED in integer cents, never in JS floats* — and it names
+`server/services/notePaymentMath.ts` as the layer that "got this right from day
+one". The cents family follows it. The legacy family predates it.
+
+### The specific writer that respects neither
+
+`POST /api/notes/:id/record-payment` (`routes-elite-features.ts:45`):
+
+1. **Reimplements the principal/interest split in floats.**
+   `interestDue = currentBalance * monthlyRate`, then
+   `principalPaid = paidAmount - interestDue`. The canonical
+   `splitPaymentCents` exists and **three of the four payment recorders use
+   it** — `achAutopay`, `routes-borrower` (twice), and `paymentApplication`.
+   This one does not. The units 30–46 shape, on money.
+2. **Not transactional.** A bare `db.insert(payments)` followed by a separate
+   `db.update(notes)`. A failure between them leaves a **recorded payment
+   against an unreduced balance**. `storage.createPayment` — which this route
+   bypasses — wraps both in `withTransaction` with `SELECT FOR UPDATE` and an
+   optimistic-lock version check.
+3. **Credits tax escrow BEFORE the payment insert**, so a later failure leaves
+   an escrow credit with no payment behind it.
+
+**No client caller.** The record-payment modal calls `/api/notes/:id/payments`
+in `routes-notes.ts` — the cents-family route, which validates with zod, holds
+the note row inside a transaction, and returns a schedule and delinquency
+outcome. That is the good implementation, and it is the one the product uses.
+
+### Why this was not fixed here
+
+The obvious repair — route the elite handler through `splitPaymentCents` and
+`storage.createPayment` — would make it a *correct writer of the legacy model*,
+which is work thrown away if the legacy model is being retired. And it cannot
+be made to write the cents family without deciding that question.
+
+Refusing it (unit 49's answer) is **wrong here** and the distinction matters:
+unit 49's routes stored nothing, so refusing removed only a lie. This route
+genuinely persists, so refusing would remove working — if flawed — functionality
+from any caller outside this repo.
+
+### The question for the founder
+
+Is `acquired_notes` / `note_payments` the successor to `notes` / `payments`? If
+yes, the legacy writers are a migration list and this route is a deletion
+candidate. If they are genuinely different products (bought notes vs originated
+notes), then the legacy family needs `splitPaymentCents` and `withTransaction`
+applied to it, and this route is first in line.
+
+**Until then, do not "tidy" this handler.** Making it locally correct is the
+change most likely to be wasted, and the float math is the visible symptom of
+the model question rather than the defect itself.
