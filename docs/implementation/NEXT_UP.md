@@ -198,57 +198,40 @@ In order:
   no org and no auth — there is no tenant to record against. An in-app land
   surface needs finding first, and it may not exist, in which case say so.
 
-  **Next: render the CALIBRATION.** Unit 24 wired the asking half
-  (`/api/decisions/due` → a Today card). The customer is now asked and still
-  never TOLD: nothing under `client/src` calls `/api/decisions/calibration`, so
-  the answers they give feed an instrument they cannot see. That is the
-  remaining half of the same loop, and it belongs behind **Deals** or
-  **Finance** as a section — not on Today, which is for what needs attention
-  now, and a calibration is a reference view. Render `describeCalibration`'s
-  lines verbatim rather than inventing a new phrasing: the server already
-  refuses to claim a direction below six comparisons, and a client that
-  paraphrases will eventually paraphrase that refusal away.
-  **Never a new nav entry**, and Pax stays ambient.
+  **The customer-side loop is COMPLETE end to end** (units 22–25): a real
+  surface records the reasoning, the offer's resolution records the outcome, the
+  customer is asked what happened, and they are shown what their forecasts do.
+  The adoption ratchet is at 4.
+
+  **Next, in order of value:**
+
+  **(a) Widen adoption to a second product surface.** Exactly ONE product path
+  enters the loop — the fix-and-flip offer. Every other calculator still
+  computes for display and persists nothing. Apply unit 22's criterion to pick
+  the next: *record where a number stops being exploratory and becomes an act.*
+  Do NOT wire `POST /api/flip-analyzer/rental` (a comparison, no act) or
+  `LandDealCalculator.tsx` (the public embeddable marketing tool — no org, no
+  tenant to record against). Look for a moment that WRITES something: a deal
+  advancing a stage, an acquisition being recorded, a note being originated.
+
+  **(b) Ask for the review date in the UI.** `reviewDueAt` is null on every
+  decision the offer path records, because nothing in the request carries one —
+  so those decisions never reach the Today prompt. The server correctly refuses
+  to invent a date; the client has to ASK for one. This is the single cheapest
+  thing that would make the loop actually turn for a real customer.
+
+  **(c) Measure actuals somewhere.** Every outcome recorded so far carries
+  `actuals: []` — honestly, since nothing measures profit at offer acceptance.
+  Until some surface records a realised number, calibration will always report
+  `unmeasured`. The natural moment is a deal closing/reselling.
 
   **A note on UI gates, learned in unit 24.** The client has its own ratchets
   and they bite: `acreos/prefer-verbs-canon` (one verb vocabulary in
   `@/lib/labels` — a bare `"Cancel"` fails), and `animationVariantNames` (the
   shared stagger variants are `hidden`/`visible`; `animate="show"` leaves the
-  whole list stuck at opacity 0 and throws nothing). Copy an existing Today card
-  as the template — `ParcelAlerts.tsx` is the closest — and run the full suite,
-  not just the new file's test.
-
-  **The lesson unit 22 paid for:** every gate passed for seven units while the
-  loop had no customers. `lint:reachability` was satisfied because the routes
-  are mounted and the stores are called *by the routes*; the golden loops passed
-  because they exercise the layers directly. Nothing measured whether a PRODUCT
-  surface entered the loop, so nothing noticed that none did. That is what the
-  up-only ratchet now measures, and it deliberately excludes
-  `routes-decisions.ts` / `routes-scenarios.ts` — the loop's own front door
-  talking to itself is not adoption.
-
-**On the technique, which has earned its place:** five of the six defects this
-program has found came from golden loops, and every one was invisible to the
-per-layer suites — because each hand-builds the fixture for the layer below.
-Every input must be the previous layer's REAL output; the failure branches matter
-more than the happy ones; and **mutation-test the assertions themselves** — unit
-19's tenancy check passed against a deliberately nullable tenant key, and unit
-20 found unit 19's read-filter regex would have missed the very next query
-written.
-- **Adoption: no client surface calls `/api/scenarios`.** Verified 2026-08-12 —
-  zero references under `client/src`. The engines are reachable and persistable
-  and nothing persists. The customer calculators compute for DISPLAY only, so a
-  number a customer acted on is reconstructable only where a decision happened to
-  freeze it. Fix inside the existing Deals/Map surfaces — **never a new nav
-  entry** (five fixed doors).
-- **Prompt for outcomes.** Nothing asks a customer to record one, so the
-  Decision→Outcome loop closes only when someone chooses to close it. The
-  founder plane's due-outcome sweep (`outcomeLedger` / `decisionEval`) is the
-  pattern to study — do not invent a second one.
-- **Calibration across decisions** — the layer above a single variance.
-- **SMS + e-sign transports**, then widen `PROTECTABLE_SENDS` to count them.
-  The transport must be wired FIRST, or the ratchet becomes unlowerable and its
-  own test fails.
+  whole list stuck at opacity 0 and throws nothing). Copy an existing card as
+  the template — `ParcelAlerts.tsx` or `OutcomePrompt.tsx` — and run the FULL
+  suite, not just the new file's test.
 
 Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in
