@@ -36,6 +36,28 @@ const SERVER = path.join(ROOT, "server");
  * Deliberately NOT every I/O call. A duplicate READ is harmless; this is about
  * consequential WRITES to the outside world (BI73's consequence classes:
  * external communication and financial commitment).
+ *
+ * A TRAP THIS SCANNER WALKED INTO ONCE, AND NOW DOCUMENTS
+ * -------------------------------------------------------
+ * `directMailService` is exported by TWO different modules:
+ *
+ *   server/services/directMailService.ts — a FUNCTION module
+ *                                          (`export async function sendLetter`)
+ *   server/services/directMail.ts        — a CLASS instance
+ *                                          (`export const directMailService = new DirectMailService()`)
+ *
+ * Both call Lob directly. The symbol is identical at every call site, so a
+ * name-only scan cannot tell which transport a site uses — and the first
+ * version of this ratchet counted sites that call the CLASS while the
+ * idempotency option had only been added to the FUNCTION module. Passing a key
+ * at those sites would have lowered the number while protecting nothing, which
+ * is the worst possible outcome for a governance gate.
+ *
+ * Both transports now accept an `idempotencyKey`, so the count is honest either
+ * way. The duplication itself is a real BI67 violation (one capability
+ * interface per category, one adapter) and is recorded in
+ * docs/implementation/ARCHITECTURE_DELTA.md as a MERGE candidate — but merging
+ * two live mail paths is its own unit of work, not a side effect of this one.
  */
 const PROTECTABLE_SENDS = [
   { id: "directMailService.sendLetter", re: /directMailService\.sendLetter\s*\(/g },
@@ -165,14 +187,23 @@ describe("outward-action coverage", () => {
     ).toBe(UNPROTECTED_SEND_SITES_BASELINE);
   });
 
-  it("the transport accepts an idempotency key, so the ratchet CAN be lowered", () => {
+  it("BOTH same-named mail transports accept an idempotency key", () => {
     // A down-only ratchet with no mechanism to lower it is a permanent
-    // accusation, not a gate.
-    const dms = fs.readFileSync(
-      path.join(ROOT, "server/services/directMailService.ts"),
-      "utf8",
-    );
-    expect(dms).toMatch(/idempotencyKey\?\s*:\s*string/);
-    expect(dms).toContain("withOutwardAction");
+    // accusation, not a gate — and a ratchet whose "fix" is a no-op is worse
+    // than no ratchet. `directMailService` is exported by two different
+    // modules (see the note on PROTECTABLE_SENDS); if only one accepted a key,
+    // lowering this count would protect nothing at three of the four sites.
+    for (const rel of [
+      "server/services/directMailService.ts", // the function module
+      "server/services/directMail.ts", // the class instance
+    ]) {
+      const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      expect(src, `${rel} must accept an idempotencyKey`).toMatch(
+        /idempotencyKey\?\s*:\s*string/,
+      );
+      expect(src, `${rel} must route through the boundary`).toContain(
+        "withOutwardAction",
+      );
+    }
   });
 });

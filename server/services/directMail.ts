@@ -53,6 +53,14 @@ export interface PostcardOptions {
   back: string;  // HTML or URL
   to: DirectMailRecipient;
   from: DirectMailRecipient;
+  /**
+   * Stable key for THIS logical piece, derived from durable domain identity
+   * (a mailing_order_pieces id, a campaign piece id) — never a random value,
+   * which would defeat the mechanism on the retry it exists to protect.
+   * Requires `orgId`, since the claim is tenant-scoped.
+   * See server/services/actions/outwardAction.ts.
+   */
+  idempotencyKey?: string;
 }
 
 export interface LetterOptions {
@@ -62,6 +70,27 @@ export interface LetterOptions {
   color?: boolean;
   doubleSided?: boolean;
   pageCount?: number;
+  /** See PostcardOptions.idempotencyKey. Requires `orgId`. */
+  idempotencyKey?: string;
+}
+
+/**
+ * Raised when a mail piece for this idempotency key was already printed.
+ * Carries the real Lob id so the caller can record the send rather than
+ * repeating it.
+ */
+export class MailAlreadySentError extends Error {
+  constructor(
+    readonly actionKind: string,
+    readonly idempotencyKey: string,
+    readonly lobId: string | null,
+  ) {
+    super(
+      `${actionKind} for idempotency key "${idempotencyKey}" was already sent` +
+        (lobId ? ` (Lob id ${lobId})` : '') +
+        `. Not printing a second copy.`,
+    );
+  }
 }
 
 export interface MailEstimate {
@@ -211,7 +240,28 @@ export class DirectMailService {
     return false;
   }
 
+  /**
+   * Print and mail a postcard.
+   *
+   * When `options.idempotencyKey` and `orgId` are both present this runs
+   * through the outward-action boundary, so a job retrying after a partial
+   * success cannot print a second piece. See
+   * server/services/actions/outwardAction.ts.
+   */
   async sendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    if (options.idempotencyKey && orgId) {
+      return this.guardedSend(
+        orgId,
+        'physical_mail.postcard',
+        options.idempotencyKey,
+        { to: options.to, from: options.from, size: options.size, front: options.front, back: options.back, mode },
+        () => this.performSendPostcard(options, mode, orgId),
+      );
+    }
+    return this.performSendPostcard(options, mode, orgId);
+  }
+
+  private async performSendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
     // Honor SIMULATION_MODE / SIMULATION_MODE_LOB / org.settings.simulationMode.
     // Previously this service relied only on Lob's own `test_*` key for safety,
     // which made the global kill-switch a lie for direct-mail. Caught 2026-05-10.
@@ -291,7 +341,50 @@ export class DirectMailService {
     };
   }
 
+  /** See sendPostcard — same outward-action boundary when a key is supplied. */
   async sendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    if (options.idempotencyKey && orgId) {
+      return this.guardedSend(
+        orgId,
+        'physical_mail.letter',
+        options.idempotencyKey,
+        { to: options.to, from: options.from, file: options.file, color: options.color ?? false, doubleSided: options.doubleSided ?? false, mode },
+        () => this.performSendLetter(options, mode, orgId),
+      );
+    }
+    return this.performSendLetter(options, mode, orgId);
+  }
+
+  /**
+   * Run one consequential mail send at most once per (org, kind, key).
+   *
+   * On REPLAY this throws rather than returning a SendResult: the original
+   * expected-delivery date is not knowable at replay time, and inventing one is
+   * exactly the fabrication scripts/check-no-fabrication.mjs exists to prevent.
+   * The thrown error carries the real Lob id so the caller can record the send
+   * instead of repeating it.
+   */
+  private async guardedSend(
+    orgId: number,
+    actionKind: string,
+    idempotencyKey: string,
+    payload: unknown,
+    perform: () => Promise<SendResult>,
+  ): Promise<SendResult> {
+    const { withOutwardAction } = await import('./actions/outwardAction');
+    return withOutwardAction<SendResult>(
+      { organizationId: orgId, actionKind, idempotencyKey, payload },
+      async () => {
+        const result = await perform();
+        return { status: 'succeeded', externalId: result.id, result };
+      },
+      (externalId) => {
+        throw new MailAlreadySentError(actionKind, idempotencyKey, externalId);
+      },
+    );
+  }
+
+  private async performSendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
     const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
     if (shouldSimulate("lob", org)) {
       const sim = await recordSimulatedAction(

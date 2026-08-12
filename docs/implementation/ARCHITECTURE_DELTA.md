@@ -110,6 +110,28 @@ customer workflow — the API exists and is reachable, but an offer-send or a pa
 does not automatically write a snapshot. That wiring is the next increment for
 this layer.
 
+### Duplicate mail transport — a MERGE candidate found during unit 5
+
+`directMailService` is exported by **two different modules**, both of which call
+Lob directly:
+
+- `server/services/directMailService.ts` — a function module
+  (`export async function sendLetter`)
+- `server/services/directMail.ts` — a class instance
+  (`export const directMailService = new DirectMailService()`)
+
+The symbol is identical at every call site, so nothing at a call site reveals
+which transport it uses. This is a real BI67 violation — one capability
+interface per category, one adapter — and it very nearly produced a governance
+lie: the first version of the outward-action coverage ratchet counted sites
+calling the *class* while the idempotency option had only been added to the
+*function module*. Passing a key at those sites would have lowered the number
+while protecting nothing.
+
+Both now accept an `idempotencyKey`, so the count is honest either way.
+**Disposition: MERGE.** Collapsing two live mail paths is its own unit of work,
+not a side effect of another one.
+
 ### Layer 6 — Action & Workflow · **partial, and the next priority**
 
 *What exists and is good:* `workflow_runs` with durable `resumeAt`/`resumeState`

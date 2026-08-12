@@ -298,3 +298,43 @@ verified truth.
 
 **Gates:** `npm run check` PASS (22 lints) · reachability at baseline 654 · all
 ratchets at baseline · 22/22 new tests.
+
+---
+
+## Unit 6 — The ratchet was measuring the wrong module · this commit
+
+**Not a planned unit.** Found while starting the adoption work unit 5 pointed
+to, and worth its own entry because the failure class is the one CLAUDE.md warns
+about hardest.
+
+**What happened:** `directMailService` is exported by **two different modules**
+— `server/services/directMailService.ts` (a function module) and
+`server/services/directMail.ts` (a class instance). Both call Lob directly. The
+symbol is identical at every call site, so a name-only scan cannot tell them
+apart.
+
+Unit 5 added the `idempotencyKey` option to the **function module**. The
+coverage ratchet counted four sites — and three of them call the **class**.
+Passing a key at those sites would have **lowered the number while protecting
+nothing**: the worst possible outcome for a governance gate, and precisely the
+"built but unwired" defect this repo names as its most common.
+
+**Fix — the occurrence, not the baseline:**
+
+1. `directMail.ts` now accepts `idempotencyKey` on both `PostcardOptions` and
+   `LetterOptions` and routes through the same boundary via a private
+   `guardedSend`, throwing `MailAlreadySentError` on replay rather than
+   fabricating a delivery date.
+2. The ratchet's own header now documents the two-module trap, and a test
+   asserts **both** transports accept a key — so the count cannot become a lie
+   again.
+3. The duplication is recorded in `ARCHITECTURE_DELTA.md` as a real BI67
+   violation with disposition **MERGE**. Collapsing two live mail paths is its
+   own unit of work, not a side effect of this one.
+
+**Why this is in the ledger rather than folded silently into unit 5:** a gate
+that can be satisfied without improving anything is worse than no gate. The
+near-miss is the useful record.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
+22/22 outward-action tests.
