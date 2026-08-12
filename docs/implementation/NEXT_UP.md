@@ -95,6 +95,11 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 14. **Third engine** (`flip_mao`) — reuses profit/roi/total_cost so a flip and
     a land deal are comparable; caught a percent-vs-ratio 100x error at the
     adapter boundary.
+15. **Fourth engine** (`rental_returns`) — buy-and-hold NOI / cap rate / cash
+    flow / GRM. Widened `EngineSpec.compute` so an engine can DECLARE its own
+    assumptions: only the engine knows it substituted a 40%-of-rent expense
+    ratio, and without a way to say so the substitution vanishes into a
+    measured-looking NOI.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -110,36 +115,31 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Register the remaining vertical engines**, then prompt for outcomes.
+**Finish the engine registry (BRRRR), then prompt for outcomes.**
 
-BI191 is now satisfied at the contract level: two structurally different engines
-(`land_deal`, a cash-flow series; `note_payoff`, date-driven day-count accrual)
-share one metric vocabulary and overlap in no metric. Option (b) from the
-previous plan was taken — the registry is passed in rather than global — so no
-regulated code moved.
+BI191 is satisfied at the contract level: four structurally different engines
+(`land_deal` cash-flow series, `note_payoff` day-count accrual, `flip_mao`,
+`rental_returns`) share ONE metric vocabulary, so a flip, a hold and a land deal
+are comparable through normalised outputs (BI92). The registry is passed in
+rather than global, so no statute-adjacent code moved.
 
 In order:
-- **BRRRR and multifamily NOI engines.** Flip is done (`flip_mao`, wrapping
-  `computeMao`). The pattern is now three examples deep and mechanical: find the
-  function that already owns the arithmetic, wrap it in an `EngineSpec`, reuse
-  `profit`/`roi`/`total_cost` where the quantity is the same, and register it in
-  `server/services/economics/engines/index.ts`. **Check the units at the
-  boundary** — wrapping flip caught a percent stored under a ratio label, which
-  would have read as a 100x better return next to a land deal.
-  `computeRentalReturns` in `flipUnderwriting.ts` is the honest rental function
-  (it reports `expenseBasis`); prefer it over `calculateRentalAnalysis`, whose
-  40% expense fallback is an unlabelled assumption.
+- **BRRRR / multifamily NOI engines.** The pattern is four examples deep and
+  mechanical: find the function that already owns the arithmetic, wrap it in an
+  `EngineSpec`, reuse `profit`/`roi`/`total_cost`/`annual_noi` where the
+  quantity is the same, register it in
+  `server/services/economics/engines/index.ts`. Three rules learned the hard way:
+  (a) **check units at the boundary** — two of four adapters found a percent
+  being stored under a ratio label, a silent 100x; (b) **prefer the honest
+  function** where two exist — the one that reports what it substituted or
+  returns `null` for unknown, not the one that returns a confident number;
+  (c) if the engine substitutes a default, **declare it** via the
+  `assumptions` the `compute` return now carries, with
+  `origin: "platform-default"`.
 - **Prompt for outcomes.** Nothing asks a customer to record one, so the
   Decision→Outcome loop closes only when someone chooses to close it. The
   founder plane's due-outcome sweep (`outcomeLedger` / `decisionEval`) is the
   pattern to study — do not invent a second one.
-- **Calibration across decisions** — the layer above a single variance.
-- **SMS + e-sign transports**, then widen `PROTECTABLE_SENDS` to count them.
-  The transport must be wired FIRST, or the ratchet becomes unlowerable and its
-  own test fails.
-- **Prompt for outcomes.** Nothing asks a customer to record one, so the loop
-  closes only when someone chooses to close it. The founder plane's due-outcome
-  sweep (`outcomeLedger` / `decisionEval`) is the pattern to study.
 - **Calibration across decisions** — the layer above a single variance.
 - **SMS + e-sign transports**, then widen `PROTECTABLE_SENDS` to count them.
   The transport must be wired FIRST, or the ratchet becomes unlowerable and its

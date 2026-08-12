@@ -25,9 +25,11 @@
 import { CORE_ENGINES, type EngineSpec } from "@shared/economics/scenario";
 import { notePayoffEngine } from "./notePayoff";
 import { flipMaoEngine } from "./flipMao";
+import { rentalReturnsEngine } from "./rentalReturns";
 
 export const ALL_ENGINES: readonly EngineSpec[] = [
   ...CORE_ENGINES,
   notePayoffEngine,
   flipMaoEngine,
+  rentalReturnsEngine,
 ];

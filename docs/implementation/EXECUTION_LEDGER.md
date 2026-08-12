@@ -741,3 +741,58 @@ cents through or refuse a valid rate.
 
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
 78/78 across the three affected suites.
+
+---
+
+## Unit 15 — A fourth engine, and the contract gap it exposed · this commit
+
+**Audit requirement:** BK23 (deterministic economics kernel), BI92 (cross-strategy
+comparison through normalised scenario outputs), BI182 (explicit units), BI151
+(a substituted default must be visible as a default).
+
+**Files:** `server/services/economics/engines/rentalReturns.ts` (new),
+`engines/index.ts`, `shared/economics/scenario.ts` (four rental metrics; widened
+`EngineSpec.compute` return), `shared/architecture/canon.ts`. Tests: 46 in the
+scenario suite (8 new).
+
+**The engine had to be able to declare its own assumptions.** Until this unit
+`EngineSpec.compute` returned only `{metrics, normalisedInputs}` — assumptions
+came exclusively from the CALLER, on the reasonable theory that assumptions are
+things a human chose. Buy-and-hold disproved that. When no expense figure is
+supplied, the underlying maths substitutes a 40%-of-rent ratio; **only the engine
+knows the substitution happened**, and with no way to say so it would vanish into
+`annual_noi` and read as measured. So `compute` may now return
+`assumptions?: ScenarioAssumption[]`, and `computeScenario` merges caller-supplied
+and engine-declared ones. `origin: "platform-default"` exists precisely to keep a
+platform guess from later reading as what the customer believed; without this
+widening it could not have been used where it was most needed.
+
+**Which rental function to wrap was again the real decision** — the same fork as
+unit 14. `calculateRentalAnalysis` applies the same 40% substitution but returns
+no way to know it did; its own file comment says callers must use
+`computeRentalReturns`, "which reports `expenseBasis`, rather than rendering
+these numbers unlabelled." The adapter wraps the honest one, and the whole
+declared-assumption mechanism above exists to carry `expenseBasis` outward.
+
+**A test was wrong and the code was right.** A new test asserted that omitting
+expenses and passing an explicit `0` must produce different results — intuitive,
+and false here. `computeRentalReturns`'s contract is `0/omitted = unknown`,
+because a property with genuinely zero operating expenses does not exist, so an
+explicit `0` is a missing figure wearing a number's clothes. **The test was
+rewritten to pin the real contract** (an explicit `0` must still declare the
+substitution) rather than the code being bent to satisfy it, and the reasoning
+now lives in a comment in the adapter. Changing the code would have made `0`
+mean "no expenses" and produced an NOI equal to gross rent, presented as
+measured — the exact failure the substitution is declared to prevent.
+
+**The same 100x trap as unit 14, caught the same way.** `capRatePct` is a
+PERCENT; the registry's `cap_rate` is a RATIO. Converted at the boundary. Two
+adapters in a row have hit this, which is evidence the metric registry's unit
+column is doing real work rather than decorating.
+
+**Reuses `total_cost`** (BI92) so a hold and a flip and a land deal remain
+comparable; NOI, cash flow, cap rate and GRM are genuinely rental-specific and
+get their own ids.
+
+**Gates:** `npm run check` PASS (22 gates) · tsc clean · reachability at all four
+baselines · 64/64 across the scenario and canon suites.

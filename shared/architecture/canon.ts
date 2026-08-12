@@ -661,6 +661,7 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "shared/finance/cents.ts",
         "shared/calculators/landDeal.ts",
         "server/services/notePaymentMath.ts",
+        "server/services/economics/engines/index.ts",
         "scripts/check-no-fabrication.mjs",
       ],
       note:
@@ -671,20 +672,20 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "with no path from computeScenario to a model call, pinned by a test that " +
         "greps the module for model/fetch references, so BL3's fail condition (\"a " +
         "model response is required to reproduce a financial result\") is " +
-        "structurally impossible there. TWO structurally different engines are now " +
-        "registered — land_deal (cash-flow series) and note_payoff (date-driven " +
-        "day-count accrual, delegating to the existing statute-adjacent engine " +
-        "rather than reimplementing it) — which is what BI191 actually asks for: a " +
-        "land-only implementation exposing generic labels does not satisfy the " +
-        "architecture. They share the metric vocabulary and overlap in NO metric, " +
-        "pinned by a test. THREE engines are registered — land_deal (cash-flow " +
-        "series), note_payoff (day-count accrual) and flip_mao (MAO net of " +
-        "closing and carry) — and flip deliberately REUSES profit/roi/total_cost " +
-        "so a flip and a land deal are comparable (BI92). Every engine delegates " +
-        "to the arithmetic that already owns it rather than reimplementing it. " +
-        "REMAINING GAP: BRRRR and multifamily NOI still compute inline, outside " +
-        "the registry, so a share of the product's financial numbers remain " +
-        "unversioned and unpersisted.",
+        "structurally impossible there. FOUR structurally different engines are " +
+        "registered — land_deal (cash-flow series), note_payoff (date-driven " +
+        "day-count accrual), flip_mao (MAO net of closing and carry) and " +
+        "rental_returns (NOI, cap rate, cash flow, GRM) — which is what BI191 " +
+        "actually asks for: a land-only implementation exposing generic labels does " +
+        "not satisfy the architecture. They share ONE metric vocabulary, so flip and " +
+        "rental deliberately REUSE profit/roi/total_cost and a flip, a hold and a " +
+        "land deal stay comparable (BI92). Every engine DELEGATES to the arithmetic " +
+        "that already owns it rather than reimplementing it, and an engine may " +
+        "DECLARE its own assumptions — rental_returns names its 40%-of-rent expense " +
+        "substitution as a platform-default rather than letting it vanish into a " +
+        "measured-looking NOI. REMAINING GAP: BRRRR and multifamily NOI still " +
+        "compute inline, outside the registry, so a share of the product's " +
+        "financial numbers remain unversioned and unpersisted.",
     },
   },
   {

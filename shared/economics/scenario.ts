@@ -168,6 +168,22 @@ export const METRICS: readonly MetricSpec[] = [
     unit: "cents",
     higherIsBetter: false,
   },
+
+  // ── Rental / buy-and-hold metrics ──
+  { id: "annual_noi", label: "Annual NOI", unit: "cents", higherIsBetter: true },
+  {
+    id: "monthly_cash_flow",
+    label: "Monthly cash flow",
+    unit: "cents",
+    higherIsBetter: true,
+  },
+  { id: "cap_rate", label: "Cap rate", unit: "ratio", higherIsBetter: true },
+  {
+    id: "gross_rent_multiplier",
+    label: "Gross rent multiplier",
+    unit: "ratio",
+    higherIsBetter: false,
+  },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
@@ -225,6 +241,19 @@ export interface EngineSpec {
   compute(inputs: Record<string, number | string>): {
     metrics: ScenarioMetric[];
     normalisedInputs: Record<string, number | string>;
+    /**
+     * Assumptions the ENGINE itself made, which the caller could not have
+     * supplied because only the engine knows it substituted something.
+     *
+     * The rental engine drove this: `computeRentalReturns` substitutes a
+     * 40%-of-rent expense ratio when the operator has not supplied real
+     * expenses, and its own comment says that substitution "must be rendered as
+     * an assumption, never as a measured figure". Without this field the
+     * substitution would vanish into a metric and read as measured — a platform
+     * default silently becoming "what the customer believed", which is the
+     * exact failure `origin` exists to prevent.
+     */
+    assumptions?: ScenarioAssumption[];
   };
 }
 
@@ -377,7 +406,8 @@ export function computeScenario(
     );
   }
 
-  const { metrics, normalisedInputs } = engine.compute(req.inputs);
+  const { metrics, normalisedInputs, assumptions: engineAssumptions } =
+    engine.compute(req.inputs);
 
   // An engine that silently omits a metric it declared would produce a scenario
   // that looks complete and is not. Catch it at write time, not read time.
@@ -401,7 +431,11 @@ export function computeScenario(
     // What the engine actually consumed, not what the caller sent — an extra
     // field in the request must not read later as an input to the maths.
     inputs: normalisedInputs,
-    assumptions: req.assumptions ?? [],
+    // Caller assumptions first, then the engine's own. Both keep their origin:
+    // a figure the operator typed and one the engine substituted are different
+    // kinds of thing, and collapsing them is how a platform default becomes
+    // "what the customer believed".
+    assumptions: [...(req.assumptions ?? []), ...(engineAssumptions ?? [])],
     metrics,
   };
 }

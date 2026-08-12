@@ -37,7 +37,8 @@ import {
 import { ALL_ENGINES } from "../../server/services/economics/engines";
 import { notePayoffEngine } from "../../server/services/economics/engines/notePayoff";
 import { flipMaoEngine } from "../../server/services/economics/engines/flipMao";
-import { computeMao } from "../../server/services/flipUnderwriting";
+import { rentalReturnsEngine } from "../../server/services/economics/engines/rentalReturns";
+import { computeMao, computeRentalReturns } from "../../server/services/flipUnderwriting";
 import {
   PAYOFF_ENGINE_VERSION,
   computePayoffQuote,
@@ -540,6 +541,121 @@ describe("the flip engine — a third shape, sharing the vocabulary", () => {
   it("is deterministic", () => {
     const a = computeScenario(flipRequest(), ALL_ENGINES);
     const b = computeScenario(flipRequest(), ALL_ENGINES);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe("the rental engine — an engine that DECLARES its own assumption", () => {
+  const rentalRequest = (over: Record<string, number | string> = {}) => ({
+    subjectType: "property" as const,
+    subjectId: 91,
+    label: "Hold and rent",
+    engineId: rentalReturnsEngine.id,
+    inputs: {
+      purchasePriceCents: 18_000_000,
+      monthlyRentCents: 175_000,
+      ...over,
+    },
+  });
+
+  it("delegates to computeRentalReturns rather than reimplementing it", () => {
+    const body = computeScenario(
+      rentalRequest({ monthlyExpensesCents: 60_000 }),
+      ALL_ENGINES,
+    );
+    const direct = computeRentalReturns({
+      purchasePriceCents: 18_000_000,
+      monthlyRentCents: 175_000,
+      monthlyExpensesCents: 60_000,
+    });
+    expect(metricValue(body, "annual_noi")).toBe(direct.annualNoiCents);
+    expect(metricValue(body, "monthly_cash_flow")).toBe(direct.monthlyCashFlowCents);
+    expect(metricValue(body, "gross_rent_multiplier")).toBe(direct.grossRentMultiplier);
+  });
+
+  it("DECLARES the 40% expense substitution as a platform-default assumption", () => {
+    // This is the whole reason the EngineSpec contract was widened. Only the
+    // engine knows it substituted something; without a way to say so the
+    // substitution vanishes into a metric and reads as measured.
+    const body = computeScenario(rentalRequest(), ALL_ENGINES);
+    const assumed = body.assumptions.find(
+      (a) => a.key === "monthly_operating_expenses",
+    );
+    expect(assumed, "the substitution must be recorded, not hidden").toBeDefined();
+    expect(assumed!.origin).toBe("platform-default");
+    expect(assumed!.basis).toMatch(/40%/);
+  });
+
+  it("declares NOTHING when the operator supplied real expenses", () => {
+    const body = computeScenario(
+      rentalRequest({ monthlyExpensesCents: 60_000 }),
+      ALL_ENGINES,
+    );
+    expect(
+      body.assumptions.find((a) => a.key === "monthly_operating_expenses"),
+    ).toBeUndefined();
+  });
+
+  it("keeps caller assumptions AND engine assumptions, each with its own origin", () => {
+    const body = computeScenario(
+      {
+        ...rentalRequest(),
+        assumptions: [
+          { key: "rent_growth", value: 0.03, origin: "user" as const },
+        ],
+      },
+      ALL_ENGINES,
+    );
+    const byKey = Object.fromEntries(body.assumptions.map((a) => [a.key, a.origin]));
+    expect(byKey["rent_growth"]).toBe("user");
+    expect(byKey["monthly_operating_expenses"]).toBe("platform-default");
+  });
+
+  it("treats an omitted expense figure as UNKNOWN, not as zero", () => {
+    // If omission meant zero, NOI would equal gross rent and the cap rate would
+    // read spectacular. The substitution + its declaration is what prevents it.
+    const omitted = computeScenario(rentalRequest(), ALL_ENGINES);
+    expect(metricValue(omitted, "annual_noi")).not.toBe(175_000 * 12);
+  });
+
+  it("treats an explicit ZERO as unknown too — and says so, rather than silently", () => {
+    // computeRentalReturns's own contract is "0/omitted = unknown", because a
+    // property with genuinely zero operating expenses does not exist. The
+    // adapter does NOT paper over that: an explicit 0 declares the same
+    // platform-default assumption an omission does.
+    //
+    // Pinned deliberately, because the intuitive reading of `0` is "no
+    // expenses", and a caller who believed that would be reading a 40%-derived
+    // NOI as a measured one.
+    const zeroed = computeScenario(
+      rentalRequest({ monthlyExpensesCents: 0 }),
+      ALL_ENGINES,
+    );
+    const assumed = zeroed.assumptions.find(
+      (a) => a.key === "monthly_operating_expenses",
+    );
+    expect(assumed, "an explicit 0 must still declare the substitution").toBeDefined();
+    expect(assumed!.origin).toBe("platform-default");
+  });
+
+  it("converts the cap-rate PERCENT into the registry's RATIO unit", () => {
+    const body = computeScenario(
+      rentalRequest({ monthlyExpensesCents: 60_000 }),
+      ALL_ENGINES,
+    );
+    const direct = computeRentalReturns({
+      purchasePriceCents: 18_000_000,
+      monthlyRentCents: 175_000,
+      monthlyExpensesCents: 60_000,
+    });
+    expect(metricValue(body, "cap_rate")).toBeCloseTo(direct.capRatePct / 100, 10);
+    // A ratio, not a percent: a 7% cap rate is 0.07, never 7.
+    expect(Math.abs(metricValue(body, "cap_rate")!)).toBeLessThan(1);
+  });
+
+  it("is deterministic", () => {
+    const a = computeScenario(rentalRequest(), ALL_ENGINES);
+    const b = computeScenario(rentalRequest(), ALL_ENGINES);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
