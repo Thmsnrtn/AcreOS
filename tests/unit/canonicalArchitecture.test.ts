@@ -102,8 +102,14 @@ const UNENFORCED_FITNESS_BASELINE = 0;
  *   deliberately — a DecisionSnapshot has nothing stable to freeze a reference
  *   to until evidence is versioned, which is why Decision Memory could not have
  *   been built first.
+ * 2026-08-12 (12 -> 11): scenario now has a canonical home (`scenarios`,
+ *   immutable, engine-versioned). It completes the chain the previous two
+ *   started: a decision now freezes the EVIDENCE it was based on, the
+ *   ASSUMPTIONS in force, AND the ECONOMICS that justified it. Before this a
+ *   snapshot could record "offer $42,000" with the arithmetic behind the number
+ *   living nowhere at all.
  */
-const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 12;
+const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 11;
 
 /**
  * The fixed cardinalities declared by the audit. These are not ratchets — they

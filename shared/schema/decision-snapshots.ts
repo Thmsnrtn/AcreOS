@@ -53,6 +53,7 @@ import type {
   FrozenFact,
   FrozenUnknown,
 } from "../decisions/snapshot";
+import type { FrozenScenarioRef } from "../economics/scenario";
 
 export const decisionSnapshots = pgTable(
   "decision_snapshots",
@@ -114,6 +115,15 @@ export const decisionSnapshots = pgTable(
      * stays an unknown in the record and cannot be retroactively filled in.
      */
     unknowns: jsonb("unknowns").$type<FrozenUnknown[]>().notNull().default([]),
+    /**
+     * The economics that justified the choice. Each reference carries the
+     * engine VERSION and the headline metrics, so the record stays readable
+     * even if the scenario row later becomes unreachable. An empty list is a
+     * valid and common state — many decisions (a `pass` on a parcel that failed
+     * a hard filter) are made without running economics at all, and recording
+     * an empty list says exactly that.
+     */
+    scenarios: jsonb("scenarios").$type<FrozenScenarioRef[]>().notNull().default([]),
 
     decidedAt: timestamp("decided_at").notNull().defaultNow(),
   },

@@ -18586,3 +18586,9 @@ export * from "./schema/decision-snapshots";
 // claim that stops a retried job double-sending. Mutable operational state, NOT
 // history: the immutable proof of an action is a receipt, a separate artifact.
 export * from "./schema/outward-actions";
+
+// The economics layer's one table (Master Audit BI12/BK24). A Scenario is a
+// versioned, deterministic economic hypothesis: the engine that produced it,
+// that engine's version, the verbatim inputs and the outputs. Immutable —
+// re-running the maths inserts a new row; a stored scenario never changes.
+export * from "./schema/scenarios";

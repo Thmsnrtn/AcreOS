@@ -46,6 +46,7 @@ import {
   type ResolutionState,
   type ResolvedValue,
 } from "../evidence/claim";
+import type { FrozenScenarioRef } from "../economics/scenario";
 
 /** Bump when the FROZEN SHAPE changes, so old snapshots stay readable as-written. */
 export const DECISION_SNAPSHOT_VERSION = 1 as const;
@@ -200,6 +201,22 @@ export interface DecisionSnapshotBody {
   assumptions: FrozenAssumption[];
   alternatives: FrozenAlternative[];
   unknowns: FrozenUnknown[];
+  /**
+   * The economics that justified the choice (BI12, BK24).
+   *
+   * Without this, a decision records "offer $42,000" and the arithmetic behind
+   * the number lives nowhere — you can reconstruct what the investor believed
+   * about the PARCEL and not what they believed about the DEAL. Each reference
+   * carries the engine version and the headline metrics, so the record stays
+   * readable even if the scenario row later becomes unreachable — the same
+   * reasoning that makes a frozen fact store its resolved value alongside its
+   * claim ids.
+   *
+   * Empty is a valid and common state: many decisions (a `pass` on a parcel
+   * that failed a hard filter) are made without running economics at all, and
+   * recording an empty list says exactly that.
+   */
+  scenarios: FrozenScenarioRef[];
 }
 
 /**
@@ -218,6 +235,7 @@ export function freezeDecision(
   input: DecisionSnapshotInput,
   resolvedEvidence: ReadonlyMap<string, ResolvedValue> | readonly ResolvedValue[],
   evidenceAsOf: Date,
+  scenarios: readonly FrozenScenarioRef[] = [],
 ): DecisionSnapshotBody {
   const resolved: ResolvedValue[] = Array.isArray(resolvedEvidence)
     ? [...resolvedEvidence]
@@ -281,6 +299,7 @@ export function freezeDecision(
       ...staleCaveats,
       ...(input.additionalUnknowns ?? []),
     ],
+    scenarios: [...scenarios],
   };
 }
 
@@ -333,5 +352,12 @@ export function describeFooting(body: DecisionSnapshotBody): string {
     body.strategyPackId !== null
       ? ` under ${body.strategyPackId}@${body.strategyPackVersion ?? "unversioned"}`
       : "";
-  return `${parts.join(", ")} fact(s) at decision time${packNote}`;
+  // Naming the ABSENCE of economics matters as much as naming its presence: a
+  // decision made without running the numbers is a different decision, and
+  // silence would read as "the numbers were fine".
+  const econNote =
+    body.scenarios.length > 0
+      ? `; ${body.scenarios.length} scenario(s)`
+      : "; no scenario computed";
+  return `${parts.join(", ")} fact(s) at decision time${packNote}${econNote}`;
 }

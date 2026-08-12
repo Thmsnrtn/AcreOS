@@ -72,6 +72,12 @@ const recordSchema = z.object({
   assumptions: z.array(assumptionSchema).default([]),
   alternatives: z.array(alternativeSchema).default([]),
   additionalUnknowns: z.array(unknownSchema).default([]),
+  /**
+   * Scenarios whose economics justified this choice. Ids only — the store
+   * resolves them to frozen references itself, because a caller that hands
+   * over pre-computed numbers can hand over any numbers at all.
+   */
+  scenarioIds: z.array(z.number().int().positive()).default([]),
 });
 
 // POST /api/decisions
@@ -81,7 +87,13 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     const parsed = recordSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
 
-    const recorded = await recordDecision(organizationId, parsed.data);
+    const { scenarioIds, ...decision } = parsed.data;
+    const recorded = await recordDecision(
+      organizationId,
+      decision,
+      new Date(),
+      scenarioIds,
+    );
     // 200 rather than 201: the res-status-raw ratchet is down-only and 172
     // pre-existing `res.status(201)` calls are already frozen into its
     // baseline, so adding a 173rd would require raising it. The response body

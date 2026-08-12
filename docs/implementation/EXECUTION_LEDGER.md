@@ -428,3 +428,67 @@ into the cause of the exact duplicate it exists to prevent.
 
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
 22/22 outward-action + 18/18 canon.
+
+---
+
+## Unit 9 — Scenario: the economics a decision was based on · this commit
+
+**Audit requirement:** BI12 (Scenario is a canonical object), BK24 (Audit 022
+"Scenario Architecture"), BK23 (Audit 021 "Deterministic Economics Kernel"),
+canonical law 4 — *financial truth is deterministic, tested and versioned*.
+
+**Premise verified first:** `scenario_simulations` and
+`scenario_outcome_comparisons` exist but are **founder-plane autopilot** tables
+(LLM war-gaming of company decisions). Reusing one would make Founder OS the
+owner of customer financial truth (BI5 forbids). Meanwhile
+`decision_snapshots` froze evidence and assumptions but had nowhere to point for
+the ECONOMICS — a snapshot could record "offer $42,000" while the arithmetic
+behind the number lived nowhere, so a year later you could reconstruct what the
+investor believed about the **parcel** and not about the **deal**.
+
+**The pattern was already in the repo, in one vertical.**
+`server/services/notePaymentMath.ts` persists `PAYOFF_ENGINE_VERSION`,
+`PAYOFF_DAY_COUNT_CONVENTION` and `engine_input_json` to NOT NULL columns —
+"the verbatim input snapshot so the number can be recomputed and defended years
+later". That is exactly BK23's contract. This **generalises** it rather than
+inventing a second mechanism.
+
+**Files:** `shared/economics/scenario.ts`, `shared/schema/scenarios.ts`,
+`migrations/0230_scenarios.sql`, `scripts/migrate.mjs`,
+`server/services/economics/scenarioStore.ts`, `server/routes-scenarios.ts`,
+`server/routes.ts` + `routeManifest.ts`, `shared/calculators/landDeal.ts`
+(engine identity), and the decision-linkage across
+`shared/decisions/snapshot.ts`, `shared/schema/decision-snapshots.ts`,
+`server/services/decisions/decisionStore.ts`, `server/routes-decisions.ts`.
+Ratchet 759 → 760.
+
+**Tests:** 19 scenario + the extended decision suite (38 across both).
+
+**Architectural decisions:**
+- **The engine registry is CLOSED, and that is structural.** BL3's fail
+  condition for deterministic money math is *"a model response is required to
+  reproduce a financial result"*. `computeScenario` has no path to anything but
+  a registered pure function, and a test greps the module to assert it contains
+  no model/fetch/dynamic-import reference at all. The guarantee is an **absent
+  branch**, not a policy.
+- **A null metric means UNDEFINED, never zero.** An IRR has no solution for some
+  cash-flow shapes; rendering that as 0% is a different and false claim. Law 3's
+  rule about unknowns applies to arithmetic too.
+- **Money is integer cents, enforced at the boundary.** A fractional input is
+  refused rather than rounded — 1/3 of a cent is how an unexplainable difference
+  gets in.
+- **The store computes; the caller supplies inputs only.** A route that accepted
+  pre-computed metrics would make `engine_version` a claim by the caller rather
+  than a fact about the arithmetic — and would be the exact hole through which a
+  model-generated number becomes a persisted financial fact.
+- **`describeFooting` names the ABSENCE of economics.** "no scenario computed"
+  is printed explicitly, because silence would read as "the numbers were fine".
+
+**Remaining risk (named):** only ONE engine is registered. Flip, BRRRR,
+multifamily NOI and note payoff still compute outside the registry, so most
+financial numbers in the product remain unversioned and unpersisted. That is
+written into the fitness function's note rather than left implied.
+
+**Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
+all ratchets at baseline. Canon: scenario absent → canonical,
+objects-without-home 12 → **11**.

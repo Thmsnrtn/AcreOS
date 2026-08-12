@@ -15,6 +15,24 @@
  * NPV to zero, so IRR is undefined.
  */
 
+/**
+ * The engine identity, recorded on every persisted Scenario.
+ *
+ * Mirrors the pattern `server/services/notePaymentMath.ts` already established
+ * for payoff quotes (`PAYOFF_ENGINE_VERSION`, persisted to a NOT NULL column
+ * alongside the verbatim input snapshot "so the number can be recomputed and
+ * defended years later"). Canonical law 4 — financial truth is deterministic,
+ * TESTED and VERSIONED — needs all three parts, and the version is the part
+ * that is usually forgotten.
+ *
+ * BUMP THIS whenever the arithmetic changes in a way that could move a number.
+ * Never bump it for comments or refactors: a version change makes every stored
+ * scenario read as "computed by a different engine", which is exactly right
+ * when the maths moved and misleading when it did not.
+ */
+export const LAND_DEAL_ENGINE_ID = "land_deal" as const;
+export const LAND_DEAL_ENGINE_VERSION = "land-deal-1" as const;
+
 export interface CalculatorInputs {
   /** Purchase price in cents. */
   purchaseCents: number;

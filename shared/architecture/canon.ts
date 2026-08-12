@@ -499,14 +499,10 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     id: "scenario",
     purpose: "deterministic economic hypothesis",
     layer: "economics-strategy",
-    status: "absent",
-    tables: [],
-    gap:
-      "Calculations are transient. `scenario_simulations` and " +
-      "`scenario_outcome_comparisons` are founder-plane autopilot tables, not customer " +
-      "investment scenarios. Nothing persists a versioned economic hypothesis with its " +
-      "assumptions, so a DecisionSnapshot has nothing stable to freeze a reference to.",
-    disposition: "BUILD",
+    status: "canonical",
+    tables: ["scenarios"],
+    gap: "",
+    disposition: "KEEP_HARDEN",
   },
   {
     id: "decision-snapshot",
@@ -662,15 +658,27 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
     enforcement: {
       kind: "partial",
       refs: [
+        "shared/economics/scenario.ts",
+        "shared/schema/scenarios.ts",
+        "server/services/economics/scenarioStore.ts",
+        "tests/unit/scenarioDeterminism.test.ts",
         "shared/finance/cents.ts",
         "shared/calculators/landDeal.ts",
         "server/services/notePaymentMath.ts",
         "scripts/check-no-fabrication.mjs",
       ],
       note:
-        "Deterministic helpers exist and the no-fabrication lint bars invented " +
-        "numbers, but there is no single versioned economics kernel and no gate " +
-        "asserting that a financial field is never sourced from a model response.",
+        "A versioned deterministic economics layer now exists: `scenarios` persists " +
+        "the engine id, the engine VERSION (NOT NULL) and the VERBATIM inputs, so a " +
+        "number can be recomputed and defended years later — generalising the " +
+        "contract note_payoff_quotes already honoured. The engine registry is CLOSED " +
+        "with no path from computeScenario to a model call, pinned by a test that " +
+        "greps the module for model/fetch references, so BL3's fail condition (\"a " +
+        "model response is required to reproduce a financial result\") is " +
+        "structurally impossible there. REMAINING GAP: only ONE engine is registered " +
+        "(land_deal). Every other vertical's arithmetic — flip, BRRRR, multifamily " +
+        "NOI, note payoff — still computes outside the registry, so most financial " +
+        "numbers in the product remain unversioned and unpersisted.",
     },
   },
   {

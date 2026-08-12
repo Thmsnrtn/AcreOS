@@ -40,15 +40,16 @@ see §6.
 | **decision-snapshot** | **canonical** ✅ | `decision_snapshots`, this program |
 | property, parcel, document | conflated | `properties` god table |
 | party, holding, instrument, plan, action-receipt, outcome | role-table | scattered |
-| relationship, opportunity, scenario | absent | — |
+| **scenario** | **canonical** ✅ | `scenarios`, this program |
+| relationship, opportunity | absent | — |
 
-**6 of 18 canonical objects now have a canonical home (was 4).**
+**7 of 18 canonical objects now have a canonical home (was 4).**
 
 Two ratchets track convergence, both down-only, both in
 `tests/unit/canonicalArchitecture.test.ts`:
 
 - `UNENFORCED_FITNESS_BASELINE = 0` (was 2) — **every fitness function now has automated enforcement**
-- `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 12` (was 14)
+- `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 11` (was 14)
 
 ## 3. What has been completed, and what proves it
 
@@ -76,6 +77,9 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
    source-order regression gate.
 8. **Adoption** — the bulk-mail path now passes a durable
    `mailing-order:{orderId}:lead:{leadId}` key; adoption ratchet 4 → 2.
+9. **Scenario** (layer 4) — `scenarios`, immutable and engine-versioned, wired
+   into Decision Memory so a decision freezes the economics as well as the
+   evidence. 19 tests.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -91,28 +95,28 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**Scenario (layer 4)** — a persisted, versioned economic hypothesis, so a
-decision can freeze a reference to the economics as well as the evidence.
+**Register a second economics engine**, then **Outcome** (layer 7).
 
-The mail-adoption work is done as far as it safely goes: the bulk-mail path is
-protected and `UNPROTECTED_SEND_SITES_BASELINE` is down to **2**. Both
-remaining sites are blocked on founder decisions, not on effort — see
-`BLOCKERS.md` B5 and B6. Widening `PROTECTABLE_SENDS` to email/SMS/e-sign is a
-smaller follow-on that needs no decision.
+The scenario layer landed with exactly ONE registered engine (`land_deal`).
+That is honest — it is the one deterministic calculator that already existed and
+was already used — but it means most financial numbers in the product are still
+unversioned and unpersisted. The highest-value follow-ons, in order:
 
-Why Scenario next: `decision_snapshots` currently freezes evidence and
-assumptions but has nowhere to point for the ECONOMICS that justified the
-choice. Today a decision records "offer $42,000" and the reasoning behind the
-number lives nowhere. `scenario_simulations` and `scenario_outcome_comparisons`
-are founder-plane autopilot tables and must not be reused (BI5).
+1. **Register `note_payoff`.** `server/services/notePaymentMath.ts` is already
+   versioned and already persists its inputs; bringing it into `ENGINES` is
+   mostly registration, and it proves the registry generalises across verticals
+   rather than being a land-shaped abstraction.
+2. **Flip / BRRRR / multifamily NOI.** Each currently computes inline. Extract
+   to a pure function, register it, and the numbers become defensible.
+3. **Outcome (layer 7).** `decision_snapshots` and `scenarios` now capture the
+   prediction; nothing yet records what ACTUALLY happened and compares. The
+   founder plane already does this well (a prediction sealed into
+   `proofReceipt`'s hash, graded later by `decisionEval.ts`) — study that, do
+   not invent a second mechanism. Note law 9: an Outcome REFERENCES a snapshot,
+   it never edits one.
 
-Note the shape that already exists and should be copied rather than reinvented:
-`server/services/notePaymentMath.ts` carries `PAYOFF_ENGINE_VERSION` and
-`PAYOFF_DAY_COUNT_CONVENTION`, persisted to `note_payoff_quotes.engine_version`
-(NOT NULL) alongside `engine_input_json` — "the verbatim input snapshot so the
-number can be recomputed and defended years later". That is the deterministic
-versioned-calculation pattern the audit asks for (BK23), already exemplary in
-one vertical. Scenario should generalise it, not invent a second one.
+Also still open and needing no decision: widening `PROTECTABLE_SENDS` in
+`tests/unit/outwardActionCoverage.test.ts` to cover email, SMS and e-sign.
 
 Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in

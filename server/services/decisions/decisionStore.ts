@@ -27,6 +27,7 @@ import {
   type DecisionSubjectType,
 } from "@shared/decisions/snapshot";
 import { resolveSubject } from "../evidence/evidenceStore";
+import { freezeScenarioRefs } from "../economics/scenarioStore";
 import type { ResolvedValue } from "@shared/evidence/claim";
 
 /** Read cap — a subject with more decisions than this has a runaway writer. */
@@ -53,6 +54,7 @@ function rowToBody(
     assumptions: row.assumptions,
     alternatives: row.alternatives,
     unknowns: row.unknowns,
+    scenarios: row.scenarios,
   };
 }
 
@@ -80,6 +82,15 @@ export async function recordDecision(
   organizationId: number,
   input: DecisionSnapshotInput,
   evidenceAsOf: Date = new Date(),
+  /**
+   * Scenarios whose economics justified this choice. Resolved to frozen
+   * references HERE rather than accepted pre-frozen, for the same reason the
+   * evidence is gathered here: a caller that hands over pre-computed numbers
+   * can hand over any numbers at all. Ids belonging to another org are silently
+   * skipped — a decision must never freeze a reference to another tenant's
+   * economics, and refusing loudly would leak that the row exists.
+   */
+  scenarioIds: readonly number[] = [],
 ): Promise<RecordedDecision> {
   const resolved: ResolvedValue[] = [];
 
@@ -96,7 +107,8 @@ export async function recordDecision(
   // honestly empty. When Opportunity and Holding become canonical objects and
   // the deal→property edge is a typed relationship, this reads through it.
 
-  const body = freezeDecision(input, resolved, evidenceAsOf);
+  const scenarioRefs = await freezeScenarioRefs(organizationId, scenarioIds);
+  const body = freezeDecision(input, resolved, evidenceAsOf, scenarioRefs);
 
   const [row] = await db
     .insert(decisionSnapshots)
@@ -119,6 +131,7 @@ export async function recordDecision(
       assumptions: body.assumptions,
       alternatives: body.alternatives,
       unknowns: body.unknowns,
+      scenarios: body.scenarios,
     })
     .returning();
 

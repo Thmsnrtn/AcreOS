@@ -9101,6 +9101,47 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "outward_actions_org_kind_key_uk" ON "outward_actions" ("organization_id", "action_kind", "idempotency_key")`,
   `CREATE INDEX IF NOT EXISTS "outward_actions_org_status_idx" ON "outward_actions" ("organization_id", "status", "claimed_at")`,
+
+  // ── 0230 scenarios: the economics layer's versioned hypothesis ─────────────
+  // ONE new table — scripts/ratchets/table-count.json 759 -> 760. Mirrors
+  // migrations/0230_scenarios.sql + shared/schema/scenarios.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: decision_snapshots freezes what was
+  // KNOWN and what was ASSUMED, but had nowhere to point for the ECONOMICS that
+  // justified the choice. A snapshot could record "offer $42,000" while the
+  // arithmetic behind the number lived nowhere — reconstructing what the
+  // investor believed about the PARCEL but not about the DEAL.
+  //
+  // engine_version is NOT NULL deliberately: canonical law 4 requires financial
+  // truth to be deterministic, tested AND versioned, and an unversioned number
+  // cannot be defended once the formula moves. `inputs` stores the verbatim
+  // values the engine consumed so the number can be recomputed years later —
+  // the same contract note_payoff_quotes already honours via engine_version +
+  // engine_input_json. IMMUTABLE: no updated_at, no UPDATE path; re-running the
+  // maths inserts a new row. No FK on subject_id because the economics of a deal
+  // you walked away from are exactly the ones worth still being able to read.
+  `CREATE TABLE IF NOT EXISTS "scenarios" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "shape_version" integer NOT NULL DEFAULT 1,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "label" text NOT NULL,
+    "engine_id" text NOT NULL,
+    "engine_version" text NOT NULL,
+    "strategy_pack_id" text,
+    "strategy_pack_version" text,
+    "inputs" jsonb NOT NULL,
+    "assumptions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "metrics" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "computed_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "scenarios_org_subject_idx" ON "scenarios" ("organization_id", "subject_type", "subject_id", "computed_at")`,
+  `CREATE INDEX IF NOT EXISTS "scenarios_org_engine_idx" ON "scenarios" ("organization_id", "engine_id", "engine_version")`,
+  // decision_snapshots gains the economics reference. Additive, defaulted, so
+  // every existing snapshot reads as "no scenario computed" — which is the
+  // truth for all of them.
+  `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "scenarios" jsonb NOT NULL DEFAULT '[]'::jsonb`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

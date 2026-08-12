@@ -231,6 +231,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-rent-roll-import.ts",
   "routes-rentals.ts",
   "routes-rosy-river.ts",
+  "routes-scenarios.ts",
   "routes-scp-v2.ts",
   "routes-seller-intent.ts",
   "routes-sendgrid-events.ts",

@@ -315,6 +315,31 @@ describe("immutability is structural, not conventional", () => {
     expect(routes).not.toMatch(/router\s*\.\s*(put|patch|delete)\s*\(/);
   });
 
+  it("freezes the economics that justified the choice, and says so when there were none", () => {
+    // A decision could record "offer $42,000" with the arithmetic behind the
+    // number living nowhere — reconstructing what the investor believed about
+    // the PARCEL but not about the DEAL.
+    const withEconomics = freezeDecision(decisionInput(), resolveAll([claim()], T0), T0, [
+      {
+        scenarioId: 9,
+        label: "Base case",
+        engineId: "land_deal",
+        engineVersion: "land-deal-1",
+        headline: [{ id: "profit", value: 2_406_000, unit: "cents" }],
+      },
+    ]);
+    expect(withEconomics.scenarios).toHaveLength(1);
+    expect(withEconomics.scenarios[0].engineVersion).toBe("land-deal-1");
+    expect(describeFooting(withEconomics)).toContain("1 scenario(s)");
+
+    // And the absence is named rather than left silent: a decision made without
+    // running the numbers is a different decision, and silence would read as
+    // "the numbers were fine".
+    const withoutEconomics = freezeDecision(decisionInput(), resolveAll([claim()], T0), T0);
+    expect(withoutEconomics.scenarios).toEqual([]);
+    expect(describeFooting(withoutEconomics)).toContain("no scenario computed");
+  });
+
   it("is wired — mounted, manifested and migrated", () => {
     const routes = fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf8");
     expect(routes).toContain("decisionsRouter");
