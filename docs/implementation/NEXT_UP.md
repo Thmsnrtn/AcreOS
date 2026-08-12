@@ -214,6 +214,14 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     would otherwise be a schema oracle for a denied role). **The permission
     audit is now complete** — see the ledger's disposition table.
 
+36. **SECURITY — the first CROSS-TENANT one.** `GET /api/founder/safety-status`
+    had no founder check and queried `simulated_actions` with **no org filter**,
+    returning ten rows with payloads (recipient name + mailing address) to any
+    authenticated user of any org. Gated. A new coverage test models all FOUR
+    founder-guard mechanisms across 608 routes plus the prefix-mount ORDERING
+    rule. Note: writing it produced three large false-positive counts
+    (378/322/20) before the right answer — verify every candidate by hand.
+
 **One residual, recorded not guessed:** `canAssignLeads` is still unenforced.
 Assignment happens through several surfaces (the lead PUT's `assignedTo`, bulk
 update, the round-robin assigner) and needs each caller checked rather than a
@@ -222,7 +230,7 @@ neither destroys, exfiltrates nor spends.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 662 files, 8,716 tests, 1 skipped, 0 failures.**
+suite green — 663 files, 8,720 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

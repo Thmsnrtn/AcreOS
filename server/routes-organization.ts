@@ -4,6 +4,7 @@ import { z } from "zod";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { insertOrganizationSchema, leads, deals, properties, npsResponses, npsPromptQueue, organizations, type InsertTeamMember } from "@shared/schema";
 import { isAuthenticated } from "./auth";
+import { requireFounder } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove, requireOwner, requirePermission, attachPermissionContext } from "./utils/permissions";
 import { requireScope } from "./middleware/roleScope";
@@ -102,7 +103,17 @@ export function registerOrganizationRoutes(app: Express): void {
   // how many simulated actions got recorded in the last 7 days.
   // Used by the testing suite to prove "yes, the harness is live"
   // before a scenario run.
-  api.get("/api/founder/safety-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // FOUNDER-GATED. This lives under /api/founder/ and reads `simulated_actions`
+  // across EVERY organization (the query is deliberately un-scoped — a founder
+  // safety dashboard is meant to see the whole platform). It carried
+  // isAuthenticated + getOrCreateOrg only, so any authenticated user of any org
+  // could read ten recent rows from other tenants, payloads included — and a
+  // simulated Lob payload carries a recipient name and mailing address.
+  //
+  // The fix is the missing guard, NOT an org filter: scoping the query would
+  // break the view this endpoint exists to provide. The cross-org read is
+  // correct once the caller is provably the founder.
+  api.get("/api/founder/safety-status", isAuthenticated, getOrCreateOrg, requireFounder, async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
       const {

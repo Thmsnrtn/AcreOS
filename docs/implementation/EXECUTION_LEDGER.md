@@ -2338,3 +2338,73 @@ those registries found a route the hand-list had missed.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 662 files, 8,716 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 36 — The first CROSS-TENANT finding · this commit
+
+**Audit requirement:** precedence #1, and specifically tenant isolation — the one
+thing that outranks everything else in this program.
+
+**Files:** `server/routes-organization.ts` (1 route),
+`tests/unit/founderRouteGuardCoverage.test.ts` (new, 4 tests).
+
+### The defect
+
+`GET /api/founder/safety-status` carried `isAuthenticated` and `getOrCreateOrg`
+and **no founder check**, despite living under `/api/founder/`. Its query reads
+
+```
+db.select().from(simulatedActions).where(createdAt >= since).limit(100)
+```
+
+— with **no organization filter** — and returns `sample: recent.slice(0, 10)`.
+
+So any authenticated user of any organization could read ten recent
+`simulated_actions` rows **belonging to other tenants, payloads included**. A
+simulated Lob payload is written as
+`{ recipientName, recipientAddress, color, doubleSided }`.
+
+**This is the first CROSS-TENANT finding in the program.** Every earlier
+authorization defect was intra-org — a permission the org's own owner had set,
+bypassed within that org. This one crosses the boundary that matters most.
+
+Two honest qualifications, neither of which changes the disposition: the table
+only holds rows while simulation mode is active (a founder-set flag), so the
+practical exposure depends on that; and the leak is bounded to ten rows per call.
+
+**The fix is the missing guard, NOT an org filter.** Scoping the query would
+break the platform-wide view this endpoint exists to provide — a founder safety
+dashboard is *meant* to see every org. The cross-org read is correct once the
+caller is provably the founder.
+
+### Why nothing had caught it
+
+608 `/api/founder/*` routes registered from ~40 files, with **no global mount**.
+Nothing related the set to its guard, so each route looked fine read on its own —
+the same shape as every finding in units 30–35, on the surface where it matters
+most.
+
+### Three wrong answers before the right one
+
+Writing the checker produced large FALSE POSITIVES — 378, then 322, then 20
+"unguarded" routes, all of them actually fine. The surface guards itself **four**
+different ways: middleware in the registration, an in-handler first statement, a
+prefix mount in `routes.ts`, and a spread `...guards` array.
+
+Each wrong number was verified by hand before being believed, which is the only
+reason none of them was reported. **The usual lesson from this program is that
+source scanners under-report; here the danger was the opposite.** A checker that
+models three of four mechanisms calls healthy code broken — and a security test
+that cries wolf is a security test that gets deleted.
+
+The test now models all four, and asserts the ORDERING rule for prefix mounts:
+a mount only counts if it is registered before the routes it covers. That is the
+`/api/admin` MFA defect exactly, and the assertion is structural so the rule
+cannot be dropped from the scanner without failing.
+
+Mutation-tested: reintroducing the missing guard, and moving the v11 prefix gate
+below its registrar, each fail.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 663 files, 8,720 tests, 1 skipped, 0 failures.**
