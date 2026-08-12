@@ -2064,3 +2064,86 @@ corrections on the way:
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 661 files, 8,691 tests, 1 skipped, 0 failures.**
 Mutation-tested: removing all three new gates fails the suite.
+
+---
+
+## Unit 32 — The viewer role, actually made read-only · this commit
+
+**Audit requirement:** source-of-truth precedence #1 — authorization.
+
+**Files:** `server/middleware/viewerReadOnlyGate.ts` (new),
+`server/middleware/getOrCreateOrg.ts`, `tests/unit/viewerReadOnlyGate.test.ts`
+(new, 14 tests).
+
+### The defect
+
+`server/middleware/roleGuard.ts` has documented `viewer — read-only across the
+CRM` since it was written. **It was not.** `canEditLeads`, `canEditProperties`,
+`canEditDeals`, `canEditNotes` and every `canCreate*` are FALSE for `viewer` and
+TRUE for every other role — and none of them was enforced by any server code on
+any path. A viewer could create and edit leads, properties, deals and notes
+across the whole CRM.
+
+Thirteen permissions in total have zero `requirePermission` sites. `viewer` is
+the only role the edit/create ones deny, so that is the concrete exposure and
+this gate closes it.
+
+**Severity, stated honestly: intra-org, not cross-tenant.** Every route involved
+is already org-scoped. What was unenforced is the org owner's own configuration —
+the entire reason to invite somebody as a viewer rather than a member.
+
+### Why a gate and not sixty `requirePermission` calls
+
+The destructive-delete gaps in unit 31 were fixed route by route because there
+were four and each names a specific resource permission. **Read-only is different
+in kind**: it is a statement about a ROLE, and the set of routes it covers is
+"every mutation not explicitly exempt". Gating each one would mean touching
+sixty-plus handlers and would leave the sixty-first open by default — which is
+precisely how those four came to be unguarded.
+
+**The polarity is the design.** A new write route is DENIED to viewers unless
+someone deliberately exempts it. Every alternative fails open.
+
+It chains from `getOrCreateOrg` alongside `subscriptionPauseGate` and
+`dunningAccessGate`, whose own comment already establishes the seam:
+*"getOrCreateOrg is the single chokepoint that sets req.organization across every
+org-scoped route ... there is no global /api org middleware."* Reusing that
+rather than inventing a second one. It runs LAST of the three, so a paused or
+delinquent org is refused for the more actionable reason.
+
+### The fail-open it would have had
+
+The first draft read `req.permissionContext`. That is attached by
+`attachPermissionContext()` and `requirePermission()`, both of which run
+PER-ROUTE and therefore **after** this chokepoint — so it would have found
+`undefined` on essentially every request, never matched `"viewer"`, and passed
+everything through while looking correct. Exactly the shape of the missing
+`attachPermissionContext()` found in unit 30, one layer up.
+
+It now resolves the role itself and **caches** the context onto the request, so a
+later `requirePermission` reuses it rather than re-reading the membership. On
+routes that already gate this is net-neutral; elsewhere it is one extra read per
+MUTATING request, and reads are untouched — a read never even resolves the role.
+
+### It fails CLOSED, and the trade is stated
+
+If the membership cannot be read, the gate refuses rather than assuming. A
+security gate that guesses is not a gate. The cost is that writes are refused
+during a membership-store outage — but during such an outage the writes would be
+failing anyway, so refusing loses little while assuming loses the guarantee. It
+logs at error level, because a gate that starts refusing everyone must be visible
+immediately.
+
+### Behavioural, not source-scanned
+
+The gate takes a request and either calls `next()` or responds, so it is driven
+directly with fakes. **A security gate that has only ever been read is a security
+gate that has never been tried.** Mutation-tested: reading the not-yet-attached
+context, and failing open on an unresolvable role, each fail five tests.
+
+The exempt list is asserted to stay small and to contain no CRM resource — every
+entry is a path a read-only account may write to, and the list growing quietly is
+how "read-only" stops being true.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 662 files, 8,705 tests, 1 skipped, 0 failures.**

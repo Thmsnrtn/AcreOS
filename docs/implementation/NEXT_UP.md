@@ -189,10 +189,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     route. The test found the fourth defect itself, by checking its own
     exemption's justification. Also fixed a comment-stripper that silently ate
     38.8% of `routes.ts` — see the ledger.
+32. **SECURITY** — the `viewer` role is documented in `roleGuard.ts` as
+    "read-only across the CRM" and **was not**: every `canEdit*`/`canCreate*` is
+    false for viewer and none was enforced anywhere. A viewer could create and
+    edit leads, properties, deals and notes. Closed with ONE gate chained at the
+    `getOrCreateOrg` chokepoint (deny-by-default, so the next write route is
+    covered automatically), 14 behavioural tests, fails CLOSED.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 661 files, 8,691 tests, 1 skipped, 0 failures.**
+suite green — 662 files, 8,705 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
