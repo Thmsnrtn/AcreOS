@@ -1,251 +1,251 @@
 {
-  "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact server path (routes-*.ts, storage.ts, services/**) is enumerated here. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data \u2014 those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
+  "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact server path (routes-*.ts, storage.ts, services/**) is enumerated here. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data — those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
   "allowlist": [
     {
       "file": "server/routes-avm.ts",
       "line": 26,
       "category": "id",
-      "note": "Idempotency/debit key suffix \u2014 entropy for uniqueness, not a fact."
+      "note": "Idempotency/debit key suffix — entropy for uniqueness, not a fact."
     },
     {
       "file": "server/routes-team-messaging.ts",
       "line": 582,
       "category": "id",
-      "note": "batchId suffix \u2014 entropy for uniqueness."
+      "note": "batchId suffix — entropy for uniqueness."
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1883,
+      "line": 1941,
       "category": "id",
-      "note": "Escalation record id suffix \u2014 entropy for uniqueness."
+      "note": "Escalation record id suffix — entropy for uniqueness."
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1963,
+      "line": 2021,
       "category": "id",
-      "note": "Workflow record id suffix \u2014 entropy for uniqueness."
+      "note": "Workflow record id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/adaptiveStrategyV13.ts",
       "line": 41,
       "category": "algo",
-      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm, not a reported fact."
+      "note": "Beta-distribution sampler (Thompson sampling) — randomness is the algorithm, not a reported fact."
     },
     {
       "file": "server/services/adaptiveStrategyV13.ts",
       "line": 42,
       "category": "algo",
-      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm."
+      "note": "Beta-distribution sampler (Thompson sampling) — randomness is the algorithm."
     },
     {
       "file": "server/services/agentVersionControlV12.ts",
       "line": 347,
       "category": "weighted-pick",
-      "note": "Weighted random selection over agent versions \u2014 randomness is the selection mechanism."
+      "note": "Weighted random selection over agent versions — randomness is the selection mechanism."
     },
     {
       "file": "server/services/ceoDecisionReplayV10.ts",
       "line": 49,
       "category": "id",
-      "note": "Decision id suffix \u2014 entropy for uniqueness."
+      "note": "Decision id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/ceoReminders.ts",
       "line": 116,
       "category": "id",
-      "note": "Reminder id suffix \u2014 entropy for uniqueness."
+      "note": "Reminder id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/ceoReminders.ts",
       "line": 237,
       "category": "id",
-      "note": "Reminder id suffix \u2014 entropy for uniqueness."
+      "note": "Reminder id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/cmo/voicePool.ts",
       "line": 130,
       "category": "sampling",
-      "note": "Random pick of a fresh creative voice candidate \u2014 sampling, not a reported fact."
+      "note": "Random pick of a fresh creative voice candidate — sampling, not a reported fact."
     },
     {
       "file": "server/services/cmo/voicePool.ts",
       "line": 136,
       "category": "sampling",
-      "note": "Random pick from candidate pool \u2014 sampling."
+      "note": "Random pick from candidate pool — sampling."
     },
     {
       "file": "server/services/dataPortability.ts",
       "line": 82,
       "category": "id",
-      "note": "Airlock/export id suffix \u2014 entropy for uniqueness."
+      "note": "Airlock/export id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/decisionCausalityV11.ts",
       "line": 28,
       "category": "id",
-      "note": "Decision id suffix \u2014 entropy for uniqueness."
+      "note": "Decision id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/dueDiligencePods.ts",
       "line": 110,
       "category": "id",
-      "note": "Pod/agent id suffix \u2014 entropy for uniqueness."
+      "note": "Pod/agent id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/emailService.ts",
       "line": 182,
       "category": "jitter",
-      "note": "Exponential-backoff jitter \u2014 randomness avoids thundering herd, not a fact."
+      "note": "Exponential-backoff jitter — randomness avoids thundering herd, not a fact."
     },
     {
       "file": "server/services/emailService.ts",
       "line": 377,
       "category": "id",
-      "note": "MIME multipart boundary string \u2014 entropy for uniqueness."
+      "note": "MIME multipart boundary string — entropy for uniqueness."
     },
     {
       "file": "server/services/etlOrchestrator.ts",
       "line": 494,
       "category": "id",
-      "note": "ETL run id suffix \u2014 entropy for uniqueness."
+      "note": "ETL run id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/gisValidation.ts",
       "line": 22,
       "category": "id",
-      "note": "GIS validation run id suffix \u2014 entropy for uniqueness."
+      "note": "GIS validation run id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/gisValidation.ts",
       "line": 235,
       "category": "shuffle",
-      "note": "Shuffle of endpoint probe order \u2014 load distribution, not a reported fact."
+      "note": "Shuffle of endpoint probe order — load distribution, not a reported fact."
     },
     {
       "file": "server/services/gradientBoosting.ts",
       "line": 280,
       "category": "algo",
-      "note": "Fisher-Yates shuffle inside the GBM training loop \u2014 randomness is the algorithm."
+      "note": "Fisher-Yates shuffle inside the GBM training loop — randomness is the algorithm."
     },
     {
       "file": "server/services/integrationEnhancements.ts",
       "line": 40,
       "category": "id",
-      "note": "iCal UID suffix \u2014 entropy for uniqueness."
+      "note": "iCal UID suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/leadAssigner.ts",
       "line": 135,
       "category": "weighted-pick",
-      "note": "Weighted round-robin lead assignment \u2014 randomness is the assignment mechanism."
+      "note": "Weighted round-robin lead assignment — randomness is the assignment mechanism."
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 229,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 288,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 321,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/negotiationCopilot.ts",
       "line": 117,
       "category": "id",
-      "note": "Objection id suffix \u2014 entropy for uniqueness."
+      "note": "Objection id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/notificationDispatcher.ts",
       "line": 138,
       "category": "id",
-      "note": "Notification id suffix \u2014 entropy for uniqueness."
+      "note": "Notification id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/parcel/resolveParcel.ts",
       "line": 277,
       "category": "sampling",
-      "note": "Probabilistic sampling gate (sampleRate) for telemetry \u2014 randomness is the sampler."
+      "note": "Probabilistic sampling gate (sampleRate) for telemetry — randomness is the sampler."
     },
     {
       "file": "server/services/pax/continuousAudit.ts",
       "line": 723,
       "category": "algo",
-      "note": "Fisher-Yates shuffle for audit sampling \u2014 randomness is the algorithm."
+      "note": "Fisher-Yates shuffle for audit sampling — randomness is the algorithm."
     },
     {
       "file": "server/services/paxObserver.ts",
       "line": 217,
       "category": "sampling",
-      "note": "Random prefix pick for observation variety \u2014 sampling, not a fact."
+      "note": "Random prefix pick for observation variety — sampling, not a fact."
     },
     {
       "file": "server/services/performanceEnhancements.ts",
       "line": 39,
       "category": "id",
-      "note": "Request id suffix \u2014 entropy for uniqueness."
+      "note": "Request id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
       "line": 108,
       "category": "algo",
-      "note": "Box-Muller / Monte-Carlo sampler u1 \u2014 randomness is the optimization algorithm."
+      "note": "Box-Muller / Monte-Carlo sampler u1 — randomness is the optimization algorithm."
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
       "line": 109,
       "category": "algo",
-      "note": "Box-Muller / Monte-Carlo sampler u2 \u2014 randomness is the optimization algorithm."
+      "note": "Box-Muller / Monte-Carlo sampler u2 — randomness is the optimization algorithm."
     },
     {
       "file": "server/services/promptRegistry.ts",
       "line": 193,
       "category": "weighted-pick",
-      "note": "Weighted random selection over prompt variants (A/B) \u2014 randomness is the selection mechanism."
+      "note": "Weighted random selection over prompt variants (A/B) — randomness is the selection mechanism."
     },
     {
       "file": "server/services/providers/fetchGeo.ts",
       "line": 157,
       "category": "jitter",
-      "note": "Randomized backoff/offset within a capped window \u2014 jitter, not a fact."
+      "note": "Randomized backoff/offset within a capped window — jitter, not a fact."
     },
     {
       "file": "server/services/realtimeAlerts.ts",
       "line": 130,
       "category": "id",
-      "note": "Alert id suffix \u2014 entropy for uniqueness."
+      "note": "Alert id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/vaManagement.ts",
       "line": 110,
       "category": "id",
-      "note": "Task id suffix \u2014 entropy for uniqueness."
+      "note": "Task id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/vaManagement.ts",
       "line": 114,
       "category": "id",
-      "note": "SOP id suffix \u2014 entropy for uniqueness."
+      "note": "SOP id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/writingStyle.ts",
       "line": 117,
       "category": "id",
-      "note": "Writing-sample id suffix \u2014 entropy for uniqueness."
+      "note": "Writing-sample id suffix — entropy for uniqueness."
     },
     {
       "file": "server/storage/commsRepo.ts",
       "line": 82,
       "category": "id",
-      "note": "Random CAMP- campaign code character \u2014 entropy for a human-typeable code. Extracted to commsRepo with the campaign-response/tracking methods."
+      "note": "Random CAMP- campaign code character — entropy for a human-typeable code. Extracted to commsRepo with the campaign-response/tracking methods."
     }
   ]
 }

@@ -497,31 +497,6 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
 
         const offerPct = ((parsed.data.offerCents / arvCents) * 100).toFixed(2);
 
-        const [created] = await db
-          .insert(offers)
-          .values({
-            organizationId: orgId,
-            propertyId: prop.id,
-            leadId: prop.sellerId,
-            status: "draft",
-            cashOffer: centsToDecimalDollars(parsed.data.offerCents),
-            estimatedMarketValue: centsToDecimalDollars(arvCents),
-            offerPercentage: offerPct,
-          })
-          .returning();
-
-        logger.info("[flip-analyzer] draft offer created from MAO", {
-          source: "routes-flip-analyzer",
-          metadata: {
-            organizationId: orgId,
-            propertyId: prop.id,
-            offerId: created.id,
-            offerCents: parsed.data.offerCents,
-            maoCents: mao.maoCents,
-            arvCents,
-          },
-        });
-
         // ── Record WHY, not just what (canonical layers 4 and 5) ─────────
         //
         // This is the first customer surface to write into the canonical loop,
@@ -538,11 +513,22 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
         // `engine_version` would then be a claim rather than a fact. The extra
         // call is pure arithmetic on seven integers.
         //
-        // BEST-EFFORT, IN ITS OWN TRY/CATCH. The offer already succeeded and
-        // its row is written. Failing the request now would turn a bookkeeping
-        // problem into a lost draft offer, so this can only ever add a record —
-        // never remove one. Same posture as the evidence write in
+        // BEST-EFFORT, IN ITS OWN TRY/CATCH. Every check that could refuse this
+        // offer has already passed, so the operator is going to get a draft
+        // offer either way. Letting a bookkeeping failure throw here would turn
+        // it into a lost draft, so this can only ever ADD a record — never
+        // prevent one. Same posture as the evidence write in
         // propertyEnrichment.ts, and for the same reason.
+        //
+        // It runs BEFORE the insert so the offer row can carry
+        // `decision_snapshot_id` in its own INSERT rather than being patched
+        // afterwards — which would leave a window where the offer exists with no
+        // link, and would need an UPDATE on a row that had just been created.
+        // The trade is deliberate: the decision is recorded a moment before the
+        // offer it justifies, so a crash in between leaves an unreferenced
+        // decision rather than an unexplained offer. An orphaned record of
+        // reasoning is inert; an offer nobody can explain is the thing this
+        // whole layer exists to prevent.
         let decisionSnapshotId: number | null = null;
         try {
           const { recordScenario } = await import("./services/economics/scenarioStore");
@@ -629,6 +615,35 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
             err instanceof Error ? err : undefined,
           );
         }
+
+        const [created] = await db
+          .insert(offers)
+          .values({
+            organizationId: orgId,
+            propertyId: prop.id,
+            leadId: prop.sellerId,
+            status: "draft",
+            cashOffer: centsToDecimalDollars(parsed.data.offerCents),
+            estimatedMarketValue: centsToDecimalDollars(arvCents),
+            offerPercentage: offerPct,
+            // The reasoning is recorded BEFORE the offer row, so the link is
+            // written in the insert rather than patched in afterwards. A failed
+            // recording leaves this null and the offer is created regardless.
+            decisionSnapshotId,
+          })
+          .returning();
+
+        logger.info("[flip-analyzer] draft offer created from MAO", {
+          source: "routes-flip-analyzer",
+          metadata: {
+            organizationId: orgId,
+            propertyId: prop.id,
+            offerId: created.id,
+            offerCents: parsed.data.offerCents,
+            maoCents: mao.maoCents,
+            arvCents,
+          },
+        });
 
         return res.json({
           offer: created,

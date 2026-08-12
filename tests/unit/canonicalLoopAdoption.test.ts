@@ -45,6 +45,13 @@ const ADOPTING_SURFACES = [
     // tables with keystrokes instead.
     writes: ["recordScenario", "recordDecision"],
   },
+  {
+    file: "server/routes-va-engine.ts",
+    what: "an offer resolving to accepted or rejected",
+    // The other end of the same surface. Without it the decisions unit 22
+    // records are ungradeable: something has to observe what happened.
+    writes: ["recordOutcome"],
+  },
 ] as const;
 
 /**
@@ -55,10 +62,27 @@ const ADOPTING_SURFACES = [
  * what it did — which is precisely the regression the canonical layers exist to
  * prevent, and it would otherwise be invisible.
  */
-const ADOPTING_SURFACE_BASELINE = 1;
+const ADOPTING_SURFACE_BASELINE = 2;
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
+}
+
+/**
+ * The body of the `catch (err) {` block starting at `from`, ending at the first
+ * closing brace at its own indentation.
+ *
+ * Written after a fixed-size window read past the end of an inner catch and
+ * picked up the enclosing handler's `Errors.badRequest` — so the assertion
+ * "this catch does not throw" failed against code that does not throw. A
+ * source assertion that reads past its subject is not stricter, it is wrong.
+ */
+function catchBody(src: string, from: number): string {
+  const start = src.indexOf("} catch (err) {", from);
+  if (start === -1) return "";
+  const indent = " ".repeat(src.slice(0, start).length - src.lastIndexOf("\n", start) - 1);
+  const end = src.indexOf(`\n${indent}}`, start + 1);
+  return end === -1 ? src.slice(start) : src.slice(start, end);
 }
 
 describe("a real customer surface writes into the canonical loop", () => {
@@ -150,9 +174,9 @@ describe("the offer surface records reasoning the way the contract requires", ()
     // recording is in its own try/catch and the catch only logs.
     const recording = block.slice(block.indexOf("let decisionSnapshotId"));
     expect(recording).toMatch(/try\s*\{[\s\S]{0,4000}\}\s*catch\s*\(err\)\s*\{/);
-    const catchBody = recording.slice(recording.indexOf("} catch (err) {"));
-    expect(catchBody.slice(0, 400)).toContain("logger.warn");
-    expect(catchBody.slice(0, 400)).not.toMatch(/throw|Errors\./);
+    const body = catchBody(recording, 0);
+    expect(body).toContain("logger.warn");
+    expect(body).not.toMatch(/throw|Errors\./);
   });
 
   it("reports null rather than omitting the id when recording failed", () => {
@@ -171,5 +195,75 @@ describe("the offer surface records reasoning the way the contract requires", ()
     );
     expect(maoBlock).not.toContain("recordScenario");
     expect(maoBlock).not.toContain("recordDecision");
+  });
+});
+
+describe("the loop CLOSES on that surface — the offer is gradeable", () => {
+  const flip = read("server/routes-flip-analyzer.ts");
+  const va = read("server/routes-va-engine.ts");
+
+  it("the offer row carries the decision that produced it", () => {
+    // Without a link, an outcome would have to guess which decision it grades
+    // by property — and a property with two offers makes that a coin flip.
+    expect(read("shared/schema.ts")).toContain(
+      'decisionSnapshotId: integer("decision_snapshot_id")',
+    );
+    expect(flip).toMatch(/\.values\(\{[\s\S]{0,900}decisionSnapshotId,/);
+  });
+
+  it("the link has NO foreign key, on purpose", () => {
+    // offers.organization_id does not cascade while
+    // decision_snapshots.organization_id does, so an FK would fail on tenant
+    // deletion — the snapshots would go and the offers pointing at them would
+    // block the delete. The read resolves through the org-scoped getDecision,
+    // so a stale id yields nothing rather than leaking or crashing.
+    const schema = read("shared/schema.ts");
+    const decl = schema.slice(schema.indexOf('decisionSnapshotId: integer("decision_snapshot_id")'));
+    expect(decl.slice(0, 120)).not.toContain("references(");
+  });
+
+  it("the reasoning is recorded BEFORE the offer, so the link is written once", () => {
+    // Patching it in afterwards would leave a window where the offer exists
+    // unexplained, and would need an UPDATE on a just-created row.
+    expect(flip.indexOf("let decisionSnapshotId")).toBeLessThan(
+      flip.indexOf(".insert(offers)"),
+    );
+  });
+
+  it("an outcome is recorded ONLY on a real transition", () => {
+    // The outcomes table is append-only, so a duplicate is permanent and would
+    // double-count in every calibration built above it. Re-patching an
+    // already-accepted offer must record nothing.
+    expect(va).toMatch(/existing\.status !== nextStatus/);
+    expect(va).toMatch(/existing\.decisionSnapshotId != null/);
+  });
+
+  it("uses the outcome kinds that already existed for exactly this", () => {
+    expect(va).toContain('"offer_accepted"');
+    expect(va).toContain('"offer_rejected"');
+  });
+
+  it("records NO actuals — an accepted offer measures nothing yet", () => {
+    // This is the honest part. Accepting resolves the OFFER; it measures none
+    // of what the decision forecast. Profit, ROI and total cost are unknown
+    // until the deal closes and resells, so the variance layer must report them
+    // `unmeasured` rather than being handed the offer amount dressed up as a
+    // realised number.
+    const block = va.slice(va.indexOf("const resolvedKind ="));
+    expect(block).toMatch(/actuals:\s*\[\]/);
+    expect(block.slice(0, 2000)).not.toMatch(/actuals:\s*\[\s*\{/);
+  });
+
+  it("observes when the seller responded, not when the offer was made", () => {
+    // Back-dating to the offer's creation would make every response look
+    // instant, and hold-period style metrics built on it would be wrong.
+    expect(va).toMatch(/observedAt:\s*offer\?\.respondedAt/);
+  });
+
+  it("an offer status update never fails because its bookkeeping did", () => {
+    const block = va.slice(va.indexOf("const resolvedKind ="));
+    const body = catchBody(block, 0);
+    expect(body).toContain("logger.warn");
+    expect(body).not.toMatch(/throw|Errors\./);
   });
 });

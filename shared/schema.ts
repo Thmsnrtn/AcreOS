@@ -3126,6 +3126,20 @@ export const offers = pgTable("offers", {
   
   // Seller response
   counterOffer: numeric("counter_offer"),
+  /**
+   * The DecisionSnapshot that produced this offer, when one was recorded.
+   *
+   * Deliberately a plain integer with NO foreign key. `offers.organization_id`
+   * does not cascade while `decision_snapshots.organization_id` does, so a real
+   * FK would create a delete-ordering hazard: pruning a tenant would remove the
+   * snapshots and then fail on the offers still pointing at them. The read path
+   * resolves it through the org-scoped `getDecision`, so a stale or foreign id
+   * simply yields nothing rather than leaking or crashing.
+   *
+   * Null is the normal state for every offer not drafted through the
+   * fix-and-flip analyzer, and for one whose reasoning failed to record.
+   */
+  decisionSnapshotId: integer("decision_snapshot_id"),
   sellerNotes: text("seller_notes"),
   respondedAt: timestamp("responded_at"),
   

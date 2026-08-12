@@ -1461,3 +1461,96 @@ another layer or another engine — only by wiring something a customer touches.
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 659 files, 8,650 tests, 1 skipped, 0 failures.**
 Mutation-tested: a generic `authority` and a flattened `origin` each fail.
+
+---
+
+## Unit 23 — The loop closes on a real surface · this commit
+
+**Audit requirement:** the canonical loop must close for a CUSTOMER, not only in
+a test. Also canonical law 9 (outcomes append) and BI178.
+
+**Files:** `shared/schema.ts` (`offers.decision_snapshot_id`),
+`migrations/0233_offer_decision_link.sql`, `scripts/migrate.mjs`,
+`server/routes-flip-analyzer.ts` (reordered), `server/routes-va-engine.ts`
+(outcome on resolution), `scripts/no-fabrication.allowlist.json` (re-anchored),
+`shared/architecture/canon.ts`, `tests/unit/canonicalLoopAdoption.test.ts`
+(ratchet 1 → 2, +8 tests).
+
+### The planned next target was wrong, by my own criterion
+
+NEXT_UP listed the rental comparison (`POST /api/flip-analyzer/rental`) as
+candidate (a). Checking it against unit 22's own rule — *record where a number
+stops being exploratory and becomes an act* — it fails: the rental endpoint is a
+"what if I held it instead" calculation with no offer, no document, no act.
+Wiring it would have reproduced exactly the keystroke problem unit 22 avoided by
+NOT wiring the MAO endpoint.
+
+The higher-value target was the other end of the surface already adopted:
+**decisions that nothing ever grades are not a loop.** Unit 22 began recording
+offer decisions; until something observes what happened to them, the calibration
+instrument has nothing to calibrate.
+
+### The link had to be real, not inferred
+
+An outcome must know which decision it grades. The decision's subject is the
+PROPERTY, and a property with two offers makes property-matching a coin flip. So
+`offers.decision_snapshot_id`, written in the offer's own INSERT.
+
+**No foreign key, deliberately.** `offers.organization_id` does not cascade while
+`decision_snapshots.organization_id` does — an FK would make tenant deletion fail,
+because the snapshots would go and the offers pointing at them would block it.
+The read resolves through the org-scoped `getDecision`, so a stale or foreign id
+yields nothing rather than leaking or crashing.
+
+**The recording moved BEFORE the offer insert** so the link is written once
+rather than patched in afterwards, which would leave a window where the offer
+exists unexplained. The trade is deliberate and stated in the code: a crash
+between the two now leaves an unreferenced decision rather than an unexplained
+offer. **An orphaned record of reasoning is inert; an offer nobody can explain is
+the thing this layer exists to prevent.**
+
+### No actuals, and that is the honest part
+
+An accepted offer resolves the OFFER. It measures none of what the decision
+forecast — profit, ROI and total cost are unknown until the deal closes and
+resells. So the outcome records the fact with an empty `actuals` list, and the
+variance layer reports those metrics `unmeasured`, which is true. The tempting
+alternative — recording the offer amount as a realised number — would put a
+figure that was never a measurement into the calibration.
+
+`offer_accepted` and `offer_rejected` had been in `OUTCOME_KINDS` since the
+outcome layer shipped and were used by nothing. Like `still_open` before unit 21,
+the vocabulary was already right and unreached.
+
+### Only on a transition
+
+The outcomes table is append-only, so a duplicate is permanent and would
+double-count in every calibration built above it. Re-patching an already-accepted
+offer records nothing. `observedAt` uses the seller's `respondedAt` when present
+rather than now — back-dating to the offer's creation would make every response
+look instant.
+
+### Two corrections to my own work this unit
+
+**A comment became false when I reordered the code.** The recording block said
+"the offer already succeeded and its row is written", which stopped being true
+the moment it moved above the insert. Rewritten to state the real reason it is
+best-effort (every refusing check has already passed, so the operator gets a
+draft either way) and the real trade the reordering makes.
+
+**A test assertion read past its subject.** "This catch does not throw" sliced a
+fixed 400 characters and picked up the enclosing handler's `Errors.badRequest` —
+so it failed against code that does not throw. Replaced with a helper that ends
+the slice at the closing brace at the catch's own indentation. *A source
+assertion that reads past its subject is not stricter; it is wrong.*
+
+**The fabrication allowlist went stale** because my insertion shifted
+`routes-va-engine.ts` by 58 lines (1883 → 1941, 1963 → 2021). **Re-anchored, not
+deleted** — the gate offers "delete the stale entry" as the usual fix, and here
+that would have quietly widened it. Same call as the earlier `emailService.ts`
+line shift.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 659 files, 8,658 tests, 1 skipped, 0 failures.**
+Mutation-tested: recording on every patch rather than transitions, and throwing
+from the bookkeeping catch, each fail.

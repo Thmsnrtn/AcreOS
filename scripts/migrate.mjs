@@ -9078,6 +9078,18 @@ const STATEMENTS = [
   `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "review_due_at" timestamp`,
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_review_due_idx" ON "decision_snapshots" ("organization_id", "review_due_at")`,
 
+  // ── 0233 offers.decision_snapshot_id: the offer → decision link ────────────
+  // No new table. Mirrors migrations/0233_offer_decision_link.sql.
+  //
+  // Closes the loop on the first adopted surface: the offer knows which
+  // DecisionSnapshot produced it, so accepting or rejecting it can record an
+  // OUTCOME against the right decision rather than guessing by property.
+  //
+  // Plain integer, NO foreign key: offers.organization_id does not cascade while
+  // decision_snapshots.organization_id does, so an FK would fail on tenant
+  // deletion. The read resolves through the org-scoped getDecision instead.
+  `ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "decision_snapshot_id" integer`,
+
   // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
   // ONE new table — scripts/ratchets/table-count.json 758 -> 759. Mirrors
   // migrations/0229_outward_actions.sql + shared/schema/outward-actions.ts.

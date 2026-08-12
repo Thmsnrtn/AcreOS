@@ -142,10 +142,15 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     calling the loop's own endpoints. Guarded by
     `canonicalLoopAdoption.test.ts` — **the only ratchet in this repo that may
     only GROW**, because it counts coverage rather than a defect.
+23. **The loop closes on that surface** — `offers.decision_snapshot_id` links an
+    offer to the decision that produced it, and accepting/rejecting records an
+    `offer_accepted` / `offer_rejected` outcome against it, with NO actuals
+    (accepting resolves the offer; it measures nothing that was forecast).
+    Adoption ratchet 1 → 2.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 659 files, 8,650 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,658 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -174,19 +179,20 @@ In order:
 - **KEEP GOING ON ADOPTION — it is still the only thing that matters.** Unit 22
   wired the FIRST surface (offer drafting in the flip analyzer). The ratchet is
   at 1. Raise it.
-  The next candidates, in order of value:
-  **(a) The rental/buy-and-hold comparison** (`POST /api/flip-analyzer/rental`)
-  — `rental_returns` is registered and the route computes the same numbers
-  without recording them. Same shape as unit 22, roughly the same size.
-  **(b) The land-deal path.** `land_deal` is the richest engine (eight metrics)
-  and its only caller is `client/src/components/tools/LandDealCalculator.tsx` —
-  which is the PUBLIC, embeddable marketing calculator with no org and no auth.
-  Do NOT wire that one: there is no tenant to record against. The in-app land
-  surface needs finding first, and it may not exist, in which case say so rather
-  than wiring the public tool.
-  **(c) Client rendering.** Still zero references to `/api/decisions/due` or
-  `/api/decisions/calibration` under `client/src` — the outcome prompt and the
-  calibration exist and nothing shows them. Inside the existing
+  **Do NOT wire the rental comparison** (`POST /api/flip-analyzer/rental`). It
+  was listed here as the next candidate and unit 23 checked it against unit 22's
+  own criterion — *record where a number stops being exploratory and becomes an
+  act* — and it fails: there is no offer, no document, no act. Wiring it would
+  reproduce exactly the keystroke problem that kept the MAO endpoint clean.
+  Likewise **do not wire `LandDealCalculator.tsx`**: `land_deal` is the richest
+  engine, but its only caller is the PUBLIC embeddable marketing calculator with
+  no org and no auth — there is no tenant to record against. An in-app land
+  surface needs finding first, and it may not exist, in which case say so.
+
+  The real next candidate is **(c) client rendering.** Still zero references to
+  `/api/decisions/due` or `/api/decisions/calibration` under `client/src` — the
+  outcome prompt and the calibration exist and nothing shows them, so the
+  customer is never asked and never told. Inside the existing
   Deals/Finance/Today doors: **never a new nav entry**, and Pax stays ambient.
 
   **The lesson unit 22 paid for:** every gate passed for seven units while the

@@ -912,7 +912,17 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "its own try/catch, so a bookkeeping failure can never lose a draft " +
         "offer. tests/unit/canonicalLoopAdoption.test.ts holds an UP-only " +
         "ratchet on the count of such surfaces — the only ratchet in the repo " +
-        "that may not shrink. REMAINING GAP: still no CLIENT code calls " +
+        "that may not shrink. The loop CLOSES on that surface too: `offers` " +
+        "carries `decision_snapshot_id` (plain integer, no FK — offers does not " +
+        "cascade on tenant delete while decision_snapshots does), and an offer " +
+        "moving to accepted/rejected records an offer_accepted / offer_rejected " +
+        "OUTCOME against it — kinds that had existed unused since the outcome " +
+        "layer shipped. It records ONLY on a real status transition, since the " +
+        "outcomes table is append-only and a duplicate would double-count in " +
+        "every calibration above it, and it records NO actuals: accepting " +
+        "resolves the OFFER and measures none of what was forecast, so profit " +
+        "and ROI stay `unmeasured` until the deal closes and resells. " +
+        "REMAINING GAP: still no CLIENT code calls " +
         "/api/decisions/due or /api/decisions/calibration, so the prompt and the " +
         "calibration exist and nothing renders them.",
     },

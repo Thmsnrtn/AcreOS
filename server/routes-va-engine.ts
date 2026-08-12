@@ -292,6 +292,64 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         return Errors.notFound(res, "Offer");
       }
       const offer = await storage.updateOffer(org.id, id, omitProtectedFields(req.body));
+
+      // ── Close the loop: an offer resolving IS an outcome ──────────────────
+      //
+      // `offer_accepted` and `offer_rejected` have been in OUTCOME_KINDS since
+      // the outcome layer shipped and were used by nothing. This is the moment
+      // they describe, and recording it here is what makes the decision that
+      // drafted the offer gradeable at all.
+      //
+      // ONLY ON A TRANSITION. Re-patching an already-accepted offer must not
+      // record a second outcome — the outcomes table is append-only, so a
+      // duplicate is permanent and would double-count in every calibration
+      // built above it.
+      //
+      // NO ACTUALS, and that is the honest part. An accepted offer resolves the
+      // OFFER; it measures none of what the decision forecast. Profit, ROI and
+      // total cost are unknown until the deal closes and resells, so the outcome
+      // records the fact with an empty `actuals` list and the variance layer
+      // reports those metrics as `unmeasured` — which is true — rather than
+      // being handed the offer amount dressed up as a realised number.
+      //
+      // Best-effort: an offer status update must never fail because its
+      // bookkeeping did.
+      const nextStatus = typeof req.body?.status === "string" ? req.body.status : null;
+      const resolvedKind =
+        nextStatus === "accepted"
+          ? "offer_accepted"
+          : nextStatus === "rejected"
+            ? "offer_rejected"
+            : null;
+      if (
+        resolvedKind &&
+        existing.status !== nextStatus &&
+        existing.decisionSnapshotId != null
+      ) {
+        try {
+          const { recordOutcome } = await import("./services/outcomes/outcomeStore");
+          await recordOutcome(org.id, {
+            decisionSnapshotId: existing.decisionSnapshotId,
+            kind: resolvedKind,
+            summary:
+              resolvedKind === "offer_accepted"
+                ? "The seller accepted the offer. Nothing about the forecast is measured yet — profit and ROI are known only after close and resale."
+                : "The seller rejected the offer.",
+            actuals: [],
+            // The moment it was OBSERVED. `respondedAt` is the seller's own
+            // response time when the caller supplied one; otherwise now. It is
+            // never back-dated to the offer's creation, which would make every
+            // response look instant.
+            observedAt: offer?.respondedAt ? new Date(offer.respondedAt) : new Date(),
+          });
+        } catch (err) {
+          logger.warn(
+            "[offers] status resolved but the outcome was not recorded",
+            err instanceof Error ? err : undefined,
+          );
+        }
+      }
+
       res.json(offer);
     } catch (error: any) {
       logger.error("Update offer error", error);
