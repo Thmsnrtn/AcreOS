@@ -123,6 +123,16 @@ export const Errors = {
     sendError(res, 400, "BAD_REQUEST", finalMessage, details, buildDocsUrl(opts));
   },
 
+  /**
+   * 422 for a request that is perfectly well-formed but cannot be carried out
+   * in the system's current state — as distinct from `badRequest` (the input is
+   * wrong) and `validationFailed` (named fields are wrong). The caller has
+   * nothing to correct in what they sent; something else has to change first.
+   */
+  unprocessable(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
+    sendError(res, 422, "UNPROCESSABLE", message, details, buildDocsUrl(opts));
+  },
+
   validationFailed(res: Response, details: unknown, opts?: ErrorOptions): void {
     sendError(
       res,

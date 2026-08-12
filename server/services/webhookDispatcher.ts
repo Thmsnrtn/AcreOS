@@ -93,7 +93,27 @@ export interface WebhookEndpoint {
  * rest — and plaintext for rows written before that, which are upgraded on their
  * next save. `secretUnavailable` is derived at read time and never stored.
  */
-type StoredWebhookEndpoint = Omit<WebhookEndpoint, "secretUnavailable">;
+type StoredWebhookEndpoint = Omit<WebhookEndpoint, "secretUnavailable"> & {
+  /**
+   * LEGACY. The webhooks page wrote `enabled` and rendered its Active/Paused
+   * badge from it, while the dispatcher has always filtered on `isActive` — so
+   * every endpoint added through the UI was stored active-looking and was
+   * structurally incapable of receiving anything. Normalised on read (so
+   * existing rows start working without being re-saved) and dropped on write.
+   */
+  enabled?: boolean;
+};
+
+/**
+ * Whether an endpoint is on. Reads `isActive`, falls back to the legacy
+ * `enabled`, and defaults to OFF — an endpoint carrying neither was never
+ * expressed as active by anyone, and silence is the safe reading of silence.
+ */
+function isEndpointActive(e: { isActive?: unknown; enabled?: unknown }): boolean {
+  if (typeof e.isActive === "boolean") return e.isActive;
+  if (typeof e.enabled === "boolean") return e.enabled;
+  return false;
+}
 
 export interface WebhookPayload {
   event: WebhookEventType;
@@ -152,7 +172,8 @@ async function readStoredEndpoints(organizationId: number): Promise<StoredWebhoo
  * envelope into a signing key.
  */
 function openSecret(stored: StoredWebhookEndpoint): WebhookEndpoint {
-  const { secret, ...rest } = stored;
+  const { secret, enabled, ...withoutSecret } = stored;
+  const rest = { ...withoutSecret, isActive: isEndpointActive(stored) };
   if (!secret) return { ...rest };
   if (!isEncrypted(secret)) return { ...rest, secret };
   try {
@@ -220,10 +241,61 @@ export async function getWebhookEndpointsForDisplay(
   organizationId: number,
 ): Promise<RedactedWebhookEndpoint[]> {
   const stored = await readStoredEndpoints(organizationId);
-  return stored.map(({ secret, ...rest }) => ({
-    ...rest,
-    hasSecret: typeof secret === "string" && secret.length > 0,
-  }));
+  return stored.map((e) => {
+    const { secret, enabled, ...rest } = e;
+    return {
+      ...rest,
+      isActive: isEndpointActive(e),
+      hasSecret: typeof secret === "string" && secret.length > 0,
+    };
+  });
+}
+
+/**
+ * How a TEST event to `url` should be signed.
+ *
+ * The test button exists to answer "will my endpoint accept what AcreOS
+ * actually sends?", and it could not: the client sends only a url — it cannot
+ * send the secret, because the read is redacted — so every test went out
+ * unsigned while every real delivery went out signed. A receiver that verifies
+ * signatures rejected the one message sent to prove the endpoint works, and the
+ * panel reported a correctly-configured endpoint as broken.
+ *
+ * So a test to a CONFIGURED endpoint is signed with that endpoint's own stored
+ * secret, and an unreadable secret refuses rather than downgrading — the same
+ * rule `dispatchWebhook` follows, and the test is the surface where finding out
+ * is most useful. A url the org has not configured is an ad-hoc probe: it may
+ * carry a caller-supplied secret, or go unsigned.
+ */
+export type TestSigning =
+  | { kind: "signed"; secret: string }
+  | { kind: "unsigned" }
+  | { kind: "refused"; reason: string };
+
+export async function resolveTestSigning(
+  organizationId: number,
+  url: string,
+  fallbackSecret?: unknown,
+): Promise<TestSigning> {
+  const configured = (await getWebhookEndpoints(organizationId)).find((e) => e.url === url);
+
+  if (configured?.secretUnavailable) {
+    return {
+      kind: "refused",
+      reason:
+        "This endpoint has a signing secret that could not be decrypted, so a test " +
+        "event cannot be signed the way real deliveries are. Save a new secret for " +
+        "it, or restore the encryption key it was written under.",
+    };
+  }
+
+  if (configured?.secret) return { kind: "signed", secret: configured.secret };
+  // Only for a url that is not a configured endpoint — a configured one is
+  // tested as it is configured, not as the caller asks.
+  if (!configured && typeof fallbackSecret === "string" && fallbackSecret.length > 0) {
+    return { kind: "signed", secret: fallbackSecret };
+  }
+  return { kind: "unsigned" };
 }
 
 /**
@@ -261,9 +333,12 @@ export async function saveWebhookEndpoints(
   );
 
   const toPersist: StoredWebhookEndpoint[] = endpoints.map((e) => {
-    const { secret, secretUnavailable, hasSecret, ...rest } = e as WebhookEndpoint & {
-      hasSecret?: boolean;
-    };
+    const { secret, secretUnavailable, hasSecret, enabled, ...withoutDerived } =
+      e as WebhookEndpoint & { hasSecret?: boolean; enabled?: boolean };
+    // One name for one fact. `enabled` is accepted (an older client build may
+    // still send it) and normalised away, never stored alongside `isActive` —
+    // two fields for one state is how they came to disagree.
+    const rest = { ...withoutDerived, isActive: isEndpointActive(e) };
     // `||` not `??`, deliberately: an empty-string secret is far more likely to
     // be a blank form field than an intent to turn signing off, and this
     // function exists to stop a key being destroyed by accident. Clearing a

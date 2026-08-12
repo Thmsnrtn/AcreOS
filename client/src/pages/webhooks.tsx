@@ -36,7 +36,14 @@ import { QueryErrorState } from "@/components/query-error-state";
 interface WebhookEndpoint {
   url: string;
   events: string[];
-  enabled: boolean;
+  /**
+   * The server's name for this, and the field the dispatcher actually filters
+   * on. This page used to call it `enabled` — so every endpoint added here was
+   * saved with a field nothing read, rendered its badge from the same field,
+   * and reported "Active" for an endpoint that was structurally incapable of
+   * receiving anything. One name for one fact.
+   */
+  isActive: boolean;
   secret?: string;
   description?: string;
 }
@@ -73,7 +80,7 @@ export default function WebhooksPage() {
   const [newEndpoint, setNewEndpoint] = useState<WebhookEndpoint>({
     url: "",
     events: ["lead.created", "deal.closed"],
-    enabled: true,
+    isActive: true,
     description: "",
   });
 
@@ -103,9 +110,21 @@ export default function WebhooksPage() {
 
   // allow-no-invalidation: sends a test event to the customer's endpoint — nothing cached changes
   const testMutation = useMutation({
-    mutationFn: (url: string) =>
-      apiRequest("POST", "/api/webhooks/test", { url }),
-    onSuccess: () => toast({ title: "Test event sent", description: "Check your endpoint for the test payload." }),
+    mutationFn: async (url: string) => {
+      const res = await apiRequest("POST", "/api/webhooks/test", { url });
+      return (await res.json()) as { status: number; ok: boolean; signed: boolean };
+    },
+    // Says WHICH of the two things was tested. A test event is now signed with
+    // the endpoint's own stored secret, so it exercises signature verification
+    // the way a real delivery does; saying so is the difference between "we sent
+    // something" and "we sent what we will actually send".
+    onSuccess: (result) =>
+      toast({
+        title: "Test event sent",
+        description: result.signed
+          ? "Signed with this endpoint's secret, exactly as a real delivery is. Check your endpoint for the test payload."
+          : "Sent unsigned — this endpoint has no signing secret configured. Check your endpoint for the test payload.",
+      }),
     onError: (err: any) =>
       toast({
         title: "Test event didn't reach the endpoint",
@@ -127,7 +146,7 @@ export default function WebhooksPage() {
     const updated = [...endpoints, newEndpoint];
     saveMutation.mutate(updated);
     setAddOpen(false);
-    setNewEndpoint({ url: "", events: ["lead.created", "deal.closed"], enabled: true, description: "" });
+    setNewEndpoint({ url: "", events: ["lead.created", "deal.closed"], isActive: true, description: "" });
   }
 
   function removeEndpoint(url: string) {
@@ -136,7 +155,7 @@ export default function WebhooksPage() {
   }
 
   function toggleEndpoint(url: string) {
-    const updated = endpoints.map(e => e.url === url ? { ...e, enabled: !e.enabled } : e);
+    const updated = endpoints.map(e => e.url === url ? { ...e, isActive: !e.isActive } : e);
     saveMutation.mutate(updated);
   }
 
@@ -212,10 +231,10 @@ export default function WebhooksPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <Switch
-                          checked={ep.enabled}
+                          checked={ep.isActive}
                           onCheckedChange={() => toggleEndpoint(ep.url)}
                           className="scale-75"
-                          aria-label={`${ep.url}: ${ep.enabled ? "active" : "paused"}`}
+                          aria-label={`${ep.url}: ${ep.isActive ? "active" : "paused"}`}
                         />
                         <code className="text-sm font-mono truncate block">{ep.url}</code>
                       </div>
@@ -232,8 +251,8 @@ export default function WebhooksPage() {
                       </ul>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant={ep.enabled ? "default" : "secondary"}>
-                        {ep.enabled ? "Active" : "Paused"}
+                      <Badge variant={ep.isActive ? "default" : "secondary"}>
+                        {ep.isActive ? "Active" : "Paused"}
                       </Badge>
                       <Button
                         variant="outline"

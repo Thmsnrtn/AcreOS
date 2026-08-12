@@ -2751,3 +2751,97 @@ hand-written list is how the set got out of sync to begin with.
 Three mutations, each caught: reintroducing a raw read in an unregistered file;
 reverting save-api-key to a plaintext write; reverting the credit gate to
 `.encrypted` (caught twice, by two independent assertions).
+
+---
+
+## Unit 41 — The webhooks panel said "Active" for endpoints that could never fire · this commit
+
+**Files:** `server/services/webhookDispatcher.ts`,
+`server/routes-integrations.ts`, `client/src/pages/webhooks.tsx`,
+`tests/unit/webhookActiveFlag.test.ts` (new, 18 tests).
+
+### Two identifiers, and nothing else wrong
+
+`client/src/pages/webhooks.tsx` wrote `enabled`, rendered its Active/Paused
+badge from `enabled`, and toggled `enabled`. `dispatchWebhook` has always
+filtered on `isActive`. `saveWebhookEndpoints` persisted whatever the client
+sent. So an endpoint added through the panel was stored as
+`{ url, events, enabled: true }` — **with no `isActive` at all.**
+
+The entire webhooks feature, as reachable by a customer, delivered nothing:
+
+- every endpoint added through the panel was `isActive: undefined`, filtered out
+  of every dispatch, forever;
+- the panel read its own field back and displayed **"Active"**;
+- the toggle flipped a field nothing read, so pausing and resuming both did
+  precisely nothing;
+- and nothing errored, because nothing was broken. Two halves of the system
+  simply never agreed on the name of the fact.
+
+This is the repo's most common defect class — *built but unwired* — in its least
+visible costume. There is no missing wire to grep for: the route is mounted, the
+service is called, the row is written, the UI renders. The only evidence is that
+two identifiers differ.
+
+**It is also a fabrication.** A badge reading "Active" for an endpoint
+structurally incapable of receiving anything is a claim about system state the
+system does not have — the same defect as an invented number, and the reason
+this ranks above a cosmetic rename.
+
+### Normalised on READ, not only on write
+
+Rows already in the column carry `enabled` and no `isActive`. Fixing only the
+writer would leave every existing customer's webhooks silent until somebody
+happened to re-save them. `isActive ?? enabled` repairs them in place, on the
+next dispatch, with no migration.
+
+**Absent both still means off.** An endpoint nobody ever expressed as active is
+not one to start delivering an org's lead and deal events to. A legacy PAUSE is
+honoured for the same reason: it was a real intent expressed through the only
+field the UI had.
+
+The legacy field is dropped on write and never returned to the client, so the
+two names cannot drift apart again.
+
+### The test button was testing the wrong thing
+
+`POST /api/webhooks/test` signed only when the caller passed a secret — and the
+client passes only a url, because unit 38 redacted the read. So **every test
+event went out unsigned while every real delivery went out signed.** The one
+message sent to prove an endpoint works was the one message a
+signature-verifying receiver would reject, and the panel reported a correctly
+configured endpoint as broken.
+
+A test to a configured endpoint is now signed with that endpoint's own stored
+secret, and an unreadable secret refuses rather than downgrading — the same rule
+`dispatchWebhook` follows, and the test is the surface where finding out is most
+useful. A caller-supplied secret applies only to a url the org has NOT
+configured: the button tests the endpoint as configured, not as the request asks.
+
+The rule lives in `resolveTestSigning()` rather than inline in the route, so it
+is unit-testable — a source assertion would have been the alternative, and a
+source assertion cannot tell you which key was used.
+
+The response now reports `signed`, and the panel says which of the two it did.
+Without that, an unsigned test reads as proof that signing works.
+
+### One helper added, deliberately
+
+The refusal is a 422 — the request is perfectly well-formed and simply cannot be
+carried out in the system's current state — and the `res-status-raw` ratchet
+correctly refused a raw `res.status(422)`. `Errors.validationFailed` was the
+wrong fit (it hardcodes "Some fields need a fix:", and no field is wrong) and
+`Errors.badRequest` would have said 400, which is not true. So
+`Errors.unprocessable` was added: the caller has nothing to correct in what they
+sent, something else has to change first. Ratchet back at baseline without
+raising it.
+
+### Verification
+
+Four mutations, each caught: dropping the legacy fallback (3 tests fire),
+defaulting an unexpressed endpoint to active, letting a caller-supplied secret
+beat the stored one, and reverting the client to `enabled`.
+
+The client assertion strips comments before checking, because the interface's
+doc comment mentions `enabled` on purpose — with a vacuity guard, since the
+assertion would otherwise pass against an empty string.

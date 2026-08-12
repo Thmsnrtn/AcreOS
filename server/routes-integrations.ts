@@ -1744,7 +1744,15 @@ export function registerIntegrationRoutes(app: Express): void {
         throw err;
       }
 
-      const { signPayload } = await import("./services/webhookDispatcher");
+      const { signPayload, resolveTestSigning } = await import("./services/webhookDispatcher");
+
+      // Sign the test the way a REAL delivery is signed — see resolveTestSigning.
+      const signing = await resolveTestSigning(org.id, url, secret);
+      if (signing.kind === "refused") {
+        return Errors.unprocessable(res, signing.reason);
+      }
+      const signingKey = signing.kind === "signed" ? signing.secret : undefined;
+
       const payload = JSON.stringify({
         event: "webhook.test",
         timestamp: new Date().toISOString(),
@@ -1756,10 +1764,11 @@ export function registerIntegrationRoutes(app: Express): void {
         "Content-Type": "application/json",
         "X-AcreOS-Event": "webhook.test",
       };
-      if (secret) headers["X-AcreOS-Signature"] = signPayload(payload, secret);
+      if (signingKey) headers["X-AcreOS-Signature"] = signPayload(payload, signingKey);
 
       const response = await fetch(url, { method: "POST", headers, body: payload });
-      res.json({ status: response.status, ok: response.ok });
+      // Reported so the UI can say which of the two things was actually tested.
+      res.json({ status: response.status, ok: response.ok, signed: !!signingKey });
     } catch (err: any) {
       Errors.internal(res, err);
     }
