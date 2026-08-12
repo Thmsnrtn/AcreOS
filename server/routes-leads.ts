@@ -14,6 +14,7 @@ import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
 import { skipTracingService, type SkipTraceResult } from "./services/skipTracingService";
 import { attachPermissionContext, type UserPermissionContext } from "./utils/permissions";
+import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
 import { alertingService } from "./services/alerting";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { requirePermission } from "./utils/permissions";
@@ -402,7 +403,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
     try {
       const org = req.organization;
       
@@ -440,6 +441,11 @@ export function registerLeadRoutes(app: Express): void {
         const ok = await assertUserIsOrgMember(String((input as any).assignedTo), org.id);
         if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
       }
+
+      // A caller who NAMED an assignee is making an assignment decision; one
+      // who did not is about to have the org's own rules decide, below, which
+      // needs no permission. So the gate sits here, above the auto-assign.
+      if (refuseUnpermittedAssignment(req as AuthenticatedRequest, res, req.body)) return;
 
       // Phase 5 §5 (team readiness) — auto-assign via lead_assignment_rules
       // when caller did not specify assignedTo. Errors are swallowed inside
@@ -662,6 +668,12 @@ export function registerLeadRoutes(app: Express): void {
 
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) return Errors.notFound(res, "Lead");
+
+      // `canAssignLeads` is declared for owner/admin and denied to member, va
+      // and viewer — and no route had ever checked it. Gated by FIELD: this
+      // route also carries ordinary member edits (a phone number, a status),
+      // and refusing those to close a narrow gap would be the blunt trade.
+      if (refuseUnpermittedAssignment(req as AuthenticatedRequest, res, req.body)) return;
 
       // Lens 48 — `viewOnlyAssignedLeads` was enforced on GET /api/leads but
       // not on the PUT path. This was the first write to re-assert it, with a

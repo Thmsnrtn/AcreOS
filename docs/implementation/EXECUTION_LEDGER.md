@@ -3200,3 +3200,78 @@ column whose arrival ends the block.
 Two mutations, both caught: adding `deals.decisionSnapshotId` (the refusal
 notices the block is over), and wiring a recorder while the link is still
 missing (the heuristic-pairing guard).
+
+---
+
+## Unit 46 — The last unenforced permission · this commit
+
+**Files:** `server/utils/leadAssignmentGate.ts` (new),
+`server/routes-leads.ts`, `server/routes-bulk.ts`,
+`tests/unit/leadAssignmentPermission.test.ts` (new, 11 tests).
+
+### Applied to none, which is the same defect at its limit
+
+`canAssignLeads` is granted to `owner` and `admin` and denied to `member`, `va`
+and `viewer`. `client/src/hooks/use-organization.ts` exposes it, so the UI hides
+the control. **No server route had ever checked it**, and three paths accepted
+an assignee from anyone:
+
+- `POST /api/leads` — `assignedTo` in the create body
+- `PUT /api/leads/:id` — `assignedTo` in the update body
+- `POST /api/bulk/leads/update` — `updates.assignedTo`, over an id array
+
+Units 30–35 were all *a rule applied to some surfaces and not others*. This is
+that at its limit, and **a permission the UI honours while the server ignores it
+is worse than no permission at all**: it reads as enforced to everyone who looks
+at the product, and the API is open.
+
+### Why assignment is an access-control operation
+
+It decides whose pipeline a lead lands in and who is measured on it — and for a
+`va`, or anyone carrying `viewOnlyAssignedLeads`, **who can see it at all**.
+Assigning a lead to a restricted user grants them access to it; assigning it
+away revokes theirs. It is access control wearing a workflow name, which is
+exactly why it was easy to leave ungated.
+
+**`assignedTo: null` counts.** Unassigning is an assignment decision in the
+direction that removes access; reading `null` as "not an assignment" would leave
+half the operation open. A test pins it.
+
+### Gated by field, and failing closed
+
+Same trade as `ORG_WIDE_SETTINGS`: `PUT /api/leads/:id` carries ordinary member
+edits, and refusing the whole request because the payload also contains
+`assignedTo` would break real work to close a narrow gap. The refusal fires only
+when the request SETS an assignee.
+
+The gate **fails closed** on an unresolvable role — the lesson from unit 32,
+whose first draft read a context attached later than the chokepoint, found
+`undefined`, and would have passed everything through while looking correct.
+That makes a missing `attachPermissionContext()` a new failure mode (it would
+refuse an owner too), so a test asserts each gated route attaches one.
+
+### Three assigners deliberately NOT gated
+
+- `services/leadAssigner` — the rules-based auto-assign that runs on create when
+  the caller named nobody. It applies the ORG'S OWN rules; denying them the right
+  to run would break intake for exactly the roles that need it. The gate sits
+  ABOVE it, so a caller who named an assignee is refused and a caller who did not
+  still gets the org's rules.
+- `services/territoryService` — automation under its own authority. A user
+  permission is the wrong instrument.
+- `services/importExport` — already behind `canImportData` (unit 35). A second
+  gate would be a second owner of the same rule.
+
+Property and deal assignment on the bulk routes are **out of scope, not
+overlooked**: there is no declared permission for either, and inventing one here
+would be a different change smuggled in.
+
+### Verification
+
+Four mutations, each caught: removing the gate from the bulk path; failing open
+instead of closed; treating `assignedTo: null` as not-an-assignment; and
+dropping `attachPermissionContext` from the create route.
+
+**Thread A is now complete.** Every declared permission this program found
+unenforced is enforced, and each fix ships with a registry that derives its
+surface from source.
