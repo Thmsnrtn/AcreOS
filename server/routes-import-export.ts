@@ -86,7 +86,7 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
@@ -115,7 +115,7 @@ export function registerImportExportRoutes(app: Express): void {
   });
 
   // notes — registered BEFORE /api/import/:entityType so the literal path wins (2026-07-11 route-order sweep).
-  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
 
@@ -187,7 +187,9 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/import/communications",
     isAuthenticated,
     getOrCreateOrg,
+    requirePermission("canImportData"),
     uploadJobCsv.single("file"),
+
     validateCSV,
     async (req, res) => {
       try {
@@ -227,7 +229,9 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/import/documents",
     isAuthenticated,
     getOrCreateOrg,
+    requirePermission("canImportData"),
     uploadJobZip.single("file"),
+
     async (req, res) => {
       try {
         const org = req.organization!;
@@ -265,7 +269,7 @@ export function registerImportExportRoutes(app: Express): void {
   //   - rows > 500 and ≤ MAX_IMPORT_ROWS (50,000): queue an import_jobs row
   //     and return { jobId, status, totalRows } (HTTP 202).
   //   - rows > 50,000: 400 with a clear error.
-  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, uploadJobCsv.single("file"), validateCSV, async (req, res, next) => {
+  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), uploadJobCsv.single("file"), validateCSV, async (req, res, next) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes" | "communications" | "documents";

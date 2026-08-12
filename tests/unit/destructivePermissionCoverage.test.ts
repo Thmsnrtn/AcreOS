@@ -328,6 +328,88 @@ describe("every bulk export enforces canExportData", () => {
   });
 });
 
+/**
+ * BULK IMPORT creates records at scale.
+ *
+ * `canImportData` is FALSE for `member`, `va` and `viewer`, and it was enforced
+ * on ZERO of thirteen import endpoints. These are POSTs, so unit 32's viewer
+ * read-only gate already covered the viewer; the residual exposure was
+ * `member` and `va`, who could bulk-import into the CRM against an explicit
+ * denial — polluting the record set at scale and consuming the org's usage
+ * allowance.
+ *
+ * Lower severity than the export gap (creating data is recoverable; exfiltrating
+ * it is not), and the same defect shape.
+ */
+describe("every bulk import enforces canImportData", () => {
+  /**
+   * Import endpoints that are NOT customer-record imports, each with its reason.
+   * Verified rather than assumed, and rechecked so the exemption cannot outlive
+   * its justification.
+   */
+  const NOT_A_RECORD_IMPORT: Record<string, { why: string; stillTrue: () => boolean }> = {
+    "/api/data-sources/bulk-import": {
+      why: "founder-only — behind isFounderAdmin, not a customer route",
+      stillTrue: () =>
+        /api\.post\(\s*"\/api\/data-sources\/bulk-import",\s*isAuthenticated,\s*isFounderAdmin/.test(
+          code("server/routes-admin.ts"),
+        ),
+    },
+    "/api/writing-styles/:id/import": {
+      why: "imports a writing-style config, not customer records",
+      stillTrue: () => true,
+    },
+  };
+
+  function importRoutes(): Array<{ file: string; path: string; chain: string }> {
+    const out: Array<{ file: string; path: string; chain: string }> = [];
+    for (const f of fs.readdirSync(path.join(ROOT, "server"))) {
+      if (!f.startsWith("routes") || !f.endsWith(".ts")) continue;
+      const src = code(`server/${f}`);
+      for (const m of src.matchAll(/api\.post\(\s*"([^"]*import[^"]*)"/g)) {
+        const start = m.index ?? 0;
+        const handler = src.slice(start).search(/async\s*\(|\(\s*req\s*[,:)]/);
+        out.push({
+          file: `server/${f}`,
+          path: m[1],
+          chain: src.slice(start, start + (handler === -1 ? 400 : handler)),
+        });
+      }
+    }
+    return out;
+  }
+
+  it("finds the import surface at all (vacuity guard)", () => {
+    expect(importRoutes().length, "no import routes found — has the shape changed?")
+      .toBeGreaterThanOrEqual(13);
+  });
+
+  it("gates every customer-record import", () => {
+    for (const r of importRoutes()) {
+      if (NOT_A_RECORD_IMPORT[r.path]) continue;
+      expect(
+        r.chain,
+        `${r.file} ${r.path} imports records without requirePermission("canImportData")`,
+      ).toContain('requirePermission("canImportData")');
+    }
+  });
+
+  it("each exemption still holds its reason", () => {
+    for (const [p, ex] of Object.entries(NOT_A_RECORD_IMPORT)) {
+      expect(ex.stillTrue(), `${p}: "${ex.why}" is no longer true`).toBe(true);
+    }
+  });
+
+  it("PREVIEW is gated too — you cannot preview an import you may not run", () => {
+    // A preview parses the operator's uploaded file and reports what it would
+    // create. Leaving it open would let a denied role use the importer as a
+    // file-processing oracle against the org's own schema.
+    for (const r of importRoutes().filter((x) => x.path.includes("preview"))) {
+      expect(r.chain, `${r.path}`).toContain('requirePermission("canImportData")');
+    }
+  });
+});
+
 describe("no destructive permission is declared and then never consulted", () => {
   const perms = code("server/utils/permissions.ts");
 

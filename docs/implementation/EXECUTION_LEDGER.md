@@ -2276,3 +2276,65 @@ conversation the caller can already read.
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 662 files, 8,712 tests, 1 skipped, 0 failures.**
 Mutation-tested: removing the backup gate and one CSV gate each fail.
+
+---
+
+## Unit 35 — Bulk import, and the end of the permission audit · this commit
+
+**Files:** `server/routes-import-export.ts`, `server/routes-leads.ts`,
+`server/routes-properties.ts` (11 routes),
+`tests/unit/destructivePermissionCoverage.test.ts` (+4 tests).
+
+`canImportData` is FALSE for `member`, `va` and `viewer`, and was enforced on
+**zero of thirteen** import endpoints. These are POSTs, so unit 32's read-only
+gate already covered the viewer; the residual was `member` and `va`, who could
+bulk-import into the CRM against an explicit denial — polluting the record set at
+scale and consuming the org's usage allowance.
+
+Lower severity than the export gap: creating data is recoverable, exfiltrating it
+is not. Same defect shape.
+
+**Previews are gated too.** A preview parses the operator's uploaded file and
+reports what it would create; leaving it open would let a denied role use the
+importer as a file-processing oracle against the org's own schema.
+
+Two endpoints are exempt with verified reasons: `/api/data-sources/bulk-import`
+is founder-only behind `isFounderAdmin` (the exemption re-checks that middleware
+is still there), and `/api/writing-styles/:id/import` imports a writing-style
+config rather than customer records.
+
+### The audit is now complete
+
+Thirteen permissions had zero `requirePermission` sites when this thread opened.
+Final disposition:
+
+| Permission | Outcome |
+|---|---|
+| `canDeleteProperties`, `canDeleteDeals`, `canDeleteNotes` | gated (unit 31) |
+| `canManageBilling`, `canAccessSettings` | gated (unit 33) |
+| every `canEdit*`, `canCreate*` | resolved structurally by the viewer read-only gate (unit 32) — viewer was the only role they denied |
+| `canExportData` | 9 of 10 endpoints gated (unit 34) |
+| `canImportData` | 11 of 13 endpoints gated (this unit) |
+| `canManageTeam` | verified enforced by `requireAdminOrAbove()` |
+| `canDeleteOrg` | verified founder-only under `/api/admin`, MFA + exact-name confirmation |
+| `canViewLeads` | true for every role — denies nobody |
+| `canAssignLeads` | **still unenforced.** Recorded, not guessed at. |
+
+`canAssignLeads` is left deliberately: assignment happens through several
+surfaces (the lead PUT's `assignedTo`, bulk update, the round-robin assigner),
+and the honest fix needs each caller checked rather than a pattern match. It is
+also the mildest of the set — reassigning a lead inside an org neither destroys,
+exfiltrates nor spends.
+
+**What the six security units share.** Every one was the same defect: a rule that
+existed and was applied to some surfaces and not others. The MFA gate protected
+2 of 7 admin routes; the assigned-leads gate covered reads but 4 writes; three
+delete permissions were declared and never consulted; `canExportData` reached 1
+of 10 exports; `canImportData` reached 0 of 13. **None was a missing rule. Every
+one was an unenforced one** — which is invisible route by route and obvious the
+moment the surface is enumerated. That is why each fix ships with a registry that
+derives its surface from source rather than a hand-written list, and why one of
+those registries found a route the hand-list had missed.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 662 files, 8,716 tests, 1 skipped, 0 failures.**

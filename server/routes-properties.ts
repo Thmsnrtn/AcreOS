@@ -671,7 +671,7 @@ export function registerPropertyRoutes(app: Express): void {
   });
   
   
-  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const file = req.file;
@@ -718,7 +718,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const file = req.file;
       

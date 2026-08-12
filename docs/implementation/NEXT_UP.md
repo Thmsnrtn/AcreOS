@@ -209,15 +209,20 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     now derives the export surface from SOURCE and found a tenth route the hand
     grep missed.
 
-**Residual, recorded not guessed:** `canImportData` and `canAssignLeads` are
-still unenforced. Viewer is covered by unit 32's gate, so the open question is
-member/va on import and lead assignment — check each route's real caller rather
-than gating on a pattern match. Import is the higher value of the two: it creates
-records in bulk and `canImportData` is false for member/va/viewer.
+35. **SECURITY** — `canImportData` was enforced on ZERO of thirteen import
+    endpoints; 11 gated (previews too — a preview parses the operator's file and
+    would otherwise be a schema oracle for a denied role). **The permission
+    audit is now complete** — see the ledger's disposition table.
+
+**One residual, recorded not guessed:** `canAssignLeads` is still unenforced.
+Assignment happens through several surfaces (the lead PUT's `assignedTo`, bulk
+update, the round-robin assigner) and needs each caller checked rather than a
+pattern match. It is the mildest of the set — reassigning a lead inside an org
+neither destroys, exfiltrates nor spends.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 662 files, 8,712 tests, 1 skipped, 0 failures.**
+suite green — 662 files, 8,716 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

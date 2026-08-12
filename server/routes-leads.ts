@@ -1372,7 +1372,7 @@ export function registerLeadRoutes(app: Express): void {
   });
   
   
-  api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const file = req.file;
@@ -1416,7 +1416,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/leads/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/leads/import/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const file = req.file;
       
@@ -1471,6 +1471,7 @@ export function registerLeadRoutes(app: Express): void {
     "/api/leads/csv-import",
     isAuthenticated,
     getOrCreateOrg,
+    requirePermission("canImportData"),
     requireScope("deal_write"),
     usageLimitGate("leads"),
     async (req, res) => {
@@ -1622,7 +1623,7 @@ export function registerLeadRoutes(app: Express): void {
   );
 
   // Tax Delinquent List Import (Phase 2.5)
-  api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), async (req, res) => {
     try {
       const org = req.organization;
       const { mappedData, columnMapping } = req.body;
