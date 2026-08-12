@@ -1373,3 +1373,91 @@ interim) rather than assuming.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 658 files, 8,639 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 22 — Adoption: the first customer surface to enter the loop · this commit
+
+**Audit requirement:** the canonical loop must be REACHED, not merely built.
+Also BI72 (an action must name the authority that permitted it), BI92, and
+`CLAUDE.md`'s standing warning about "built but unwired".
+
+**Files:** `server/routes-flip-analyzer.ts`, `shared/architecture/canon.ts`,
+`tests/unit/canonicalLoopAdoption.test.ts` (new, 11 tests + an UP-only ratchet).
+
+### The uncomfortable observation
+
+Seven units built a complete canonical loop — five engines, four append-only
+layers, evidence lineage, an outcome prompt, a calibration instrument. All
+tested, all mounted, all org-scoped. And the number a customer actually acted on
+was still recorded nowhere, because **no customer surface called any of it.**
+
+That is this repo's signature defect, and this program produced a large instance
+of it *while writing tests about it*. Every gate passed throughout:
+`lint:reachability` is satisfied because the routes ARE mounted and the stores
+ARE called — by the routes. The golden loops pass because they exercise the
+layers directly. **Nothing measured whether a real product surface ever entered
+the loop**, so nothing could notice that none did.
+
+### Where it was wired, and why there
+
+`POST /api/flip-analyzer/offer`. Drafting an offer is the moment a number stops
+being exploratory and becomes a document — and the route already recomputes the
+MAO server-side from real inputs, so it holds everything a scenario needs.
+
+**Not `POST /api/flip-analyzer/mao`**, deliberately, and a test pins that it
+stays clean. The MAO endpoint is what a form calls as inputs change; recording
+there would fill the tables with keystrokes, and the calibration built on top
+would then measure drafts rather than decisions.
+
+### Four things the wiring had to get right
+
+**It passes INPUTS to the engine, not the numbers it already computed.** The
+route has `mao` in hand and hands it over anyway — `recordScenario` recomputes.
+That looks redundant (the same `computeMao` runs twice) and it is the contract: a
+caller that supplies pre-computed metrics can supply any metrics at all, and the
+stored `engine_version` would then be a claim by the caller rather than a fact
+about the arithmetic. The duplicate call is pure arithmetic on seven integers.
+
+**It names a real authority.** `org_member:flip_analyzer_offer`, with
+`actorRef: getUserId(req)`. "system" or "autonomous" would be false (BI72): the
+route is reachable only by an authenticated org member, and the offer is refused
+earlier if it exceeds the org's own MAO rule.
+
+**It carries the org-rule vs platform-default distinction into `origin`.** The
+analyzer already knows which figures are the operator's own rules and which are
+platform defaults (`FigureSource`); flattening that on the way into the record is
+exactly how a platform default later reads as "what the customer believed".
+*Caught while writing it:* the first draft called
+`stampAssumptionSources([], resolved.sources)` — which returns an empty array, so
+it would have recorded ZERO assumptions while looking correct. It now stamps the
+assumptions `computeMao` actually produced, and a test pins the argument.
+
+**It can never fail the offer.** The offer row is already written when the
+recording runs, so the whole block is in its own try/catch whose catch only logs
+— same posture as the evidence write in `propertyEnrichment.ts`. It can add a
+record; it can never remove one. The response reports `decisionSnapshotId: null`
+rather than omitting the field, so a caller can tell "not recorded" from "not
+asked for".
+
+**It does NOT invent a review date.** An offer's fate is usually known within
+weeks, so one would be useful — and nothing in the request carries one.
+Defaulting would manufacture a date the operator never chose, which is precisely
+what unit 21 refused to do. Null until the UI asks.
+
+### The one ratchet in this repo that may only GROW
+
+`ADOPTING_SURFACE_BASELINE = 1`. Every other ratchet here counts a defect and
+shrinks; this counts coverage. Lowering it means a customer surface stopped
+recording why it did what it did.
+
+It deliberately counts **product** surfaces, not the canonical layers' own
+endpoints — a test asserts `routes-decisions.ts` and `routes-scenarios.ts` are
+excluded. Those are the loop's front door talking to itself; counting them would
+let the ratchet be satisfied without a single customer ever entering the loop.
+It is a small, blunt number precisely so it cannot be satisfied by another test,
+another layer or another engine — only by wiring something a customer touches.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 659 files, 8,650 tests, 1 skipped, 0 failures.**
+Mutation-tested: a generic `authority` and a flattened `origin` each fail.

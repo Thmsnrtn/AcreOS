@@ -62,7 +62,7 @@ import { db } from "./db";
 import { organizations, properties, offers } from "@shared/schema";
 import { arvCalculations, rehabs } from "@shared/schema/fix-and-flip";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganization, getOrganizationId } from "./types/request";
+import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
@@ -522,6 +522,114 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
           },
         });
 
+        // ── Record WHY, not just what (canonical layers 4 and 5) ─────────
+        //
+        // This is the first customer surface to write into the canonical loop,
+        // and drafting an offer is the right moment for it: the number stops
+        // being exploratory and becomes a document. Recording on every MAO
+        // recompute would fill the tables with keystrokes; recording here is
+        // once per deliberate act.
+        //
+        // The scenario is COMPUTED by the registered engine rather than
+        // assembled from `mao` above. That looks redundant — the same
+        // `computeMao` runs twice — and it is the contract: `recordScenario`
+        // takes inputs and computes, because a caller that hands over
+        // pre-computed numbers can hand over any numbers at all, and the stored
+        // `engine_version` would then be a claim rather than a fact. The extra
+        // call is pure arithmetic on seven integers.
+        //
+        // BEST-EFFORT, IN ITS OWN TRY/CATCH. The offer already succeeded and
+        // its row is written. Failing the request now would turn a bookkeeping
+        // problem into a lost draft offer, so this can only ever add a record —
+        // never remove one. Same posture as the evidence write in
+        // propertyEnrichment.ts, and for the same reason.
+        let decisionSnapshotId: number | null = null;
+        try {
+          const { recordScenario } = await import("./services/economics/scenarioStore");
+          const { recordDecision } = await import("./services/decisions/decisionStore");
+
+          const scenario = await recordScenario(orgId, {
+            subjectType: "property",
+            subjectId: prop.id,
+            label: `Offer ${centsToDecimalDollars(parsed.data.offerCents)} on a ${centsToDecimalDollars(arvCents)} ARV`,
+            engineId: "flip_mao",
+            inputs: {
+              arvCents,
+              rehabEstimateCents: parsed.data.rehabEstimateCents,
+              purchasePriceCents: parsed.data.offerCents,
+              feeCents: parsed.data.feeCents ?? 0,
+              maoRulePct: resolved.values.maoRulePct,
+              rehabContingencyPct: resolved.values.rehabContingencyPct,
+              sellingCostPct: resolved.values.sellingCostPct,
+              purchaseClosingPct: resolved.values.purchaseClosingPct,
+              holdMonths: resolved.values.holdMonths,
+              monthlyHoldingCostCents: resolved.values.monthlyHoldingCostCents,
+              targetProfitPct: resolved.values.targetProfitPct,
+            },
+            // The operator's flip rules ARE assumptions, and their `source`
+            // already distinguishes a rule they set from a platform default.
+            // That distinction is exactly what `origin` exists to carry, so it
+            // is mapped rather than flattened — a platform default silently
+            // reading later as "what the customer believed" is the failure the
+            // field prevents.
+            assumptions: stampAssumptionSources(mao.assumptions, resolved.sources).map(
+              (a) => ({
+                key: a.key,
+                // `display` is the pre-formatted figure ("70% of ARV"), which is
+                // what the operator actually saw. Storing the formatted string
+                // rather than a bare number keeps the record readable and keeps
+                // server and client wording identical.
+                value: a.display,
+                origin:
+                  a.source === "org_rule"
+                    ? ("user" as const)
+                    : ("platform-default" as const),
+                basis: a.label,
+              }),
+            ),
+          });
+
+          const decision = await recordDecision(
+            orgId,
+            {
+              subjectType: "property",
+              subjectId: prop.id,
+              kind: "offer",
+              choice: `Offer ${centsToDecimalDollars(parsed.data.offerCents)} (MAO ${centsToDecimalDollars(mao.maoCents)})`,
+              rationale:
+                `Drafted from the fix-and-flip analyzer: ARV ${centsToDecimalDollars(arvCents)}, ` +
+                `rehab ${centsToDecimalDollars(parsed.data.rehabEstimateCents)} before contingency, ` +
+                `offered ${offerPct}% of ARV under the operator's own MAO rule.`,
+              actorType: "user",
+              actorRef: getUserId(req),
+              // The real authority: this route is reachable only behind
+              // isAuthenticated + getOrCreateOrg, and the offer was refused
+              // above if it exceeded the org's own MAO rule. Naming a generic
+              // "autonomous" or "system" here would be false (BI72).
+              authority: "org_member:flip_analyzer_offer",
+              strategyPackId: null,
+              strategyPackVersion: null,
+              assumptions: [],
+              alternatives: [],
+              // NULL, deliberately. An offer's fate is usually known within
+              // weeks, so a review date would be useful — but nothing in this
+              // request carries one, and defaulting would manufacture a date the
+              // operator never chose, which is exactly what the outcome prompt
+              // refuses to do. The UI should ASK; until it does, null is the
+              // honest record.
+              reviewDueAt: null,
+            },
+            new Date(),
+            [scenario.id],
+          );
+          decisionSnapshotId = decision.id;
+        } catch (err) {
+          logger.warn(
+            "[flip-analyzer] offer saved but its reasoning was not recorded",
+            err instanceof Error ? err : undefined,
+          );
+        }
+
         return res.json({
           offer: created,
           carried: {
@@ -532,6 +640,9 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
             offerPctOfArv: Number(offerPct),
             netProfitCents: mao.netProfitCents,
           },
+          // Null when the reasoning could not be recorded. Reported rather than
+          // omitted, so a caller can tell "not recorded" from "not asked for".
+          decisionSnapshotId,
           note: "Draft offer saved. Nothing has been sent and no money has moved — open it under Deals to review and send.",
         });
       } catch (err) {

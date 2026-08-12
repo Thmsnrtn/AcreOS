@@ -136,10 +136,16 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     construction, so calibration was measuring what people remember rather than
     how they forecast. Design borrowed from the founder plane's `outcomeLedger`;
     its control-plane table is not (BI5).
+22. **First adoption** — `POST /api/flip-analyzer/offer` now records a
+    `flip_mao` scenario and an `offer` decision citing it. The first customer
+    surface to enter the loop as a side effect of ordinary work rather than by
+    calling the loop's own endpoints. Guarded by
+    `canonicalLoopAdoption.test.ts` — **the only ratchet in this repo that may
+    only GROW**, because it counts coverage rather than a defect.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 658 files, 8,639 tests, 1 skipped, 0 failures.**
+suite green — 659 files, 8,650 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -165,21 +171,32 @@ see §6a. Grep for the function that already owns the maths BEFORE planning the
 adapter; if there is no such function, there is no gap.
 
 In order:
-- **ADOPTION. This is now the only thing that matters.** Verified 2026-08-12:
-  **zero** references to `/api/scenarios`, `/api/decisions`,
-  `/api/decisions/due` or `/api/decisions/calibration` anywhere under
-  `client/src`. Seven server-side units built a complete, tested, closed
-  canonical loop — five engines, four layers, evidence lineage, an outcome
-  prompt, a calibration instrument — and **not one customer ever touches any of
-  it.** The customer-facing calculators still compute for DISPLAY and persist
-  nothing, so a number someone acted on is still reconstructable only by
-  accident.
-  Everything further built server-side compounds that gap rather than closing
-  it. The next unit should wire ONE real surface end to end — most likely the
-  land-deal calculator, since `land_deal` is the engine with the most callers —
-  so that computing a deal records a scenario, acting on it records a decision,
-  and the due prompt appears where the customer already is. Inside the existing
-  Deals/Finance/Map doors: **never a new nav entry**, and Pax stays ambient.
+- **KEEP GOING ON ADOPTION — it is still the only thing that matters.** Unit 22
+  wired the FIRST surface (offer drafting in the flip analyzer). The ratchet is
+  at 1. Raise it.
+  The next candidates, in order of value:
+  **(a) The rental/buy-and-hold comparison** (`POST /api/flip-analyzer/rental`)
+  — `rental_returns` is registered and the route computes the same numbers
+  without recording them. Same shape as unit 22, roughly the same size.
+  **(b) The land-deal path.** `land_deal` is the richest engine (eight metrics)
+  and its only caller is `client/src/components/tools/LandDealCalculator.tsx` —
+  which is the PUBLIC, embeddable marketing calculator with no org and no auth.
+  Do NOT wire that one: there is no tenant to record against. The in-app land
+  surface needs finding first, and it may not exist, in which case say so rather
+  than wiring the public tool.
+  **(c) Client rendering.** Still zero references to `/api/decisions/due` or
+  `/api/decisions/calibration` under `client/src` — the outcome prompt and the
+  calibration exist and nothing shows them. Inside the existing
+  Deals/Finance/Today doors: **never a new nav entry**, and Pax stays ambient.
+
+  **The lesson unit 22 paid for:** every gate passed for seven units while the
+  loop had no customers. `lint:reachability` was satisfied because the routes
+  are mounted and the stores are called *by the routes*; the golden loops passed
+  because they exercise the layers directly. Nothing measured whether a PRODUCT
+  surface entered the loop, so nothing noticed that none did. That is what the
+  up-only ratchet now measures, and it deliberately excludes
+  `routes-decisions.ts` / `routes-scenarios.ts` — the loop's own front door
+  talking to itself is not adoption.
 
 **On the technique, which has earned its place:** five of the six defects this
 program has found came from golden loops, and every one was invisible to the

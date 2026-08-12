@@ -901,9 +901,20 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "observation rather than either resolution or silence; and the sweep " +
         "cannot write, so being asked for an outcome can never create one. The " +
         "design is borrowed from the founder plane\u0027s outcomeLedger; its " +
-        "control-plane table is NOT (BI5). REMAINING GAP: adoption — no client " +
-        "surface calls /api/decisions/due or /api/decisions/calibration yet, so " +
-        "the prompt exists and nothing renders it.",
+        "control-plane table is NOT (BI5). ADOPTION HAS BEGUN: drafting an offer " +
+        "in the fix-and-flip analyzer (POST /api/flip-analyzer/offer) now records " +
+        "a flip_mao SCENARIO and an offer DECISION citing it — the first customer " +
+        "surface to enter the loop as a side effect of ordinary work rather than " +
+        "by calling the loop\u0027s own endpoints. It records at the offer draft, " +
+        "not at every MAO recompute, so the tables hold decisions rather than " +
+        "keystrokes; it passes INPUTS to the engine rather than the numbers it " +
+        "already has, so engine_version stays a fact; and it is best-effort in " +
+        "its own try/catch, so a bookkeeping failure can never lose a draft " +
+        "offer. tests/unit/canonicalLoopAdoption.test.ts holds an UP-only " +
+        "ratchet on the count of such surfaces — the only ratchet in the repo " +
+        "that may not shrink. REMAINING GAP: still no CLIENT code calls " +
+        "/api/decisions/due or /api/decisions/calibration, so the prompt and the " +
+        "calibration exist and nothing renders them.",
     },
   },
   {
