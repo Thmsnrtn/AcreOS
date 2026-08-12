@@ -338,3 +338,54 @@ near-miss is the useful record.
 
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline ·
 22/22 outward-action tests.
+
+---
+
+## Unit 7 — Security: the admin MFA gate protected 2 of 7 surfaces · this commit
+
+**Source:** surfaced by the adversarial verifier on the identity/tenancy layer
+of the reconnaissance workflow, then **re-verified independently** before acting
+(a green agent report is a hypothesis — CLAUDE.md).
+
+**The defect:** Express evaluates middleware in registration order.
+`app.use("/api/admin", isAuthenticated, requireClerkMFA)` sat at
+`server/routes.ts:2459`, ~700 lines *below* five of the seven `/api/admin`
+surfaces. Those handlers were reached and returned first, so the gate never ran:
+
+    /api/admin/finance                          (1756)
+    /api/admin/support/saved-replies            (1803)
+    /api/admin/support/customer-context         (1809)
+    /api/admin/feature-flags[/:key]             (1821, 1831)
+    /api/admin/audit-log/verify[-all]           (2180, registrar)
+    /api/admin/deployments, /api/admin/dr-drills (2187, registrar)
+
+Only `registerAdminRoutes` and `registerAdminRecoveryRoutes` — registered
+immediately below the gate — were covered. The comment beside them said the
+middleware "also covers them", which was true of those two and quietly implied a
+generality the ordering did not provide.
+
+**Severity, stated honestly:** every affected route was still behind
+`isAuthenticated` + `requireFounder`. This was a **missing second factor on
+founder-only surfaces, not an open door**. It still matters:
+`/api/admin/support/customer-context` reads any org's MRR and audit trail, which
+is precisely the blast radius a second factor exists to bound.
+
+**Fix:** the gate moved above every `/api/admin` registration, and *out of* the
+scoping block it initially landed in during the edit. Verified safe before
+moving: `requireClerkMFA`'s high-trust prefixes are `/api/admin/recovery`,
+`/api/admin/users/`, `/api/admin/orgs/` — none in the newly-covered set — so no
+user without 2FA is newly locked out. The change strictly tightens: users who
+*have* 2FA must now have verified it this session on those five surfaces.
+
+**Regression gate:** `tests/unit/adminMfaOrdering.test.ts` (5 tests). It checks
+source order, because the defect *is* a source-order property — no request-level
+test would have caught it without already knowing which routes to probe. It
+covers literal registrations *and* the four registrars that mount `/api/admin`
+paths internally, asserts each listed registrar still touches `/api/admin` (so
+the list cannot rot into vacuity), and carries a vacuity guard requiring the
+scanner to find ≥6 registrations.
+
+The existing `lint:route-order` gate does not catch this class — it looks for
+swallowed literal routes, not middleware that sorts below what it guards.
+
+**Gates:** `npm run check` PASS · 45/45 across the five affected suites.

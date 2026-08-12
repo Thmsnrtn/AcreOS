@@ -1747,6 +1747,27 @@ export async function registerRoutes(
     app.use('/api/founder/finance', isAuthenticated, getOrCreateOrg, requireFounder, financeLedgerRouter);
   }
 
+  // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
+  // with MFA enabled in Clerk must have completed second-factor in this
+  // session; high-trust paths (admin recovery, ownership transfer)
+  // additionally require MFA *be set up*. See requireClerkMFA for the
+  // full decision matrix.
+  //
+  // ORDER IS LOAD-BEARING. Express evaluates middleware in REGISTRATION
+  // order, so this app.use MUST precede every /api/admin/* handler. It used
+  // to sit ~700 lines below, which left /api/admin/finance,
+  // /api/admin/support/saved-replies, /api/admin/support/customer-context,
+  // /api/admin/feature-flags, /api/admin/audit-log/verify[-all],
+  // /api/admin/deployments and /api/admin/dr-drills reaching their handlers
+  // and returning BEFORE the gate ever ran — second factor silently skipped
+  // on five of the seven admin surfaces. (They were still behind
+  // isAuthenticated + requireFounder, so this was a missing second factor,
+  // not an open door — but customer-context reads any org's MRR and audit
+  // trail, which is exactly what a second factor is for.)
+  // tests/unit/adminMfaOrdering.test.ts now fails the build if any
+  // /api/admin route is registered above this line.
+  app.use("/api/admin", isAuthenticated, requireClerkMFA);
+
   // Admin Finance — Tahoe L6 system-of-record + reserve floor compliance.
   // Platform-level (not org-scoped); founder-gated. Mounted distinct from
   // /api/founder/finance because the surface is "platform admin" — reserve
@@ -2451,12 +2472,6 @@ export async function registerRoutes(
   registerMaintenanceTicketRoutes(app);
   // Buy-and-hold vertical BH-7 — investor analytics (NOI/cap/DSCR).
   registerInvestorAnalyticsRoutes(app);
-  // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
-  // with MFA enabled in Clerk must have completed second-factor in this
-  // session; high-trust paths (admin recovery, ownership transfer)
-  // additionally require MFA *be set up*. See requireClerkMFA for the
-  // full decision matrix.
-  app.use("/api/admin", isAuthenticated, requireClerkMFA);
   registerAdminRoutes(app);
   // Coriander §1: Recovery-console endpoints (founder-gated, audit-logged).
   // Mounted alongside other /api/admin routes so the requireClerkMFA
