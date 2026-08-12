@@ -352,7 +352,26 @@ rebuild them; read this instead.
 | handlers that mention `req.body` and write a jsonb-named column with no zod parse | 165 hits | the conjunction is far too weak; most were server-constructed audit metadata |
 | field reads on a typed jsonb column that its `$type<>` never declares | 235 hits | `metadata`, `settings`, `result`, `items`, `checks` are among the most common local identifiers in the repo — name-collision swamps the signal |
 
-Precision here needs **field-level dataflow**, not grep. If you attempt it again,
+**A FOURTH detector was tried after unit 50 and also failed**, and its failure
+is the most instructive of the four because the reason is architectural rather
+than syntactic:
+
+| detector | result | why it failed |
+|---|---|---|
+| paid outbound rails that do NOT deduct credits ("variable cost attributable") | 48 of 53 callers flagged | **cost gating lives at the ROUTE, where the tenant is known; the rail lives in the SERVICE, where it often is not.** A file-level co-occurrence test cannot pair them — `comps.ts` calls Regrid unmetered because `routes-properties.ts` already ran `calculateCost("comps_query")` two layers up. And the largest group of genuinely unmetered callers is the **founder plane**, which is correctly unmetered: it is the platform's own spend. |
+
+So four detectors, four failures. The one finding this thread produced (unit 50,
+Meta ads) came from **reading a file and noticing that the ruling recorded
+twenty lines below it had not been applied to it** — not from any scan.
+
+**The technique that actually works on this codebase**, stated plainly because
+four attempts now support it: *find a rule the repo has already written down —
+a founder ruling, a closed vocabulary, a house convention, a deleted-subsystem
+note — and enumerate the surfaces it should cover.* Every substantive finding
+from units 30 through 50 came that way. Grep-based anomaly detection produced
+noise every time.
+
+Precision on the jsonb class needs **field-level dataflow**, not grep. If you attempt it again,
 attempt it with a TypeScript AST pass, and know the yield is unproven: the third
 detector's 235 hits produced exactly one real finding (unit 43), and that came
 from hand-checking the entries whose names sounded safety-relevant. **Sorting the
