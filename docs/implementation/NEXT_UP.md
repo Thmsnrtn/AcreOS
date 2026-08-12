@@ -234,6 +234,21 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
+**Two threads are open. Read both before choosing.**
+
+**THREAD A — SECURITY (units 30–35), now complete except one recorded residual.**
+Six units, six findings, all the same defect: *a rule that existed and was applied
+to some surfaces and not others.* The MFA gate protected 2 of 7 admin routes; the
+assigned-leads gate covered reads but four writes; three delete permissions were
+declared and never consulted; `canExportData` reached 1 of 10 exports (a viewer
+could ZIP the whole org); `canImportData` reached 0 of 13. **None was a missing
+rule.** If you look for more security work, look for *unenforced* rules, not
+absent ones — enumerate a surface and check it as a set, because route-by-route
+review cannot see this class at all. Only `canAssignLeads` remains, and it is the
+mildest.
+
+**THREAD B — ADOPTION (units 22–29), the canonical loop's reach.**
+
 **The engine registry is DONE. Stop adding engines. The gap is ADOPTION.**
 
 BI191 is satisfied: five structurally different engines (`land_deal` cash-flow
