@@ -2550,3 +2550,100 @@ fail.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 665 files, 8,734 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 39 — The same secret, the other exposure: plaintext at rest · this commit
+
+**Files:** `server/services/webhookDispatcher.ts`,
+`tests/unit/webhookSecretAtRest.test.ts` (new, 15 tests),
+`tests/unit/webhookSecretRedaction.test.ts` (assertions rewritten to the new
+truth).
+
+### The fix that was only half a fix
+
+Unit 38 stopped `GET /api/webhooks` handing the HMAC signing key back. It did
+nothing about where the key lives: `saveWebhookEndpoints` wrote it into
+`organization_integrations.credentials` **in the clear**, while every other
+provider in that same column stores an `{ encrypted: "<envelope>" }` blob.
+
+Same credential, two different exposures. Closing the API one leaves a database
+dump, a support query, a logical replica and a restored backup all still
+yielding a key that lets its holder forge deliveries into the customer's own
+systems.
+
+This was found by asking a question the previous unit did not: *having stopped
+the API returning it, where else does this value exist?*
+
+### Field-level, not blob-level — and not for consistency
+
+The obvious move was to match the other providers and store
+`{ encrypted: enc(<the whole endpoint list>) }`. Encrypting only each endpoint's
+`secret` buys three properties the blob shape cannot:
+
+- **The redacted read never decrypts.** `getWebhookEndpointsForDisplay` answers
+  "is signing configured?" from the ciphertext's presence, so the API path never
+  holds key material at all. Unit 38's redaction is no longer the only thing
+  standing between a member and the key.
+- **The webhook list survives a key problem.** url/events/isActive stay
+  readable, so a missing key degrades signing rather than blanking the
+  configuration screen.
+- **`/api/integrations` keeps ignoring this row.** That route decrypts anything
+  carrying `credentials.encrypted`; giving the webhooks row one would have
+  pulled it into a surface never written with it in mind. Checked, not assumed.
+
+### Lazy migration, no script
+
+Rows written before this hold plaintext. `isEncrypted` tells the two apart by
+the `enc:v1:` marker — not `decrypt()`, which passes an unrecognised string
+through as plaintext and would therefore turn a corrupted envelope into a
+signing key. Legacy rows sign correctly as-is and are encrypted on their next
+save. No data-migration script, no window where a row is unreadable, no deploy
+ordering to get right.
+
+### The new state, and why it refuses
+
+Encrypting at rest creates a state that did not exist before: **a secret that is
+configured but cannot be read** (key rotated without the old kid, ephemeral dev
+key after a restart, corrupted row). It is deliberately a third state,
+`secretUnavailable`, distinct from "no secret configured" — because the two
+demand opposite behaviour.
+
+The tempting handling is to drop the secret and deliver. That is the dangerous
+one: a receiver's check is usually "if a signature header is present, verify
+it", and an unsigned payload sails straight through it. Signing with the
+ciphertext is no better — the signature can never verify and the failure reads
+as the receiver's bug.
+
+So **an endpoint configured for signing is never delivered to unsigned.** The
+delivery is skipped, counted failed, and logged with what to do about it. An
+endpoint with no secret at all still delivers unsigned, exactly as before.
+
+### A save must never destroy a key it cannot read
+
+Preservation (unit 38) now carries the **ciphertext** across untouched rather
+than the decrypted value. That is not an optimisation: it means a routine save —
+toggling an endpoint off, editing a URL — cannot take "this process cannot open
+the envelope" as "there is no secret here" and write the field away. The org
+would otherwise lose a key that a restored encryption key could have recovered,
+and nothing would report it.
+
+`||` not `??` on the carried value, deliberately: an empty-string secret is far
+more likely to be a blank form field than an intent to disable signing.
+
+Derived fields are stripped on write. `hasSecret` and `secretUnavailable` are
+answers this module computes, and the round-trip hands them back as input — a
+client must not be able to assert them. (Unit 38 was persisting `hasSecret`;
+that is fixed here too.)
+
+### Verification
+
+Five mutations, each caught: storing plaintext; dropping the dispatch refusal;
+making the display path decrypt; keeping the derived fields; reading the
+decrypted shape for preservation (which drops an unreadable key AND churns the
+envelope — two tests fire).
+
+Unit 38's test file was **updated, not deleted**, per wave discipline: the
+persisted secret is now an envelope, so its assertions decrypt before comparing.
+Every invariant it pinned — rotation still replaces, a new endpoint inherits
+nothing, a changed URL does not carry the old key — survives unchanged.

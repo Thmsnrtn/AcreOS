@@ -25,9 +25,21 @@
  * the next save — silently disabling signature verification on every downstream
  * integration, with no error raised anywhere. Half this fix is the half that is
  * easy to forget.
+ *
+ * SINCE UPDATED: the secret is now also encrypted AT REST, so what this file
+ * reads out of the persisted row is an envelope rather than the key. The
+ * assertions below decrypt before comparing — the invariant they were written
+ * for (a redacted round-trip must not erase or alter the key) is unchanged, only
+ * its observable form is. `webhookSecretAtRest.test.ts` owns the storage rules
+ * themselves.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// A valid 32-byte hex key. tests/setup.ts sets ENCRYPTION_KEY to a non-hex
+// string, which makes the encryption on save throw on the hex-length check.
+process.env.FIELD_ENCRYPTION_KEY =
+  "4242424242424242424242424242424242424242424242424242424242424242";
 
 const rows: Array<{ credentials: unknown }> = [];
 const updates: unknown[] = [];
@@ -48,6 +60,14 @@ vi.mock("../../server/utils/logger", () => ({
 
 const { getWebhookEndpoints, getWebhookEndpointsForDisplay, saveWebhookEndpoints } =
   await import("../../server/services/webhookDispatcher");
+const { decrypt, isEncrypted } = await import("../../server/services/fieldEncryption");
+
+/** The persisted secret, opened. Encryption at rest is not this file's subject. */
+function savedSecret(endpoint: Record<string, unknown> | undefined): string | undefined {
+  const s = endpoint?.secret;
+  if (typeof s !== "string") return undefined;
+  return isEncrypted(s) ? decrypt(s) : s;
+}
 
 function seed(endpoints: unknown[]) {
   rows.length = 0;
@@ -122,7 +142,7 @@ describe("a redacted round-trip does not erase the key", () => {
       { url: "https://b.example/hook", events: ["deal.created"], isActive: true },
     ] as never);
     const saved = savedEndpoints();
-    expect(saved.map((e) => e.secret)).toEqual(["s3cr3t-a", "s3cr3t-b"]);
+    expect(saved.map(savedSecret)).toEqual(["s3cr3t-a", "s3cr3t-b"]);
     // ...and the caller's real edit is still applied.
     expect(saved[1].isActive).toBe(true);
   });
@@ -132,7 +152,7 @@ describe("a redacted round-trip does not erase the key", () => {
     await saveWebhookEndpoints(1, [
       { url: "https://a.example/hook", secret: "rotated", events: "all", isActive: true },
     ] as never);
-    expect(savedEndpoints()[0].secret).toBe("rotated");
+    expect(savedSecret(savedEndpoints()[0])).toBe("rotated");
   });
 
   it("adds a NEW endpoint with no secret without inventing one", async () => {

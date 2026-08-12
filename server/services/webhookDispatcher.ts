@@ -22,6 +22,7 @@ import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
 import { logger } from "../utils/logger";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
+import { encrypt, decrypt, isEncrypted } from "./fieldEncryption";
 
 export type WebhookEventType =
   // Lead lifecycle
@@ -76,7 +77,23 @@ export interface WebhookEndpoint {
   events: WebhookEventType[] | 'all';
   isActive: boolean;
   label?: string;
+  /**
+   * DERIVED, never persisted. Set when the endpoint HAS a stored signing secret
+   * that could not be decrypted — a different state from "no secret configured",
+   * and the reason the two are distinguished is that they demand opposite
+   * behaviour: no secret means deliver unsigned, unreadable secret means do not
+   * deliver at all. See `dispatchWebhook`.
+   */
+  secretUnavailable?: boolean;
 }
+
+/**
+ * The endpoint AS IT SITS IN THE COLUMN. Structurally the same, except `secret`
+ * holds CIPHERTEXT for anything written since webhook secrets were encrypted at
+ * rest — and plaintext for rows written before that, which are upgraded on their
+ * next save. `secretUnavailable` is derived at read time and never stored.
+ */
+type StoredWebhookEndpoint = Omit<WebhookEndpoint, "secretUnavailable">;
 
 export interface WebhookPayload {
   event: WebhookEventType;
@@ -95,11 +112,12 @@ export function signPayload(payload: string, secret: string): string {
 }
 
 /**
- * Get all registered webhook endpoints for an org from organizationIntegrations.
- * Webhooks are stored as a JSON array in the credentials.webhooks field
- * of a special 'webhooks' integration record.
+ * The stored rows, verbatim — secrets still encrypted.
+ *
+ * Webhooks are stored as a JSON array in the credentials.endpoints field of a
+ * special 'webhooks' integration record.
  */
-export async function getWebhookEndpoints(organizationId: number): Promise<WebhookEndpoint[]> {
+async function readStoredEndpoints(organizationId: number): Promise<StoredWebhookEndpoint[]> {
   const [integration] = await db
     .select()
     .from(organizationIntegrations)
@@ -115,6 +133,47 @@ export async function getWebhookEndpoints(organizationId: number): Promise<Webho
   if (!integration?.credentials) return [];
   const creds = integration.credentials as any;
   return Array.isArray(creds.endpoints) ? creds.endpoints : [];
+}
+
+/**
+ * Open one stored endpoint's signing secret.
+ *
+ * Three outcomes, deliberately distinct:
+ *   - no secret stored     → no `secret`, no flag. The endpoint is unsigned by
+ *                            configuration, and delivering unsigned is correct.
+ *   - ciphertext, readable → the plaintext key.
+ *   - ciphertext, UNREADABLE → no `secret`, `secretUnavailable: true`. Signing
+ *                            is configured and we cannot do it.
+ *
+ * A row written before secrets were encrypted holds plaintext. `isEncrypted`
+ * distinguishes the envelope by its `enc:v1:` marker rather than asking
+ * `decrypt()` to guess, because `decrypt()` treats an unrecognised string as
+ * plaintext and passes it through — which would silently turn a corrupted
+ * envelope into a signing key.
+ */
+function openSecret(stored: StoredWebhookEndpoint): WebhookEndpoint {
+  const { secret, ...rest } = stored;
+  if (!secret) return { ...rest };
+  if (!isEncrypted(secret)) return { ...rest, secret };
+  try {
+    return { ...rest, secret: decrypt(secret) };
+  } catch (err) {
+    logger.error(
+      `[Webhook] signing secret for ${stored.url} could not be decrypted: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return { ...rest, secretUnavailable: true };
+  }
+}
+
+/**
+ * Every registered endpoint for an org, with signing secrets decrypted.
+ *
+ * This is the DISPATCHER's reader and holds real key material. The API reads
+ * `getWebhookEndpointsForDisplay` below, which never decrypts anything.
+ */
+export async function getWebhookEndpoints(organizationId: number): Promise<WebhookEndpoint[]> {
+  return (await readStoredEndpoints(organizationId)).map(openSecret);
 }
 
 /**
@@ -141,15 +200,27 @@ export async function getWebhookEndpoints(organizationId: number): Promise<Webho
  * NOT used by the dispatcher — `getWebhookEndpoints` above stays unredacted
  * because signing genuinely needs the key.
  */
-export type RedactedWebhookEndpoint = Omit<WebhookEndpoint, "secret"> & {
-  hasSecret: boolean;
-};
+export type RedactedWebhookEndpoint = Omit<
+  WebhookEndpoint,
+  "secret" | "secretUnavailable"
+> & { hasSecret: boolean };
 
+/**
+ * Reads the STORED shape and never decrypts. The redacted path has no use for
+ * key material, so it never holds any: whether a secret exists is answerable
+ * from the ciphertext's presence alone. It follows that this path cannot leak a
+ * secret even if the redaction below were later broken, and cannot fail when the
+ * encryption key is unavailable — the webhook list stays viewable either way.
+ *
+ * It also means `secretUnavailable` is NOT reported here. Determining it
+ * requires attempting decryption, so claiming it without decrypting would be a
+ * guess. This surface reports what it knows.
+ */
 export async function getWebhookEndpointsForDisplay(
   organizationId: number,
 ): Promise<RedactedWebhookEndpoint[]> {
-  const endpoints = await getWebhookEndpoints(organizationId);
-  return endpoints.map(({ secret, ...rest }) => ({
+  const stored = await readStoredEndpoints(organizationId);
+  return stored.map(({ secret, ...rest }) => ({
     ...rest,
     hasSecret: typeof secret === "string" && secret.length > 0,
   }));
@@ -158,27 +229,49 @@ export async function getWebhookEndpointsForDisplay(
 /**
  * Save webhook endpoints for an org.
  *
- * PRESERVES an existing secret when the incoming endpoint does not carry one.
+ * Does three things beyond writing the array, each of which the shape demands:
  *
- * This is load-bearing, not a nicety. The client GETs the endpoint list and PUTs
- * it back, so once the read is redacted a naive save would write `secret:
- * undefined` over every configured key — silently disabling signature
- * verification on every downstream integration, with no error anywhere. Matching
- * is by `url`, which is the endpoint's identity in this shape.
+ * 1. ENCRYPTS the signing secret at rest. It is an HMAC key — a credential, and
+ *    the only one in `organization_integrations.credentials` that used to sit in
+ *    the column as plaintext while every other provider stored an envelope.
+ *    Rows written before this are upgraded on their next save; nothing needs a
+ *    data migration, and no row is unreadable in the meantime.
+ *
+ * 2. PRESERVES an existing secret when the incoming endpoint does not carry one.
+ *    This is load-bearing, not a nicety: the client GETs the endpoint list and
+ *    PUTs it back, so once the read is redacted a naive save would write
+ *    `secret: undefined` over every configured key — silently disabling
+ *    signature verification on every downstream integration, with no error
+ *    anywhere. Matching is by `url`, which is the endpoint's identity here.
+ *    Preservation carries the CIPHERTEXT across unchanged, so it keeps working
+ *    when the key is unavailable; a save must never destroy a key it cannot
+ *    read.
+ *
+ * 3. STRIPS the derived fields. `hasSecret` and `secretUnavailable` are answers
+ *    this module computes, and the round-trip means they arrive back as input.
+ *    Persisting them would let a client assert them.
  */
 export async function saveWebhookEndpoints(
   organizationId: number,
   endpoints: WebhookEndpoint[]
 ): Promise<void> {
-  // Carry forward any secret the caller did not send. See the note above: the
-  // read is redacted, so an unchanged endpoint arrives back without its key.
-  const stored = await getWebhookEndpoints(organizationId);
+  const stored = await readStoredEndpoints(organizationId);
   const secretByUrl = new Map(
     stored.filter((e) => e.secret).map((e) => [e.url, e.secret as string]),
   );
-  endpoints = endpoints.map((e) =>
-    e.secret ? e : { ...e, ...(secretByUrl.has(e.url) ? { secret: secretByUrl.get(e.url) } : {}) },
-  );
+
+  const toPersist: StoredWebhookEndpoint[] = endpoints.map((e) => {
+    const { secret, secretUnavailable, hasSecret, ...rest } = e as WebhookEndpoint & {
+      hasSecret?: boolean;
+    };
+    // `||` not `??`, deliberately: an empty-string secret is far more likely to
+    // be a blank form field than an intent to turn signing off, and this
+    // function exists to stop a key being destroyed by accident. Clearing a
+    // secret is a rotation, not a save with a hole in it.
+    const carried = secret || secretByUrl.get(e.url);
+    if (!carried) return rest;
+    return { ...rest, secret: isEncrypted(carried) ? carried : encrypt(carried) };
+  });
 
   const [existing] = await db
     .select()
@@ -195,7 +288,7 @@ export async function saveWebhookEndpoints(
   // typed jsonb shape; webhook endpoints are persisted here by reusing the column.
   // Typed against the column's credentials type so the write is structurally checked.
   type IntegrationCredentials = typeof organizationIntegrations.$inferInsert["credentials"];
-  const credentials = { endpoints } as IntegrationCredentials;
+  const credentials = { endpoints: toPersist } as IntegrationCredentials;
 
   if (existing) {
     await db
@@ -263,6 +356,23 @@ export async function dispatchWebhook(
 
   await Promise.allSettled(
     activeEndpoints.map(async (endpoint) => {
+      // A configured signing secret we cannot read is a REFUSAL, not a
+      // downgrade. Delivering unsigned would hand the receiver a payload that
+      // clears an "is it signed?" check by carrying no signature at all, and
+      // signing with the ciphertext would produce a signature that can never
+      // verify. Neither is honest about the state we are actually in, so the
+      // delivery does not happen and the reason is logged.
+      if (endpoint.secretUnavailable) {
+        failed++;
+        logger.error(
+          `[Webhook] ${event} → ${endpoint.url} NOT delivered: its signing secret ` +
+            `could not be decrypted, and an endpoint configured for signing is ` +
+            `never delivered to unsigned. Re-save the endpoint with a new secret, ` +
+            `or restore the encryption key it was written under.`,
+        );
+        return;
+      }
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-AcreOS-Event': event,
