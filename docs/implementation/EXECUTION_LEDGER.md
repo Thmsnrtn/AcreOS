@@ -1980,3 +1980,87 @@ failure mode of every source-scanning security test.
 
 **Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
 baselines · **full unit suite 660 files, 8,686 tests, 1 skipped, 0 failures.**
+
+---
+
+## Unit 31 — Three declared permissions that nothing enforced · this commit
+
+**Audit requirement:** source-of-truth precedence #1 — authorization.
+
+**Files:** `server/routes-properties.ts`, `server/routes-deals.ts`,
+`server/routes-finance.ts`, `tests/unit/destructivePermissionCoverage.test.ts`
+(new, 5 tests), plus a corrected comment-stripper in three test files.
+
+### The defect
+
+Unit 30 found a permission enforced inconsistently. Asking whether the same drift
+existed elsewhere found something worse: **three permissions enforced NOWHERE AT
+ALL.**
+
+| Route | Guarded by, before |
+|---|---|
+| `DELETE /api/properties/:id` | `isAuthenticated` + `getOrCreateOrg` only |
+| `POST /api/properties/bulk-delete` | same |
+| `POST /api/deals/bulk-delete` | same |
+| `DELETE /api/notes/:id` | same |
+
+`canDeleteProperties`, `canDeleteDeals` and `canDeleteNotes` are all FALSE for
+`member`, `va` and `viewer`. They existed in the type, in the role table and in
+the client's `useOrganization` shape — and were read by no server code on any
+path. **A `viewer`, a role whose entire purpose is read-only access, could delete
+every property, deal and note in the organization**, in bulk.
+
+**Severity, stated honestly: intra-org, not cross-tenant.** All four paths are
+org-scoped, so nothing crossed an organization boundary. What was unenforced is
+the org owner's own configuration.
+
+### Why a registry rather than four assertions
+
+The defect was not "someone forgot a middleware". It was that **nothing related
+the permission vocabulary to the routes that need it**, so a permission could be
+declared, shipped, read by the client and never once consulted. Four hand-written
+assertions would fix the four known routes and leave the next one exactly as
+undiscoverable. The test maps each destructive permission to its routes, and
+fails both when a route loses its gate AND when a declared permission has no
+route — which is how these sat unenforced.
+
+### The test found the fourth one itself
+
+`canDeleteNotes` was initially written as a documented exemption: "no notes
+delete endpoint exists". The exemption **checks its own justification**, and the
+check failed — `routes-finance.ts` has `DELETE /api/notes/:id`, unguarded. The
+exemption became a fifth registry entry instead. An exemption that cannot verify
+its own premise is how every stale allowlist in this repo began.
+
+The two surviving exemptions are verified the same way: `canDeleteCampaign` has
+no delete route anywhere (checked against every route file), and `canDeleteOrg`
+is founder-only under `/api/admin` behind MFA and an exact-name confirmation —
+a customer-role permission is the wrong lock for it, and adding one would imply a
+customer path that must never exist.
+
+### A broken helper, found and fixed
+
+The comment-stripper these source-scanning tests rely on used the obvious
+one-regex form. On `server/routes.ts` it **removed 38.8% of the file** — an
+unbalanced block-comment opener inside a string swallowed everything to the next
+closer, including the `app.use("/api/admin", …)` line an assertion was checking.
+So the assertion failed against correct code; a weaker assertion would have
+**passed against broken code**. This is the third time in this program a
+source-scanning helper has read past its subject.
+
+Replaced with a line-state machine, which structurally cannot run away. Two
+corrections on the way:
+
+- **The first guard's premise was wrong.** "A strip that eats a third of the file
+  is a bug" fired on correct output — this repo's files are deliberately
+  comment-heavy and `assignedLeadGate.ts` is 72% prose by design. A guard whose
+  premise is wrong is worse than no guard: it fails on correct input and trains
+  the next reader to loosen it. Replaced with a structural check — an unclosed
+  block at EOF, which is the actual runaway signal. Comment density is not
+  evidence of anything.
+- **JSX comments are prose too.** `{/* No "dismiss" … */}` made a test asserting
+  the ABSENCE of "dismiss" fail on the very comment documenting why it is absent.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 661 files, 8,691 tests, 1 skipped, 0 failures.**
+Mutation-tested: removing all three new gates fails the suite.

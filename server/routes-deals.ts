@@ -21,6 +21,8 @@ import {
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+// A declared permission that nothing enforces is not a permission.
+import { requirePermission } from "./utils/permissions";
 import { type AuthenticatedRequest, getOrganization, getOrganizationId } from "./types/request";
 import {
   getAllHandoffs,
@@ -2504,7 +2506,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
 
   // Bulk operations
-  api.post("/api/deals/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/deals/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteDeals"), async (req, res) => {
     try {
       const org = req.organization;
       const { ids } = req.body;

@@ -5,6 +5,8 @@ import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notes
 import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
+// A declared permission that nothing enforces is not a permission.
+import { requirePermission } from "./utils/permissions";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
@@ -524,7 +526,7 @@ export function registerFinanceRoutes(app: Express): void {
     },
   );
 
-  api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteNotes"), async (req, res) => {
     const org = req.organization;
     const noteId = Number(req.params.id);
     if (isNaN(noteId)) {

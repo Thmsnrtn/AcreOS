@@ -181,10 +181,18 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     delete, restore or mass-update any lead in the org by id. Intra-org, not
     cross-tenant. Rule given ONE owner (`server/utils/assignedLeadGate.ts`) +
     a 9-test coverage gate with a vacuity guard. as-any ratchet 1407 → 1406.
+31. **SECURITY** — asking whether unit 30's drift existed elsewhere found
+    something worse: `canDeleteProperties`, `canDeleteDeals` and
+    `canDeleteNotes` were enforced **nowhere at all**. A `viewer` could delete
+    every property, deal and note in the org, in bulk. Four routes gated; a
+    permission→route registry now fails when a declared permission has no
+    route. The test found the fourth defect itself, by checking its own
+    exemption's justification. Also fixed a comment-stripper that silently ate
+    38.8% of `routes.ts` — see the ledger.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 660 files, 8,686 tests, 1 skipped, 0 failures.**
+suite green — 661 files, 8,691 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

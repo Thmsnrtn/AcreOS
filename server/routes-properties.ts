@@ -10,6 +10,8 @@ import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, 
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { recordParcelObservations } from "./services/data-cache/observation-log";
 import { Errors } from "./utils/errors";
+// A declared permission that nothing enforces is not a permission.
+import { requirePermission } from "./utils/permissions";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { listPropertiesContract } from "@shared/contracts";
@@ -548,7 +550,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
 
-  api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteProperties"), async (req, res) => {
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
@@ -585,7 +587,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteProperties"), async (req, res) => {
     try {
       const org = req.organization;
       const parsed = bulkIdsSchema.safeParse(req.body);
