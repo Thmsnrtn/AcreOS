@@ -79,6 +79,7 @@ import territoriesRouter from "./routes-territories";
 import zoningRouter from "./routes-zoning";
 import titleSearchRouter from "./routes-title-search";
 import propertyEnrichmentRouter from "./routes-property-enrichment";
+import decisionsRouter from "./routes-decisions";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
@@ -1441,6 +1442,9 @@ export async function registerRoutes(
   app.use('/api/zoning', isAuthenticated, zoningRouter);
   app.use('/api/title-search', isAuthenticated, getOrCreateOrg, titleSearchRouter);
   app.use('/api/properties', isAuthenticated, getOrCreateOrg, propertyEnrichmentRouter);
+  // Decision Memory (Master Audit BI20) — record/read frozen investment
+  // decisions. API surface only; no new customer nav entry.
+  app.use('/api/decisions', isAuthenticated, getOrCreateOrg, decisionsRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   app.use('/api/dunning', isAuthenticated, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);

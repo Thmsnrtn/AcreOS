@@ -9015,6 +9015,53 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "fetched_at")`,
   `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_predicate_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "predicate", "fetched_at")`,
   `CREATE INDEX IF NOT EXISTS "evidence_claims_org_provider_idx" ON "evidence_claims" ("organization_id", "provider", "fetched_at")`,
+
+  // ── 0228 decision_snapshots: Decision Memory's durable boundary ────────────
+  // ONE new table — scripts/ratchets/table-count.json 757 -> 758. Mirrors
+  // migrations/0228_decision_snapshots.sql + shared/schema/decision-snapshots.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: without it every recorded decision reads
+  // against LIVE rows, so a decision silently changes meaning when the data
+  // behind it changes — BL3's "historical decision fidelity" fitness function,
+  // one of only two classified fully `unenforced` in shared/architecture/canon.ts.
+  //
+  // The repo already had FOURTEEN decision-shaped tables (board_decisions,
+  // ceo_decision_replays, decisions_inbox_items, decision_patterns,
+  // solene_decisions, solene_decision_traces, …). Every one is FOUNDER/autopilot
+  // control-plane state — queues and reasoning traces — and none records a
+  // CUSTOMER's investment decision or freezes its inputs. Reusing one would make
+  // Founder OS the owner of customer investment truth, which BI5 forbids.
+  //
+  // IMMUTABLE: no updated_at column and no UPDATE path in the store. subject_id
+  // carries NO foreign key because a snapshot must SURVIVE its subject — an
+  // investor who passed on a property and deleted it still needs the record of
+  // why, and a cascade would erase precisely the decisions worth keeping.
+  `CREATE TABLE IF NOT EXISTS "decision_snapshots" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "snapshot_version" integer NOT NULL DEFAULT 1,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "kind" text NOT NULL,
+    "choice" text NOT NULL,
+    "rationale" text NOT NULL,
+    "actor_type" text NOT NULL,
+    "actor_ref" text NOT NULL,
+    "authority" text NOT NULL,
+    "strategy_pack_id" text,
+    "strategy_pack_version" text,
+    "evidence_as_of" timestamp NOT NULL,
+    "resolution_policy_version" integer NOT NULL,
+    "evidence" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "assumptions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "alternatives" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "unknowns" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "decided_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING per the shard-readiness invariant (check-org-leading-index.mjs).
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_subject_idx" ON "decision_snapshots" ("organization_id", "subject_type", "subject_id", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_decided_idx" ON "decision_snapshots" ("organization_id", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_kind_idx" ON "decision_snapshots" ("organization_id", "kind", "decided_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

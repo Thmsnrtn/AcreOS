@@ -122,6 +122,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-deal-rooms.ts", mountPath: null, kind: "register", export: "registerPublicDealRoomRoute" },
   { file: "routes-deal-underwriting.ts", mountPath: "/api/deal-underwriting", kind: "router", export: "default" },
   { file: "routes-deals.ts", mountPath: null, kind: "register", export: "registerDealRoutes" },
+  { file: "routes-decisions.ts", mountPath: "/api/decisions", kind: "router", export: "default" },
   { file: "routes-deliverability.ts", mountPath: null, kind: "register", export: "registerDeliverabilityRoutes" },
   { file: "routes-dispatch.ts", mountPath: null, kind: "register", export: "registerDispatchRoutes" },
   { file: "routes-disposition.ts", mountPath: "/api/disposition", kind: "router", export: "default" },

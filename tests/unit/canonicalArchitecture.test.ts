@@ -54,8 +54,15 @@ const ROOT = path.resolve(__dirname, "../..");
  *   and `infrastructure-restraint` (BI152's New Database Test is advisory only).
  *   The other ten are "partial": something real enforces part of each, and the
  *   named gap in `enforcement.note` is the remaining work.
+ * 2026-08-12 (2 -> 1): `historical-decision-fidelity` is now enforced.
+ *   Decision Memory landed (decision_snapshots + shared/decisions/snapshot.ts),
+ *   and tests/unit/decisionSnapshotFidelity.test.ts proves the law the only way
+ *   that counts: it writes a snapshot, mutates the evidence underneath it, and
+ *   asserts the snapshot still reports what was believed then.
+ *   `infrastructure-restraint` remains the last fully unenforced one — BI152's
+ *   New Database Test is still advisory.
  */
-const UNENFORCED_FITNESS_BASELINE = 2;
+const UNENFORCED_FITNESS_BASELINE = 1;
 
 /**
  * Canonical objects (BI12) that do not yet have a canonical home — i.e. status
@@ -78,8 +85,13 @@ const UNENFORCED_FITNESS_BASELINE = 2;
  *   deterministic resolution policy (shared/evidence/claim.ts), wired into the
  *   property-enrichment write path. unknown, conflict and stale are now
  *   representable states rather than coerced defaults.
+ * 2026-08-12 (13 -> 12): decision-snapshot now has a canonical home
+ *   (`decision_snapshots`, immutable by contract). The two landed in this order
+ *   deliberately — a DecisionSnapshot has nothing stable to freeze a reference
+ *   to until evidence is versioned, which is why Decision Memory could not have
+ *   been built first.
  */
-const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 13;
+const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 12;
 
 /**
  * The fixed cardinalities declared by the audit. These are not ratchets — they
@@ -190,16 +202,21 @@ describe("canon registry — shape", () => {
 
   it("exposes working lookup helpers", () => {
     expect(layerById("evidence-fabric")?.ordinal).toBe(3);
-    // Pinned to a still-absent object rather than a hardcoded status for one
-    // that has since been built. The invariant under test is "the lookup
-    // returns the registry's real classification", not "evidence-claim is
-    // absent" — the latter was true when this was written and is now false
-    // (the Evidence Fabric landed). Rewriting the assertion to the new truth,
-    // rather than deleting it, is CLAUDE.md wave discipline #4.
-    expect(objectById("decision-snapshot")?.status).toBe("absent");
-    expect(objectById("evidence-claim")?.status).toBe("canonical");
     expect(fitnessById("tenant-isolation")?.enforcement.kind).toBe("code-invariant");
+
+    // The invariant under test is "the lookup returns the registry's real
+    // entry", NOT a hardcoded status. An earlier version of this test pinned
+    // `evidence-claim: absent`, which was true when written and became false
+    // when the Evidence Fabric landed; re-pinning it to the next
+    // still-absent object just moves the same staleness one commit down the
+    // road. Assert the helper AGREES WITH THE REGISTRY instead — the actual
+    // statuses are already pinned, and made to ratchet, below.
+    for (const o of CANONICAL_OBJECTS) {
+      expect(objectById(o.id), `objectById(${o.id})`).toBe(o);
+    }
+    expect(objectById("nope")).toBeUndefined();
     expect(layerById("nope")).toBeUndefined();
+    expect(fitnessById("nope")).toBeUndefined();
   });
 });
 

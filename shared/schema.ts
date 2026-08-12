@@ -18573,3 +18573,10 @@ export * from "./schema/outreach-ab";
 // is a recomputable projection over these rows, produced by the deterministic
 // policy in shared/evidence/claim.ts — not a column anything overwrites.
 export * from "./schema/evidence";
+
+// Decision Memory's one table (Master Audit BI20). A DecisionSnapshot freezes
+// what was KNOWN when a consequential investment decision was made — resolved
+// evidence with its claim ids, assumptions, alternatives, unknowns, actor and
+// authority, and the Strategy Pack version in force. Immutable by contract:
+// later evidence and later outcomes append context, they never rewrite it.
+export * from "./schema/decision-snapshots";

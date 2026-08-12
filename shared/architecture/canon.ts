@@ -512,16 +512,10 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     id: "decision-snapshot",
     purpose: "versioned investment/operating decision",
     layer: "decision-memory",
-    status: "absent",
-    tables: [],
-    gap:
-      "No customer DecisionSnapshot. The founder plane has decision-adjacent tables " +
-      "(decisions_inbox_items, decision_patterns, decision_causality_nodes) but those " +
-      "are control-plane queues, not frozen investment decisions. Nothing freezes " +
-      "evidence versions, assumptions, alternatives, unknowns, Pack version or actor " +
-      "authority, so a past decision silently changes meaning when current data changes " +
-      "— the exact failure Law 6 forbids.",
-    disposition: "BUILD",
+    status: "canonical",
+    tables: ["decision_snapshots"],
+    gap: "",
+    disposition: "KEEP_HARDEN",
   },
   {
     id: "plan",
@@ -643,12 +637,22 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
     failCondition:
       "A prior decision changes meaning when current data or Pack rules change.",
     enforcement: {
-      kind: "unenforced",
-      refs: [],
+      kind: "ratchet-test",
+      refs: [
+        "shared/decisions/snapshot.ts",
+        "shared/schema/decision-snapshots.ts",
+        "server/services/decisions/decisionStore.ts",
+        "server/routes-decisions.ts",
+        "tests/unit/decisionSnapshotFidelity.test.ts",
+      ],
       note:
-        "No customer DecisionSnapshot exists, so every recorded decision reads " +
-        "against live rows and silently changes meaning. This is the single clearest " +
-        "violation of Law 6 at HEAD.",
+        "decisionSnapshotFidelity.test.ts writes a snapshot, then MUTATES the " +
+        "evidence underneath it (a new claim arrives, a source changes its mind, an " +
+        "unknown becomes known) and asserts the snapshot still reports what was " +
+        "believed THEN — a record that passes only when nothing changes is a cache, " +
+        "not a record. Immutability is structural: no updatedAt column, no " +
+        "UPDATE/DELETE in the store, no PUT/PATCH/DELETE endpoint, each pinned by a " +
+        "test. Strategy Pack id+version are frozen per BI91.",
     },
   },
   {
