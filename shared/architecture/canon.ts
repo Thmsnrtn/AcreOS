@@ -710,9 +710,13 @@ export const FITNESS_FUNCTIONS: readonly FitnessFunction[] = [
         "and wiring it would change which Lob credentials are used) and " +
         "communications.ts (a live double-print path whose key semantics and " +
         "fail-open/closed posture are founder decisions; BLOCKERS.md B5/B6). " +
-        "Email, SMS and e-sign are not covered by the boundary at all. " +
-        "tests/unit/outwardActionCoverage.test.ts holds the unprotected count " +
-        "down-only (4 -> 2) so adoption is measured rather than assumed.",
+        "emailService.sendEmail now accepts a key too (engaging only when an " +
+        "organizationId is present, since the claim is tenant-scoped), and the " +
+        "coverage ratchet was WIDENED to count its 59 send sites — the number " +
+        "went 2 -> 61 because the MEASUREMENT got honest, not because anything " +
+        "got worse. SMS and e-sign are still uncounted and unwired. " +
+        "tests/unit/outwardActionCoverage.test.ts holds the count down-only so " +
+        "adoption is measured rather than assumed.",
     },
   },
   {

@@ -64,6 +64,7 @@ const PROTECTABLE_SENDS = [
   { id: "directMailService.sendPostcard", re: /directMailService\.sendPostcard\s*\(/g },
   { id: "lobService.sendLetter", re: /lobService\.sendLetter\s*\(/g },
   { id: "lobService.sendPostcard", re: /lobService\.sendPostcard\s*\(/g },
+  { id: "emailService.sendEmail", re: /emailService\.sendEmail\s*\(/g },
 ];
 
 /**
@@ -109,14 +110,31 @@ const PROTECTABLE_SENDS = [
  *                                        fail-open/closed posture on a money
  *                                        path are founder decisions.
  *
- * HONEST SCOPE: this ratchet covers the PHYSICAL MAIL transports only
- * (directMailService + lobService), because that is where a duplicate costs
- * money per piece and reaches a real counterparty. Email (`emailService`), SMS
- * (`smsService`), `mailProvider.ts` and e-sign are equally consequential and
- * are NOT yet counted here. Widening PROTECTABLE_SENDS to cover them is the
- * next increment.
+ * 2026-08-12 (2 -> 61): SCOPE EXPANSION, not a regression. `emailService.
+ *   sendEmail` joined PROTECTABLE_SENDS, adding 59 previously-uncounted send
+ *   sites. (A raw grep suggested 76; the scanner reports 61 because it strips
+ *   comments and excludes the transport module itself. The number here is the
+ *   one the scanner produced, not the one the grep suggested — an estimated
+ *   baseline is a guess wearing a ratchet's clothes.) The number went UP because the measurement got
+ *   honest, not because anything got worse: those sites were always
+ *   unprotected, and a ratchet reading "2" while 59 unguarded email sends
+ *   existed was understating the real surface — exactly the kind of
+ *   comfortable-but-false number this whole program exists to abolish.
+ *
+ *   `emailService.sendEmail` now accepts an `idempotencyKey` (opt-in, engaging
+ *   only when `organizationId` is also present, since the claim is
+ *   tenant-scoped), so the count is lowerable rather than a permanent
+ *   accusation. Email replay returns success with the ORIGINAL provider message
+ *   id rather than throwing: unlike physical mail, an email caller almost
+ *   always just wants to know the message went out, and the real SES id is the
+ *   honest answer. Nothing is fabricated.
+ *
+ * STILL OUT OF SCOPE, and named so the number is not mistaken for the whole
+ * truth: SMS (`smsService`, ~10 sites), the `directMail.ts`/`mailProvider.ts`
+ * wrappers reached through other symbols, and e-sign. Each needs its transport
+ * wired before it can be counted without making the ratchet unlowerable.
  */
-const UNPROTECTED_SEND_SITES_BASELINE = 2;
+const UNPROTECTED_SEND_SITES_BASELINE = 61;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -210,7 +228,7 @@ describe("outward-action coverage", () => {
     ).toBe(UNPROTECTED_SEND_SITES_BASELINE);
   });
 
-  it("BOTH same-named mail transports accept an idempotency key", () => {
+  it("every counted transport accepts an idempotency key", () => {
     // A down-only ratchet with no mechanism to lower it is a permanent
     // accusation, not a gate — and a ratchet whose "fix" is a no-op is worse
     // than no ratchet. `directMailService` is exported by two different
@@ -219,6 +237,7 @@ describe("outward-action coverage", () => {
     for (const rel of [
       "server/services/directMailService.ts", // the function module
       "server/services/directMail.ts", // the class instance
+      "server/services/emailService.ts",
     ]) {
       const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
       expect(src, `${rel} must accept an idempotencyKey`).toMatch(

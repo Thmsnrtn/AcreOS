@@ -80,6 +80,9 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
 9. **Scenario** (layer 4) — `scenarios`, immutable and engine-versioned, wired
    into Decision Memory so a decision freezes the economics as well as the
    evidence. 19 tests.
+10. **Honest send coverage** — `emailService.sendEmail` accepts a key; the
+    coverage ratchet widened 2 → 61 because the measurement got honest, not
+    because anything got worse.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
@@ -115,8 +118,9 @@ unversioned and unpersisted. The highest-value follow-ons, in order:
    not invent a second mechanism. Note law 9: an Outcome REFERENCES a snapshot,
    it never edits one.
 
-Also still open and needing no decision: widening `PROTECTABLE_SENDS` in
-`tests/unit/outwardActionCoverage.test.ts` to cover email, SMS and e-sign.
+Also still open and needing no decision: wiring `smsService` (~10 sites) and
+e-sign, then widening `PROTECTABLE_SENDS` to count them — the transport must be
+wired FIRST, or the ratchet becomes unlowerable and its own test fails.
 
 Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in

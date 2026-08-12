@@ -315,6 +315,24 @@ export interface EmailOptions {
    * Every NEW lead/buyer/borrower-facing call site MUST set "counterparty".
    */
   purpose?: 'system' | 'counterparty';
+  /**
+   * Stable key for THIS logical email, derived from durable domain identity
+   * (a dunning-attempt id, a lifecycle-step id, a note-payment notice id) —
+   * never a random value, which would defeat the mechanism on the retry it
+   * exists to protect.
+   *
+   * When supplied ALONGSIDE `organizationId`, the send runs through the
+   * outward-action boundary (server/services/actions/outwardAction.ts) and
+   * happens at most once per key: a job that dies after SES accepted the
+   * message cannot send it again. Requires `organizationId` because the claim
+   * is tenant-scoped — a platform-scoped system mail has no org to scope to and
+   * is left unprotected rather than silently claimed under a shared key.
+   *
+   * Optional so every existing call site keeps working unchanged. The count of
+   * send sites that DON'T pass one is ratcheted down by
+   * tests/unit/outwardActionCoverage.test.ts.
+   */
+  idempotencyKey?: string;
 }
 
 export interface EmailResult {
@@ -421,7 +439,67 @@ export class EmailService {
     }
   }
 
+  /**
+   * Send one email.
+   *
+   * When `options.idempotencyKey` and `options.organizationId` are both present
+   * this runs through the outward-action boundary, so a retried job cannot send
+   * the same message twice. On a REPLAY it returns success carrying the
+   * original provider message id rather than throwing — unlike physical mail,
+   * an email caller almost always just wants to know the message went out, and
+   * the id is the honest answer to that. Nothing is fabricated: the returned
+   * messageId is the one SES issued the first time.
+   */
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
+    if (options.idempotencyKey && options.organizationId) {
+      const { withOutwardAction } = await import("./actions/outwardAction");
+      return withOutwardAction<EmailResult>(
+        {
+          organizationId: options.organizationId,
+          actionKind: `email.${options.purpose ?? 'system'}`,
+          idempotencyKey: options.idempotencyKey,
+          // Everything that materially defines the message. Reusing the key
+          // with different content must be caught, not silently suppressed.
+          payload: {
+            to: options.to,
+            subject: options.subject,
+            html: options.html,
+            text: options.text,
+            from: options.from,
+            replyTo: options.replyTo,
+            purpose: options.purpose ?? 'system',
+          },
+        },
+        async () => {
+          const result = await this.performSend(options);
+          if (result.success && result.messageId) {
+            return { status: 'succeeded', externalId: result.messageId, result };
+          }
+          // A structured failure from the transport ran BEFORE anything left,
+          // or the provider rejected it outright — safe to retry. A THROWN
+          // error is different and withOutwardAction records it as ambiguous.
+          return {
+            status: 'failed',
+            error: new Error(result.error ?? 'email send failed'),
+          };
+        },
+        (externalId) => ({ success: true, messageId: externalId ?? undefined }),
+      ).catch((err) => {
+        // The boundary refuses (in-flight / ambiguous / key reused) by
+        // throwing. Surface that as a structured non-retryable failure rather
+        // than an exception, because every existing caller of sendEmail expects
+        // an EmailResult and would otherwise crash on a safety refusal.
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          retryable: false,
+        } satisfies EmailResult;
+      });
+    }
+    return this.performSend(options);
+  }
+
+  private async performSend(options: EmailOptions): Promise<EmailResult> {
     const startTime = Date.now();
     const config: RetryConfig = {
       ...DEFAULT_RETRY_CONFIG,

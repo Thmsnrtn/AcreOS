@@ -492,3 +492,56 @@ written into the fitness function's note rather than left implied.
 **Gates:** `npm run check` PASS · tsc clean · reachability at baseline 654 ·
 all ratchets at baseline. Canon: scenario absent → canonical,
 objects-without-home 12 → **11**.
+
+---
+
+## Unit 10 — The send-coverage number gets honest · this commit
+
+**Audit requirement:** BI148's SLO "no duplicate consequential action after
+retry", and the standing rule that a measurement understating its own scope is a
+comfortable lie.
+
+**What was wrong with the number:** the coverage ratchet read **2**, which was
+true of physical mail and false of the product. `emailService.sendEmail` had
+**59 unguarded call sites** that the ratchet did not count, and its own header
+admitted the omission. A gate that reports a small number while a large
+unmeasured surface sits beside it is worse than one that reports nothing,
+because the small number gets quoted.
+
+**Files:** `server/services/emailService.ts` (opt-in idempotency),
+`tests/unit/outwardActionCoverage.test.ts` (scope expansion 2 → **61**),
+`shared/architecture/canon.ts`, `scripts/no-fabrication.allowlist.json`
+(re-anchored).
+
+**Order mattered.** The transport was wired FIRST. A ratchet with no mechanism
+to lower it is a permanent accusation, not a gate — and a test in this very file
+asserts every counted transport accepts a key, so widening the scope without
+wiring email would have failed immediately, by design.
+
+**Architectural decisions:**
+- **Opt-in, engaging only when `organizationId` is also present.** The claim is
+  tenant-scoped; a platform-scoped system mail has no org to scope to and is
+  left honestly unprotected rather than silently claimed under a shared key.
+- **Email replay RETURNS success with the original SES message id**, where
+  physical mail throws. The asymmetry is deliberate: a mail caller must be
+  stopped from printing a second piece, while an email caller almost always
+  just wants to know the message went out — and the real provider id is the
+  honest answer to that. Nothing is fabricated.
+- **A boundary refusal becomes a structured failure, not an exception.** Every
+  existing `sendEmail` caller expects an `EmailResult`; letting a safety refusal
+  throw would crash 59 call sites the moment the feature was adopted anywhere.
+
+**Correction made mid-unit:** the first baseline said 78, extrapolated from a
+raw grep. Running the scanner reported **61** — it strips comments and excludes
+the transport module. The baseline is the scanner's number, not the grep's: an
+estimated baseline is a guess wearing a ratchet's clothes.
+
+**Also fixed:** inserting into `emailService.ts` shifted line numbers and staled
+a line-anchored `no-fabrication` allowlist entry (a MIME boundary string).
+Re-anchored 359 → 377 rather than deleted — the entry is still legitimate.
+
+**Still uncounted, and named:** SMS (~10 sites) and e-sign. Each needs its
+transport wired before it can be counted without making the ratchet unlowerable.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at
+baseline 654 · 40/40 across the three affected suites.
