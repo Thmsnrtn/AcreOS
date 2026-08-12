@@ -143,14 +143,12 @@ describe("the field is part of its column's contract", () => {
   });
 
   it("the va_workflows reads no longer go through a cast", () => {
-    // Scoped to this collection ON PURPOSE. `routes-va-engine.ts` holds THREE
-    // MORE undeclared collections in the same blob — `va_tasks`,
-    // `va_escalations`, `va_scheduled_tasks` — each read through
-    // `(orgRecord as any).settings` and each with no cap and no delete path.
-    // They are the same defect and are NOT fixed here; asserting against the
-    // whole file would either fail or pressure someone into a blanket change.
-    // Recorded in NEXT_UP with the evidence rather than implied by a passing
-    // test.
+    // Scoped to this collection ON PURPOSE. `routes-va-engine.ts` held three
+    // more undeclared collections in the same blob. `va_escalations` has since
+    // been fixed by unit 48 — the inverted assertion below CAUGHT that, which
+    // is what it is for — and `va_tasks` and `va_scheduled_tasks` remain.
+    // Asserting against the whole file would either fail or pressure someone
+    // into a blanket change, so the remainder is pinned rather than implied.
     expect(
       /\(orgRecord as any\)\??\.settings\?\.va_workflows/.test(va),
       "the va_workflows reads reach settings through `as any` again — the cast " +
@@ -159,12 +157,19 @@ describe("the field is part of its column's contract", () => {
     expect(va).toContain("orgRecord?.settings?.va_workflows");
   });
 
-  it("the three unfixed siblings are still there, and still unfixed", () => {
+  it("the remaining siblings are still there, and still unfixed", () => {
     // A deliberately inverted assertion, like BLOCKED_ON_A_REAL_LINK. It
     // documents the remaining work in the only place that cannot go stale, and
     // fails when someone fixes one — at which point they should extend this
     // file's coverage to it rather than leave a half-true comment above.
-    for (const key of ["va_tasks", "va_escalations", "va_scheduled_tasks"]) {
+    //
+    // IT HAS ALREADY DONE THAT ONCE. Unit 48 wired `va_escalations` (it
+    // notified nobody and nothing read it back), and this assertion failed on
+    // the next full run, which is how it came off the list. That is the
+    // mechanism working, not a maintenance cost.
+    //
+    // `va_escalations` is covered by vaEscalationDelivery.test.ts now.
+    for (const key of ["va_tasks", "va_scheduled_tasks"]) {
       expect(
         va.includes(`(orgRecord as any)?.settings?.${key}`),
         `${key} no longer reads through a cast — if it has been declared and ` +

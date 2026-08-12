@@ -186,6 +186,32 @@ export const organizations = pgTable("organizations", {
       createdAt?: string;
       updatedAt?: string;
     }>;
+    /**
+     * VA task escalations — a LOG, not a delivery mechanism.
+     *
+     * `POST /api/va/escalate` wrote here and did nothing else: no route, job or
+     * screen anywhere in the repo ever read the key back, and the named
+     * supervisor was never told. It returned `{ success: true }` regardless.
+     * The escalation now goes out as a notification to the named supervisor —
+     * that is the delivery — and this array is the record of it.
+     *
+     * Bounded, because `organizations` is SELECTed in full on every org-scoped
+     * request. Trimming the oldest is safe ONLY because the signal itself lives
+     * in `notifications`; before that, dropping an entry would have dropped the
+     * escalation.
+     */
+    va_escalations?: Array<{
+      id: string;
+      taskId: string;
+      reason: string;
+      urgency?: string;
+      escalatedByUserId?: string | null;
+      supervisorUserId: string;
+      escalatedAt: string;
+      status?: string;
+      /** When the supervisor's notification was created. Null = not delivered. */
+      notifiedAt?: string | null;
+    }>;
     // Per-org simulation kill-switch — layer 3 of server/utils/simulationMode.ts
     // ("the single source of truth for no real-world side effects"). Read by
     // isOrgSimulated(); when true, no mail, SMS, email or webhook leaves the

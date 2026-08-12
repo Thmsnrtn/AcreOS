@@ -376,18 +376,18 @@ difference changes what the right fix is:
 | collection | declared | writer IN THIS FILE | actually grows? |
 |---|---|---|---|
 | `va_workflows` | ✅ (unit 47) | `POST /api/va/workflows` | fixed — cap 50 + delete |
-| `va_escalations` | ❌ `as any` | `POST /api/va/escalate` **appends** | **yes — the real one** |
+| `va_escalations` | ✅ (unit 48) | `POST /api/va/escalate` | fixed — retention 200, and it now DELIVERS |
 | `va_tasks` | ❌ `as any` | `/api/va/tasks/:id/verify` modifies IN PLACE; the key is owned by `services/vaManagement.ts` | not from these routes |
 | `va_scheduled_tasks` | ❌ `as any` | read-only here (`GET /api/va/scheduled`) | not from these routes |
 
-**So there is ONE confirmed unbounded appender left, not three** — and it needs a
-different fix from unit 47's, which is why it was not done in the same stretch:
-
-> `va_escalations` is a **LOG**, not a definition set. Refusing to record an
-> escalation past a cap is the wrong bound — you cannot decline to escalate. A
-> log wants **retention** (keep the most recent N, or move it to a table with an
-> index), and choosing between those is a design call rather than a mechanical
-> repeat of unit 47. Do not paste the workflow cap onto it.
+**`va_escalations` is DONE (unit 48), and it was worse than unbounded growth.**
+Nothing read the key back, the named supervisor was never notified, and the
+route returned `{ success: true }` — a VA asking for help got a success response
+and nobody was told. It now raises an in-app notification to the supervisor
+(required, and validated as an org member), reports `notified` truthfully, and
+the log is bounded at 200. **The retention trim is safe only because delivery
+now happens elsewhere** — which is exactly why unit 47 declined to cap it, and
+the ordering is asserted rather than commented.
 
 `va_tasks` and `va_scheduled_tasks` still deserve the type declaration (unit 43's
 rule — a field outside its column's type cannot be carried by a typed write and

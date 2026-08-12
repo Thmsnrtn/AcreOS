@@ -3351,3 +3351,93 @@ enforced record of the remainder.
 
 Three mutations, each caught: removing the cap, removing the delete route, and
 raising the cap to a decorative 100,000.
+
+---
+
+## Unit 48 — A VA asked for help, got "success", and nobody was told · this commit
+
+**Files:** `shared/schema.ts`, `server/routes-va-engine.ts`,
+`tests/unit/vaEscalationDelivery.test.ts` (new, 14 tests).
+
+### Three facts, each verified against HEAD before anything was written
+
+`POST /api/va/escalate` — *"escalate task to human supervisor"* — took a
+`taskId`, a `reason`, an `urgency` and a `supervisorUserId`, pushed a record
+into `organizations.settings.va_escalations`, and returned
+`{ success: true, escalation }`. That was the entire route.
+
+1. **Nothing reads the key.** `va_escalations` appears in exactly two places in
+   the repository, and both are inside this handler — the read and the write of
+   its own read-modify-write. No route, job, service or screen consumes it.
+2. **The supervisor was never notified.** `supervisorUserId` was stored and
+   otherwise unused. No notification, no task, no alert, no mail.
+3. **Nothing calls it.** No caller anywhere in `client/src`.
+
+So the one function of an escalation — reaching a human — did not happen, and
+the response said it had. The "recorded as sent but never sent" family the
+borrower reminder ladder was rebuilt to remove, on a path where the message is
+*someone is stuck and needs help*.
+
+### Finishing the contract the signature already published
+
+The route now raises an in-app notification to the named supervisor. **That is
+not a new feature**: the route's own name and its `supervisorUserId` parameter
+declare the intent, and not delivering was the defect. In-app only — no email,
+no SMS, nothing leaves the building, which a test asserts by naming the rails it
+must not reach.
+
+`supervisorUserId` is now **required**. An escalation with no recipient reaches
+nobody — the same class of check as the `taskId` and `reason` the route already
+demanded. Safe to tighten precisely because nothing calls it.
+
+The recipient is **validated as an org member**. It arrives in the request body
+and a notification row is about to be written for it; unchecked, that is a write
+into another organization's user's inbox. This defect would have been
+*introduced* by the fix, which is why the guard is asserted to run before the
+notification rather than merely to exist.
+
+`system_alert`, from the closed `NOTIFICATION_TYPES` set. `task_assigned` would
+read to the supervisor as "a task was assigned to you", which is not what
+happened, and widening a closed vocabulary for one caller is what makes such a
+set stop meaning anything.
+
+`notifiedAt` is written **only after** `createNotification` returns, and the
+response reports `notified` from it. A failed delivery is logged and recorded as
+undelivered — the reminder ladder's rule, where `sent` is written only alongside
+the rail that accepted it.
+
+### The bound unit 47 deliberately did not apply
+
+Unit 47 capped `va_workflows` and explicitly declined to paste that cap onto
+this log, on the grounds that refusing to record an escalation is the wrong
+bound — you cannot decline to escalate.
+
+That argument turned on the blob being the *only* record. It no longer is: the
+escalation is delivered as a notification, so trimming the oldest entries drops
+log history rather than the escalation itself. The log is now bounded at 200,
+and **the ordering is asserted, not commented** — the retention trim must come
+after the delivery, because that is the entire reason it is safe.
+
+A test also pins that nothing outside this handler reads `va_escalations`, with
+a message saying to revisit the bound if a reader appears.
+
+### The unit-47 ratchet caught this unit
+
+`vaWorkflowBounds.test.ts` pinned `va_escalations` as a still-unfixed sibling
+with an inverted assertion — *fails the day someone fixes one*. It fired on the
+first full run after this change, naming the collection and saying to extend the
+coverage rather than leave a half-true comment. It came off the list because the
+test demanded it, not because anyone remembered.
+
+**That is the mechanism paying for itself one unit after it was written**, and
+it is the argument for inverted assertions over prose: a paragraph saying "three
+siblings remain" would have quietly become wrong.
+
+### Verification
+
+Five mutations. Four caught immediately; the fifth — moving `notifiedAt` into
+the `catch`, so a FAILED delivery records as a successful one — **passed**,
+because the assertion only checked that it was set *after* the call, and the
+catch block is also after the call. Strengthened to require it inside the `try`
+body, then the mutation fails. The mutation was verified to have applied before
+that conclusion was drawn, which is the only reason the weak assertion surfaced.

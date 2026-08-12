@@ -1927,6 +1927,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/va/escalate — escalate task to human supervisor
+  /** Retention bound on a log that rides on every org-scoped request. */
+  const MAX_VA_ESCALATIONS = 200;
+
   api.post("/api/va/escalate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -1937,29 +1940,95 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         return Errors.badRequest(res, "taskId and reason are required");
       }
 
+      // AN ESCALATION WITH NO RECIPIENT IS NOT AN ESCALATION.
+      //
+      // This route is named "escalate task to human supervisor" and takes a
+      // supervisorUserId, and it did nothing with it: the escalation went into
+      // `settings.va_escalations`, a key NOTHING in this repo ever read, no
+      // notification was raised, and it returned `{ success: true }`. A VA
+      // asking for help got a success response and the supervisor was never
+      // told. Requiring the recipient is the same class of check as the taskId
+      // and reason above — without one there is nobody to reach.
+      if (!supervisorUserId) {
+        return Errors.badRequest(
+          res,
+          "supervisorUserId is required — an escalation with no recipient reaches nobody.",
+        );
+      }
+
+      // Cross-tenant guard. The recipient comes from the request body and is
+      // about to have a notification row written for them; an unchecked id
+      // would write into another organization's user's inbox.
+      const { assertUserIsOrgMember } = await import("./utils/orgScope");
+      if (!(await assertUserIsOrgMember(String(supervisorUserId), org.id))) {
+        return Errors.badRequest(res, "supervisorUserId must be a member of this organization");
+      }
+
+      const escalatedAt = new Date();
       const escalation = {
         id: `esc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        taskId,
-        reason,
-        urgency,
+        taskId: String(taskId),
+        reason: String(reason),
+        urgency: String(urgency),
         escalatedByUserId: user.id,
-        supervisorUserId: supervisorUserId || null,
-        escalatedAt: new Date().toISOString(),
+        supervisorUserId: String(supervisorUserId),
+        escalatedAt: escalatedAt.toISOString(),
         status: "open",
+        notifiedAt: null as string | null,
       };
 
+      // THE DELIVERY. `system_alert` from the closed NOTIFICATION_TYPES set —
+      // `task_assigned` would read to the supervisor as "a task was assigned to
+      // you", which is not what happened, and widening a closed vocabulary for
+      // one caller is what makes such a set stop meaning anything.
+      //
+      // Raised BEFORE the log is written, so the record can state whether it
+      // actually went out rather than assuming. An in-app notification only:
+      // no email, no SMS, nothing leaves the building.
+      try {
+        await storage.createNotification({
+          organizationId: org.id,
+          userId: String(supervisorUserId),
+          type: "system_alert",
+          title: `Task escalated (${escalation.urgency})`,
+          message: `${user.id} escalated task ${escalation.taskId}: ${escalation.reason}`,
+          entityType: "task",
+          metadata: { escalationId: escalation.id, taskId: escalation.taskId },
+        });
+        escalation.notifiedAt = escalatedAt.toISOString();
+      } catch (err) {
+        // Recorded as undelivered rather than dressed up as sent — the same
+        // rule the borrower reminder ladder follows, where `sent` is written
+        // only alongside the rail that accepted it.
+        logger.error(
+          "[VA] escalation recorded but the supervisor was NOT notified",
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       const orgRecord = await storage.getOrganization(org.id);
-      const escalations: any[] = (orgRecord as any)?.settings?.va_escalations || [];
-      escalations.push(escalation);
+      const existing = orgRecord?.settings?.va_escalations ?? [];
+
+      // Bounded: `organizations` is SELECTed in full on every org-scoped
+      // request, and this log had no cap. Trimming the OLDEST is safe only
+      // because the escalation itself is delivered as a notification — before
+      // that, dropping an entry would have dropped the escalation.
+      const kept = [...existing, escalation].slice(-MAX_VA_ESCALATIONS);
 
       await storage.updateOrganization(org.id, {
         settings: {
-          ...(orgRecord as any)?.settings,
-          va_escalations: escalations,
+          ...(orgRecord?.settings ?? {}),
+          va_escalations: kept,
         },
-      } as any);
+      });
 
-      res.status(201).json({ success: true, escalation });
+      // Says what actually happened. `success: true` alone claimed a delivery
+      // that never occurred.
+      res.status(201).json({
+        success: true,
+        notified: escalation.notifiedAt !== null,
+        escalation,
+      });
     } catch (error: any) {
       logger.error("Escalate task error", error);
       Errors.internal(res, error);
