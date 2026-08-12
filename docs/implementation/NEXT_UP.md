@@ -46,6 +46,13 @@ see §6.
 
 **8 of 18 canonical objects now have a canonical home (was 4).**
 
+Adoption ratchet at **5** (units 22–26 wired the customer loop end to end; unit
+44 added the subdivision lot-pricing lock). Two refusal registries sit beside
+it, and the distinction between them matters: `MUST_NOT_ADOPT` means *never,
+another versioned record already owns this state* (the note payoff path);
+`BLOCKED_ON_A_REAL_LINK` means *not until a real link exists* (the deal close),
+and it **fails the day the link is added** rather than sitting as a hardcoded no.
+
 Two ratchets track convergence, both down-only, both in
 `tests/unit/canonicalArchitecture.test.ts`:
 
@@ -240,6 +247,34 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     to read it back), removed not masked, **and** by preserving it on write —
     the client round-trips this list, so redaction alone would have silently
     blanked every key on the next save.
+
+### Units 39–46, in one pass
+
+Eight units after the permission sweep, and the pattern that generated them is
+worth as much as the fixes:
+
+| unit | what | why it survived |
+|---|---|---|
+| 39 | webhook signing secret **encrypted at rest** (unit 38 fixed only the API read) | fixing an exposure at one boundary says nothing about where the value lives |
+| 40 | provider API keys written in **two shapes** by two routes; readers split between them — the platform paid the customer's vendor bill AND charged them credits for the same lookup | every reader looked correct alone |
+| 41 | the webhooks panel wrote `enabled`, the dispatcher read `isActive` — **every endpoint added through the UI was incapable of firing**, and the UI badged it "Active" | two identifiers differing, nothing else wrong |
+| 42 | 6 of 15 offered webhook events **did not exist**; of 36 declared, **one** has an emitter | four of the six were near-miss renames of real events |
+| 43 | the per-org **simulation kill-switch** was not declared in its own column's type | a typed write could not carry it and could erase it |
+| 44 | **adoption ratchet 4 → 5**: the lot-pricing lock records the reasoning it used to discard | `lockedGrid` kept the output; the rules that produced it sit in the same mutable row |
+| 45 | the deal close **refused** as an adoption surface, in a test that unblocks itself | no non-heuristic link from a deal back to its decision |
+| 46 | `canAssignLeads` declared for every role, **checked by none** | assignment is access control wearing a workflow name |
+
+**Two questions generated most of them, and both are reusable:**
+
+1. *Having fixed how a value is RETURNED, where else is it written, stored,
+   mirrored or read?* (39, 40, 43)
+2. *Does anything WRITE this in a different shape or under a different name than
+   the code reading it expects?* (40, 41, 42)
+
+**The precondition they share:** the payload crosses into an **opaque jsonb
+column with no validation**. Where a zod schema or a typed column mediates, a
+mismatch is caught by tsc or by the parse. Three detectors were built to find
+more of this class and all three failed — see §4 before rebuilding one.
 
 **The residual is CLOSED (unit 46).** `canAssignLeads` was recorded here as
 "the mildest of the set — reassigning a lead inside an org neither destroys,
