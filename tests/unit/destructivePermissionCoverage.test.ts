@@ -242,6 +242,92 @@ describe("privileged non-delete mutations enforce their permission too", () => {
   });
 });
 
+/**
+ * BULK EXPORT is an exfiltration boundary.
+ *
+ * `canExportData` is FALSE for `member`, `va` and `viewer`, and it was enforced
+ * on exactly ONE of nine export endpoints (`GET /api/leads/export`). The other
+ * eight — including `/api/export/backup`, a ZIP of the whole organization, and
+ * the generic `/api/export/:entityType` — carried `isAuthenticated` and
+ * `getOrCreateOrg` only. `bulkExportLimiter` sits on two of them and is a RATE
+ * limiter, not an authorization gate.
+ *
+ * These are GETs, so the viewer read-only gate does NOT cover them: it refuses
+ * mutations. A read-only account — the role most likely to be handed to an
+ * outside party — could export the organization's entire database.
+ *
+ * Discovered rather than assumed: this test derives the export surface from the
+ * SOURCE, so a new export route cannot quietly join the ungated set.
+ */
+describe("every bulk export enforces canExportData", () => {
+  /**
+   * Export endpoints that return DATA. Deliberately excludes the two
+   * export-JOB status reads (`/api/export/jobs`, `/api/export/jobs/:id`), which
+   * report on the caller's own export requests and carry no records, and the
+   * per-conversation AI transcript export, which is scoped to one conversation
+   * the caller can already read.
+   */
+  const NOT_A_DATA_EXPORT = [
+    "/api/export/jobs",
+    "/api/export/jobs/:id",
+    "/api/ai/conversations/:id/export",
+  ];
+
+  /** Every `api.get("…export…")` registration across the route files. */
+  function exportRoutes(): Array<{ file: string; path: string; line: string }> {
+    const out: Array<{ file: string; path: string; line: string }> = [];
+    for (const f of fs.readdirSync(path.join(ROOT, "server"))) {
+      if (!f.startsWith("routes") || !f.endsWith(".ts")) continue;
+      const src = code(`server/${f}`);
+      // The captured span runs from `api.get(` to the start of the HANDLER,
+      // not to the end of the line. A registration may be formatted across
+      // several lines, and a line-bound capture walked straight past the
+      // middleware on /api/export/jobs/:id/download — reporting it ungated when
+      // it was, and, worse, capable of reporting it gated when it was not.
+      for (const m of src.matchAll(/api\.get\(\s*"([^"]*export[^"]*)"/g)) {
+        const start = m.index ?? 0;
+        const handler = src.slice(start).search(/async\s*\(|\(\s*req\s*[,:)]/);
+        const chain = src.slice(start, start + (handler === -1 ? 400 : handler));
+        out.push({ file: `server/${f}`, path: m[1], line: chain });
+      }
+    }
+    return out;
+  }
+
+  it("finds the export surface at all (vacuity guard)", () => {
+    expect(exportRoutes().length, "no export routes found — has the shape changed?")
+      .toBeGreaterThanOrEqual(9);
+  });
+
+  it("gates every DATA export", () => {
+    for (const r of exportRoutes()) {
+      if (NOT_A_DATA_EXPORT.includes(r.path)) continue;
+      expect(
+        r.line,
+        `${r.file} ${r.path} exports data without requirePermission("canExportData")`,
+      ).toContain('requirePermission("canExportData")');
+    }
+  });
+
+  it("a rate limiter is not an authorization gate", () => {
+    // bulkExportLimiter sat on /api/export/backup and /api/export/:entityType
+    // and reads like protection. It bounds how OFTEN, never WHO.
+    const backup = exportRoutes().find((r) => r.path === "/api/export/backup");
+    expect(backup, "/api/export/backup not found").toBeTruthy();
+    expect(backup!.line).toContain("bulkExportLimiter");
+    expect(backup!.line).toContain('requirePermission("canExportData")');
+  });
+
+  it("the roles this protects really are denied export", () => {
+    const perms = code("server/utils/permissions.ts");
+    for (const role of ["member", "va", "viewer"]) {
+      const at = perms.indexOf(`  ${role}: {`);
+      const block = perms.slice(at, perms.indexOf("\n  },", at));
+      expect(block, `${role} is no longer denied export`).toContain("canExportData: false");
+    }
+  });
+});
+
 describe("no destructive permission is declared and then never consulted", () => {
   const perms = code("server/utils/permissions.ts");
 

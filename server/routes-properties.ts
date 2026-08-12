@@ -254,7 +254,7 @@ export function registerPropertyRoutes(app: Express): void {
   );
 
   // export — registered BEFORE /api/properties/:id so the literal path wins (2026-07-11 route-order sweep).
-  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportPropertiesToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];

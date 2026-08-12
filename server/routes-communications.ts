@@ -10,6 +10,8 @@ import {
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
+// Bulk export is an exfiltration boundary, not a convenience.
+import { requirePermission } from "./utils/permissions";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
@@ -841,7 +843,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // ============================================
 
   // GET /api/export/leads - Export leads to CSV
-  api.get("/api/export/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/leads", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const status = req.query.status as string | undefined;
@@ -865,7 +867,7 @@ export function registerCommunicationRoutes(app: Express): void {
   });
 
   // GET /api/export/properties - Export properties to CSV
-  api.get("/api/export/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/properties", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const status = req.query.status as string | undefined;
@@ -889,7 +891,7 @@ export function registerCommunicationRoutes(app: Express): void {
   });
 
   // GET /api/export/deals - Export deals to CSV
-  api.get("/api/export/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/deals", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const status = req.query.status as string | undefined;
@@ -913,7 +915,7 @@ export function registerCommunicationRoutes(app: Express): void {
   });
 
   // GET /api/export/notes - Export notes/finance to CSV
-  api.get("/api/export/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/notes", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const status = req.query.status as string | undefined;
@@ -937,7 +939,7 @@ export function registerCommunicationRoutes(app: Express): void {
   });
 
   // GET /api/export/report - Generate PDF report (placeholder)
-  api.get("/api/export/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/report", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const reportType = req.query.type as string || 'executive';

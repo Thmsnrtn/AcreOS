@@ -26,6 +26,8 @@ import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { Errors } from "./utils/errors";
+// Bulk export is an exfiltration boundary, not a convenience.
+import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
@@ -378,7 +380,7 @@ export function registerImportExportRoutes(app: Express): void {
    * envelope ("backup_*.json") which is harder for other CRMs to consume.
    * Sunset: 2026-07-02. Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
+  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const backup = await createBackupZip(org.id);
@@ -432,7 +434,7 @@ export function registerImportExportRoutes(app: Express): void {
    *
    * Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
+  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
@@ -855,6 +857,12 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/export/jobs/:id/download",
     isAuthenticated,
     getOrCreateOrg,
+    // Found by the source-derived coverage test, not by hand: this route is
+    // registered across several lines, so the single-line grep that located the
+    // other eight walked straight past it. It DOWNLOADS a completed export —
+    // the file itself — so it is the last step of an exfiltration, not a status
+    // read.
+    requirePermission("canExportData"),
     async (req, res) => {
       try {
         const org = req.organization!;

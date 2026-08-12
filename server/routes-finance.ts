@@ -136,7 +136,7 @@ export function registerFinanceRoutes(app: Express): void {
   });
 
   // export — registered BEFORE /api/notes/:id so the literal path wins (2026-07-11 route-order sweep).
-  api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportNotesToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];

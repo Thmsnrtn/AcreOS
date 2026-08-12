@@ -201,14 +201,23 @@ See `EXECUTION_LEDGER.md` for the full record. Summary:
     checked it). `PATCH /api/organization/settings` is gated by FIELD, not
     wholesale, so a member can still dismiss their own checklist.
 
-**Residual, recorded not guessed:** `canImportData`, `canExportData` and
-`canAssignLeads` are still unenforced. Viewer is covered by unit 32's gate, so
-the open question is member/va on import, export and lead assignment — check
-each route's real caller rather than gating on a pattern match.
+34. **SECURITY — the biggest one.** `canExportData` was enforced on exactly ONE
+    of ten export endpoints. The other nine included `/api/export/backup` (a ZIP
+    of the whole org), the generic `/api/export/:entityType`, and the download
+    of a completed export. These are GETs, so unit 32's gate did not cover them:
+    **a viewer could export the entire database.** All gated; the coverage test
+    now derives the export surface from SOURCE and found a tenth route the hand
+    grep missed.
+
+**Residual, recorded not guessed:** `canImportData` and `canAssignLeads` are
+still unenforced. Viewer is covered by unit 32's gate, so the open question is
+member/va on import and lead assignment — check each route's real caller rather
+than gating on a pattern match. Import is the higher value of the two: it creates
+records in bulk and `canImportData` is false for member/va/viewer.
 
 Gate state at last commit: `npm run check` PASS (22 lints), tsc clean,
 reachability at baseline 654, every ratchet at baseline, and the **full unit
-suite green — 662 files, 8,708 tests, 1 skipped, 0 failures.**
+suite green — 662 files, 8,712 tests, 1 skipped, 0 failures.**
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the

@@ -2217,3 +2217,62 @@ Resolved as:
 baselines · **full unit suite 662 files, 8,708 tests, 1 skipped, 0 failures.**
 Mutation-tested: removing the billing gate, and folding a benign field into the
 org-wide set, each fail.
+
+---
+
+## Unit 34 — A read-only account could export the whole database · this commit
+
+**Audit requirement:** precedence #1. This is the most consequential of the
+permission findings.
+
+**Files:** `server/routes-communications.ts`, `server/routes-import-export.ts`,
+`server/routes-finance.ts`, `server/routes-properties.ts` (10 routes),
+`tests/unit/destructivePermissionCoverage.test.ts` (+4 tests).
+
+### The defect
+
+`canExportData` is FALSE for `member`, `va` and `viewer`. It was enforced on
+**exactly one of ten** export endpoints — `GET /api/leads/export`. The other nine
+carried `isAuthenticated` and `getOrCreateOrg` only, and they include:
+
+- **`/api/export/backup`** — a ZIP of the entire organization
+- **`/api/export/:entityType`** — the generic exporter
+- **`/api/export/jobs/:id/download`** — the completed export file itself
+- per-entity CSV exports for leads, properties, deals and notes
+
+**These are GETs, so unit 32's viewer read-only gate does not cover them** — it
+refuses mutations. A viewer, the role most likely to be handed to an outside
+party precisely because it "can only look", could export the organization's
+entire database.
+
+**Severity: intra-org data exfiltration by a role explicitly denied export.**
+Still not cross-tenant — every route is org-scoped. But export is exactly the
+capability an owner withholds when they do not fully trust someone, and it was
+the least protected thing in the permission system.
+
+`bulkExportLimiter` sits on two of these routes and reads like protection. It
+bounds how OFTEN, never WHO. A test now says so explicitly.
+
+### The test found the tenth route; I found nine
+
+The coverage test derives the export surface **from source** rather than from a
+hand-written list. That immediately paid: `/api/export/jobs/:id/download` is
+registered across several lines, so the single-line grep that located the other
+nine walked straight past it — and it is the step that hands over the file.
+
+Then the test's own extractor had the same bug in mirror image: it captured only
+to the end of the line containing the path, so it reported that route ungated
+after it had been gated. The capture now runs from `api.get(` to the start of the
+HANDLER. **The line-bound version could also have reported a route GATED when it
+was not**, which is the dangerous direction — this is the fourth time in this
+program a source-scanning span has been drawn too narrowly, and the first where
+getting it wrong would have hidden a hole rather than invented one.
+
+Three endpoints are deliberately excluded and named: `/api/export/jobs` and
+`/api/export/jobs/:id` report on the caller's own export requests and carry no
+records, and the per-conversation AI transcript export is scoped to one
+conversation the caller can already read.
+
+**Gates:** `npm run check` PASS (22 lints) · tsc clean · reachability at all four
+baselines · **full unit suite 662 files, 8,712 tests, 1 skipped, 0 failures.**
+Mutation-tested: removing the backup gate and one CSV gate each fail.
