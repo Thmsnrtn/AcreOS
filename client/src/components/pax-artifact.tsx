@@ -173,7 +173,13 @@ function ArtifactDocument({ data }: { data: any }) {
 
   return (
     <div
-      className="font-serif text-xs leading-relaxed text-foreground whitespace-pre-wrap min-h-[80px] focus:outline-none"
+      /* An editable region with no focus indicator is the worst case for this
+         rule: it is where a keyboard user goes to TYPE, and `focus:outline-none`
+         with nothing in its place leaves them guessing whether their keystrokes
+         will land here. The global *:focus-visible ring in index.css covers it
+         in practice; being explicit means the component states what replaces
+         the outline it opted out of. */
+      className="font-serif text-xs leading-relaxed text-foreground whitespace-pre-wrap min-h-[80px] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       contentEditable
       suppressContentEditableWarning
       data-placeholder="Pax drafted · Click to edit"

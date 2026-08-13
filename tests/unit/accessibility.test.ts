@@ -28,6 +28,35 @@ function findFiles(dir: string, ext: string): string[] {
   return results;
 }
 
+/**
+ * Strip `//` and block comments, preserving line numbers.
+ *
+ * Every source scan in this program that skipped this step eventually flagged a
+ * comment explaining the very defect it hunts for. Line-based so the reported
+ * line numbers still point at real code.
+ */
+function stripJsComments(src: string): string {
+  const out: string[] = [];
+  let inBlock = false;
+  for (const line of src.split("\n")) {
+    let s = line;
+    if (inBlock) {
+      const end = s.indexOf("*/");
+      if (end === -1) { out.push(""); continue; }
+      s = s.slice(end + 2);
+      inBlock = false;
+    }
+    const open = s.indexOf("/*");
+    if (open > -1) {
+      const close = s.indexOf("*/", open + 2);
+      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
+      else { s = s.slice(0, open); inBlock = true; }
+    }
+    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
+  }
+  return out.join("\n");
+}
+
 describe("Accessibility Compliance", () => {
   it("App.tsx has a skip-to-content link", () => {
     const app = readFile("App.tsx");
@@ -390,6 +419,123 @@ describe("Accessibility Compliance", () => {
         "at it — the control inside keeps no accessible name. Move " +
         "<FormControl> inside the wrapper so it wraps the control directly; it " +
         "renders identically.",
+    ).toBe("");
+  });
+});
+
+/**
+ * RULE 2 OF CLAUDE.md's ACCESSIBILITY STANDARDS, which had no gate.
+ *
+ *   > Every interactive element must have visible focus state
+ *
+ * Rules 1 (icon-button `aria-label`) and 3 (form-input label association) are
+ * both absolutes above, with zero debt. Rule 2 was the one nobody checked, and
+ * the obvious way to check it is WRONG IN THIS CODEBASE.
+ *
+ * WHY `outline-none` IS NOT THE SMELL HERE
+ * ----------------------------------------
+ * `client/src/index.css` carries a global safety net:
+ *
+ *     *:focus-visible {
+ *       @apply outline-none ring-2 ring-primary/40 ring-offset-2 …;
+ *     }
+ *
+ * **It removes the outline from EVERYTHING** and replaces it with a ring. So a
+ * component writing `focus-visible:outline-none` is agreeing with a decision the
+ * stylesheet already made — 241 occurrences across 154 files, and the dominant
+ * form is `focus-visible:outline-none focus-visible:ring-2`, which is correct.
+ * Freezing those as debt would have been a register of 241 non-defects.
+ *
+ * The dangerous pattern is the inverse, and it is rare: **zeroing the RING.**
+ * `focus-visible:ring-0` (or `focus:ring-0`) sets `--tw-ring-shadow` to a
+ * zero-width ring at higher specificity than the global rule, and the outline is
+ * already gone — so the element ends up with NO focus indicator at all. A
+ * keyboard user tabs into it and nothing changes on screen.
+ *
+ * There were exactly two, both found by measuring instead of assuming:
+ *   - `comment-thread.tsx` — the comment textarea. Zeroed to get a borderless
+ *     inline look; a 1px ring keeps the look and keeps the field findable.
+ *   - `pax-copilot-rail.tsx` — the model-override `SelectTrigger`, same reason.
+ *
+ * Both fixed. This is an ABSOLUTE, like rules 1 and 3: there is no register,
+ * because two occurrences is not a debt, it is a bug that was fixed.
+ */
+describe("every interactive element keeps a visible focus state", () => {
+  /** The global rule this whole check depends on. */
+  const css = readFileSync(resolve(CLIENT_SRC, "index.css"), "utf-8");
+
+  it("the global focus-visible rule still swaps outline for a ring", () => {
+    // The premise. If index.css stopped removing the outline globally, bare
+    // `outline-none` in a component would become a real defect and `ring-0`
+    // would become survivable — the opposite of what this file asserts. Pinning
+    // the premise means the reasoning cannot quietly go stale.
+    const at = css.indexOf("*:focus-visible {");
+    expect(at, "the global *:focus-visible rule is gone").toBeGreaterThan(-1);
+    const body = css.slice(at, css.indexOf("}", at));
+    expect(body, "the global rule no longer removes the outline").toContain("outline-none");
+    expect(body, "the global rule no longer supplies a ring").toMatch(/ring-\d/);
+  });
+
+  it("nothing zeroes its focus ring", () => {
+    // ABSOLUTE — no register. With the outline globally removed, a zeroed ring
+    // leaves an element with no focus indicator whatsoever.
+    const offenders: string[] = [];
+    for (const file of findFiles(CLIENT_SRC, ".tsx")) {
+      if (/\.test\.tsx$/.test(file)) continue;
+      const src = stripJsComments(readFileSync(file, "utf-8"));
+      for (const m of src.matchAll(/focus(?:-visible)?:ring-0(?![\w-])/g)) {
+        const line = src.slice(0, m.index).split("\n").length;
+        offenders.push(`${file.slice(CLIENT_SRC.length + 1)}:${line}`);
+      }
+    }
+    expect(
+      offenders.join("\n"),
+      "an element zeroes its focus ring. index.css removes the outline from " +
+        "EVERYTHING at :focus-visible and substitutes a ring, so `ring-0` here " +
+        "means no focus indicator at all — a keyboard user tabs in and nothing " +
+        "changes on screen. If the ring is too heavy for the design, use " +
+        "`focus-visible:ring-1` and `ring-offset-0`; do not remove it.",
+    ).toBe("");
+  });
+
+  it("a component that removes the outline itself supplies its own indicator", () => {
+    // The narrower version of the naive check: a class string that kills the
+    // outline and mentions no focus-state styling at all. contentEditable
+    // regions are the realistic case — they are focusable, they are not
+    // buttons, and they are easy to style as plain text.
+    //
+    // COMMENTS ARE STRIPPED FIRST, and that is not incidental. The first run of
+    // this check flagged pax-artifact.tsx AFTER it had been fixed: the fix came
+    // with an explanatory comment containing a backtick-quoted
+    // focus:outline-none, and the scanner reads backtick strings as class
+    // strings. That is the sixth time in this program that a comment describing
+    // a defect has tripped the detector for that defect, which is why every
+    // source scan here starts by removing them.
+    const KILL = /focus(?:-visible)?:outline-none/;
+    const INDICATOR =
+      /focus(?:-visible)?:(?:ring-\d|ring-\[|shadow-|border-|bg-|underline|outline-\[|outline-2)/;
+    const offenders: string[] = [];
+    let inspected = 0;
+    for (const file of findFiles(CLIENT_SRC, ".tsx")) {
+      if (/\.test\.tsx$/.test(file)) continue;
+      const src = stripJsComments(readFileSync(file, "utf-8"));
+      for (const m of src.matchAll(/"([^"\n]{0,4000})"|`([^`]{0,4000})`/g)) {
+        const cls = m[1] ?? m[2] ?? "";
+        if (!KILL.test(cls)) continue;
+        inspected += 1;
+        if (INDICATOR.test(cls)) continue;
+        const line = src.slice(0, m.index).split("\n").length;
+        offenders.push(`${file.slice(CLIENT_SRC.length + 1)}:${line}`);
+      }
+    }
+    expect(inspected, "no focus:outline-none class strings found — did the styling change?")
+      .toBeGreaterThan(100);
+    expect(
+      offenders.join("\n"),
+      "a class string removes the focus outline and supplies no focus " +
+        "indicator of its own. The global *:focus-visible ring in index.css " +
+        "usually covers this, which is why it is worth being explicit: an " +
+        "element that opts out of the outline should say what replaces it.",
     ).toBe("");
   });
 });

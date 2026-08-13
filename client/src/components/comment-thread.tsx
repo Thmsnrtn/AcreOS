@@ -294,7 +294,14 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
           onKeyDown={handleKeyDown}
           placeholder="Add a comment… Use @ to mention"
           autoCapitalize="sentences"
-          className="flex-1 resize-none text-sm bg-transparent border-0 focus-visible:ring-0 min-h-[32px] max-h-[80px] p-1"
+          /* `focus-visible:ring-1` and not `ring-0`. The borderless look was
+             achieved by zeroing the ring, which in THIS codebase removes the
+             focus indicator entirely: the global `*:focus-visible` rule in
+             index.css applies `outline-none` and replaces the outline with a
+             ring, so a component that zeroes the ring leaves nothing behind.
+             A 1px ring keeps the flat inline look and keeps the field
+             findable by keyboard. */
+          className="flex-1 resize-none text-sm bg-transparent border-0 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 min-h-[32px] max-h-[80px] p-1"
           rows={1}
         />
         <Button
