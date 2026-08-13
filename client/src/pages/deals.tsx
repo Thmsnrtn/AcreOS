@@ -1491,14 +1491,14 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{offerLabel} amount</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <span
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                      aria-hidden="true"
-                    >
-                      $
-                    </span>
+                <div className="relative">
+                  <span
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    $
+                  </span>
+                  <FormControl>
                     <Input
                       {...field}
                       value={field.value ?? ""}
@@ -1510,8 +1510,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                       className="min-h-[44px] pl-7 text-right tabular-nums"
                       data-testid="input-offer-amount"
                     />
-                  </div>
-                </FormControl>
+                  </FormControl>
+                </div>
                 <FormMessage />
               </FormItem>
             )}

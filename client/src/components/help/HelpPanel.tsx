@@ -692,6 +692,7 @@ export function HelpPanel() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
+              aria-label="Search help topics"
               placeholder="Search help topics…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1040,6 +1041,7 @@ export function HelpPanel() {
                   className="flex gap-2 mt-3"
                 >
                   <Input
+                    aria-label="Reply to support conversation"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Type your message…"

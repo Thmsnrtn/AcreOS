@@ -185,9 +185,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Purchase price</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -195,8 +195,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-purchase-price"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -208,9 +208,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Down payment / cash investment</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -218,8 +218,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-down-payment"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -231,9 +231,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Interest rate (annual %)</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             step="0.1"
@@ -242,8 +242,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-interest-rate"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -255,9 +255,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Monthly holding costs</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -265,8 +265,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-holding-costs"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -297,9 +297,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Improvement costs (optional)</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -307,8 +307,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-improvement-costs"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -320,9 +320,9 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   render={({ field }) => (
                     <FormItem className="md:col-span-2">
                       <FormLabel>Expected sale price</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <FormControl>
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -330,8 +330,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                             data-testid="input-expected-sale-price"
                             {...field} 
                           />
-                        </div>
-                      </FormControl>
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

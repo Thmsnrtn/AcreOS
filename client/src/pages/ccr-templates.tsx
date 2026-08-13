@@ -154,10 +154,11 @@ export default function CcrTemplatesPage() {
                 <CardContent className="space-y-3">
                   {detail.data.template.mergeFields.map((f) => (
                     <div key={f.key}>
-                      <Label className="text-xs">
+                      <Label className="text-xs" htmlFor={`merge-field-${f.key}`}>
                         {f.label}{f.required && <span className="text-acr-warn"> *</span>}
                       </Label>
                       <Input
+                        id={`merge-field-${f.key}`}
                         value={values[f.key] ?? ""}
                         onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
                         placeholder={f.placeholder ?? `${f.type}`}
@@ -191,6 +192,7 @@ export default function CcrTemplatesPage() {
                   </CardHeader>
                   <CardContent>
                     <Textarea
+                      aria-label="Rendered template output"
                       readOnly
                       value={renderedOutput}
                       className="font-mono text-xs h-96"

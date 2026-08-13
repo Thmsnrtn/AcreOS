@@ -5226,3 +5226,76 @@ resolve against a real `idx`/`index` in scope — the one way this batch could
 have gone silently wrong.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
+
+---
+
+## Unit 73 — Fourteen inputs the framework was labelling, onto a div · this commit
+
+**Files:** `client/src/components/deal-calculator.tsx`,
+`client/src/pages/deals.tsx`, `client/src/pages/finance.tsx`,
+`client/src/pages/listings.tsx`, plus seven files finishing unit 72's tier,
+`tests/unit/accessibility.test.ts`.
+
+Found while clearing the last of the label register: `pages/deals.tsx` looked
+like a false positive — the input **is** inside `<FormControl>` — and it was not.
+
+### `<FormControl>` is a Radix `Slot`
+
+It forwards `id={formItemId}`, `aria-describedby` and `aria-invalid` to its
+**immediate child**, and `<FormLabel>` emits the matching `htmlFor`. So:
+
+```tsx
+<FormControl>
+  <div className="relative">
+    <DollarSign … />
+    <Input {...field} />     ← gets NO id
+  </div>
+</FormControl>
+```
+
+The `id` lands on the `<div>`. The label's `htmlFor` points at that `<div>`. The
+input has no accessible name — in a form that uses the framework's own
+primitives correctly everywhere else, which is why it is invisible on review.
+
+**14 sites across 4 files**, all of them a currency or icon wrapper. Fixed by
+moving `<FormControl>` inside the wrapper so it wraps the control directly;
+renders identically, because a Slot renders **as** its child either way.
+
+### My own gate had exempted all fourteen
+
+Unit 68's label check exempts anything inside `<FormControl>`, on the correct
+general ground that the framework names it. All 14 passed under that exemption.
+
+> **A gate's exemption is an assumption, and this one needed its own check.**
+
+Same lesson as the rule-2 register that could not tell a caller-supplied id from
+a freshly inserted one — arriving from the other side. There the exemption was
+missing and the register carried noise; here the exemption was present and the
+register was missing real findings. Both are the checker's model of the code
+being wrong, and only a sample tells you which way.
+
+### Also in this commit
+
+The remaining two-per-file label sites (7 files, 14 fixes) — search boxes,
+message composers, a merge-field map, partner rows. Register **33 → 18**.
+
+And the register caught me: I fixed those seven and ran the suite before
+lowering the entries, and the both-directions check failed with *"now 0, entry
+says 2"*. The half of the ratchet that most registers omit is the half that
+fired.
+
+### On tooling
+
+`prettier --write` was tried to repair indentation after the hoist and reverted:
+it reformatted 366 lines of a file where 24 had changed. The repo does not run
+it over these files, so it is not a formatter here — it is a 350-line unrelated
+diff. Indentation was fixed with a targeted pass instead.
+
+### Verification
+
+Three mutations on the new gate, each verified to apply, each caught:
+`FormControl` wrapping a div again; the controls list emptied (so every wrapper
+is flagged — the noise direction); and the scan's subject removed (the vacuity
+direction).
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9044 passed, 1 skipped.

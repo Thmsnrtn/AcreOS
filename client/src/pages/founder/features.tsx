@@ -185,6 +185,7 @@ export default function FounderFeatures() {
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
+                      aria-label="Search feature flags"
                       placeholder="Search by key or description…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -272,10 +273,11 @@ export default function FounderFeatures() {
 
                     {flag.state === "beta" && (
                       <div className="flex flex-wrap items-center gap-3">
-                        <label className="text-xs text-muted-foreground whitespace-nowrap">
+                        <label className="text-xs text-muted-foreground whitespace-nowrap" htmlFor={`beta-users-${flag.key}`}>
                           Beta user IDs
                         </label>
                         <Input
+                          id={`beta-users-${flag.key}`}
                           defaultValue={(flag.audience.betaUserIds ?? []).join(", ")}
                           onBlur={(e) => setBetaUsers(flag.key, e.currentTarget.value)}
                           placeholder="user_abc, user_def, user_ghi"

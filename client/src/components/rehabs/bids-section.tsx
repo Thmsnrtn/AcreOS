@@ -235,11 +235,12 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
           <div className="border border-dashed rounded p-3 space-y-3">
             {/* CT-3: paste-and-extract */}
             <div className="space-y-2 pb-3 border-b border-border/40">
-              <Label className="text-xs flex items-center gap-1">
+              <Label className="text-xs flex items-center gap-1" htmlFor="bid-extract-text">
                 <Sparkles className="w-3 h-3 text-primary" aria-hidden="true" />
                 Paste contractor estimate text (PDF body, email, OCR…)
               </Label>
               <Textarea
+                id="bid-extract-text"
                 value={extractText}
                 onChange={(e) => setExtractText(e.target.value)}
                 placeholder="Paste the contractor's full estimate here. The LLM will extract a category breakdown that you can review and edit before saving."
@@ -319,6 +320,7 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
                   <div key={cat}>
                     <span className="text-xs text-muted-foreground">{cat.replace(/_/g, " ")}</span>
                     <Input
+                      aria-label={`${cat.replace(/_/g, " ")} amount`}
                       type="number"
                       value={breakdown[cat] ?? ""}
                       onChange={(e) => setBreakdown({ ...breakdown, [cat]: e.target.value })}

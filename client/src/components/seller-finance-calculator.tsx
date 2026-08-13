@@ -180,10 +180,11 @@ export default function SellerFinanceCalculator({
         {/* Inputs */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Purchase Price</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="sfc-purchase-price">Purchase Price</Label>
             <div className="relative">
               <DollarSign className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
+                id="sfc-purchase-price"
                 type="number"
                 className="pl-7 h-9 text-sm"
                 value={purchasePrice}
@@ -198,10 +199,11 @@ export default function SellerFinanceCalculator({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Down Payment</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="sfc-down-payment">Down Payment</Label>
             <div className="relative">
               <DollarSign className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
+                id="sfc-down-payment"
                 type="number"
                 className="pl-7 h-9 text-sm"
                 value={downPayment}

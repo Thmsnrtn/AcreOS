@@ -212,13 +212,6 @@ describe("Accessibility Compliance", () => {
      * commit that earns it.
      */
     const LABEL_DEBT = new Map<string, number>([
-  ["components/help/HelpPanel.tsx", 2],
-  ["components/pax-copilot-rail.tsx", 2],
-  ["components/rehabs/bids-section.tsx", 2],
-  ["components/seller-finance-calculator.tsx", 2],
-  ["pages/auction-worksheet.tsx", 2],
-  ["pages/ccr-templates.tsx", 2],
-  ["pages/founder/features.tsx", 2],
   ["components/ai-offer-generator.tsx", 1],
   ["components/custom-fields.tsx", 1],
   ["components/due-diligence-panel.tsx", 1],
@@ -234,7 +227,6 @@ describe("Accessibility Compliance", () => {
   ["components/support-content.tsx", 1],
   ["components/ui/sidebar.tsx", 1],
   ["pages/county-timelines.tsx", 1],
-  ["pages/deals.tsx", 1],
   ["pages/founder/cmo.tsx", 1],
   ["pages/founder/studio/dials.tsx", 1],
   ["pages/note-acquisition-detail.tsx", 1],
@@ -314,6 +306,69 @@ describe("Accessibility Compliance", () => {
       stale.join("\n"),
       "a label-debt entry is higher than reality — lower it (or delete it) in " +
         "the commit that fixed the file, so the register keeps meaning something.",
+    ).toBe("");
+  });
+
+  /**
+   * `<FormControl>` must wrap the CONTROL, not a layout wrapper around it.
+   *
+   * It is a Radix `Slot`: it forwards `id={formItemId}`, `aria-describedby` and
+   * `aria-invalid` to its **immediate child**. `<FormLabel>` emits
+   * `htmlFor={formItemId}` to match. So this is correct:
+   *
+   *     <FormControl><Input {...field} /></FormControl>
+   *
+   * and this silently is not:
+   *
+   *     <FormControl>
+   *       <div className="relative">
+   *         <DollarSign … />
+   *         <Input {...field} />     ← gets NO id
+   *       </div>
+   *     </FormControl>
+   *
+   * The `id` lands on the `<div>`, the label's `htmlFor` points at that `<div>`,
+   * and the input has no accessible name. Fourteen sites across four files were
+   * in this state; the fix moves `<FormControl>` inside the wrapper, which
+   * renders identically because a Slot renders AS its child either way.
+   *
+   * WORTH RECORDING: the label check above EXEMPTS anything inside
+   * `<FormControl>`, on the correct general ground that the framework names it.
+   * All fourteen of these passed that exemption. **A gate's exemption is an
+   * assumption, and this one needed its own check** — which is the same lesson
+   * as the register that could not tell a caller-supplied id from a freshly
+   * inserted one, arriving from the other side.
+   */
+  it("FormControl wraps the control itself, not a layout div around it", () => {
+    const offenders: string[] = [];
+    let wrappers = 0;
+
+    // Components that legitimately receive the Slot's props: real form controls
+    // and trigger elements that render one.
+    const CONTROLS =
+      /^(Input|Textarea|Select|SelectTrigger|Checkbox|Switch|RadioGroup|RadioGroupItem|Slider|Button|Command|Popover|PopoverTrigger|Toggle|ToggleGroup|Calendar|SearchableSelect|MultiSelect|DatePicker|PhoneInput|CurrencyInput)$/;
+
+    for (const file of findFiles(CLIENT_SRC, ".tsx")) {
+      if (/\.test\.tsx$/.test(file)) continue;
+      const src = readFileSync(file, "utf-8");
+      for (const m of src.matchAll(/<FormControl>\s*\n\s*<(\w+)/g)) {
+        wrappers += 1;
+        if (CONTROLS.test(m[1])) continue;
+        const line = src.slice(0, m.index).split("\n").length;
+        offenders.push(`${file.slice(CLIENT_SRC.length + 1)}:${line} — <${m[1]}>`);
+      }
+    }
+
+    expect(wrappers, "no <FormControl> usages found — did the form API change?")
+      .toBeGreaterThan(50);
+
+    expect(
+      offenders.join("\n"),
+      "<FormControl> wraps a layout element. It is a Radix Slot, so its " +
+        "id/aria props land on THAT element and the FormLabel's htmlFor points " +
+        "at it — the control inside keeps no accessible name. Move " +
+        "<FormControl> inside the wrapper so it wraps the control directly; it " +
+        "renders identically.",
     ).toBe("");
   });
 });

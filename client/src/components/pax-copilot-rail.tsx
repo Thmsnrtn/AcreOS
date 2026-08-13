@@ -1358,6 +1358,7 @@ export function PaxCopilotRail() {
                   <div className="px-3 py-2 border-b space-y-1.5">
                     <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
                     <Input
+                      aria-label="Search recent conversations"
                       placeholder="Search…"
                       value={convSearch}
                       onChange={(e) => setConvSearch(e.target.value)}
@@ -1855,6 +1856,7 @@ export function PaxCopilotRail() {
                   )}
                   <Textarea
                     ref={inputRef}
+                    aria-label="Message to Pax"
                     value={inputValue}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}

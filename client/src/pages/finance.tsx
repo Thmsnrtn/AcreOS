@@ -2186,9 +2186,9 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>
                   Principal <span className="text-destructive" aria-label="required">*</span>
                 </FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                  <FormControl>
                     <Input
                       {...field}
                       type="number"
@@ -2199,8 +2199,8 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                       className="pl-7 text-right tabular-nums"
                       data-testid="input-principal"
                     />
-                  </div>
-                </FormControl>
+                  </FormControl>
+                </div>
                 <FormMessage />
               </FormItem>
             )}
@@ -2214,8 +2214,8 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>
                   Interest rate <span className="text-destructive" aria-label="required">*</span>
                 </FormLabel>
-                <FormControl>
-                  <div className="relative">
+                <div className="relative">
+                  <FormControl>
                     <Input
                       {...field}
                       type="number"
@@ -2226,9 +2226,9 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                       className="pr-7 text-right tabular-nums"
                       data-testid="input-interest-rate"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
-                  </div>
-                </FormControl>
+                  </FormControl>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
+                </div>
                 <FormMessage />
               </FormItem>
             )}
@@ -2282,9 +2282,9 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Down payment</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                  <FormControl>
                     <Input
                       {...field}
                       value={field.value ?? ""}
@@ -2296,8 +2296,8 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                       className="pl-7 text-right tabular-nums"
                       data-testid="input-down-payment"
                     />
-                  </div>
-                </FormControl>
+                  </FormControl>
+                </div>
                 <FormMessage />
               </FormItem>
             )}
