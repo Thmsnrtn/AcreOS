@@ -1455,7 +1455,19 @@ export async function registerRoutes(
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
-  app.use('/api/dunning', isAuthenticated, dunningRouter);
+  // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
+  // Manager page behind FounderProtectedRoute with the note "the dunning API is
+  // founder-only (requireFounder on the whole router, P1-5)" — that was false.
+  // The router carried `isAuthenticated` and nothing else, so a client route
+  // guard was the only thing standing in front of AcreOS's own billing console:
+  // every organization's failed subscription payments, the total amount at risk
+  // across the platform, and POST /:id/{retry,cancel,resolve} — which charge a
+  // Stripe invoice and mutate another org's dunning state.
+  //
+  // Founder-only is the right verdict, not org-scoping: dunning chases
+  // subscription payments TO AcreOS, the one flow AcreOS is a party to
+  // ("be the rail, not the provider"). No org owns this queue.
+  app.use('/api/dunning', isAuthenticated, requireFounder, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
   // User-scoped appearance preferences (theme/mode/font/density/motion).
   // No org context needed — preferences are user-level.

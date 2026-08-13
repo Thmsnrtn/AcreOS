@@ -802,3 +802,21 @@ showed the cost of that width rather than a gap in it.
 
 **Being automated is what makes a gate read as covered.** That is the trap in
 both units: nobody re-reads the walk of a lint that has been green for months.
+
+**A comment is a factual claim about the code, and this program has now found
+four load-bearing ones that were false.** Unit 53: a TODO saying a service
+exposed no listing method, which is why the one org-scoped method on it was
+never called. Unit 55: a lint header claiming a scope it did not walk. Unit 56: a
+metering note false about two of its six endpoints. Unit 57, the worst: an
+`App.tsx` comment stating *"the dunning API is founder-only (requireFounder on
+the whole router)"* — the router had `isAuthenticated` and nothing else, and a
+2026-07-11 sweep gated the PAGE on the strength of that sentence and moved on.
+
+The generalisation is not "distrust comments". It is that **a comment asserting
+something about a DIFFERENT file is an unverified cross-reference**, and those
+are exactly the claims worth converting into assertions. When a comment says
+"X is gated / X is deleted / X has no consumer / X is covered", open X. If it is
+true, the cheapest way to keep it true is a test that reads both files — which is
+what `dunningFounderOnly.test.ts` does, asserting the page gate and the API gate
+as a pair because the failure was one existing and reading as evidence for the
+other.

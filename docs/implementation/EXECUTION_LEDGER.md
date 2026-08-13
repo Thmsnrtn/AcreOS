@@ -4126,3 +4126,73 @@ The last is the one worth keeping: an assertion that merely looked for
 `getOrganizationId(req)` — the org must come from the REQUEST.
 
 `npm run check` EXIT=0 · `tests/unit` 682 files, 8968 passed, 1 skipped.
+
+---
+
+## Unit 57 — A client route guard was the only gate on AcreOS's billing console · this commit
+
+**Files:** `server/routes.ts`,
+`tests/unit/dunningFounderOnly.test.ts` (new, 6 tests).
+
+`client/src/App.tsx`, above the Dunning Manager page:
+
+> The dunning API is founder-only (`requireFounder` on the whole router, P1-5) —
+> a customer reaching this page saw every panel 404 (2026-07-11 sweep). Gate the
+> page like its API.
+
+The router was `app.use('/api/dunning', isAuthenticated, dunningRouter)`. **The
+claim was false**, and a 2026-07-11 sweep hardened the UI on the strength of it
+and moved on. A client route guard is not an access control: with a session
+cookie, every endpoint answered.
+
+| endpoint | what any authenticated user could do |
+|---|---|
+| `GET /summary` | active cases by stage and the **platform's total amount at risk** — AcreOS's own revenue-distress number |
+| `GET /cases` | every organization's dunning events |
+| `GET /history` | every organization's dunning history |
+| `POST /:id/retry` | **charge a Stripe invoice** on any org's case |
+| `POST /:id/cancel` | cancel any org's case |
+| `POST /:id/resolve` | resolve any org's case |
+
+`getActiveCases` selects from `dunning_events` filtered by status and nothing
+else; `retryPayment(eventId)` resolves by primary key and calls Stripe.
+
+### Founder-only, not org-scoped
+
+Dunning chases failed **subscription payments TO AcreOS** — under *"be the rail,
+not the provider"*, the one flow AcreOS is a party to. No organization owns this
+queue. Org-scoping it would have invented a per-customer view of a platform-level
+list; the right gate is the one the comment already claimed, so the fix makes the
+sentence true rather than rewriting it.
+
+The test asserts the **pairing** — page gate and API gate together — because the
+failure was precisely that one existed and read as evidence for the other. It
+also pins `getActiveCases` having no org parameter: not a defect to fix, but the
+fact that makes founder-only the right verdict. If dunning ever becomes a
+per-customer surface, that assertion fails and asks for the verdict to be
+revisited rather than the gate quietly kept.
+
+### Two things checked and found sound
+
+Enumerating the routers mounted with `isAuthenticated` and nothing else (14 of
+them) turned up two more candidates, both of which held up:
+
+- **`/api/eval`** guards each handler with `req.isFounder`, and `isAuthenticated`
+  itself sets that flag (`clerkAuth.ts:278`) — so the check works without
+  `getOrCreateOrg`. It looked broken-closed and is not.
+- **`/api/metrics`** returns windowed request/error/cache aggregates: counts,
+  status codes and paths, no bodies and no org data. Operational telemetry, not
+  a tenant surface.
+
+Recorded because "checked and fine" is worth as much as a finding to the next
+session, and both would otherwise be re-investigated.
+
+### Verification
+
+Four mutations, each verified to apply, each caught: removing `requireFounder`
+from the mount; downgrading the page to `ProtectedRoute`; making
+`requireFounder` depend on `req.organization` (which would break every mount
+that omits `getOrCreateOrg`, this one included); and giving `getActiveCases` an
+organization parameter.
+
+`npm run check` EXIT=0 · `tests/unit` 683 files, 8974 passed, 1 skipped.
