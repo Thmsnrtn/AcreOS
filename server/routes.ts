@@ -1345,7 +1345,12 @@ export async function registerRoutes(
   // /api/deal-hunter retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine).
   // /api/academy retired 2026-06-08 — Academy module removed.
   // /api/vision-ai deleted 2026-08-01 (deletion-ledger row: Satellite / Vision AI).
-  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, featureGate("feature_capital_markets"), capitalMarketsRouter);
+  // FREEZE — "reactivate when note securitization is a real revenue line (H4)".
+  // A deletion-ledger verdict is a founder decision, so it takes the strict
+  // gate: featureGate lets an enterprise-tier org bypass the flag entirely and
+  // fails OPEN when the flag store errors, which would reactivate a frozen
+  // surface on a transient database blip.
+  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_capital_markets"), capitalMarketsRouter);
   app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
@@ -1371,6 +1376,16 @@ export async function registerRoutes(
     // Enabled (or founder bypass) — fall through to the gated mount below.
     next();
   });
+  // WHITE-LABEL KEEPS featureGate, DELIBERATELY — do not "tighten" this to
+  // requireLadderFlag to match its neighbours.
+  //
+  // featureGate's enterprise-tier bypass exists, per its own header, "for
+  // legacy reseller / white-label routes that … are part of the enterprise
+  // contract", and the deletion ledger's reactivation criterion for white-label
+  // is "the first enterprise/white-label contract". The bypass IS that
+  // criterion, encoded. Removing it would delete a deliberate decision in the
+  // name of consistency — the failure mode the founder-bypass note in
+  // requireLadderFlag guards against on the other side.
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
@@ -1425,7 +1440,10 @@ export async function registerRoutes(
   // (registerOrganizationRoutes) — the single, validated, admin-scoped source
   // of truth. The duplicate standalone commissionsRouter mount was removed
   // 2026-08 (Wave 2 pass C).
-  app.use('/api/certification', isAuthenticated, featureGate("feature_academy"), certificationRouter);
+  // KILL — the Academy stump. The constitution's adjacency-risk trap says
+  // education revenue stays dead, so an enterprise-tier bypass on it is a
+  // subscription tier buying past a founder decision.
+  app.use('/api/certification', isAuthenticated, requireLadderFlag("feature_academy"), certificationRouter);
   app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
   app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
@@ -2216,7 +2234,9 @@ export async function registerRoutes(
   // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11
   // endpoints returned 501 and no client consumed the mount. The real tax
   // optimizer API is /api/tax-optimizer/* in routes-misc.ts.
-  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, featureGate("feature_deal_rooms"), dealRoomsRouter);
+  // FREEZE — a marketplace satellite, named in the same ledger row as
+  // buyer-network and investor-verification, both of which took this gate.
+  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_deal_rooms"), dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
   // (/api/docs registered above, before the /api catch-all auth middleware)
 

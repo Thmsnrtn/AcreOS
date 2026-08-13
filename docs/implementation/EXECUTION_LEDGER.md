@@ -4774,3 +4774,58 @@ reverting to kind-keyed gating; `predictedMetricIds` no longer derived from the
 snapshot; and duplicates across scenarios not collapsed.
 
 `npm run check` EXIT=0 · `tests/unit` 688 files, 9026 passed, 1 skipped.
+
+---
+
+## Unit 65 — A deletion-ledger verdict is a founder decision, so it takes the strict gate · this commit
+
+**Files:** `server/routes.ts`,
+`tests/unit/frozenSurfaceGates.test.ts` (new, 11 tests),
+`docs/implementation/BLOCKERS.md`.
+
+Closes **B13**, recorded in unit 53 and deliberately deferred so that commit
+stayed one subsystem.
+
+FREEZE and KILL verdicts are founder rulings — *"reactivate at G2's liquidity
+proof"*, *"reactivate when note securitization is a real revenue line (H4)"*,
+*"education revenue stays dead"* — and three of them were still gated by
+`featureGate`, which carries an **enterprise-tier bypass** (a subscription tier
+overriding a founder decision) and **fails OPEN on a flag-store error** (a
+database blip reactivating a frozen surface).
+
+`/api/capital-markets`, `/api/certification` and `/api/deal-rooms` now take
+`requireLadderFlag`, joining `/api/marketplace` (unit 51) and its two satellites
+(unit 53). Six mounts, one gate.
+
+### The exception is the point
+
+**`/api/white-label` keeps `featureGate`, deliberately.** That bypass exists,
+per `featureGate`'s own header, *"for legacy reseller / white-label routes that …
+are part of the enterprise contract"*, and the ledger's reactivation criterion
+for white-label is *"the first enterprise/white-label contract"*. **The bypass is
+that criterion, encoded.**
+
+So the test asserts the exception as loudly as the rule, and the *reason* is
+written at the mount — not only in the test. A test explaining an exception the
+code does not is a test nobody finds while standing in `routes.ts` about to fix
+the inconsistency. This is the mirror of the founder-bypass note inside
+`requireLadderFlag`, which exists so a "tighten everything" pass does not read a
+deliberate keep as an oversight.
+
+A third assertion pins `featureGate`'s own justification: if it stops describing
+the bypass as back-compat for reseller / white-label routes, the exception has
+lost its anchor and should be re-argued rather than maintained.
+
+### Verification
+
+Five mutations, each verified to apply, each caught: capital-markets and
+certification back on `featureGate`; white-label "tightened" for consistency; the
+white-label explanation deleted; and the strict gate growing an enterprise
+bypass.
+
+The explanation mutation needed a second attempt — removing the block's first
+line left "deliberate" and "enterprise" in the remaining prose, so the assertion
+held, correctly. Removing the whole block failed it. A partial mutation of a
+multi-line claim tests nothing.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9037 passed, 1 skipped.

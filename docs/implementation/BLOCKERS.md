@@ -488,11 +488,18 @@ governance decisions, not product flags. Current state of the mounts:
 | `/api/marketplace` | FREEZE | `requireLadderFlag` | ✅ unit 51 |
 | `/api/investor-verification` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 53 |
 | `/api/buyer-network` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 53 |
-| `/api/deal-rooms` | FREEZE (satellite) | `featureGate` | strict |
-| `/api/capital-markets` | FREEZE — reactivate at H4 | `featureGate` | strict |
-| `/api/certification` | KILL — "education revenue stays dead" | `featureGate` | strict |
-| `/api/negotiation` | KILL | **none** | B12 |
-| `/api/white-label` | FREEZE | `featureGate` | **LEAVE IT** |
+| `/api/deal-rooms` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 65 |
+| `/api/capital-markets` | FREEZE — reactivate at H4 | `requireLadderFlag` | ✅ unit 65 |
+| `/api/certification` | KILL — "education revenue stays dead" | `requireLadderFlag` | ✅ unit 65 |
+| `/api/negotiation` | KILL | **none** | B12 — still open |
+| `/api/white-label` | FREEZE | `featureGate` | **LEAVE IT** (unit 65 annotated why, at the mount) |
+
+**RESOLVED except B12** (unit 65). The three upgrades landed with
+`tests/unit/frozenSurfaceGates.test.ts`, which asserts the exception as loudly as
+the rule: white-label keeps `featureGate` because that bypass IS the ledger's
+reactivation criterion, and the reason is now written at the mount rather than
+only in a test nobody finds while standing in `routes.ts` about to fix the
+inconsistency.
 
 **White-label is the exception, deliberately.** `featureGate`'s own header says
 the enterprise-tier bypass exists *"for legacy reseller / white-label routes
