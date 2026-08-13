@@ -1,5 +1,5 @@
 {
-  "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact server path (routes-*.ts, storage.ts, services/**) is enumerated here. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data — those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
+  "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact path is enumerated here: server (routes-*.ts, storage.ts, services/**) AND client/src/** — the rendering layer was added 2026-08-13 because this lint's own rationale names the UI (\"we are lying with a confident UI\") while scanning only the server, so a component inventing a displayed number never passed under it. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data — those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
   "allowlist": [
     {
       "file": "server/routes-avm.ts",
@@ -246,6 +246,102 @@
       "line": 82,
       "category": "id",
       "note": "Random CAMP- campaign code character — entropy for a human-typeable code. Extracted to commsRepo with the campaign-response/tracking methods."
+    },
+    {
+      "file": "client/src/components/error-boundary.tsx",
+      "line": 24,
+      "category": "id",
+      "note": "Client error-report id. Correlates a crash report with its server row; never rendered as a fact."
+    },
+    {
+      "file": "client/src/components/pax-copilot-rail.tsx",
+      "line": 821,
+      "category": "id",
+      "note": "React key for a streaming tool-call event. The tool's NAME and ARGS come from the stream; only the key is random."
+    },
+    {
+      "file": "client/src/components/property-map.tsx",
+      "line": 1947,
+      "category": "jitter",
+      "note": "Camera ZOOM variation in the cinematic flythrough — a viewing angle, not a measurement. Nothing about the parcel is derived from it."
+    },
+    {
+      "file": "client/src/components/property-map.tsx",
+      "line": 1948,
+      "category": "jitter",
+      "note": "Camera PITCH variation, same flythrough, same reasoning."
+    },
+    {
+      "file": "client/src/components/ui/sidebar.tsx",
+      "line": 613,
+      "category": "jitter",
+      "note": "shadcn SidebarMenuSkeleton width (50–90%). A LOADING PLACEHOLDER's shape, deliberately varied so the skeleton does not read as a table of equal values. It is replaced by real content and is never itself content."
+    },
+    {
+      "file": "client/src/components/workflow-builder.tsx",
+      "line": 103,
+      "category": "id",
+      "note": "Local id for a newly added workflow action, before the server assigns one."
+    },
+    {
+      "file": "client/src/components/workflow-builder.tsx",
+      "line": 866,
+      "category": "id",
+      "note": "Same, in the side-panel builder."
+    },
+    {
+      "file": "client/src/hooks/use-founder-chat.ts",
+      "line": 223,
+      "category": "id",
+      "note": "Optimistic local id for the user's own message, replaced by the server id on ack."
+    },
+    {
+      "file": "client/src/hooks/use-offline-cache.ts",
+      "line": 112,
+      "category": "id",
+      "note": "Queue key for a pending offline action."
+    },
+    {
+      "file": "client/src/hooks/use-render-sentinel.ts",
+      "line": 41,
+      "category": "id",
+      "note": "Blank-render report id, correlating a client trip with its server log line."
+    },
+    {
+      "file": "client/src/hooks/useOfflineSync.ts",
+      "line": 135,
+      "category": "id",
+      "note": "Idempotency key FALLBACK for environments without crypto.randomUUID — the branch above prefers the CSPRNG."
+    },
+    {
+      "file": "client/src/hooks/useOfflineSync.ts",
+      "line": 376,
+      "category": "id",
+      "note": "Queue id for a mutation held offline."
+    },
+    {
+      "file": "client/src/lib/action-executor.ts",
+      "line": 493,
+      "category": "id",
+      "note": "Id for a parsed inline action directive."
+    },
+    {
+      "file": "client/src/lib/marketing-touch.ts",
+      "line": 74,
+      "category": "id",
+      "note": "Attribution touch id fallback; the touch's SOURCE and TIMESTAMP are real, only the id is random."
+    },
+    {
+      "file": "client/src/lib/queryClient.ts",
+      "line": 390,
+      "category": "id",
+      "note": "Idempotency key fallback, same shape as useOfflineSync:135 — crypto.randomUUID first."
+    },
+    {
+      "file": "client/src/lib/aerial-images.ts",
+      "line": 38,
+      "category": "shuffle",
+      "note": "Picks one of 28 curated decorative aerial photos. NOTE FOR WHOEVER WIRES THIS: getRandomImage has ZERO call sites today. Attaching it to a specific parcel or listing would present a stock photo as THAT property's imagery — fabrication, and the reason this entry says shuffle rather than id. Decorative backgrounds only."
     }
   ]
 }

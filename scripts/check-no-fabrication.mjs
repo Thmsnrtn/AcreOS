@@ -77,6 +77,13 @@ const SERVICES_DIR = join(SERVER_DIR, "services");
 // server/storage/*Repo.ts. Scan that dir too so fabrication coverage follows
 // the extracted data-access code instead of leaving a blind spot.
 const STORAGE_DIR = join(SERVER_DIR, "storage");
+// client/src/** — added 2026-08-13. This lint's own rationale names the UI
+// ("we are lying with a confident UI") and then scanned only the server, so a
+// component rendering `Math.floor(Math.random() * 40) + 50` as a match score
+// passed every gate. The rendering layer is where a fabricated number becomes
+// a fact the customer acts on; a fabrication invented there never touches a
+// route handler at all.
+const CLIENT_DIR = join(REPO_ROOT, "client", "src");
 const ALLOWLIST_PATH = join(__dirname, "no-fabrication.allowlist.json");
 
 // The non-deterministic source we flag. Kept as a single token so the message
@@ -87,7 +94,12 @@ const FORBIDDEN_TOKEN = "Math.random";
 // File discovery — exactly the customer-fact-producing surface.
 // ----------------------------------------------------------------------------
 function isTestFile(name) {
-  return name.endsWith(".test.ts") || name.endsWith(".spec.ts");
+  return (
+    name.endsWith(".test.ts") ||
+    name.endsWith(".spec.ts") ||
+    name.endsWith(".test.tsx") ||
+    name.endsWith(".spec.tsx")
+  );
 }
 
 function walkTsFiles(dir, out) {
@@ -97,7 +109,7 @@ function walkTsFiles(dir, out) {
     const st = statSync(full);
     if (st.isDirectory()) {
       walkTsFiles(full, out);
-    } else if (entry.endsWith(".ts") && !isTestFile(entry)) {
+    } else if ((entry.endsWith(".ts") || entry.endsWith(".tsx")) && !isTestFile(entry)) {
       out.push(full);
     }
   }
@@ -118,6 +130,8 @@ function findScannedFiles() {
   if (existsSync(STORAGE_DIR)) walkTsFiles(STORAGE_DIR, files);
   // server/services/**/*.ts
   walkTsFiles(SERVICES_DIR, files);
+  // client/src/**/*.{ts,tsx} — the rendering layer.
+  walkTsFiles(CLIENT_DIR, files);
   return files.sort();
 }
 

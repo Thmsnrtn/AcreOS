@@ -779,3 +779,26 @@ right rule, ran in CI, and walked one layer. That is the same shape as units
 rule was already **automated**, which makes it read as covered. Worth running
 against the other lints: several state their walk in a header comment, and a
 header is a factual claim about scope that decays like any other.
+
+**Gate audit, units 54–55, and the two that remain.** Each `scripts/*.mjs` gate
+states its walk in a header comment, and a header is a factual claim about scope
+that decays like any other. Two were wrong in the same way — the rule was real,
+automated, and pointed at one layer:
+
+| gate | declared harm | walked | fixed |
+|---|---|---|---|
+| `lint:org-fetch` | cross-tenant reads | `server/storage*` only | unit 54 → `+server/services/**` |
+| `lint:no-fabrication` | *"lying with a confident UI"* | server fact paths only | unit 55 → `+client/src/**` |
+
+Checked and correctly scoped, so do not re-audit: `lint:prefetch-authority`
+(`client/src`, and the authority file it exempts is a client file),
+`lint:browser-safe-shared` (`shared/`, which is the whole point),
+`lint:boundaries` (walks `shared/` and `client/src` because it polices imports
+INTO them), `check-org-leading-index` (schema files, where indexes are
+declared), `lint:schema-migrate-mirror` (`shared/schema*` against
+`scripts/migrate.mjs` — both halves of the mirror). `lint:reachability` walks
+`server`, `client/src`, `shared`, `scripts` — the widest of them, and unit 54
+showed the cost of that width rather than a gap in it.
+
+**Being automated is what makes a gate read as covered.** That is the trap in
+both units: nobody re-reads the walk of a lint that has been green for months.

@@ -248,7 +248,22 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     source: "CLAUDE.md DO-NOT-DO list",
     enforcement: {
       kind: "lint",
-      refs: ["scripts/check-no-fabrication.mjs"],
+      refs: [
+        "scripts/check-no-fabrication.mjs",
+        "scripts/no-fabrication.allowlist.json",
+        "tests/unit/noFabricationScope.test.ts",
+      ],
+      note:
+        "SCOPE, stated because this entry used to imply more than the gate " +
+        "delivered. The lint enumerates `Math.random` across the server " +
+        "fact-producing paths AND, since 2026-08-13, client/src/** — the " +
+        "rendering layer, which its own rationale named (\"we are lying with " +
+        "a confident UI\") while scanning only the server. Every hit is " +
+        "annotated in the allowlist; a new one fails the build and a fixed " +
+        "one goes stale and also fails, so the register only shrinks. " +
+        "WHAT IT DOES NOT CATCH: a hardcoded plausible constant. `Math.random` " +
+        "is one way to invent a number and the only one a token scan can see; " +
+        "refuse-not-fabricate is still a judgement the reviewer makes.",
     },
   },
 

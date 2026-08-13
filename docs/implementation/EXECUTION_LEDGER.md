@@ -3969,3 +3969,72 @@ end-to-end proof the extension does its job; and removing the register
 exemption.
 
 `npm run check` EXIT=0 · `tests/unit` 680 files, 8933 passed, 1 skipped.
+
+---
+
+## Unit 55 — The fabrication gate named the UI and scanned the server · this commit
+
+**Files:** `scripts/check-no-fabrication.mjs`,
+`scripts/no-fabrication.allowlist.json`, `shared/governance/constitution.ts`,
+`tests/unit/noFabricationScope.test.ts` (new, 11 tests).
+
+Unit 54's question, asked again: *does a gate's declared scope match the harm it
+names?* This one answers itself in its own header.
+
+`check-no-fabrication.mjs` enforces the hard-stop *"no invented numbers, fake
+activity, or placeholder data presented as real"*, and explains why:
+
+> AcreOS sells truth. A dashboard number, a skip-trace phone, a deal-velocity
+> stat … If any of them is `Math.floor(Math.random() * …)`, **we are lying with
+> a confident UI.**
+
+It then scanned `server/routes-*.ts`, `server/storage*` and
+`server/services/**` and stopped. **The UI it names was outside the walk.** A
+component rendering `Math.floor(Math.random() * 40) + 50` as a match score
+passed every gate in `npm run check` — a fabrication invented in the rendering
+layer never touches a route handler at all.
+
+### What the widening found: nothing bad
+
+Worth stating plainly rather than dressed up. All 16 client hits are legitimate:
+12 client-side ids (error reports, optimistic message ids, offline queue keys,
+two `crypto.randomUUID` fallbacks), 2 camera-jitter values in the map
+flythrough, 1 shadcn skeleton width, and 1 decorative image picker.
+
+The value is not a fix. It is that the **next** one cannot ship silently, and
+that the hard-stop's gate now covers the layer its own rationale named.
+
+One entry is a judgement rather than a fact and is annotated as such:
+`lib/aerial-images.ts` picks one of 28 curated aerials at random and **has zero
+call sites**. As a page background that is decoration. Attached to a specific
+parcel it would present a stock photo as that property's imagery — fabrication.
+The note is addressed to whoever gives it a call site, and a test pins the
+warning so a later tidy-up cannot reduce it to "legitimate use".
+
+### The registry was overstating its own gate
+
+`truth.no-fabrication` carried `kind: "lint"` and a bare pointer at the script —
+which reads as full coverage of a hard-stop while the gate saw one layer. Units
+51–52 established that this registry is the **checkable form** of the rules; a
+pointer that overstates its gate is the registry lying about itself.
+
+The entry now states the scope **and the limit**: `Math.random` is one way to
+invent a number and the only one a token scan can see. A hardcoded plausible
+constant is invented data that no scan catches — refuse-not-fabricate is still a
+judgement a reviewer makes, and the gate narrows where that judgement can be
+skipped rather than replacing it.
+
+### Verification
+
+Six mutations, each verified to apply, each caught: dropping `client/src` from
+the walk; collecting only `.ts` so no component is seen; removing `client/src`
+from the registry note; removing the stated limit; reducing the aerial warning
+to "Legitimate use."; and **a new unannotated `Math.random` in a client file**,
+shaped as a fake score — the end-to-end proof.
+
+An earlier attempt at the registry mutation deleted the note's first
+concatenated line and the suite stayed green: the phrases under test were on
+later lines, so the mutation applied without touching the property. Same lesson
+as unit 52's — anchor the mutation to the exact text the assertion reads.
+
+`npm run check` EXIT=0 · `tests/unit` 681 files, 8944 passed, 1 skipped.
