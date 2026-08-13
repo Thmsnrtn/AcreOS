@@ -4287,3 +4287,95 @@ middleware typed as `any` need not resemble `RequestHandler`, so nothing
 objected when it answered the wrong status code with the wrong identity check.
 
 `npm run check` EXIT=0 · `tests/unit` 684 files, 8982 passed, 1 skipped.
+
+---
+
+## Unit 59 — One router, two gates, and the split ran along the URL parameter · this commit
+
+**Files:** `server/services/dueDiligencePods.ts`,
+`server/routes-due-diligence.ts`, `server/routes-ai-operations.ts`,
+`scripts/check-org-scoped-fetch.mjs`, `scripts/no-fabrication.allowlist.json`,
+`tests/unit/dueDiligenceTenancy.test.ts` (new, 13 tests),
+`tests/unit/orgScopedFetchCoverage.test.ts`.
+
+Second item off B14, chosen by unit 56's blast-radius screen: mounted, one
+client caller, customer content, and a "read" endpoint that writes.
+
+### The split was inside one file, along the URL parameter
+
+Eleven handlers. Seven carried `isAuthenticated, getOrCreateOrg`. Four carried
+`isAuthenticated` and **nothing else**, so `req.organization` was undefined and
+they could not have scoped even if they had tried:
+
+| endpoint | what any authenticated user could do |
+|---|---|
+| `GET /dossier/:id` | read any org's dossier |
+| `GET /dossier/:id/summary` | its executive summary |
+| `GET /dossier/:id/recommendation` | its go/no-go investment recommendation |
+| `POST /:id/run` | **run the research pod on it** |
+
+The line between the groups is which parameter the URL carries: handlers keyed
+by `:propertyId` were gated, handlers keyed by a dossier `:id` were not. Nothing
+about that distinction is meaningful — both ids come from the caller.
+
+**And the gated seven leaked too.** `researchTitle(propertyId)` and its six
+siblings had `getOrCreateOrg` in front of them and did not pass `org.id`; the
+service resolved the property by primary key. *Having the org and not using it
+is the same defect as not having it, and it is harder to see.*
+
+### This one spends money
+
+Every research method starts at `getPropertyData` and then calls
+`dataSourceBroker.lookup(...)` — the provider registry, which deducts credits on
+paid lookups. An unscoped property fetch was not only a read of another org's
+parcel; it was a **paid lookup performed against it**. `POST /:id/run` fans out
+to all seven at once. A test pins the broker call, so the reasoning above cannot
+quietly become stale.
+
+### The detail worth reading twice
+
+`researchOwner` scopes its lead join by `property.organizationId` — the org of
+the row it just fetched. That reads as careful, and it is what hid the bug:
+**deriving the tenant from an unscoped fetch inherits whatever the first query
+got wrong**, and the code downstream looks more rigorous than the code upstream.
+
+### A third instance, in a different router, that this unit's test would have missed
+
+`npm run check` failed on a type error in `routes-ai-operations.ts` — a **second
+caller** of `getDossier`, serving `GET /api/ai-operations/due-diligence/:id`
+through a dynamic import. Same defect: `getOrCreateOrg` present, org not passed.
+
+The first version of `dueDiligenceTenancy.test.ts` read
+`routes-due-diligence.ts` alone and would have gone green with that leak still
+reachable under another path. It now sweeps **every file under `server/`** for
+callers of the service. *Scoping a service is not finished when its own router
+is fixed* — and the compiler, not the test, is what caught it, which is worth
+recording: the signature change was load-bearing.
+
+### Ratchets
+
+- `check-org-scoped-fetch`: 3 entries went stale (`getDossier`,
+  `getPropertyData`, `updateAgentStatus`), removed here. `BASELINE_ENTRIES`
+  182 → **179**.
+- `no-fabrication`: inserting the error class moved a `Math.random` from line
+  110 to 122, and the allowlist is line-anchored. **Re-anchored, not deleted** —
+  deleting an entry quietly widens the gate, which NEXT_UP §7 already records.
+  The failure surfaced through `noFabricationScope.test.ts`, which shells out to
+  the real lint; running the lint by hand piped into `head` reported `EXIT=0`,
+  the exact trap §7 warns about.
+
+### Verification
+
+Seven mutations, each verified to apply, each caught: `/dossier/:id` losing
+`getOrCreateOrg`; `getPropertyData` losing its predicate; one research endpoint
+passing a constant; `runDossierPod`'s select losing the org; the run refusal
+reverting to a raw 400 (which would have answered 400 with the words "not found
+in this organization"); the provider-broker claim going stale; and the **second
+router's caller** losing its org.
+
+The broker mutation needed a second attempt: replacing one of eight occurrences
+left the `toContain` satisfied. A no-op mutation reported as a survived one —
+the same trap as unit 52's, and the reason every mutation here is checked for
+having actually changed the thing under test.
+
+`npm run check` EXIT=0 · `tests/unit` 685 files, 8995 passed, 1 skipped.

@@ -175,6 +175,7 @@ function validateNumericParam(paramName: string) {
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { getOrganizationId } from "./types/request";
 
 export function registerAIOperationsRoutes(app: Express): void {
   const router = createRouter();
@@ -202,7 +203,10 @@ export function registerAIOperationsRoutes(app: Express): void {
       const dossierId = parseInt(req.params.id);
       
       const { dueDiligencePodService } = await import("./services/dueDiligencePods");
-      const dossier = await dueDiligencePodService.getDossier(dossierId);
+      // A SECOND router reading the same dossiers. The due-diligence router's
+      // own copy of this endpoint was unscoped too; scoping one and not the
+      // other would have left the leak reachable under a different path.
+      const dossier = await dueDiligencePodService.getDossier(dossierId, getOrganizationId(req));
       
       if (!dossier) {
         return Errors.notFound(res, "Dossier");
