@@ -4038,3 +4038,91 @@ later lines, so the mutation applied without touching the property. Same lesson
 as unit 52's — anchor the mutation to the exact text the assertion reads.
 
 `npm run check` EXIT=0 · `tests/unit` 681 files, 8944 passed, 1 skipped.
+
+---
+
+## Unit 56 — Any org could read, and OVERWRITE, any other org's document text · this commit
+
+**Files:** `server/services/documentIntelligence.ts`,
+`server/routes-document-intelligence.ts`, `server/routes-micro-features.ts`,
+`scripts/check-org-scoped-fetch.mjs`, `scripts/ratchets/as-any.json`,
+`tests/unit/documentIntelligenceTenancy.test.ts` (new, 24 tests),
+`tests/unit/orgScopedFetchCoverage.test.ts`.
+
+First item off B14's triage list. `documentIntelligence` was picked because it
+is **live** — `/api/document-intelligence` is mounted with
+`isAuthenticated, getOrCreateOrg`, no flag gate, driven by
+`pages/document-intelligence.tsx` — and because `document_analysis` holds the
+extracted TEXT of contracts, deeds, title reports and closing statements, plus
+the AI-derived parties, amounts, dates and risk flags.
+
+### The split was visible in one screen
+
+Every per-document endpoint resolved its subject by primary key: `/process`,
+`/text`, `/key-terms`, `/risks`, `/summary`, `/compare`. In the **same router**,
+`getDocumentsByProperty(org.id, …)`, `getDocumentsByDeal(org.id, …)`,
+`searchDocuments(org.id, …)` and `uploadDocument(org.id, …)` all passed the org.
+The scoping was understood; it just was not applied to the endpoints that take
+an id from the URL. Units 30–55's shape, at its most concentrated.
+
+`compareDocumentVersions` is the one worth naming: it resolved **both** ids
+bare, so a caller could diff their own document against a foreign one and read
+the foreign one's extracted fields out of the diff — and out of the gpt-4o
+summary written from it.
+
+### `GET /documents/:id/text` was a WRITE
+
+It forwarded `req.query.fileUrl` into `extractText`, whose `data:text/plain`
+branch base64-decodes that value and **stores it as the document's `rawText`**.
+A caller could overwrite another org's extracted contract text with content of
+their choosing — and `key-terms`, `risks` and `summary` all read `rawText`, so
+the poisoning propagates into every later answer about that document.
+
+The parameter is gone rather than validated: the URL comes off the stored row.
+Both real callers already passed exactly that value — the HTTP route was
+"fetching fileUrl from the document record" according to its own comment, which
+it did not do, and `routes-micro-features` quick-capture creates the row with
+`fileUrl: dataUrl` and then passed the same `dataUrl` back in. Behaviour-
+preserving for both, and the injection has nowhere left to enter.
+
+### A header comment that was false about two of its six endpoints
+
+> W4.1 — every endpoint below that triggers a gpt-4o call now runs the same
+> meter stack as chat (ai_requests limit + BYOK threshold) and counts the turn.
+
+`/text` runs OpenAI Vision for OCR and `/compare` writes a gpt-4o difference
+summary. **Neither had `...aiMeter` or `countAiTurn`** — unmetered gpt-4o on the
+platform account, no turn counted, no pool, which is precisely what that note
+was written to end. Both are metered now, and the test asserts the property for
+all six rather than trusting the sentence.
+
+Third time this program has found a load-bearing comment stating something
+untrue (unit 53's TODO, unit 55's scope claim, this).
+
+### Ratchets moved because occurrences were fixed, not because counts were eased
+
+- `check-org-scoped-fetch` reported **6 stale baseline entries** the moment the
+  service was scoped — the register working exactly as designed. Removed in this
+  commit; `BASELINE_ENTRIES` 188 → **182**.
+- `as-any` went stale-high, 1397 → **1396**. The occurrence was
+  `const doc = await documentIntelligenceService.uploadDocument as any;
+  // placeholder to get fileUrl` — a method *reference*, cast, assigned, never
+  used, directly above the handler that then read the URL from `req.query`
+  instead. The cast is what let a placeholder look like code: `uploadDocument as
+  any` type-checks, so nothing ever asked why a route was holding an unbound
+  method.
+
+### Verification
+
+Eight mutations, each verified to apply, each caught: dropping the org predicate
+from `requireDoc`; one write losing its org; `compare` scoping only the first
+document; the text route forwarding `req.query.fileUrl` again; the meter coming
+off `/compare`; the refusal becoming 403; `extractText` accepting a caller URL
+again; and the summary endpoint passing a constant org id instead of the
+caller's.
+
+The last is the one worth keeping: an assertion that merely looked for
+`organizationId` somewhere in the handler would have passed it. The check is for
+`getOrganizationId(req)` — the org must come from the REQUEST.
+
+`npm run check` EXIT=0 · `tests/unit` 682 files, 8968 passed, 1 skipped.

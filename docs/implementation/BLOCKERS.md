@@ -535,13 +535,23 @@ its line.
 therefore receive an id straight from a URL, which is the shape that made unit
 53 a live cross-tenant leak:
 
-`achAutopay` · `dispositionOptimizer` · `documentIntelligence` ·
+~~`documentIntelligence`~~ (done, unit 56 — 6 entries retired; it was a live
+cross-tenant read AND write of contract text) · `achAutopay` ·
+`dispositionOptimizer` ·
 `cashFlowForecaster` · `priceOptimizer` · `negotiationCopilot` ·
 `sellerIntentPredictor` · `portfolioSentinel` · `marketIntelligence` ·
 `decisionsInbox` · `marketWatchlist` · `dueDiligencePods` · `whiteLabelService` ·
 `marketPrediction` · `leadScoring` · `leadNurturer` · `dunning` ·
 `buyerQualificationBot` · `alerting` · `dealPatternCloning` · `capitalMarkets` ·
 `borrower/autopayAuthorizationChallenge`
+
+**What unit 56 learned about triaging this list.** Pick by BLAST RADIUS, not by
+entry count. `documentIntelligence` was 6 entries and turned out to be a live
+customer surface holding contract text, with a write path hidden inside a GET.
+The useful questions, in order: is the router mounted without a flag gate; does
+a client page call it; does the table hold customer content rather than derived
+metrics; and does any "read" endpoint write. That last one is not visible from
+the lint output at all.
 
 The remaining 21 files are jobs and analytics that iterate rows they already
 selected with an org filter. The heuristic cannot tell the two apart — being on

@@ -1,3 +1,28 @@
+/**
+ * Document intelligence — OCR, key-term extraction, risk flags, summaries.
+ *
+ * TENANT-SCOPED (2026-08-13). Every method that resolves a document now takes
+ * an `organizationId` and filters on it. Before that, the per-document methods
+ * resolved by primary key while `getDocumentsByProperty`, `getDocumentsByDeal`,
+ * `searchDocuments` and `uploadDocument` in this same class all took the org —
+ * so the split was visible in one file, and the list endpoints prove the
+ * scoping was understood.
+ *
+ * `documentAnalysis` holds the extracted TEXT of contracts, deeds, title
+ * reports and closing statements, plus the AI-derived key terms (parties,
+ * amounts, dates) and risk flags. Reachable by any authenticated user with a
+ * document id, that is one org reading another's paperwork.
+ *
+ * `extractText` no longer takes a `fileUrl` from its caller. The route was
+ * passing `req.query.fileUrl` straight through, and the `data:text/plain`
+ * branch DECODES IT AND WRITES IT to `rawText` — so a caller could overwrite
+ * another org's document text with content of their choosing, and every
+ * downstream analysis (key terms, risks, summary) reads that field. The URL now
+ * comes from the stored row. Both existing callers already passed exactly the
+ * stored value, so this is behaviour-preserving for them and closes the
+ * injection.
+ */
+
 import { db } from "../db";
 import {
   documentAnalysis,
@@ -10,6 +35,18 @@ import {
 import { eq, and, desc, ilike, or } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+
+/**
+ * Thrown when a document id does not belong to the calling organization. The
+ * routes render it as 404, not 403: a cross-tenant probe must not be able to
+ * tell "exists, not yours" from "never existed".
+ */
+export class DocumentNotInOrgError extends Error {
+  constructor(documentId: number) {
+    super(`Document ${documentId} not found in this organization`);
+    this.name = "DocumentNotInOrgError";
+  }
+}
 
 type DocumentType = "deed" | "contract" | "title_report" | "survey" | "note" | "mortgage" | "tax_bill" | "closing_statement";
 
@@ -106,21 +143,41 @@ export class DocumentIntelligenceService {
     return document;
   }
 
-  async processDocument(documentId: number): Promise<DocumentAnalysis> {
+  /**
+   * Resolve a document WITHIN an organization. Every per-document method goes
+   * through here, so a new method cannot accidentally reintroduce the bare-id
+   * lookup this file was built on.
+   */
+  private async requireDoc(documentId: number, organizationId: number): Promise<DocumentAnalysis> {
     const [doc] = await db
       .select()
       .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
+      .where(
+        and(
+          eq(documentAnalysis.id, documentId),
+          eq(documentAnalysis.organizationId, organizationId),
+        ),
+      )
       .limit(1);
+    if (!doc) throw new DocumentNotInOrgError(documentId);
+    return doc;
+  }
 
-    if (!doc) {
-      throw new Error(`Document ${documentId} not found`);
-    }
+  /** The WHERE for any write. Scoping the reads alone would leave the writes open. */
+  private ownedBy(documentId: number, organizationId: number) {
+    return and(
+      eq(documentAnalysis.id, documentId),
+      eq(documentAnalysis.organizationId, organizationId),
+    );
+  }
+
+  async processDocument(documentId: number, organizationId: number): Promise<DocumentAnalysis> {
+    const doc = await this.requireDoc(documentId, organizationId);
 
     await db
       .update(documentAnalysis)
       .set({ status: "processing", updatedAt: new Date() })
-      .where(eq(documentAnalysis.id, documentId));
+      .where(this.ownedBy(documentId, organizationId));
 
     await this.logEvent(doc.organizationId, "document_processing_started", {
       documentId,
@@ -128,18 +185,18 @@ export class DocumentIntelligenceService {
     });
 
     try {
-      const rawText = await this.extractText(documentId, doc.fileUrl || "");
+      const rawText = await this.extractText(documentId, organizationId);
 
       await db
         .update(documentAnalysis)
         .set({ rawText, updatedAt: new Date() })
-        .where(eq(documentAnalysis.id, documentId));
+        .where(this.ownedBy(documentId, organizationId));
 
-      const extractedData = await this.parseDocument(documentId);
+      const extractedData = await this.parseDocument(documentId, organizationId);
 
-      const keyTerms = await this.extractKeyTerms(documentId);
+      const keyTerms = await this.extractKeyTerms(documentId, organizationId);
 
-      const riskFlags = await this.analyzeRisks(documentId);
+      const riskFlags = await this.analyzeRisks(documentId, organizationId);
 
       const [updatedDoc] = await db
         .update(documentAnalysis)
@@ -151,7 +208,7 @@ export class DocumentIntelligenceService {
           processedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(documentAnalysis.id, documentId))
+        .where(this.ownedBy(documentId, organizationId))
         .returning();
 
       await this.logEvent(doc.organizationId, "document_processing_completed", {
@@ -168,7 +225,7 @@ export class DocumentIntelligenceService {
       await db
         .update(documentAnalysis)
         .set({ status: "failed", updatedAt: new Date() })
-        .where(eq(documentAnalysis.id, documentId));
+        .where(this.ownedBy(documentId, organizationId));
 
       await this.logEvent(doc.organizationId, "document_processing_failed", {
         documentId,
@@ -179,16 +236,13 @@ export class DocumentIntelligenceService {
     }
   }
 
-  async extractText(documentId: number, fileUrl: string): Promise<string> {
-    const [doc] = await db
-      .select()
-      .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
-      .limit(1);
-
-    if (!doc) {
-      throw new Error(`Document ${documentId} not found`);
-    }
+  async extractText(documentId: number, organizationId: number): Promise<string> {
+    const doc = await this.requireDoc(documentId, organizationId);
+    // From the STORED row, never from the caller. See the file header: the
+    // route forwarded req.query.fileUrl, and the data:text/plain branch below
+    // decodes it into rawText — a caller-chosen value written over a document's
+    // extracted text, which every later analysis then reads as the document.
+    const fileUrl = doc.fileUrl || "";
 
     // Short-circuit for data: URLs containing pre-extracted text. Used by
     // the persona-test OCR fixture pack (Raj C01) and by any caller that
@@ -200,7 +254,7 @@ export class DocumentIntelligenceService {
         await db
           .update(documentAnalysis)
           .set({ rawText: text, ocrConfidence: "1.00", updatedAt: new Date() })
-          .where(eq(documentAnalysis.id, documentId));
+          .where(this.ownedBy(documentId, organizationId));
         return text;
       } catch (err) {
         logger.warn("[document-intelligence] data-URL decode failed", { err });
@@ -239,7 +293,7 @@ export class DocumentIntelligenceService {
             ocrConfidence: "0.85",
             updatedAt: new Date(),
           })
-          .where(eq(documentAnalysis.id, documentId));
+          .where(this.ownedBy(documentId, organizationId));
 
         return extractedText;
       } catch (error) {
@@ -250,16 +304,8 @@ export class DocumentIntelligenceService {
     return `[Placeholder: Text extraction from ${fileUrl || "document"} pending. OpenAI Vision can be used for OCR.]`;
   }
 
-  async parseDocument(documentId: number): Promise<ExtractedData> {
-    const [doc] = await db
-      .select()
-      .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
-      .limit(1);
-
-    if (!doc) {
-      throw new Error(`Document ${documentId} not found`);
-    }
+  async parseDocument(documentId: number, organizationId: number): Promise<ExtractedData> {
+    const doc = await this.requireDoc(documentId, organizationId);
 
     const rawText = doc.rawText || "";
     const documentType = doc.documentType as DocumentType;
@@ -330,14 +376,14 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
     return defaults[documentType] || {};
   }
 
-  async extractKeyTerms(documentId: number): Promise<KeyTerm[]> {
-    const [doc] = await db
-      .select()
-      .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
-      .limit(1);
+  async extractKeyTerms(documentId: number, organizationId: number): Promise<KeyTerm[]> {
+    const doc = await this.requireDoc(documentId, organizationId);
 
-    if (!doc || !doc.rawText) {
+    // `!doc` is unreachable now — requireDoc throws. An empty return is still
+    // right for a document that has no extracted text yet, and only for that:
+    // it used to also be the answer for a document that was not yours, which
+    // is indistinguishable from "yours, not processed".
+    if (!doc.rawText) {
       return [];
     }
 
@@ -379,14 +425,14 @@ Return a JSON object with a "keyTerms" array containing objects with:
     }
   }
 
-  async analyzeRisks(documentId: number): Promise<RiskFlag[]> {
-    const [doc] = await db
-      .select()
-      .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
-      .limit(1);
+  async analyzeRisks(documentId: number, organizationId: number): Promise<RiskFlag[]> {
+    const doc = await this.requireDoc(documentId, organizationId);
 
-    if (!doc || !doc.rawText) {
+    // `!doc` is unreachable now — requireDoc throws. An empty return is still
+    // right for a document that has no extracted text yet, and only for that:
+    // it used to also be the answer for a document that was not yours, which
+    // is indistinguishable from "yours, not processed".
+    if (!doc.rawText) {
       return [];
     }
 
@@ -463,21 +509,21 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
   async compareDocumentVersions(
     docId1: number,
-    docId2: number
+    docId2: number,
+    organizationId: number
   ): Promise<DocumentComparison> {
+    // BOTH sides, deliberately. Comparing your own document against another
+    // org's would have leaked the foreign one's extracted fields through the
+    // diff — and through the gpt-4o summary written from it.
     const [doc1, doc2] = await Promise.all([
-      db.select().from(documentAnalysis).where(eq(documentAnalysis.id, docId1)).limit(1),
-      db.select().from(documentAnalysis).where(eq(documentAnalysis.id, docId2)).limit(1),
+      this.requireDoc(docId1, organizationId),
+      this.requireDoc(docId2, organizationId),
     ]);
-
-    if (!doc1[0] || !doc2[0]) {
-      throw new Error("One or both documents not found");
-    }
 
     const differences: DocumentComparison["differences"] = [];
 
-    const extracted1 = doc1[0].extractedData || {};
-    const extracted2 = doc2[0].extractedData || {};
+    const extracted1 = doc1.extractedData || {};
+    const extracted2 = doc2.extractedData || {};
 
     const allKeys = Array.from(new Set([...Object.keys(extracted1), ...Object.keys(extracted2)]));
 
@@ -509,7 +555,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
             },
             {
               role: "user",
-              content: `Document 1: ${doc1[0].documentName}\nDocument 2: ${doc2[0].documentName}\n\nDifferences:\n${JSON.stringify(differences, null, 2)}`,
+              content: `Document 1: ${doc1.documentName}\nDocument 2: ${doc2.documentName}\n\nDifferences:\n${JSON.stringify(differences, null, 2)}`,
             },
           ],
           max_tokens: 300,
@@ -557,16 +603,8 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
     return "low";
   }
 
-  async generateDocumentSummary(documentId: number): Promise<string> {
-    const [doc] = await db
-      .select()
-      .from(documentAnalysis)
-      .where(eq(documentAnalysis.id, documentId))
-      .limit(1);
-
-    if (!doc) {
-      throw new Error(`Document ${documentId} not found`);
-    }
+  async generateDocumentSummary(documentId: number, organizationId: number): Promise<string> {
+    const doc = await this.requireDoc(documentId, organizationId);
 
     const openai = getOpenAIClient();
     if (!openai) {

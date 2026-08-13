@@ -39,10 +39,11 @@ const src = fs.readFileSync(LINT, "utf8");
 
 /**
  * The frozen count, down-only. 136 service entries joined 52 storage entries
- * when the walk widened. Lower it in the commit that earns it — never raise it:
+ * when the walk widened (188); scoping `documentIntelligence` retired six of
+ * them in the next unit. Lower it in the commit that earns it — never raise it:
  * a new offender is meant to fail the lint, not to be admitted here.
  */
-const BASELINE_ENTRIES = 188;
+const BASELINE_ENTRIES = 182;
 
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to

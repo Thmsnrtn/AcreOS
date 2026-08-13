@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from 'express';
-import { documentIntelligenceService } from './services/documentIntelligence';
+import {
+  documentIntelligenceService,
+  DocumentNotInOrgError,
+} from './services/documentIntelligence';
 import { Errors } from './utils/errors';
+import { getOrganizationId } from './types/request';
 import { usageLimitGate, aiByokThresholdGate } from './middleware/usageLimitGate';
 import { storage } from './storage';
 import { logger } from './utils/logger';
@@ -12,6 +16,19 @@ const router = Router();
 // turn. Doc-intel used to bypass ALL metering — no turn count, no pool, not
 // even the platform cost ceiling (raw OpenAI client, no routeAITask).
 const aiMeter = [usageLimitGate("ai_requests"), aiByokThresholdGate()] as const;
+
+/**
+ * A document id that is not this org's answers 404, not 403 — a probe must not
+ * be able to tell "exists, not yours" from "never existed". Everything else
+ * keeps the handler's own 500.
+ */
+function refuse(res: Response, err: unknown): void {
+  if (err instanceof DocumentNotInOrgError) {
+    Errors.notFound(res, 'Document');
+    return;
+  }
+  Errors.internal(res, err);
+}
 async function countAiTurn(req: Request): Promise<void> {
   try {
     if (req.organization?.id) await storage.trackUsage(req.organization.id, "ai_request");
@@ -47,22 +64,36 @@ router.post('/upload', async (req: Request, res: Response) => {
 router.post('/documents/:id/process', ...aiMeter, async (req: Request, res: Response) => {
   try {
     await countAiTurn(req);
-    const analysis = await documentIntelligenceService.processDocument(parseInt(req.params.id));
+    const analysis = await documentIntelligenceService.processDocument(
+      parseInt(req.params.id),
+      getOrganizationId(req),
+    );
     res.json({ analysis });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
 // GET /documents/:id/text — extracted raw text
-router.get('/documents/:id/text', async (req: Request, res: Response) => {
+//
+// `...aiMeter` and countAiTurn were missing here, and the W4.1 note above says
+// "every endpoint below that triggers a gpt-4o call now runs the same meter
+// stack". This one runs OpenAI Vision for OCR, so the note was false about it:
+// an unmetered gpt-4o call on the platform account, no turn counted, no pool.
+//
+// `req.query.fileUrl` is gone. The service reads the URL off the stored row —
+// see its header for why forwarding a caller's value was a write primitive, not
+// just an odd parameter.
+router.get('/documents/:id/text', ...aiMeter, async (req: Request, res: Response) => {
   try {
-    const doc = await documentIntelligenceService.uploadDocument as any; // placeholder to get fileUrl
-    // Fetch fileUrl from document record then extract
-    const text = await documentIntelligenceService.extractText(parseInt(req.params.id), req.query.fileUrl as string || '');
+    await countAiTurn(req);
+    const text = await documentIntelligenceService.extractText(
+      parseInt(req.params.id),
+      getOrganizationId(req),
+    );
     res.json({ text });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
@@ -70,10 +101,13 @@ router.get('/documents/:id/text', async (req: Request, res: Response) => {
 router.get('/documents/:id/key-terms', ...aiMeter, async (req: Request, res: Response) => {
   try {
     await countAiTurn(req);
-    const terms = await documentIntelligenceService.extractKeyTerms(parseInt(req.params.id));
+    const terms = await documentIntelligenceService.extractKeyTerms(
+      parseInt(req.params.id),
+      getOrganizationId(req),
+    );
     res.json({ terms });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
@@ -81,10 +115,13 @@ router.get('/documents/:id/key-terms', ...aiMeter, async (req: Request, res: Res
 router.get('/documents/:id/risks', ...aiMeter, async (req: Request, res: Response) => {
   try {
     await countAiTurn(req);
-    const risks = await documentIntelligenceService.analyzeRisks(parseInt(req.params.id));
+    const risks = await documentIntelligenceService.analyzeRisks(
+      parseInt(req.params.id),
+      getOrganizationId(req),
+    );
     res.json({ risks });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
@@ -92,10 +129,13 @@ router.get('/documents/:id/risks', ...aiMeter, async (req: Request, res: Respons
 router.get('/documents/:id/summary', ...aiMeter, async (req: Request, res: Response) => {
   try {
     await countAiTurn(req);
-    const summary = await documentIntelligenceService.generateDocumentSummary(parseInt(req.params.id));
+    const summary = await documentIntelligenceService.generateDocumentSummary(
+      parseInt(req.params.id),
+      getOrganizationId(req),
+    );
     res.json({ summary });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
@@ -134,16 +174,21 @@ router.post('/search', async (req: Request, res: Response) => {
 });
 
 // POST /documents/:id/compare — compare two document versions
-router.post('/documents/:id/compare', async (req: Request, res: Response) => {
+//
+// Metered for the same reason as /text: compareDocumentVersions writes a gpt-4o
+// summary of the differences whenever there are any.
+router.post('/documents/:id/compare', ...aiMeter, async (req: Request, res: Response) => {
   try {
+    await countAiTurn(req);
     const { compareDocumentId } = req.body;
     const diff = await documentIntelligenceService.compareDocumentVersions(
       parseInt(req.params.id),
-      parseInt(compareDocumentId)
+      parseInt(compareDocumentId),
+      getOrganizationId(req),
     );
     res.json({ diff });
   } catch (err) {
-    Errors.internal(res, err);
+    refuse(res, err);
   }
 });
 
