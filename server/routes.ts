@@ -18,7 +18,6 @@ import acquisitionRadarRouter from "./routes-acquisition-radar";
 import customerLetterRouter from "./routes-customer-letter";
 import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
 import avmRouter from "./routes-avm";
-import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
 // Deal Hunter retired 2026-06-08 — sourcing role lives in /deals/discover (dealFeedEngine).
 // Academy retired 2026-06-08 — education + AI tutor module removed.
@@ -1339,7 +1338,7 @@ export async function registerRoutes(
   app.use('/api/my-letter', isAuthenticated, getOrCreateOrg, customerLetterRouter);
   app.use('/api/portfolio-optimizer', isAuthenticated, getOrCreateOrg, portfolioOptimizerRouter);
   app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
-  app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
+  // /api/negotiation deleted 2026-08-13 (deletion-ledger row: standalone negotiation copilot).
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
   // /api/deal-hunter retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine).
   // /api/academy retired 2026-06-08 — Academy module removed.

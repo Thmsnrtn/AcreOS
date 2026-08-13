@@ -17,12 +17,21 @@
  *
  * Unfreezing a surface = remove it here in the same PR that flips its flag,
  * citing the deletion-ledger reactivation criterion.
+ *
+ * A DELETED surface keeps its entry. Removing it would say "unfrozen", which is
+ * the opposite of what happened, and the list is served to clients that may
+ * still be running an older bundle — `/api/config/features` merges it into
+ * `disabledRoutes` on both the success and error paths precisely for them. A
+ * cached client whose JS still has the route gets a clean "not available" from
+ * the deny-list instead of a chunk-load error against a bundle the server no
+ * longer has. `/vision-ai` set this precedent (KILL executed, `<Route>` long
+ * gone, entry retained); `/negotiation` follows it as of 2026-08-13.
  */
 export const FROZEN_ROUTES: readonly string[] = [
   "/marketplace", // FREEZE — reactivate at G2 liquidity proof
   "/capital-markets", // FREEZE — reactivate when note securitization is real (H4)
   "/vision-ai", // KILL — deletion scheduled H2
-  "/negotiation", // KILL (standalone copilot) — orchestrator lives on in Pax
+  "/negotiation", // KILL executed 2026-08-13 — page deleted; entry retained (see below)
 ];
 
 export function isFrozenRoute(route: string): boolean {

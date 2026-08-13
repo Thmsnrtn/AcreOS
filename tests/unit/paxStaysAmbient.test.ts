@@ -35,13 +35,27 @@
  * check does not see it either: the path is a business noun and only the
  * component says "Copilot".
  *
- * It is not a live violation, and that is a deliberate decision rather than an
- * accident: `docs/company/deletion-ledger.md` carries a **KILL** verdict on it
- * ("Duplicate of the orchestrator, flagged off, no nav"), the orchestrator
- * itself lives on inside Pax, and `shared/feature-freeze.ts` hard-denies the
- * route ahead of every fail-open rule. So the rule is being upheld BY THE
- * FREEZE, not by absence — and this file now says so, so that unfreezing it
- * fails here and asks the un-freezer to put the surface behind a door.
+ * IT IS GONE NOW — DELETED 2026-08-13 ON THE FOUNDER'S RULING (BLOCKERS B12).
+ * The deletion-ledger KILL verdict was executed: the page, its seven
+ * `components/negotiation/*` satellites, the `/api/negotiation` rail, the three
+ * further copilot endpoints in `routes-ai-operations.ts` that this file's own
+ * finding turned up, and `services/negotiationCopilot.ts` are all deleted. The
+ * negotiation capability the founder kept is `POST /api/ai/negotiation/script`
+ * on `negotiationOrchestrator`, called by the deal detail view **behind the
+ * Deals door** — which is the shape this rule asks for.
+ *
+ * So the checks below changed meaning, deliberately, rather than being deleted:
+ * the exempt-destination set is now asserted EMPTY where it was asserted to be
+ * exactly `/negotiation`, and the vacuity guard can no longer prove the
+ * component detector is alive by pointing at a live offender — there isn't one.
+ * It exercises the detector directly instead. That is the stronger form: a
+ * detector proved by a sample keeps working when the app is clean, whereas a
+ * detector proved by the offender it found stops being checked the moment
+ * someone fixes the offence.
+ *
+ * `/negotiation` KEEPS its `FROZEN_ROUTES` entry. Removing it would read as
+ * "unfrozen", the opposite of what happened, and the list is served to clients
+ * that may still be running an older bundle.
  *
  * THE FOUNDER PLANE IS OUT OF SCOPE, deliberately. `/founder/chat`,
  * `/founder/solene-chat`, `/founder/ai-observatory`, `/founder/pax-traces` and
@@ -124,14 +138,34 @@ describe("there is exactly one customer-facing AI destination", () => {
     // nothing — the failure mode every source scan in this program has hit.
     expect(routes().length, "no <Route path=…> parsed from App.tsx").toBeGreaterThan(50);
     expect(ai.map((r) => r.path), "the /ai door is gone").toContain("/ai");
-    // Both detectors must be live. If the component detector stopped matching,
-    // this file would silently revert to the path-only check that missed
-    // /negotiation, and would keep passing while doing less.
-    expect(
-      ai.map((r) => r.path),
-      "the component-name detector matches nothing — it is the half of this " +
-        "check that found the surface a path-name scan could not see",
-    ).toContain("/negotiation");
+  });
+
+  it("the component-name detector still detects (it is half of this check)", () => {
+    // It used to be proved by pointing at /negotiation — the surface it found
+    // that a path-name scan could not see. That surface was deleted on the
+    // founder's ruling, and an anchor to a live offender dies with the offence,
+    // so the detector is exercised against samples instead. If it stopped
+    // matching, this file would silently revert to the path-only check that
+    // missed /negotiation in the first place, and would keep passing while
+    // doing less.
+    const bodies = [
+      "{() => <FlaggedRoute route=\"/negotiation\" component={NegotiationCopilotPage} />}",
+      "{() => <ProtectedRoute component={UnderwritingAssistantPage} />}",
+      "{() => <ProtectedRoute component={AiInsightsPage} />}",
+      "{() => <ProtectedRoute component={OutreachCopilot} />}",
+      "{() => <ProtectedRoute component={SoleneConsole} />}",
+    ];
+    for (const body of bodies) {
+      expect(AI_COMPONENT.test(body), `the component detector missed: ${body}`).toBe(true);
+    }
+    // And it must not match everything — a detector that flags every route is
+    // the same as no detector, and would be "fixed" by deleting this file.
+    for (const body of [
+      "{() => <ProtectedRoute component={DealsPage} />}",
+      "{() => <ProtectedRoute component={FinancePage} />}",
+    ]) {
+      expect(AI_COMPONENT.test(body), `the component detector over-matches: ${body}`).toBe(false);
+    }
   });
 
   it("only /ai renders a page; every other AI DESTINATION redirects into it or is frozen", () => {
@@ -154,34 +188,53 @@ describe("there is exactly one customer-facing AI destination", () => {
     ).toBe("");
   });
 
-  it("the only exempt destination is /negotiation, and only because it is FROZEN", () => {
-    // Exemptions are listed, not inferred. The filter above would quietly
-    // absorb a second, third and fourth frozen AI page; this assertion makes
-    // each one a deliberate edit.
+  it("there are NO exempt AI destinations left", () => {
+    // This assertion used to read `.toBe("/negotiation")`: one exempt
+    // destination, excused because it was frozen. The KILL was executed
+    // 2026-08-13 and the set is empty, so the assertion says empty. A frozen
+    // page was always a KILL verdict awaiting deletion, never a parking space
+    // for new AI surfaces — with the parking space gone, anything that lands
+    // here is a new destination and has to answer for itself.
     const exempt = ai
       .filter((r) => isDestination(r.path) && r.path !== "/ai" && !REDIRECTS.test(r.body))
       .map((r) => r.path)
       .sort();
     expect(
       exempt.join(", "),
-      "the set of frozen AI destinations changed. A frozen page is a KILL " +
-        "verdict awaiting deletion, not a parking space for new AI surfaces — " +
-        "if something new landed here, it belongs behind a door instead.",
-    ).toBe("/negotiation");
+      "an AI destination appeared that neither redirects into /ai nor sits " +
+        "behind a door. The last one (/negotiation) was deleted rather than " +
+        "excused — freezing a page is not a way to keep it. Put the surface " +
+        "behind /ai as a section, or behind the door it belongs to as a tab.",
+    ).toBe("");
   });
 
-  it("/negotiation stays frozen until someone deliberately says otherwise", () => {
-    // Inverted, like FOUNDER_ROUTE_BASELINE: a test cannot know whether the
-    // standalone copilot should come back, but it can make coming back a
-    // decision somebody reads a message about.
+  it("/negotiation keeps its freeze entry even though the page is deleted", () => {
+    // Removing the entry would read as "unfrozen", which is the opposite of
+    // what happened, and FROZEN_ROUTES is served to clients through
+    // /api/config/features — including clients still running an older bundle
+    // whose JS still has the route. They get a clean "not available" instead of
+    // a chunk-load error against a bundle the server no longer has.
+    // /vision-ai set this precedent; /negotiation follows it.
     expect(
       FROZEN_ROUTES,
-      "/negotiation was unfrozen. It is a standalone AI copilot at a top-level " +
-        "route — the deletion ledger's KILL verdict says the orchestrator lives " +
-        "on inside Pax instead. Reachable again, it is a second AI destination: " +
-        "put it behind /ai (or the Deals door) as a section, or cite the " +
-        "ledger's reactivation criterion in the commit and update this file.",
+      "/negotiation's freeze entry was removed after the page was deleted. " +
+        "That reads as an unfreeze, and it un-hides the route for any client " +
+        "still holding the old bundle. See the /vision-ai precedent in " +
+        "shared/feature-freeze.ts.",
     ).toContain("/negotiation");
+    // …and the page really is gone, so the entry above is doing the cached-client
+    // job described and not hiding a live surface.
+    expect(
+      fs.existsSync(path.join(ROOT, "client/src/pages/negotiation-copilot.tsx")),
+      "the standalone copilot page is back while still listed as frozen — " +
+        "either it was reactivated without removing the freeze (so it is dead " +
+        "on arrival) or the KILL was reverted",
+    ).toBe(false);
+    expect(
+      fs.existsSync(path.join(ROOT, "server/services/negotiationCopilot.ts")),
+      "negotiationCopilot is back. The kept capability is negotiationOrchestrator " +
+        "behind POST /api/ai/negotiation/script, called from the Deals door.",
+    ).toBe(false);
   });
 
   it("an AI surface BEHIND a door is fine, and is not counted as a destination", () => {

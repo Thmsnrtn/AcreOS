@@ -2,8 +2,15 @@
   "name": "openai-bypass",
   "description": "Direct chat.completions.create() calls bypass the aiRouter cost chokepoint (per-org quota, platform daily cost ceiling, category budget, telemetry/COGS, Haiku kill-switch). Single-shot surfaces migrate to routeAITask (docs/openai-bypass-migration.md); tool-calling agents (vaService, supportAgent, executive) cannot until routeAITask gains tool support, so they use aiSpendGuard (ceiling + telemetry) and remain in this baseline. Audit F-16-1/F-08-4. Freezes the count and drives it DOWN toward the migration's 0-callsite goal; a NEW direct call now fails CI. aiRouter.ts is excluded (it IS the sanctioned caller).",
   "pattern": "chat\\.completions\\.create\\(",
-  "globs": ["server/**/*.ts"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts", "server/services/aiRouter.ts"],
-  "baselineCount": 89,
-  "direction": "down"
+  "globs": [
+    "server/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "server/services/aiRouter.ts"
+  ],
+  "baselineCount": 85,
+  "direction": "down",
+  "lastBumpNote": "89 -> 85 on 2026-08-13: the standalone negotiation copilot, deleted (BLOCKERS B12, founder ruling \u2014 the deletion ledger's KILL verdict, executed). services/negotiationCopilot.ts held four direct chat.completions.create() call sites, none of them routed through the aiRouter chokepoint, so a KILLed subsystem accounted for four of this ratchet's remaining bypasses \u2014 spend a per-org quota and a platform daily ceiling could not see, on a surface with no live caller. Locked in per this ratchet's strictly-down rule."
 }

@@ -179,7 +179,7 @@ const PropertyTaxPage = React.lazy(() => import("@/pages/property-tax"));
 const AVMPage = React.lazy(() => import("@/pages/avm"));
 const AvmBulkPage = React.lazy(() => import("@/pages/avm-bulk"));
 // AcquisitionRadarPage archived 2026-06-01 — route is Redirect to /deals/discover.
-const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
+// NegotiationCopilotPage deleted 2026-08-13 (standalone negotiation copilot kill).
 // DealHunterPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // AgentCommandCenterPage archived 2026-06-01 — route is Redirect to /ai#agents.
 const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
@@ -1436,9 +1436,7 @@ function Router() {
       <Route path="/maps">
         {() => <ProtectedRoute component={MapsPage} />}
       </Route>
-      <Route path="/negotiation">
-        {() => <FlaggedRoute route="/negotiation" component={NegotiationCopilotPage} />}
-      </Route>
+      {/* /negotiation deleted 2026-08-13 (standalone copilot kill) — renders NotFound. */}
       <Route path="/cash-flow">
         {() => <ProtectedRoute component={CashFlowPage} />}
       </Route>

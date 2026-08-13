@@ -120,7 +120,10 @@ class WhiteLabelService {
       footerText: config.footerText || 'Powered by AcreOS',
       features: {
         marketplace: true, academy: true, dealHunter: true, voiceAI: false,
-        visionAI: true, capitalMarkets: false, negotiationCopilot: true,
+        // negotiationCopilot: the standalone copilot was deleted 2026-08-13
+        // (deletion-ledger KILL). Default false — a reseller feature set must
+        // not advertise a subsystem that no longer exists.
+        visionAI: true, capitalMarkets: false, negotiationCopilot: false,
         portfolioOptimizer: true, complianceAI: false, taxResearcher: false,
         ...config.features,
       },

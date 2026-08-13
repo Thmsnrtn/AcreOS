@@ -423,10 +423,49 @@ second one is actually built.
 
 ## B12 — A KILLed subsystem whose API is still mounted
 
+**RESOLVED by executing the KILL** (unit 76, founder ruling 2026-08-13 — option 1
+below). Deleted: `server/routes-negotiation.ts` + its mount and manifest entry,
+`server/services/negotiationCopilot.ts`, `client/src/pages/negotiation-copilot.tsx`
+and its seven `components/negotiation/*` satellites, the App.tsx lazy import and
+`<Route>`, the command-center catalog row, and
+`tests/unit/negotiationCopilot.test.ts` — 293 lines that imported nothing from the
+service and re-implemented its objection patterns locally, so it tested a copy of
+the code rather than the code.
+
+**The premise was incomplete, and checking it is what made this correct.** This
+entry said `/api/negotiation` was the surviving rail. It was not the only one:
+`routes-ai-operations.ts` carried three more copilot endpoints on the same
+service (`POST /negotiation/session`, `POST /negotiation/objection`,
+`GET /negotiation/:id`), with no client caller. Deleting only what this entry
+named would have removed a door and left a window. The live capability the
+founder kept is `POST /api/ai/negotiation/script` in `routes-core-ai.ts`, which
+runs on **negotiationOrchestrator** and is called by the deal detail view behind
+the Deals door.
+
+**Two deliberate departures from option 1 as written:**
+
+1. **`/negotiation` KEEPS its `FROZEN_ROUTES` entry.** Option 1 said to drop it.
+   Removing it reads as *unfrozen*, and `/api/config/features` serves that list
+   to clients still running an older bundle — they get a clean "not available"
+   instead of a chunk-load error against a bundle the server no longer has.
+   `/vision-ai` already set this precedent (KILL executed, `<Route>` long gone,
+   entry retained); the reasoning is now written in `shared/feature-freeze.ts`
+   rather than living in one blocker note.
+2. **`negotiation_sessions` was NOT dropped.** Dropping it deletes customer rows
+   — a founder-only hard stop. The table is allowlisted in
+   `scripts/ratchets/reachability.json` for both writer and reader with that
+   reason, so it shows up in every gate run instead of disappearing into a
+   baseline. **A DROP migration is still open, and it is the founder's call.**
+
+Ratchets: `colon-any` 3009 → 3006, `openai-bypass` 89 → 85 (the copilot held four
+direct `chat.completions.create()` calls outside the aiRouter chokepoint — spend
+no per-org quota or daily ceiling could see, on a surface nothing called).
+Tenancy register: rule 1 −5, rule 2 −4 stale entries removed.
+
 **Found:** unit 52, by the component-name detector added to the Pax-ambient
 ratchet.
-**Blocked on:** a founder decision — execute the deletion, or reactivate the
-surface. **Not touched in the meantime**; the client door stays frozen.
+**Was blocked on:** a founder decision — execute the deletion, or reactivate the
+surface. The record below is the state at the time the decision was asked for.
 
 ### The state
 
@@ -491,10 +530,10 @@ governance decisions, not product flags. Current state of the mounts:
 | `/api/deal-rooms` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 65 |
 | `/api/capital-markets` | FREEZE — reactivate at H4 | `requireLadderFlag` | ✅ unit 65 |
 | `/api/certification` | KILL — "education revenue stays dead" | `requireLadderFlag` | ✅ unit 65 |
-| `/api/negotiation` | KILL | **none** | B12 — still open |
+| `/api/negotiation` | KILL | — | **deleted** (unit 76) — the KILL was executed, so there is no gate to choose |
 | `/api/white-label` | FREEZE | `featureGate` | **LEAVE IT** (unit 65 annotated why, at the mount) |
 
-**RESOLVED except B12** (unit 65). The three upgrades landed with
+**RESOLVED** (unit 65; B12 closed by deletion in unit 76). The three upgrades landed with
 `tests/unit/frozenSurfaceGates.test.ts`, which asserts the exception as loudly as
 the rule: white-label keeps `featureGate` because that bypass IS the ledger's
 reactivation criterion, and the reason is now written at the mount rather than

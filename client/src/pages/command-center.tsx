@@ -1179,7 +1179,6 @@ const aiServices: AIService[] = [
   { id: "seller-intent", name: "Seller Intent", description: "Predict seller motivation and timing", phase: 3, icon: Target, endpoint: "/api/ai/intent/predict" },
   { id: "price-optimizer", name: "Price Optimizer", description: "Automated pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
   { id: "deal-patterns", name: "Deal Patterns", description: "Clone successful deal strategies", phase: 3, icon: GitBranch, endpoint: "/api/ai/patterns/analyze" },
-  { id: "negotiation", name: "Negotiation", description: "Real-time negotiation assistance", phase: 4, icon: Handshake, endpoint: "/api/ai/negotiation/session" },
   { id: "sequences", name: "Sequences", description: "AI-optimized outreach sequences", phase: 4, icon: Mail, endpoint: "/api/ai/sequences/performance" },
   { id: "voice-calls", name: "Voice Calls", description: "Call transcription and analysis", phase: 4, icon: Phone, endpoint: "/api/ai/voice/record" },
   { id: "portfolio", name: "Portfolio", description: "Monitor portfolio health and alerts", phase: 5, icon: Eye, endpoint: "/api/ai/portfolio/monitor" },

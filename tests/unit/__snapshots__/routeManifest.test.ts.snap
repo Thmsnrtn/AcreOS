@@ -178,7 +178,6 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-morning-pulse.ts",
   "routes-move-inspections.ts",
   "routes-needs-onboarding.ts",
-  "routes-negotiation.ts",
   "routes-night-cap.ts",
   "routes-note-acquisitions.ts",
   "routes-notes.ts",

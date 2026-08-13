@@ -43,19 +43,6 @@ const patternAnalyzeSchema = z.object({
   dealId: z.number({ message: "dealId is required" }),
 });
 
-// Negotiation
-const negotiationSessionSchema = z.object({
-  dealId: z.number({ message: "dealId is required" }),
-  leadId: z.number().optional(),
-  initialOffer: z.number().optional(),
-  sellerAsk: z.number().optional(),
-});
-
-const negotiationObjectionSchema = z.object({
-  sessionId: z.number({ message: "sessionId is required" }),
-  objectionText: z.string({ message: "objectionText is required" }),
-});
-
 // Sequences
 const sequencePerformanceSchema = z.object({
   messageId: z.number().optional(),
@@ -377,53 +364,12 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  // ============================================
-  // NEGOTIATION COPILOT - /api/ai/negotiation
-  // ============================================
-  router.post("/negotiation/session", isAuthenticated, getOrCreateOrg, validateRequest(negotiationSessionSchema), async (req, res) => {
-    try {
-      const org = req.organization;
-      const { dealId, leadId, initialOffer, sellerAsk } = req.body;
-      
-      const { negotiationCopilotService } = await import("./services/negotiationCopilot");
-      const session = await negotiationCopilotService.startSession(org.id, dealId, leadId, initialOffer, sellerAsk);
-      
-      res.json(session);
-    } catch (error: any) {
-      logger.error("Start negotiation session error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  router.post("/negotiation/objection", isAuthenticated, getOrCreateOrg, validateRequest(negotiationObjectionSchema), async (req, res) => {
-    try {
-      const org = req.organization;
-      const { sessionId, objectionText } = req.body;
-      
-      const { negotiationCopilotService } = await import("./services/negotiationCopilot");
-      const response = await negotiationCopilotService.detectObjection(sessionId, objectionText);
-      
-      res.json(response);
-    } catch (error: any) {
-      logger.error("Handle objection error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  router.get("/negotiation/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const dealId = parseInt(req.params.id);
-      
-      const { negotiationCopilotService } = await import("./services/negotiationCopilot");
-      const sessions = await negotiationCopilotService.getSessionHistory(org.id, dealId);
-      
-      res.json(sessions);
-    } catch (error: any) {
-      logger.error("Get negotiation session error", error);
-      Errors.internal(res, error);
-    }
-  });
+  // The negotiation-copilot endpoints that lived here — POST /negotiation/session,
+  // POST /negotiation/objection, GET /negotiation/:id — were deleted 2026-08-13
+  // with the service behind them (deletion-ledger row: standalone negotiation
+  // copilot). The live negotiation capability is POST /api/ai/negotiation/script
+  // in routes-core-ai.ts, which runs on negotiationOrchestrator and is called by
+  // the deal detail view behind the Deals door.
 
   // ============================================
   // SEQUENCE OPTIMIZER - /api/ai/sequences

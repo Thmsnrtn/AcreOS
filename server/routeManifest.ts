@@ -219,7 +219,6 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-morning-pulse.ts", mountPath: null, kind: "register", export: "registerMorningPulseRoutes" },
   { file: "routes-move-inspections.ts", mountPath: null, kind: "register", export: "registerMoveInspectionRoutes" },
   { file: "routes-needs-onboarding.ts", mountPath: "/api/me/needs-onboarding", kind: "router", export: "default" },
-  { file: "routes-negotiation.ts", mountPath: "/api/negotiation", kind: "router", export: "default" },
   { file: "routes-night-cap.ts", mountPath: "/api/night-cap", kind: "router", export: "default" },
   { file: "routes-note-acquisitions.ts", mountPath: null, kind: "register", export: "registerNoteAcquisitionRoutes" },
   { file: "routes-notes.ts", mountPath: null, kind: "register", export: "registerNoteRoutes" },
