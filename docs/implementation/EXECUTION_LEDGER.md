@@ -5178,3 +5178,51 @@ from the code rather than hand-edited. The gate's both-directions check requires
 the lowered entries to match reality, so a fix recorded but not made fails.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
+
+---
+
+## Unit 72 — Twenty-four more, and the shapes stop being new · this commit
+
+**Files:** `client/src/components/ab-tests-content.tsx`,
+`client/src/components/rehabs/draws-section.tsx`,
+`client/src/components/settings/autonomy-panel.tsx`,
+`client/src/components/template-editor.tsx`,
+`client/src/pages/county-detail.tsx`,
+`client/src/pages/inspection-detail.tsx`,
+`client/src/pages/maintenance.tsx`,
+`client/src/pages/tax-optimizer.tsx`,
+`tests/unit/accessibility.test.ts`.
+
+Register **57 → 33**, 34 files → 26. Eight files, three each.
+
+By this batch the shapes have stopped being new, and that is the useful
+observation — the work is now mechanical because the *decision* in each case is
+one of four already-established answers:
+
+1. **A visible `<Label>` beside one field** → `htmlFor`/`id`, literal ids.
+2. **The same inside a `.map()`** → indexed ids (`deficiency-${idx}-amount`,
+   `variant-${index}-subject`, `tpl-field-${index}-name`).
+3. **No visible label, one field** → `aria-label`.
+4. **No visible label, a ROW of fields sharing a heading** → `aria-label` each,
+   naming the row: `Inspection date for draw ${d.sequence}`,
+   `Clerk contact phone`.
+
+Case 4 keeps being the one a naive fix gets wrong. `county-detail`'s clerk
+contact is three bare inputs under a `<p>Clerk contact</p>` — pairing the
+paragraph to the first and leaving phone and email bare passes a per-element
+checker while leaving two fields unnamed.
+
+### What is left
+
+33 across 26 files: mostly one or two apiece, and the last of them are single
+inputs in panels and mobile views. No new decision types are expected — the four
+above cover every remaining site inspected so far.
+
+### Verification
+
+Every file individually re-scanned to zero; the register regenerated from the
+code, never hand-edited. `tsc` clean, so the indexed template literals all
+resolve against a real `idx`/`index` in scope — the one way this batch could
+have gone silently wrong.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.

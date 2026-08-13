@@ -365,8 +365,9 @@ function SecurityDepositReconcile({
           {deductions.map((d, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-6">
-                <Label className="text-xs">Description</Label>
+                <Label className="text-xs" htmlFor={`deficiency-${idx}-description`}>Description</Label>
                 <Input
+                  id={`deficiency-${idx}-description`}
                   value={d.description}
                   onChange={(e) => {
                     const next = [...deductions]; next[idx] = { ...next[idx], description: e.target.value }; setDeductions(next);
@@ -376,8 +377,9 @@ function SecurityDepositReconcile({
                 />
               </div>
               <div className="col-span-3">
-                <Label className="text-xs">Category</Label>
+                <Label className="text-xs" htmlFor={`deficiency-${idx}-category`}>Category</Label>
                 <Input
+                  id={`deficiency-${idx}-category`}
                   value={d.category}
                   onChange={(e) => {
                     const next = [...deductions]; next[idx] = { ...next[idx], category: e.target.value }; setDeductions(next);
@@ -387,8 +389,9 @@ function SecurityDepositReconcile({
                 />
               </div>
               <div className="col-span-2">
-                <Label className="text-xs">Amount ($)</Label>
+                <Label className="text-xs" htmlFor={`deficiency-${idx}-amount`}>Amount ($)</Label>
                 <Input
+                  id={`deficiency-${idx}-amount`}
                   type="number"
                   value={d.amountCents}
                   onChange={(e) => {

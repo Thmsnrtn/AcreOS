@@ -589,8 +589,9 @@ function DealerClassificationPanel() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Hours in RE trade/business (last 12 mo)</Label>
+              <Label className="text-xs" htmlFor="reps-hours-12mo">Hours in RE trade/business (last 12 mo)</Label>
               <Input
+                id="reps-hours-12mo"
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -738,8 +739,9 @@ function RealEstateProfessionalPanel() {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Real-estate hours this year</Label>
+              <Label className="text-xs" htmlFor="reps-re-hours-year">Real-estate hours this year</Label>
               <Input
+                id="reps-re-hours-year"
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -750,8 +752,9 @@ function RealEstateProfessionalPanel() {
               />
             </div>
             <div>
-              <Label className="text-xs">Total work hours this year (all trades/businesses)</Label>
+              <Label className="text-xs" htmlFor="reps-total-hours-year">Total work hours this year (all trades/businesses)</Label>
               <Input
+                id="reps-total-hours-year"
                 type="number"
                 inputMode="numeric"
                 min={0}

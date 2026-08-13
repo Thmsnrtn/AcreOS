@@ -593,8 +593,9 @@ Sincerely,
                           </div>
                           <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
                             <div>
-                              <Label className="text-xs">Field Name</Label>
+                              <Label className="text-xs" htmlFor={`tpl-field-${index}-name`}>Field Name</Label>
                               <Input
+                                id={`tpl-field-${index}-name`}
                                 placeholder="field_name"
                                 value={field.name}
                                 onChange={(e) => handleFieldChange(field.id, "name", e.target.value)}
@@ -619,8 +620,9 @@ Sincerely,
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-xs">Default Value</Label>
+                              <Label className="text-xs" htmlFor={`tpl-field-${index}-default`}>Default Value</Label>
                               <Input
+                                id={`tpl-field-${index}-default`}
                                 placeholder="Optional default"
                                 value={field.defaultValue || ""}
                                 onChange={(e) => handleFieldChange(field.id, "defaultValue", e.target.value)}
@@ -628,8 +630,9 @@ Sincerely,
                               />
                             </div>
                             <div>
-                              <Label className="text-xs">Description</Label>
+                              <Label className="text-xs" htmlFor={`tpl-field-${index}-description`}>Description</Label>
                               <Input
+                                id={`tpl-field-${index}-description`}
                                 placeholder="Field description"
                                 value={field.description || ""}
                                 onChange={(e) => handleFieldChange(field.id, "description", e.target.value)}

@@ -193,8 +193,8 @@ export default function MaintenancePage() {
             <CardTitle className="text-base">New maintenance ticket</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div><Label className="text-xs">Property ID *</Label><Input value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Title *</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-9" placeholder="No hot water" /></div>
+            <div><Label className="text-xs" htmlFor="ticket-property-id">Property ID *</Label><Input id="ticket-property-id" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="ticket-title">Title *</Label><Input id="ticket-title" value={title} onChange={(e) => setTitle(e.target.value)} className="h-9" placeholder="No hot water" /></div>
             <div><Label className="text-xs">Severity</Label>
               <Select value={severity} onValueChange={(v) => setSeverity(v as any)}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
@@ -203,7 +203,7 @@ export default function MaintenancePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="col-span-full"><Label className="text-xs">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} className="h-9" /></div>
+            <div className="col-span-full"><Label className="text-xs" htmlFor="ticket-description">Description</Label><Input id="ticket-description" value={description} onChange={(e) => setDescription(e.target.value)} className="h-9" /></div>
             <div className="col-span-full">
               <Button disabled={!propertyId || !title || create.isPending} onClick={() => create.mutate()}>Create ticket</Button>
             </div>

@@ -341,6 +341,7 @@ export function AbTestsContent() {
                               {String.fromCharCode(65 + index)}
                             </Badge>
                             <Input
+                              aria-label={`Variant ${String.fromCharCode(65 + index)} name`}
                               value={variant.name}
                               onChange={(e) => updateVariant(index, "name", e.target.value)}
                               className="w-48"
@@ -365,8 +366,9 @@ export function AbTestsContent() {
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div className="space-y-2">
-                          <Label>Subject</Label>
+                          <Label htmlFor={`variant-${index}-subject`}>Subject</Label>
                           <Input
+                            id={`variant-${index}-subject`}
                             value={variant.subject}
                             onChange={(e) => updateVariant(index, "subject", e.target.value)}
                             placeholder="Enter subject line"
@@ -374,8 +376,9 @@ export function AbTestsContent() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Content</Label>
+                          <Label htmlFor={`variant-${index}-content`}>Content</Label>
                           <Textarea
+                            id={`variant-${index}-content`}
                             value={variant.content}
                             onChange={(e) => updateVariant(index, "content", e.target.value)}
                             placeholder="Enter content"
