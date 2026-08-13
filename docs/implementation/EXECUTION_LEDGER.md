@@ -4901,3 +4901,69 @@ Three mutations, each verified to apply, each caught: a real icon button losing
 its label; an `asChild` **child** losing its label; and the walk finding nothing.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9038 passed, 1 skipped.
+
+---
+
+## Unit 67 — Security tests that passed when the security did nothing · this commit
+
+**Files:** `tests/unit/securityMiddleware.test.ts`.
+
+Unit 66 found a test reporting success for a file that no longer existed, so the
+class was enumerated: **catch blocks in `tests/**` that contain no `expect`, no
+`throw` and no `fail`.** Thirteen, across 696 test files.
+
+Ten are legitimate — error capture before asserting on the error
+(`abilityToRepayGate`, `aiCostRates`), drizzle mock plumbing (`byok`,
+`etlOrchestrator`, `financial-ledger`, `unitEconomicsFromLedger`,
+`reconciliationLedgerDivergence`), a directory walk skipping unreadable dirs, and
+a schema-drift allowlist that degrades to *empty* on a parse error, which fails
+**stricter** rather than looser.
+
+**Three were in `securityMiddleware.test.ts`, and they were the worst kind.**
+
+### What they asserted
+
+Each imported its middleware inside a `try`, fell back to `null`, and then — if
+null — asserted `fs.existsSync("server/middleware/csrf.ts")` and returned. A
+relative path resolved against the runner's CWD, and "the file exists" is not a
+security property.
+
+**The serious half is that the real assertions accepted the failure:**
+
+| test | assertion | what it accepted |
+|---|---|---|
+| "CSRF protection blocks requests without token" | `expect([200, 403]).toContain(status)` | **200 — CSRF did not block** |
+| "prompt injection middleware sanitizes malicious input" | `expect([200, 400, 403]).toContain(status)` | any status; the middleware never changes it |
+
+The prompt-injection middleware **never blocks** — it rewrites the listed body
+fields and calls `next()`. Its observable property is the **body**, which a
+status-only assertion cannot see. A no-op middleware passed both tests.
+
+A test named for a security control that passes when the control does nothing is
+worse than no test, because it reports coverage.
+
+### What they assert now
+
+Both modules exist and have precise behaviour, so the imports are plain and
+static — if a module disappears this file fails to load, which is the correct
+outcome and exactly what the `try` was suppressing.
+
+- prompt injection: the phrase is **redacted** (`[content removed by safety
+  filter]`) and the original does not survive — **and** ordinary text is left
+  byte-identical, so a filter that redacted everything fails.
+- CSRF: no token → **403**; matching cookie+header → **200**; **mismatched pair →
+  403** (double-submit is worthless if the two sides are not compared); a safe
+  method → 200 **and issues the cookie**; an exempt webhook path → 200, with
+  `isCsrfExemptPath` asserted directly rather than "verified by convention".
+
+Each negative has its positive beside it. A middleware that refused everything
+would satisfy "blocks without a token" and break every write in the product.
+
+### Verification
+
+Five mutations, each verified to apply, each caught: CSRF made a no-op (the exact
+shape the old test accepted — **2 failures**); CSRF checking presence but not
+equality; CSRF refusing exempt paths; the injection filter not redacting; and the
+filter redacting everything.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9042 passed, 1 skipped.

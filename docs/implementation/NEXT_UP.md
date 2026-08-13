@@ -913,3 +913,22 @@ The precondition to watch for, precisely: an `ADOPTING_SURFACES` entry other tha
 lands, the question to answer is a product one — *what does "sold" measure for a
 hold?* — and it should be answered by whoever adds that surface, not guessed
 here.
+
+**A test that catches its own missing input reports success for work it did not
+do.** Unit 66 found one (a sample check naming a deleted file, with the ENOENT
+swallowed); unit 67 enumerated the class — catch blocks in `tests/**` with no
+`expect`, `throw` or `fail`. **Thirteen across 696 files, and ten are fine**
+(error capture before asserting, drizzle mock plumbing, a walk skipping unreadable
+dirs, an allowlist that degrades stricter). The three that were not were security
+tests, and their real defect was not the `catch` at all:
+
+> `expect([200, 403]).toContain(res.status)` in a test named **"CSRF protection
+> blocks requests without token"**. A 200 means it did not block, and the test
+> passed on it.
+
+**So the reusable check is not "find swallowed catches" — that was 3/13 useful.
+It is: does the assertion accept the failure it is named for?** A status set
+containing both the pass and the fail, a `toBeGreaterThanOrEqual` where the
+interesting case is equality, a `toContain` on a string that appears elsewhere in
+the window. Every one of those shapes has cost this program a survived mutation
+this session; the mutation is what finds them, not reading the test.
