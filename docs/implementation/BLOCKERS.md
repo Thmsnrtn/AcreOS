@@ -168,8 +168,24 @@ Verified by the adversarial pass and left for a later unit:
 
 ## B8 — A second webhook rail exists, fully built and entirely unmounted
 
+**DECIDED 2026-08-13: keep deferring** (founder ruling). The trigger has not
+fired, and the entry's own reading stands — this is deferred infrastructure
+behaving correctly, not rot. No rail is retired, no migration is started, and the
+better-engineered `api-v1` rail stays unmounted until the ~50-customer trigger.
+
+**What the ruling changed in code (unit 85):** the one standing rule below is now
+enforced rather than written down. `webhookEventCatalogue.test.ts` pins the
+legacy rail's emitter set at exactly `lead.created`, as an INVERTED assertion —
+it does not claim the count is right, it requires that adding an emitter be a
+deliberate act that reopens B8. Wiring `webhookDealCreated`, a two-line change
+that looks like an improvement, now fails CI and asks for the rail decision
+instead. Two more assertions hold the premise: the five wrappers must stay (they
+are correct code the survivor rail will want) and `registerPublicApiV1` must stay
+unmounted — if it is ever mounted, the deferral has ended and this whole block
+should be revisited rather than maintained out of habit.
+
 **Found:** unit 42, while deriving the webhook event catalogue.
-**Blocked on:** a founder decision, at a trigger that has not fired.
+**Was blocked on:** a founder decision, at a trigger that has not fired.
 
 **A correction first, because this entry was nearly written wrong.** The draft
 said "two customer-facing rails, both reachable today." `B7` already recorded
@@ -742,12 +758,22 @@ removes a line from a register whose length is what stops people reading it.
 
 ## B16 — Three dead feature-flag ROWS, and whether to delete them
 
+**RESOLVED 2026-08-13 (founder ruling): delete the rows.** A
+`DELETE FROM platform_feature_flags WHERE key IN (…)` is registered in
+`scripts/migrate.mjs` and applies on the next deploy — idempotent, and platform
+config rather than customer data, which is why it needed only the same class of
+ruling the 2026-08-01 dead-table drops took.
+
+**THE REGISTER STAYS AFTER THE ROWS GO.** `RETIRED_FLAG_KEYS` is not bookkeeping
+for three rows; it is the only thing looking at the flag catalogue, and it is
+what catches the NEXT kill's leftover switch — the defect unit 76 created and
+nothing noticed. `featureFlagRetiredKeys.test.ts` now asserts the DELETE covers
+every registered key, so the two cannot drift apart.
+
 **Found:** unit 82, by asking what the flag catalogue contains now that unit 81
 made the founder's toggles actually work.
-**Blocked on:** a founder decision, and a small one — the 2026-08-01 dead-table
-drops took an explicit picker ruling, and deleting platform rows is the same
-class of action. **Already made inert in the meantime**, so nothing is waiting on
-the answer.
+**Was blocked on:** a founder decision, and a small one. The rows were already
+inert, so nothing waited on the answer.
 
 `platform_feature_flags` is seeded by migration and outlives the features it
 names. Three seeded keys refer to subsystems whose code is deleted:

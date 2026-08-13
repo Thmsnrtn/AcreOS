@@ -9276,6 +9276,31 @@ const STATEMENTS = [
     "updated_at" timestamp NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS "va_sops_org_category_idx" ON "va_sops" ("organization_id", "category", "title")`,
+
+  // ── 2026-08-13: founder-authorized deletion of dead feature-flag ROWS ──────
+  // Explicit picker ruling, BLOCKERS B16. Platform config, not customer data.
+  //
+  // `platform_feature_flags` is seeded by migration and outlives the features it
+  // names. These three name subsystems whose CODE IS DELETED under
+  // deletion-ledger KILL verdicts:
+  //
+  //   feature_vision_ai            KILL executed 2026-08-01 — routers, service,
+  //                                page and both satellite tables gone.
+  //   feature_voice_ai             KILL executed 2026-08-01 — pipeline and both
+  //                                tables gone.
+  //   feature_negotiation_copilot  KILL executed 2026-08-13 — router, service,
+  //                                page, 7 satellites and 3 further endpoints.
+  //
+  // Nothing in server/ or client/src references any of the three, and the paths
+  // they control (/vision-ai, /voice, /negotiation) have no route in App.tsx.
+  //
+  // The rows were ALREADY INERT before this ran: RETIRED_FLAG_KEYS in
+  // services/featureFlags.ts hides them from getAll, makes getByKey answer
+  // ABSENT, and makes setFlag throw. This deletion removes the rows; the
+  // register stays, because it is what catches the NEXT kill's leftover switch.
+  //
+  // Idempotent — a second run deletes nothing.
+  `DELETE FROM "platform_feature_flags" WHERE "key" IN ('feature_vision_ai', 'feature_voice_ai', 'feature_negotiation_copilot')`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

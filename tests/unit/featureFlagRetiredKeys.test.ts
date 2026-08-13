@@ -25,13 +25,20 @@
  * whose entire job is telling the founder what is switched on. Making the writes
  * work raised the stakes on the catalogue being true.
  *
- * WHAT THE FIX IS, AND WHAT IT IS NOT. `RETIRED_FLAG_KEYS` hides these from
- * `getAll` (so the console and `/api/config/features` never see them), makes
- * `getByKey` answer ABSENT (so a stored `state: "on"` can never be honoured),
- * and makes `setFlag` throw (so a write is refused rather than accepted and
- * ignored). **The rows themselves are left in the database** — deleting platform
- * rows is the same class of action as the 2026-08-01 table drops, which took an
- * explicit founder ruling, and the register makes them inert either way.
+ * WHAT THE FIX IS. `RETIRED_FLAG_KEYS` hides these from `getAll` (so the console
+ * and `/api/config/features` never see them), makes `getByKey` answer ABSENT (so
+ * a stored `state: "on"` can never be honoured), and makes `setFlag` throw (so a
+ * write is refused rather than accepted and ignored).
+ *
+ * **The ROWS are deleted too, as of the founder ruling on B16** — a `DELETE FROM
+ * platform_feature_flags` in `scripts/migrate.mjs`, applied on the next deploy.
+ * That is platform config rather than customer data, which is why it needed only
+ * the same class of ruling the 2026-08-01 dead-table drops took.
+ *
+ * **THE REGISTER STAYS AFTER THE ROWS GO, and that is the point.** It is not
+ * bookkeeping for three rows; it is what catches the NEXT kill's leftover
+ * switch — the defect unit 76 created and nothing noticed. Deleting it once the
+ * rows are gone would remove the only thing looking at the flag catalogue.
  *
  * BOTH DIRECTIONS ARE CHECKED, as every register in this repo is: each key here
  * must still be unreferenced by any code, and each deleted subsystem must still
@@ -212,6 +219,19 @@ describe("the service treats a retired key as absent, not as off", () => {
     expect(body).toContain("throw new RetiredFeatureFlagError(");
     // Before the update is built, not after it runs.
     expect(body.indexOf("RetiredFeatureFlagError")).toBeLessThan(body.indexOf("db\n"));
+  });
+
+  it("the dead rows are deleted in the deploy path, and the register outlives them", () => {
+    // Founder ruling on B16. The DELETE runs on the next deploy; the register is
+    // what keeps working afterwards, so a later reader does not remove it as
+    // "bookkeeping for rows that no longer exist".
+    const migrate = fs.readFileSync(path.join(ROOT, "scripts/migrate.mjs"), "utf8");
+    const at = migrate.indexOf('DELETE FROM "platform_feature_flags"');
+    expect(at, "the B16 row deletion is gone from scripts/migrate.mjs").toBeGreaterThan(-1);
+    const stmt = migrate.slice(at, migrate.indexOf("`", at));
+    for (const key of Object.keys(RETIRED_FLAG_KEYS)) {
+      expect(stmt, `${key} is registered as retired but not in the DELETE`).toContain(key);
+    }
   });
 
   it("both admin write surfaces render the refusal as 404", () => {

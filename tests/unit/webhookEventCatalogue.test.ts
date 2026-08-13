@@ -187,6 +187,81 @@ describe("the live set is derived from emitters, not maintained by hand", () => 
   });
 });
 
+/**
+ * B8's ONE STANDING RULE, enforced (founder ruling 2026-08-13: keep deferring).
+ *
+ * There are two webhook rails. The legacy one — `organization_integrations.
+ * credentials.endpoints`, 36 declared events, 3 in-process retries, no DLQ, no
+ * delivery log — is mounted and emits exactly ONE event. The `server/api-v1/*`
+ * rail — real `webhook_subscriptions` rows, 5 attempts with backoff, a DLQ, a
+ * `webhook_delivery_log`, Stripe-style signatures — is complete and **entirely
+ * unmounted**, which is the expansion ladder behaving correctly: *no public API
+ * before ~50 customers*.
+ *
+ * Asked which rail survives, the founder ruled: **keep deferring.** The trigger
+ * has not fired, and deferred infrastructure is not rot.
+ *
+ * That ruling has exactly one consequence for today's code, and B8 states it:
+ * *"Do not wire the five uncalled convenience wrappers into product code before
+ * this is decided. Adding emitters to the legacy rail is precisely the change
+ * that would make it expensive to retire."* Every new emitter is another
+ * integration to migrate on the day the better rail is mounted.
+ *
+ * So the emitter set is pinned at one. This is an INVERTED assertion, like
+ * `FOUNDER_ROUTE_BASELINE`: it does not say the count is right, it says the
+ * count must not grow without the decision being made. Wiring
+ * `webhookDealCreated` — a two-line change that looks like an improvement —
+ * fails here and asks for B8 instead.
+ */
+describe("the legacy rail does not grow emitters while B8 is deferred", () => {
+  const { events: derived, sites } = deriveLiveEvents();
+
+  it("still exactly one emitter, on the legacy rail", () => {
+    expect(
+      derived,
+      `Derived from call sites:\n` +
+        derived.map((e) => `  ${e}  ← ${sites.get(e)!.join(", ")}`).join("\n") +
+        `\n\nA new emitter was wired onto the LEGACY webhook rail. That is the ` +
+        `one change BLOCKERS B8 asks you not to make while the rail question is ` +
+        `deferred (founder ruling 2026-08-13): every emitter is another live ` +
+        `integration to migrate when the api-v1 rail — which already has ` +
+        `retries, a DLQ and a delivery log — is mounted at the ~50-customer ` +
+        `trigger.\n\nIf the event genuinely needs to fire now, say so in B8 and ` +
+        `raise this list in the same commit. If the rail decision has been made, ` +
+        `replace this check with the migration plan.`,
+    ).toEqual(["lead.created"]);
+  });
+
+  it("the better rail is still unmounted, which is why the pin holds", () => {
+    // The premise. If someone mounts registerPublicApiV1, the ladder trigger has
+    // fired, the deferral is over, and this whole block should be revisited
+    // rather than maintained out of habit.
+    const routes = stripComments(fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf8"));
+    expect(
+      routes,
+      "registerPublicApiV1 is mounted — the public API is live, so B8's " +
+        "deferral has ended. Decide which rail owns customer webhooks and " +
+        "replace the emitter pin above with the migration.",
+    ).not.toContain("registerPublicApiV1(");
+  });
+
+  it("the five uncalled wrappers still exist, uncalled", () => {
+    // Both directions. They are correct code and the survivor rail will want
+    // their shapes; the rule is about CALLING them, not about keeping them.
+    const dispatcher = fs.readFileSync(path.join(ROOT, DISPATCHER), "utf8");
+    for (const w of [
+      "webhookLeadStatusChanged",
+      "webhookDealCreated",
+      "webhookDealStageChanged",
+      "webhookPaymentReceived",
+      "webhookCampaignResponse",
+    ]) {
+      expect(dispatcher, `${w} was deleted — B8 defers the rail choice, it does ` +
+        `not retire the wrappers`).toContain(`export async function ${w}`);
+    }
+  });
+});
+
 describe("the picker cannot offer an event the wire does not carry", () => {
   it("every offered event is in the vocabulary", () => {
     // The original defect, stated directly. Six of fifteen failed this.
