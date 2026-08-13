@@ -960,11 +960,17 @@ and say which.
 
 - ✅ *icon-only buttons have `aria-label`* — unit 66. All 728 tsx files, per
   element, `asChild` followed to the child. **207/207 compliant**, baseline zero.
-- ✅ *form inputs have an associated label* — unit 68. **607/723 compliant**;
-  the remaining 107 are a per-file, down-only register in the same test. Fixing
-  one is a two-token change: `htmlFor` on the Label, `id` on the Input, both from
-  a `useId()` prefix. `components/parcels/arv-calculator.tsx` is the worked
-  example.
+- ✅ *form inputs have an associated label* — units 68–74. **723/723**. The
+  register went 116 → 0 and `LABEL_DEBT` is now an empty map, so the check is an
+  ABSOLUTE, not a ratchet. Do not re-add an entry to make a build pass: every
+  case has one of five two-token answers — `htmlFor`/`id` with a literal id; the
+  same with an indexed id inside a `.map()`; `aria-label` where there is no
+  visible label; an `aria-label` EACH where a row of fields shares one heading;
+  or `<FormControl>` wrapping the control itself.
+- ✅ *`<FormControl>` wraps the control, not a layout div* — unit 73. A Radix
+  `Slot` forwards its `id` to the IMMEDIATE child, so a wrapper `<div>` swallows
+  it and `<FormLabel htmlFor>` points at a div. Fourteen sites were in that
+  state, and unit 68's own FormControl exemption had passed all fourteen.
 - ⬜ *every interactive element has a visible focus state* — **no gate, and the
   naive one is wrong.** It is handled globally by `*:focus-visible` in
   `index.css`, so the failure mode is not omission but REMOVAL: a component
@@ -973,3 +979,20 @@ and say which.
   them and the scan cannot tell. **Do not freeze 50 findings without checking a
   sample in a browser** — that is exactly the mistake unit 68 caught in itself
   (191 → 116 once shadcn's `FormControl` was understood).
+
+**Four kinds of no-op mutation, all met this session.** A mutation that applies,
+produces a real diff, and still tests nothing:
+
+1. **An inserted marker** (unit 52) — an unused field added to the record under
+   test; the semantic value was never touched.
+2. **A partial string replace** (unit 59) — one of eight `dataSourceBroker.lookup(`
+   occurrences changed, leaving the `toContain` satisfied.
+3. **A partial comment deletion** (unit 65) — the block's first line removed,
+   leaving the words the assertion actually reads.
+4. **An empty input space** (unit 74) — the logic genuinely changed, and nothing
+   in the repo exercises the changed branch. Widening an exemption at zero debt
+   is the archetype.
+
+Only the fourth is not a mistake in the mutation. The check is the same in every
+case: **before believing a mutation survived, ask what would have had to be true
+for it to fail** — and confirm that thing exists.
