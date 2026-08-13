@@ -15,13 +15,13 @@
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1969,
+      "line": 1952,
       "category": "id",
       "note": "Escalation record id suffix \u2014 entropy for uniqueness."
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 2093,
+      "line": 2059,
       "category": "id",
       "note": "Workflow record id suffix \u2014 entropy for uniqueness."
     },
@@ -216,18 +216,6 @@
       "line": 130,
       "category": "id",
       "note": "Alert id suffix \u2014 entropy for uniqueness."
-    },
-    {
-      "file": "server/services/vaManagement.ts",
-      "line": 110,
-      "category": "id",
-      "note": "Task id suffix \u2014 entropy for uniqueness."
-    },
-    {
-      "file": "server/services/vaManagement.ts",
-      "line": 114,
-      "category": "id",
-      "note": "SOP id suffix \u2014 entropy for uniqueness."
     },
     {
       "file": "server/services/writingStyle.ts",

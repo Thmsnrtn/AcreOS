@@ -9206,6 +9206,76 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "outcomes_org_decision_idx" ON "outcomes" ("organization_id", "decision_snapshot_id", "observed_at")`,
   `CREATE INDEX IF NOT EXISTS "outcomes_org_subject_idx" ON "outcomes" ("organization_id", "subject_type", "subject_id", "observed_at")`,
+
+  // ── 0235 va_tasks + va_sops: the VA subsystem's persistence layer ──────────
+  // TWO new tables — scripts/ratchets/table-count.json 761 -> 763. Mirrors
+  // migrations/0235_va_tasks.sql + shared/schema/va-tasks.ts.
+  //
+  // WHY THE BUMP IS EARNED: services/vaManagement.ts declared its storage as two
+  // string constants (VA_TASKS_KEY / SOP_LIBRARY_KEY) and never read either.
+  // createTask was a pure function; POST /api/va/tasks answered 200 with an
+  // object it never stored; /api/va/metrics and /api/va/audit-trail computed
+  // over organizations.settings.va_tasks — an array with NO CREATOR anywhere in
+  // the repo — and returned zeros that read as measurements. BLOCKERS B9;
+  // founder ruling 2026-08-13 to build rather than delete.
+  //
+  // NOT the settings blob it was aimed at: that column is read on nearly every
+  // org-scoped request, so an unbounded task history there grows the hot path
+  // for every user forever, and concurrent writers clobber each other — the
+  // verify handler already carries a comment recording that bug being fixed
+  // once with jsonb_set.
+  //
+  // Context links are ON DELETE SET NULL, not cascade: a completed task is a
+  // record of work done and stays true after the lead it was about is deleted.
+  // note_id is deliberately unconstrained — two live note families exist and
+  // which is canonical is an open founder decision (B10).
+  `CREATE TABLE IF NOT EXISTS "va_tasks" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "assigned_to_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "assigned_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "title" text NOT NULL,
+    "description" text NOT NULL DEFAULT '',
+    "category" text NOT NULL DEFAULT 'other',
+    "priority" text NOT NULL DEFAULT 'medium',
+    "status" text NOT NULL DEFAULT 'pending',
+    "lead_id" integer REFERENCES "leads"("id") ON DELETE SET NULL,
+    "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+    "deal_id" integer REFERENCES "deals"("id") ON DELETE SET NULL,
+    "note_id" integer,
+    "sop_id" text,
+    "due_date" timestamp,
+    "estimated_minutes" integer,
+    "actual_minutes" integer,
+    "started_at" timestamp,
+    "completed_at" timestamp,
+    "completion_notes" text,
+    "attachment_urls" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "loom_url" text,
+    "verified" boolean,
+    "verified_at" timestamp,
+    "verified_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "verification_notes" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "va_tasks_org_assignee_idx" ON "va_tasks" ("organization_id", "assigned_to_user_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "va_tasks_org_status_idx" ON "va_tasks" ("organization_id", "status", "updated_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "va_sops" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "title" text NOT NULL,
+    "category" text NOT NULL DEFAULT 'other',
+    "description" text NOT NULL DEFAULT '',
+    "steps" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "estimated_minutes" integer NOT NULL DEFAULT 0,
+    "derived_from_default_title" text,
+    "created_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "va_sops_org_category_idx" ON "va_sops" ("organization_id", "category", "title")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

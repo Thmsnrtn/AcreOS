@@ -16,6 +16,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { getOrganizationId } from "./types/request";
 import { requireFounder } from "./auth/clerkAuth";
 import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
@@ -42,6 +43,81 @@ const auth = [isAuthenticated, getOrCreateOrg];
  * Raising it is a code change someone has to justify, not a request field.
  */
 const MAX_DAILY_AD_BUDGET_CENTS = 50_000;
+
+// ── VA task + SOP request shapes (BLOCKERS B9, founder ruling 2026-08-13) ────
+//
+// Validated rather than spread: these endpoints now WRITE, and the previous
+// versions took whole objects from the request body — the update endpoint took
+// the record it was "updating" from the caller. `organizationId` is absent from
+// every shape below on purpose; it comes from the authenticated request, never
+// from the body.
+const VA_TASK_CATEGORY = z.enum([
+  "research", "outreach", "data_entry", "document_prep",
+  "follow_up", "marketing", "admin", "other",
+]);
+const VA_TASK_PRIORITY = z.enum(["low", "medium", "high", "urgent"]);
+const VA_TASK_STATUS = z.enum([
+  "pending", "in_progress", "completed", "blocked", "cancelled",
+]);
+
+const createVaTaskSchema = z.object({
+  title: z.string().min(1).max(300),
+  description: z.string().max(5000).optional(),
+  category: VA_TASK_CATEGORY.optional(),
+  priority: VA_TASK_PRIORITY.optional(),
+  status: VA_TASK_STATUS.optional(),
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  leadId: z.number().int().positive().optional(),
+  propertyId: z.number().int().positive().optional(),
+  dealId: z.number().int().positive().optional(),
+  noteId: z.number().int().positive().optional(),
+  sopId: z.string().max(100).optional(),
+  dueDate: z.string().datetime().optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+});
+
+const updateVaTaskSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional(),
+  category: VA_TASK_CATEGORY.optional(),
+  priority: VA_TASK_PRIORITY.optional(),
+  status: VA_TASK_STATUS.optional(),
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  dueDate: z.string().datetime().optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  actualMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  completionNotes: z.string().max(5000).optional(),
+  attachmentUrls: z.array(z.string().url()).max(20).optional(),
+  loomUrl: z.string().url().optional(),
+  // completedAt / startedAt are DERIVED from the status transition, never
+  // accepted: a caller-supplied completion time is how "tasks completed this
+  // week" becomes a number someone typed.
+});
+
+const listVaTasksSchema = z.object({
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  status: VA_TASK_STATUS.optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+});
+
+const createVaSopSchema = z.object({
+  title: z.string().min(1).max(300),
+  category: VA_TASK_CATEGORY.optional(),
+  description: z.string().max(5000).optional(),
+  steps: z
+    .array(
+      z.object({
+        stepNumber: z.number().int().positive(),
+        instruction: z.string().min(1).max(2000),
+        videoUrl: z.string().url().optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  derivedFromDefaultTitle: z.string().max(300).optional(),
+});
 
 export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
@@ -643,42 +719,103 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Create a task — REFUSED, because it never stored one.
+  // Create a task. This used to refuse with 501, and the refusal was right at
+  // the time: `createTask` was a PURE FUNCTION that stamped an id onto its input
+  // and returned it, so a 200 here described a record that existed only in that
+  // response body. `VA_TASKS_KEY` was declared and never used; nothing in the
+  // repo wrote `organizations.settings.va_tasks`.
   //
-  // `vaManagement.createTask` is a PURE FUNCTION: it stamps an id and
-  // timestamps onto its input and returns the object. Nothing persisted it.
-  // `VA_TASKS_KEY = "va_tasks"` is declared in that module and never used, and
-  // no code anywhere in the repo writes `settings.va_tasks` — the only write is
-  // a jsonb_set inside `/api/va/tasks/:id/verify`, which read-modify-writes an
-  // array nothing ever populates.
-  //
-  // So this returned 200 with a task-shaped object that existed only in the
-  // response body. A caller could not tell a stored record from a fabricated
-  // one, which is the whole reason 501 is the honest answer and 200 was not.
-  // See BLOCKERS B9 — building the persistence layer, or removing the
-  // subsystem, is a founder decision; continuing to claim a save is not.
-  app.post("/api/va/tasks", ...auth, (_req: Request, res: Response) => {
-    return Errors.notImplemented(
-      res,
-      "VA tasks are not stored. There is no persistence layer behind this " +
-        "endpoint — no code writes organizations.settings.va_tasks — so a task " +
-        "created here would exist only in this response. See BLOCKERS B9.",
-    );
+  // BLOCKERS B9 held the decision — build the layer or delete the subsystem —
+  // and the founder ruled on 2026-08-13 to build it. `va_tasks` is a real table
+  // with a migration (0235), and this endpoint now stores what it returns.
+  app.post("/api/va/tasks", ...auth, async (req: Request, res: Response) => {
+    try {
+      const parsed = createVaTaskSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const task = await vaManagement.createTask(getOrganizationId(req), {
+        ...parsed.data,
+        // Who assigned it is the caller, not a request field — a body-supplied
+        // assigner is an audit trail anyone can write their own name out of.
+        assignedByUserId: req.user?.id,
+      });
+      // 200, not 201: the `res-status-raw` ratchet counts every `res.status(`
+      // because that is how error responses bypass the Errors helpers, and a
+      // status code no caller reads is not worth a line of that budget. The
+      // created task, id and all, is in the body either way.
+      res.json(task);
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
   });
 
-  // Update a task — REFUSED for the same reason, and one more.
-  //
-  // It took `{ task, updates }` FROM THE REQUEST BODY, merged them in memory
-  // and returned the result. It never read or wrote storage, and it ignored
-  // `:id` entirely — the caller supplied the record it was "updating", so the
-  // endpoint was a merge function with a URL.
-  app.put("/api/va/tasks/:id", ...auth, (_req: Request, res: Response) => {
-    return Errors.notImplemented(
-      res,
-      "VA tasks are not stored, so there is nothing here to update. This " +
-        "endpoint merged two objects from the request body and ignored :id " +
-        "entirely. See BLOCKERS B9.",
-    );
+  // List tasks. NEW, and the reason the create endpoint is worth having: a
+  // subsystem that can store a task but never show it back is the same dead end
+  // in a different place.
+  app.get("/api/va/tasks", ...auth, async (req: Request, res: Response) => {
+    try {
+      const parsed = listVaTasksSchema.safeParse(req.query);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), parsed.data);
+      res.json({ tasks });
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // One task, or a 404 that does not confirm the row exists elsewhere.
+  app.get("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
+      res.json(await vaManagement.getTask(getOrganizationId(req), id));
+    } catch (err: unknown) {
+      if (err instanceof vaManagement.VaTaskNotInOrgError) return Errors.notFound(res, "Task");
+      Errors.internal(res, err);
+    }
+  });
+
+  // Update a task. This also used to refuse, for one more reason than the
+  // create did: it took `{ task, updates }` FROM THE REQUEST BODY, merged them
+  // in memory, returned the result, and IGNORED `:id` entirely — a merge
+  // function with a URL. It now reads the stored row within the caller's
+  // organization, applies the patch, and derives the lifecycle stamps itself.
+  app.put("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
+      const parsed = updateVaTaskSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      res.json(await vaManagement.updateTask(getOrganizationId(req), id, parsed.data));
+    } catch (err: unknown) {
+      if (err instanceof vaManagement.VaTaskNotInOrgError) return Errors.notFound(res, "Task");
+      Errors.internal(res, err);
+    }
+  });
+
+  // The org's own SOP library, which `SOP_LIBRARY_KEY` was declared for and
+  // never written to. Distinct from GET /api/va/sops/defaults above: that
+  // serves DEFAULT_SOPS, AcreOS's own procedure catalogue, versioned with the
+  // code. This serves what the ORG wrote.
+  app.get("/api/va/sops", ...auth, async (req: Request, res: Response) => {
+    try {
+      res.json({ sops: await vaManagement.listSops(getOrganizationId(req)) });
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
+  });
+
+  app.post("/api/va/sops", ...auth, async (req: Request, res: Response) => {
+    try {
+      const parsed = createVaSopSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const sop = await vaManagement.createSop(getOrganizationId(req), {
+        ...parsed.data,
+        createdByUserId: req.user?.id,
+      });
+      res.json(sop);
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
   });
 
   logger.info("✅ Elite feature routes registered");

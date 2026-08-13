@@ -157,25 +157,32 @@ describe("the field is part of its column's contract", () => {
     expect(va).toContain("orgRecord?.settings?.va_workflows");
   });
 
-  it("the remaining siblings are still there, and still unfixed", () => {
-    // A deliberately inverted assertion, like BLOCKED_ON_A_REAL_LINK. It
-    // documents the remaining work in the only place that cannot go stale, and
-    // fails when someone fixes one — at which point they should extend this
-    // file's coverage to it rather than leave a half-true comment above.
+  it("no sibling collection reads settings through a cast any more", () => {
+    // THIS ASSERTION USED TO BE INVERTED, and it worked exactly as designed —
+    // twice. It listed the collections in this file that still reached
+    // `settings` through `(orgRecord as any)` and REQUIRED them to still be
+    // broken, so that fixing one failed here and forced the fixer to extend
+    // this file's coverage rather than leave a half-true comment above.
     //
-    // IT HAS ALREADY DONE THAT ONCE. Unit 48 wired `va_escalations` (it
-    // notified nobody and nothing read it back), and this assertion failed on
-    // the next full run, which is how it came off the list. That is the
-    // mechanism working, not a maintenance cost.
+    //   - `va_escalations` came off the list in unit 48 (it notified nobody and
+    //     nothing read it back). Covered by vaEscalationDelivery.test.ts.
+    //   - `va_tasks` and `va_scheduled_tasks` came off it on 2026-08-13, when
+    //     the founder ruled on BLOCKERS B9. Tasks moved to the `va_tasks` TABLE
+    //     (migration 0235) — the blob was never a good home for an unbounded
+    //     history read on every org-scoped request. `va_scheduled_tasks` had
+    //     exactly one reference in the repo, that read, and now refuses with
+    //     501 rather than returning `[]` from a store with no writer. Covered
+    //     by vaTaskPersistence.test.ts.
     //
-    // `va_escalations` is covered by vaEscalationDelivery.test.ts now.
-    for (const key of ["va_tasks", "va_scheduled_tasks"]) {
+    // With the list empty, the inversion has nothing left to protect, so it
+    // flips to the plain form: none of them may come back.
+    for (const key of ["va_tasks", "va_scheduled_tasks", "va_escalations"]) {
       expect(
         va.includes(`(orgRecord as any)?.settings?.${key}`),
-        `${key} no longer reads through a cast — if it has been declared and ` +
-          `bounded too, extend the assertions above to cover it and drop it ` +
-          `from this list.`,
-      ).toBe(true);
+        `${key} reads organizations.settings through \`as any\` again. The cast ` +
+          `is what let these fields stay undeclared, and an undeclared field ` +
+          `cannot be carried by a typed write and can be erased by one (unit 43).`,
+      ).toBe(false);
     }
   });
 });

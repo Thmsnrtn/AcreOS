@@ -11,6 +11,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
+import { getOrganizationId } from "./types/request";
+import * as vaManagement from "./services/vaManagement";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -1792,31 +1794,31 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // VA ENGINE — PERFORMANCE METRICS, AUDIT TRAIL, TASKS & WORKFLOWS
   // ============================================
 
-  // GET /api/va/metrics — VA performance metrics
+  // GET /api/va/metrics — VA performance metrics.
+  //
+  // Read from `va_tasks` since 2026-08-13. It used to compute over
+  // `organizations.settings.va_tasks`, an array with NO CREATOR anywhere in the
+  // repository, so it always returned zeros — and zeros READ as measurements.
+  // "0 tasks completed" and "no task tracking exists" are different facts, and
+  // this endpoint stated the first while meaning the second. BLOCKERS B9.
   api.get("/api/va/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
       const { period = "week" } = req.query;
-
-      // Build metrics from tasks stored in org settings
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), { limit: 500 });
 
       const now = new Date();
       const periodStart =
         period === "today"
-          ? new Date(now.setHours(0, 0, 0, 0))
+          ? new Date(new Date().setHours(0, 0, 0, 0))
           : period === "month"
           ? new Date(now.getFullYear(), now.getMonth(), 1)
           : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-      const periodTasks = tasks.filter(
-        (t: any) => new Date(t.createdAt) >= periodStart
-      );
-      const completed = periodTasks.filter((t: any) => t.status === "completed");
+      const periodTasks = tasks.filter((t) => new Date(t.createdAt) >= periodStart);
+      const completed = periodTasks.filter((t) => t.status === "completed");
       const totalMinutes = completed.reduce(
-        (sum: number, t: any) => sum + (t.actualMinutes || t.estimatedMinutes || 0),
-        0
+        (sum, t) => sum + (t.actualMinutes ?? t.estimatedMinutes ?? 0),
+        0,
       );
 
       const byType: Record<string, number> = {};
@@ -1841,24 +1843,20 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  // GET /api/va/audit-trail — full audit log of VA actions
+  // GET /api/va/audit-trail — full audit log of VA actions. Same story as the
+  // metrics above: it read an array nothing could populate, and an empty trail
+  // is indistinguishable from "no work was done".
   api.get("/api/va/audit-trail", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const { limit = "50", offset = "0" } = req.query;
+      const limit = Math.min(parseInt((req.query.limit as string) || "50", 10) || 50, 200);
+      const offset = Math.max(parseInt((req.query.offset as string) || "0", 10) || 0, 0);
 
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), { limit: 500 });
+      const touched = tasks
+        .filter((t) => t.completedAt || t.status !== "pending")
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-      const completed = tasks
-        .filter((t: any) => t.completedAt || t.status !== "pending")
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        )
-        .slice(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string));
-
-      const auditEntries = completed.map((t: any) => ({
+      const auditTrail = touched.slice(offset, offset + limit).map((t) => ({
         taskId: t.id,
         title: t.title,
         category: t.category,
@@ -1869,58 +1867,43 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         updatedAt: t.updatedAt,
         completionNotes: t.completionNotes,
         actualMinutes: t.actualMinutes,
-        reasoning: t.completionNotes || "Task completed as assigned",
+        // The old shape carried `reasoning: t.completionNotes || "Task completed
+        // as assigned"` — a default sentence presented as the VA's own account
+        // of what they did. An absent note is an absent note.
         result: t.status,
       }));
 
-      res.json({ auditTrail: auditEntries, total: tasks.length });
+      res.json({ auditTrail, total: touched.length });
     } catch (error: any) {
       logger.error("VA audit trail error", error);
       Errors.internal(res, error);
     }
   });
 
-  // POST /api/va/tasks/:id/verify — verify task completion
+  // POST /api/va/tasks/:id/verify — record a supervisor's review.
+  //
+  // This was the ONLY write to `settings.va_tasks` in the entire repository: a
+  // read-modify-write of an array nothing ever populated, so it could never find
+  // a task and always answered 404. It now updates the row, scoped to the
+  // caller's organization, and `verified` is nullable in the table so "not
+  // reviewed" and "reviewed and rejected" stay distinguishable.
   api.post("/api/va/tasks/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const taskId = req.params.id;
-      const { verified, notes } = req.body;
-
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
-      const taskIndex = tasks.findIndex((t: any) => t.id === taskId);
-
-      if (taskIndex === -1) {
+      const taskId = Number(req.params.id);
+      if (!Number.isInteger(taskId)) {
+        return Errors.badRequest(res, "task id must be an integer");
+      }
+      const { verified, notes } = req.body ?? {};
+      const task = await vaManagement.verifyTask(getOrganizationId(req), taskId, {
+        verified: verified !== false,
+        notes: typeof notes === "string" ? notes : undefined,
+        verifiedByUserId: req.user?.id,
+      });
+      res.json({ success: true, task });
+    } catch (error: any) {
+      if (error instanceof vaManagement.VaTaskNotInOrgError) {
         return Errors.notFound(res, "Task");
       }
-
-      tasks[taskIndex] = {
-        ...tasks[taskIndex],
-        verified: verified !== false,
-        verifiedAt: new Date().toISOString(),
-        verificationNotes: notes,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // 2026-07 audit: atomic jsonb_set on the va_tasks key only — the old
-      // whole-object spread clobbered concurrently-written sibling settings
-      // keys (mailMode, aiSettings, …) with this handler's stale copy.
-      {
-        const { db } = await import("./db");
-        const { organizations } = await import("@shared/schema");
-        const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
-        await db
-          .update(organizations)
-          .set({
-            settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{va_tasks}', ${JSON.stringify(tasks)}::jsonb)` as any,
-            updatedAt: new Date(),
-          })
-          .where(eqOp(organizations.id, org.id));
-      }
-
-      res.json({ success: true, task: tasks[taskIndex] });
-    } catch (error: any) {
       logger.error("Verify task error", error);
       Errors.internal(res, error);
     }
@@ -2035,44 +2018,27 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  // GET /api/va/scheduled — list scheduled tasks with next run times
-  api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-
-      const orgRecord = await storage.getOrganization(org.id);
-      const scheduled: any[] = (orgRecord as any)?.settings?.va_scheduled_tasks || [];
-
-      // Compute next run time for each scheduled task
-      const enriched = scheduled.map((task: any) => {
-        const now = new Date();
-        let nextRunAt: string | null = null;
-
-        if (task.cronExpression === "daily") {
-          const next = new Date(now);
-          next.setDate(next.getDate() + 1);
-          next.setHours(task.runAtHour || 9, 0, 0, 0);
-          nextRunAt = next.toISOString();
-        } else if (task.cronExpression === "weekly") {
-          const next = new Date(now);
-          next.setDate(next.getDate() + 7);
-          nextRunAt = next.toISOString();
-        } else if (task.cronExpression === "monthly") {
-          const next = new Date(now);
-          next.setMonth(next.getMonth() + 1, 1);
-          nextRunAt = next.toISOString();
-        } else if (task.nextRunAt) {
-          nextRunAt = task.nextRunAt;
-        }
-
-        return { ...task, nextRunAt };
-      });
-
-      res.json({ scheduledTasks: enriched });
-    } catch (error: any) {
-      logger.error("Get scheduled tasks error", error);
-      Errors.internal(res, error);
-    }
+  // GET /api/va/scheduled — REFUSED, because there is nothing to schedule from.
+  //
+  // It read `organizations.settings.va_scheduled_tasks` and computed a next-run
+  // time for each entry. That key had exactly ONE reference in the entire
+  // repository: this read. Nothing has ever written it, so the endpoint returned
+  // `[]` — and `[]` from a store with no writer says "you have no recurring
+  // tasks" when the truth is "recurring tasks do not exist here".
+  //
+  // NOT built alongside `va_tasks` (BLOCKERS B9, founder ruling 2026-08-13),
+  // deliberately. Recurring work needs a template table AND a runner that fires
+  // it; a schedule table with no runner would be a list of promises nothing
+  // keeps, which is the "built but unwired" defect this repo keeps finding. One
+  // refusal is cheaper to remove later than a half-built scheduler is to trust.
+  api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (_req, res) => {
+    return Errors.notImplemented(
+      res,
+      "Recurring VA tasks are not implemented. One-off tasks are stored in the " +
+        "va_tasks table (POST/GET /api/va/tasks); a recurring schedule needs a " +
+        "template table and a job to fire it, and neither exists — so this " +
+        "endpoint would only ever return an empty list. See BLOCKERS B9.",
+    );
   });
 
   // POST /api/va/workflows — create multi-step workflow

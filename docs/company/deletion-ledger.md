@@ -87,6 +87,13 @@ correctness risks across 2+ machines. Disposition:
   their parents.
 
 **Pinned (header comment at the state declaration; fix before load-bearing use):**
+- `vaManagement.ts` VA_TASKS_KEY / SOP_LIBRARY_KEY → **RESOLVED 2026-08-13 by
+  building the layer** (founder ruling, BLOCKERS B9). These two constants were
+  never module STATE — they were the NAMES of a settings-blob store that was
+  never written, which is a subtler version of the same failure: no data was
+  lost on deploy because no data was ever kept. `va_tasks` and `va_sops` are real
+  tables now (migration 0235). The blob was the wrong destination anyway:
+  `organizations.settings` is read on nearly every org-scoped request.
 - `notificationDispatcher.ts` → persist to the existing `notifications` table
 - `marketWatchlist.ts` → DB tables + sequences
 - `abTestEngine.ts` → persist outcomes, aggregate in SQL

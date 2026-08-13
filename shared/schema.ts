@@ -18686,3 +18686,11 @@ export * from "./schema/scenarios";
 // references the decision already froze (law 9: outcomes append, they do not
 // rewrite history).
 export * from "./schema/outcomes";
+
+// VA task management and the org's SOP library (BLOCKERS B9, founder ruling
+// 2026-08-13). The persistence layer `services/vaManagement.ts` declared as two
+// unused string constants — `VA_TASKS_KEY` / `SOP_LIBRARY_KEY` — and never
+// wrote. Tasks lived in `organizations.settings.va_tasks`, an array with no
+// creator anywhere in the repo, which is why the metrics and audit-trail
+// endpoints returned zeros that read as measurements.
+export * from "./schema/va-tasks";

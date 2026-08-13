@@ -230,10 +230,60 @@ force the catalogue to admit it the moment anyone does.
 
 ## B9 — The VA task subsystem does not work, end to end
 
+**RESOLVED by building it** (unit 78, founder ruling 2026-08-13). The founder's
+answer named the scope: *"real tables + migration for VA tasks and the SOP
+library, wired to the existing routes."*
+
+**What was built:**
+
+- **`va_tasks` and `va_sops`** — migration `0235`, mirrored in
+  `scripts/migrate.mjs`, org-leading indexes, `ON DELETE SET NULL` on every
+  context link (a completed task is a record of work done and stays true after
+  the lead it was about is deleted; tenant deletion still cascades through
+  `organization_id`). `table-count` 761 → 763 with the reasoning in the bump note.
+- **An org-scoped service layer.** Every persisting function takes
+  `organizationId` as a required parameter and filters on it;
+  `VaTaskNotInOrgError` covers both "not yours" and "not there" so a caller
+  cannot tell them apart, and routes render it 404.
+- **The routes, wired.** `POST /api/va/tasks` and `PUT /api/va/tasks/:id` store
+  and update instead of refusing; `GET /api/va/tasks` and `GET /api/va/tasks/:id`
+  are new, because a subsystem that can store a task and never show it back is
+  the same dead end in a different place; `GET/POST /api/va/sops` is the library
+  `SOP_LIBRARY_KEY` was declared for; and metrics, audit-trail and verify read
+  the table.
+
+**Three things worth recording beyond "it was built":**
+
+1. **A type error that would have 500'd on deploy, caught by checking.** The
+   original `VaTask` interface declared `assignedToUserId: number` — and nothing
+   ever contradicted it, because there was no column to check it against.
+   `users.id` is a **varchar**. An integer column would have failed at
+   `CREATE TABLE` with *"Key columns are of incompatible types"*. This is exactly
+   the class CLAUDE.md names, found because the schema was written against the
+   real `users` table rather than against the interface that described it.
+2. **The audit trail was fabricating the assistant's own account of the work.**
+   It carried `reasoning: t.completionNotes || "Task completed as assigned"` — a
+   default sentence presented as what the VA said they did. Removed; an absent
+   note is an absent note.
+3. **Recurring tasks were deliberately NOT built.** `GET /api/va/scheduled` read
+   `settings.va_scheduled_tasks`, which had exactly one reference in the
+   repository — that read. A schedule table with no runner would be the
+   built-but-unwired defect this repo keeps finding, so the endpoint refuses with
+   501 naming what is absent, rather than returning `[]` from a store with no
+   writer. **This is the one part of B9 still open**, and it is a smaller
+   question than the one just answered.
+
+Ratchets: `as-any` 1396 → 1391 and `colon-any` 3006 → 2992 (the casts and `any[]`
+annotations were all reading a blob nothing populated), `unreached-exports`
+654 → 653 (`generateTaskId` / `generateSopId` minted `task_<ts>_<random>` ids
+because there was no database to allocate one — fabricated identifiers, and
+unreached besides).
+
 **Found:** unit 48→49, by following unit 48's question ("does anything read this
 back?") across the rest of `organizations.settings`.
-**Blocked on:** a founder decision — build the persistence layer, or remove the
-subsystem. Not a technical unknown; every fact below is verified at HEAD.
+**Was blocked on:** a founder decision — build the persistence layer, or remove
+the subsystem. The record below is the state at the time the decision was asked
+for.
 
 ### `organizations.settings.va_tasks` has NO CREATOR anywhere
 

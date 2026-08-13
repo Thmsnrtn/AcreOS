@@ -1,6 +1,38 @@
 /**
  * Virtual Assistant (VA) Management Service
  *
+ * PERSISTENCE, ADDED 2026-08-13 (BLOCKERS B9, founder ruling). This module used
+ * to declare its storage as two string constants and stop there:
+ *
+ *     // IN-MEMORY STORE (replace with DB tables when schema migration is run)
+ *     const VA_TASKS_KEY = "va_tasks";
+ *     const SOP_LIBRARY_KEY = "sop_library";
+ *
+ * Neither was ever read. `createTask` was a PURE FUNCTION that stamped an id
+ * onto its input and returned it, so `POST /api/va/tasks` answered 200 with a
+ * task-shaped object that existed only in that response; the metrics and
+ * audit-trail endpoints computed over `organizations.settings.va_tasks`, an
+ * array with no creator anywhere in the repository, and returned zeros that read
+ * as measurements. Unit 49 replaced the two endpoints that CLAIMED a save with
+ * honest 501s and recorded the rest as B9. The founder ruled: build it.
+ *
+ * The shape of this file after that ruling:
+ *
+ *   - **Pure functions stay pure.** `calculateVaMetrics` and
+ *     `generateStandupDigest` take an array of tasks and compute over it. They
+ *     are unit-testable without a database and are used by both the stored path
+ *     and the `POST /api/va/metrics` "compute over these tasks I am handing you"
+ *     endpoint.
+ *   - **Everything that persists is org-scoped and takes `organizationId` as a
+ *     required parameter**, never as an optional one and never inferred. A
+ *     `VaTaskNotInOrgError` is raised rather than returning null so a caller
+ *     cannot mistake "not yours" for "not found" and act on the difference —
+ *     the route renders it as 404, which is this repo's convention for
+ *     withholding existence.
+ *   - **Ids are serial integers now.** `generateTaskId()` minted
+ *     `task_<ts>_<random>` strings because there was no database to allocate
+ *     one; with a real table that function was a fabricated identifier.
+ *
  * Enables real estate professionals to manage their VA team:
  * - Assign tasks to specific VAs from lead/property/deal context
  * - VA task queue: focused view showing only assigned work
@@ -11,31 +43,43 @@
  */
 
 import { db } from "../db";
-import { leads, properties } from "@shared/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { vaTasks, vaSops } from "@shared/schema";
+import type {
+  VaTaskRow,
+  VaSopRow,
+  VaTaskCategory,
+  VaTaskPriority,
+  VaTaskStatus,
+  VaSopStep,
+} from "@shared/schema/va-tasks";
+import { and, desc, eq } from "drizzle-orm";
 import { startOfDay, endOfDay, subDays, format } from "date-fns";
 
 // ============================================
 // TYPES — Task assignment system
 // ============================================
 
-export type TaskPriority = "low" | "medium" | "high" | "urgent";
-export type TaskStatus = "pending" | "in_progress" | "completed" | "blocked" | "cancelled";
-export type TaskCategory =
-  | "research" // Due diligence, county research
-  | "outreach" // Calling, texting, emailing sellers
-  | "data_entry" // Entering leads, updating records
-  | "document_prep" // Preparing/organizing documents
-  | "follow_up" // Following up on open items
-  | "marketing" // Campaign setup, posting listings
-  | "admin" // Scheduling, bookkeeping support
-  | "other";
+/**
+ * The three unions are the table's column types, re-exported under this
+ * module's historical names. One definition, so a category that compiles here
+ * is a category the database accepts.
+ */
+export type TaskPriority = VaTaskPriority;
+export type TaskStatus = VaTaskStatus;
+export type TaskCategory = VaTaskCategory;
 
 export interface VaTask {
-  id: string;
+  /** Serial, allocated by the database. Was a minted `task_<ts>_<rand>` string. */
+  id: number;
   organizationId: number;
-  assignedToUserId: number;
-  assignedByUserId: number;
+  /**
+   * `users.id`, which is a VARCHAR (Clerk-linked) — not a number. The old
+   * interface said `number`, and nothing ever contradicted it because there was
+   * no column to check it against. An integer column would have failed at
+   * CREATE TABLE against `users("id")`.
+   */
+  assignedToUserId: string | null;
+  assignedByUserId: string | null;
 
   title: string;
   description: string;
@@ -69,19 +113,19 @@ export interface VaTask {
 }
 
 export interface Sop {
-  id: string;
+  id: number;
   organizationId: number;
   title: string;
   category: TaskCategory;
   description: string;
-  steps: { stepNumber: number; instruction: string; videoUrl?: string }[];
+  steps: VaSopStep[];
   estimatedMinutes: number;
   createdAt: string;
 }
 
 export interface DailyStandupDigest {
   date: string;
-  va: { userId: number; name: string };
+  va: { userId: string; name: string };
   tasksCompleted: number;
   tasksInProgress: number;
   leadsContacted: number;
@@ -92,59 +136,295 @@ export interface DailyStandupDigest {
 }
 
 // ============================================
-// IN-MEMORY STORE (replace with DB tables when schema migration is run)
-// These are "virtual" tables backed by organization settings JSON
-// until the proper migration adds them
+// TASK MANAGEMENT — persisted in `va_tasks`
 // ============================================
 
-// In production these would be actual DB tables.
-// For now, use organization's settings JSON as storage.
-const VA_TASKS_KEY = "va_tasks";
-const SOP_LIBRARY_KEY = "sop_library";
-
-// ============================================
-// TASK MANAGEMENT
-// ============================================
-
-export function generateTaskId(): string {
-  return `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+/**
+ * A task exists but belongs to another organization, or does not exist at all.
+ *
+ * One error for both cases, deliberately: distinguishing them tells a caller
+ * that a row with that id exists somewhere, which is exactly what tenant
+ * isolation withholds. Routes render this as 404 for the same reason.
+ */
+export class VaTaskNotInOrgError extends Error {
+  constructor(taskId: number) {
+    super(`VA task ${taskId} is not in this organization`);
+    this.name = "VaTaskNotInOrgError";
+  }
 }
 
-export function generateSopId(): string {
-  return `sop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
+const iso = (d: Date | null | undefined): string | undefined =>
+  d ? d.toISOString() : undefined;
 
-export function createTask(
-  input: Omit<VaTask, "id" | "createdAt" | "updatedAt">
-): VaTask {
-  const now = new Date().toISOString();
+/** A stored row in this module's `VaTask` shape. */
+export function toVaTask(row: VaTaskRow): VaTask {
   return {
-    ...input,
-    id: generateTaskId(),
-    status: input.status || "pending",
-    priority: input.priority || "medium",
-    createdAt: now,
-    updatedAt: now,
+    id: row.id,
+    organizationId: row.organizationId,
+    assignedToUserId: row.assignedToUserId,
+    assignedByUserId: row.assignedByUserId,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    priority: row.priority,
+    status: row.status,
+    leadId: row.leadId ?? undefined,
+    propertyId: row.propertyId ?? undefined,
+    dealId: row.dealId ?? undefined,
+    noteId: row.noteId ?? undefined,
+    sopId: row.sopId ?? undefined,
+    dueDate: iso(row.dueDate),
+    estimatedMinutes: row.estimatedMinutes ?? undefined,
+    actualMinutes: row.actualMinutes ?? undefined,
+    startedAt: iso(row.startedAt),
+    completedAt: iso(row.completedAt),
+    completionNotes: row.completionNotes ?? undefined,
+    attachmentUrls: row.attachmentUrls,
+    loomUrl: row.loomUrl ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-export function updateTask(
-  task: VaTask,
-  updates: Partial<VaTask>
-): VaTask {
+export interface CreateVaTaskInput {
+  title: string;
+  description?: string;
+  category?: TaskCategory;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  assignedToUserId?: string;
+  assignedByUserId?: string;
+  leadId?: number;
+  propertyId?: number;
+  dealId?: number;
+  noteId?: number;
+  sopId?: string;
+  dueDate?: string;
+  estimatedMinutes?: number;
+}
+
+/** Create a task. The organization is a parameter, never inferred. */
+export async function createTask(
+  organizationId: number,
+  input: CreateVaTaskInput,
+): Promise<VaTask> {
+  const [row] = await db
+    .insert(vaTasks)
+    .values({
+      organizationId,
+      title: input.title,
+      description: input.description ?? "",
+      category: input.category ?? "other",
+      priority: input.priority ?? "medium",
+      status: input.status ?? "pending",
+      assignedToUserId: input.assignedToUserId ?? null,
+      assignedByUserId: input.assignedByUserId ?? null,
+      leadId: input.leadId ?? null,
+      propertyId: input.propertyId ?? null,
+      dealId: input.dealId ?? null,
+      noteId: input.noteId ?? null,
+      sopId: input.sopId ?? null,
+      dueDate: input.dueDate ? new Date(input.dueDate) : null,
+      estimatedMinutes: input.estimatedMinutes ?? null,
+      // A task created as already-started or already-done carries the stamp its
+      // status implies, so the metrics below are not computing over a null.
+      startedAt: input.status === "in_progress" ? new Date() : null,
+      completedAt: input.status === "completed" ? new Date() : null,
+    })
+    .returning();
+  return toVaTask(row);
+}
+
+/** One task, within the organization. Throws rather than returning null. */
+export async function getTask(organizationId: number, taskId: number): Promise<VaTask> {
+  const [row] = await db
+    .select()
+    .from(vaTasks)
+    .where(and(eq(vaTasks.id, taskId), eq(vaTasks.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw new VaTaskNotInOrgError(taskId);
+  return toVaTask(row);
+}
+
+export interface ListVaTasksFilter {
+  assignedToUserId?: string;
+  status?: TaskStatus;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listTasks(
+  organizationId: number,
+  filter: ListVaTasksFilter = {},
+): Promise<VaTask[]> {
+  const where = [eq(vaTasks.organizationId, organizationId)];
+  if (filter.assignedToUserId != null) {
+    where.push(eq(vaTasks.assignedToUserId, filter.assignedToUserId));
+  }
+  if (filter.status) where.push(eq(vaTasks.status, filter.status));
+
+  const rows = await db
+    .select()
+    .from(vaTasks)
+    .where(and(...where))
+    .orderBy(desc(vaTasks.createdAt))
+    .limit(Math.min(filter.limit ?? 100, 500))
+    .offset(filter.offset ?? 0);
+  return rows.map(toVaTask);
+}
+
+export interface UpdateVaTaskInput {
+  title?: string;
+  description?: string;
+  category?: TaskCategory;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  assignedToUserId?: string;
+  dueDate?: string;
+  estimatedMinutes?: number;
+  actualMinutes?: number;
+  completionNotes?: string;
+  attachmentUrls?: string[];
+  loomUrl?: string;
+}
+
+/**
+ * Update a task within the organization.
+ *
+ * The lifecycle stamps are derived here rather than accepted from the caller:
+ * `startedAt` on the first move to `in_progress`, `completedAt` on the first
+ * move to `completed`, and neither is ever overwritten. A caller-supplied
+ * `completedAt` is how a "task completed" metric becomes a number someone typed.
+ */
+export async function updateTask(
+  organizationId: number,
+  taskId: number,
+  updates: UpdateVaTaskInput,
+): Promise<VaTask> {
+  const current = await getTask(organizationId, taskId);
+
+  const patch: Partial<typeof vaTasks.$inferInsert> = { updatedAt: new Date() };
+  if (updates.title !== undefined) patch.title = updates.title;
+  if (updates.description !== undefined) patch.description = updates.description;
+  if (updates.category !== undefined) patch.category = updates.category;
+  if (updates.priority !== undefined) patch.priority = updates.priority;
+  if (updates.status !== undefined) patch.status = updates.status;
+  if (updates.assignedToUserId !== undefined) {
+    patch.assignedToUserId = updates.assignedToUserId;
+  }
+  if (updates.dueDate !== undefined) patch.dueDate = new Date(updates.dueDate);
+  if (updates.estimatedMinutes !== undefined) {
+    patch.estimatedMinutes = updates.estimatedMinutes;
+  }
+  if (updates.actualMinutes !== undefined) patch.actualMinutes = updates.actualMinutes;
+  if (updates.completionNotes !== undefined) {
+    patch.completionNotes = updates.completionNotes;
+  }
+  if (updates.attachmentUrls !== undefined) patch.attachmentUrls = updates.attachmentUrls;
+  if (updates.loomUrl !== undefined) patch.loomUrl = updates.loomUrl;
+
+  if (updates.status === "in_progress" && !current.startedAt) patch.startedAt = new Date();
+  if (updates.status === "completed" && !current.completedAt) patch.completedAt = new Date();
+
+  const [row] = await db
+    .update(vaTasks)
+    .set(patch)
+    .where(and(eq(vaTasks.id, taskId), eq(vaTasks.organizationId, organizationId)))
+    .returning();
+  if (!row) throw new VaTaskNotInOrgError(taskId);
+  return toVaTask(row);
+}
+
+export interface VerifyVaTaskInput {
+  verified: boolean;
+  notes?: string;
+  verifiedByUserId?: string;
+}
+
+/**
+ * Record a supervisor's review of a completed task.
+ *
+ * `verified` is nullable in the table on purpose: null means "not reviewed",
+ * false means "reviewed and rejected". The previous implementation could express
+ * neither — it read-modify-wrote a settings array that nothing ever populated,
+ * so it could never find a task to review in the first place.
+ */
+export async function verifyTask(
+  organizationId: number,
+  taskId: number,
+  input: VerifyVaTaskInput,
+): Promise<VaTask> {
+  const [row] = await db
+    .update(vaTasks)
+    .set({
+      verified: input.verified,
+      verifiedAt: new Date(),
+      verifiedByUserId: input.verifiedByUserId ?? null,
+      verificationNotes: input.notes ?? null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(vaTasks.id, taskId), eq(vaTasks.organizationId, organizationId)))
+    .returning();
+  if (!row) throw new VaTaskNotInOrgError(taskId);
+  return toVaTask(row);
+}
+
+// ============================================
+// SOP LIBRARY — persisted in `va_sops`
+// ============================================
+
+/** A stored SOP row in this module's `Sop` shape. */
+export function toSop(row: VaSopRow): Sop {
   return {
-    ...task,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-    completedAt:
-      updates.status === "completed" && !task.completedAt
-        ? new Date().toISOString()
-        : task.completedAt,
-    startedAt:
-      updates.status === "in_progress" && !task.startedAt
-        ? new Date().toISOString()
-        : task.startedAt,
+    id: row.id,
+    organizationId: row.organizationId,
+    title: row.title,
+    category: row.category,
+    description: row.description,
+    steps: row.steps,
+    estimatedMinutes: row.estimatedMinutes,
+    createdAt: row.createdAt.toISOString(),
   };
+}
+
+export async function listSops(organizationId: number): Promise<Sop[]> {
+  const rows = await db
+    .select()
+    .from(vaSops)
+    .where(eq(vaSops.organizationId, organizationId))
+    .orderBy(vaSops.category, vaSops.title);
+  return rows.map(toSop);
+}
+
+export interface CreateSopInput {
+  title: string;
+  category?: TaskCategory;
+  description?: string;
+  steps?: VaSopStep[];
+  estimatedMinutes?: number;
+  /** Set when this SOP started as one of DEFAULT_SOPS, so the UI can say so. */
+  derivedFromDefaultTitle?: string;
+  createdByUserId?: string;
+}
+
+export async function createSop(
+  organizationId: number,
+  input: CreateSopInput,
+): Promise<Sop> {
+  const [row] = await db
+    .insert(vaSops)
+    .values({
+      organizationId,
+      title: input.title,
+      category: input.category ?? "other",
+      description: input.description ?? "",
+      steps: input.steps ?? [],
+      estimatedMinutes: input.estimatedMinutes ?? 0,
+      derivedFromDefaultTitle: input.derivedFromDefaultTitle ?? null,
+      createdByUserId: input.createdByUserId ?? null,
+    })
+    .returning();
+  return toSop(row);
 }
 
 // ============================================
@@ -152,7 +432,7 @@ export function updateTask(
 // ============================================
 
 export interface VaPerformanceMetrics {
-  userId: number;
+  userId: string;
   period: "today" | "week" | "month";
   tasksCompleted: number;
   tasksAssigned: number;
@@ -165,7 +445,7 @@ export interface VaPerformanceMetrics {
 
 export function calculateVaMetrics(
   tasks: VaTask[],
-  userId: number,
+  userId: string,
   period: "today" | "week" | "month"
 ): VaPerformanceMetrics {
   const now = new Date();
@@ -238,7 +518,7 @@ export function calculateVaMetrics(
 
 export function generateStandupDigest(
   tasks: VaTask[],
-  userId: number,
+  userId: string,
   vaName: string,
   date: Date = new Date()
 ): DailyStandupDigest {
