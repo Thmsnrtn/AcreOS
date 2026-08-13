@@ -4196,3 +4196,94 @@ that omits `getOrCreateOrg`, this one included); and giving `getActiveCases` an
 organization parameter.
 
 `npm run check` EXIT=0 · `tests/unit` 683 files, 8974 passed, 1 skipped.
+
+---
+
+## Unit 58 — Two copies of "who is the founder", both missing a third of the answer · this commit
+
+**Files:** `server/routes-beta.ts`, `server/middleware/getOrCreateOrg.ts`,
+`scripts/ratchets/colon-any.json`,
+`tests/unit/founderGateSingleOwner.test.ts` (new, 8 tests),
+`docs/implementation/BLOCKERS.md`.
+
+Unit 57's lesson — *a comment asserting something about a different file is an
+unverified cross-reference* — turned into a scan for routers whose header claims
+a founder gate. **The scan was mostly noise** (260 comment hits across 177 files;
+the narrower router-vs-mount version misresolved 60 imports and produced one
+usable hit), and the one hit was worth the whole exercise.
+
+### `routes-beta.ts` had its own founder check
+
+```ts
+function isFounder(req: any, res: any, next: any) {
+  const founderEmails = (process.env.FOUNDER_EMAILS || "").split(",")…
+  if (!user || !founderEmails.includes(user.email?.toLowerCase()))
+    return Errors.forbidden(res, "Founder access required");
+  next();
+}
+```
+
+Two divergences, both wrong:
+
+1. **403, not 404.** `routes-admin.ts` states the rule five separate times —
+   *"Hide existence of founder-only surfaces from non-founders (404, not 403)"* —
+   and `requireFounder` implements it. A 403 reading "Founder access required"
+   confirms both that the endpoint exists and that it is a founder surface. Six
+   endpoints advertised themselves.
+2. **One env var out of three.** Founder identity is `FOUNDER_EMAIL` **or**
+   `FOUNDER_EMAILS` **or** `FOUNDER_USER_IDS`. The shim read only the plural, so
+   a founder identified by Clerk id — *"identity-stable across email changes"*,
+   per that service's own header — was refused by their own admin console.
+
+### The second copy was the one that mattered more
+
+`getOrCreateOrg.ts` defined its own `isFounderEmail`, under a comment claiming it
+was *"matching the same logic as server/services/founder.ts"*. It was not — same
+omission, no `FOUNDER_USER_IDS` — and this middleware runs ahead of nearly every
+org-scoped request, deciding the *"enterprise tier and unlimited access"* the
+comment above it describes. **A comment asserting parity with another file is the
+same unverified cross-reference as unit 57's**, one level down.
+
+Both now use `services/founder.ts`, which has no imports of its own, so there is
+no cycle and nothing to pay on the hot path.
+
+### The assertion had to learn the distinction it describes
+
+The first draft flagged all five remaining `process.env.FOUNDER_EMAIL` reads.
+Three were resolving a **recipient** — who to email — in
+`routes-founder-intelligence`, `routes-marketplace` and `routes.ts`. A checker
+that cannot tell *who may act* from *who to notify* cries wolf, and one that
+cries wolf gets deleted. They are listed with reasons, and a second assertion
+fails if a listed file stops reading the var — so the classification cannot go
+stale unexamined. The check also reads code only: the comment explaining this
+rule must not trip it.
+
+### What was found and deliberately NOT fixed
+
+The beta waitlist **does not persist** — `betaProgram.ts` says so itself
+(`// ─── In-memory store (replace with DB tables in production) ───`), and there
+is no `beta_waitlist` table. `POST /api/beta/waitlist` is unauthenticated,
+appends to a module array, and answers with a queue **position** and a referral
+code that die at the next deploy; `GET /waitlist/status` is an unauthenticated
+email-enumeration probe that is also simply wrong (it calls `getWaitlist()` with
+no args, default `limit = 50`, so anyone past position 50 is told `found: false`).
+
+Recorded as **B15**, not fixed here. Three of the four available moves — delete,
+501, or DB-back it — change a **public** endpoint that may be wired to a
+marketing page outside this repository. That is the founder's call. The fourth,
+leaving a public endpoint fabricating queue positions, is the only one that is
+definitely wrong, which is why it is written down rather than left to be
+re-found.
+
+### Verification
+
+Five mutations, each verified to apply, each caught: a beta admin route losing
+its gate; the local shim returning; `getOrCreateOrg` copying the helper again;
+`requireFounder` answering 403; and a stale recipient-allowlist entry.
+
+`colon-any` 3014 → **3011**, locked in here. The three came from
+`(req: any, res: any, next: any)` — and the erasure was load-bearing: a
+middleware typed as `any` need not resemble `RequestHandler`, so nothing
+objected when it answered the wrong status code with the wrong identity check.
+
+`npm run check` EXIT=0 · `tests/unit` 684 files, 8982 passed, 1 skipped.

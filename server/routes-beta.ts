@@ -16,7 +16,7 @@
  */
 
 import { Router } from "express";
-import { isAuthenticated } from "./auth";
+import { isAuthenticated, requireFounder } from "./auth";
 import { betaProgramService } from "./services/betaProgram";
 import { z } from "zod";
 import { Errors } from "./utils/errors";
@@ -100,17 +100,26 @@ router.post("/feedback", isAuthenticated, async (req, res) => {
 });
 
 // ─── Admin: Full Waitlist ─────────────────────────────────────────────────────
+//
+// These six endpoints used a LOCAL founder shim that diverged from the
+// canonical `requireFounder` in two ways, both of them wrong:
+//
+//   1. It answered **403 "Founder access required"**. Everywhere else in this
+//      repo the rule is stated and followed — `routes-admin.ts` repeats it five
+//      times: *"Hide existence of founder-only surfaces from non-founders (404,
+//      not 403)"*. A 403 confirms the endpoint exists and that it is a founder
+//      surface, which is the one thing the 404 convention exists to withhold.
+//   2. It read `process.env.FOUNDER_EMAILS` only. Founder identity is
+//      `FOUNDER_EMAIL` (singular) **or** `FOUNDER_EMAILS` **or**
+//      `FOUNDER_USER_IDS` (Clerk id) — see `services/founder.ts`. A founder
+//      configured by user id, or by the singular variable, was refused by their
+//      own admin console. Fail-closed, but still broken.
+//
+// This was the only place in `server/` computing founder identity for an
+// AUTHORIZATION decision outside the canonical helper. (The jobs that read
+// FOUNDER_EMAIL build recipient lists — who to email, not who may act.)
 
-function isFounder(req: any, res: any, next: any) {
-  const user = req.user;
-  const founderEmails = (process.env.FOUNDER_EMAILS || "").split(",").map((e: string) => e.trim().toLowerCase());
-  if (!user || !founderEmails.includes(user.email?.toLowerCase())) {
-    return Errors.forbidden(res, "Founder access required");
-  }
-  next();
-}
-
-router.get("/admin/waitlist", isAuthenticated, isFounder, async (req, res) => {
+router.get("/admin/waitlist", isAuthenticated, requireFounder, async (req, res) => {
   try {
     const page = parseInt((req.query.page as string) || "1", 10);
     const limit = Math.min(100, parseInt((req.query.limit as string) || "50", 10));
@@ -122,11 +131,11 @@ router.get("/admin/waitlist", isAuthenticated, isFounder, async (req, res) => {
   }
 });
 
-router.get("/admin/cohorts", isAuthenticated, isFounder, async (_req, res) => {
+router.get("/admin/cohorts", isAuthenticated, requireFounder, async (_req, res) => {
   res.json(betaProgramService.getCohorts());
 });
 
-router.post("/admin/invite", isAuthenticated, isFounder, async (req, res) => {
+router.post("/admin/invite", isAuthenticated, requireFounder, async (req, res) => {
   try {
     const { email, cohortId } = req.body;
     if (!email) return Errors.badRequest(res, "email is required");
@@ -137,7 +146,7 @@ router.post("/admin/invite", isAuthenticated, isFounder, async (req, res) => {
   }
 });
 
-router.post("/admin/activate", isAuthenticated, isFounder, async (req, res) => {
+router.post("/admin/activate", isAuthenticated, requireFounder, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return Errors.badRequest(res, "email is required");
@@ -148,12 +157,12 @@ router.post("/admin/activate", isAuthenticated, isFounder, async (req, res) => {
   }
 });
 
-router.get("/admin/feedback", isAuthenticated, isFounder, async (req, res) => {
+router.get("/admin/feedback", isAuthenticated, requireFounder, async (req, res) => {
   const type = req.query.type as string | undefined;
   res.json(betaProgramService.getFeedback({ type }));
 });
 
-router.get("/admin/stats", isAuthenticated, isFounder, async (_req, res) => {
+router.get("/admin/stats", isAuthenticated, requireFounder, async (_req, res) => {
   res.json(betaProgramService.getStats());
 });
 

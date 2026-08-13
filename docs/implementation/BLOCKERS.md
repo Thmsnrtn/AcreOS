@@ -566,3 +566,67 @@ one. One subsystem per unit, with the same two-halves test shape unit 53 used
 (behaviour against a storage double, plus source assertions over the emitted
 `where`), because the lint is textual and cannot see a predicate that is
 accepted and never applied.
+
+---
+
+## B15 — The beta waitlist does not persist, and says a position number out loud
+
+**Found:** unit 58, while replacing `routes-beta.ts`'s divergent founder shim.
+**Blocked on:** a founder decision, because the honest fix touches a **public,
+unauthenticated endpoint** that may be wired to a marketing page outside this
+repository. The founder gate on the admin half was fixed in unit 58; this half
+was not touched.
+
+### The state
+
+`server/services/betaProgram.ts` says it itself:
+
+```ts
+// ─── In-memory store (replace with DB tables in production) ────────────────
+let waitlistEntries: WaitlistEntry[] = [];
+let betaFeedback: BetaFeedback[] = [];
+```
+
+There is no `beta_waitlist` table in `shared/schema*` — the only match for
+"waitlist" is `adjacent_verticals_waitlist`, a different feature. So:
+
+- `POST /api/beta/waitlist` is **unauthenticated**, appends to a module-level
+  array, and answers with a **position** and a `referralCode` derived from the
+  in-memory id. Nothing persists: the list dies on every deploy and differs per
+  machine. A person is told they are 47th in a queue that will not exist an hour
+  later. That is the refuse-not-fabricate hard-stop — the same shape as unit 49
+  (a 200 with a plausible object and nothing stored), on a surface a stranger
+  can reach.
+- It is also an unauthenticated, unbounded write into process memory.
+- `GET /api/beta/waitlist/status?email=` is unauthenticated and answers whether
+  an arbitrary address is on the list, with position, status and cohort — an
+  email-enumeration oracle. It also calls `getWaitlist()` with no arguments,
+  whose default is `limit = 50`, so anyone past position 50 is told
+  `found: false` **even within a single process**. The endpoint is wrong before
+  it is unsafe.
+- Nothing in `client/src` calls `/api/beta` at all.
+
+### Why unit 58 stopped here
+
+Three of the four available moves are the founder's:
+
+1. **Delete it.** Zero client callers, no persistence — on this program's own
+   test (does removing it remove capability or a lie?) it removes a lie. But a
+   public signup endpoint may be wired to a marketing site this repository
+   cannot see, and deleting it would silently drop real signups.
+2. **`Errors.notImplemented` naming the missing `beta_waitlist` table**, unit
+   49's precedent. Honest, and it turns a public form into a visible error —
+   again outward-facing.
+3. **DB-back it**, the way `investorVerification` was ("Wave A: Nothing lies").
+   That is the only option that keeps the feature and makes it true, and it is
+   real work: a table, a migration mirrored in `scripts/migrate.mjs`, and a
+   rewrite of the service's six in-memory methods.
+
+The fourth — leave a public endpoint fabricating queue positions — is the one
+option that is definitely wrong, which is why this is recorded rather than left
+to be re-found.
+
+**If option 3:** the status endpoint should stop being an oracle in the same
+change (answer only for a signed-in caller's own address, or return a bare
+`{ received: true }`), and `getWaitlist()` must not be used for a single-address
+lookup — a `findByEmail` query, not a page-1 scan.
