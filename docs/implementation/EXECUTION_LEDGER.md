@@ -4379,3 +4379,75 @@ the same trap as unit 52's, and the reason every mutation here is checked for
 having actually changed the thing under test.
 
 `npm run check` EXIT=0 · `tests/unit` 685 files, 8995 passed, 1 skipped.
+
+---
+
+## Unit 60 — The org accepted at the front door and dropped one call deep · this commit
+
+**Files:** `server/services/cashFlowForecaster.ts`, `server/routes-cash-flow.ts`,
+`scripts/check-org-scoped-fetch.mjs`,
+`tests/unit/cashFlowTenancy.test.ts` (new, 13 tests),
+`tests/unit/orgScopedFetchCoverage.test.ts`.
+
+Third item off B14, and the sharpest form of the shape so far.
+
+### A scoped signature in front of an unscoped body
+
+`generateForecast(organizationId, params)` **takes an organization**. It then
+called five internal methods with the id alone:
+
+```
+projectNoteIncome(noteId, periodMonths)
+analyzePaymentHealth(noteId)
+calculatePaymentRiskScore(noteId)
+identifyRiskFactors(noteId)
+projectExpenses("note", noteId, periodMonths)
+```
+
+each resolving `notes` by primary key. `POST /api/cash-flow/forecast` with
+**another org's `noteId` in the body** forecast that org's note — payment
+history, default probability, risk factors, projected income — through an entry
+point whose signature says it is scoped.
+
+Fifteen internal call sites in total dropped the org; the compiler found every
+one once the signatures changed.
+
+### The lint structurally cannot see this
+
+`check-org-scoped-fetch` asks whether a method MENTIONS an organization.
+`generateForecast` does, so it passed. Its callees did not, and were on the debt
+register — where they read as *"known, pre-existing"* rather than *"reachable
+from a scoped method with a caller-supplied id"*. The lint's own header note
+(added in unit 54: *"passing this lint means a method mentions an org, not that
+it is safe"*) now has a concrete instance behind it, and the new test asserts the
+property the lint cannot: **no internal call to an id-keyed method may drop the
+organization.**
+
+The route half was the familiar split — `/forecast`, `/portfolio/*` and
+`/forecast/actual-vs-projected` passed `org.id`; `/notes/:noteId/health`,
+`/notes/:noteId/risk-score` and `/forecast/:forecastId/insights` passed the id
+alone.
+
+### A checker that truncates its evidence manufactures findings
+
+The repo-wide caller sweep first used `service\.(\w+)\([^;]*?\)` — lazy, so it
+stopped at the FIRST closing paren. `analyzePaymentHealth(parseInt(req.params.noteId), getOrganizationId(req))`
+was captured as `…(parseInt(req.params.noteId)` and reported as **missing the org
+that was right there**. Replaced with a paren-balanced scan.
+
+Worth recording next to unit 50's truncated grep: that one turned a live finding
+into a dismissal, this one turned correct code into a finding. Both are the same
+error — reading part of the evidence and concluding from it.
+
+### Verification
+
+Five mutations, each verified to apply, each caught — including **the original
+defect reintroduced**: `generateForecast` passing `noteId` where the org belongs.
+That is the mutation that matters, because it is the bug this unit existed to
+fix and the one no existing gate could see.
+
+`check-org-scoped-fetch`: 6 entries went stale, removed here. `BASELINE_ENTRIES`
+179 → **173** (188 at the start of B14 triage; three subsystems have now retired
+15 between them).
+
+`npm run check` EXIT=0 · `tests/unit` 686 files, 9008 passed, 1 skipped.

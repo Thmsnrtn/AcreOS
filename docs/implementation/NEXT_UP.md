@@ -820,3 +820,26 @@ true, the cheapest way to keep it true is a test that reads both files — which
 what `dunningFounderOnly.test.ts` does, asserting the page gate and the API gate
 as a pair because the failure was one existing and reading as evidence for the
 other.
+
+**Scoping a service is not finished when its own router is fixed.** Unit 59
+scoped `dueDiligencePods`, wrote a test over `routes-due-diligence.ts`, and the
+test went green while `routes-ai-operations.ts` still served
+`GET /api/ai-operations/due-diligence/:id` from the same unscoped method via a
+dynamic import. **The compiler caught it, not the test** — the signature change
+was load-bearing, which is an argument for changing signatures rather than
+adding optional parameters when you scope something. The test now sweeps every
+file under `server/` for callers; a per-router assertion is a per-router
+guarantee.
+
+**"Has the org and does not use it" is the harder half.** Unit 59's seven
+research endpoints all carried `getOrCreateOrg` and passed nothing to the
+service. A middleware audit sees them as fine; only the call site shows it.
+Both halves are now asserted separately in `dueDiligenceTenancy.test.ts` — the
+registration line AND the argument list — because a checker that looks at one
+reports the other as safe.
+
+**Watch for the tenant derived from an unscoped fetch.** `researchOwner` scopes
+its lead join by `property.organizationId`: the org of a row fetched by bare id.
+Downstream code that looks *more* rigorous than upstream code is a signal, not a
+comfort — the derived predicate inherits whatever the first query got wrong, and
+it makes the file read as careful.

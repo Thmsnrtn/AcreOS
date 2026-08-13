@@ -1,8 +1,29 @@
 import { Router, type Request, type Response } from 'express';
-import { cashFlowForecasterService } from './services/cashFlowForecaster';
+import {
+  cashFlowForecasterService,
+  CashFlowNotInOrgError,
+} from './services/cashFlowForecaster';
 import { Errors } from './utils/errors';
+import { getOrganizationId } from './types/request';
 
 const router = Router();
+
+/**
+ * A note, property or forecast id that is not this org's answers 404.
+ *
+ * The org-level handlers here always passed `org.id`; the ones keyed by
+ * `:noteId` and `:forecastId` passed the id alone. And `generateForecast` —
+ * which DOES take an organization — dropped it one call deep, so a `noteId`
+ * from another org in the request body forecast that org's note through the
+ * scoped-looking front door.
+ */
+function refuse(res: Response, err: unknown): void {
+  if (err instanceof CashFlowNotInOrgError) {
+    Errors.notFound(res, "Note");
+    return;
+  }
+  refuse(res, err);
+}
 
 
 // =====================
@@ -19,6 +40,10 @@ router.post('/forecast', async (req: Request, res: Response) => {
     );
     res.json({ forecast });
   } catch (error) {
+    // generateForecast throws CashFlowNotInOrgError when the body names a
+    // note or property belonging to someone else. Without this branch the
+    // refusal surfaced as a 400 quoting "not found in this organization".
+    if (error instanceof CashFlowNotInOrgError) return Errors.notFound(res, 'Note');
     Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
   }
 });
@@ -33,7 +58,7 @@ router.get('/portfolio/summary', async (req: Request, res: Response) => {
     const summary = await cashFlowForecasterService.getPortfolioCashFlowSummary(org.id);
     res.json({ summary });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
@@ -43,7 +68,7 @@ router.get('/portfolio/high-risk', async (req: Request, res: Response) => {
     const highRisk = await cashFlowForecasterService.flagHighRiskNotes(org.id);
     res.json({ highRisk });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
@@ -53,20 +78,20 @@ router.get('/portfolio/high-risk', async (req: Request, res: Response) => {
 
 router.get('/notes/:noteId/health', async (req: Request, res: Response) => {
   try {
-    const health = await cashFlowForecasterService.analyzePaymentHealth(parseInt(req.params.noteId));
+    const health = await cashFlowForecasterService.analyzePaymentHealth(parseInt(req.params.noteId), getOrganizationId(req));
     res.json({ health });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
 router.get('/notes/:noteId/risk-score', async (req: Request, res: Response) => {
   try {
-    const riskScore = await cashFlowForecasterService.calculatePaymentRiskScore(parseInt(req.params.noteId));
-    const riskFactors = await cashFlowForecasterService.identifyRiskFactors(parseInt(req.params.noteId));
+    const riskScore = await cashFlowForecasterService.calculatePaymentRiskScore(parseInt(req.params.noteId), getOrganizationId(req));
+    const riskFactors = await cashFlowForecasterService.identifyRiskFactors(parseInt(req.params.noteId), getOrganizationId(req));
     res.json({ riskScore, riskFactors });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
@@ -76,10 +101,10 @@ router.get('/notes/:noteId/risk-score', async (req: Request, res: Response) => {
 
 router.get('/forecast/:forecastId/insights', async (req: Request, res: Response) => {
   try {
-    const insights = await cashFlowForecasterService.generateInsights(parseInt(req.params.forecastId));
+    const insights = await cashFlowForecasterService.generateInsights(parseInt(req.params.forecastId), getOrganizationId(req));
     res.json({ insights });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
@@ -96,7 +121,7 @@ router.get('/portfolio/timeline', async (req: Request, res: Response) => {
     const timeline = await cashFlowForecasterService.getPortfolioTimeline(org.id, months);
     res.json({ timeline });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 
@@ -114,7 +139,7 @@ router.get('/forecast/actual-vs-projected', async (req: Request, res: Response) 
     );
     res.json({ comparison });
   } catch (error) {
-    Errors.internal(res, error);
+    refuse(res, error);
   }
 });
 

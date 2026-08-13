@@ -43,7 +43,7 @@ const src = fs.readFileSync(LINT, "utf8");
  * `dueDiligencePods` three. Lower it in the commit that earns it — never raise it:
  * a new offender is meant to fail the lint, not to be admitted here.
  */
-const BASELINE_ENTRIES = 179;
+const BASELINE_ENTRIES = 173;
 
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to
