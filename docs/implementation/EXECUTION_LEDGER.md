@@ -5037,3 +5037,52 @@ Four mutations, each verified to apply, each caught: a new unlabelled input; a
 dropped (which reproduces the 191-findings state); and the walk finding nothing.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
+
+---
+
+## Unit 69 — Working the label register down, and a mislabel caught by re-measuring · this commit
+
+**Files:** `client/src/pages/leases.tsx`, `client/src/pages/contractors.tsx`,
+`client/src/pages/command-center.tsx`, `tests/unit/accessibility.test.ts`.
+
+Unit 68 landed the gate at **107**. This works the top of the register:
+
+| file | fixed | how |
+|---|---|---|
+| `pages/leases.tsx` | 7 | `htmlFor`/`id` pairs, literal ids — the file already used that convention in two places |
+| `pages/contractors.tsx` | 5 | same |
+| `pages/command-center.tsx` | 6 | `aria-label` — these six have **no visible label at all**, so there is nothing to pair to |
+
+**107 → 89**, 44 files → 41.
+
+### The convention follows the file, not a preference
+
+`arv-calculator.tsx` (unit 68) got a `useId()` prefix because it renders a
+repeating comps list and could appear twice on a page. `leases.tsx` and
+`contractors.tsx` got literal ids, matching the `htmlFor="lease-unit-label"`
+already in `leases.tsx`. Introducing a second convention inside a file is how a
+codebase ends up with two ways to do one thing and no reason recorded for either.
+
+### A mislabel, caught by re-measuring rather than by reading
+
+Two dialogs in `command-center.tsx` have byte-identical `<Textarea>` markup —
+"Run Due Diligence" and "Get Price Recommendation", both `placeholder="Enter
+property ID…"`. A string replacement aimed at the second landed on the first, so
+after the pass the **pricing** dialog carried
+`aria-label="Property ID for due-diligence analysis"` and the due-diligence
+dialog carried nothing.
+
+The count caught it: 11 fixes applied, register moved 10. Re-running the
+measurement after the edit — not re-reading the diff — is what surfaced it.
+
+**A wrong accessible name is worse than none.** A screen-reader user in the
+pricing dialog would have been told they were running due diligence. Both now
+name their own dialog.
+
+### Verification
+
+Two mutations, each verified to apply, each caught: a fixed file regressing
+(`lease-rent` losing its pair), and an `aria-label` removed from a labelled
+textarea.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.

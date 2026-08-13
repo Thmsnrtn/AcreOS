@@ -632,6 +632,7 @@ function TeamTabContent() {
                       <div>
                         <p className="text-sm font-medium mb-2">Custom Instructions</p>
                         <Textarea
+                          aria-label="Custom instructions for this agent"
                           placeholder="Add custom instructions for this agent…"
                           value={customInstructions || selectedAgent.customInstructions || ""}
                           onChange={(e) => setCustomInstructions(e.target.value)}
@@ -673,6 +674,7 @@ function TeamTabContent() {
                           </DialogDescription>
                         </DialogHeader>
                         <Textarea
+                          aria-label="Describe the task for this agent"
                           placeholder="E.g., Send follow-up emails to all leads who haven't responded in 7 days…"
                           value={taskInput}
                           onChange={(e) => setTaskInput(e.target.value)}
@@ -1058,6 +1060,7 @@ function TasksTabContent() {
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4">
               <Textarea 
+                aria-label="Message to the assistant"
                 placeholder={currentAgentType.placeholder}
                 className="flex-1 resize-none p-4 text-base"
                 value={input}
@@ -1344,6 +1347,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
+                        aria-label="Property ID for due-diligence analysis"
                         placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
@@ -1379,6 +1383,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
+                        aria-label="Property ID for pricing analysis"
                         placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
@@ -2374,6 +2379,7 @@ export default function CommandCenterPage() {
                       </div>
                       <Textarea
                         ref={textareaRef}
+                        aria-label="Message"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}

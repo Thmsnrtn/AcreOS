@@ -212,10 +212,7 @@ describe("Accessibility Compliance", () => {
      * commit that earns it.
      */
     const LABEL_DEBT = new Map<string, number>([
-  ["pages/leases.tsx", 7],
   ["components/workflow-builder.tsx", 6],
-  ["pages/command-center.tsx", 6],
-  ["pages/contractors.tsx", 5],
   ["pages/lot-pricing.tsx", 5],
   ["pages/tenants.tsx", 5],
   ["components/note-assignments-card.tsx", 4],
