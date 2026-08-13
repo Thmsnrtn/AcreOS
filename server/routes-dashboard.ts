@@ -670,7 +670,9 @@ export function registerDashboardRoutes(app: Express): void {
           title: "Check your primary county intelligence snapshot",
           description: "Review USDA land values, migration signals, and opportunity score for your target county.",
           actionLabel: "View County Data",
-          actionUrl: "/data-intelligence",
+          // `/data-intelligence` has no route. County intelligence lives at
+      // `/counties` (and `/counties/:id`), which is exactly this content.
+      actionUrl: "/counties",
         });
       }
 
@@ -686,17 +688,18 @@ export function registerDashboardRoutes(app: Express): void {
         });
       }
 
-      if (priorities.length < 3) {
-        priorities.push({
-          id: "evening-review",
-          type: "review",
-          priority: "low",
-          title: "Review your passive income progress tonight",
-          description: "Open the Evening Review dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.",
-          actionLabel: "Open Evening Review",
-          actionUrl: "/evening-review",
-        });
-      }
+      // The "Open Evening Review" card is gone. `/evening-review` and
+      // `/night-cap` both rendered EveningReviewPage, and both were removed in
+      // the Lens-4 sweep with the page file deleted — "neither was linked from
+      // any nav surface". This card was the link nobody found, still pointing at
+      // it from the customer's FIRST screen, and it is a FALLBACK card: it fires
+      // when the customer has nothing else going on, so the quietest accounts
+      // got the broken button.
+      //
+      // Deleted rather than re-pointed. The content it advertised — today's note
+      // payments, freedom-meter progress, tomorrow's one thing — is on Today
+      // already, which is where this card renders, so any replacement link would
+      // point at the page the customer is standing on.
 
       res.json({
         priorities: priorities.slice(0, 3),

@@ -218,7 +218,11 @@ export async function surfacePoisonJobDecision(): Promise<{
       actionPayload: {
         eventType: r.event_type,
         count: r.cnt,
-        deeplink: "/founder/dlq",
+        // No `deeplink`. There is no DLQ console: `/founder/dlq` has no route,
+        // and nothing in client/src reads /api/founder/dlq at all. Offering a
+        // link to a page that was never built is the same lie as a link to one
+        // that was deleted — and the actions below are performed through the
+        // API, not through a page.
         availableActions: ["retry", "discard", "investigate"],
       },
       ownerAgentCodename: "ops",
