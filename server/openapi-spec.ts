@@ -168,33 +168,11 @@ export function generateOpenAPISpec(): Record<string, any> {
     security: [{ sessionCookie: [] }],
     paths: {
       // ── AUTH ──────────────────────────────────────────────────────────────────
-      '/auth/login': {
-        post: {
-          summary: 'Login',
-          operationId: 'login',
-          tags: ['Authentication'],
-          security: [],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['email', 'password'],
-                  properties: {
-                    email: { type: 'string', format: 'email', example: 'user@example.com' },
-                    password: { type: 'string', example: 'password123' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Login successful', content: { 'application/json': { schema: { type: 'object', properties: { user: { type: 'object' } } } } } },
-            '401': { '$ref': '#/components/responses/Unauthorized' },
-          },
-        },
-      },
+      // '/auth/login' REMOVED 2026-08-13. It documented a
+      // `{ email, password }` POST that has no handler and never could: auth is
+      // Clerk, and AcreOS never receives a credential. This spec is served at
+      // /api/docs, so it was a public contract for an endpoint that does not
+      // exist — the API-surface version of a link to a deleted page.
       '/auth/logout': {
         post: {
           summary: 'Logout',
@@ -203,7 +181,8 @@ export function generateOpenAPISpec(): Record<string, any> {
           responses: { '200': { description: 'Logged out' } },
         },
       },
-      '/auth/me': {
+      // Renamed 2026-08-13: the handler is GET /api/auth/user (server/auth/routes.ts).
+      '/auth/user': {
         get: {
           summary: 'Get current user',
           operationId: 'getMe',

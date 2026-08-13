@@ -492,8 +492,11 @@ const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboardin
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
 // FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
-const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
-const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
+// ForgotPasswordPage / ResetPasswordPage deleted 2026-08-13. Both were
+// lazy-imported here and NEVER ROUTED — bundled and unreachable — and both
+// posted to endpoints that do not exist (/api/auth/forgot-password,
+// /api/auth/reset-password). Authentication is Clerk (<SignIn>/<SignUp> on
+// /auth), and Clerk owns password reset; these were pre-Clerk residue.
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
 // page-route surface (recoverable on tab-close) for first-run setup; the
 // standalone `/pages/onboarding-wizard.tsx` page was deleted as redundant.
