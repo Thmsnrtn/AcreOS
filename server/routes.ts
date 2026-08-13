@@ -1917,6 +1917,10 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (err: any) {
+      const { RetiredFeatureFlagError } = await import("./services/featureFlags");
+      if (err instanceof RetiredFeatureFlagError) {
+        return Errors.notFound(res, "feature flag");
+      }
       Errors.internal(res, err);
     }
   });

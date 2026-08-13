@@ -740,6 +740,46 @@ removes a line from a register whose length is what stops people reading it.
 
 ---
 
+## B16 — Three dead feature-flag ROWS, and whether to delete them
+
+**Found:** unit 82, by asking what the flag catalogue contains now that unit 81
+made the founder's toggles actually work.
+**Blocked on:** a founder decision, and a small one — the 2026-08-01 dead-table
+drops took an explicit picker ruling, and deleting platform rows is the same
+class of action. **Already made inert in the meantime**, so nothing is waiting on
+the answer.
+
+`platform_feature_flags` is seeded by migration and outlives the features it
+names. Three seeded keys refer to subsystems whose code is deleted:
+
+| key | verdict |
+|---|---|
+| `feature_vision_ai` | KILL executed 2026-08-01 — routers, service, page and both satellite tables gone |
+| `feature_voice_ai` | KILL executed 2026-08-01 — pipeline and both tables gone |
+| `feature_negotiation_copilot` | KILL executed 2026-08-13 — **left behind by unit 76, this program's own residue** |
+
+Nothing in `server/` or `client/src` references any of the three, and the paths
+they control (`/vision-ai`, `/voice`, `/negotiation`) have no route in App.tsx.
+
+**What unit 82 did instead of deleting them.** `RETIRED_FLAG_KEYS` in
+`server/services/featureFlags.ts` hides them from `getAll` (so neither the
+founder console nor `/api/config/features` sees them), makes `getByKey` answer
+**absent** rather than "off" (so a stored `state: "on"` can never be honoured),
+and makes `setFlag` throw — rendered as 404 at both admin write surfaces. The
+rows are inert whether or not they are ever removed.
+
+**The decision, if you want it:** a `DELETE FROM platform_feature_flags WHERE key
+IN (…)` in `scripts/migrate.mjs`, in the same shape as the 2026-08-01 drops.
+Cosmetic — the register already makes them harmless — so this can sit
+indefinitely.
+
+**Do NOT delete the register when the rows go.** It is what catches the NEXT
+KILL's leftover switch, which is the actual defect: unit 76 executed a founder
+ruling thoroughly enough to find a rail the deletion ledger had not recorded, and
+still left the flag standing, because nothing was looking at the catalogue.
+
+---
+
 ## B15 — The beta waitlist does not persist, and says a position number out loud
 
 **RESOLVED by deletion** (unit 75, founder ruling 2026-08-13 — option 1 below).
