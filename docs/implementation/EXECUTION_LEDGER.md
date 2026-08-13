@@ -4685,3 +4685,92 @@ org; the prediction picked arbitrarily rather than latest-first; the route
 passing a constant org; and the orchestrator's thread lookup unscoped.
 
 `npm run check` EXIT=0 · `tests/unit` 687 files, 9018 passed, 1 skipped.
+
+---
+
+## Unit 64 — The prompt's header stated a rule the prompt did not implement · this commit
+
+**Files:** `client/src/lib/outcome-measure.ts` (new),
+`client/src/components/today/OutcomePrompt.tsx`,
+`server/services/decisions/decisionStore.ts`,
+`tests/unit/outcomeMeasureIsPredicted.test.ts` (new, 8 tests),
+`tests/unit/canonicalLoopAdoption.test.ts`.
+
+Back to Thread B (the canonical loop) after eleven units on tenancy. NEXT_UP's
+own §4 recorded this as a known imprecision; checking it against HEAD found it
+worse than recorded.
+
+### The claim
+
+`OutcomePrompt.tsx` has said since it shipped that it asks for an amount:
+
+> only for a metric the deciding engine actually **PREDICTED**, so the variance
+> it produces is a genuine comparison rather than two unrelated numbers
+
+It did not. The amount was keyed to the **answer kind** — `acquired` →
+`total_cost`, `sold` → `profit` — under a comment justifying that with *"both
+ids below are produced by the flip engine that records these decisions."* True
+when the flip analyzer was the only recorder; false from the moment a second
+surface started recording decisions. **Five do.**
+
+Fifth load-bearing false claim this session, and the first inside the mission's
+own learning loop rather than beside it.
+
+### What it cost, precisely
+
+The subdivision lot-pricing lock records **no Scenario at all** — deliberately;
+a per-lot price grid carries none of the shared metrics and adding an engine so
+it could would be gaming the adoption ratchet. Ask that decision *"what did you
+actually make?"* and the customer's answer is stored as a real measurement whose
+variance comes back `unpredicted`.
+
+**Not corruption.** `buildOutcome` refuses unregistered metrics, and the
+variance layer keeps `unmeasured` and `unpredicted` distinct exactly so this
+stays legible. The cost is honesty: a number asked for that nothing can be
+compared against, then filed as though it could be.
+
+Nothing was broken **today** only because the lock passes `reviewDueAt: null`,
+so the prompt has still only ever seen flip decisions. A latent defect waiting on
+one field.
+
+### The data was already frozen for this
+
+`decision_snapshots.scenarios` exists, per its own column comment, so that *"a
+forecast can never be lost between the engine and the outcome, **which is how a
+real prediction came to read as unpredicted**."* Each `FrozenScenarioRef` carries
+`predicted: ScenarioMetric[]` — every metric the engine produced.
+
+So the fix reads the frozen snapshot rather than adding anything:
+`listDecisionsDueForOutcome` now returns `predictedMetricIds`, and the prompt
+offers the amount only when the answer's metric is in that set. A test asserts
+the derivation is **not** a live scenario read — re-querying the scenario table
+would reintroduce the exact loss the column was created to prevent.
+
+### The rule moved into its own module so it could be tested by calling it
+
+`client/src/lib/outcome-measure.ts`. The alternative was a source scan over a
+React component, or a test that re-implements the logic it checks — the
+anti-pattern in `investorVerification.test.ts`, which mirrors the state machine
+locally and therefore proves nothing about the service.
+
+One assertion is about identity rather than truthiness: `measurableFor` returns
+the candidate **unchanged**, so a later refactor cannot pair *"what did you
+actually make?"* with `total_cost`.
+
+### An existing assertion was rewritten, not deleted
+
+`canonicalLoopAdoption.test.ts` pinned `if (a.measures) {` under the heading
+*"an answer with nothing to measure still submits in one click"*. The invariant
+is unchanged and now covers **more** cases — a decision with no Scenario submits
+in one click too — so the assertion moved to the new condition with a note
+saying why. `CLAUDE.md`'s rule: when a wave makes a stubbed thing real, rewrite
+the assertion to the new truth.
+
+### Verification
+
+Five mutations, each verified to apply, each caught: the rule not checking what
+was predicted; the rule rebuilding the measure (copy/metric drift); the prompt
+reverting to kind-keyed gating; `predictedMetricIds` no longer derived from the
+snapshot; and duplicates across scenarios not collapsed.
+
+`npm run check` EXIT=0 · `tests/unit` 688 files, 9026 passed, 1 skipped.

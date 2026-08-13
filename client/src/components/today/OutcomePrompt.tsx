@@ -66,6 +66,9 @@ import { formatRelative } from "@/lib/format";
 // The repo keeps ONE vocabulary for action verbs so the same action never
 // reads two ways across surfaces (eslint acreos/prefer-verbs-canon).
 import { Verbs } from "@/lib/labels";
+// The "only ask for a metric the engine predicted" rule, in its own module so
+// it can be tested by calling it rather than by grepping this component.
+import { measurableFor } from "@/lib/outcome-measure";
 
 /** Mirrors `DecisionDueForOutcome` from server/services/decisions/decisionStore.ts. */
 interface DueDecision {
@@ -77,6 +80,12 @@ interface DueDecision {
   kind: string;
   choice: string;
   interimObservations: number;
+  /**
+   * Metric ids this decision's frozen scenarios actually predicted. Empty is a
+   * real answer — a decision made without running economics predicted nothing,
+   * and there is nothing to ask it about.
+   */
+  predictedMetricIds: string[];
 }
 
 interface DueResponse {
@@ -97,13 +106,21 @@ interface Answer {
   label: string;
   summary: string;
   /**
-   * The registered metric this answer can MEASURE, when it can measure one.
+   * The registered metric this answer COULD measure — a candidate, not a
+   * promise. Whether it is actually offered depends on the decision in front of
+   * you: see `measurableFor`.
    *
-   * Both ids below are produced by the flip engine that records these
-   * decisions, so the resulting variance compares a forecast against its own
-   * realised value. An answer that resolves the position without revealing a
-   * number — a rejected offer, a walk-away — carries none, because there is
-   * nothing true to ask for.
+   * This used to be the whole answer, under a comment reading "both ids below
+   * are produced by the flip engine that records these decisions". That was
+   * true when the flip analyzer was the only recorder and false from the moment
+   * a second surface started recording decisions — and it made this file's own
+   * header ("only for a metric the deciding engine actually PREDICTED") a claim
+   * the code did not implement. A lot-pricing lock asked "what did you actually
+   * make?" would have produced a measurement with no forecast to compare it to.
+   *
+   * An answer that resolves the position without revealing a number — a
+   * rejected offer, a walk-away — carries none, because there is nothing true
+   * to ask for.
    */
   measures?: { metricId: string; question: string; hint: string };
 }
@@ -135,6 +152,7 @@ const ANSWERS: readonly Answer[] = [
   // NEVER measurable: an unresolved position has no realised number.
   { kind: "still_open", label: "Still open", summary: "Checked in; the position has not resolved." },
 ] as const;
+
 
 /**
  * Dollars typed by a human → integer cents, or null when there is no number.
@@ -398,7 +416,11 @@ export function OutcomePrompt() {
                             // optional field; every other answer submits
                             // straight away, so adding the field costs the
                             // operator nothing when there is nothing to measure.
-                            if (a.measures) {
+                            // …and only when THIS decision predicted the
+                            // metric that answer would measure. Otherwise the
+                            // answer submits straight away and the metric stays
+                            // unmeasured, which is the honest state.
+                            if (measurableFor(a.measures, d)) {
                               setAmountField("");
                               setMeasuring({ decisionSnapshotId: d.id, answer: a });
                               return;

@@ -566,7 +566,16 @@ describe("the customer is finally ASKED — and the asking is honest", () => {
     // Adding the field must cost the operator nothing when there is nothing to
     // measure — otherwise the prompt gets slower for everyone to serve a case
     // that does not apply.
-    expect(stripComments(card)).toMatch(/if \(a\.measures\) \{/);
+    //
+    // The INVARIANT is unchanged; the condition it is expressed through moved.
+    // It used to read `if (a.measures)` — the answer kind alone, which is what
+    // made this card's own header ("only for a metric the deciding engine
+    // actually PREDICTED") a claim the code did not implement. It now also asks
+    // whether THIS decision predicted that metric, so a decision with no
+    // Scenario — the lot-pricing lock — submits in one click too, which is
+    // strictly more of what this test is protecting.
+    // See tests/unit/outcomeMeasureIsPredicted.test.ts.
+    expect(stripComments(card)).toMatch(/if \(measurableFor\(a\.measures, d\)\) \{/);
   });
 
   it("never pre-selects an answer", () => {

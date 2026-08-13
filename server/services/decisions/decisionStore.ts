@@ -200,6 +200,23 @@ export interface DecisionDueForOutcome {
   choice: string;
   /** How many interim `still_open` observations have already been recorded. */
   interimObservations: number;
+  /**
+   * Every metric id this decision's frozen scenarios actually PREDICTED.
+   *
+   * The outcome prompt's header has always said it asks for a number "only for
+   * a metric the deciding engine actually predicted, so the variance it
+   * produces is a genuine comparison rather than two unrelated numbers". It did
+   * not: the amount it offered was keyed to the ANSWER KIND (`acquired` →
+   * `total_cost`, `sold` → `profit`) under a comment justifying that with
+   * "both ids below are produced by the flip engine that records these
+   * decisions" — true when the flip analyzer was the only recorder, and false
+   * from the moment a second surface started recording decisions.
+   *
+   * Empty is a real and common answer: many decisions record no economics at
+   * all (a `pass` on a parcel that failed a hard filter), and a decision that
+   * predicted nothing has nothing to be asked about.
+   */
+  predictedMetricIds: string[];
 }
 
 /**
@@ -286,5 +303,11 @@ export async function decisionsDueForOutcome(
     kind: row.kind,
     choice: row.choice,
     interimObservations: interimCount.get(row.id) ?? 0,
+    // Straight off the frozen snapshot — the scenarios column exists precisely
+    // so "a forecast can never be lost between the engine and the outcome,
+    // which is how a real prediction came to read as unpredicted".
+    predictedMetricIds: [
+      ...new Set((row.scenarios ?? []).flatMap((s) => s.predicted.map((m) => m.id))),
+    ],
   }));
 }
