@@ -5086,3 +5086,46 @@ Two mutations, each verified to apply, each caught: a fixed file regressing
 textarea.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
+
+---
+
+## Unit 70 — Sixteen more labels, and a re-anchor that clobbered its neighbour · this commit
+
+**Files:** `client/src/components/workflow-builder.tsx`,
+`client/src/pages/lot-pricing.tsx`, `client/src/pages/tenants.tsx`,
+`scripts/no-fabrication.allowlist.json`, `tests/unit/accessibility.test.ts`.
+
+Register **89 → 73**, 41 files → 38.
+
+| file | fixed | shape |
+|---|---|---|
+| `components/workflow-builder.tsx` | 6 | 2 `aria-label` on condition rows (no visible label, repeated per index), 2 on the dynamic action-config fields (`aria-label={field.label}` — the label is data), 2 `htmlFor`/`id` pairs |
+| `pages/lot-pricing.tsx` | 5 | 2 literal pairs, 3 indexed (`lot-rule-${idx}-…`) inside the rules map |
+| `pages/tenants.tsx` | 5 | literal pairs |
+
+`workflow-builder` is worth noting: it **already used** `htmlFor={\`input-email-to-${action.id}\`}` for its email/task action fields. The six unlabelled ones were the
+condition rows and the generic config renderer — the parts added later, by the
+same shape this program keeps finding: a convention applied where someone was
+looking and not where they were not.
+
+### The re-anchor clobbered its neighbour
+
+Inserting `aria-label` lines moved a `Math.random` in `workflow-builder.tsx` from
+866 to 868, and the no-fabrication allowlist is line-anchored. Re-anchoring is
+the rule (unit 59) — but the script matched **by file** and set *both* of that
+file's entries to 868, including the one at line 103 that had not moved. The
+gate immediately failed on line 103 as a new unallowlisted hit.
+
+Fixed by matching on the entry's **note** rather than its file, so each anchor
+follows its own occurrence. Small, and worth recording: **a bulk re-anchor keyed
+on the file is a bulk overwrite** when a file has more than one entry — and this
+one does, which is exactly why the allowlist stores a line at all.
+
+### Verification
+
+The three files are individually re-scanned to zero, and the register is
+regenerated from the code rather than hand-edited — so a fix that did not
+actually land cannot be recorded as one. The gate's own both-directions check
+(unit 68) then requires the lowered entries to match reality.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.

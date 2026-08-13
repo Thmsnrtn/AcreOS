@@ -167,17 +167,17 @@ export default function TenantsPage() {
             </div>
             {isEntity ? (
               <div className="col-span-full md:col-span-2">
-                <Label className="text-xs">Company name *</Label>
-                <Input value={company} onChange={(e) => setCompany(e.target.value)} className="h-9" data-testid="tenant-company-name" />
+                <Label className="text-xs" htmlFor="tenant-company">Company name *</Label>
+                <Input id="tenant-company" value={company} onChange={(e) => setCompany(e.target.value)} className="h-9" data-testid="tenant-company-name" />
               </div>
             ) : (
               <>
-                <div><Label className="text-xs">First name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="h-9" /></div>
-                <div><Label className="text-xs">Last name *</Label><Input value={last} onChange={(e) => setLast(e.target.value)} className="h-9" /></div>
+                <div><Label className="text-xs" htmlFor="tenant-first-name">First name *</Label><Input id="tenant-first-name" value={first} onChange={(e) => setFirst(e.target.value)} className="h-9" /></div>
+                <div><Label className="text-xs" htmlFor="tenant-last-name">Last name *</Label><Input id="tenant-last-name" value={last} onChange={(e) => setLast(e.target.value)} className="h-9" /></div>
               </>
             )}
-            <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="tenant-email">Email</Label><Input id="tenant-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="tenant-phone">Phone</Label><Input id="tenant-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" /></div>
             <div className="flex items-end">
               <label className="text-xs flex items-center gap-2">
                 <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} />

@@ -285,7 +285,7 @@
     },
     {
       "file": "client/src/components/workflow-builder.tsx",
-      "line": 866,
+      "line": 868,
       "category": "id",
       "note": "Same, in the side-panel builder."
     },
