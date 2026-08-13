@@ -5355,3 +5355,184 @@ Two mutations, each verified to apply, each caught: a labelled input regressing
 in two different files (zero tolerance now — no register to absorb it).
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9044 passed, 1 skipped.
+
+---
+
+## Units 75–78 — four founder decisions, executed · `f4270b0` `6d61ac3` `05f2518` `c53d082`
+
+The founder answered four of the six open blockers in one sitting. These four
+units execute those answers. What makes them worth reading together is that
+**every one of them found something the blocker had not recorded** — the blockers
+were written from a correct reading of the code, and each was still incomplete.
+
+### Unit 75 — B15: the beta waitlist, deleted
+
+`POST /api/beta/waitlist` was public and unauthenticated, appended to a
+module-level array — no table, no migration — and answered with a queue position
+and a referral code. Both died at the next deploy and were split across machines
+before that.
+
+**What the blocker had not settled: how much goes.** It framed the question as
+the public half. But the six founder-gated admin endpoints read ONLY what that
+public POST wrote, so deleting the writer would have left a console over a
+permanently empty set. The whole rail went, plus `compass_pm`'s `betaProgram` /
+`/api/beta` ownership entries (the `transactionFeeService` precedent).
+
+`GET /waitlist/status` is worth naming separately: it answered whether an
+arbitrary email address was on the list — an enumeration oracle — and called
+`getWaitlist()` with no arguments, whose default is `limit = 50`, so anyone past
+position 50 was told `found: false` even within a single process. It was wrong
+before it was unsafe.
+
+`founderGateSingleOwner.test.ts` kept its invariant and lost its subject: the
+sweep for a local founder-identity shim across every router and middleware is
+untouched; the beta case became *"the beta rail stayed deleted"*; and the vacuity
+guard was re-anchored to `routes-admin.ts`. **Anchoring a vacuity guard to the
+file a check was written about is how it fails the day that file is right to
+remove.**
+
+`colon-any` 3011 → 3009.
+
+### Unit 76 — B12: the standalone negotiation copilot's KILL, executed
+
+The deletion ledger had carried a KILL verdict since it was written. The client
+door was frozen; `/api/negotiation` was mounted and reachable by any
+authenticated user of any org, with no flag check.
+
+**What the blocker had not recorded: the ledger's premise was incomplete.** It
+named three artifacts and assumed `/api/negotiation` was the service's only rail.
+`routes-ai-operations.ts` carried three more copilot endpoints on the same
+service — `POST /negotiation/session`, `POST /negotiation/objection`,
+`GET /negotiation/:id` — with no client caller. Deleting only what the ledger
+named would have removed a door and left a window open beside it.
+
+Kept, deliberately: `negotiationOrchestrator` behind
+`POST /api/ai/negotiation/script`, called by the deal detail view from inside the
+Deals door. That is the founder's ruling and the shape the no-new-AI-destinations
+rule asks for.
+
+**Two deliberate departures from the blocker's own instructions**, both because
+the repo already knew better:
+
+1. `/negotiation` KEEPS its `FROZEN_ROUTES` entry. Removing it reads as
+   *unfrozen*, and the list is served to clients still on an older bundle.
+   `/vision-ai` had already set that precedent; the reasoning now lives in
+   `shared/feature-freeze.ts` instead of one blocker note.
+2. `negotiation_sessions` was NOT dropped — customer rows, founder-only hard
+   stop. Allowlisted in `reachability.json` for both writer and reader with that
+   reason, so it shows in every gate run rather than vanishing into a baseline.
+
+`paxStaysAmbient.test.ts` kept its invariants and lost its example: the
+exempt-destination set is asserted EMPTY where it asserted exactly
+`"/negotiation"`, and the vacuity guard stopped proving the component-name
+detector by pointing at a live offender — **an anchor to an offence dies when the
+offence is fixed** — and exercises it against samples instead, positive and
+negative.
+
+Also deleted: `tests/unit/negotiationCopilot.test.ts`, 293 lines that imported
+nothing from the service and re-implemented its objection patterns locally.
+
+`colon-any` 3009 → 3006. `openai-bypass` 89 → 85: the copilot held four direct
+`chat.completions.create()` calls outside the aiRouter chokepoint — spend no
+per-org quota or platform daily ceiling could see, on a surface nothing called.
+
+### Unit 77 — B11: paid advertising is a founder instrument, permanently
+
+The blocker asked *platform activity or customer feature*. The founder answered
+neither of its two options: *"this was meant for me as the founder to run ads for
+this AcreOS only. Never for a customer to be able to run their own ads."*
+
+**Why the platform ad account is correct here and fatal for payments** — worth
+stating because it looks like an exception to the money-custody ban and is its
+mirror image. One platform `ACTUM_MERCHANT_ID` for all orgs meant CUSTOMER money
+on AcreOS's account: banned. One platform `META_AD_ACCOUNT_ID` spending AcreOS's
+own money on AcreOS's own advertising is AcreOS being its own customer. The
+question the ruling asks is *whose money is it*. **The only thing keeping the two
+apart is that no customer path exists** — so that is what the test asserts,
+rather than asserting something about ad accounts.
+
+**What the blocker had not caught:** `GET …/campaigns/:id/stats` had NO founder
+gate at all. It returns spend, impressions, clicks and cost-per-lead for any
+campaign id on the platform ad account, so any authenticated member of any org
+could read AcreOS's own marketing performance by iterating ids. **Gating the
+spend and leaving the reads open is B11's own finding, one layer down.**
+
+**A security fix found on the way in.** The public
+`POST /api/webhooks/meta-lead-ads` verified its Meta signature inline and was
+fail-open twice over: no `META_APP_SECRET` meant no verification at all, and a
+caller who simply OMITTED the `X-Hub-Signature-256` header skipped the check even
+when the secret WAS set — an attacker never had to forge anything. It also
+compared with `!==` (a timing oracle) and hashed `JSON.stringify(req.body)`
+rather than the raw bytes Meta signed, so a VALID delivery could fail to verify
+too. **That endpoint CREATES LEADS**: an unsigned POST wrote rows into a real
+pipeline, indistinguishable downstream from real ones. Replaced by
+`server/middleware/metaWebhookSignature.ts` — fail-closed on both, constant-time,
+raw-body — matching `twilioSignature.ts` and `inboundEmailSignature.ts`, because
+three verifiers that behave differently under a missing secret is how one of them
+ends up being the wrong one.
+
+Registered as `hard-stop.ads-founder-only-rail`: the **sixth** hard stop and the
+second outright ban, recorded next to the money-custody ban on purpose.
+
+### Unit 78 — B9: the VA persistence layer, built
+
+`vaManagement.ts` declared its storage as two string constants — `VA_TASKS_KEY`,
+`SOP_LIBRARY_KEY` — and never read either. `createTask` was a pure function;
+`POST /api/va/tasks` answered 200 with a record that existed only in that
+response; metrics and audit-trail computed over
+`organizations.settings.va_tasks`, an array with no creator anywhere in the repo,
+and returned zeros that READ AS MEASUREMENTS.
+
+Built: `va_tasks` + `va_sops` (migration 0235, mirrored in `scripts/migrate.mjs`),
+an org-scoped service layer, and the routes wired. `GET /api/va/tasks` and
+`GET /api/va/tasks/:id` are new — a subsystem that can store a task and never
+show it back is the same dead end in a different place.
+
+**A type error that would have 500'd on deploy, caught by checking rather than
+trusting.** The original `VaTask` interface declared `assignedToUserId: number`,
+and nothing ever contradicted it *because there was no column to check it
+against*. `users.id` is a **varchar**. An integer column would have failed at
+`CREATE TABLE` with *"Key columns are of incompatible types"* — exactly the class
+CLAUDE.md names. The schema was written against the real `users` table, not
+against the interface that described it.
+
+**The audit trail was fabricating the assistant's own account of the work:**
+`reasoning: t.completionNotes || "Task completed as assigned"` — a default
+sentence presented as what the VA said they did. Removed.
+
+**Recurring tasks deliberately NOT built.** `GET /api/va/scheduled` refuses with
+501: a schedule table with no runner is the built-but-unwired defect this repo
+keeps finding, and one refusal is cheaper to remove later than a half-built
+scheduler is to trust.
+
+**Three tests rewritten to the new truth, none deleted.** `vaTaskPersistence`
+pinned the 501 refusals; its invariant — *a write endpoint must not report a
+success it did not perform* — is now satisfied by storing rather than refusing,
+so the assertions flip to requiring the persisting call, the org predicate and
+the derived lifecycle stamps. `vaWorkflowBounds` held a deliberately INVERTED
+assertion listing the settings collections still read through `as any` and
+requiring them to still be broken; **it fired on this change, which is exactly
+what it was built to do**, and with the list empty it flips to the plain form.
+`vaManagement.test.ts` was 232 lines that imported nothing from the service and
+re-implemented it locally — including four helpers that never existed in the
+service at all — so every test passed against a copy; rewritten to call the real
+pure layer.
+
+`as-any` 1396 → 1391 · `colon-any` 3006 → 2992 · `unreached-exports` 654 → 653 ·
+`table-count` 761 → 763 with the founder ruling as the sign-off.
+
+### What these four units have in common
+
+**Every blocker was written from a correct reading of the code and every one was
+still incomplete.** B15 did not say the admin half must go with the public half;
+B12's ledger row named three artifacts and missed a second rail; B11 gated the
+spend and left the reads open; B9 described a missing layer but its own interface
+carried a type that could not have compiled against the table. In each case the
+gap was found by **re-verifying the premise against HEAD before executing** —
+which is the program's own rule, and the reason it exists.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9038 passed, 1 skipped ·
+14 mutations across the four units, every one verified to apply and every one
+caught.

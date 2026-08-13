@@ -328,9 +328,47 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**START HERE (state as of unit 63).** The tenant-isolation thread that ran from
-unit 53 to unit 63 is at a clean stopping point, and the next task is *not* more
-of it:
+**START HERE (state as of unit 78).** The founder answered four of the six open
+blockers on 2026-08-13, and units 75–78 executed all four. That changes what is
+next more than any technical finding has:
+
+| blocker | founder's answer | executed |
+|---|---|---|
+| **B15** beta waitlist doesn't persist | delete the endpoint | unit 75 — whole `/api/beta` rail gone |
+| **B12** `/api/negotiation` mounted under a KILL | execute the KILL | unit 76 — router, service, page, 7 satellites, **and three more copilot endpoints the ledger never named** |
+| **B11** Meta ads on the platform ad account | *"for me as the founder to run ads for this AcreOS only. Never for a customer"* | unit 77 — `/api/founder/meta-ads/*`, sixth constitution hard-stop, **and a fail-open webhook signature fixed on the way in** |
+| **B9** VA tasks don't persist | build persistence | unit 78 — `va_tasks` + `va_sops`, migration 0235, routes wired |
+
+**Two blockers remain, and both are still the founder's:**
+
+- **B8** — which webhook rail survives: the legacy `/api/webhooks` (36 declared
+  events, 1 emitter) or the fully-built, entirely unmounted `server/api-v1/*`
+  rail with retries, a DLQ and a delivery log. Consistent with *no public API
+  before ~50 customers*, so there is no urgency — but the two rails should not
+  both exist indefinitely.
+- **B10** — two note-payment data models: legacy `notes`/`payments` with
+  `numeric` + `parseFloat`, versus the cents family `acquired_notes`/
+  `note_payments` with `bigint` cents. **Read B10 before touching note money.**
+  Not attempted here because it wants a real database (`DATABASE_URL` is unset,
+  B1) and because picking canonical is a founder call.
+
+**The residue from units 75–78, all small and all recorded:**
+
+- **Recurring VA tasks** (`GET /api/va/scheduled`) now refuse with 501. Building
+  them means a template table AND a runner; a schedule with no runner is the
+  built-but-unwired defect. Smaller question than the one just answered.
+- **`negotiation_sessions` was not dropped.** It holds customer rows and dropping
+  it is a founder-only hard stop. Both reachability entries are allowlisted with
+  that reason so it shows in every gate run instead of vanishing into a baseline.
+- **The white-label default feature set advertises frozen surfaces.** Unit 77
+  flipped `negotiationCopilot` to `false`, but `academy: true` (KILL — education
+  revenue stays dead), `visionAI: true` (KILL) and `marketplace: true` (FREEZE)
+  are still defaulted ON in `whiteLabelService.createConfig`. Latent, because
+  white-label is itself frozen behind `featureGate` — but it is the same defect
+  three more times, and it is the cheapest remaining find in the repo.
+
+**The tenancy thread (units 53–63) remains at a clean stopping point**, and the
+next task is *not* more of it:
 
 - **Every caller-supplied-id cross-tenant defect found so far is fixed.** Six
   subsystems (investor verification, document intelligence, due diligence, cash
