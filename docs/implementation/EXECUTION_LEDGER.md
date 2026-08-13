@@ -4829,3 +4829,75 @@ held, correctly. Removing the whole block failed it. A partial mutation of a
 multi-line claim tests nothing.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9037 passed, 1 skipped.
+
+---
+
+## Unit 66 — An absolute rule enforced by a sample of three files, one of which was deleted · this commit
+
+**Files:** `tests/unit/accessibility.test.ts`.
+
+`CLAUDE.md` states it without qualification: *"Every icon-only button must have
+`aria-label`."* What enforced it:
+
+```ts
+it("icon buttons have aria-labels (sample check)", () => {
+  const files = [
+    "components/pax-copilot-rail.tsx",
+    "components/floating-assistant.tsx",
+    "pages/founder-dashboard.tsx",
+  ];
+  for (const file of files) {
+    try {
+      const iconButtons = content.match(/size="icon"/g) || [];
+      const ariaLabels  = content.match(/aria-label="/g) || [];
+      expect(ariaLabels.length).toBeGreaterThanOrEqual(iconButtons.length);
+    } catch { /* File may not exist in test environment */ }
+  }
+});
+```
+
+Weak in three separate ways:
+
+1. **One of the three no longer exists.** `pages/founder-dashboard.tsx` is the
+   monolith `CLAUDE.md` records as fully deleted. The `catch` swallowed the
+   ENOENT, so a third of the sample had been checking nothing for as long as the
+   file has been gone — and reporting success for it.
+2. **It compared counts.** Five icon buttons and five `aria-label`s on five
+   *other* elements passed.
+3. **Three files out of 728.**
+
+### The measurement first, and it is good news
+
+**207 icon buttons across 728 files, and every one is labelled.** The rule has
+been followed throughout. No code needed fixing, and saying so plainly is better
+than manufacturing a change: what was broken is the *gate*, so nothing would
+have noticed the first button that was not labelled.
+
+### `asChild` is handled, not exempted
+
+Two of the 207 have no label on the `<Button>` itself, and both are correct:
+`<Button asChild size="icon">` renders **as** its child, so the accessible name
+belongs on the `<Link>` inside — which is where `activity-content.tsx` and
+`TasksDueWidget.tsx` put it. A checker that flagged those would report the right
+pattern as a violation; one that skipped `asChild` would stop looking exactly
+where the name lives. The check follows to the child.
+
+### An assertion that could never pass
+
+A second test was written here — *"this file no longer NAMES
+founder-dashboard.tsx"* — and deleted: the regex testing for the string
+contained the string, so it matched its own source. Same family as
+`lint-reachability`'s `SELF` exemption, where a file documenting dead symbols
+resurrects them. **A check whose subject includes the check is not a check.**
+
+What replaced it is stronger: the walk covers all 728 files, so there is no
+hardcoded list left to rot, and its vacuity guard (`checked > 150`) is what
+notices if the walk stops finding anything — the exact failure the old sample
+suffered silently.
+
+### Verification
+
+Three mutations, each verified to apply, each caught: a real icon button losing
+its label; an `asChild` **child** losing its label; and the walk finding nothing.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9038 passed, 1 skipped.
