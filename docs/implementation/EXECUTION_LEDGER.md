@@ -5299,3 +5299,59 @@ is flagged — the noise direction); and the scan's subject removed (the vacuity
 direction).
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9044 passed, 1 skipped.
+
+---
+
+## Unit 74 — The label register reaches zero, and becomes an absolute · this commit
+
+**Files:** 17 client files (one input each), `tests/unit/accessibility.test.ts`.
+
+Register **18 → 0**. `LABEL_DEBT` is now an empty map, and the check is an
+absolute like the icon-button one beside it — 116 unlabelled inputs at unit 68,
+none now.
+
+The seventeen were the long tail: search boxes, message composers, note drafts,
+a project-name field, an inline editable amount. All took `aria-label`, because
+none has a visible label to pair to.
+
+### The one that is exempt, and why it is COUNTED rather than skipped
+
+`components/ui/sidebar.tsx`'s `SidebarInput` spreads `{...props}` — it renders
+whatever the caller passes, including the accessible name. An `aria-label` there
+would name every instance identically and silently override the call site.
+
+The exemption is scoped to `components/ui/**` **and** requires a prop spread. But
+two mutations that widened it — dropping the directory scope, dropping the
+prop-spread requirement — **survived**, so the assertion now pins exactly what
+the exemption skips:
+
+```
+).toBe("components/ui/sidebar.tsx:328");
+```
+
+**Why those mutations survived is the honest part.** Checked rather than assumed:
+`<Input` appears in `components/ui/` exactly once, and **zero** non-ui inputs sit
+within 400 characters of a `{...props}`. So both widened rules open a door
+nothing currently walks through — they are inert *today*, not undetected.
+
+That is a fourth kind of no-op mutation, distinct from the three this session
+already recorded (an inserted marker, a partial string replace, a partial comment
+deletion): **an empty input space.** The mutation applies, the diff is real, the
+logic genuinely changes — and nothing in the repo exercises the changed branch.
+The count assertion is the strongest behavioural check available: it fails the
+moment the widened exemption starts skipping something real.
+
+### A wrong field name, caught by tsc
+
+`aria-label={\`Notes for ${item.label ?? item.id}\`}` — `ChecklistItem` has
+`name`, not `label`. The `?? item.id` fallback made it *look* defensive while
+being a type error. Corrected to `item.name`. Worth noting because 17 files were
+edited mechanically and this is the one thing that went wrong; the compiler
+caught it, not review.
+
+### Verification
+
+Two mutations, each verified to apply, each caught: a labelled input regressing
+in two different files (zero tolerance now — no register to absorb it).
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9044 passed, 1 skipped.

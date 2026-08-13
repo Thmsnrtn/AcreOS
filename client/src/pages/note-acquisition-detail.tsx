@@ -380,6 +380,7 @@ function NumberField({ label, cents, onSave, disabled, hint }: {
       {editing ? (
         <Input
           autoFocus
+          aria-label={label}
           inputMode="decimal"
           value={value}
           onChange={(e) => setValue(e.target.value)}

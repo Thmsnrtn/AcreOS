@@ -665,6 +665,7 @@ export function SupportContent() {
                 <div className="p-4 border-t">
                   <div className="flex gap-2">
                     <Textarea
+                      aria-label="Reply message"
                       placeholder="Type your message…"
                       value={replyMessage}
                       onChange={(e) => setReplyMessage(e.target.value)}

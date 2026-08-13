@@ -244,6 +244,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
                   <Building2 className="w-3 h-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Within</span>
                   <Input
+                    aria-label="Infrastructure distance in miles"
                     type="number"
                     min={1}
                     max={100}

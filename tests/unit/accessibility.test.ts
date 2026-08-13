@@ -207,32 +207,32 @@ describe("Accessibility Compliance", () => {
    */
   it("form inputs are associated with their labels, and the debt only shrinks", () => {
     /**
-     * Down-only, per file, so a fix is attributable and a regression is not
-     * hidden by a fix somewhere else. Lower an entry — or delete it — in the
-     * commit that earns it.
+     * EMPTY, and that is the point.
+     *
+     * This landed at 116 (unit 68) and was worked to zero across units 69–74.
+     * A per-file register was the right shape while the debt existed — it made
+     * each fix attributable and stopped a regression hiding behind a fix
+     * somewhere else. At zero it becomes something stronger: an absolute, like
+     * the icon-button check above.
+     *
+     * Do NOT re-add an entry to make a build pass. Every case has one of five
+     * answers, all of them two tokens: htmlFor/id with a literal id; the same
+     * with an indexed id inside a map; aria-label where there is no visible
+     * label; an aria-label EACH where a row of fields shares one heading; or
+     * FormControl wrapping the control itself.
      */
-    const LABEL_DEBT = new Map<string, number>([
-  ["components/ai-offer-generator.tsx", 1],
-  ["components/custom-fields.tsx", 1],
-  ["components/due-diligence-panel.tsx", 1],
-  ["components/gis-filters.tsx", 1],
-  ["components/mobile/MobileCommandDrawer.tsx", 1],
-  ["components/mobile/MobileLeadDetail.tsx", 1],
-  ["components/mobile/MobileLeadList.tsx", 1],
-  ["components/modals/lost-reason-modal.tsx", 1],
-  ["components/pax-knowledge-panel.tsx", 1],
-  ["components/pax-project-panel.tsx", 1],
-  ["components/property-analysis-chat.tsx", 1],
-  ["components/research-summary-panel.tsx", 1],
-  ["components/support-content.tsx", 1],
-  ["components/ui/sidebar.tsx", 1],
-  ["pages/county-timelines.tsx", 1],
-  ["pages/founder/cmo.tsx", 1],
-  ["pages/founder/studio/dials.tsx", 1],
-  ["pages/note-acquisition-detail.tsx", 1],
-    ]);
+    const LABEL_DEBT = new Map<string, number>([]);
 
     const offenders = new Map<string, number>();
+    /**
+     * What the prop-spreading exemption above actually skipped.
+     *
+     * Counted, not trusted. With the register at zero, WIDENING an exemption
+     * removes nothing visible and the suite stays green — two mutations proved
+     * exactly that before this list existed. An exemption that cannot be seen is
+     * an exemption that can grow.
+     */
+    const primitives: string[] = [];
     let scanned = 0;
 
     for (const file of findFiles(CLIENT_SRC, ".tsx")) {
@@ -267,6 +267,17 @@ describe("Accessibility Compliance", () => {
         const idm = /\bid=(?:"([^"]+)"|\{([^}]+)\})/.exec(opener);
         if (idm && htmlFors.has((idm[1] ?? idm[2]).trim())) continue;
 
+        // A primitive under components/ui that SPREADS its props defines no
+        // content — it renders whatever the caller passes, including the
+        // accessible name. Putting an aria-label here would name every instance
+        // identically and silently override the caller's. `SidebarInput` is the
+        // only one, and the responsibility is genuinely at the call site.
+        const forward = src.slice(m.index!, Math.min(src.length, m.index! + 400));
+        if (rel.startsWith("components/ui/") && /\{\.\.\.props\}/.test(forward)) {
+          primitives.push(`${rel}:${src.slice(0, m.index!).split("\n").length}`);
+          continue;
+        }
+
         const back = src.slice(Math.max(0, m.index! - 300), m.index!);
         // shadcn <FormControl> injects the id; <FormLabel> emits the htmlFor.
         const fcOpen = back.lastIndexOf("<FormControl");
@@ -282,6 +293,16 @@ describe("Accessibility Compliance", () => {
     // Vacuity guard, same reason as the icon-button check above.
     expect(scanned, "no form inputs found — did the Input API change?")
       .toBeGreaterThan(600);
+
+    expect(
+      primitives.join(", "),
+      "the prop-spreading-primitive exemption changed. It exists for exactly " +
+        "one control — SidebarInput, which renders whatever the caller passes, " +
+        "so an aria-label here would name every instance identically and " +
+        "override the call site. If a second primitive genuinely needs it, add " +
+        "it here deliberately; if this list grew by accident, the exemption was " +
+        "widened and real inputs are now being skipped.",
+    ).toBe("components/ui/sidebar.tsx:328");
 
     const grew: string[] = [];
     for (const [file, count] of offenders) {

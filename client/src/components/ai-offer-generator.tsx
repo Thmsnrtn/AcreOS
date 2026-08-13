@@ -644,6 +644,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                   </div>
                 )}
                 <Textarea
+                  aria-label="Offer letter content"
                   value={letterContent}
                   onChange={(e) => setLetterContent(e.target.value)}
                   className="min-h-[300px] font-mono text-sm"

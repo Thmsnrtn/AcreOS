@@ -116,6 +116,7 @@ export function LostReasonModal() {
 
         <div className="pt-3">
           <Textarea
+            aria-label="Additional notes on why this was lost"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Anything else worth remembering? (optional)"

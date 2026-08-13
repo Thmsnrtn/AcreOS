@@ -952,6 +952,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         </div>
                         <div className="pl-9">
                           <Textarea
+                            aria-label={`Notes for ${item.name}`}
                             placeholder="Add notes…"
                             className="min-h-[60px] text-sm"
                             value={editingNotes[item.id] ?? item.notes ?? ""}
