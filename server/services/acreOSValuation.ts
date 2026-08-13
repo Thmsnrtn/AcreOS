@@ -273,10 +273,21 @@ class AcreOSValuationModel {
       // contract automation. Require human verification of landStatus first.
       const propertyIdNum = Number(request.propertyId);
       if (Number.isFinite(propertyIdNum) && propertyIdNum > 0) {
-        const [parcel] = await db
-          .select({ landStatus: properties.landStatus })
-          .from(properties)
-          .where(eq(properties.id, propertyIdNum));
+        // Scoped, and the gate below is why it is safe to scope: a propertyId
+        // that is not this org's now yields NO ROW, and
+        // assertFeeSimpleOrThrow treats a missing row as landStatus "unknown"
+        // and throws. So a foreign id is refused rather than valued — where
+        // before it read a stranger's parcel to decide whether to proceed.
+        const orgIdForParcel = Number(organizationId);
+        const [parcel] = Number.isFinite(orgIdForParcel) && orgIdForParcel > 0
+          ? await db
+              .select({ landStatus: properties.landStatus })
+              .from(properties)
+              .where(and(
+                eq(properties.id, propertyIdNum),
+                eq(properties.organizationId, orgIdForParcel),
+              ))
+          : [];
         assertFeeSimpleOrThrow(parcel ?? null, "valuation");
       }
 

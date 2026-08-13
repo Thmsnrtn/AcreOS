@@ -4529,3 +4529,75 @@ removed from the scan; a rule-2 baseline entry gone stale; and the two-kinds not
 deleted from the register.
 
 `npm run check` EXIT=0 · `tests/unit` 686 files, 9010 passed, 1 skipped.
+
+---
+
+## Unit 62 — Triaging 63 findings down to the three a customer can reach · this commit
+
+**Files:** `server/services/acreOSValuation.ts`, `server/services/landCredit.ts`,
+`scripts/check-org-scoped-fetch.mjs`,
+`tests/unit/orgScopedFetchCoverage.test.ts`,
+`docs/implementation/BLOCKERS.md`.
+
+Unit 61 froze 63 rule-2 entries. **Sixty-three findings is a number people bounce
+off**, so before grinding through them subsystem by subsystem they were sorted by
+whether the id can actually come from a caller:
+
+| | count |
+|---|---|
+| reachable with a **caller-supplied id** | 6 |
+| **no external caller at all** | 28 |
+| called internally with derived ids | 29 |
+
+Three of the six are customer-reachable. All three are resolved here.
+
+### `acreOSValuation.generateValuation` — a safety gate reading a stranger's parcel
+
+It fetched `properties.landStatus` by bare id to run the Indian-Country /
+federal-trust check (25 USC §177), so an org could name **another org's
+propertyId** and the gate would consult that org's parcel to decide whether to
+proceed.
+
+Scoping it is safe *because of how the gate fails*: `assertFeeSimpleOrThrow`
+treats a missing row as `landStatus: "unknown"` and **throws**. A foreign id now
+yields no row and is refused, rather than valued off someone else's land status.
+Checked before changing it — the same predicate on a gate that failed *open*
+would have quietly widened it.
+
+### `landCredit.getScoreHistory` — correct, and correct in the wrong place
+
+It fetched the property by bare id and then compared `prop.orgId` to the
+caller's, returning `[]` on a mismatch. That is a real check, which is why rule 2
+flagging it looked like a false positive. It still read another org's row to
+reach its conclusion, and the check sat far enough from the fetch that a later
+edit could separate them. The predicate is in the `WHERE` now; the foreign row is
+never returned.
+
+### `acquisitionRadar.saveOpportunityScore` — verified safe, left alone
+
+Its flagged predicate is `.where(eq(opportunityScores.id, existing[0].id))`,
+where `existing` came from an **org-scoped select two lines above**. Category (b).
+Stays in the register, because the check cannot see the difference and the
+register is honest about holding both kinds.
+
+### The triage heuristic is wrong in both directions, and that is recorded
+
+It asks whether a route passes `req.params`/`req.body` into the method. That
+**over-reports** — it flagged `saveOpportunityScore`, where the caller's data
+reaches the method but the flagged predicate does not — and it **under-reports**,
+since an id arriving through two hops is invisible to it. BLOCKERS B14 now says
+so, and says to re-derive the list after each fix rather than working down a
+frozen copy.
+
+The 28 with no external caller are named there as the cheapest remaining win:
+scoping a helper nothing outside its service calls is nearly risk-free, and each
+one shortens a register whose length is what stops people reading it.
+
+Rule-2 baseline 63 → **61**.
+
+### Verification
+
+Two mutations, each verified to apply, each caught: the AVM parcel fetch
+unscoped again, and `landCredit` reverted to the post-fetch comparison.
+
+`npm run check` EXIT=0 · `tests/unit` 686 files, 9010 passed, 1 skipped.

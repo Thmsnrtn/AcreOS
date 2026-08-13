@@ -630,3 +630,40 @@ to be re-found.
 change (answer only for a signed-in caller's own address, or return a bare
 `{ received: true }`), and `getWaitlist()` must not be used for a single-address
 lookup — a `findByEmail` query, not a page-1 scan.
+
+### Rule 2's register, triaged (unit 62)
+
+`check-org-scoped-fetch` grew a second rule in unit 61 — *has an organization
+and resolves an org-scoped table by primary key anyway* — and froze 63 entries.
+Sixty-three findings is a number people bounce off, so they were triaged by
+whether the id can actually come from a caller:
+
+| | count |
+|---|---|
+| reachable with a **caller-supplied id** | 6 |
+| **no external caller at all** (internal helpers) | 28 |
+| remainder: called internally with ids the method or its caller derived | 29 |
+
+Of the six, three were customer-reachable and are **done** (unit 62): the AVM's
+fee-simple parcel fetch, `landCredit.getScoreHistory`, and — verified safe —
+`acquisitionRadar.saveOpportunityScore`, whose flagged predicate uses an id from
+an org-scoped select two lines above it. The other three
+(`autonomousAgentEngine.recordAction`, `negotiationOrchestrator.recordOutcome`,
+`sellerIntentPredictor.recordOutcome`) are reached only from `/founder/*`
+routes, which carry `requireFounder`; lower priority, still worth closing.
+
+**The triage heuristic over-reports and under-reports, both.** It asks whether a
+route passes `req.params`/`req.body` into the method — which flagged
+`saveOpportunityScore`, where the caller's data reaches the method but the
+flagged *predicate* uses an internally-derived id. And it cannot see an id that
+arrives through two hops. Treat the six as a starting order, not a boundary, and
+re-derive it after each fix:
+
+```
+node scripts/check-org-scoped-fetch.mjs        # the register
+```
+
+**The 28 with no external caller are the cheapest win.** Scoping a helper that
+nothing outside its own service calls carries almost no risk, and each one
+removes a line from a register whose length is what stops people reading it.
+
