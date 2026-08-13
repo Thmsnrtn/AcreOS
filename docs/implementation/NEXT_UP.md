@@ -932,3 +932,26 @@ containing both the pass and the fail, a `toBeGreaterThanOrEqual` where the
 interesting case is equality, a `toContain` on a string that appears elsewhere in
 the window. Every one of those shapes has cost this program a survived mutation
 this session; the mutation is what finds them, not reading the test.
+
+**That sweep was run, and it came back clean — do not repeat it.** After unit 67,
+`tests/**` was scanned for `expect([…]).toContain(status)` where the accepted set
+holds **both** a 2xx and a 4xx/5xx — an assertion that accepts the failure it is
+named for. **One hit, and it is the doc comment in
+`securityMiddleware.test.ts` quoting the assertion unit 67 removed.** The class is
+closed.
+
+**A comment describing a defect trips the detector for that defect. Four times
+this session:**
+
+| | the comment | what it tripped |
+|---|---|---|
+| unit 53 | a TODO naming `InvestorVerificationService` | made a dead export look reached |
+| unit 54 | a debt register naming `productEvolutionEngine` | made a module orphan look alive |
+| unit 66 | an assertion testing for a string it contained | could never pass |
+| unit 67 | prose quoting `[200, 403]` | the only hit in its own sweep |
+
+The general rule, and it is cheap to apply: **when a detector's subject is TEXT,
+the files that DOCUMENT the rule must be excluded from it** — `lint-reachability`
+learned this about itself long ago (`SELF`, now `SYMBOL_REGISTERS`) and the lesson
+generalises to every scan written since. Exclude comments, or exclude the file,
+and say which.
