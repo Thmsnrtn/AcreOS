@@ -2,8 +2,8 @@
 // ============================================================================
 // scripts/check-org-scoped-fetch.mjs
 // ----------------------------------------------------------------------------
-// Tier 1F tenancy-by-construction ratchet lint — flags storage-layer methods
-// that query an ORG-SCOPED table without any organization context.
+// Tier 1F tenancy-by-construction ratchet lint — flags methods that query an
+// ORG-SCOPED table without any organization context.
 //
 // Why
 // ───
@@ -11,9 +11,28 @@
 // highest-risk fetch-by-bare-id storage methods onto the org-scoped
 // repository layer (`forOrg()` in server/utils/orgScopedDb.ts), so a
 // cross-tenant id resolves to "not found" by construction. This lint keeps
-// the ratchet from sliding back: any NEW storage method that selects /
+// the ratchet from sliding back: any NEW method that selects /
 // updates / deletes against a table carrying an `organizationId` column,
 // while its signature+body never mentions an org identifier, fails CI.
+//
+// THE SERVICE LAYER (added 2026-08-13)
+// ────────────────────────────────────
+// Until then this lint walked `server/storage.ts` + `server/storage/*.ts` and
+// nothing else — so the rule was real, enforced, and applied to one layer.
+// A service that owns its own persistence never passed under it, and one of
+// them was leaking KYC records across tenants: every route-reachable method on
+// `services/investorVerification.ts` resolved rows by primary key while the
+// table carried `organizationId NOT NULL` and an org-leading index. Any
+// authenticated member of any org could read another org's verification status
+// and audit trail, attach documents, advance its state machine, and — as an
+// admin of their own org — approve it.
+//
+// Pointed at `server/services/**`, THIS LINT FLAGS ALL SIX of the methods that
+// fix touched. That is checkable, not a claim: run it against
+// `git show <the commit>~1:server/services/investorVerification.ts`.
+//
+// The moral is the one the repo keeps relearning — the defect was never a
+// missing rule, only a rule applied to some surfaces and not others.
 //
 // Heuristic
 // ─────────
@@ -23,9 +42,9 @@
 //   1. Parse shared/schema*.ts for `export const <ident> = pgTable("<name>",…)`
 //      blocks and record the TS identifiers of tables that declare an
 //      `organizationId` column ("org-scoped tables").
-//   2. Walk server/storage.ts + server/storage/*.ts. For every
-//      `async <method>(…) { … }` (brace-matched), collect the org-scoped
-//      table identifiers it touches via `from(<ident>)`,
+//   2. Walk server/storage.ts, server/storage/*.ts and server/services/**.
+//      For every `async <method>(…) { … }` (brace-matched), collect the
+//      org-scoped table identifiers it touches via `from(<ident>)`,
 //      `db.update(<ident>)`, or `db.delete(<ident>)`.
 //   3. If the method touches at least one org-scoped table and the method
 //      text (signature + body) contains NO org context marker
@@ -53,7 +72,12 @@
 // Known limitations (documented, raise if they become real):
 //   - A method that ACCEPTS an orgId but forgets to apply the predicate is
 //     not caught (text-level heuristic). The vitest suite covers the
-//     converted methods' emitted SQL instead.
+//     converted methods' emitted SQL instead. This is not hypothetical: it is
+//     the precise gap `investorVerificationTenancy.test.ts` fills with source
+//     assertions over the emitted `where(...)`, because a behavioural test
+//     against a storage double cannot see a missing predicate either.
+//   - Passing this lint means a method MENTIONS an org, not that it is safe.
+//     A service can take `orgId` and still hand it to nobody.
 //   - Tables queried through helper indirection (variable holding the table)
 //     are missed. Not a pattern in storage today.
 // ============================================================================
@@ -126,6 +150,162 @@ const BASELINE_OFFENDERS = new Set([
   // lookup primitive, not an offense. Entries removed 2026-06-10.
   "server/storage/noteRepo.ts::createPayment",
   "server/storage/noteRepo.ts::getNoteByAccessToken",
+
+  // ── SERVICE LAYER, frozen 2026-08-13 ──────────────────────────────────────
+  //
+  // 136 pre-existing offenders, admitted as a DEBT REGISTER, not as approval.
+  // The storage half of this lint landed the same way ("Pre-existing offenders
+  // are frozen below so the lint can land NOW and block regressions"), and the
+  // alternative — converting 136 methods across 43 files, several of them on
+  // the ACH payment rail — is a refactor with its own risk, not a safer choice.
+  //
+  // Context for whoever triages these: 744 service+storage methods touch an
+  // org-scoped table and 556 already carry org context, so the service layer is
+  // ~81% conformant. 22 of the 43 offender files are imported by a `routes-*`
+  // file and are therefore the ones that can take an id straight from a URL —
+  // triage those first. The rest are jobs and analytics that iterate rows they
+  // already selected with an org filter; the heuristic cannot tell the two
+  // apart, which is exactly why this is a register and not a verdict.
+  //
+  // Removing an entry means the method now takes an org id (preferably via
+  // forOrg()) or routes through unscopedForPlatformOps(reason). A stale entry
+  // FAILS this lint, so a fix cannot be landed without deleting its line.
+  "server/services/achAutopay.ts::getActiveMandateForNote",
+  "server/services/achAutopay.ts::getMandateById",
+  "server/services/achAutopay.ts::getNote",
+  "server/services/achAutopay.ts::listAttemptsForPeriod",
+  "server/services/achAutopay.ts::listAutopayDueNotes",
+  "server/services/achAutopay.ts::listInFlightAttempts",
+  "server/services/achAutopay.ts::markAttemptCanceled",
+  "server/services/achAutopay.ts::markAttemptFailed",
+  "server/services/achAutopay.ts::markAttemptSettled",
+  "server/services/achAutopay.ts::markAttemptSubmitted",
+  "server/services/achAutopay.ts::recordReturn",
+  "server/services/achAutopay.ts::setMandateStatus",
+  "server/services/agentOrchestration.ts::completeSession",
+  "server/services/agentOrchestration.ts::getSession",
+  "server/services/agentOrchestration.ts::getSessionSteps",
+  "server/services/agentOrchestration.ts::requestApproval",
+  "server/services/agentOrchestration.ts::unsubscribe",
+  "server/services/agentOrchestration.ts::updateSessionContext",
+  "server/services/aiAdvisorTeamV15.ts::gatherHealthSnapshot",
+  "server/services/alertPolicy.ts::routeAlert",
+  "server/services/alerting.ts::acknowledgeAlert",
+  "server/services/alerting.ts::resolveAlert",
+  "server/services/apiQueue.ts::cleanupOldJobs",
+  "server/services/apiQueue.ts::getJob",
+  "server/services/apiQueue.ts::getPendingJobs",
+  "server/services/apiQueue.ts::updateJob",
+  "server/services/autonomousSalesPipeline.ts::identifyLeads",
+  "server/services/borrower/autopayAuthorizationChallenge.ts::mandateIdForChallenge",
+  "server/services/buyerMatchingAI.ts::generateMatchPitch",
+  "server/services/buyerQualificationBot.ts::assessFinancingReadiness",
+  "server/services/buyerQualificationBot.ts::getQualificationById",
+  "server/services/capitalMarkets.ts::investInSecurity",
+  "server/services/cashFlowForecaster.ts::analyzePaymentHealth",
+  "server/services/cashFlowForecaster.ts::generateInsights",
+  "server/services/cashFlowForecaster.ts::identifyRiskFactors",
+  "server/services/cashFlowForecaster.ts::projectExpenses",
+  "server/services/cashFlowForecaster.ts::projectNoteIncome",
+  "server/services/cashFlowForecaster.ts::projectPropertyIncome",
+  "server/services/ceoAbsenceMode.ts::suggestAbsenceWindow",
+  "server/services/complianceGuardian.ts::estimateComplianceCosts",
+  "server/services/costBasisTracker.ts::addImprovement",
+  "server/services/costBasisTracker.ts::adjustBasis",
+  "server/services/costBasisTracker.ts::computeGainLoss",
+  "server/services/costBasisTracker.ts::getAdjustedBasis",
+  "server/services/dealPatternCloning.ts::updateMatchOutcome",
+  "server/services/decisionsInbox.ts::defer",
+  "server/services/decisionsInbox.ts::override",
+  "server/services/decisionsInbox.ts::processDeferredItems",
+  "server/services/decisionsInbox.ts::reject",
+  "server/services/digest.ts::updateSubscription",
+  "server/services/dispositionOptimizer.ts::analyzeTimingFactors",
+  "server/services/dispositionOptimizer.ts::calculateOptimalPrice",
+  "server/services/dispositionOptimizer.ts::calculateOwnerFinanceTerms",
+  "server/services/dispositionOptimizer.ts::getAverageDaysOnMarket",
+  "server/services/dispositionOptimizer.ts::getMarketCondition",
+  "server/services/dispositionOptimizer.ts::getRecommendation",
+  "server/services/dispositionOptimizer.ts::recommendChannels",
+  "server/services/documentIntelligence.ts::analyzeRisks",
+  "server/services/documentIntelligence.ts::compareDocumentVersions",
+  "server/services/documentIntelligence.ts::extractKeyTerms",
+  "server/services/documentIntelligence.ts::extractText",
+  "server/services/documentIntelligence.ts::generateDocumentSummary",
+  "server/services/documentIntelligence.ts::parseDocument",
+  "server/services/dueDiligencePods.ts::getDossier",
+  "server/services/dueDiligencePods.ts::getPropertyData",
+  "server/services/dueDiligencePods.ts::updateAgentStatus",
+  "server/services/dunning.ts::getActiveCases",
+  "server/services/dunning.ts::getHistory",
+  "server/services/etlHandlers.ts::softDelete",
+  "server/services/externalStatusMonitor.ts::resolveOutageNotifications",
+  "server/services/founder-chat/tools/action.ts::handler",
+  "server/services/founder-chat/tools/action.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/inquiry.ts::handler",
+  "server/services/founder-chat/tools/synthesis.ts::handler",
+  "server/services/founder-chat/tools/synthesis.ts::handler",
+  "server/services/founder-chat/tools/synthesis.ts::handler",
+  "server/services/founder-chat/tools/synthesis.ts::handler",
+  "server/services/healthCheck.ts::checkTwilio",
+  "server/services/leadNurturer.ts::scheduleFollowUp",
+  "server/services/leadNurturer.ts::scoreLead",
+  "server/services/leadScoring.ts::calcCampaignTouches",
+  "server/services/leadScoring.ts::getScoreHistory",
+  "server/services/ltvMonitor.ts::calculateCurrentBalance",
+  "server/services/ltvMonitor.ts::estimatePropertyValue",
+  "server/services/ltvMonitor.ts::getLTVSnapshot",
+  "server/services/marketIntelligence.ts::getHistoricalMetrics",
+  "server/services/marketIntelligence.ts::getMarketHealth",
+  "server/services/marketIntelligence.ts::trackPredictionAccuracy",
+  "server/services/marketIntelligence.ts::verifyPrediction",
+  "server/services/marketPrediction.ts::getOpportunityWindows",
+  "server/services/marketPrediction.ts::getPrediction",
+  "server/services/marketWatchlist.ts::deleteEntry",
+  "server/services/marketWatchlist.ts::getEntry",
+  "server/services/marketWatchlist.ts::updateEntry",
+  "server/services/negotiationCopilot.ts::analyzeSentiment",
+  "server/services/negotiationCopilot.ts::getRecommendedStrategy",
+  "server/services/negotiationCopilot.ts::getSessionById",
+  "server/services/negotiationCopilot.ts::recordLessonsLearned",
+  "server/services/negotiationCopilot.ts::suggestCounterOffer",
+  "server/services/paxObserver.ts::acknowledgeObservation",
+  "server/services/paxObserver.ts::autoResolveObservation",
+  "server/services/paxObserver.ts::cleanupOldObservations",
+  "server/services/paxObserver.ts::dismissObservation",
+  "server/services/paxObserver.ts::escalateObservation",
+  "server/services/portfolioSentinel.ts::acknowledgeAlert",
+  "server/services/portfolioSentinel.ts::dismissAlert",
+  "server/services/portfolioSentinel.ts::resolveAlert",
+  "server/services/portfolioSentinel.ts::suggestActions",
+  "server/services/priceOptimizer.ts::assessCompetition",
+  "server/services/priceOptimizer.ts::getLatestSellerIntent",
+  "server/services/priceOptimizer.ts::getMarketTiming",
+  "server/services/priceOptimizer.ts::getMarketVolatility",
+  "server/services/priceOptimizer.ts::incorporateMarketTrends",
+  "server/services/proactiveMonitor.ts::autoResolveAlert",
+  "server/services/proactiveMonitor.ts::autoResolveAlertsByMetadata",
+  "server/services/proactiveMonitor.ts::cleanupOldAlerts",
+  "server/services/productEvolutionEngine.ts::generateSpec",
+  "server/services/sellerIntentPredictor.ts::analyzeEngagementSignals",
+  "server/services/sellerIntentPredictor.ts::analyzeFinancialSignals",
+  "server/services/sellerIntentPredictor.ts::analyzeUrgencySignals",
+  "server/services/sellerIntentPredictor.ts::getLeadMessageContent",
+  "server/services/taxOptimizationEngine.ts::computeDepreciationStrategy",
+  "server/services/voiceCallAI.ts::extractActionItems",
+  "server/services/voiceCallAI.ts::extractKeyData",
+  "server/services/voiceCallAI.ts::generateCoachingInsights",
+  "server/services/whiteLabelService.ts::listTenants",
+  "server/services/whiteLabelService.ts::resolveFromDomain",
 ]);
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -288,7 +468,7 @@ function collectOrgScopedTableIdents() {
 // Storage-method scanner
 // ----------------------------------------------------------------------------
 
-function findStorageFiles() {
+function findScannedFiles() {
   const files = [join(SERVER_DIR, "storage.ts")];
   const subdir = join(SERVER_DIR, "storage");
   if (statSync(subdir, { throwIfNoEntry: false })?.isDirectory()) {
@@ -296,6 +476,26 @@ function findStorageFiles() {
       if (!entry.endsWith(".ts")) continue;
       if (entry.endsWith(".test.ts") || entry.endsWith(".spec.ts")) continue;
       files.push(join(subdir, entry));
+    }
+  }
+  // server/services/** — added 2026-08-13. See the SERVICE LAYER note in the
+  // header: a service that owns its own persistence never passed under this
+  // lint, and one of them was leaking KYC records across tenants.
+  const servicesDir = join(SERVER_DIR, "services");
+  if (statSync(servicesDir, { throwIfNoEntry: false })?.isDirectory()) {
+    const stack = [servicesDir];
+    while (stack.length > 0) {
+      const dir = stack.pop();
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          stack.push(full);
+          continue;
+        }
+        if (!entry.endsWith(".ts")) continue;
+        if (entry.endsWith(".test.ts") || entry.endsWith(".spec.ts")) continue;
+        files.push(full);
+      }
     }
   }
   return files.sort();
@@ -354,7 +554,7 @@ function touchedOrgScopedTables(methodText, orgScopedIdents) {
 
 function main() {
   const orgScopedIdents = collectOrgScopedTableIdents();
-  const storageFiles = findStorageFiles();
+  const scannedFiles = findScannedFiles();
 
   const newOffenders = [];
   const baselineSeen = new Set();
@@ -362,7 +562,7 @@ function main() {
   let methodsTouchingOrgTables = 0;
   let conformingMethods = 0;
 
-  for (const file of storageFiles) {
+  for (const file of scannedFiles) {
     const rel = file.replace(REPO_ROOT + "/", "");
     // Masked for the same reason as the schema pass — and as a bonus,
     // commented-out code can no longer count as "touching" a table or as
@@ -390,7 +590,7 @@ function main() {
 
   console.log(
     `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size}; ` +
-      `scanned ${scannedMethods} storage methods across ${storageFiles.length} files`,
+      `scanned ${scannedMethods} storage + service methods across ${scannedFiles.length} files`,
   );
   console.log(
     `[check-org-scoped-fetch] touching org tables: ${methodsTouchingOrgTables}, ` +

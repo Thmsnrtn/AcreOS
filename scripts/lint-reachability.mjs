@@ -179,19 +179,36 @@ function isTestFile(relPath) {
 const PRODUCTION_ROOTS = ["server", "client/src", "shared", "scripts", "script"];
 
 /**
+ * REGISTERS OF OFFENDING SYMBOLS — never counted as consumers.
+ *
  * This file DOCUMENTS the dead symbols it exists to find (lateFees,
  * calculateFlipAnalysis, achAutopayRun …) in its own header. Token-wise that
  * reads as a use, so the linter would resurrect exactly the corpses it names.
- * Exempt itself — same shape as lint-prefetch-authority.mjs exempting the one
- * file allowed to call the API it bans.
+ * Same shape as lint-prefetch-authority.mjs exempting the one file allowed to
+ * call the API it bans.
+ *
+ * It is not the only such file any more, and the second one was found the hard
+ * way. `check-org-scoped-fetch.mjs` froze 136 service-layer tenancy offenders
+ * as `"server/services/<file>.ts::<method>"` keys; this scanner tokenises file
+ * text, so `productEvolutionEngine` — a MODULE ORPHAN nothing imports, whose
+ * singleton happens to share its filename — read as referenced and the count
+ * silently fell 654 → 653. A register of things that are wrong must not make
+ * them look right.
+ *
+ * Add a file here only if enumerating symbols IS its purpose. A script that
+ * merely mentions one is a real consumer; this linter prefers a miss to a wrong
+ * accusation, and the same caution applies in reverse.
  */
-const SELF = "scripts/lint-reachability.mjs";
+const SYMBOL_REGISTERS = new Set([
+  "scripts/lint-reachability.mjs",
+  "scripts/check-org-scoped-fetch.mjs",
+]);
 
 const productionFiles = [];
 for (const r of PRODUCTION_ROOTS) {
   for (const abs of walk(join(ROOT, r))) {
     const p = rel(abs);
-    if (p === SELF) continue;
+    if (SYMBOL_REGISTERS.has(p)) continue;
     if (!isTestFile(p)) productionFiles.push(p);
   }
 }

@@ -3887,3 +3887,85 @@ checker that only catches the tidy formatting of a bug. Widened, then re-run to
 confirm it now fails.
 
 `npm run check` EXIT=0 · `tests/unit` 679 files, 8926 passed, 1 skipped.
+
+---
+
+## Unit 54 — The tenancy lint had a real rule and one layer · this commit
+
+**Files:** `scripts/check-org-scoped-fetch.mjs`, `scripts/lint-reachability.mjs`,
+`scripts/ratchets/reachability.json`,
+`tests/unit/orgScopedFetchCoverage.test.ts` (new, 7 tests).
+
+Unit 53 fixed one cross-tenant leak. The question that follows is whether the
+repo already had something that should have caught it — and it did.
+
+`scripts/check-org-scoped-fetch.mjs` has run in CI since the Tier 1F conversion,
+flagging methods that query a table carrying `organizationId` without any
+organization context. It works. It walked **`server/storage.ts` and
+`server/storage/*.ts` and nothing else**, so a service that owns its own
+persistence never passed under it — and that is exactly where the KYC leak was.
+
+### Not a claim — a check that was run
+
+Pointed at `server/services/**`, the lint flags **all six** of the methods unit
+53 fixed:
+
+```
+git show HEAD~1:server/services/investorVerification.ts > server/services/_probe.ts
+node scripts/check-org-scoped-fetch.mjs
+  - _probe.ts — findActiveRequest, getRequest, updateRequest,
+                listRequestsByProfile, isProfileVerified, markProfileVerified
+```
+
+The current, fixed file appears nowhere in the offender list. The rule was never
+missing; it was applied to one layer.
+
+### 136 frozen, as a debt register and not as approval
+
+744 storage+service methods touch an org-scoped table; **556 already carry org
+context**, so the service layer is ~81% conformant. The remaining 136 across 43
+files are frozen exactly as the storage half landed — *"pre-existing offenders
+are frozen below so the lint can land NOW and block regressions."* Converting
+136 methods, several on the ACH payment rail, is a refactor with its own risk,
+not a safer choice.
+
+The register carries the triage order rather than a promise: **22 of the 43
+files are imported by a `routes-*` file** and can therefore take an id straight
+from a URL. Those first. The rest are jobs and analytics iterating rows they
+already selected with an org filter — and the heuristic cannot tell the two
+apart, which is why this is a register and not a verdict.
+
+### The register resurrected a corpse
+
+`npm run check` then failed with `unreached-exports` at **653, baseline 654** —
+a *stale-high* baseline, i.e. the gate asking to be lowered.
+
+Lowering it would have been wrong. `lint-reachability.mjs` tokenises identifiers
+across every production file, and `scripts/` is a production root. Freezing 136
+keys of the form `"server/services/<file>.ts::<method>"` turned this register
+into a list of identifiers — and `productEvolutionEngine`, a **module orphan
+nothing imports**, whose singleton happens to share its filename, read as
+referenced. The count fell because a dead module looked alive.
+
+That linter's own header already documents this trap for itself: *"This file
+DOCUMENTS the dead symbols it exists to find … the linter would resurrect
+exactly the corpses it names."* There are two such files now, so `SELF` became
+`SYMBOL_REGISTERS`. Count back to 654, **baseline untouched**, and the orphan
+stays visible.
+
+It is the same mechanism as unit 53's stale TODO, from the other side: **that
+one hid a live symbol behind prose; this one hid a dead module behind a debt
+register.** Neither is a substring accident to be worked around — a reference
+scanner that reads prose as code will keep producing both, and the answer is to
+exempt the files whose purpose is to name offenders.
+
+### Verification
+
+Five mutations, each verified to apply, each caught: removing the services
+branch from the walk; making the walk non-recursive (three offenders live in
+`services/founder-chat/tools`, one in `services/borrower`); a baseline key
+naming a nonexistent file; **a genuinely new unscoped service method** — the
+end-to-end proof the extension does its job; and removing the register
+exemption.
+
+`npm run check` EXIT=0 · `tests/unit` 680 files, 8933 passed, 1 skipped.

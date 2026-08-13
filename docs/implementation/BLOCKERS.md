@@ -515,3 +515,44 @@ two are kept in agreement by hand. Closing that properly means mapping frozen
 client routes to their API prefixes in the same module, so one edit unfreezes
 both halves — worth doing when B12's KILL/reactivate decision lands, since that
 decision determines whether the mapping needs a `gone` lane as well.
+
+---
+
+## B14 — 136 service-layer methods query org-scoped tables without org context
+
+**Found:** unit 54, by extending `check-org-scoped-fetch.mjs` to
+`server/services/**`.
+**Blocked on:** nothing — this is a triage queue, frozen so the lint could land
+and block regressions. Recorded here because it is 43 files and must not be
+attempted as one change.
+
+744 storage+service methods touch a table carrying `organizationId`; 556 already
+carry org context. The 136 that do not are in the lint's `BASELINE_OFFENDERS`
+set, and a stale entry FAILS the lint — so a fix cannot land without deleting
+its line.
+
+**Triage order.** 22 of the 43 files are imported by a `routes-*` file and can
+therefore receive an id straight from a URL, which is the shape that made unit
+53 a live cross-tenant leak:
+
+`achAutopay` · `dispositionOptimizer` · `documentIntelligence` ·
+`cashFlowForecaster` · `priceOptimizer` · `negotiationCopilot` ·
+`sellerIntentPredictor` · `portfolioSentinel` · `marketIntelligence` ·
+`decisionsInbox` · `marketWatchlist` · `dueDiligencePods` · `whiteLabelService` ·
+`marketPrediction` · `leadScoring` · `leadNurturer` · `dunning` ·
+`buyerQualificationBot` · `alerting` · `dealPatternCloning` · `capitalMarkets` ·
+`borrower/autopayAuthorizationChallenge`
+
+The remaining 21 files are jobs and analytics that iterate rows they already
+selected with an org filter. The heuristic cannot tell the two apart — being on
+this list is a **question**, not a verdict, and each entry needs the unit-53
+treatment: read the route that reaches it, then either thread the org through or
+route the access via `unscopedForPlatformOps(reason)` if it is a genuine
+platform op.
+
+**Do not batch this.** `achAutopay` alone is 12 entries on the ACH payment rail,
+where a wrong predicate does not leak data — it stops a debit or double-submits
+one. One subsystem per unit, with the same two-halves test shape unit 53 used
+(behaviour against a storage double, plus source assertions over the emitted
+`where`), because the lint is textual and cannot see a predicate that is
+accepted and never applied.

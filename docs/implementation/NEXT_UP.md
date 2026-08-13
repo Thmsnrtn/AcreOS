@@ -758,3 +758,24 @@ the note is *why* the one correct, org-scoped method on that service was never
 called. §6a's rule — a gap note has no standing until re-verified — applies to
 TODOs in code exactly as it applies to audit findings and to this program's own
 write-ups.
+
+**A reference scanner that reads prose as code fails in BOTH directions.**
+`lint-reachability.mjs` tokenises identifiers across every production file, and
+`scripts/` is a production root. Unit 53 hit it one way — deleting a stale TODO
+that named a class made the class newly "unreached". Unit 54 hit it the other —
+freezing 136 `path.ts::method` keys in a tenancy debt register made
+`productEvolutionEngine`, a module orphan, look alive, and the count fell 654 →
+653 asking to be locked in. **Do not lower a baseline you cannot explain.** The
+fix in both cases is to name the mechanism: an allowlist entry for the first, and
+`SYMBOL_REGISTERS` (the linter's own `SELF` exemption, generalised) for the
+second. Any future file whose purpose is to ENUMERATE offending symbols belongs
+in that set before its first run.
+
+**The follow-up question after any isolated defect:** *does this repo already
+have a gate that should have caught it, and what is that gate's scope?* Unit 54
+came straight out of unit 53 by asking it. `check-org-scoped-fetch.mjs` had the
+right rule, ran in CI, and walked one layer. That is the same shape as units
+30–52 — a rule applied to some surfaces and not others — with the twist that the
+rule was already **automated**, which makes it read as covered. Worth running
+against the other lints: several state their walk in a header comment, and a
+header is a factual claim about scope that decays like any other.
