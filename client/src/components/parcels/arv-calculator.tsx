@@ -7,7 +7,7 @@
  * band."
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Calculator, PlusCircle, Trash2, AlertTriangle } from "lucide-react";
 
@@ -64,6 +64,11 @@ const emptyComp = (): CompInput => ({
  * migration once the backfill of pre-rehab ARV rows lands.
  */
 export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; rehabId?: string }) {
+  // Every Label below is paired to its Input with htmlFor/id. A visible label
+  // that is not ASSOCIATED is announced by a screen reader as nothing at all —
+  // the input has no accessible name, however obvious the text beside it looks.
+  // useId rather than literals so two calculators on one page cannot collide.
+  const uid = useId();
   const { toast } = useToast();
   const [subjectSqft, setSubjectSqft] = useState("");
   const [subjectCondition, setSubjectCondition] = useState("4");
@@ -178,12 +183,12 @@ export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; reh
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3 max-w-md">
             <div>
-              <Label className="text-xs">Subject sqft</Label>
-              <Input type="number" value={subjectSqft} onChange={(e) => setSubjectSqft(e.target.value)} className="h-9" placeholder="1500" />
+              <Label htmlFor={`${uid}-subject-sqft`} className="text-xs">Subject sqft</Label>
+              <Input id={`${uid}-subject-sqft`} type="number" value={subjectSqft} onChange={(e) => setSubjectSqft(e.target.value)} className="h-9" placeholder="1500" />
             </div>
             <div>
-              <Label className="text-xs">Subject post-rehab condition (1-5)</Label>
-              <Input type="number" min="1" max="5" value={subjectCondition} onChange={(e) => setSubjectCondition(e.target.value)} className="h-9" />
+              <Label htmlFor={`${uid}-subject-condition`} className="text-xs">Subject post-rehab condition (1-5)</Label>
+              <Input id={`${uid}-subject-condition`} type="number" min="1" max="5" value={subjectCondition} onChange={(e) => setSubjectCondition(e.target.value)} className="h-9" />
             </div>
           </div>
 
@@ -192,28 +197,28 @@ export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; reh
             {comps.map((c, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-3">
-                  <Label className="text-xs">Address</Label>
-                  <Input value={c.address} onChange={(e) => { const next = [...comps]; next[idx].address = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-address`} className="text-xs">Address</Label>
+                  <Input id={`${uid}-comp-${idx}-address`} value={c.address} onChange={(e) => { const next = [...comps]; next[idx].address = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Sold ($)</Label>
-                  <Input type="number" value={c.soldPriceDollars} onChange={(e) => { const next = [...comps]; next[idx].soldPriceDollars = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-sold`} className="text-xs">Sold ($)</Label>
+                  <Input id={`${uid}-comp-${idx}-sold`} type="number" value={c.soldPriceDollars} onChange={(e) => { const next = [...comps]; next[idx].soldPriceDollars = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Sold date</Label>
-                  <Input type="date" value={c.soldDate} onChange={(e) => { const next = [...comps]; next[idx].soldDate = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-sold-date`} className="text-xs">Sold date</Label>
+                  <Input id={`${uid}-comp-${idx}-sold-date`} type="date" value={c.soldDate} onChange={(e) => { const next = [...comps]; next[idx].soldDate = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-1">
-                  <Label className="text-xs">Sqft</Label>
-                  <Input type="number" value={c.sqft} onChange={(e) => { const next = [...comps]; next[idx].sqft = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-sqft`} className="text-xs">Sqft</Label>
+                  <Input id={`${uid}-comp-${idx}-sqft`} type="number" value={c.sqft} onChange={(e) => { const next = [...comps]; next[idx].sqft = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Distance (mi)</Label>
-                  <Input type="number" step="0.1" value={c.distanceMiles} onChange={(e) => { const next = [...comps]; next[idx].distanceMiles = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-distance`} className="text-xs">Distance (mi)</Label>
+                  <Input id={`${uid}-comp-${idx}-distance`} type="number" step="0.1" value={c.distanceMiles} onChange={(e) => { const next = [...comps]; next[idx].distanceMiles = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-1">
-                  <Label className="text-xs">Cond.</Label>
-                  <Input type="number" min="1" max="5" value={c.conditionRating} onChange={(e) => { const next = [...comps]; next[idx].conditionRating = e.target.value; setComps(next); }} className="h-8 text-xs" />
+                  <Label htmlFor={`${uid}-comp-${idx}-condition`} className="text-xs">Cond.</Label>
+                  <Input id={`${uid}-comp-${idx}-condition`} type="number" min="1" max="5" value={c.conditionRating} onChange={(e) => { const next = [...comps]; next[idx].conditionRating = e.target.value; setComps(next); }} className="h-8 text-xs" />
                 </div>
                 <div className="col-span-1 flex justify-end">
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setComps(comps.filter((_, i) => i !== idx))} aria-label="Remove comp">
@@ -228,8 +233,8 @@ export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; reh
           </div>
 
           <div>
-            <Label className="text-xs">Methodology / notes</Label>
-            <Input value={methodology} onChange={(e) => setMethodology(e.target.value)} className="h-9" placeholder="e.g. SFR-only, no flood-zone comps, post-rehab condition 4 = stainless + LVP + neutral paint" />
+            <Label htmlFor={`${uid}-methodology`} className="text-xs">Methodology / notes</Label>
+            <Input id={`${uid}-methodology`} value={methodology} onChange={(e) => setMethodology(e.target.value)} className="h-9" placeholder="e.g. SFR-only, no flood-zone comps, post-rehab condition 4 = stainless + LVP + neutral paint" />
           </div>
 
           <Button onClick={() => calc.mutate()} disabled={calc.isPending}>

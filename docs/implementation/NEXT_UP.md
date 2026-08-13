@@ -955,3 +955,21 @@ the files that DOCUMENT the rule must be excluded from it** — `lint-reachabili
 learned this about itself long ago (`SELF`, now `SYMBOL_REGISTERS`) and the lesson
 generalises to every scan written since. Exclude comments, or exclude the file,
 and say which.
+
+**Accessibility: two of CLAUDE.md's three rules now have real gates.**
+
+- ✅ *icon-only buttons have `aria-label`* — unit 66. All 728 tsx files, per
+  element, `asChild` followed to the child. **207/207 compliant**, baseline zero.
+- ✅ *form inputs have an associated label* — unit 68. **607/723 compliant**;
+  the remaining 107 are a per-file, down-only register in the same test. Fixing
+  one is a two-token change: `htmlFor` on the Label, `id` on the Input, both from
+  a `useId()` prefix. `components/parcels/arv-calculator.tsx` is the worked
+  example.
+- ⬜ *every interactive element has a visible focus state* — **no gate, and the
+  naive one is wrong.** It is handled globally by `*:focus-visible` in
+  `index.css`, so the failure mode is not omission but REMOVAL: a component
+  writing `outline-none` or `focus:outline-none` without a replacement ring. A
+  first scan found 50 such sites, but the global rule may still cover many of
+  them and the scan cannot tell. **Do not freeze 50 findings without checking a
+  sample in a browser** — that is exactly the mistake unit 68 caught in itself
+  (191 → 116 once shadcn's `FormControl` was understood).

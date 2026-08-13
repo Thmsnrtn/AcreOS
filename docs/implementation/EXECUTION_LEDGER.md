@@ -4967,3 +4967,73 @@ equality; CSRF refusing exempt paths; the injection filter not redacting; and th
 filter redacting everything.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9042 passed, 1 skipped.
+
+---
+
+## Unit 68 — The third accessibility rule, and the checker that manufactured 75 findings · this commit
+
+**Files:** `tests/unit/accessibility.test.ts`,
+`client/src/components/parcels/arv-calculator.tsx`.
+
+`CLAUDE.md` states three accessibility rules absolutely. Unit 66 gave the first
+one a real gate. This is the third: *"Every form input must have an associated
+label."*
+
+**The word doing the work is "associated."** The common failure is not a missing
+label — it is a visible one that is not connected:
+
+```tsx
+<Label className="text-xs">Subject sqft</Label>
+<Input type="number" value={subjectSqft} />
+```
+
+Sighted users see a label. A screen reader announces the input with **no
+accessible name at all**.
+
+### The first measurement was wrong, and how it was caught
+
+A naive scan reported **191 violations**. Sampling one before believing it found
+shadcn `<FormField>` forms: `<FormControl>` is a Radix `Slot` that injects
+`id={formItemId}` into its child, and `<FormLabel>` emits the matching `htmlFor`
+— **the association is generated at runtime and never appears in the JSX.**
+
+75 of the 191 were that. The real number is **116**.
+
+> A checker that does not know the framework's own labelling mechanism
+> manufactures three-quarters of its findings — and a register nobody trusts
+> gets deleted rather than worked through.
+
+Recorded next to unit 62's triage heuristic (over- and under-reported) and unit
+60's truncating matcher. Same failure, third form: **read a sample before
+believing a count.**
+
+### The codebase comes out well
+
+723 `Input`/`Textarea` elements; **607 are correctly named** — 458 by `id` + a
+matching `htmlFor`, 74 by `aria-label`, 75 inside `<FormControl>`. Zero have an
+`id` with no matching `htmlFor`, so nobody half-applied it. The rule is
+understood and was followed 84% of the time.
+
+### What landed
+
+- `components/parcels/arv-calculator.tsx` fixed completely as the worked example
+  — 9 pairs, `useId()` prefix so two calculators on one page cannot collide.
+- The remaining **107 across 44 files** frozen as a **per-file, down-only
+  register**, so a fix is attributable and a regression cannot hide behind a fix
+  elsewhere.
+- The register is enforced in **both** directions: a count above its entry fails
+  ("a new unlabelled input"), and a count *below* it fails too ("lower it in the
+  commit that fixed the file"), so it cannot drift into fiction.
+
+Rule 2 of the three — *every interactive element must have visible focus state*
+— is handled globally by `*:focus-visible` in `index.css` and is a different
+shape (the risk is a component removing it, not omitting it). Not covered here;
+recorded in NEXT_UP rather than half-built.
+
+### Verification
+
+Four mutations, each verified to apply, each caught: a new unlabelled input; a
+**stale register entry** claiming debt that is fixed; the `FormControl` exemption
+dropped (which reproduces the 191-findings state); and the walk finding nothing.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
