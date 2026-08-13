@@ -1883,19 +1883,35 @@ export async function registerRoutes(
     }
   });
 
+  // Delegates to featureFlagService, and that is the whole point of this handler.
+  //
+  // It used to write `enabled` DIRECTLY — and `enabled` is the back-compat
+  // column. `state` is canonical: `rowToFlag` reads `state` and only falls back
+  // to `enabled` when `state` is NULL, which no row written since the migration
+  // is. So a founder flipped a flag here, got a 200 showing `enabled: true`, and
+  // `/api/config/features`, `requireLadderFlag` and every other consumer went on
+  // reading `state` — unchanged.
+  //
+  // The dangerous direction is the other one: setting `enabled: false` on a flag
+  // whose `state` is "on" left the feature ON for every customer while the
+  // console reported it off. `feature_marketplace` and `feature_capital_markets`
+  // are governance flags behind `requireLadderFlag`, so that is a founder
+  // believing they closed an expansion gate that is still open.
+  //
+  // `featureFlagService.setFlag` writes BOTH columns from either input. It is
+  // the single owner; see tests/unit/featureFlagSingleWriter.ts.
   app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { platformFeatureFlags } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
+      const { featureFlagService } = await import("./services/featureFlags");
       const { enabled } = req.body;
       if (typeof enabled !== "boolean") {
         return Errors.badRequest(res, "enabled (boolean) is required");
       }
-      const [updated] = await db
-        .update(platformFeatureFlags)
-        .set({ enabled, updatedAt: new Date() })
-        .where(eq(platformFeatureFlags.key, req.params.key))
-        .returning();
+      const updated = await featureFlagService.setFlag(
+        req.params.key,
+        { enabled },
+        req.user?.id,
+      );
       if (!updated) {
         return Errors.notFound(res, "feature flag");
       }

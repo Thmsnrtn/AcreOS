@@ -137,6 +137,7 @@ export const featureFlagService = {
     if (update.enabled !== undefined && update.state === undefined) {
       set.enabled = update.enabled;
       set.state = update.enabled ? "on" : "off";
+
     }
     const [updated] = await db
       .update(platformFeatureFlags)
