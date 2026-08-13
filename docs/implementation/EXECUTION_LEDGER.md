@@ -3770,3 +3770,120 @@ has an automated backstop, and the final assertion fails if a new decision is
 added without one — which is the moment to write the gate, not later.
 
 `npm run check` EXIT=0 · `tests/unit` 678 files, 8900 passed, 1 skipped.
+
+---
+
+## Unit 53 — Any org could read, mutate and approve any other org's KYC file · this commit
+
+**Files:** `server/services/investorVerification.ts`,
+`server/routes-investor-verification.ts`, `server/routes.ts`,
+`scripts/ratchets/reachability.json`,
+`tests/unit/investorVerificationTenancy.test.ts` (new, 26 tests).
+
+**The highest-severity finding in this program since unit 36.** Source-of-truth
+order puts tenant isolation first, ahead of everything else in the queue.
+
+### The tenant key was designed, migrated, indexed — and wired to nothing
+
+`investor_verification_requests` carries `organizationId NOT NULL` with a
+foreign key and an org-leading index (`investor_ver_requests_org_status_idx`).
+The DB-backing wave that added them also added `listRequestsByOrg`, the one
+org-scoped method on the storage seam. **No route called it, and no other
+method took an org at all.** Every route-reachable path resolved its subject by
+primary key or by investor-profile id:
+
+| endpoint | what any authenticated user of any org could do |
+|---|---|
+| `GET /verifications/:investorId` | read another org's KYC status |
+| `GET /verifications/:id/history` | read its full audit trail, reviewer ids and notes |
+| `POST /verifications/:id/documents` | attach a document to its request |
+| `PATCH /verifications/:id/submit` | advance its state machine |
+| `PATCH /verifications/:id/review` | **approve it** — which writes `isVerified` to that org's investor profile |
+| `POST /verifications/:id/accreditation` | write net worth / annual income onto it |
+
+`isAdmin(req)` asks whether the caller is an admin **of their own org**. Role
+and tenancy are two questions, and answering one has never answered the other —
+an admin is exactly the account that could do the most damage with an unscoped
+id.
+
+This is the failure mode `CLAUDE.md` names in as many words — *"an agent reports
+success for the part it built, and is blind to the part it didn't"* — and the
+same shape as unit 36 (a founder route with no founder guard) and unit 46
+(`canAssignLeads` declared for every role, checked by none): **the control
+exists and is not applied.**
+
+### The load-bearing check is on CREATE, not on read
+
+`investor_profiles.organizationId` is `NOT NULL UNIQUE` — one profile per org —
+so `assertProfileInOrg` is an exact ownership test. Without it, an org could
+open a request against someone else's profile and approving it later would write
+`isVerified` to that profile. **Scoping only the reads would have moved the leak
+to the write rather than closing it.**
+
+Cross-tenant refusals render **404, not 403**. A 403 confirms the record exists;
+probing another tenant's ids must be indistinguishable from probing ids that
+were never issued.
+
+### The admin queue was answering with a literal
+
+`GET /admin/verifications` returned a hardcoded `{ verifications: [] }` under a
+TODO reading *"the service exposes no listAllVerifications() — state lives in an
+in-memory per-process store."* **Both halves were stale.** The DB-backing wave
+had moved state into the table AND added `listVerifications(orgId)` — the one
+org-scoped method — and the note that said otherwise is why the only correct
+method stayed dead. An empty array is not an honest answer to "what is waiting
+for me to review".
+
+### Two side doors on a gated front door
+
+The deletion ledger's **Marketplace (FREEZE)** row names buyer-network and
+investor-verification alongside matchmaking and deal-rooms. Unit 51 moved
+`/api/marketplace` to the strict ladder gate; these two were mounted with
+`isAuthenticated, getOrCreateOrg` and nothing else. Same verdict, same flag, same
+gate now. Neither has a single client caller — but "nothing calls it" is not an
+access control.
+
+### The test is two halves because neither is sufficient
+
+**Behaviour**, against an in-memory storage double that filters by org exactly as
+the SQL does — this proves the *service* threads `orgId` through every path, and
+it cannot see a missing `WHERE`. **Source**, over the Drizzle storage — every
+query must carry an `organizationId` predicate, which is where the bug actually
+lived. The positive path is asserted first: a scoping bug that refused
+*everything* would satisfy every negative test in the file.
+
+### The reachability gate caught something real about itself
+
+`npm run check` failed at `unreached-exports 655 > 654`. The new export was
+`class InvestorVerificationService` — and it had been "reached" only by a
+**stale comment**. This linter detects references by substring, so
+`// TODO(tsc): InvestorVerificationService exposes no listAllVerifications()`
+in the routes file counted as a production call site. Deleting the false note
+revealed the export.
+
+**Verified rather than assumed:** re-adding that comment with no other change
+returns the gate to PASS at 654. So the count moved because a lie was removed,
+not because something was built unwired — the deletion-revealed category the
+ratchet's own notes already carve out for tables. Allowlisted with that reason;
+**the baseline was not raised.**
+
+The wider implication is recorded in NEXT_UP §7: the 654 baseline contains an
+unknown number of comment-only "references", and a symbol can be un-hidden by
+tidying prose.
+
+### Verification
+
+Eight mutations, each verified to apply, each caught: dropping the
+profile-ownership check on create; resolving the review request without the org;
+removing the org predicate from `markProfileVerified`, from
+`listRequestsByProfile` (single-line **and** multi-line forms); turning the
+cross-tenant refusal into a 403; restoring the hardcoded empty admin queue; and
+removing the ladder gate from the buyer-network mount.
+
+The multi-line variant is the one worth keeping. The catch-all assertion ("no
+storage query resolves a request by id alone") first required `where(eq(`
+adjacent and missed a mutation that dropped the predicate across three lines — a
+checker that only catches the tidy formatting of a bug. Widened, then re-run to
+confirm it now fails.
+
+`npm run check` EXIT=0 · `tests/unit` 679 files, 8926 passed, 1 skipped.

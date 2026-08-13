@@ -2185,14 +2185,22 @@ export async function registerRoutes(
   app.use('/api', isAuthenticated, getOrCreateOrg, fieldScoutRouter);
 
   // Phase 5-6 routes
-  app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, investorVerificationRouter);
+  //
+  // investor-verification and buyer-network are MARKETPLACE SATELLITES — the
+  // deletion ledger's Marketplace row names them alongside matchmaking and
+  // deal-rooms under a single FREEZE verdict. `/api/marketplace` itself moved
+  // to the strict ladder gate (no enterprise bypass, fails closed) when
+  // `expansion.marketplace-25-api-50` became a real ratchet; these two were
+  // mounted with auth and nothing else, so the front door was gated while two
+  // side doors stood open. Same verdict, same flag, same gate.
+  app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), investorVerificationRouter);
   // routes-transaction-fees deleted 2026-07-29 (founder ruling "be the rail, not
   // the provider"): a platform escrow / take-a-cut / manual-payout console over
   // AcreOS's own balance. Every handler was a stub, and POST /fees/payouts/trigger
   // returned 202 "processing" while doing nothing. Custody is not AcreOS's to hold.
   // /api/call-routing deleted 2026-08-01 (Voice / AI voice kill): every handler
   // returned a hardcoded stub config presented as real — honesty gate applies.
-  app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
+  app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), buyerNetworkRouter);
   // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11
   // endpoints returned 501 and no client consumed the mount. The real tax
   // optimizer API is /api/tax-optimizer/* in routes-misc.ts.

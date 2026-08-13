@@ -738,3 +738,23 @@ precondition, not as evidence.
 concluded `routes-elite-features.ts` was dead code because `| head -3` cut the
 output above `routes.ts:2544`, where `registerEliteFeatureRoutes(app)` is called.
 Never truncate a reachability check.
+
+**A comment naming a symbol makes it look REACHED.** `lint:reachability`
+detects references by substring, so `// TODO: FooService does not expose bar()`
+counts as a production call site for `FooService`. Unit 53 hit this from the
+other side: deleting a stale TODO pushed `unreached-exports` from 654 to 655
+with no code added. Two consequences. First, when this gate fails after a
+cleanup, check whether you deleted a *comment* before concluding you built
+something unwired — verify by re-adding it. Second, the 654 baseline contains an
+unknown number of comment-only "references", so a symbol can be un-hidden by
+tidying prose; that is the gate working, not a regression, and it is handled by
+an allowlist entry naming the mechanism rather than by raising the baseline.
+
+**A stale TODO is a factual claim about the repo, and decays like any other.**
+`GET /admin/verifications` returned a hardcoded empty array under a note reading
+"the service exposes no listAllVerifications() — state lives in an in-memory
+per-process store". Both halves had been false since the DB-backing wave, and
+the note is *why* the one correct, org-scoped method on that service was never
+called. §6a's rule — a gap note has no standing until re-verified — applies to
+TODOs in code exactly as it applies to audit findings and to this program's own
+write-ups.

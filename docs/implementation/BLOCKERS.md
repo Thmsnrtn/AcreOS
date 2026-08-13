@@ -468,3 +468,50 @@ not a 404 that reads as a routing bug).
 
 Either way `tests/unit/paxStaysAmbient.test.ts` fails on the change and asks for
 the decision to be stated, which is the point.
+
+---
+
+## B13 — Frozen and killed surfaces whose APIs are still gated by the WEAK gate
+
+**Found:** unit 53, while gating the two ungated marketplace satellites.
+**Blocked on:** nothing yet — this is a queued task, recorded here because it is
+a set rather than a single fix and because one member of the set must NOT be
+changed.
+
+`featureGate` (= `requireFlag`) has two escape hatches that unit 51 established
+are wrong for a governance gate: an **enterprise-tier bypass** and **failing
+OPEN when the flag store errors**. Deletion-ledger FREEZE/KILL surfaces are
+governance decisions, not product flags. Current state of the mounts:
+
+| mount | verdict | gate | should be |
+|---|---|---|---|
+| `/api/marketplace` | FREEZE | `requireLadderFlag` | ✅ unit 51 |
+| `/api/investor-verification` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 53 |
+| `/api/buyer-network` | FREEZE (satellite) | `requireLadderFlag` | ✅ unit 53 |
+| `/api/deal-rooms` | FREEZE (satellite) | `featureGate` | strict |
+| `/api/capital-markets` | FREEZE — reactivate at H4 | `featureGate` | strict |
+| `/api/certification` | KILL — "education revenue stays dead" | `featureGate` | strict |
+| `/api/negotiation` | KILL | **none** | B12 |
+| `/api/white-label` | FREEZE | `featureGate` | **LEAVE IT** |
+
+**White-label is the exception, deliberately.** `featureGate`'s own header says
+the enterprise-tier bypass exists *"for legacy reseller / white-label routes
+that … are part of the enterprise contract"*, and the ledger's reactivation
+criterion for white-label is *"the first enterprise/white-label contract"*. The
+bypass IS that criterion, encoded. Tightening it would be a "tighten everything"
+pass removing a deliberate decision — the same mistake the founder-bypass note
+in `requireLadderFlag` guards against.
+
+The rest are one-line changes plus assertions. Left out of unit 53 to keep that
+commit to one subsystem and one story.
+
+### The wider gap this sits inside
+
+`shared/feature-freeze.ts` exists because client flag resolution fails OPEN — an
+unseeded flags table would otherwise un-hide every frozen door. The client
+checks `isFrozenRoute` before every other rule. **No server gate consults that
+list.** The freeze is a client-side control over a server-side surface, and the
+two are kept in agreement by hand. Closing that properly means mapping frozen
+client routes to their API prefixes in the same module, so one edit unfreezes
+both halves — worth doing when B12's KILL/reactivate decision lands, since that
+decision determines whether the mapping needs a `gone` lane as well.
