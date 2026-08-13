@@ -50,7 +50,7 @@ const BASELINE_ENTRIES = 173;
  * after `priceOptimizer.recordPriceOutcome` — a cross-tenant WRITE the rule
  * found on its first run — was fixed rather than admitted.
  */
-const RULE_2_BASELINE = 61;
+const RULE_2_BASELINE = 59;
 
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to

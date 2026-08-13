@@ -429,10 +429,16 @@ Respond in JSON format.`;
       });
 
       // Roll up performance for the strategy that drove this thread (if linked).
+      // Scoped: the threadId arrives from the caller alongside the org, and
+      // nothing above verified the two belong together — so an outcome could be
+      // filed against another org's thread and its strategyId read back out.
       const [thread] = await db
         .select({ strategyId: negotiationThreads.strategyId })
         .from(negotiationThreads)
-        .where(eq(negotiationThreads.id, Number(threadId)))
+        .where(and(
+          eq(negotiationThreads.id, Number(threadId)),
+          eq(negotiationThreads.organizationId, Number(organizationId)),
+        ))
         .limit(1);
       if (thread?.strategyId != null) {
         await this.updateStrategyPerformance(organizationId, String(thread.strategyId));

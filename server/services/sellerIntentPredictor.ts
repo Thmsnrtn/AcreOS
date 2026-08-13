@@ -16,6 +16,19 @@ import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+/**
+ * Thrown when a lead has no intent prediction in the calling organization —
+ * which is also the answer for a lead that is not the caller's at all. Rendered
+ * 404 by the route.
+ */
+export class SellerIntentNotInOrgError extends Error {
+  constructor(leadId: number) {
+    super(`No seller-intent prediction for lead ${leadId} in this organization`);
+    this.name = "SellerIntentNotInOrgError";
+  }
+}
+
+
 interface SignalScore {
   score: number;
   indicators: string[];
@@ -688,15 +701,36 @@ What negotiation approach do you recommend?`
     return { min, optimal, max };
   }
 
+  /**
+   * Record the real-world outcome for a LEAD's latest intent prediction.
+   *
+   * It used to take a `predictionId` and its only route passed a **leadId** —
+   * `POST /api/seller-intent/:leadId/outcome`, under a comment that correctly
+   * read "recordOutcome(predictionId, outcome)". So the outcome of lead #42 was
+   * written onto prediction #42, whichever lead that prediction belonged to.
+   * Two ids of different entities happened to share a numeric space, and
+   * nothing objected.
+   *
+   * Taking the leadId honestly — and resolving the prediction from it, within
+   * the caller's organization — fixes the mismatch and the tenancy in one move.
+   * The previous signature could not be scoped without also deciding which of
+   * the two entities the caller actually meant.
+   */
   async recordOutcome(
-    predictionId: number,
+    leadId: number,
+    organizationId: number,
     outcome: PredictionOutcome
   ): Promise<void> {
     const [prediction] = await db.select().from(sellerIntentPredictions)
-      .where(eq(sellerIntentPredictions.id, predictionId));
+      .where(and(
+        eq(sellerIntentPredictions.leadId, leadId),
+        eq(sellerIntentPredictions.organizationId, organizationId),
+      ))
+      .orderBy(desc(sellerIntentPredictions.createdAt))
+      .limit(1);
 
     if (!prediction) {
-      throw new Error(`Prediction ${predictionId} not found`);
+      throw new SellerIntentNotInOrgError(leadId);
     }
 
     const predictionAccurate = this.evaluatePredictionAccuracy(prediction, outcome);
@@ -708,14 +742,18 @@ What negotiation approach do you recommend?`
         predictionAccurate,
         updatedAt: new Date(),
       })
-      .where(eq(sellerIntentPredictions.id, predictionId));
+      .where(and(
+        eq(sellerIntentPredictions.id, prediction.id),
+        eq(sellerIntentPredictions.organizationId, organizationId),
+      ));
 
     await db.insert(agentEvents).values({
       organizationId: prediction.organizationId,
       eventType: "seller_intent_outcome_recorded",
       eventSource: "system",
       payload: {
-        predictionId,
+        predictionId: prediction.id,
+        leadId,
         intentLevel: prediction.intentLevel,
         intentScore: prediction.intentScore,
         outcome,

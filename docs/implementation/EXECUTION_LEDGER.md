@@ -4601,3 +4601,87 @@ Two mutations, each verified to apply, each caught: the AVM parcel fetch
 unscoped again, and `landCredit` reverted to the post-fetch comparison.
 
 `npm run check` EXIT=0 · `tests/unit` 686 files, 9010 passed, 1 skipped.
+
+---
+
+## Unit 63 — The outcome of lead #42 was written onto prediction #42 · this commit
+
+**Files:** `server/services/sellerIntentPredictor.ts`,
+`server/routes-seller-intent.ts`,
+`server/services/negotiationOrchestrator.ts`,
+`scripts/check-org-scoped-fetch.mjs`,
+`tests/unit/sellerIntentOutcomeIdentity.test.ts` (new, 8 tests),
+`tests/unit/orgScopedFetchCoverage.test.ts`.
+
+Closing the caller-supplied-id half of rule 2's register. Unit 62 handled three;
+these are the last three, and **the triage had one of them in the wrong bucket.**
+
+### The triage said "founder-only". It was a customer route.
+
+`sellerIntentPredictor.recordOutcome` was filed under the founder plane because
+the heuristic matched `.recordOutcome(` in two `/founder/*` route files — which
+belong to `trustEnforcementService` and `adaptiveStrategyService`, different
+services entirely. Its real caller is `POST /api/seller-intent/:leadId/outcome`,
+mounted with `isAuthenticated, getOrCreateOrg`.
+
+B14 already recorded that the heuristic over- and under-reports. This is the
+first case where believing it would have left a customer-reachable write open —
+so the rule stands: **re-derive, don't work down a frozen copy.**
+
+### Two defects on one line
+
+```ts
+// recordOutcome(predictionId, outcome). finalPrice/notes are not accepted…
+await sellerIntentPredictorService.recordOutcome(leadId, outcome);
+```
+
+1. **Wrong entity.** The route reads `req.params.leadId` and passes it where a
+   `predictionId` is expected — under a comment that names the right parameter.
+   Two ids of different entities share a numeric space, so nothing threw:
+   `seller_intent_predictions` row #42 had its `actualOutcome` and
+   `predictionAccurate` overwritten with lead #42's result. That column is the
+   model's own accuracy record.
+2. **No organization at all**, so the write was cross-tenant.
+
+**They were the same line, and the first had to be settled to fix the second:**
+the method could not be scoped without deciding which of the two entities the
+caller meant. It takes a `leadId` honestly now and resolves that lead's *latest*
+prediction within the caller's org — which answers both.
+
+The agent event recorded `predictionId` bound to the leadId value, so the audit
+trail agreed with the bug. Both ids are named explicitly now.
+
+### The other two
+
+`negotiationOrchestrator.recordOutcome` took an `organizationId` **and** a
+caller-supplied `threadId` and never checked they belonged together — an outcome
+could be filed against another org's thread and its `strategyId` read back.
+Scoped.
+
+`autonomousAgentEngine.recordAction` is **verified safe**: its flagged predicate
+uses `config.id`, and `config` comes from an org-scoped `getAgentConfig`. Left in
+the register, like `saveOpportunityScore`.
+
+### An assertion that a second query satisfied
+
+Mutation M2 stripped the org from the prediction SELECT and **the suite stayed
+green**: the assertion read a fixed 1,400-character window that also contained
+the UPDATE, whose org predicate satisfied it. Now bounded at the SELECT's own
+`.limit(1);`, with the UPDATE asserted separately so neither can stand in for the
+other.
+
+Third window-bound defect this session (unit 59's `});`, unit 60's lazy regex,
+this). The pattern is the same each time: **a window that reaches past the thing
+under test finds the right string in the wrong place.**
+
+Rule-2 baseline 61 → **59**. Every caller-supplied-id entry is now closed; the
+remainder are internal helpers and derived ids, recorded in B14.
+
+### Verification
+
+Six mutations, each verified to apply, each caught after the window was
+tightened: `recordOutcome` taking a `predictionId` again; the SELECT dropping the
+org; the prediction picked arbitrarily rather than latest-first; the route
+passing a constant org; and the orchestrator's thread lookup unscoped.
+
+`npm run check` EXIT=0 · `tests/unit` 687 files, 9018 passed, 1 skipped.
