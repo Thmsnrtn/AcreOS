@@ -483,7 +483,10 @@ async function collectEnhancedBriefingData(
       action: `Review ${overnightActivity.hotDealsFound} hot deal(s) found overnight`,
       reason: `AcreOS found ${overnightActivity.hotDealsFound} high-motivation opportunity(ies) while you slept`,
       urgency: "critical",
-      link: "/deal-hunter",
+      // `/deal-hunter` was retired 2026-06-08 and survives only as a Redirect
+      // chain (→ /deals/discover → /deals). Point at the destination directly:
+      // an overnight hot-deal belongs on the deals board.
+      link: "/deals",
     });
   }
 
@@ -527,12 +530,30 @@ async function collectEnhancedBriefingData(
     });
   }
 
-  // Default actions if pipeline is clean
+  // Default actions if pipeline is clean.
+  //
+  // These are the FALLBACK cards — they fire when there is nothing else to show,
+  // so the quietest and newest accounts are the ones that see them. Two of the
+  // three used to lead nowhere useful:
+  //
+  //   - `/market-intelligence` is a FlaggedRoute. `FlaggedRoute` renders
+  //     <NotFound /> when the flag is off, and `feature_market_intelligence` is
+  //     seeded FALSE, so this card ended at a 404. A route EXISTING is not the
+  //     same as a customer being able to reach it, which is why the link check
+  //     in serverEmittedLinksResolve.test.ts now tests both.
+  //   - `/deal-hunter` is a retired path kept only as a Redirect (to
+  //     /deals/discover, which redirects again to /deals). It resolves, but it
+  //     sends someone asking about county CRITERIA to the deals board.
+  //
+  // Both now point at `/counties`, which is the one live surface that owns
+  // target counties: it reads and writes `/api/target-counties` — add, edit and
+  // remove — so "review the data" and "update the criteria" are genuinely the
+  // same door, and saying so is better than inventing a distinction.
   if (topActions.length === 0) {
     topActions.push(
-      { priority: 1, action: "Review your target county market data", reason: "Stay ahead of price trends", urgency: "medium", link: "/market-intelligence" },
+      { priority: 1, action: "Review your target county market data", reason: "Stay ahead of price trends", urgency: "medium", link: "/counties" },
       { priority: 2, action: "Send this week's outreach batch", reason: "Consistency is the #1 predictor of deal flow", urgency: "medium", link: "/campaigns" },
-      { priority: 3, action: "Update your target county criteria", reason: "Fine-tuning your criteria improves lead quality 2–3x", urgency: "medium", link: "/deal-hunter" }
+      { priority: 3, action: "Update your target county criteria", reason: "Fine-tuning your criteria improves lead quality 2–3x", urgency: "medium", link: "/counties" }
     );
   }
 

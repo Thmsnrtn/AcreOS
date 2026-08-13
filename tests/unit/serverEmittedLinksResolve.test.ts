@@ -181,6 +181,65 @@ describe("every client path the server sends someone to actually resolves", () =
   });
 });
 
+/**
+ * A ROUTE EXISTING IS NOT THE SAME AS A CUSTOMER BEING ABLE TO REACH IT.
+ *
+ * The sweep above answers "does App.tsx declare this path". Thirteen paths are
+ * declared through `<FlaggedRoute>`, which renders `<NotFound />` when its flag
+ * is off — and the flags are seeded FALSE. So a link can pass every assertion in
+ * this file and still end at a 404.
+ *
+ * One did. `autonomousDealMachine.ts` linked its **default** action card —
+ * *"Review your target county market data"* — at `/market-intelligence`, a
+ * FlaggedRoute behind `feature_market_intelligence`. Default cards fire when
+ * there is nothing else to show, so the quietest and newest accounts were the
+ * ones that got the 404. That is the second time in two units that a FALLBACK
+ * path turned out to be the broken one, which is worth saying out loud: the
+ * happy path gets exercised and the empty state does not.
+ *
+ * A link to a flag-gated route is not automatically wrong — a card could
+ * legitimately be emitted only when the flag is on. But nothing here does that,
+ * and the shape is subtle enough that it should be a deliberate exception with
+ * a reason rather than a silent one. Hence: zero, and no register.
+ */
+describe("no server-emitted link points at a route a flag can hide", () => {
+  const app = fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
+  const flagged = new Set(
+    [...app.matchAll(/<FlaggedRoute route="([^"]+)"/g)].map((m) => m[1]),
+  );
+
+  it("finds the flag-gated routes (vacuity guard)", () => {
+    expect(
+      flagged.size,
+      "no <FlaggedRoute> parsed from App.tsx — has the gating component changed " +
+        "name? This check is worthless if it inspects nothing.",
+    ).toBeGreaterThan(5);
+  });
+
+  it("FlaggedRoute really renders NotFound when the flag is off (the premise)", () => {
+    // If it ever redirected instead, a link to a gated route would be merely
+    // suboptimal rather than broken, and this check would be enforcing a rule
+    // whose reason had gone.
+    const at = app.indexOf("function FlaggedRoute(");
+    expect(at, "FlaggedRoute is gone").toBeGreaterThan(-1);
+    const body = app.slice(at, app.indexOf("\n}", at));
+    expect(body).toContain("if (!isRouteEnabled(route)) return <NotFound />;");
+  });
+
+  it("nothing the server emits lands on one", () => {
+    const gated = emittedLinks().filter((l) => flagged.has(l.target));
+    expect(
+      gated.map((g) => `${g.where} -> ${g.target}`).join("\n"),
+      "the server sends someone to a flag-gated route. FlaggedRoute renders " +
+        "NotFound when the flag is off, and these flags are seeded FALSE, so " +
+        "the card ends at a 404 while App.tsx still declares the path — which " +
+        "is why the sweep above passes it. Either point at an ungated surface " +
+        "that owns the same content, or emit the card only when the flag is on " +
+        "and record that here as a deliberate exception.",
+    ).toBe("");
+  });
+});
+
 describe("the specific ones that were broken stay fixed", () => {
   // Named as well as swept, because the sweep would also pass if someone
   // deleted the emitters instead of fixing them — and deleting a customer's
@@ -228,6 +287,20 @@ describe("the specific ones that were broken stay fixed", () => {
     const oncall = read("server/services/oncall.ts");
     expect(oncall).not.toContain('"/founder/intelligence"');
     expect(oncall).toContain('url: "/founder"');
+  });
+
+  it("the clean-pipeline defaults point at the live county surface", () => {
+    // `/market-intelligence` is flag-gated and `/deal-hunter` is a retired
+    // Redirect chain. `/counties` reads and writes /api/target-counties — add,
+    // edit and remove — so it genuinely owns both "review the data" and "update
+    // the criteria", and saying they are the same door beats inventing a
+    // distinction.
+    const machine = read("server/jobs/autonomousDealMachine.ts");
+    expect(machine, "the default cards point at the flag-gated route again")
+      .not.toContain('"/market-intelligence"');
+    expect(machine, "a card points at the retired /deal-hunter redirect again")
+      .not.toContain('"/deal-hunter"');
+    expect(machine).toContain('link: "/counties"');
   });
 
   it("the DLQ action card offers no deeplink, because there is no console", () => {
