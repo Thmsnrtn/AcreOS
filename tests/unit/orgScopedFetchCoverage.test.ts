@@ -45,6 +45,13 @@ const src = fs.readFileSync(LINT, "utf8");
  */
 const BASELINE_ENTRIES = 173;
 
+/**
+ * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,
+ * after `priceOptimizer.recordPriceOutcome` — a cross-tenant WRITE the rule
+ * found on its first run — was fixed rather than admitted.
+ */
+const RULE_2_BASELINE = 63;
+
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to
   // know the walk is live; reading the source only proves the code is present.
@@ -129,6 +136,34 @@ describe("the debt register only shrinks", () => {
     expect(reach.slice(at, reach.indexOf("]);", at))).toContain(
       "scripts/check-org-scoped-fetch.mjs",
     );
+  });
+
+  it("rule 2 is live: 'has an org and does not use it'", () => {
+    // Rule 1 asks whether a method MENTIONS an organization, which is blind to
+    // the shape units 56–60 kept finding: a method that ACCEPTS one and then
+    // resolves an org-scoped table by primary key anyway. The worst instance was
+    // cashFlowForecaster.generateForecast — scoped signature, five internal
+    // calls that dropped the org — and rule 1 passed it.
+    const out = run();
+    const m = /rule 2 \(has an org, resolves by id anyway\): baseline (\d+), new (\d+), stale (\d+)/.exec(out);
+    expect(m, `the rule 2 line is gone from the lint's output:\n${out}`).not.toBeNull();
+    expect(Number(m![2]), "a new rule-2 offender").toBe(0);
+    expect(Number(m![3]), "a stale rule-2 entry — delete it in the commit that fixed it").toBe(0);
+    expect(
+      Number(m![1]),
+      "the rule-2 register GREW. A method that has an org and ignores it should " +
+        "fail the lint, not join its baseline.",
+    ).toBeLessThanOrEqual(RULE_2_BASELINE);
+  });
+
+  it("the rule-2 register records that it holds two different things", () => {
+    // Half the entries are safe by construction: `.returning()` then
+    // `.where(eq(t.id, inserted.id))`, an id this method just minted. They are
+    // textually identical to the dangerous kind, so the register says so —
+    // otherwise a triage pass reads 63 findings where roughly half are noise,
+    // and gives up on all of them.
+    expect(src).toContain("THE ID COMES FROM THE CALLER");
+    expect(src).toContain("AN INSERT THIS METHOD JUST MADE");
   });
 
   it("records that passing is not the same as being safe", () => {

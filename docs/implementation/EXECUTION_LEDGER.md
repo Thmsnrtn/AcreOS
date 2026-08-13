@@ -4451,3 +4451,81 @@ fix and the one no existing gate could see.
 15 between them).
 
 `npm run check` EXIT=0 · `tests/unit` 686 files, 9008 passed, 1 skipped.
+
+---
+
+## Unit 61 — Rule 2: "has an organization and does not use it" · this commit
+
+**Files:** `scripts/check-org-scoped-fetch.mjs`,
+`server/services/priceOptimizer.ts`, `server/routes-price-optimizer.ts`,
+`tests/unit/orgScopedFetchCoverage.test.ts`.
+
+Four units in a row (56, 59, 60, and the `recordPriceOutcome` fix here) found
+the same defect by hand. This makes the gate find it instead.
+
+### The gap rule 1 cannot close
+
+`check-org-scoped-fetch` asks whether a method **mentions** an organization.
+That is the right question for a method with no org at all, and blind to the
+shape that produced every recent finding: a method that **accepts** an
+`organizationId` and resolves an org-scoped table by primary key anyway.
+`cashFlowForecaster.generateForecast(organizationId, params)` passed rule 1 while
+forecasting another org's note from a `noteId` in the request body.
+
+**Rule 2:** inside a method that has org context, every `where(eq(<table>.id, …))`
+on an org-scoped table must also constrain `organizationId`.
+
+64 methods across 32 files. One of them was a live cross-tenant **write** — the
+rule found it on its first run, before it had a baseline.
+
+### The one it found: `priceOptimizer.recordPriceOutcome`
+
+`POST /api/price-optimizer/outcome/:id` took a recommendation id from the URL
+and set `actualPrice`, `priceAccepted` and `outcomeRecordedAt` on it, unscoped.
+Any authenticated user could record outcomes against **any org's price
+recommendations** — the input to `analyzeRecommendationAccuracy`. Not a leak, a
+**corruption**, and one that surfaces later as a pricing model mis-scoring its
+own history.
+
+It then re-read the row and logged the event against
+`recommendation.organizationId` — the tenant derived from a bare-id fetch, the
+same shape unit 59 found in `researchOwner`. Fixed here, so it never entered the
+baseline. Register frozen at **63**.
+
+### The register holds two different things, and says so
+
+Roughly half the entries are `.returning()` followed by
+`.where(eq(t.id, inserted.id))` — an id the method just minted, safe, and
+textually identical to the dangerous kind. `priceOptimizer`'s three `recommend*`
+methods are this kind. The note in the baseline names both categories, because a
+triage pass that reads 63 findings and discovers half are noise abandons all 63.
+Scoping the safe ones is free and correct — the row was inserted with that org —
+so that is the cheapest way to shrink the register toward the entries that
+matter.
+
+### Mutation testing the rule caught a hole in the rule
+
+`M1` reintroduced the defect and **the suite stayed green**. The fix had hoisted
+the predicate — `const owned = and(eq(id), eq(org))` … `.where(owned)` — and
+rule 2 was matching on the text at the `where()`, which is now an identifier.
+**Hoisting a predicate evaded the check**, and the fix that had just been written
+was in exactly that style.
+
+Rule 2 now resolves single-assignment predicate locals. Deliberately no
+reassignment tracking and no scope analysis: a conditionally-built predicate is
+out of reach and stays out of reach — the check reports what it can see and never
+guesses.
+
+The lesson is about method, not regex: **mutate your own fix, not only the code
+you are accusing.** A rule written against a defect you have already fixed will
+be shaped by that fix, and will have a blind spot exactly where your style
+differs from the original author's.
+
+### Verification
+
+Five mutations, each verified to apply, each caught after the hole was closed:
+`recordPriceOutcome` unscoped again (both inline and hoisted forms); rule 2
+removed from the scan; a rule-2 baseline entry gone stale; and the two-kinds note
+deleted from the register.
+
+`npm run check` EXIT=0 · `tests/unit` 686 files, 9010 passed, 1 skipped.

@@ -293,6 +293,93 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/whiteLabelService.ts::resolveFromDomain",
 ]);
 
+const BASELINE_UNUSED_ORG = new Set([
+  // ── RULE 2 BASELINE, frozen 2026-08-13 ────────────────────────────────────
+  //
+  // Methods that HAVE an organization and still resolve an org-scoped table by
+  // primary key. Frozen as a register, not as approval — the same landing
+  // strategy as rule 1's.
+  //
+  // TWO KINDS SIT IN HERE and the triage depends on telling them apart:
+  //
+  //   (a) THE ID COMES FROM THE CALLER. This is the real risk, and it is what
+  //       cashFlowForecaster, documentIntelligence, dueDiligencePods and
+  //       priceOptimizer.recordPriceOutcome each turned out to be. Start here.
+  //
+  //   (b) THE ID COMES FROM AN INSERT THIS METHOD JUST MADE — typically
+  //       `.returning()` then `.where(eq(t.id, inserted.id))`. Safe, and
+  //       textually identical to (a). `priceOptimizer`'s three recommend*
+  //       methods are this kind; they are listed because the check cannot see
+  //       the difference, not because they are wrong.
+  //
+  // Adding the org predicate to a (b) is free and correct — the row was
+  // inserted with that org — so the cheapest way to shrink this register is to
+  // scope the safe ones and be left with a list that is only (a).
+  "server/services/achAutopay.ts::postReversal",
+  "server/services/achAutopay.ts::postSettlement",
+  "server/services/acquisitionRadar.ts::processOpportunityAlerts",
+  "server/services/acquisitionRadar.ts::saveOpportunityScore",
+  "server/services/acreOSValuation.ts::generateValuation",
+  "server/services/agentOrchestration.ts::executeStep",
+  "server/services/autonomousAgentEngine.ts::recordAction",
+  "server/services/autonomousAgentEngine.ts::setAutonomyLevel",
+  "server/services/autonomousAgentEngine.ts::updateAgentConfig",
+  "server/services/buyerMatchingAI.ts::matchBuyerToProperties",
+  "server/services/buyerMatchingAI.ts::matchPropertyToBuyers",
+  "server/services/buyerMatchingAI.ts::presentMatchToBuyer",
+  "server/services/buyerMatchingAI.ts::recordBuyerResponse",
+  "server/services/buyerMatchingAI.ts::updateBuyerProfile",
+  "server/services/buyerQualificationBot.ts::generateAssessment",
+  "server/services/buyerQualificationBot.ts::generateQualificationReport",
+  "server/services/buyerQualificationBot.ts::runBackgroundChecks",
+  "server/services/buyerQualificationBot.ts::runFinancialCheck",
+  "server/services/buyerQualificationBot.ts::updateQualificationStatus",
+  "server/services/complianceGuardian.ts::resolveCheck",
+  "server/services/complianceGuardian.ts::runSingleCheck",
+  "server/services/complianceGuardian.ts::updateCheckStatus",
+  "server/services/dealPatternCloning.ts::extractPattern",
+  "server/services/dealPatternCloning.ts::recordPatternFromClosedDeal",
+  "server/services/dealPatternCloning.ts::savePatternMatch",
+  "server/services/decisionsInbox.ts::createFromFeatureRequest",
+  "server/services/dispositionOptimizer.ts::findComparables",
+  "server/services/dunning.ts::sendDunningSMS",
+  "server/services/landCredit.ts::getScoreHistory",
+  "server/services/leadScoring.ts::scoreLead",
+  "server/services/negotiationCopilot.ts::closeSession",
+  "server/services/negotiationCopilot.ts::detectObjection",
+  "server/services/negotiationCopilot.ts::generateResponse",
+  "server/services/negotiationCopilot.ts::recordCounterOffer",
+  "server/services/negotiationOrchestrator.ts::recordMove",
+  "server/services/negotiationOrchestrator.ts::recordOutcome",
+  "server/services/outcomeVerificationLoop.ts::verifyDealRiskFlag",
+  "server/services/outcomeVerificationLoop.ts::verifyFollowUp",
+  "server/services/paxObserver.ts::updateBatchedObservation",
+  "server/services/portfolioSentinel.ts::checkCompetitorActivity",
+  "server/services/portfolioSentinel.ts::checkMarketChanges",
+  "server/services/portfolioSentinel.ts::checkTaxStatus",
+  "server/services/priceOptimizer.ts::findComparables",
+  "server/services/priceOptimizer.ts::recommendAcquisitionPrice",
+  "server/services/priceOptimizer.ts::recommendCounterOffer",
+  "server/services/priceOptimizer.ts::recommendDispositionPrice",
+  "server/services/sellerIntentPredictor.ts::recordOutcome",
+  "server/services/sequenceOptimizer.ts::generateOptimizationSuggestions",
+  "server/services/sequenceOptimizer.ts::recordMessagePerformance",
+  "server/services/sequenceOptimizer.ts::runABTest",
+  "server/services/voiceCallAI.ts::analyzeTranscript",
+  "server/services/voiceCallAI.ts::applyCRMUpdates",
+  "server/services/voiceCallAI.ts::processCallComplete",
+  "server/services/voiceCallAI.ts::transcribeCall",
+  "server/storage/agentWorkflowsRepo.ts::getWorkflowById",
+  "server/storage/customizationRepo.ts::setDefaultView",
+  "server/storage/customizationRepo.ts::upsertNotificationPreference",
+  "server/storage/dealRepo.ts::updateDeal",
+  "server/storage/integrationsRepo.ts::upsertOrganizationIntegration",
+  "server/storage/mailRepo.ts::setDefaultEmailSenderIdentity",
+  "server/storage/mailRepo.ts::setDefaultMailSenderIdentity",
+  "server/storage/supportOpsRepo.ts::getSupportCaseForPlatformOps",
+  "server/storage/tasksRepo.ts::createNextRecurringTask",
+]);
+
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -522,6 +609,60 @@ function extractAsyncMethods(source) {
 
 const ORG_CONTEXT_RE = /organizationId|orgId|forOrg\s*\(|unscopedForPlatformOps\s*\(/;
 
+/**
+ * RULE 2 — "has an org and does not use it".
+ *
+ * Rule 1 asks whether a method MENTIONS an organization. That is the right
+ * question for a method with no org at all, and it is blind to the shape units
+ * 56–60 kept finding: a method that ACCEPTS an organizationId and then resolves
+ * an org-scoped table by primary key anyway.
+ *
+ * The worst instance was `cashFlowForecaster.generateForecast(organizationId,
+ * params)` — scoped signature, and five internal calls that dropped the org, so
+ * a noteId from another org in the request body forecast that org's note
+ * through a front door whose type said it was safe. Rule 1 passed it.
+ *
+ * The check: inside a method that has org context, every `where(eq(<table>.id,
+ * …))` on an org-scoped table must also constrain `organizationId`. Whitespace
+ * tolerant, and it looks at the WHOLE where() call, so
+ * `where(and(eq(t.id, x), eq(t.organizationId, o)))` is fine.
+ */
+const LONE_ID_WHERE = /where\(\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*,?\s*\)/g;
+
+/**
+ * `const owned = eq(t.id, x)` … `.where(owned)`.
+ *
+ * Hoisting the predicate into a local is GOOD practice — one expression, two
+ * call sites, guaranteed identical — and it made the check above blind, because
+ * the text at the `where()` is an identifier. Found by mutation-testing the
+ * rule against a fix that had just been written in exactly that style, which is
+ * the argument for mutating your own work rather than only the code you are
+ * accusing.
+ *
+ * Single assignment only: no reassignment tracking, no scopes. A predicate
+ * built conditionally is out of reach and stays out of reach — this reports
+ * what it can see and never guesses.
+ */
+const HOISTED_LONE_ID = /(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*;/g;
+
+function loneIdPredicates(methodText, orgScopedIdents) {
+  const hits = [];
+  LONE_ID_WHERE.lastIndex = 0;
+  let m;
+  while ((m = LONE_ID_WHERE.exec(methodText)) !== null) {
+    if (orgScopedIdents.has(m[1])) hits.push(m[1]);
+  }
+  HOISTED_LONE_ID.lastIndex = 0;
+  let h;
+  while ((h = HOISTED_LONE_ID.exec(methodText)) !== null) {
+    const [, varName, table] = h;
+    if (!orgScopedIdents.has(table)) continue;
+    if (new RegExp(`where\\(\\s*${varName}\\s*\\)`).test(methodText)) hits.push(table);
+  }
+  return hits;
+}
+
+
 function touchedOrgScopedTables(methodText, orgScopedIdents) {
   const touched = new Set();
   const accessRe = /\b(?:from|(?:db|tx)\s*\.\s*update|(?:db|tx)\s*\.\s*delete)\s*\(\s*([A-Za-z0-9_]+)\s*[),]/g;
@@ -543,6 +684,8 @@ function main() {
 
   const newOffenders = [];
   const baselineSeen = new Set();
+  const newUnusedOrg = [];
+  const unusedOrgSeen = new Set();
   let scannedMethods = 0;
   let methodsTouchingOrgTables = 0;
   let conformingMethods = 0;
@@ -560,6 +703,14 @@ function main() {
       methodsTouchingOrgTables += 1;
       if (ORG_CONTEXT_RE.test(method.text)) {
         conformingMethods += 1;
+        // Rule 2: it HAS an org — does it use it? See the note on
+        // loneIdPredicates for why rule 1 cannot answer that.
+        const lone = loneIdPredicates(method.text, orgScopedIdents);
+        if (lone.length > 0) {
+          const key2 = `${rel}::${method.name}`;
+          if (BASELINE_UNUSED_ORG.has(key2)) unusedOrgSeen.add(key2);
+          else newUnusedOrg.push({ key: key2, file: rel, line: method.line, name: method.name, touched: [...new Set(lone)] });
+        }
         continue;
       }
       const key = `${rel}::${method.name}`;
@@ -572,6 +723,7 @@ function main() {
   }
 
   const staleAllowlistEntries = [...BASELINE_OFFENDERS].filter((k) => !baselineSeen.has(k));
+  const staleUnusedOrg = [...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k));
 
   console.log(
     `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size}; ` +
@@ -585,9 +737,46 @@ function main() {
       `stale allowlist entries: ${staleAllowlistEntries.length}`,
   );
 
-  if (newOffenders.length === 0 && staleAllowlistEntries.length === 0) {
+  console.log(
+    `[check-org-scoped-fetch] rule 2 (has an org, resolves by id anyway): ` +
+      `baseline ${unusedOrgSeen.size}, new ${newUnusedOrg.length}, stale ${staleUnusedOrg.length}`,
+  );
+
+  if (
+    newOffenders.length === 0 &&
+    staleAllowlistEntries.length === 0 &&
+    newUnusedOrg.length === 0 &&
+    staleUnusedOrg.length === 0
+  ) {
     console.log("[check-org-scoped-fetch] PASS");
     process.exit(0);
+  }
+
+  if (newUnusedOrg.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL — the following methods HAVE an " +
+        "organization and still resolve an org-scoped table by primary key. " +
+        "That is the shape that let a caller-supplied id reach another " +
+        "tenant's row through a scoped-looking signature: add the " +
+        "organizationId predicate to the WHERE, or thread the org into the " +
+        "helper that runs the query.",
+    );
+    console.error("");
+    for (const off of newUnusedOrg) {
+      console.error(`  - ${off.file}:${off.line} — ${off.name}() on: ${off.touched.join(", ")}`);
+    }
+    console.error("");
+  }
+
+  if (staleUnusedOrg.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL — the following BASELINE_UNUSED_ORG " +
+        "entries no longer match. Delete them in the commit that fixed them:",
+    );
+    for (const key of staleUnusedOrg) console.error(`  - "${key}"`);
+    console.error("");
   }
 
   if (newOffenders.length > 0) {

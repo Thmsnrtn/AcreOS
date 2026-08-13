@@ -701,21 +701,39 @@ export class PriceOptimizerService {
     return "Price recommendation based on comparable sales analysis and market conditions.";
   }
 
+  /**
+   * The one write in this service keyed by an id straight from the caller —
+   * `POST /api/price-optimizer/outcome/:id`. Unscoped, any authenticated user
+   * could set `actualPrice` and `priceAccepted` on ANY org's recommendation,
+   * which is the input to `analyzeRecommendationAccuracy`: not a data leak, a
+   * data CORRUPTION, and one whose effect shows up later as a pricing model
+   * that mis-scores its own history.
+   *
+   * Note what the old code did next: it re-read the row and logged the event
+   * against `recommendation.organizationId` — deriving the tenant from a row
+   * fetched by bare id, the same shape unit 59 found in `researchOwner`.
+   */
   async recordPriceOutcome(
     recommendationId: number,
+    organizationId: number,
     actualPrice: number,
     accepted: boolean
   ): Promise<void> {
+    const owned = and(
+      eq(priceRecommendations.id, recommendationId),
+      eq(priceRecommendations.organizationId, organizationId),
+    );
+
     await db.update(priceRecommendations)
       .set({
         actualPrice: actualPrice.toString(),
         priceAccepted: accepted,
         outcomeRecordedAt: new Date(),
       })
-      .where(eq(priceRecommendations.id, recommendationId));
+      .where(owned);
 
     const [recommendation] = await db.select().from(priceRecommendations)
-      .where(eq(priceRecommendations.id, recommendationId));
+      .where(owned);
 
     if (recommendation) {
       await this.logEvent(recommendation.organizationId, "price_outcome_recorded", {
