@@ -310,9 +310,13 @@ surface. `/negotiation` renders `NegotiationCopilotPage`. The same asymmetry
 should be expected anywhere a rule is written in the vocabulary of the machinery
 (AI, payment, export, delete) and the surfaces are named for the domain.
 
-Gate state at last commit: `npm run check` exit 0, tsc clean, reachability at
-all four baselines, every ratchet at baseline, and the **full unit suite green —
-672 files, 8,836 tests, 1 skipped, 0 failures.**
+Gate state at last commit (unit 63): `npm run check` exit 0, tsc clean,
+reachability at all four baselines, every ratchet at baseline, and the **full
+unit suite green — 687 files, 9,018 tests, 1 skipped, 0 failures.**
+
+Ratchets moved DOWN during units 52–63, each locked in by the commit that earned
+it: `as-any` 1397→1396, `colon-any` 3014→3011, tenancy register 188→173 (rule 1)
+and 63→59 (rule 2). No baseline was raised.
 
 A 24-agent reconnaissance sweep (12 layer readers + 12 adversarial verifiers)
 ran against the repo during this program. Its most valuable output was the
@@ -323,6 +327,27 @@ them. Treat any inherited "ABSENT" finding as needing re-verification against
 HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
+
+**START HERE (state as of unit 63).** The tenant-isolation thread that ran from
+unit 53 to unit 63 is at a clean stopping point, and the next task is *not* more
+of it:
+
+- **Every caller-supplied-id cross-tenant defect found so far is fixed.** Six
+  subsystems (investor verification, document intelligence, due diligence, cash
+  flow, price optimizer, seller intent) plus the dunning console's missing
+  founder gate and two duplicate founder-identity implementations.
+- **The class is now gated, not just fixed.** `check-org-scoped-fetch` walks
+  `server/services/**` (unit 54) and carries a second rule — *has an org and
+  resolves by id anyway* (unit 61) — which found a live cross-tenant write on its
+  first run.
+- **What remains is characterised, not unknown**: 59 rule-2 entries, of which
+  ~28 are internal helpers with no external caller (cheap, near-zero risk) and
+  the rest are derived ids. **None is caller-reachable.** BLOCKERS B14 has the
+  triage and the command to re-derive it.
+
+So: the remaining tenancy work is *hygiene*, and the highest-value unblocked task
+is whichever of the threads below is genuinely next — not the 28 helpers, which
+are a good filler task rather than a priority.
 
 **Two threads are open. Read both before choosing.**
 
@@ -843,3 +868,28 @@ its lead join by `property.organizationId`: the org of a row fetched by bare id.
 Downstream code that looks *more* rigorous than upstream code is a signal, not a
 comfort — the derived predicate inherits whatever the first query got wrong, and
 it makes the file read as careful.
+
+**Units 52–63, in one pass.** Twelve units; the second half is one thread.
+
+| unit | what | why it survived |
+|---|---|---|
+| 52 | the last `prose-only` decision, and `/negotiation` — a 607-line AI destination no nav ratchet could see | it is in no nav module and nothing links to it |
+| 53 | **any org could read, mutate and approve any other org's KYC file** | the tenant key was designed, migrated, indexed — and wired to nothing |
+| 54 | the tenancy lint had a real rule and **one layer** | being automated is what makes a gate read as covered |
+| 55 | the fabrication gate named the UI and **scanned the server** | same shape, different hard-stop |
+| 56 | any org could read and **overwrite** another's document text | the list endpoints in the same router already passed the org |
+| 57 | a **client route guard** was the only gate on AcreOS's billing console | an `App.tsx` comment said the API was founder-only; it was not |
+| 58 | two copies of "who is the founder", both missing `FOUNDER_USER_IDS` | one of them claimed parity with the canonical file in a comment |
+| 59 | one router, two gates, split along the **URL parameter** | `:propertyId` handlers gated, dossier `:id` handlers not |
+| 60 | the org accepted at the front door and **dropped one call deep** | rule 1 asks whether a method mentions an org; this one did |
+| 61 | **rule 2**, and a live cross-tenant write found on its first run | four units had found this shape by hand first |
+| 62 | 63 findings triaged down to the three a customer can reach | a register nobody reads enforces nothing |
+| 63 | the outcome of lead #42 written onto **prediction #42** | two ids of different entities share a numeric space |
+
+**The question that generated most of them:** *does this repo already have a gate
+that should have caught this, and what is that gate's scope?* Units 54 and 55
+came straight out of 53. Unit 61 came out of doing 56/59/60 by hand three times.
+
+**And the one that generated 63:** *does the ROUTE's parameter name the same
+entity as the SERVICE's parameter?* A tenancy fix that adds an org argument to a
+wrong-entity call makes the call cross-tenant-safe and still wrong.
