@@ -127,96 +127,39 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // Unscheduled: early/extra payment, no date change, no service fee trigger
   // ============================================
 
-  app.post("/api/notes/:id/record-payment", ...auth, async (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const noteId = parseInt(req.params.id);
-      const {
-        amount,
-        paymentDate,
-        paymentType = "scheduled", // "scheduled" | "unscheduled"
-        paymentMethod,
-        transactionId,
-        notes: paymentNotes,
-      } = req.body;
-
-      if (!amount || !paymentDate) {
-        return Errors.badRequest(res, "amount and paymentDate are required");
-      }
-
-      const [note] = await db.select().from(notes)
-        .where(and(eq(notes.id, noteId), eq(notes.organizationId, org.id)));
-
-      if (!note) return Errors.notFound(res, "Note");
-
-      const currentBalance = parseFloat(note.currentBalance || "0");
-      const interestRate = parseFloat(note.interestRate || "0");
-      const monthlyRate = interestRate / 100 / 12;
-      const paidAmount = parseFloat(amount);
-
-      // Calculate principal/interest split
-      const interestDue = currentBalance * monthlyRate;
-      const principalPaid = Math.max(0, paidAmount - interestDue);
-      const newBalance = Math.max(0, currentBalance - principalPaid);
-
-      // Service fee only applies to SCHEDULED payments (standard parity)
-      const serviceFeeAmount = paymentType === "scheduled"
-        ? parseFloat(note.serviceFee || "0")
-        : 0;
-
-      // Tax escrow credit only on SCHEDULED payments
-      if (paymentType === "scheduled" && note.taxEscrowEnabled) {
-        await propertyTaxService.creditMonthlyTaxEscrow(noteId, org.id);
-      }
-
-      // Insert payment record
-      await db.insert((await import("@shared/schema")).payments).values({
-        organizationId: org.id,
-        noteId,
-        amount: String(paidAmount),
-        principalAmount: String(principalPaid),
-        interestAmount: String(Math.min(paidAmount, interestDue)),
-        feeAmount: String(serviceFeeAmount),
-        lateFeeAmount: "0",
-        paymentDate: new Date(paymentDate),
-        dueDate: note.nextPaymentDate || new Date(paymentDate),
-        paymentMethod: paymentMethod || note.paymentMethod || "manual",
-        transactionId,
-        status: "completed",
-        processedAt: new Date(),
-      });
-
-      // Update note balance
-      const updateData: any = { currentBalance: String(newBalance) };
-
-      // Only advance next payment date for SCHEDULED payments
-      if (paymentType === "scheduled" && note.nextPaymentDate) {
-        const nextDate = addMonths(new Date(note.nextPaymentDate), 1);
-        updateData.nextPaymentDate = nextDate;
-      }
-
-      // Check if paid off
-      if (newBalance <= 0) {
-        updateData.status = "paid_off";
-        updateData.autoPayEnabled = false;
-      }
-
-      await db.update(notes).set(updateData).where(eq(notes.id, noteId));
-
-      res.json({
-        success: true,
-        paymentType,
-        principalPaid: Math.round(principalPaid * 100) / 100,
-        interestPaid: Math.round(Math.min(paidAmount, interestDue) * 100) / 100,
-        serviceFeeTrigger: serviceFeeAmount > 0,
-        newBalance: Math.round(newBalance * 100) / 100,
-        paidOff: newBalance <= 0,
-        nextPaymentDateAdvanced: paymentType === "scheduled",
-      });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // POST /api/notes/:id/record-payment — DELETED 2026-08-13 (founder ruling on
+  // BLOCKERS B10: `acquired_notes` / `note_payments` is the successor to
+  // `notes` / `payments`, so the legacy writers are a migration list and this
+  // route was the named deletion candidate).
+  //
+  // It had NO caller. The record-payment modal posts to
+  // `/api/notes/:id/payments` in routes-notes.ts — the cents-family route,
+  // which validates with zod, takes an Idempotency-Key, holds the note row
+  // inside a transaction and returns a schedule and delinquency outcome. No
+  // client, no OpenAPI entry, no test referenced this one.
+  //
+  // Five things were wrong with it, and the ruling makes fixing them wasted
+  // work rather than four separate units:
+  //
+  //   1. It reimplemented the principal/interest split IN FLOATS —
+  //      `interestDue = currentBalance * monthlyRate` — while
+  //      `splitPaymentCents` exists and three of the four payment recorders use
+  //      it. `shared/finance/cents.ts` states the house rule: money is summed
+  //      and compared in integer cents, never in JS floats.
+  //   2. NOT TRANSACTIONAL. A bare payment insert followed by a separate note
+  //      update: a failure between them left a recorded payment against an
+  //      unreduced balance. `storage.createPayment`, which this bypassed, wraps
+  //      both in `withTransaction` with `SELECT FOR UPDATE` and a version check.
+  //   3. It credited TAX ESCROW BEFORE the payment insert, so a later failure
+  //      left an escrow credit with no payment behind it.
+  //   4. The note UPDATE carried NO ORGANIZATION PREDICATE — `where(eq(notes.id,
+  //      noteId))` alone, on money. The org-scoped SELECT above it gated the
+  //      path in practice, which is why it was never exploitable, but it is
+  //      exactly the shape check-org-scoped-fetch's rule 2 exists to catch.
+  //   5. `const updateData: any` erased the type of the row being written.
+  //
+  // The legacy model's remaining writers are pinned by
+  // tests/unit/legacyNoteModelIsTerminal.test.ts and may only shrink.
 
   // ============================================
   // PROPERTY TAX ESCROW

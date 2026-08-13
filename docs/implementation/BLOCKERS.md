@@ -350,11 +350,61 @@ anywhere is the same subsystem's other half, and the same two answers apply.
 
 ## B10 — Two note-payment data models, and one writer that respects neither rule
 
+**DECIDED 2026-08-13 (founder ruling): `acquired_notes` / `note_payments` is the
+successor.** The legacy `notes` / `payments` family is terminal, its writers are
+a migration list, and this entry's named deletion candidate is deleted.
+
+### What unit 87 did with the ruling
+
+**Deleted `POST /api/notes/:id/record-payment`.** It had no caller — the
+record-payment modal posts to `/api/notes/:id/payments`, the cents route, with an
+Idempotency-Key — and no OpenAPI entry and no test referenced it. Five things
+were wrong with it, and the ruling is what turns "fix them" into wasted work:
+float principal/interest math, no transaction, escrow credited BEFORE the payment
+insert, **a note UPDATE with no organization predicate** (rule 2's shape, on
+money — the org-scoped SELECT above it gated the path in practice, which is why
+it was never exploitable), and `const updateData: any` over a money column.
+`colon-any` 2992 → 2990.
+
+**Built the migration list as a RATCHET, not a document.**
+`tests/unit/legacyNoteModelIsTerminal.test.ts` derives the set of files writing
+`notes`/`payments` from source and pins it strictly down-only:
+
+| file | what it does |
+|---|---|
+| `routes-subdivisions.ts` | creates a seller-financed note when a lot sells |
+| `services/achAutopay.ts` | advances the note after an autopay debit clears (already uses `splitPaymentCents`) |
+| `services/atrSafeHarbor.ts` | stamps the ability-to-repay determination |
+| `services/propertyTaxService.ts` | escrow credits/debits (4 writes) |
+| `storage/noteRepo.ts` | the legacy repository itself — the file a migration replaces rather than amends |
+
+A NEW legacy writer fails the build; migrating one passes and must lower the list
+in the same commit. A hand-maintained migration list is precisely the artifact
+that goes stale between a decision and its execution — this program watched that
+happen to a deletion ledger, a feature-flag catalogue and a reseller feature set
+in the same week.
+
+**A correction to this entry, found while checking it.** It said *"three of the
+four payment recorders use `splitPaymentCents` — `achAutopay`, `routes-borrower`
+(twice), and `paymentApplication`"*. Against HEAD that is three CALL SITES in TWO
+files: `paymentApplication` deliberately accepts a PRE-SPLIT so the module stays
+pure and testable, and its own contract names `notePaymentMath.splitPaymentCents`
+as the upstream source. True in spirit, not a call — and now pinned as the
+distinction it is, so nobody "fixes" `paymentApplication` into calling it.
+
+### Still open, and it needs a database
+
+The actual data migration — moving legacy rows into the cents family and
+retiring the five writers — is not attempted. It is money code and `DATABASE_URL`
+is unset (B1), so a rewrite could not be integration-tested. **Until then, do not
+"tidy" the remaining legacy writers.** Three of them do float math today; making
+one locally correct is the change most likely to be wasted, and the ratchet
+measures the migration rather than the tidying.
+
 **Found:** unit 49→50, by asking whether `routes-elite-features.ts`'s other
 routes shared the shape unit 49 fixed.
-**Blocked on:** an architectural decision with founder weight — which note data
-model is canonical. **Not attempted here**, deliberately: this is money code and
-this session has no `DATABASE_URL`, so a rewrite could not be integration-tested.
+**Was blocked on:** an architectural decision with founder weight — which note
+data model is canonical.
 
 ### Two families, both live
 
