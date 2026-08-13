@@ -56,6 +56,22 @@ correctness risks across 2+ machines. Disposition:
   upsert, fail-closed when unverifiable.
 
 **Resolved by deletion (no fix needed — module is a KILL above):**
+- `betaProgram.ts` waitlist / cohort / feedback arrays — **deleted 2026-08-13 per
+  founder ruling** with `server/routes-beta.ts`, the `/api/beta` mount and the
+  `routeManifest` entry. This one was previously in "Pinned" below, and the pin
+  was doing real work: it said *"do NOT point real signup traffic at this until
+  it persists"*, which is a note that survives exactly as long as someone reads
+  it. `POST /api/beta/waitlist` was **public and unauthenticated**, appended to a
+  module-level array, and answered with a queue position and a referral code —
+  both lost at the next deploy and split across machines before that. The six
+  founder-gated admin endpoints read only what that POST wrote, so they went with
+  it rather than becoming a console over a permanently empty set.
+  `compass_pm`'s `ownedServices` / `ownedRoutes` entries removed, per the
+  `transactionFeeService` precedent above. **If beta signups return, a
+  `beta_waitlist` table and a migration are the precondition** — and
+  `GET /waitlist/status` must not return as written: it answered whether an
+  arbitrary email address was on the list (an enumeration oracle) and paged at 50,
+  so anyone past position 50 was told `found: false` even in one process.
 - `reactiveOrchestrationV14.ts` cooldown tracker (V14 narrative suite)
 - `callRouting.ts` agent/queue/call state (voice)
 - `scpLLMJudges.ts` cost accumulator (SCPv2)
@@ -74,8 +90,6 @@ correctness risks across 2+ machines. Disposition:
 - `notificationDispatcher.ts` → persist to the existing `notifications` table
 - `marketWatchlist.ts` → DB tables + sequences
 - `abTestEngine.ts` → persist outcomes, aggregate in SQL
-- `betaProgram.ts` → DB-back before pointing ANY real signup traffic at
-  `POST /api/beta/waitlist` (currently uncalled by the client)
 - `ceoReminders.ts` → systemMeta-backed cache, single-founder tolerable
 - `agentEvolutionEngine.ts` `sharedInsights` → display-only divergence today
 

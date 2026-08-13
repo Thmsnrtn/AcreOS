@@ -39,7 +39,6 @@ import todayRouter from "./routes-today";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
 // Voice AI deleted 2026-08-01 (deletion-ledger row: Voice / AI voice, founder-authorized drop).
-import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
 import notificationsRouter from "./routes-notifications";
 import marketWatchlistRouter from "./routes-market-watchlist";
@@ -1418,9 +1417,6 @@ export async function registerRoutes(
   // permanent-failure signal instead of a 404 that looks like a routing bug.
   app.post('/webhook/twilio/recording-complete', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
   app.post('/webhook/disclosure', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
-
-  // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
-  app.use('/api/beta', betaRouter);
 
   // Regulatory intelligence: state profiles, alerts, checklists, risk assessment
   app.use('/api/regulatory', regulatoryRouter);

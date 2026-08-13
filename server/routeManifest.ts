@@ -72,7 +72,6 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-autopilot.ts", mountPath: null, kind: "register", export: "registerAutopilotRoutes" },
   { file: "routes-avm.ts", mountPath: "/api/avm", kind: "router", export: "default" },
   { file: "routes-beatrice-regwatch.ts", mountPath: null, kind: "register", export: "registerBeatriceRegWatchRoutes" },
-  { file: "routes-beta.ts", mountPath: "/api/beta", kind: "router", export: "default" },
   { file: "routes-bid-estimates.ts", mountPath: null, kind: "register", export: "registerBidEstimateRoutes" },
   { file: "routes-billing.ts", mountPath: null, kind: "register", export: "registerBillingRoutes" },
   { file: "routes-bookkeeping.ts", mountPath: "/api/bookkeeping", kind: "router", export: "default" },

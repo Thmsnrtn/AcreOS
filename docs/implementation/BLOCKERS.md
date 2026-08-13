@@ -574,15 +574,69 @@ one. One subsystem per unit, with the same two-halves test shape unit 53 used
 `where`), because the lint is textual and cannot see a predicate that is
 accepted and never applied.
 
+### Rule 2's register, triaged (unit 62)
+
+`check-org-scoped-fetch` grew a second rule in unit 61 — *has an organization
+and resolves an org-scoped table by primary key anyway* — and froze 63 entries.
+Sixty-three findings is a number people bounce off, so they were triaged by
+whether the id can actually come from a caller:
+
+| | count |
+|---|---|
+| reachable with a **caller-supplied id** | 6 |
+| **no external caller at all** (internal helpers) | 28 |
+| remainder: called internally with ids the method or its caller derived | 29 |
+
+Of the six, three were customer-reachable and are **done** (unit 62): the AVM's
+fee-simple parcel fetch, `landCredit.getScoreHistory`, and — verified safe —
+`acquisitionRadar.saveOpportunityScore`, whose flagged predicate uses an id from
+an org-scoped select two lines above it. The other three
+(`autonomousAgentEngine.recordAction`, `negotiationOrchestrator.recordOutcome`,
+`sellerIntentPredictor.recordOutcome`) are reached only from `/founder/*`
+routes, which carry `requireFounder`; lower priority, still worth closing.
+
+**The triage heuristic over-reports and under-reports, both.** It asks whether a
+route passes `req.params`/`req.body` into the method — which flagged
+`saveOpportunityScore`, where the caller's data reaches the method but the
+flagged *predicate* uses an internally-derived id. And it cannot see an id that
+arrives through two hops. Treat the six as a starting order, not a boundary, and
+re-derive it after each fix:
+
+```
+node scripts/check-org-scoped-fetch.mjs        # the register
+```
+
+**The 28 with no external caller are the cheapest win.** Scoping a helper that
+nothing outside its own service calls carries almost no risk, and each one
+removes a line from a register whose length is what stops people reading it.
+
 ---
 
 ## B15 — The beta waitlist does not persist, and says a position number out loud
 
+**RESOLVED by deletion** (unit 75, founder ruling 2026-08-13 — option 1 below).
+`server/routes-beta.ts`, `server/services/betaProgram.ts`, the `/api/beta` mount
+and its `routeManifest` entry are gone. The whole rail went, not just the public
+half: the six founder-gated admin endpoints read **only** what the public POST
+wrote, so with the writer deleted they were a console over a permanently empty
+set. `companyAgents`' `compass_pm` lost its `betaProgram` / `/api/beta` ownership
+entries, matching the `transactionFeeService` precedent in the deletion ledger.
+`colon-any` 3011 → 3009. The deletion is pinned by
+`founderGateSingleOwner.test.ts` (*"the beta rail stayed deleted"*), which fails
+if either file, the mount, or the manifest entry returns — with the reason in the
+failure message, so anyone restoring it reads *why* before they do.
+
+**If beta signups are wanted again:** they need a `beta_waitlist` table and a
+migration first, and the status endpoint must not be rebuilt as written — see
+"If option 3" at the bottom of this entry.
+
 **Found:** unit 58, while replacing `routes-beta.ts`'s divergent founder shim.
-**Blocked on:** a founder decision, because the honest fix touches a **public,
-unauthenticated endpoint** that may be wired to a marketing page outside this
-repository. The founder gate on the admin half was fixed in unit 58; this half
-was not touched.
+**Was blocked on:** a founder decision, because the honest fix touched a
+**public, unauthenticated endpoint** that might have been wired to a marketing
+page outside this repository. The founder gate on the admin half was fixed in
+unit 58; this half was not touched until the ruling. The record below is what was
+deleted and why, kept because "we removed a public signup form" is a fact someone
+will need the reasoning for.
 
 ### The state
 
@@ -637,40 +691,3 @@ to be re-found.
 change (answer only for a signed-in caller's own address, or return a bare
 `{ received: true }`), and `getWaitlist()` must not be used for a single-address
 lookup — a `findByEmail` query, not a page-1 scan.
-
-### Rule 2's register, triaged (unit 62)
-
-`check-org-scoped-fetch` grew a second rule in unit 61 — *has an organization
-and resolves an org-scoped table by primary key anyway* — and froze 63 entries.
-Sixty-three findings is a number people bounce off, so they were triaged by
-whether the id can actually come from a caller:
-
-| | count |
-|---|---|
-| reachable with a **caller-supplied id** | 6 |
-| **no external caller at all** (internal helpers) | 28 |
-| remainder: called internally with ids the method or its caller derived | 29 |
-
-Of the six, three were customer-reachable and are **done** (unit 62): the AVM's
-fee-simple parcel fetch, `landCredit.getScoreHistory`, and — verified safe —
-`acquisitionRadar.saveOpportunityScore`, whose flagged predicate uses an id from
-an org-scoped select two lines above it. The other three
-(`autonomousAgentEngine.recordAction`, `negotiationOrchestrator.recordOutcome`,
-`sellerIntentPredictor.recordOutcome`) are reached only from `/founder/*`
-routes, which carry `requireFounder`; lower priority, still worth closing.
-
-**The triage heuristic over-reports and under-reports, both.** It asks whether a
-route passes `req.params`/`req.body` into the method — which flagged
-`saveOpportunityScore`, where the caller's data reaches the method but the
-flagged *predicate* uses an internally-derived id. And it cannot see an id that
-arrives through two hops. Treat the six as a starting order, not a boundary, and
-re-derive it after each fix:
-
-```
-node scripts/check-org-scoped-fetch.mjs        # the register
-```
-
-**The 28 with no external caller are the cheapest win.** Scoping a helper that
-nothing outside its own service calls carries almost no risk, and each one
-removes a line from a register whose length is what stops people reading it.
-

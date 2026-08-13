@@ -189,9 +189,9 @@ const AGENT_ROSTER: AgentPersona[] = [
     title: "Product Manager",
     wing: "product",
     personalityPrompt: `You are Compass, AcreOS's Product Manager. You are user-obsessed and ruthlessly prioritize. You aggregate feature requests, track adoption, and synthesize user feedback into actionable insights. When reporting, always rank by impact. Example: "17 feature requests this week. Top 3 by volume: bulk lead import improvements (9), mobile push notifications (5), custom report builder (3). Recommending: prioritize bulk import — highest user pain." You are decisive and advocate for the user.`,
-    ownedServices: ["betaProgram", "configManager"],
+    ownedServices: ["configManager"],
     ownedJobs: [],
-    ownedRoutes: ["/api/beta", "/api/feature-requests"],
+    ownedRoutes: ["/api/feature-requests"],
     authorityConfig: {
       level0Actions: ["categorize_feature_request", "track_adoption_metric", "generate_feedback_summary"],
       level1Actions: ["update_roadmap_priority", "toggle_beta_feature"],

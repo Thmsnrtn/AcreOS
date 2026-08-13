@@ -34,11 +34,13 @@
  * `server/`: widening it would flag four jobs that are doing nothing wrong, and
  * a checker that cries wolf gets deleted.
  *
- * NOT covered here, deliberately: the beta waitlist itself does not persist
- * (module-level arrays, no table) and its two PUBLIC endpoints fabricate a
- * queue position and answer an email-enumeration probe. That is BLOCKERS B15 —
- * the fix touches an unauthenticated surface that may be wired to a marketing
- * page outside this repository, which is the founder's call, not a test's.
+ * WHERE THE SHIM LIVED IS NOW GONE. `routes-beta.ts` and `services/betaProgram.ts`
+ * were deleted 2026-08-13 on the founder's ruling (BLOCKERS B15): the waitlist
+ * never persisted — module-level arrays, no table — so `POST /api/beta/waitlist`
+ * accepted a public signup, answered with a queue position, and lost both at the
+ * next deploy, while `GET /waitlist/status` answered an email-enumeration probe.
+ * The sweep below is unchanged and still covers every router and middleware; the
+ * beta-specific case became the deletion check at the bottom of this describe.
  */
 
 import { describe, it, expect } from "vitest";
@@ -72,8 +74,11 @@ describe("founder identity has exactly one implementation", () => {
 
   it("finds the route surface at all (vacuity guard)", () => {
     expect(files.length, "no route/middleware files enumerated").toBeGreaterThan(50);
-    expect(files, "routes-beta.ts is gone — was the beta surface deleted?").toContain(
-      "server/routes-beta.ts",
+    // Anchored on a founder surface that is not going anywhere. The previous
+    // anchor was routes-beta.ts, which is exactly the hazard of anchoring a
+    // vacuity guard to the file a check was written about.
+    expect(files, "routes-admin.ts is gone — re-anchor this guard").toContain(
+      "server/routes-admin.ts",
     );
   });
 
@@ -150,17 +155,24 @@ describe("founder identity has exactly one implementation", () => {
     ).not.toMatch(/function isFounderEmail\s*\(/);
   });
 
-  it("the beta admin endpoints use the canonical gate", () => {
-    const beta = read("server/routes-beta.ts");
-    const admin = beta.split("\n").filter((l) => /router\.(get|post)\("\/admin\//.test(l));
-    expect(admin.length, "the beta admin endpoints are gone").toBe(6);
-    for (const line of admin) {
-      expect(line, `${line.trim()} is not founder-gated`).toContain("requireFounder");
+  it("the beta rail stayed deleted", () => {
+    // B15, founder ruling 2026-08-13. The whole rail went, not just the public
+    // half: the six admin endpoints read only what the public POST wrote, so
+    // with the writer gone they would have reported on a store nothing could
+    // ever fill — an admin console over a permanent empty set.
+    for (const gone of ["server/routes-beta.ts", "server/services/betaProgram.ts"]) {
+      expect(
+        fs.existsSync(path.join(ROOT, gone)),
+        `${gone} is back. The waitlist did not persist — module-level arrays, ` +
+          `no table — so the public endpoint took a signup, answered with a ` +
+          `queue position, and lost both at the next deploy. If beta signups ` +
+          `are wanted again, they need a table and a migration first.`,
+      ).toBe(false);
     }
-    expect(
-      beta,
-      "the local isFounder shim is back",
-    ).not.toMatch(/function isFounder\s*\(/);
+    expect(read("server/routes.ts"), "/api/beta is mounted again").not.toContain("/api/beta");
+    expect(read("server/routeManifest.ts"), "the manifest entry is back").not.toContain(
+      "routes-beta.ts",
+    );
   });
 });
 
