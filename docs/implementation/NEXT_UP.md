@@ -893,3 +893,23 @@ came straight out of 53. Unit 61 came out of doing 56/59/60 by hand three times.
 **And the one that generated 63:** *does the ROUTE's parameter name the same
 entity as the SERVICE's parameter?* A tenancy fix that adds an org argument to a
 wrong-entity call makes the call cross-tenant-safe and still wrong.
+
+**The outcome prompt's candidate set is still flip-shaped, and that is NOT yet a
+task.** Unit 64 made the prompt ask only for metrics the decision actually
+predicted. The other half — *which* metric an answer should ask for — is still
+keyed to the kind: `sold` → `profit`, `acquired` → `total_cost`. For a decision
+that predicted `cap_rate` but not `profit`, "Sold" now asks nothing.
+
+**Check before building anything here.** Today every decision that carries a
+Scenario comes from the flip engine: the flip analyzer is the only adoption
+surface that calls `recordScenario`, and the lot-pricing lock records a decision
+with no Scenario deliberately. So the gap is **theoretical until a second engine
+records a scenario on a decision**, and inventing a kind→metric mapping for
+`rental_returns` or `multifamily_noi` now would be unit 16's mistake again —
+building for a feature that does not exist (see §6a).
+
+The precondition to watch for, precisely: an `ADOPTING_SURFACES` entry other than
+`routes-flip-analyzer.ts` whose `writes` include `recordScenario(`. When that
+lands, the question to answer is a product one — *what does "sold" measure for a
+hold?* — and it should be answered by whoever adds that surface, not guessed
+here.
