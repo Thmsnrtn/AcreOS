@@ -31,8 +31,12 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         .limit(200);
       res.json(logs);
     } catch (err: any) {
-      logger.error("[job-health] Error fetching logs", err);
-      res.json([]);
+      // `res.json([])` until 2026-08-13, and this is the surface where that was
+      // worst: an empty list on THIS endpoint reads as "no job has failed",
+      // which is indistinguishable from "every job is fine". A total scheduler
+      // or database outage rendered the same screen as perfect health, on the
+      // console whose only purpose is telling the founder whether the jobs ran.
+      Errors.internal(res, err);
     }
   });
 
@@ -97,13 +101,21 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       const areq = req as AuthenticatedRequest;
       const orgId = areq.organization?.id;
       const userId = areq.user?.id;
-      if (!orgId || !userId) return res.json([]);
+      // Refuse rather than answer "you have none". The route is mounted behind
+      // isAuthenticated + getOrCreateOrg (see the note above), so this branch is
+      // defensive — but an empty tray is a FACT about the customer's account,
+      // and it must not be minted from a missing session.
+      if (!orgId || !userId) return Errors.unauthorized(res);
       const { storage } = await import("./storage");
       const limit = parseInt(req.query.limit as string) || 50;
       const rows = await storage.getNotifications(orgId, String(userId), false);
       res.json(rows.slice(0, limit));
     } catch (err: any) {
-      res.json([]);
+      // Was `res.json([])` with the error swallowed entirely — not even logged.
+      // A customer with unread notifications saw an empty inbox and had no way
+      // to know the read had failed. Errors.internal logs and lets the client's
+      // QueryErrorState offer a retry, which is what that component is for.
+      Errors.internal(res, err);
     }
   });
 
@@ -116,12 +128,14 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       const areq = req as AuthenticatedRequest;
       const orgId = areq.organization?.id;
       const userId = areq.user?.id;
-      if (!orgId || !userId) return res.json({ count: 0 });
+      if (!orgId || !userId) return Errors.unauthorized(res);
       const { storage } = await import("./storage");
       const count = await storage.getUnreadNotificationCount(orgId, String(userId));
       res.json({ count });
     } catch (err: any) {
-      res.json({ count: 0 });
+      // Was `res.json({ count: 0 })`, error swallowed. Zero is a NUMBER a
+      // customer reads off a badge: twelve unread notifications became none.
+      Errors.internal(res, err);
     }
   });
 
@@ -182,8 +196,10 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         .limit(limit);
       res.json(messages);
     } catch (err: any) {
-      logger.error("[collaboration] Error fetching messages", err);
-      res.json([]);
+      // Was `res.json([])`: a failed read of the agent conversation history
+      // rendered as "the agents have not spoken", which on a founder console is
+      // the same inversion as the job-health one above.
+      Errors.internal(res, err);
     }
   });
 

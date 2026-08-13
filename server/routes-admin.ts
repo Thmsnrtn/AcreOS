@@ -3602,8 +3602,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json(result);
     } catch (err: any) {
-      logger.error("Org health error", { message: err.message, name: err.name });
-      res.json([]);
+      // Was `res.json([])`. On a HEALTH console an empty list reads as "no org
+      // is at risk", so a failed read rendered as good news — the same inversion
+      // as /api/founder/job-health, on the surface that decides who gets called.
+      Errors.internal(res, err);
     }
   });
 

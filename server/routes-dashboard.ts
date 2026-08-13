@@ -518,8 +518,12 @@ export function registerDashboardRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      // Return empty goals array so the page still renders
-      res.json([]);
+      // The old comment said the quiet part out loud — *"Return empty goals
+      // array so the page still renders"* — and that is the trade: the page
+      // renders, and it tells a customer with four active goals that they have
+      // none. A rendered lie is worse than an error state the client already
+      // knows how to draw.
+      Errors.internal(res, err);
     }
   });
 

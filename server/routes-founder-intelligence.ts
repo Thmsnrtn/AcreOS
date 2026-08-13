@@ -3132,14 +3132,19 @@ router.post("/company-briefing", requireFounder, async (req: Request, res: Respo
     res.json(briefing);
   } catch (err: any) {
     logger.error("[company-briefing] Error", undefined, { metadata: { detail: err.message } });
-    res.json({
-      healthScore: 0,
-      mood: "yellow",
-      headline: "Briefing temporarily unavailable",
-      summary: "Unable to generate company briefing at this time.",
-      decisions: [],
-      reports: [],
-    });
+    // This one was NEARLY honest, and that is why it is worth naming. The copy
+    // told the truth — "Briefing temporarily unavailable", "Unable to generate…"
+    // — while `healthScore: 0` and `mood: "yellow"` were INVENTED NUMBERS beside
+    // it: a health score of zero minted from a failure to compute one, and a
+    // mood the system does not know. Honest prose does not launder a fabricated
+    // metric sitting next to it, and a founder reads the number.
+    //
+    // 503 because that is what the copy already claimed: temporarily
+    // unavailable. The client's QueryErrorState draws it with a retry.
+    Errors.serviceUnavailable(
+      res,
+      "The company briefing could not be generated. This is not a health score of zero — nothing is known right now.",
+    );
   }
 });
 
@@ -3153,8 +3158,8 @@ router.get("/company-agents", requireFounder, async (req: Request, res: Response
     const agents = await companyAgentService.getAllIncludingPaused();
     res.json(agents);
   } catch (err: any) {
-    logger.error("[company-agents] Error", undefined, { metadata: { detail: err.message } });
-    res.json([]);
+    // Was `res.json([])`: a failed read rendered as "you have no company agents".
+    Errors.internal(res, err);
   }
 });
 
