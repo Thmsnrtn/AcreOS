@@ -243,12 +243,12 @@ function GenerateAssignmentDialog({ open, onOpenChange, noteId, noteNumber }: {
             <Input id="assignee-name" value={assigneeName} onChange={(e) => setAssigneeName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Assignee address</Label>
-            <Input value={assigneeLine1} onChange={(e) => setAssigneeLine1(e.target.value)} placeholder="Street" />
+            <Label htmlFor="assignee-street">Assignee address</Label>
+            <Input id="assignee-street" aria-label="Assignee street address" value={assigneeLine1} onChange={(e) => setAssigneeLine1(e.target.value)} placeholder="Street" />
             <div className="grid grid-cols-3 gap-2">
-              <Input value={assigneeCity} onChange={(e) => setAssigneeCity(e.target.value)} placeholder="City" />
-              <Input value={assigneeState} onChange={(e) => setAssigneeState(e.target.value)} placeholder="State" maxLength={2} />
-              <Input value={assigneeZip} onChange={(e) => setAssigneeZip(e.target.value)} placeholder="ZIP" />
+              <Input aria-label="Assignee city" value={assigneeCity} onChange={(e) => setAssigneeCity(e.target.value)} placeholder="City" />
+              <Input aria-label="Assignee state" value={assigneeState} onChange={(e) => setAssigneeState(e.target.value)} placeholder="State" maxLength={2} />
+              <Input aria-label="Assignee ZIP code" value={assigneeZip} onChange={(e) => setAssigneeZip(e.target.value)} placeholder="ZIP" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

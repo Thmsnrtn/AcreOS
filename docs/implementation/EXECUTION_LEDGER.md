@@ -5129,3 +5129,52 @@ actually land cannot be recorded as one. The gate's own both-directions check
 (unit 68) then requires the lowered entries to match reality.
 
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.
+
+---
+
+## Unit 71 — Sixteen more, and a component that now REQUIRES its label · this commit
+
+**Files:** `client/src/components/note-assignments-card.tsx`,
+`client/src/components/parcels/subdivision-tab.tsx`,
+`client/src/pages/rehab-detail.tsx`,
+`client/src/pages/reseller-dashboard.tsx`,
+`tests/unit/accessibility.test.ts`.
+
+Register **73 → 57**, 38 files → 34. Four files, four different correct answers —
+which is the argument against a codemod for this.
+
+| file | shape |
+|---|---|
+| `note-assignments-card` | one `<Label>` over a **four-field address group**. Pairing it to the street line and leaving city/state/ZIP bare would satisfy a naive checker and still leave three fields unnamed — so each gets its own `aria-label`. |
+| `subdivision-tab` | three indexed pairs inside the draft-lots map, one `aria-label` on a bare plan-name field |
+| `rehab-detail` | see below |
+| `reseller-dashboard` | two `htmlFor`/`id` pairs; two `aria-label`s on the hex field beside each colour swatch, where the swatch is the labelled control and the text field is its twin |
+
+### `CellInput` now requires a label
+
+`rehab-detail.tsx` renders budget / committed / spent as an editable table cell
+through a shared `CellInput`. The fix is not an `aria-label` on the component —
+that would name all three columns identically. The prop is **required, not
+optional**:
+
+```tsx
+label: string;  // required, not optional
+```
+
+so the type system asks the question at every call site, and each answers with
+its own row and column: `Budget for ${it.scope}`, `Committed for ${it.scope}`,
+`Spent on ${it.scope}`.
+
+A bare number in a table cell is where an accessible name matters most — "1,250"
+announced with no context tells a screen-reader user nothing about which line
+item or which column. An optional prop would have made this a lint finding
+forever; a required one makes it impossible to add a fourth column without
+answering.
+
+### Verification
+
+Each file is individually re-scanned to zero, and the register is regenerated
+from the code rather than hand-edited. The gate's both-directions check requires
+the lowered entries to match reality, so a fix recorded but not made fails.
+
+`npm run check` EXIT=0 · `tests/unit` 689 files, 9043 passed, 1 skipped.

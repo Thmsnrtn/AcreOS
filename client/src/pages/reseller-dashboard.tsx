@@ -549,14 +549,14 @@ function WhiteLabelPanel() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>Brand Name</Label>
-              <Input value={branding.brandName} onChange={set("brandName")} placeholder="My Real Estate Co" />
+              <Label htmlFor="brand-name">Brand Name</Label>
+              <Input id="brand-name" value={branding.brandName} onChange={set("brandName")} placeholder="My Real Estate Co" />
             </div>
 
             <div>
-              <Label>Logo URL</Label>
+              <Label htmlFor="brand-logo-url">Logo URL</Label>
               <div className="flex gap-2">
-                <Input value={branding.logoUrl} onChange={set("logoUrl")} placeholder="https://…/logo.png" />
+                <Input id="brand-logo-url" value={branding.logoUrl} onChange={set("logoUrl")} placeholder="https://…/logo.png" />
                 <Button variant="outline" size="sm" className="shrink-0">
                   <Upload className="w-4 h-4 mr-1" /> Upload
                 </Button>
@@ -577,6 +577,7 @@ function WhiteLabelPanel() {
                     className="w-10 h-8 rounded cursor-pointer border"
                   />
                   <Input
+                    aria-label="Primary colour hex value"
                     value={branding.primaryColor}
                     onChange={set("primaryColor")}
                     className="font-mono text-sm"
@@ -594,6 +595,7 @@ function WhiteLabelPanel() {
                     className="w-10 h-8 rounded cursor-pointer border"
                   />
                   <Input
+                    aria-label="Accent colour hex value"
                     value={branding.accentColor}
                     onChange={set("accentColor")}
                     className="font-mono text-sm"

@@ -233,8 +233,9 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
                 {draftLots.map((d, idx) => (
                   <div key={idx} className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label className="text-xs">Lot #</Label>
+                      <Label className="text-xs" htmlFor={`draft-lot-${idx}-number`}>Lot #</Label>
                       <Input
+                        id={`draft-lot-${idx}-number`}
                         value={d.childLotNumber}
                         onChange={(e) => {
                           const next = [...draftLots]; next[idx] = { ...next[idx], childLotNumber: e.target.value }; setDraftLots(next);
@@ -244,8 +245,9 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Acres</Label>
+                      <Label className="text-xs" htmlFor={`draft-lot-${idx}-acres`}>Acres</Label>
                       <Input
+                        id={`draft-lot-${idx}-acres`}
                         type="number"
                         step="0.01"
                         value={d.sizeAcres}
@@ -257,8 +259,9 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">List price (optional)</Label>
+                      <Label className="text-xs" htmlFor={`draft-lot-${idx}-price`}>List price (optional)</Label>
                       <Input
+                        id={`draft-lot-${idx}-price`}
                         type="number"
                         value={d.listPrice}
                         onChange={(e) => {
@@ -1051,6 +1054,7 @@ function SubdivisionPlansSection({ parentParcelId }: { parentParcelId: number })
 
         <div className="flex gap-2 pt-2 border-t border-border/40">
           <Input
+            aria-label="New subdivision plan name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Plan A — 12 lots"
