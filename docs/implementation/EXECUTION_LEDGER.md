@@ -5536,3 +5536,133 @@ which is the program's own rule, and the reason it exists.
 `npm run check` EXIT=0 · `tests/unit` 689 files, 9038 passed, 1 skipped ·
 14 mutations across the four units, every one verified to apply and every one
 caught.
+
+---
+
+## Units 79–83 — five findings from one question, asked five ways · `961f35b` `0572aff` `a083ed1` `887428f` `9440fc6`
+
+The founder's four decisions (units 75–78) closed the blockers. These five came
+from following the residue those decisions exposed, and they share a shape worth
+naming: **a control or a claim that survives the thing it refers to.** A gate can
+be perfect and the ADVERTISEMENT beside it still wrong; a page can be deleted
+thoroughly and the LINK to it still shipped; a subsystem can be killed and its
+SWITCH still on the wall.
+
+### Unit 79 — the reseller feature set advertised four dead subsystems
+
+`whiteLabelService.createTenant` seeded every new reseller tenant with
+`marketplace: true, academy: true, dealHunter: true, visionAI: true`. Three of
+those have no code left at all. Unit 77 fixed `negotiationCopilot` because it was
+deleting that subsystem; this is the same defect four more times.
+
+**Flipping the defaults would not have fixed it.** A config written before a
+verdict landed still says `true`, and `isFeatureEnabled` — the API a reseller
+calls to decide what to show THEIR customers — reads that stored row. So
+`RETIRED_FEATURES` is a **floor at the read**, covering every row ever written.
+
+The fail-open for orgs with no white-label config is deliberately preserved and
+now asserted: such an org is not a reseller tenant, and reading that as a bug
+would hide real features from every ordinary organization.
+
+**A mutation survived the first draft**, and the fix is the interesting part:
+deleting `visionAI` from the register passed everything. The register could
+silently SHRINK. The added check derives the requirement from EVIDENCE — a flag
+must be registered exactly while the repo still shows its subsystem retired (file
+absent, mount missing, or route behind `requireLadderFlag`) — plus a guard that
+fails if every evidence check ever evaluates to "not retired".
+
+### Unit 80 — accessibility rule 2, and the obvious check for it is backwards
+
+CLAUDE.md states three accessibility rules; rules 1 and 3 are absolutes with zero
+debt and rule 2 had no gate. NEXT_UP warned not to freeze the ~50 `outline-none`
+hits without sampling, and sampling is what made the unit worth doing.
+
+`index.css` carries `*:focus-visible { @apply outline-none ring-2 … }`. **It
+removes the outline from EVERYTHING** and substitutes a ring. So
+`focus-visible:outline-none` in a component agrees with a decision the stylesheet
+already made — 241 occurrences, dominant form `outline-none` + `ring-2`, correct.
+Freezing those would have produced a register of 241 non-defects.
+
+The dangerous pattern is the inverse and it is rare: **zeroing the ring**. There
+were exactly two, plus one `contentEditable` region with neither. All three
+fixed, no register — two occurrences is a bug, not a debt.
+
+The premise is asserted too: if `index.css` stops removing the outline globally,
+`outline-none` becomes a real defect and `ring-0` becomes survivable, and the
+reasoning has to be re-derived rather than quietly going stale.
+
+### Unit 81 — two founder flag toggles wrote a column nothing reads
+
+`platform_feature_flags` carries `enabled` ("back-compat — derived from state")
+and `state` ("canonical post-port"). `rowToFlag` reads `state`, falling back to
+`enabled` only when `state` is NULL — which no row written since the migration
+is. Three founder-facing write surfaces existed; **two wrote `enabled` only.**
+
+A founder flipped a flag, got a 200 showing `enabled: true`, and nothing changed
+for any customer. **The direction that matters is the other one:**
+`enabled: false` on a flag whose `state` is `"on"` left the feature ON for every
+customer while the console reported it off — and `feature_marketplace` /
+`feature_capital_markets` are governance flags behind `requireLadderFlag`. *"No
+marketplace before ~25 customers"* was enforced by a flag the founder's own
+console could not turn off.
+
+The read had the same split: `getEnabledFeatureFlags` filtered on `enabled`, so a
+flag in a targeted state (`beta`, `tier:pro`) — genuinely on for somebody — read
+as off.
+
+### Unit 82 — a KILL is not finished while its switch is on the wall
+
+Three seeded flag keys name subsystems whose code is deleted, and **unit 76
+created one of them**: executing the negotiation copilot's KILL thoroughly enough
+to find a rail the ledger had never recorded, and still leaving
+`feature_negotiation_copilot` in the catalogue, because nothing was looking there.
+
+**Unit 81 raised the stakes on this by fixing the writes.** Before that, flipping
+any flag was inert; afterwards a dead row is a live control that reports success
+and changes nothing, on a console whose whole job is telling the founder what is
+on.
+
+`RETIRED_FLAG_KEYS` hides them from `getAll`, makes `getByKey` answer ABSENT (not
+"off", so a stored `state: "on"` can never be honoured), and makes `setFlag`
+throw — 404 at both write surfaces. The rows stay: deleting platform rows is the
+class of action the 2026-08-01 table drops took an explicit founder ruling for
+(recorded as B16, which nothing waits on).
+
+**A mutation survived here too, from a new direction.** Deleting the filter from
+`getAll` passed, because the comment above it named `RETIRED_FLAG_KEYS` and the
+assertion only looked for the symbol. Seventh time prose has satisfied a check
+meant for code — and the first where a comment describing the FIX satisfied the
+check for the fix, rather than a comment describing a DEFECT tripping the
+detector for that defect.
+
+### Unit 83 — the server sent people to pages that do not exist
+
+Six emitted destinations had no `<Route>`. Two are on `GET /api/today`, the
+customer's first screen, and both are FALLBACK cards — they fire when the
+customer has nothing else going on, so the quietest, newest accounts got the
+broken buttons. `/evening-review`'s page was deleted in the Lens-4 sweep *because
+"neither was linked from any nav surface"*; **this card was the link nobody
+found.**
+
+On the founder plane: two in the weekly digest email, one action-card deeplink,
+and — the one that matters — `/founder/intelligence` as the URL an **on-call push
+notification** opened. A founder woken at 3am by a critical alert tapped through
+to NotFound.
+
+**Why the class recurs:** deleting a page is a client-side change done
+thoroughly — route, lazy import, file, comment. Nobody greps the server, where
+the link lives in a job, a briefing builder or a push payload that nothing
+type-checks against the router. Six accumulated across three separate,
+individually careful deletions.
+
+Each fixed on its own merits, not by one rule. The digest's two severity-keyed
+links became a CATEGORY map, because one link per severity was the wrong shape as
+well as a broken one: an AI-cost spike, a failing job and a churn cliff are looked
+at in three different places, and sending all three to one page is re-pointing a
+broken link at an approximation — **which looks fixed and is not.**
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 693 files, 9,073 passed, 1 skipped ·
+20 mutations across the five units; 18 caught on the first pass, 2 survived and
+both survivals are recorded above with the assertion that now catches them.
