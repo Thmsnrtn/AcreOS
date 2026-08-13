@@ -339,20 +339,31 @@ next more than any technical finding has:
 | **B11** Meta ads on the platform ad account | *"for me as the founder to run ads for this AcreOS only. Never for a customer"* | unit 77 — `/api/founder/meta-ads/*`, sixth constitution hard-stop, **and a fail-open webhook signature fixed on the way in** |
 | **B9** VA tasks don't persist | build persistence | unit 78 — `va_tasks` + `va_sops`, migration 0235, routes wired |
 
-**Two blockers remain, and both are still the founder's:**
+**ALL SIX BLOCKERS ARE NOW DECIDED.** The second picker (2026-08-13) closed the
+last two open ones and two that arose from the first four:
 
-- **B8** — which webhook rail survives: the legacy `/api/webhooks` (36 declared
-  events, 1 emitter) or the fully-built, entirely unmounted `server/api-v1/*`
-  rail with retries, a DLQ and a delivery log. Consistent with *no public API
-  before ~50 customers*, so there is no urgency — but the two rails should not
-  both exist indefinitely.
-- **B10** — two note-payment data models: legacy `notes`/`payments` with
-  `numeric` + `parseFloat`, versus the cents family `acquired_notes`/
-  `note_payments` with `bigint` cents. **Read B10 before touching note money.**
-  Not attempted here because it wants a real database (`DATABASE_URL` is unset,
-  B1) and because picking canonical is a founder call.
+| blocker | founder's answer | executed |
+|---|---|---|
+| **B10** note-payment models | cents family is the successor | unit 87 — float writer deleted, migration list built as a down-only ratchet |
+| **B8** webhook rails | keep deferring | unit 86 — the one standing rule ("no new emitters on the legacy rail") is now enforced by CI instead of written down |
+| **B16** dead flag rows | delete them | unit 85 — `DELETE FROM platform_feature_flags` in the deploy path; the register stays |
+| recurring VA tasks | leave refused | no work — a schedule table with no runner is the built-but-unwired defect |
 
-**The residue from units 75–78, all small and all recorded:**
+**Two things the founder explicitly declined, so do not "finish" them:**
+
+- **`negotiation_sessions` is NOT dropped.** Customer rows. Allowlisted in
+  `reachability.json` for both writer and reader with that reason.
+- **`users.passwordResetToken` / `passwordResetExpiresAt` stay.** Zero readers,
+  zero writers, auth is Clerk — harmless, and dropping them is tidiness with a
+  schema-change cost.
+
+**What still needs a database (B1), and nothing else does:** the note-payment
+data migration itself. Five legacy writers remain, listed with what each is for
+in `legacyNoteModelIsTerminal.test.ts`. **Do not "tidy" them** — three do float
+math today, and making one locally correct is the change most likely to be
+wasted. The ratchet measures the migration, not the tidying.
+
+**The residue from units 75–78, now all closed:**
 
 - **Recurring VA tasks** (`GET /api/va/scheduled`) now refuse with 501. Building
   them means a template table AND a runner; a schedule with no runner is the
@@ -360,12 +371,10 @@ next more than any technical finding has:
 - **`negotiation_sessions` was not dropped.** It holds customer rows and dropping
   it is a founder-only hard stop. Both reachability entries are allowlisted with
   that reason so it shows in every gate run instead of vanishing into a baseline.
-- **The white-label default feature set advertises frozen surfaces.** Unit 77
-  flipped `negotiationCopilot` to `false`, but `academy: true` (KILL — education
-  revenue stays dead), `visionAI: true` (KILL) and `marketplace: true` (FREEZE)
-  are still defaulted ON in `whiteLabelService.createConfig`. Latent, because
-  white-label is itself frozen behind `featureGate` — but it is the same defect
-  three more times, and it is the cheapest remaining find in the repo.
+- **The white-label default feature set** — closed by unit 79, and it was the
+  same defect four more times. Fixed as a FLOOR AT THE READ rather than as
+  defaults, because flipping a default does nothing for a config written before
+  a verdict landed.
 
 **The tenancy thread (units 53–63) remains at a clean stopping point**, and the
 next task is *not* more of it:

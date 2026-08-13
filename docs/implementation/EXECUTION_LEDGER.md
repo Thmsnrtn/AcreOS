@@ -5666,3 +5666,85 @@ broken link at an approximation — **which looks fixed and is not.**
 `npm run check` EXIT=0 · `tests/unit` 693 files, 9,073 passed, 1 skipped ·
 20 mutations across the five units; 18 caught on the first pass, 2 survived and
 both survivals are recorded above with the assertion that now catches them.
+
+---
+
+## Units 84–88 — the second picker, and the fallback path · `dfac17d` `225d691` `b060c76` `ed4480d`
+
+### Unit 84 — an auth flow the app does not have
+
+Authentication is Clerk; AcreOS never receives a credential. Four surfaces said
+otherwise, in four registers: two client pages lazy-imported and **never routed**
+(the only two of 211 in that state), five dead-mounted rate limiters, a public
+OpenAPI contract for `POST /auth/login`, and a security report claiming
+*"Passport.js with bcrypt, 2FA available"* — the sentence someone quotes in a
+questionnaire.
+
+**The limiter fix had already been made in that file, twice, on either side of
+the offending lines.** `/api/register` twenty lines below: *"those middleware
+were dead-mounted (correct logic, never invoked)"*. The legacy OAuth limiters one
+line above: *"removed with the standalone social-login OAuth — Clerk owns
+login/OAuth now"*. The reasoning was applied to both neighbours and not to these.
+
+**A naive sweep reported 16 of 23 OpenAPI paths missing and 14 were false** —
+router-mounted paths whose sub-paths live in the router file. Checked before
+claiming; no gate was built on that scan, and only the two verified exhaustively
+against `server/auth/routes.ts` were touched.
+
+### Units 85–87 — the second picker's four rulings
+
+**B16 — delete the dead flag rows.** A `DELETE FROM platform_feature_flags` in
+the deploy path. **The register stays after the rows go**, and the test now says
+so: `RETIRED_FLAG_KEYS` is not bookkeeping for three rows, it is the only thing
+looking at the flag catalogue, and it is what catches the NEXT kill's leftover
+switch.
+
+**B8 — keep deferring the webhook rail choice.** The ruling has exactly one
+consequence for today's code, and B8 had already written it: do not wire the five
+uncalled convenience wrappers. That is now an INVERTED assertion pinning the
+derived emitter set at `["lead.created"]` — wiring `webhookDealCreated`, a
+two-line change that looks like an improvement, fails CI with the reasoning
+attached. Two assertions hold the premise: the wrappers must STAY (the rule is
+about calling them), and `registerPublicApiV1` must stay unmounted — if it is
+mounted, the deferral has ended and the block should be revisited.
+
+**B10 — the cents family is canonical.** Deleted `POST /api/notes/:id/record-payment`:
+no caller, float principal/interest math, not transactional, escrow credited
+before the payment insert, **a note UPDATE with no organization predicate on
+money**, and `updateData: any`. Under the ruling, fixing those five would have
+been work thrown away.
+
+**The migration list is a RATCHET, not a document.** Five legacy writers, derived
+from source, strictly down-only: a new one fails, migrating one must lower the
+list in the same commit. A hand-maintained migration list is exactly the artifact
+that goes stale between a decision and its execution — this program watched that
+happen to a deletion ledger, a feature-flag catalogue and a reseller feature set
+in the same week.
+
+**A correction to B10, found while checking it.** It claimed three of four
+payment recorders call `splitPaymentCents`, naming `paymentApplication`. Against
+HEAD that is three CALL SITES in TWO files: `paymentApplication` deliberately
+accepts a PRE-SPLIT so the module stays pure and testable. True in spirit, not a
+call — now pinned as the distinction it is.
+
+### Unit 88 — the fallback path is the broken one, twice
+
+Unit 83's gate asked *does App.tsx declare this path*. Thirteen paths are
+declared through `<FlaggedRoute>`, which renders `NotFound` when its flag is off
+— and the flags are seeded FALSE. A link could pass every assertion and still end
+at a 404.
+
+One did: `autonomousDealMachine.ts` linked its **default** action card at
+`/market-intelligence`. Default cards fire when there is nothing else to show.
+
+**That is the second time in two units that a FALLBACK path was the broken one**
+— unit 83 found the same on the Today screen's fallback cards — and it is worth
+stating as a rule rather than a coincidence: **the happy path gets exercised and
+the empty state does not.** Both units' defects were invisible to every customer
+with an active pipeline and guaranteed for every customer without one.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 695 files, 9,098 passed, 1 skipped ·
+14 mutations across the five units, every one verified to apply and every one
+caught. `colon-any` 2992 → 2990.
