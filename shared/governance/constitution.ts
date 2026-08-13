@@ -190,6 +190,39 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     },
   },
 
+  {
+    id: "hard-stop.ads-founder-only-rail",
+    title: "Paid advertising is a founder instrument, never a customer feature",
+    statement:
+      "Meta ads run on AcreOS's OWN ad account, spending AcreOS's own money on AcreOS's own advertising, and only the founder may reach them. No customer-facing path to paid advertising exists; if an org is ever to advertise, it runs on the org's OWN connected ad account, exactly as customer money movement must.",
+    category: "hard-stop",
+    source:
+      'Founder ruling 2026-08-13 (BLOCKERS B11): "this was meant for me as the founder to run ads for this AcreOS only. Never for a customer to be able to run their own ads." Resolves the question left open by the 2026-07-29 "be the rail, not the provider" ruling.',
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "server/routes-elite-features.ts",
+        "server/middleware/metaWebhookSignature.ts",
+        "tests/unit/metaAdsFounderOnly.test.ts",
+        "tests/unit/adSpendAuthority.test.ts",
+      ],
+      note:
+        "The platform ad account is the MIRROR IMAGE of the ACTUM case, not an " +
+        "exception to it: one platform ACTUM_MERCHANT_ID for all orgs meant " +
+        "CUSTOMER money moving on AcreOS's account, which is banned; one " +
+        "platform META_AD_ACCOUNT_ID spending ACREOS's money on AcreOS's own " +
+        "advertising is AcreOS being its own customer, which is fine. The only " +
+        "thing keeping them apart is that no customer path exists, so that is " +
+        "what is asserted: every /api/founder/meta-ads/* route carries " +
+        "requireFounder (creation, catalog sync AND stats reads — stats had no " +
+        "gate until this ruling), no client bundle calls them, the $500/day " +
+        "ceiling survives in code because the hard-stop is about the AMOUNT not " +
+        "the caller, `ads` stays a simulated category so a dev or CI boot with " +
+        "the env vars present cannot buy real advertising, and the public lead " +
+        "webhook verifies its signature fail-closed.",
+    },
+  },
+
   // ── Navigation doctrine ────────────────────────────────────────────────
   {
     id: "nav.customer-five-doors",

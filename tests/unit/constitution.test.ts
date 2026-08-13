@@ -89,14 +89,20 @@ describe("constitution registry — enforcement pointers are real", () => {
 });
 
 describe("constitution ratchet — hard stops must become machine-enforced", () => {
-  it("registers the five hard stops", () => {
+  it("registers the six hard stops", () => {
     // The permanent hard stops from CLAUDE.md's DO-NOT-DO list: four
     // founder-only action classes (spends >$500, pricing, legal signing,
-    // customer-data deletion) plus one outright ban — customer money never
+    // customer-data deletion) plus two outright bans — customer money never
     // moves on AcreOS's own account (founder ruling 2026-07-29, "be the rail,
-    // not the provider"). This count may only GROW by an explicit founder
-    // decision; it may never shrink, because a hard stop is permanent.
-    expect(hardStops().length).toBe(5);
+    // not the provider"), and paid advertising is a founder instrument with no
+    // customer path in (founder ruling 2026-08-13, resolving B11). The two bans
+    // are the same shape judged opposite ways, which is the point of recording
+    // both: a single platform account is fatal when it holds CUSTOMER money and
+    // fine when it spends ACREOS's own.
+    //
+    // This count may only GROW by an explicit founder decision; it may never
+    // shrink, because a hard stop is permanent.
+    expect(hardStops().length).toBe(6);
   });
 
   it("the count of UNENFORCED hard stops never exceeds the baseline (it may only shrink)", () => {

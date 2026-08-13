@@ -354,11 +354,50 @@ the model question rather than the defect itself.
 
 ## B11 — Meta ads spend on the platform's own ad account
 
+**RESOLVED** (unit 77, founder ruling 2026-08-13). The question was *platform
+activity or customer feature*, and the answer was neither of the two options this
+entry offered:
+
+> this was meant for me as the founder to run ads for this AcreOS only. Never for
+> a customer to be able to run their own ads. That's how it should work properly.
+
+So it is a **platform activity, permanently** — the first branch of "The question"
+below. The interim gate becomes the answer, and the work was making that
+structural rather than incidental:
+
+- The three routes moved to **`/api/founder/meta-ads/*`**, so the URL states who
+  they are for rather than leaving it to middleware nobody reads.
+- **`GET …/campaigns/:id/stats` had NO founder gate at all** — `...auth` alone.
+  It returns spend, impressions, clicks and cost-per-lead for any campaign id on
+  the platform ad account, so any authenticated member of any org could read
+  AcreOS's own marketing performance by iterating ids. Gating the spend and
+  leaving the reads open is this entry's own finding, one layer down.
+- Registered in `shared/governance/constitution.ts` as
+  `hard-stop.ads-founder-only-rail` — the **sixth** hard stop, and the second
+  outright ban. It is deliberately recorded next to the money-custody ban,
+  because they are the same shape judged opposite ways: one platform account is
+  fatal when it holds CUSTOMER money and fine when it spends ACREOS's own. The
+  only thing keeping them apart is that no customer path exists, so that is what
+  `tests/unit/metaAdsFounderOnly.test.ts` asserts.
+- **Security fix found on the way in.** The public `POST /api/webhooks/meta-lead-ads`
+  verified its Meta signature inline and fail-open twice: no `META_APP_SECRET`
+  meant no verification at all, and a caller who simply OMITTED the
+  `X-Hub-Signature-256` header skipped the check even when the secret was set. It
+  also compared with `!==` (a timing oracle) and hashed `JSON.stringify(req.body)`
+  rather than the raw bytes Meta signed, so a VALID delivery could fail to verify.
+  That endpoint CREATES LEADS. Replaced by
+  `server/middleware/metaWebhookSignature.ts`, fail-closed on both, constant-time,
+  raw-body — the same shape as `twilioSignature.ts` and `inboundEmailSignature.ts`.
+
+**Still open, and deliberately not assumed:** if an org is ever to advertise, it
+runs on the **org's own connected ad account**, exactly as customer money must.
+Nothing is built for that, and the constitution entry says so.
+
 **Found:** unit 50, by asking whether `routes-elite-features.ts`'s remaining
 POST routes shared the shape units 49–50 had already found there twice.
-**Blocked on:** a founder decision — delete these routes, or connect them to the
-ORG's own ad account. **Gated and capped in the meantime** (unit 50); the
-decision itself is not taken here.
+**Was blocked on:** a founder decision — delete these routes, or connect them to
+the ORG's own ad account. Gated and capped in the meantime (unit 50). The record
+below is the state at the time the decision was asked for.
 
 ### What it was
 

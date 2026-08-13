@@ -1,7 +1,7 @@
 /**
  * Any member of any org could buy ads on AcreOS's own ad account.
  *
- * `POST /api/meta-ads/campaigns` took `dailyBudgetCents` from the request body
+ * `POST /api/meta-ads/campaigns` (as it was then named) took `dailyBudgetCents` from the request body
  * and handed it to `metaAdsService.createLandListingCampaign`, which POSTs
  * `daily_budget` to `graph.facebook.com/v21.0` against **META_AD_ACCOUNT_ID
  * with META_ACCESS_TOKEN** — one platform ad account for every organization.
@@ -24,12 +24,24 @@
  * kept finding (a rule applied to some surfaces and not others), at the highest
  * stakes in the repository: this one is denominated in dollars per day.
  *
- * WHAT THIS DOES AND DOES NOT DO
- * ------------------------------
- * Gated, capped and simulation-guarded — **not deleted**. The ACTUM precedent
- * says deletion is how the founder makes that call, and unit 49's line holds
- * here too: these routes do something real, so removing them removes
- * capability rather than a lie. BLOCKERS B11 carries the question.
+ * WHAT THIS DID, AND WHAT THE FOUNDER THEN RULED
+ * ---------------------------------------------
+ * Unit 50 gated, capped and simulation-guarded these routes — **not deleted**,
+ * because the ACTUM precedent says deletion is how the founder makes that call.
+ * BLOCKERS B11 carried the open question: platform activity, or customer feature?
+ *
+ * **Answered 2026-08-13:** *"this was meant for me as the founder to run ads for
+ * this AcreOS only. Never for a customer to be able to run their own ads."* So
+ * the interim gate is permanent, the routes moved to `/api/founder/meta-ads/*`,
+ * and the paths below moved with them.
+ *
+ * DIVISION OF LABOUR with `metaAdsFounderOnly.test.ts`, which arrived with that
+ * ruling: **this file is about the SPEND** — that it is bounded, simulated by
+ * default, and made against the platform's own account. That file is about the
+ * RULE — that all three routes are founder-only (including the stats read, which
+ * this file never checked and which was ungated until the ruling), that they live
+ * in the founder namespace, that no client bundle reaches them, and that the
+ * public lead webhook verifies its signature fail-closed.
  *
  * The ceiling is $500/day, the same figure as the constitution's founder-only
  * spend hard-stop, deliberately. The founder gate does not make the cap
@@ -88,20 +100,20 @@ function registration(src: string, marker: string): string {
 
 describe("spending on the platform ad account is founder-only", () => {
   it("the routes still exist (vacuity guard)", () => {
-    expect(elite).toContain('app.post("/api/meta-ads/campaigns"');
-    expect(elite).toContain('app.post("/api/meta-ads/sync-catalog"');
+    expect(elite).toContain('app.post("/api/founder/meta-ads/campaigns"');
+    expect(elite).toContain('app.post("/api/founder/meta-ads/sync-catalog"');
   });
 
   it("campaign creation requires the founder", () => {
     expect(
-      registration(elite, 'app.post("/api/meta-ads/campaigns"'),
+      registration(elite, 'app.post("/api/founder/meta-ads/campaigns"'),
       "any authenticated member of any org can buy ads on the platform account again",
     ).toContain("requireFounder");
   });
 
   it("catalog sync requires the founder", () => {
     // Same platform account, same token.
-    expect(registration(elite, 'app.post("/api/meta-ads/sync-catalog"')).toContain(
+    expect(registration(elite, 'app.post("/api/founder/meta-ads/sync-catalog"')).toContain(
       "requireFounder",
     );
   });
@@ -134,7 +146,7 @@ describe("the budget has a ceiling", () => {
   });
 
   it("the budget is validated as a positive integer before it is spent", () => {
-    const at = elite.indexOf('app.post("/api/meta-ads/campaigns"');
+    const at = elite.indexOf('app.post("/api/founder/meta-ads/campaigns"');
     const handler = elite.slice(at, at + 2500);
     expect(handler).toContain("Number.isInteger(budget)");
     expect(handler).toMatch(/budget\s*>\s*MAX_DAILY_AD_BUDGET_CENTS/);

@@ -17,6 +17,7 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireFounder } from "./auth/clerkAuth";
+import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
 
 // Services
@@ -273,22 +274,15 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     res.status(403).send("Forbidden");
   });
 
-  // Lead Ad submission webhook — verify X-Hub-Signature-256 (DEFECT-0008)
-  app.post("/api/webhooks/meta-lead-ads", async (req: Request, res: Response) => {
+  // Lead Ad submission webhook. The signature check used to live inline here and
+  // was fail-open twice: no `META_APP_SECRET` meant no verification at all, and
+  // a caller who simply OMITTED the header skipped it even when the secret was
+  // set. This endpoint creates leads, so an unsigned POST wrote rows into a real
+  // pipeline. `verifyMetaWebhookSignature` fails closed on both, hashes the raw
+  // body rather than a re-serialisation of it, and compares in constant time —
+  // the same shape as the Twilio and inbound-email verifiers.
+  app.post("/api/webhooks/meta-lead-ads", verifyMetaWebhookSignature, async (req: Request, res: Response) => {
     try {
-      // Verify Meta webhook signature
-      const signature = req.headers["x-hub-signature-256"] as string;
-      const appSecret = process.env.META_APP_SECRET;
-      if (appSecret && signature) {
-        const crypto = await import("crypto");
-        const body = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-        const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(body).digest("hex");
-        if (signature !== expected) {
-          logger.warn("[meta-leads] Webhook signature mismatch — rejecting");
-          return Errors.unauthorized(res);
-        }
-      }
-
       const entries = req.body?.entry || [];
       for (const entry of entries) {
         for (const change of entry.changes || []) {
@@ -309,25 +303,36 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // FOUNDER-ONLY, and it should have been from the start.
+  // ── META ADS: A FOUNDER INSTRUMENT, PERMANENTLY (founder ruling 2026-08-13) ──
   //
-  // `metaAdsService` posts to graph.facebook.com against META_AD_ACCOUNT_ID
-  // with META_ACCESS_TOKEN — ONE PLATFORM AD ACCOUNT FOR ALL ORGS. So a
-  // campaign created here spends AcreOS's money, and this route was gated by
-  // `[isAuthenticated, getOrCreateOrg]` alone: any member, va or viewer of any
-  // organization could open it, name their own `dailyBudgetCents`, and bill it
-  // to the platform. No cap, no credit deduction, no simulation guard.
+  // B11 asked whether paid advertising is a platform activity or a customer
+  // feature. The founder answered: *"this was meant for me as the founder to run
+  // ads for this AcreOS only. Never for a customer to be able to run their own
+  // ads."* So the gate unit 50 added as an interim measure is the PERMANENT
+  // answer, and these routes moved into the `/api/founder/*` instrument
+  // namespace, where the URL itself states who they are for.
   //
-  // The founder has already ruled on this exact shape, IN THIS FILE, twenty
-  // lines below: the ACTUM ACH endpoints were deleted on 2026-07-29 ("be the
-  // rail, not the provider") because one platform ACTUM_MERCHANT_ID for all
-  // orgs meant money moving on AcreOS's own account. The ads routes are the
-  // same pattern and were not brought under the same ruling — a rule applied
-  // to some surfaces and not others, at the highest stakes in the repo.
+  // WHY THE PLATFORM AD ACCOUNT IS CORRECT HERE AND FATAL FOR PAYMENTS.
+  // `metaAdsService` posts to graph.facebook.com against META_AD_ACCOUNT_ID with
+  // META_ACCESS_TOKEN — ONE PLATFORM AD ACCOUNT. Under "be the rail, not the
+  // provider" (2026-07-29, which deleted the ACTUM ACH endpoints forty lines
+  // below) that shape is fatal for CUSTOMER money: one platform
+  // ACTUM_MERCHANT_ID for all orgs meant borrower money moving on AcreOS's own
+  // merchant account. Advertising is the mirror image — AcreOS's own money, on
+  // AcreOS's own account, spent by the only person authorised to spend it. No
+  // customer money moves and no customer is a party to it. The ruling that
+  // forbids the first is the ruling that permits this, and the only thing
+  // keeping them apart is that there is NO CUSTOMER PATH IN. That is what the
+  // gates below and the test are for.
   //
-  // Gated rather than deleted: deleting live routes is the founder's call and
-  // the ACTUM precedent says that is how it gets made. See BLOCKERS B11.
-  app.post("/api/meta-ads/campaigns", ...auth, requireFounder, async (req: Request, res: Response) => {
+  // The $500/day ceiling stays even though the caller is the founder: the
+  // hard-stop is "spends >$500 are founder-only", not "spends are unbounded once
+  // a founder is on the call", and a typo in a cents field is three orders of
+  // magnitude from its intent.
+  //
+  // Registered in shared/governance/constitution.ts as `ads.founder-only-rail`;
+  // pinned by tests/unit/metaAdsFounderOnly.test.ts.
+  app.post("/api/founder/meta-ads/campaigns", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const {
         propertyId, campaignName, dailyBudgetCents, targetStates, targetZipCodes,
@@ -363,7 +368,13 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/meta-ads/campaigns/:campaignId/stats", ...auth, async (req: Request, res: Response) => {
+  // This one carried NO founder gate until 2026-08-13 — `...auth` alone. Spend is
+  // not the only thing worth withholding: `getAdPerformance` reads spend,
+  // impressions, clicks and cost-per-lead for ANY campaign id on the platform ad
+  // account, so any authenticated member of any org could read AcreOS's own
+  // marketing performance by iterating ids. Gating creation and leaving the reads
+  // open is the half-applied rule this whole block is about.
+  app.get("/api/founder/meta-ads/campaigns/:campaignId/stats", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
       res.json(stats);
@@ -374,7 +385,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   // Founder-only for the same reason: it writes into the PLATFORM catalog on
   // the platform's ad account, using the platform token.
-  app.post("/api/meta-ads/sync-catalog", ...auth, requireFounder, async (req: Request, res: Response) => {
+  app.post("/api/founder/meta-ads/sync-catalog", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
       const { catalogId } = req.body;
