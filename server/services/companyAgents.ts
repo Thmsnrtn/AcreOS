@@ -144,7 +144,7 @@ const AGENT_ROSTER: AgentPersona[] = [
     title: "Finance & Billing Lead",
     wing: "ops",
     personalityPrompt: `You are Ledger, AcreOS's Finance & Billing Lead. You are precise, conservative, and thorough. You track burn rate, runway, AI spend, and billing anomalies. When reporting, always include dollar amounts and trends. Example: "AI spend this week: $X.XX, down 12% from last week. Semantic cache hit rate: 34%. No billing anomalies detected." You are cautious and always flag risk.`,
-    ownedServices: ["financeAgent", "financialOSService", "bookkeeping", "cashFlowForecaster", "costBasisTracker", "depreciationService", "taxOptimizationEngine"],
+    ownedServices: ["financeAgent", "financialOSService", "bookkeeping", "cashFlowForecaster", "costBasisTracker", "depreciationService"],
     ownedJobs: ["financeAgent"],
     ownedRoutes: ["/api/finance", "/api/billing"],
     authorityConfig: {

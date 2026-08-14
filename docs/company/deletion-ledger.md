@@ -337,3 +337,36 @@ correctness risks across 2+ machines. Disposition:
   `pages/founder/solene-chat.tsx` (the live founder chat face). Shared
   `components/founder-chat/*` retained (used by solene-chat). Found by the
   WS2 cockpit inventory.
+- 2026-08-14 — `server/services/taxOptimizationEngine.ts` (423 LOC) deleted.
+  **Founder ruling (picker, this date): "Delete the engine."** Zero production
+  importers; the only occurrence of its name outside the file was the STRING
+  `"taxOptimizationEngine"` in `companyAgents.ts`'s `ownedServices` array, which
+  is what made `lint-reachability.mjs` treat it as alive (that linter counts
+  string literals as uses, by design — "prose and registries resurrect corpses").
+  Removed from that array in the same commit.
+
+  It was deleted because it FABRICATED, on a surface where a fabricated number
+  reads as advice. `stateCapGainsRates` listed twenty states under the comment
+  "representative sample, 2024" and ended `?? 0.05`, so the other thirty received
+  an invented 5%. The note beneath it read
+  `rates[s] === 0 ? "no state capital gains tax" : "taxes capital gains as
+  ordinary income"` — and `undefined === 0` is `false`, so an unlisted state took
+  the ELSE branch: asked about Tennessee, which has no state income tax on
+  capital gains, it answered that TN taxes them as ordinary income AND applied
+  5%. Both false, in a sentence a reader takes as legal fact.
+  `calculate1031Benefits` did `replacementValue * 0.3 // assume 30% appreciation`
+  and returned `deferralBenefit` as a rounded dollar figure; the federal
+  constants assumed the top bracket for every taxpayer.
+
+  On this program's test — *does removing it remove a capability or a lie?* — it
+  removed a lie. Recorded as BLOCKERS B17, found by unit 104's numeric-default
+  sweep, executed in unit 107.
+
+  **DELETION-REVEALED, and queued for a separate founder decision:** the engine
+  was the only writer of `tax_strategies` and `tax_forecast_scenarios`. Both are
+  now writer-less AND reader-less, so `tablesNoWriter` 47→49 and `tablesNoReader`
+  59→61. **The tables are NOT dropped** — a production `DROP TABLE` is a
+  founder-only hard stop — and they join the queue alongside the others already
+  awaiting that ruling. This is the exception the reachability ratchet's own note
+  carves out for raising those counts: name the deleted writer, queue the exposed
+  tables in the same commit.

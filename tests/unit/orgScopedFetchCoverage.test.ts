@@ -43,7 +43,13 @@ const src = fs.readFileSync(LINT, "utf8");
  * `dueDiligencePods` three. Lower it in the commit that earns it — never raise it:
  * a new offender is meant to fail the lint, not to be admitted here.
  */
-const BASELINE_ENTRIES = 173;
+// 173 -> 172 on 2026-08-14: the entry for
+// `taxOptimizationEngine.ts::computeDepreciationStrategy` named a file that no
+// longer exists — the engine was deleted by founder ruling (BLOCKERS B17). The
+// register checks its entries in BOTH directions, so a stale one fails; that is
+// what caught this, and lowering the count here is the reduction being locked in
+// by the commit that earned it.
+const BASELINE_ENTRIES = 172;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,

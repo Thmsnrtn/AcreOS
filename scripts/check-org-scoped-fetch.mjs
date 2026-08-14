@@ -280,7 +280,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/sellerIntentPredictor.ts::analyzeFinancialSignals",
   "server/services/sellerIntentPredictor.ts::analyzeUrgencySignals",
   "server/services/sellerIntentPredictor.ts::getLeadMessageContent",
-  "server/services/taxOptimizationEngine.ts::computeDepreciationStrategy",
   "server/services/voiceCallAI.ts::extractActionItems",
   "server/services/voiceCallAI.ts::extractKeyData",
   "server/services/voiceCallAI.ts::generateCoachingInsights",

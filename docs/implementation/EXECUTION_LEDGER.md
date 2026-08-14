@@ -6780,3 +6780,72 @@ remedy to say "delete anything unreached", and reverting the harness to its
 hardcoded defaults list. One mutation was re-targeted rather than counted:
 `f.moduleOrphan` first occurs in the `unreached-exports` describe, so the initial
 attempt patched a different family and tested nothing.
+
+## Unit 107 — B17 executed: the tax engine is deleted · this commit
+
+**Founder ruling (picker, 2026-08-14): "Delete the engine."**
+
+`server/services/taxOptimizationEngine.ts` (423 LOC) is gone, and the dangling
+`"taxOptimizationEngine"` string is out of `companyAgents.ts`'s `ownedServices`
+array — that string was the only thing outside the file that named it, and
+`lint-reachability.mjs` counts string literals as uses, which is precisely why a
+module fabricating tax figures was invisible to the gate built to find dead
+modules.
+
+On this program's own test — *does removing it remove a capability or a lie?* —
+it removed a lie: an invented 5% capital-gains rate for the thirty states missing
+from its twenty-state table, and a note telling callers those states "tax capital
+gains as ordinary income", which is false because `undefined === 0` is `false` so
+an unlisted state took the else branch.
+
+### The guard was rewritten, not deleted
+
+It used to be an INVERTED assertion that failed the day anyone imported the
+engine, so the decision could not be skipped by wiring it up. That invariant
+moved rather than expired: the thing to protect now is that the fabrication does
+not come back. Per CLAUDE.md's wave rule the assertion follows the truth.
+
+**And it checks reimplementation, not just absence.** A path-only assertion is
+weak — the same twenty states pasted into a different module, still ending
+`?? 0.05`, would pass it. So it also fails if any production file grows a
+state→capital-gains map with a numeric fallback. Verified by mutation: creating
+`taxRatesRedux.ts` with exactly that shape fails the suite.
+
+### Deletion-revealed, invoked explicitly and queued
+
+The engine was the ONLY writer of `tax_strategies` and `tax_forecast_scenarios`,
+so removing a dead writer made two transitively-dead tables visible:
+`tablesNoWriter` 47→49, `tablesNoReader` 59→61. **This is the exception the
+reachability ratchet's own note carves out** — name the deleted writer, queue the
+exposed tables in the same commit — and both requirements are met here and in
+`docs/company/deletion-ledger.md`.
+
+**The tables are NOT dropped.** A production `DROP TABLE` is a founder-only hard
+stop; they join the existing drop-decision queue. `unreachedExports` 653→652 and
+`moduleOrphans` 62→61 are locked in by the same commit, per the strictly-down
+rule.
+
+### Two registers caught reductions I had not locked in
+
+The first verification run FAILED, and both failures were gates working:
+
+- **`colon-any` 2990 → 2988, stale-high.** The engine carried two `: any`
+  (`const saved: any[]` accumulating the strategies it persisted, and the row
+  pushed into it). The stale-high half of a ratchet exists precisely so a
+  reduction is recorded rather than banked, and it fired.
+- **The tenancy debt register named a file that no longer exists** —
+  `taxOptimizationEngine.ts::computeDepreciationStrategy`. That register is
+  checked in BOTH directions, so a stale entry fails; removed, and
+  `BASELINE_ENTRIES` 173 → 172 in the same commit.
+
+Neither was predictable from the diff, and neither would have been caught by
+reading it. **A deletion touches every register that ever named the thing**, and
+the registers are what say which.
+
+### Verification
+
+`npm run check` EXIT=0 · all six reachability counts at baseline ·
+4 mutations, every one verified to apply, **0 survivors** — the engine
+reappearing, a dangling registry reference returning, the rate table
+reimplemented in a new module, and the queued-tables note dropped from the
+deletion ledger.

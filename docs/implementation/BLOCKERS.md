@@ -936,7 +936,27 @@ change (answer only for a signed-in caller's own address, or return a bare
 `{ received: true }`), and `getWaitlist()` must not be used for a single-address
 lookup — a `findByEmail` query, not a page-1 scan.
 
-## B17 — A tax engine that fabricates tax figures, unreached, and invisible to the gate that finds unreached things
+## B17 — RESOLVED 2026-08-14: deleted by founder ruling
+
+**DECIDED (picker, 2026-08-14): "Delete the engine."** Executed in unit 107 —
+`server/services/taxOptimizationEngine.ts` (423 LOC) is gone, the dangling
+`"taxOptimizationEngine"` string is out of `companyAgents.ts`'s `ownedServices`
+array, and `unreachedTaxEngineStaysUnreached.test.ts` is rewritten from an
+inverted "do not wire it" assertion into a "stays deleted, and is not
+reimplemented" one — it now also fails if any production file grows a
+state→capital-gains map with a numeric fallback, because pasting the same table
+into another module would defeat a path-only check.
+
+**Deletion-revealed, and queued:** the engine was the only writer of
+`tax_strategies` and `tax_forecast_scenarios`, so both are now writer-less and
+reader-less (`tablesNoWriter` 47→49, `tablesNoReader` 59→61 — the exception this
+ratchet carves out for exactly this case). **The tables are NOT dropped**; a
+production `DROP TABLE` is a founder-only hard stop, and they join the existing
+drop-decision queue. Recorded in `docs/company/deletion-ledger.md`.
+
+The original finding is kept below for the record.
+
+### Original finding (unit 104)
 
 **Found by unit 104**, generalising unit 103's question — *is this number the
 user's, or ours?* — from string defaults (unit 93) to NUMERIC ones on money

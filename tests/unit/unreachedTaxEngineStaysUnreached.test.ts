@@ -1,46 +1,40 @@
 /**
- * A tax engine that invents tax rates, and the guard that fires if anyone uses it.
+ * The tax engine that invented tax rates is deleted. This keeps it deleted.
  *
- * `server/services/taxOptimizationEngine.ts` is 423 lines with **zero production
- * importers**. It also fabricates, repeatedly, on a surface where a fabricated
- * number reads as advice:
+ * `server/services/taxOptimizationEngine.ts` was 423 lines with zero production
+ * importers, and it fabricated on a surface where a fabricated number reads as
+ * advice:
  *
- *   • `stateCapGainsRates` lists TWENTY states under the comment "representative
- *     sample, 2024", and the lookup ends `?? 0.05`. **The other thirty get an
- *     invented 5%.** The comment shows the gap was known; the `??` is what turns
+ *   • `stateCapGainsRates` listed TWENTY states under the comment "representative
+ *     sample, 2024" and ended `?? 0.05`, so the other **thirty received an
+ *     invented 5%**. The comment shows the gap was known; the `??` is what turned
  *     a known gap into a confident number.
- *   • The note beneath it states tax law FALSELY for exactly those states:
- *     `stateCapGainsRates[s] === 0 ? "no state capital gains tax" : "taxes
- *     capital gains as ordinary income"`. `undefined === 0` is `false`, so an
- *     unlisted state takes the ELSE branch — ask about Tennessee, which has no
- *     state income tax on capital gains, and it answers that TN taxes them as
- *     ordinary income AND applies 5%. Both false, in a sentence a reader takes
- *     as legal fact.
- *   • `calculate1031Benefits` does `replacementValue * 0.3 // assume 30%
- *     appreciation` and returns `deferralBenefit` as a rounded dollar figure.
- *   • The federal constants assume the TOP bracket for every taxpayer.
+ *   • The note beneath it stated tax law FALSELY for exactly those states:
+ *     `rates[s] === 0 ? "no state capital gains tax" : "taxes capital gains as
+ *     ordinary income"`. `undefined === 0` is `false`, so an unlisted state took
+ *     the ELSE branch — asked about Tennessee, which has no state income tax on
+ *     capital gains, it answered that TN taxes them as ordinary income AND
+ *     applied 5%.
+ *   • `calculate1031Benefits` did `replacementValue * 0.3 // assume 30%
+ *     appreciation` and returned `deferralBenefit` as a rounded dollar figure.
  *
- * WHY THIS FILE EXISTS RATHER THAN A FIX. Deleting a named 423-line service is
- * the same class as the negotiation-copilot KILL and the SCP/voice/vision
- * deletions — all founder rulings — and "tidying" the constants of dead code is
- * the change most likely to be wasted (B10's standing note about the legacy
- * note-payment writers). A more credible-looking fabrication is also worse than
- * an obvious one. So the decision is recorded as **BLOCKERS B17** and the engine
- * is left exactly as it is.
+ * **Founder ruling, this date: delete it** (BLOCKERS B17). On this program's own
+ * test — *does removing it remove a capability or a lie?* — it removed a lie.
  *
- * WHAT IS NOT LEFT ALONE is the fact that nothing would notice. `lint-reachability.mjs`
- * counts string literals as uses — by design, and by its own documentation:
- * *"prose and registries resurrect corpses"*. The only occurrence of
- * `taxOptimizationEngine` outside its own file is the STRING inside an
- * `ownedServices` array in `companyAgents.ts`. **So a dead subsystem that
- * fabricates tax figures is invisible to the one gate built to find dead
- * subsystems.**
+ * THIS FILE USED TO BE AN INVERTED ASSERTION that failed the day anyone IMPORTED
+ * the engine, so the decision could not be skipped by wiring it up. That
+ * invariant has not gone away, it has moved: the thing to protect now is that the
+ * fabrication does not come back, by resurrection or by reimplementation. Per
+ * CLAUDE.md's wave rule the assertion is rewritten to the new truth rather than
+ * deleted — the original question ("may this ship?") still has the same answer.
  *
- * This is therefore an INVERTED assertion, in the idiom of
- * `vaWorkflowBounds.test.ts`: it pins the engine as unimported and **fails the
- * day someone imports it**, so wiring it up forces B17 to be answered first
- * instead of shipping the 5% alongside it. The work announces itself rather than
- * sitting in prose.
+ * WHY A REIMPLEMENTATION CHECK AND NOT JUST A FILE-ABSENCE ONE. Deleting a file
+ * is easy to undo by accident: the same table, pasted into a different module,
+ * would be invisible to a check that only looks for the old path. So this also
+ * asserts that no production file carries a state→capital-gains-rate map with a
+ * numeric fallback. If a tax surface is ever genuinely wanted, it should be built
+ * against real rate data and refuse the states it does not have — not resurrected
+ * from a "representative sample".
  */
 
 import { describe, it, expect } from "vitest";
@@ -50,26 +44,9 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../..");
 const ENGINE = "server/services/taxOptimizationEngine.ts";
 
-/** Comments stripped: a note naming the module must not read as an import. */
+/** Comments stripped: a note describing the deleted defect must not trip a check. */
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
-/**
- * Does this source IMPORT the named module?
- *
- * ONE definition, used by both the sweep and the guard below. It was two — an
- * inline regex in each — and a mutation proved why that is wrong: breaking the
- * sweep's copy made "nothing imports it" trivially true while the guard, testing
- * its own separate copy, still passed. Same predicate or no measurement, which is
- * the rule this session recorded in NEXT_UP §7 for sweeps over source and applies
- * just as well to a test's own internals.
- */
-function importsModule(code: string, moduleName: string): boolean {
-  const rx = new RegExp(
-    `(?:import|require)\\s*(?:[^;]*?from\\s*)?["'][^"']*${moduleName}["']`,
-  );
-  return rx.test(code);
 }
 
 function productionFiles(): string[] {
@@ -88,65 +65,68 @@ function productionFiles(): string[] {
   return out.sort();
 }
 
-describe("the tax engine stays unreached until B17 is decided", () => {
-  it("nothing imports it", () => {
-    // An IMPORT, not a mention. The string "taxOptimizationEngine" in
-    // companyAgents.ts's ownedServices array is what makes the reachability
-    // linter think this module is alive, so a mention must not satisfy this.
-    const importers = productionFiles().filter((rel) => {
-      if (rel === ENGINE) return false;
-      const code = stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
-      return importsModule(code, "taxOptimizationEngine");
-    });
+describe("the fabricating tax engine stays deleted", () => {
+  it("the file is gone", () => {
     expect(
-      importers,
-      "taxOptimizationEngine now has a production importer. Before wiring it up, " +
-        "answer BLOCKERS B17: it applies an invented 5% capital-gains rate to the " +
-        "thirty states missing from its table, and tells the caller those states " +
-        "'tax capital gains as ordinary income' — a false statement of law, " +
-        "because `undefined === 0` is false. Delete it, make it refuse, or fix " +
-        "it; do not ship it as-is.",
+      fs.existsSync(path.join(ROOT, ENGINE)),
+      "taxOptimizationEngine.ts is back. It applied an invented 5% capital-gains " +
+        "rate to thirty states and told callers those states 'tax capital gains " +
+        "as ordinary income' — a false statement of law. Deleted by founder " +
+        "ruling; see the deletion ledger and BLOCKERS B17.",
+    ).toBe(false);
+  });
+
+  it("and nothing references it", () => {
+    // Including the STRING in companyAgents.ts's ownedServices array, which is
+    // what made the reachability linter treat the module as alive for as long as
+    // it existed. A dangling name in a registry is how the next reader concludes
+    // something is missing and rebuilds it.
+    const referrers = productionFiles().filter((rel) =>
+      /taxOptimizationEngine/.test(stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"))),
+    );
+    expect(referrers, "a dangling reference to the deleted engine remains").toEqual([]);
+  });
+
+  it("no state→capital-gains map with a numeric fallback exists anywhere", () => {
+    // THE REIMPLEMENTATION CHECK. File absence alone is weak: the same twenty
+    // states pasted into another module, still ending `?? 0.05`, would pass a
+    // path-only assertion and be exactly the defect again.
+    const offenders: string[] = [];
+    for (const rel of productionFiles()) {
+      const code = stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+      if (!/capGains|capitalGains|CAP_GAINS/i.test(code)) continue;
+      // A rate lookup that falls back to a number rather than refusing.
+      if (/\]\s*\?\?\s*0?\.\d+/.test(code)) offenders.push(rel);
+    }
+    expect(
+      offenders,
+      "a capital-gains rate table falls back to a numeric default again. A state " +
+        "the table does not encode must REFUSE — `{ known: false, reason }`, the " +
+        "way computeDepositDeadline does — never a plausible number.",
     ).toEqual([]);
   });
 
-  it("the fabrications are still exactly the ones B17 describes", () => {
-    // If the engine changes, the blocker's evidence is stale and must be re-read
-    // before it is acted on — §6a's rule about this program's own notes.
-    const src = fs.readFileSync(path.join(ROOT, ENGINE), "utf8");
-    expect(src, "the invented state rate is gone — re-read B17").toContain("?? 0.05");
-    expect(src, "the false-law note is gone — re-read B17").toContain(
-      "taxes capital gains as ordinary income",
-    );
-    expect(src, "the assumed-appreciation path is gone — re-read B17").toMatch(
-      /replacementValue \* 0\.3/,
-    );
-  });
-
-  it("and the blocker is written down where the next session will find it", () => {
-    const blockers = fs.readFileSync(
-      path.join(ROOT, "docs/implementation/BLOCKERS.md"),
-      "utf8",
-    );
-    expect(blockers).toMatch(/## B17 —/);
-    expect(blockers).toContain("taxOptimizationEngine");
+  it("the detector would notice one (guard against a vacuous pass)", () => {
+    // The assertion above passes trivially if the pattern is broken, so it is
+    // exercised against the shape it is meant to catch.
+    const sample = 'const r: Record<string, number> = { CA: 0.133 };\nconst x = r[s] ?? 0.05;';
+    expect(/capGains|capitalGains|CAP_GAINS/i.test("stateCapGainsRates")).toBe(true);
+    expect(/\]\s*\?\?\s*0?\.\d+/.test(sample)).toBe(true);
   });
 
   it("the scan can see production files at all (vacuity guard)", () => {
-    // "No importers" passes trivially if the walk returns nothing.
     const files = productionFiles();
     expect(files.length).toBeGreaterThan(1000);
-    expect(files).toContain(ENGINE);
   });
 
-  it("and it would notice a real import (detector guard)", () => {
-    // The detector is asserted against a known-live pair, so a broken regex
-    // cannot make the inverted assertion pass by matching nothing.
-    const known = stripComments(
-      fs.readFileSync(path.join(ROOT, "server/services/notes/acquiredNoteSchedule.ts"), "utf8"),
+  it("the deletion is recorded where the next session will look", () => {
+    const ledger = fs.readFileSync(path.join(ROOT, "docs/company/deletion-ledger.md"), "utf8");
+    expect(ledger).toContain("taxOptimizationEngine.ts");
+    // The two tables it was the only writer of are NOT dropped — a production
+    // DROP TABLE is a founder-only hard stop — so they must stay queued rather
+    // than quietly forgotten.
+    expect(ledger, "the deletion-revealed tables lost their queue entry").toContain(
+      "tax_forecast_scenarios",
     );
-    expect(
-      importsModule(known, "dates/calendar"),
-      "the import detector no longer matches a real import",
-    ).toBe(true);
   });
 });
