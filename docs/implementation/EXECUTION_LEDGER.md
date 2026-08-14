@@ -5748,3 +5748,75 @@ with an active pipeline and guaranteed for every customer without one.
 `npm run check` EXIT=0 · `tests/unit` 695 files, 9,098 passed, 1 skipped ·
 14 mutations across the five units, every one verified to apply and every one
 caught. `colon-any` 2992 → 2990.
+
+---
+
+## Units 89–91 — "you have none" out of a failure to look · `8ed0cfd` `a490a02` `202fa82`
+
+One defect, found on the server, then found again on the client because the
+server fix exposed it. **An error rendered as emptiness is a fabricated fact**,
+and the constitution says so twice: fabrication is never acceptable, and UNKNOWN
+is a valid state that must stay distinguishable from zero. `lint:no-fabrication`
+catches `Math.random`; it cannot see a `catch` block or an `if (!res.ok)`.
+
+### Unit 89 — seven server catches answering 200 with emptiness
+
+`GET /api/founder/job-health` caught its database error and returned `[]`. On
+that console an empty list reads as *"no job has failed"* — **a total scheduler
+outage and a perfectly healthy system rendered the identical screen.** The org
+health console did the same (`[]` = "no org is at risk"). `/api/goals` did it
+under a comment saying the quiet part out loud: *"Return empty goals array so the
+page still renders"*.
+
+Two notification endpoints swallowed the error entirely, not even logged: a
+customer's inbox read empty and the unread badge read zero.
+
+**The company briefing was NEARLY honest, which is why it is worth naming.** Its
+copy told the truth — *"Briefing temporarily unavailable"* — while
+`healthScore: 0` and a mood the system does not know sat beside it as invented
+numbers. Honest prose does not launder a fabricated metric next to it, and a
+founder reads the number.
+
+**The lie was implemented twice, on both sides of the wire.** `useJobHealthLogs`
+carried `if (!res.ok) return []`, so the server fix alone would have changed
+nothing on screen — the half-fix that looks complete. That is what sent the next
+two units to the client.
+
+### Units 90–91 — the same lie on the client, where it renders as ONBOARDING
+
+`LandSourcingWidgets` turned a failure into two empty arrays and fell through to
+`<EmptyState headline="Start sourcing parcels" subtitle="… Add your first
+parcels …">`. **A customer with two hundred parcels was shown the new-user
+onboarding panel on their own dashboard** and invited to redo work they had
+already done. The note widgets said *"Import the notes you've acquired"* and
+*"Originate your first note"* to people whose books were full.
+
+The Map door was sharpest: `retry: false`, and a zero-state that is an
+INSTRUCTION — *"Click Fetch boundaries on the Inventory page to auto-geocode your
+properties"* — so a blip told a customer with geocoded parcels to geocode them
+again, on the door whose only job is showing them their land.
+
+**The ordering is the fix, and it is what the test pins.** An honest fetch
+changes nothing if the component still checks `length === 0` first: every failure
+is an empty state again. Error branch first, and the copy says which is which —
+*"This is not the same as having none."*
+
+`client/src/lib/fetch-honesty.ts` gives each call site the vocabulary:
+`okOrThrow` for anything answering *what do I have* (a 404 on a COLLECTION throws
+too — a missing list is not an empty one), `nullOn404` for an optional single
+record, and `listFrom`, which throws on an unrecognised envelope rather than
+ending `: []`.
+
+### What was deliberately NOT swept
+
+The remaining ~29 `if (!res.ok) return [] / null` sites. Several are correct —
+`compliance-badge`, `land-credit-badge` and the AVM comps genuinely mean *no
+record for this property* — and the rest need the 404/5xx distinction made per
+site, which `!res.ok` cannot make for them. A blanket change would break the
+honest ones. Measured and recorded rather than guessed at.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 697 files, 9,121 passed, 1 skipped ·
+10 mutations across the three units, every one verified to apply and every one
+caught.
