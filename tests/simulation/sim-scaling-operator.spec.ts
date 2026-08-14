@@ -272,17 +272,26 @@ test.describe.serial("Scaling Steve — Full Journey", () => {
 
     await page.screenshot({ path: "tests/simulation/screenshots/steve-12-note-form.png" });
 
-    // Fill note fields
-    const fields = {
-      /borrower.*name/i: "Alice Johnson",
-      /balance|principal|amount/i: "25000",
-      /interest.*rate|rate/i: "9.5",
-      /term|months/i: "60",
-      /monthly.*payment|payment/i: "524.87",
-    };
+    // Fill note fields.
+    //
+    // PAIRS, not an object literal. This block used to be written as
+    // `{ /borrower.*name/i: "Alice Johnson", … }` — regex literals as object
+    // KEYS, which is not valid JavaScript. The file therefore never parsed, so
+    // `npm run test:scale` failed before Playwright started and this scaling
+    // scenario has never run once. The loop underneath confirms the intent: it
+    // called `pattern.toString().slice(1, -1)` to strip `/…/` delimiters back
+    // off, which is only meaningful if the key was ever a regex — and object
+    // keys are coerced to strings, so it could not have been.
+    const fields: Array<[RegExp, string]> = [
+      [/borrower.*name/i, "Alice Johnson"],
+      [/balance|principal|amount/i, "25000"],
+      [/interest.*rate|rate/i, "9.5"],
+      [/term|months/i, "60"],
+      [/monthly.*payment|payment/i, "524.87"],
+    ];
 
-    for (const [pattern, value] of Object.entries(fields)) {
-      const input = page.getByLabel(new RegExp(pattern.toString().slice(1, -1), "i")).first();
+    for (const [pattern, value] of fields) {
+      const input = page.getByLabel(pattern).first();
       if (await input.isVisible().catch(() => false)) {
         await input.fill(value);
       }

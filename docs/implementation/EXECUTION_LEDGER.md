@@ -6427,3 +6427,79 @@ changed — so it now names the real one and says why the paragraph is there.
 `npm run check` EXIT=0 · `tests/unit` 704 files, 9,194 passed, 1 skipped ·
 all five reachability counts unchanged at baseline, which is the point: the
 cleanup removed indirection, not coverage.
+
+## Unit 102 — nine thousand tests, type-checked by nothing · this commit
+
+`npm run check` opens with `tsc --noEmit`, and that pass reported clean over a
+project **that did not contain the test suite.** `tsconfig.json` lists
+`client/src`, `shared` and `server` in `include` — the tests tree is not there —
+and then excludes a `*.test.ts` glob, which also removes the co-located tests
+inside `server/`. 705 files and ~9,200 tests were checked by no compiler at all.
+
+A test is the worst place to lose it, because a type error there is invisible at
+runtime too:
+
+```ts
+expect(result.nonExistentField).toBeUndefined();   // passes. forever.
+```
+
+and an import of a symbol that no longer exists only fails if the line executes.
+**Unit 101 hit exactly that** — removing a re-export nothing consumed left a test
+importing through the dead path, and `tsc` said nothing because the file was
+outside the project. That is what prompted this.
+
+### What turning it on found
+
+**A test file that had never parsed.** `tests/simulation/sim-scaling-operator.spec.ts`
+wrote `{ /borrower.*name/i: "Alice Johnson", … }` — regex literals as object KEYS,
+which is not valid JavaScript. `npm run test:scale` failed before Playwright
+started, so **that scaling scenario has never run once.** The loop underneath
+confirms the intent: it called `pattern.toString().slice(1, -1)` to strip `/…/`
+delimiters back off, which is only meaningful if the key had been a regex — and
+object keys are coerced to strings, so it never was. Rewritten as the
+`Array<[RegExp, string]>` the loop always assumed it was reading.
+
+**Five test files importing `../../../server/…`** — one level too many, resolving
+outside the repository. Vite clamps paths above root, so they resolved at RUNTIME
+and the suite was green; tsc was right and nothing had been asking it.
+
+### The correction that nearly shipped
+
+The first measurement came back as **TWELVE** errors and I almost recorded "the
+suite type-checks clean". That pass ran from a scratchpad config outside the repo
+which could not resolve `node` / `vite/client` / `vitest/globals`, so tsc gave up
+early. Run in place the real number was **170**.
+
+**A gate that answers zero when it cannot look is worse than no gate**, so the
+evaluator now refuses to report a count at all if it sees `Cannot find type
+definition file for`, and refuses an empty tsc output too. Both are asserted —
+they are the difference between this ratchet and a false clean bill of health.
+
+### The measurement, and why a ratchet
+
+162 after the five path fixes (170 − 8). Mostly mocks that cannot represent what
+they are asserted against — `TS2493` on empty-tuple fixtures, `TS2352`/`TS2322` on
+hand-built rows standing in for Drizzle types. Real friction, no live bugs, so a
+down-only ratchet rather than a hard gate, on the reasoning
+`lint-reachability.mjs` already states: a hard gate would fail on day one and be
+`--no-verify`'d into irrelevance within a week.
+
+**Cost, stated plainly:** `npm run check` now runs two full tsc passes and takes
+noticeably longer. That is the price of the suite being checked at all.
+
+### Two sweeps that would have been wrong
+
+`../../../` appears **81** times under `tests/`, and only **18** are wrong:
+`tests/unit/agents/*` is one level deeper, where it is correct. And this test file
+tripped its own check — the **eleventh** instance of prose defeating a code scan,
+with a new twist: **stripping comments was not enough, because the assertion
+MESSAGE quotes the import path it forbids, and a message is a string in code.**
+The file that owns a rule is the one place the rule must be written out, so it
+excludes itself and says why.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 705 files, 9,203 passed, 1 skipped ·
+12 mutations, every one verified to apply, **0 survivors** — including unwiring
+`check:tests` from `npm run check`, re-excluding tests from the config, and
+removing each of the evaluator's two refuse-to-measure guards.
