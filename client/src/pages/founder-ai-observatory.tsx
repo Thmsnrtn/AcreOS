@@ -96,11 +96,6 @@ interface ModelCatalogResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// P1 money-precision: AI cost telemetry can run sub-dollar (sub-$1 per call) so
-// canonical usd() with cents enabled is required — never trim cents on this surface.
-function formatCents(cents: number): string {
-  return usd(cents / 100);
-}
 
 function formatMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -341,9 +336,13 @@ export default function AiObservatory() {
             icon={Activity}
             loading={statsLoading}
           />
+          {/* P1 money-precision: AI cost telemetry runs sub-dollar (under $1 per
+              call), so `usd()` is called WITHOUT `noCents` here and at the
+              per-row cost below. Never trim cents on this surface — a $0.004
+              call would read as $0, which is a fabricated zero, not a rounding. */}
           <StatCard
             title="Total cost today"
-            value={stats ? formatCents(stats.totalCostTodayCents) : "—"}
+            value={stats ? usd(stats.totalCostTodayCents / 100) : "—"}
             icon={DollarSign}
             loading={statsLoading}
           />
@@ -437,7 +436,7 @@ export default function AiObservatory() {
                             {totalTokens.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-xs text-right tabular-nums">
-                            {formatCents(row.costCents)}
+                            {usd(row.costCents / 100)}
                           </TableCell>
                           <TableCell>
                             <Badge

@@ -14,8 +14,8 @@ import { describe, it, expect } from "vitest";
 import {
   computeUtilityBillback,
   renderUtilityBillbackStatement,
-  formatCents,
 } from "../../shared/rental/utilityBillback";
+import { formatCents } from "../../shared/finance/cents";
 
 describe("submeter — (current − prior) × rate, refuse the rest", () => {
   it("bills each pad's metered consumption at the rate", () => {
@@ -199,7 +199,11 @@ describe("renderUtilityBillbackStatement", () => {
   });
 });
 
-describe("formatCents", () => {
+describe("formatCents — now imported from its canonical home", () => {
+  // This module used to export a byte-identical private copy, and this test
+  // pinned it. The copy is gone (formatCentsIsCanonical.test.ts holds the repo
+  // to one definition); the INVARIANT is unchanged and still asserted, because
+  // a pad's utility bill is money an operator passes through to a resident.
   it("formats with commas and a real minus sign", () => {
     expect(formatCents(100_000)).toBe("$1,000.00");
     expect(formatCents(-2_550)).toBe("−$25.50");

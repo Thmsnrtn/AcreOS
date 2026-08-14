@@ -42,13 +42,22 @@ export function dollarsFromCents(cents: number): number {
  * on purpose: `toLocaleString` renders differently per runtime ICU build, so a
  * figure frozen into a decision record would not read back identically.
  *
- * This is the canonical home. Four other `formatCents` exist and only TWO of
- * them are the same function — `shared/rental/camReconciliation.ts` and
- * `shared/rental/utilityBillback.ts` are byte-identical to this;
- * `server/services/wonBidToCertificate.ts` uses `toLocaleString` and renders
- * negatives as `$-1,234.56`; and `client/.../MRRTrajectory.tsx` ABBREVIATES
- * ($1.2M / $3.4K), which is a different function wearing the same name. They
- * are left alone rather than unified blindly — see NEXT_UP.
+ * THIS IS THE ONLY `formatCents` IN THE REPOSITORY, and `formatCentsIsCanonical`
+ * .test.ts keeps it that way by scanning source for definitions rather than
+ * trusting a list here. That derivation is the point: this comment used to state
+ * how many rivals there were and name them, and was wrong on both the count and
+ * the names — seven had accumulated, because a hand-written register in prose
+ * has no way to notice the eighth. (The retired sentence is deliberately not
+ * quoted here; the test that forbids a new count claim would match the
+ * quotation, which is the tenth time in this program that prose has tripped a
+ * check meant for code.)
+ *
+ * The copies were not all the same function, which is why unifying them blindly
+ * would have changed behaviour: two were byte-identical to this, one used
+ * `toLocaleString`, two abbreviated ($1.2M / $3.4K), and one aliased `usd()`.
+ * Each now points at the canonical renderer for what it actually does — this one
+ * for exact money, `client/src/lib/format.ts#dollarsCompact` for the abbreviated
+ * form, `#usd` for dollar-valued input.
  */
 export function formatCents(cents: number): string {
   const neg = cents < 0;

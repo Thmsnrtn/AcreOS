@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+// The canonical compact money renderer. This file used to carry a private
+// `formatCents` that abbreviated the same way but compared the SIGNED value
+// where `dollarsCompact` compares the absolute one, and had no null branch —
+// so a negative below −$1,000 rendered as `$-25000` instead of `$-25.0K`, and
+// a null rendered as `$0` because `null / 100 === 0` in JS. Neither is
+// reachable today (every producer COALESCEs to 0 and clamps projections with
+// `Math.max(0, …)`), and both are the kind of definite answer that should never
+// stand in for a missing one.
+import { dollarsCompact } from "@/lib/format";
 
 interface BIData {
   arrCents: number;
@@ -11,12 +20,6 @@ interface BIData {
   ltvCac: { ltv: number | null; cac: number | null; ratio: number | null; note: string };
 }
 
-function formatCents(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(1)}K`;
-  return `$${dollars.toFixed(0)}`;
-}
 
 const BAND_COLORS: Record<string, string> = {
   green: "bg-acr-pos",
@@ -80,8 +83,8 @@ export function BusinessIntelligence() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <MetricCard
           title="ARR"
-          value={formatCents(data.arrCents)}
-          sub={`MRR: ${formatCents(data.mrrCents)}`}
+          value={dollarsCompact(data.arrCents)}
+          sub={`MRR: ${dollarsCompact(data.mrrCents)}`}
         />
         <MetricCard
           title="LTV:CAC"

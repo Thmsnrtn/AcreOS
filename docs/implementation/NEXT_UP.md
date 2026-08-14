@@ -537,6 +537,26 @@ would make the subsystem look more finished than it is.
 an INVERTED assertion that fails the day one is fixed — so the work announces
 itself rather than sitting in prose.
 
+### `formatCents` — DONE in unit 96, and the entry below was stale
+
+**Read this before the entry below it, which is kept for its reasoning and is
+wrong on its facts.** Unit 44 sized the population at "four other copies, only
+two the same function". At HEAD there were **seven**, because nothing derived the
+count — `BusinessIntelligence.tsx` and `founder-ai-observatory.tsx` had been
+added since. The population grew precisely because the register was prose.
+
+There is now exactly ONE `formatCents`, in `shared/finance/cents.ts`, held there
+by `formatCentsIsCanonical.test.ts` — which scans source for definitions rather
+than listing paths, so it cannot go stale the way unit 44's note did. Each former
+copy points at the canonical renderer for what it actually does: this one for
+exact money, `dollarsCompact` for the abbreviated form, `usd` for dollar-valued
+input.
+
+**The entry below was right about the trap and wrong about the inventory.** Its
+warning — that a blind de-duplication would change two behaviours — is exactly
+why the unit read all seven and matched each to its own canonical rather than
+merging them.
+
 ### A small consolidation, sized and left alone (unit 44)
 
 `formatCents` now has a canonical home in `shared/finance/cents.ts`, beside

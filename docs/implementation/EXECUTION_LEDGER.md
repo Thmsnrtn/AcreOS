@@ -5998,3 +5998,72 @@ carried a leading `!`, so the trailing lookahead was never exercised; the glob
 assertion accepted `client/src/**/*.tsx` alone as proof client was covered; and
 nothing stopped a `"mode": "external"` line turning the gate into a DELEGATED
 no-op that still prints in the output.
+
+## Unit 96 — one name, four functions, and a register that could not count · this commit
+
+`shared/finance/cents.ts` declared itself the canonical home for `formatCents`
+and then listed its rivals in prose: *four others, only two of them the same
+function.* At HEAD there were **seven**, and the comment named three. The
+sentence was true when written and had no way to become false loudly, which is
+the same defect unit 95 retired from `getUserId` — a hand-written register in
+prose cannot notice the next entry.
+
+**Four distinct implementations shared one name**, which is why the ledger had
+already warned that a blind de-duplication sweep would change behaviour:
+
+| copy | what it actually was | canonical counterpart |
+|---|---|---|
+| `shared/rental/camReconciliation.ts`, `.../utilityBillback.ts` | byte-identical, exported, imported by nobody | `shared/finance/cents.ts#formatCents` |
+| `server/services/wonBidToCertificate.ts` | `toLocaleString("en-US")` | same |
+| `.../MRRTrajectory.tsx`, `.../BusinessIntelligence.tsx` | ABBREVIATING, duplicated verbatim | `client/src/lib/format.ts#dollarsCompact` |
+| `.../founder-ai-observatory.tsx` | a one-line alias | `client/src/lib/format.ts#usd` |
+
+**The certificate copy.** The canonical renderer is locale-independent by design
+and its own comment says why: `toLocaleString` renders differently per runtime
+ICU build, so *"a figure frozen into a decision record would not read back
+identically."* The strings it feeds are frozen into a tax-certificate document —
+the exact case that rationale was written for. Identical output on every value
+that file can produce; the two differ only on negatives, which bid amounts,
+minimums and a zero-clamped budget cannot be.
+
+**The abbreviating copies.** `dollarsCompact` already existed and was better on
+two inputs. It compares `Math.abs` where the copies compared the SIGNED value, so
+`-$25,000` rendered `$-25000` — unabbreviated and comma-less — on components
+whose whole purpose is dense abbreviated display. And it returns `—` for null
+where the copies returned **`$0`**, because `null / 100 === 0` in JavaScript.
+
+**NEITHER DIVERGENCE IS REACHABLE TODAY, and that is stated rather than dressed
+up.** The business-intelligence endpoint `COALESCE`s its sums to 0; the
+trajectory endpoint clamps its projection with `Math.max(0, …)`. Unit 93 recorded
+the same honesty for `syntheticChecks`: the direction is the point. A missing ARR
+rendering as `$0` is this program's most-repeated defect — a definite favourable
+answer standing in for an unknown one — and the fix is to stop maintaining a
+private copy that can drift into it.
+
+### The gate is a derivation, not a list
+
+`formatCentsIsCanonical.test.ts` scans source for `formatCents` DEFINITIONS and
+requires exactly one. A test that hardcoded the seven paths would have failed
+exactly the way the comment did, on the eighth.
+
+### Two existing tests were rewritten, not deleted
+
+`camReconciliation.test.ts` and `utilityBillback.test.ts` each pinned their
+module's private copy. Per CLAUDE.md's wave rule, the assertion was rewritten to
+the new truth so the original invariant survives: both still assert that a
+statement renders `−$25.50` with commas and a real minus sign, now through the
+canonical import — and the CAM one gained a vacuity guard proving the *renderer*
+uses it, since asserting a helper in isolation would pass even if the renderer
+had been left calling something else.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 701 files, 9,161 passed, 1 skipped ·
+13 mutations, every one verified to apply, **0 survivors**. Three needed a second
+round: one anchor never applied (a mutation that does not apply tests nothing),
+and canonical's minus sign and thousands separators sat in an input space no
+fixture reached — the reachability argument above *depends* on the minus sign, so
+it is now pinned. **Tenth instance of prose tripping a check meant for code**, and
+a new direction again: the replacement comment QUOTED the retired claim, so the
+assertion forbidding a new count matched the quotation of the old one. Paraphrased
+rather than quoted, and the reason recorded inline.
