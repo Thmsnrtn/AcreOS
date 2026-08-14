@@ -49,7 +49,11 @@ const src = fs.readFileSync(LINT, "utf8");
 // register checks its entries in BOTH directions, so a stale one fails; that is
 // what caught this, and lowering the count here is the reduction being locked in
 // by the commit that earned it.
-const BASELINE_ENTRIES = 172;
+// 172 -> 171 on 2026-08-14: `aiAdvisorTeamV15.ts::gatherHealthSnapshot` named a
+// file deleted under B19 class 3 (founder ruling). Second stale entry this day —
+// B17's deletion produced the first. The register checks both directions, so a
+// stale entry fails; lowering the count here is that reduction locked in.
+const BASELINE_ENTRIES = 171;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,

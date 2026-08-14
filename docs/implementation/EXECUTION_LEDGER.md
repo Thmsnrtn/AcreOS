@@ -6917,3 +6917,76 @@ this very removal quotes the retired symbol — and a register entry is a STRING
 CODE, which comment-stripping cannot reach. `statuteRegister.ts` is documentation
 in code form; naming things is its job, so it is exempted with that reason stated
 rather than reworded around.
+
+## Unit 109 — B19 classes 2+3 executed: 16 orphans, 5,002 lines · this commit
+
+**Founder ruling (picker, 2026-08-14): "Delete classes 2 and 3 now."**
+
+Sixteen module orphans deleted. **Class 2** is one file — `authLockout.ts` —
+and it is the one worth stating carefully: `authPathLimits.ts` exports a live,
+mounted `loginLimiter`, so this removed a **duplicate of a control, not a
+control.** The name invites the opposite reading, which is exactly why B19
+separated the classes.
+
+**Class 3** is the fifteen-file experiment family the 2026-08-01 deletion wave
+already ruled on once: the six `*V9` modules, three remaining `scp*`,
+`aiAdvisorTeamV15`, `agentTriggerMonitor`, and four `*Enhancements`.
+
+**CLASS 1 UNTOUCHED** — `breachNotificationTrigger`, `paymentApplication/`,
+`landlordCompliance`, `usuryCeiling`, `rental/leaseSigningPacket` stay. Deleting
+a regulated obligation removes capability the product may be legally required to
+have; B19 keeps them open as WIRING work.
+
+### The two traps that were checked, not assumed
+
+**The `scp*` trap.** This ratchet's own history records that five scp modules were
+once misjudged as orphans, caught by an adversarial verify before deletion:
+`routes-scp-v2.ts` is production-mounted and lazily imports `scpGoldenSuite`,
+`scpConfigVersioning`, `scpEvolutionEngine`, `scpMemorySystem`, `scpLLMJudges`.
+Checked first; the three deleted here are none of those. Every one of the sixteen
+was independently verified to have **zero imports and zero mentions** before
+deletion.
+
+**The `*Enhancements` family is NOT uniformly dead.** `enhancements.test.ts`
+covers ELEVEN such modules, and nine have real production importers. Only
+`marketplaceEnhancements` and `securityEnhancements` were orphans — the shape the
+reachability gate was built for, an export whose only consumer is its own test.
+The test file was **not** deleted; those two sections were removed and replaced by
+notes recording why. **Treating the family as uniformly dead would have deleted
+nine live modules.**
+
+### Deletion-revealed, for the third time today
+
+Nine tables lost their only writer: `auth_fail_attempts`, `agent_playbooks`,
+`playbook_evolutions`, `compass_recommendations`, `spend_watchers`,
+`spend_optimizations`, `causal_investigations`, `delegated_goals`,
+`external_intelligence`. `tablesNoWriter` 49→58, `tablesNoReader` 61→70.
+
+**The ratchet's own note had predicted two of them** — it recorded that
+`agent_playbooks` was *not* orphaned only because `playbookEvolutionV9` still read
+and wrote it. **Not dropped**; all nine join the founder drop-decision queue
+alongside B17's two.
+
+### THREE more registers caught reductions, in this unit alone
+
+Beyond the five reachability/typing counts, the deletion tripped:
+
+- **`check-no-fabrication`'s allowlist** — an entry for
+  `integrationEnhancements.ts:40`, a file that no longer exists.
+- **The tenancy debt register** — `aiAdvisorTeamV15.ts::gatherHealthSnapshot`,
+  same shape as B17's stale entry. `BASELINE_ENTRIES` 172→171.
+- **`outwardActionCoverage`'s `UNPROTECTED_SEND_SITES_BASELINE`** 61→60: one of
+  the deleted orphans carried an unprotected consequential send site. Not a
+  hardening — a deletion — and the register failed stale-high until it was
+  recorded.
+
+**That makes eight registers across three units today**, and it is no longer a
+surprise but a standing expectation: *a deletion touches every register that ever
+counted or named the thing, and running the gates is the only way to learn which.*
+Every one of them failed in the **stale-high** direction — the half of a
+bidirectional ratchet that exists precisely so an improvement is locked in by the
+commit that earned it rather than banked as future headroom. None of these was
+visible in the diff.
+
+Locked in the same commit: `unreachedExports` 651→580, `moduleOrphans` 61→45,
+`opaqueExports` 986→984, `as-any` 1390→1383, `colon-any` 2988→2975.

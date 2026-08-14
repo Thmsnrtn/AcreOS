@@ -54,11 +54,6 @@ import {
   isHoliday,
 } from "../../server/services/campaignEnhancements";
 
-// ── Marketplace Enhancements ──
-import {
-  calculateListingQuality,
-  scoreBuyerIntent,
-} from "../../server/services/marketplaceEnhancements";
 
 // ── Reporting Enhancements ──
 import {
@@ -79,14 +74,6 @@ import {
   generateRequestId,
 } from "../../server/services/performanceEnhancements";
 
-// ── Security Enhancements ──
-import {
-  getCSPHeaders,
-  isSessionExpired,
-  checkLoginRateLimit,
-  validateApiScope,
-  getSOC2Checklist,
-} from "../../server/services/securityEnhancements";
 
 // ── Community Enhancements ──
 import {
@@ -478,77 +465,20 @@ describe("Campaign Enhancements", () => {
 // Marketplace Enhancements
 // ---------------------------------------------------------------------------
 
-describe("Marketplace Enhancements", () => {
-  describe("calculateListingQuality", () => {
-    it("gives high score for complete listing", () => {
-      const result = calculateListingQuality({
-        title: "Great property",
-        description: "A wonderful 5-acre parcel in beautiful Travis County with road access and utilities nearby.",
-        price: 25000,
-        acreage: 5,
-        county: "Travis",
-        state: "TX",
-        photos: ["photo1.jpg"],
-        latitude: 30.5,
-      });
-      expect(result.score).toBeGreaterThanOrEqual(90);
-      expect(result.missing).toHaveLength(0);
-    });
-    it("gives bonus for seller financing", () => {
-      const without = calculateListingQuality({
-        title: "Prop",
-        description: "A wonderful 5-acre parcel in beautiful Travis County with road access and utilities nearby.",
-        price: 25000,
-        acreage: 5,
-        county: "Travis",
-        state: "TX",
-        photos: ["photo1.jpg"],
-        latitude: 30.5,
-      });
-      const with_ = calculateListingQuality({
-        title: "Prop",
-        description: "A wonderful 5-acre parcel in beautiful Travis County with road access and utilities nearby.",
-        price: 25000,
-        acreage: 5,
-        county: "Travis",
-        state: "TX",
-        photos: ["photo1.jpg"],
-        latitude: 30.5,
-        sellerFinancing: true,
-      });
-      expect(with_.score).toBe(without.score + 5);
-    });
-    it("lists missing fields for incomplete listing", () => {
-      const result = calculateListingQuality({});
-      expect(result.score).toBeLessThan(20);
-      expect(result.missing.length).toBeGreaterThan(4);
-    });
-    it("penalizes short descriptions", () => {
-      const result = calculateListingQuality({ description: "Short" });
-      expect(result.missing).toContain("detailed description");
-    });
-  });
+/*
+ * MARKETPLACE ENHANCEMENTS — subject deleted 2026-08-14 (BLOCKERS B19 class 3,
+ * founder ruling). `marketplaceEnhancements.ts` was a MODULE ORPHAN: nothing in
+ * production imported it, and THIS FILE was its only consumer — which is the
+ * lateFees shape the reachability gate was built to find, an export whose sole
+ * caller is its own test.
+ *
+ * Its tests are removed rather than relocated because there is no surviving
+ * implementation to relocate them to. Note what is NOT removed: nine other
+ * `*Enhancements` modules covered by this file each have a real production
+ * importer and are untouched. The family is not uniformly dead, and assuming it
+ * was would have deleted nine live modules.
+ */
 
-  describe("scoreBuyerIntent", () => {
-    it("scores high for active buyers", () => {
-      const score = scoreBuyerIntent({ views: 10, saves: 3, offers: 1, daysActive: 3 });
-      expect(score).toBeGreaterThan(60);
-    });
-    it("scores low for passive viewers", () => {
-      const score = scoreBuyerIntent({ views: 2, saves: 0, offers: 0, daysActive: 30 });
-      expect(score).toBeLessThan(20);
-    });
-    it("caps score at 100", () => {
-      const score = scoreBuyerIntent({ views: 100, saves: 50, offers: 10, daysActive: 1 });
-      expect(score).toBeLessThanOrEqual(100);
-    });
-    it("gives recent activity bonus", () => {
-      const recent = scoreBuyerIntent({ views: 5, saves: 0, offers: 0, daysActive: 3 });
-      const old = scoreBuyerIntent({ views: 5, saves: 0, offers: 0, daysActive: 30 });
-      expect(recent).toBeGreaterThan(old);
-    });
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Reporting Enhancements
@@ -699,90 +629,18 @@ describe("Performance Enhancements", () => {
 // Security Enhancements
 // ---------------------------------------------------------------------------
 
-describe("Security Enhancements", () => {
-  it("returns CSP headers with required directives", () => {
-    const headers = getCSPHeaders();
-    expect(headers["Content-Security-Policy"]).toContain("default-src");
-    expect(headers["Content-Security-Policy"]).toContain("script-src");
-    expect(headers["X-Frame-Options"]).toBe("DENY");
-    expect(headers["X-Content-Type-Options"]).toBe("nosniff");
-    expect(headers["X-XSS-Protection"]).toBe("1; mode=block");
-    expect(headers["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
-  });
+/*
+ * SECURITY ENHANCEMENTS — subject deleted 2026-08-14 (BLOCKERS B19 class 3,
+ * founder ruling). Same shape: a module orphan whose only consumer was this file.
+ *
+ * WORTH STATING because the name invites the opposite reading: deleting it did
+ * NOT remove a security control. `getCSPHeaders`, `checkLoginRateLimit` and the
+ * rest were never wired to anything — the live CSP headers come from
+ * server/middleware, and login rate limiting from authPathLimits.ts's
+ * `loginLimiter`, which is mounted. An unreached module named `security*` is a
+ * duplicate of a control, not the control.
+ */
 
-  describe("isSessionExpired", () => {
-    it("returns false for recent activity", () => {
-      expect(isSessionExpired(new Date())).toBe(false);
-    });
-    it("returns true for old activity (> 24h default)", () => {
-      const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
-      expect(isSessionExpired(old)).toBe(true);
-    });
-    it("respects custom max inactive hours", () => {
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      expect(isSessionExpired(twoHoursAgo, 1)).toBe(true);
-      expect(isSessionExpired(twoHoursAgo, 3)).toBe(false);
-    });
-  });
-
-  describe("checkLoginRateLimit", () => {
-    it("allows first attempt", () => {
-      const result = checkLoginRateLimit("192.168.1.200");
-      expect(result.allowed).toBe(true);
-      expect(result.remaining).toBe(4);
-    });
-    it("tracks remaining attempts", () => {
-      const ip = "192.168.1.201";
-      checkLoginRateLimit(ip);
-      const second = checkLoginRateLimit(ip);
-      expect(second.allowed).toBe(true);
-      expect(second.remaining).toBe(3);
-    });
-    it("blocks after max attempts", () => {
-      const ip = "192.168.1.202";
-      for (let i = 0; i < 5; i++) checkLoginRateLimit(ip);
-      const result = checkLoginRateLimit(ip);
-      expect(result.allowed).toBe(false);
-      expect(result.remaining).toBe(0);
-    });
-  });
-
-  describe("validateApiScope", () => {
-    it("allows wildcard scope", () => {
-      expect(validateApiScope("leads:read", ["*"])).toBe(true);
-    });
-    it("allows exact scope match", () => {
-      expect(validateApiScope("leads:read", ["leads:read"])).toBe(true);
-    });
-    it("allows resource wildcard", () => {
-      expect(validateApiScope("leads:read", ["leads:*"])).toBe(true);
-    });
-    it("rejects missing scope", () => {
-      expect(validateApiScope("leads:write", ["leads:read"])).toBe(false);
-    });
-    it("rejects wrong resource", () => {
-      expect(validateApiScope("deals:read", ["leads:*"])).toBe(false);
-    });
-    it("allows one of multiple scopes", () => {
-      expect(validateApiScope("deals:read", ["leads:read", "deals:read"])).toBe(true);
-    });
-  });
-
-  it("returns SOC2 checklist with all categories", () => {
-    const checklist = getSOC2Checklist();
-    expect(checklist.length).toBeGreaterThan(5);
-    expect(checklist.some(c => c.category === "Security")).toBe(true);
-    expect(checklist.some(c => c.category === "Privacy")).toBe(true);
-    expect(checklist.some(c => c.category === "Availability")).toBe(true);
-    // Each entry has required fields
-    for (const item of checklist) {
-      expect(item).toHaveProperty("control");
-      expect(item).toHaveProperty("category");
-      expect(item).toHaveProperty("status");
-      expect(item).toHaveProperty("notes");
-    }
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Community Enhancements

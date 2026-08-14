@@ -188,7 +188,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/agentOrchestration.ts::requestApproval",
   "server/services/agentOrchestration.ts::unsubscribe",
   "server/services/agentOrchestration.ts::updateSessionContext",
-  "server/services/aiAdvisorTeamV15.ts::gatherHealthSnapshot",
   "server/services/alertPolicy.ts::routeAlert",
   "server/services/alerting.ts::acknowledgeAlert",
   "server/services/alerting.ts::resolveAlert",

@@ -370,3 +370,52 @@ correctness risks across 2+ machines. Disposition:
   awaiting that ruling. This is the exception the reachability ratchet's own note
   carves out for raising those counts: name the deleted writer, queue the exposed
   tables in the same commit.
+- 2026-08-14 — **sixteen module orphans deleted, 5,002 LOC.** Founder ruling
+  (picker, this date): *"Delete classes 2 and 3 now."* BLOCKERS B19.
+
+  **Class 2, superseded duplicate (1 file):** `authLockout.ts` (102).
+  `server/middleware/authPathLimits.ts` exports a live, mounted `loginLimiter`,
+  so this removed a DUPLICATE of a control, not a control. The name invites the
+  opposite reading, which is why it is written down.
+
+  **Class 3, experiments (15 files)** — the family the 2026-08-01 deletion wave
+  already ruled on once: `delegationDepthV9` (335), `spendAutonomyV9` (324),
+  `causalReasoningV9` (305), `playbookEvolutionV9` (302), `externalIntelligenceV9`
+  (266), `compassAutoRecommendV9` (236), `scpCustomerLifecycle` (616),
+  `scpExperimentEngine` (439), `scpSelfProvisioning` (359), `aiAdvisorTeamV15`
+  (706), `agentTriggerMonitor` (661), `securityEnhancements` (107),
+  `mobileEnhancements` (102), `marketplaceEnhancements` (72),
+  `integrationEnhancements` (70).
+
+  Every one verified to have ZERO imports and ZERO mentions before deletion.
+  **The `scp*` trap was checked first**, because the reachability ratchet's own
+  history records that five scp modules were once misjudged as orphans:
+  `routes-scp-v2.ts` is production-mounted and lazily imports `scpGoldenSuite`,
+  `scpConfigVersioning`, `scpEvolutionEngine`, `scpMemorySystem` and
+  `scpLLMJudges`. The three deleted here are none of those.
+
+  **CLASS 1 UNTOUCHED.** `breachNotificationTrigger` (GLBA/GDPR/state breach
+  deadlines), `paymentApplication/` (Reg-Z), `landlordCompliance`,
+  `usuryCeiling`, `rental/leaseSigningPacket` remain — deleting a regulated
+  obligation removes capability the product may be legally required to have.
+  B19 keeps them open as WIRING work.
+
+  **Tests:** three whose entire subject was deleted are gone
+  (`scpExperimentEngine`, `scpSelfProvisioning`, `scpCustomerLifecycle`). One was
+  NOT deleted — `tests/unit/enhancements.test.ts` covers ELEVEN `*Enhancements`
+  modules, nine of which have real production importers and are untouched. Only
+  the `marketplaceEnhancements` and `securityEnhancements` sections were removed,
+  each replaced by a note recording why. **Assuming that family was uniformly
+  dead would have deleted nine live modules.**
+
+  **DELETION-REVEALED, queued:** nine tables lost their only writer —
+  `auth_fail_attempts` (authLockout); `agent_playbooks` + `playbook_evolutions`
+  (playbookEvolutionV9, which the ratchet note had explicitly predicted);
+  `compass_recommendations`; `spend_watchers` + `spend_optimizations`;
+  `causal_investigations`; `delegated_goals`; `external_intelligence`.
+  `tablesNoWriter` 49→58, `tablesNoReader` 61→70. **NOT dropped** — a production
+  `DROP TABLE` is a founder-only hard stop — and all nine join the drop-decision
+  queue alongside `tax_strategies` and `tax_forecast_scenarios` from B17.
+
+  Counts locked in the same commit: `unreachedExports` 651→580, `moduleOrphans`
+  61→45, `opaqueExports` 986→984, `as-any` 1390→1383, `colon-any` 2988→2975.

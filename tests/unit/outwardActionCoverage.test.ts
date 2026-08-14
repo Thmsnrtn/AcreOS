@@ -134,7 +134,12 @@ const PROTECTABLE_SENDS = [
  * wrappers reached through other symbols, and e-sign. Each needs its transport
  * wired before it can be counted without making the ratchet unlowerable.
  */
-const UNPROTECTED_SEND_SITES_BASELINE = 61;
+// 61 -> 60 on 2026-08-14: B19 class 3 (founder ruling) deleted sixteen module
+// orphans, and one of them carried an unprotected consequential send site. Not
+// a hardening: a deletion. The register tracks adoption in BOTH directions, so
+// it FAILED stale-high until this was lowered — which is the half that stops a
+// reduction being banked instead of recorded.
+const UNPROTECTED_SEND_SITES_BASELINE = 60;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
