@@ -745,6 +745,35 @@ Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in
 `scripts/ratchets/table-count.json`.
 
+### A lenient `parseIsoDate` on a statutory deadline — found by unit 98, NOT fixed
+
+`shared/regulatory/depositReturnRules.ts` exports:
+
+```ts
+export function parseIsoDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const trimmed = String(iso).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const d = new Date(`${trimmed}T00:00:00.000Z`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+```
+
+`new Date("2026-02-30T00:00:00.000Z")` is **March 2nd**, and `getTime()` is
+finite, so this returns a date two days after one that does not exist — and it
+feeds `moveOutDate` and the deposit-return **deadline**. The repo's other two
+calendar parsers both round-trip through `Date.UTC` and refuse the rollover;
+`shared/notes/delinquency.ts#parseCalendarDate` is now the canonical one and its
+header explains the distinction.
+
+**Why it was left alone:** unit 98's job was consolidating a predicate, and the
+question here is different — *what should a statutory deadline do with an
+impossible move-out date?* Refusing (returning null) is almost certainly right,
+but it changes what the deposit surface renders and may need a reason string
+rather than a blank, so it deserves its own unit rather than a drive-by. Start by
+checking whether `moveOutDate` is user-entered or CSV-imported; if a Postgres
+`date` column is the only source, this is latent like the others.
+
 ### The reachability gate's blind spot — measured, gated, and QUEUED for sign-off
 
 **This is the clearest piece of scoped work waiting, and it needs one human

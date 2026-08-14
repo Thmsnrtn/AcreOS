@@ -26,6 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { FileText, Filter, HelpCircle, Upload } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
+import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -259,12 +260,17 @@ function chipFor(status: NoteDelinquencyStatus | string) {
 }
 
 /**
- * True when the note's aging can be determined at all — i.e. the server was
- * able to state a due date to measure from.
+ * True when the note's aging can be determined at all — i.e. there is a due date
+ * to measure from. Re-exported so this page stays the import site other note
+ * surfaces already use.
  *
- * Mirrors `delinquencyIsDeterminable` in
- * `server/services/notes/acquiredNoteSchedule.ts` (the client cannot import
- * server code, so the check is restated here rather than approximated).
+ * IT USED TO BE RESTATED HERE, under a comment saying "the client cannot import
+ * server code". True of `server/`, and it skipped `shared/` — which is
+ * browser-safe by construction and which this page already imports from. While
+ * the restatement stood it DRIFTED: the copy tested the string's SHAPE where the
+ * server parsed the date and round-tripped it, so `"2026-02-30"` read as
+ * determinable here and refused there. Latent (the column is a Postgres `date`),
+ * and fixed by having one owner rather than two agreeing copies.
  *
  * This is NOT the same question as `daysDelinquent === 0`. The server writes a
  * NEUTRAL 0 / "current" for a note whose due date it could not derive, because
@@ -273,11 +279,7 @@ function chipFor(status: NoteDelinquencyStatus | string) {
  * column beside "Next payment not on file — no schedule on file…" in the next.
  * The date is the only honest discriminator.
  */
-export function delinquencyIsDeterminable(
-  nextPaymentDate: string | null | undefined,
-): boolean {
-  return typeof nextPaymentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate);
-}
+export { delinquencyIsDeterminable };
 
 /** The action that turns an undeterminable note into a readable one. */
 export const AGING_UNKNOWN_ACTION =

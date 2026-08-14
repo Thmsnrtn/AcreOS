@@ -6151,3 +6151,86 @@ tests nothing), and an assertion that `isDynamicallyImported` still takes
 Replaced with assertions on the module-path REGISTRIES it consults
 (`dynamicResolved`, `dynamicUnresolvedTails`), which a symbol-aware rewrite cannot
 keep.
+
+## Unit 98 — seventy-six files say they are "the ONE place"; one was wrong · this commit
+
+Unit 96 found `formatCents` naming four different functions while its canonical
+module counted its rivals in prose. The obvious next question is not *are there
+other `formatCents`* but **how many modules make that same claim, and is any of
+them also false?**
+
+The claim is written down, repeatedly, in the repo's own words — *"This is the ONE
+place …"*, *"single source of truth for …"*, *"the canonical home"*. That makes it
+the documented technique rather than a fifth grep-anomaly detector: start from an
+assertion the code makes about itself.
+
+**76 claimants. Seven of their exported symbols are also defined elsewhere. Six
+are name collisions between unrelated domains** — `classify` (data classes vs SLO
+burn-rate vs feedback sentiment), `estimateCost` (per-vendor price sheets),
+`modelForTier` (two different tier vocabularies), `unenforced` (one filter, two
+independent registers), `computeNoi` (stored expense rows vs an uploaded rent-roll
+preview), and `deriveBasePerAcreCents`, which is not a copy at all: the route
+imports the engine as `deriveBasePerAcreCentsPure` and wraps it in a DB load.
+All six are allowlisted with reasons, both directions checked so a resolved entry
+must be deleted rather than left as decoration.
+
+### The one that was real
+
+**`delinquencyIsDeterminable`** — the predicate deciding whether the product may
+say a borrower is behind — had THREE implementations. The server parsed the date
+and round-tripped it through `Date.UTC`; both client copies tested only the
+string's SHAPE. `"2026-02-30"` matches that shape and is not a day, so the screen
+would have declared aging determinable for a date the server refuses to measure
+from. Latent (the column is a Postgres `date`), and recorded as latent.
+
+What makes it worth fixing rather than noting is the reason both copies gave:
+
+> *the client cannot import server code, so the check is restated here rather
+> than approximated*
+
+True of `server/`, and it skips `shared/` — browser-safe by construction, gated by
+`lint:browser-safe-shared`, and already imported by both pages. **A comment that
+admits a mirror and explains why it must exist is a standing invitation to write a
+third.** The predicate now lives in `shared/notes/delinquency.ts`.
+
+### The gate caught two things on its first runs, and both were mine
+
+**First:** moving the server's private `parseIsoDate` into `shared/` collided with
+an EXPORTED `parseIsoDate` in `shared/regulatory/depositReturnRules.ts` that does
+`String(iso).slice(0, 10)` and then trusts `new Date()` — so it accepts
+`"2026-02-30"` and **silently returns March 2, on a statutory security-deposit
+return deadline.** The strict one took a name that says which it is; the lenient
+one is recorded in NEXT_UP as its own question, because quietly renaming around it
+would have hidden it.
+
+**Second:** that new name, `parseCalendarDate`, collided with a THIRD independent
+implementation in `server/services/periodicStatements/index.ts` — **and that one
+was better.** It accepts a `Date` and an ISO datetime as well as `'YYYY-MM-DD'`,
+all with the same roll-over rejection, which matters because `next_payment_date`
+is a `date` column on `acquired_notes` and a `timestamp` on two other tables: the
+anchored version would refuse a due date that genuinely exists. So consolidation
+moved THAT body into `shared/` rather than replacing it with the weaker one — a
+WIDENING, safe on every current caller (all pass `'YYYY-MM-DD'` from `toIsoDate`)
+and correct on the ones that do not yet.
+
+Neither collision was visible to any existing gate, and neither would have been
+found by reading the diff.
+
+### One defect I introduced and caught
+
+Deleting the server's `parseIsoDate` left its doc comment — *"Strict 'YYYY-MM-DD'
+parse … rejects dates that JS would silently roll over"* — sitting directly above
+`toIsoDate`, describing a different function entirely. Stale prose attached to the
+wrong symbol is this session's defect class exactly, authored by the person fixing
+it. Replaced with a pointer to where the reasoning went.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 703 files, 9,180 passed, 1 skipped ·
+18 mutations, every one verified to apply, **0 survivors**. Three survived the
+first rounds and each was a weak assertion of mine: `toContain("parseCalendarDate")`
+also matches `parseCalendarDateX`; a 60-character floor on allowlist reasons was
+satisfied by the first fragment of a concatenated one; and the whole argument for
+adopting the superset — that it takes `Date` and ISO datetimes — was made in prose
+and asserted nowhere, so it is now checked **behaviourally**, by calling the
+function on all three input shapes and on `2026-02-30`.
