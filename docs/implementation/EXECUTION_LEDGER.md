@@ -6990,3 +6990,95 @@ visible in the diff.
 
 Locked in the same commit: `unreachedExports` 651→580, `moduleOrphans` 61→45,
 `opaqueExports` 986→984, `as-any` 1390→1383, `colon-any` 2988→2975.
+
+## Unit 110 — the opacity rule is narrowed: 859 exports come out of the blind spot · this commit
+
+**Founder ruling (picker, 2026-08-14): "Approve the narrowing."** This is the one
+raise `reachability.json` reserves to sign-off, and it now has it.
+
+```
+unreached-exports: 580 → 1439   (+859, the approved raise)
+opaque-exports:    984 → 125    (−859, the blind spot mostly closed)
+module-orphans:     45 → 45     (unchanged — the check that the split is right)
+```
+
+The numbers balance exactly, and nothing was deleted or added to earn them. The
+gate simply **stopped exempting exports it never needed to exempt.**
+
+### What was wrong
+
+Opacity was applied per-MODULE while consumption is per-SYMBOL, so any dynamic
+import of a module exempted *every* export in it. `server/services/aiRouter.ts` is
+pulled in by `const { routeAITask, TaskComplexity } = await import(…)` from five
+call sites — three genuinely-reached names that shielded `MODEL_PRESETS`,
+`isClaudeModel`, `routeVisionTask`, `routeExtendedThinkingTask`,
+`getDbModelConfigs`, `applyEvalQualityGate` and the rest, none of which occurs
+anywhere else in production. **One dynamic import laundered every export in the
+module.**
+
+A destructuring dynamic import hides nothing: the destructured name is a bare
+identifier the usage tokeniser already sees. Of 1,244 distinct dynamic-import
+specifiers, **838 were reached ONLY by destructuring and 27 ever took a namespace
+binding** — which is why one predicate moves 859 exports.
+
+`const m = await import(…)`, `(await import(…)).x` and a bare side-effect import
+**keep their exemption**, and the asymmetry is the point: this linter's standing
+bias is that a false OPAQUE is a *miss* while a false UNREACHED is an
+*accusation*.
+
+### The trap, which is the part worth remembering
+
+The first implementation skipped destructured imports outright — and
+`moduleOrphans` jumped **45 → 217**. One hundred and seventy-two modules that are
+demonstrably imported were one commit away from being reported as *"nothing
+imports this file at all."* A false accusation at scale, from conflating two
+different questions:
+
+| question | family | answer after the fix |
+|---|---|---|
+| does anything import this file? | `module-orphans` | **every** dynamic import counts |
+| which of its exports are touched? | `opaque-exports` | only a **non-destructured** one |
+
+`moduleOrphans` landing back on exactly 45 is not a coincidence to be noted in
+passing — it is the assertion that the split is correct.
+
+### Verified, not assumed
+
+Eight newly-unreached exports were sampled at random; **every one has zero other
+production references.** Among them are `achMandateSetup`/`achAutopay` symbols
+that this linter's OWN HEADER names as canonical "built but unwired" examples,
+and that its opacity rule had been hiding for as long as the rule existed. The
+gate built to find dead code was exempting the very examples in its own
+docstring.
+
+Behaviourally pinned rather than argued: three new fixtures in
+`reachabilityGate.test.ts` run the real script over synthetic trees and assert all
+three outcomes at once — the sibling becomes visible, the destructured symbol is
+*not* accused, opacity is zero, and the module is *not* an orphan — plus a
+negative fixture proving the orphan half is non-vacuous, and one for the
+`import(…).then(({ x }) => …)` shape. Four mutations were run against them: drop
+`recordImport` (caught), revert the narrowing (caught), drop the `.then` shape
+(caught), and over-narrow so everything reads as destructured (caught by the
+pre-existing namespace fixture, which is the guard against a false accusation).
+
+### The prose that went stale, again
+
+- `reachabilityBlindSpot.test.ts` said *"THE ROOT-CAUSE FIX IS DELIBERATELY NOT
+  TAKEN"* and predicted the collapse would come from making the decision
+  **symbol-aware**. The collapse came instead from narrowing the **population**
+  that feeds it — once a module is opaque it is still opaque wholesale, which is
+  why the residue is 125 rather than 0. Per CLAUDE.md's wave rule the assertion
+  was rewritten to the new truth, not deleted.
+- The linter's header read **"five counts"** — added when the fifth family landed,
+  still saying five through the arrival of the sixth. Fixed by removing the
+  number, not by correcting it: the summary line already derives it from
+  `FAMILIES.length`. `reachability.json`'s description had the same defect
+  (*"Four counts"*) and got the same treatment. **A number in prose decays like an
+  audit's factual claim** — third instance, and the first where a check for it now
+  exists.
+- One structural assertion in the new test **passed against a mutant**: it sliced
+  from the branch to the next `continue;` *anywhere in the file* and picked up an
+  unrelated `recordImport(`. Bounded to the branch, it fails correctly. Measure
+  the thing you mean to measure — unit 95's lesson, in a new shape.
+
+`npm run check` exits 0; `tests/unit` is 705 files / 9,147 tests green.

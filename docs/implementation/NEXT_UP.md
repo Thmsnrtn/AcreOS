@@ -889,36 +889,41 @@ So: real hygiene with a real payoff (each fix makes one more test's contract
 machine-checked), but not a bug hunt. The permanent win already landed — the gate
 means the NEXT untyped test is caught on the commit that writes it.
 
-### The reachability gate's blind spot — measured, gated, and QUEUED for sign-off
+### The reachability gate's blind spot — NARROWED (2026-08-14); the work is now the population it exposed
 
-**This is the clearest piece of scoped work waiting, and it needs one human
-decision before it can be done.** Unit 97 converted the gate's informational
-"986 exports live in dynamically-imported modules" line into a fifth counted,
-down-only family (`opaque-exports`). Nothing in it is *proven* dead — that is the
-point of the name — but the measurement is unambiguous:
+The sign-off this section used to wait on **landed** (founder picker, 2026-08-14,
+"Approve the narrowing"). A destructuring dynamic import no longer confers
+opacity, because the destructured name is a bare identifier the usage tokeniser
+already sees. Of 1,244 distinct dynamic-import specifiers, 838 were reached ONLY
+by destructuring and 27 ever took a namespace binding — which is why the change
+moved **859 exports in one step**: `opaqueExports` 984 → 125, `unreachedExports`
+580 → 1439, `moduleOrphans` unchanged at 45.
 
-- Opacity is applied per-MODULE while consumption is per-SYMBOL, so **one dynamic
-  import launders every export in the module.** `aiRouter.ts` is imported for
-  three names and thereby exempts thirteen.
-- Of **1,244** distinct dynamic-import specifiers, **838 are reached ONLY by
-  destructuring** and just **27** ever take a namespace binding. A destructured
-  name is a bare identifier the usage tokeniser already sees, so those 838
-  modules need no opacity at all.
-- Measured twice — bare identifiers, then permissively including `mod.symbol`
-  property access, comments stripped both times — **9 of 986 are referenced
-  outside their own file.**
+That last number is the check that the split is right, and it is the thing to
+remember from this unit. **Two questions were being answered by one rule:**
 
-**What blocks it:** narrowing the rule reclaims most of that family into
-`unreached-exports`, pushing it far above its 653 baseline, and
-`reachability.json`'s own note reserves raising any of the four to Iris-CTO
-sign-off. Do not narrow the rule and re-baseline without it.
+| question | family | who answers it now |
+|---|---|---|
+| does anything import this file? | `module-orphans` | **every** dynamic import counts |
+| which of its exports are touched? | `opaque-exports` | only a **non-destructured** one |
 
-**When the sign-off lands**, the work is: narrow `isDynamicallyImported` to
-namespace-bound specifiers only, re-measure all five counts, lower
-`opaqueExports` and raise `unreachedExports` in the same commit with the note
-naming this decision — then work the newly-visible population down by deletion,
-cheapest first. `reachabilityBlindSpot.test.ts` pins the current mechanism
-precisely so that collapse reads as expected rather than as a broken scan.
+The first implementation collapsed them and `moduleOrphans` jumped 45 → 217: 172
+modules that are demonstrably imported were one commit from being reported as
+"nothing imports this file at all". The unreached families are ACCUSATIONS, and
+this gate's whole posture is that a false accusation is worse than a miss —
+which is also why a namespace binding, a `(await import(…)).x` and a bare
+side-effect import all KEEP their exemption. Behavioural fixtures in
+`reachabilityGate.test.ts` pin all three outcomes; `reachabilityBlindSpot.test.ts`
+pins the split itself.
+
+**The work that remains is the population the narrowing exposed.** 1,439 unreached
+exports is now an honest number rather than a small one, and the cheapest way down
+is deletion, cheapest first — starting with `moduleOrphans`, where one ruling
+removes a file and several exports at once (B19 classes 2+3 removed 16 files and
+5,002 lines that way). Sampling verification worth repeating: eight newly-unreached
+exports checked at random all had zero other production references, including
+`achMandateSetup`/`achAutopay` symbols that the linter's OWN HEADER names as
+canonical "built but unwired" examples and that opacity had been hiding.
 
 ## 5. What must NOT be rebuilt or reconsidered
 

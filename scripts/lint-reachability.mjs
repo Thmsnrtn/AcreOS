@@ -28,9 +28,11 @@
 // a CI check.
 //
 // ----------------------------------------------------------------------------
-// WHAT IT CHECKS — five counts, independently baselined (the summary line at the
-// bottom derives the number from FAMILIES.length rather than restating it, because
-// it said "four" for as long as there were four and would have said it forever)
+// WHAT IT CHECKS — independently baselined counts, deliberately NOT tallied here
+// (the summary line at the bottom derives the number from FAMILIES.length rather
+// than restating it, because it said "four" for as long as there were four and
+// would have said it forever — and this header then said "five" through the
+// arrival of the sixth, proving the point twice)
 //
 //   1. unreached-exports   Every `export function|const|class` in
 //                          server/services/** and server/jobs/**, cross-
@@ -49,16 +51,17 @@
 //                          server/index.ts, ROUTE_MANIFEST, and any other
 //                          production server file.
 //   4. opaque-exports      THE SIZE OF THIS GATE'S OWN BLIND SPOT. Exports that
-//                          families 1–3 cannot assert on, because a module that
-//                          is dynamically imported ANYWHERE has ALL of its
-//                          exports exempted (see the dynamic-import bullet
+//                          families 1–3 cannot assert on, because their module
+//                          is dynamically imported in a way that hides WHICH
+//                          exports are touched (see the dynamic-import bullet
 //                          below). Nothing here is proven dead — that is the
 //                          point — but the number may only SHRINK, so the one
 //                          population this linter admits it cannot see is no
 //                          longer the one population free to grow without limit.
 //                          See FAMILY 5 near the FAMILIES array for the
-//                          measurement and for the root-cause fix that is
-//                          deliberately deferred.
+//                          measurement, and for the 2026-08-14 narrowing that
+//                          cut this family by 859 by exempting only the imports
+//                          that genuinely hide something.
 //
 // ----------------------------------------------------------------------------
 // WHY IT IS A RATCHET, NOT A HARD GATE
@@ -81,9 +84,16 @@
 // a live thing dead), because a false positive that deletes a working feature
 // is far worse than a miss. Concretely:
 //
-//   • Dynamic imports. `await import("./x")` / `import("./x")` / `require("./x")`
-//     make the module OPAQUE: every export of a dynamically-imported module is
-//     reported as "opaque (dynamic import)" and is NOT counted as unreached.
+//   • Dynamic imports, but only the ones that HIDE something. `const m = await
+//     import("./x")`, `(await import("./x")).default` and a bare side-effect
+//     `import("./x")` make the module OPAQUE: every export of it is reported as
+//     "opaque (dynamic import)" and is NOT counted as unreached, because the
+//     call site does not say which exports it touches. A DESTRUCTURING dynamic
+//     import — `const { runLazily } = await import("./x")` or
+//     `import("./x").then(({ runLazily }) => …)` — confers NO opacity: it binds
+//     a bare identifier the usage tokeniser below already sees, so exempting the
+//     module's OTHER exports on the strength of it was pure loss. (It is still
+//     recorded as an import, so the module-orphan family stays honest.)
 //   • String-keyed dispatch & reflection. String literals are NOT stripped
 //     before tokenizing, so `registry["calculateFlipAnalysis"]` and
 //     `handlers.foo` both count as uses. A registry keyed by a name built at
@@ -427,6 +437,29 @@ for (const p of productionFiles) {
   let dm;
   while ((dm = DYNAMIC_IMPORT_RE.exec(raw)) !== null) {
     const spec = dm[1];
+    // A DESTRUCTURING dynamic import needs no opacity, and skipping it is the
+    // whole of this narrowing. `const { routeAITask } = await import("./x")`
+    // binds `routeAITask` as a bare identifier, which the usage tokeniser below
+    // already sees — so exempting the module's OTHER exports on the strength of
+    // it is pure loss. That over-exemption is what made `aiRouter.ts` shield ten
+    // exports occurring nowhere else in production because three siblings were
+    // destructured out of it.
+    //
+    // Everything else stays opaque, and the asymmetry is deliberate: a namespace
+    // binding (`const m = await import(…)`) or a bare side-effect import genuinely
+    // hides which exports are touched. This linter's stated bias is that a false
+    // OPAQUE is a miss while a false UNREACHED is an ACCUSATION, so anything not
+    // clearly destructured keeps its exemption.
+    const destructured = isDestructuredDynamicImport(raw, dm.index, dm.index + dm[0].length);
+    // A destructured dynamic import still IMPORTS the module — it just does not
+    // hide which exports are used. Recording it in `importedModules`/`importedTails`
+    // keeps `isModuleOrphan` honest; skipping the opaque sets is the narrowing.
+    // Conflating the two made 172 destructure-imported modules read as "nothing
+    // imports this file at all", which is a false accusation at scale.
+    if (destructured) {
+      recordImport(p, spec);
+      continue;
+    }
     if (spec.startsWith(".")) {
       // Resolve against the importing file's directory, then enumerate the
       // extension/index forms Node+TS would try.
@@ -469,6 +502,29 @@ for (const p of productionFiles) {
     if (!set) usage.set(tok, (set = new Set()));
     set.add(p);
   }
+}
+
+/**
+ * Is this dynamic import destructured at the binding site?
+ *
+ * Two shapes count, and both make every name the caller uses a bare identifier
+ * the tokeniser can see:
+ *
+ *     const { a, b } = await import("./x");
+ *     import("./x").then(({ a }) => …)
+ *
+ * Anything else — `const m = await import(…)`, `(await import(…)).default`, a
+ * bare side-effect import — does not, and keeps the module opaque.
+ */
+function isDestructuredDynamicImport(raw, startIdx, endIdx) {
+  // Backwards: `} = await import(` / `} = import(`, tolerating whitespace and
+  // newlines inside a multi-line destructuring list.
+  const before = raw.slice(Math.max(0, startIdx - 400), startIdx);
+  if (/\}\s*=\s*(?:await\s+)?$/.test(before)) return true;
+  // Forwards: `.then(({ a }) => …)` immediately after the specifier's `)`.
+  const after = raw.slice(endIdx, endIdx + 80);
+  if (/^\s*\)\s*\.\s*then\s*\(\s*(?:async\s*)?\(?\s*\{/.test(after)) return true;
+  return false;
 }
 
 /** Does any dynamic-import specifier resolve to this module? */
@@ -744,44 +800,41 @@ const FAMILIES = [
   {
     // FAMILY 5 — the gate's own blind spot, counted instead of narrated.
     //
-    // These are exports the four families above CANNOT assert on, because
-    // `isDynamicallyImported()` marks their whole MODULE opaque. Until now they
-    // were printed as an informational line with no gate, which meant the one
+    // These are exports the families above CANNOT assert on, because
+    // `isDynamicallyImported()` marks their whole MODULE opaque. They were once
+    // printed as an informational line with no gate, which meant the one
     // population this linter admits it cannot see was also the one population
     // free to grow without limit.
     //
-    // WHY IT MATTERS, in one example. `server/services/aiRouter.ts` is pulled in
-    // by `const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
-    // from five call sites. Those three names ARE reached. The module's other
-    // ten exports — MODEL_PRESETS, isClaudeModel, routeVisionTask,
-    // routeExtendedThinkingTask, getDbModelConfigs, applyEvalQualityGate and the
-    // rest — appear NOWHERE else in production source, and are invisible to this
-    // gate purely because a sibling export is dynamically imported. **One dynamic
-    // import launders every export in the module.**
+    // WHY IT WAS SO LARGE — and the fix, which HAS now been taken. Opacity is
+    // applied per-MODULE while consumption is per-SYMBOL, and the rule used to
+    // exempt a module on the strength of ANY dynamic import of it. So
+    // `server/services/aiRouter.ts`, pulled in by
+    // `const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
+    // from five call sites, also shielded MODEL_PRESETS, isClaudeModel,
+    // routeVisionTask, routeExtendedThinkingTask, getDbModelConfigs,
+    // applyEvalQualityGate and the rest — exports appearing NOWHERE else in
+    // production, invisible purely because a SIBLING was destructured out of the
+    // module. One dynamic import laundered every export in it.
     //
-    // Measured across the whole population: of the exports in this family,
-    // effectively all of them have no occurrence anywhere in production outside
-    // their own file — checked twice, once matching bare identifiers only and
-    // once permissively including `mod.symbol` property access, with comments
-    // stripped both times (a comment naming a symbol makes it look reached, which
-    // is the mechanism already recorded in this ratchet's InvestorVerificationService
-    // allowlist entry). Both passes agree.
+    // A destructuring dynamic import needs no opacity at all: the destructured
+    // name is a bare identifier the usage tokeniser already sees. Only a
+    // namespace binding (`const m = await import(…)`), a `(await import(…)).x`
+    // and a bare side-effect import genuinely hide which exports are touched. Of
+    // 1,244 distinct dynamic-import specifiers, 838 were reached ONLY by
+    // destructuring and just 27 ever took a namespace binding — which is why
+    // `isDestructuredDynamicImport()` moved 859 exports in one step:
+    // opaque-exports 984 -> 125, unreached-exports 580 -> 1439. Among the
+    // reclaimed are achMandateSetup/achAutopay symbols that THIS FILE'S OWN
+    // HEADER names as canonical "built but unwired" examples and that opacity had
+    // been hiding.
     //
-    // WHAT WOULD FIX THE ROOT CAUSE, and why it is not done here. Opacity is
-    // applied per-MODULE but consumption is per-SYMBOL. A DESTRUCTURING dynamic
-    // import needs no opacity at all: `const { routeAITask } = await import(...)`
-    // binds `routeAITask` as a bare identifier, which the usage tokeniser already
-    // sees. Only a namespace binding (`const m = await import(...)`) genuinely
-    // hides which exports are touched. Of 1,244 distinct dynamic-import
-    // specifiers in the repo, 838 are reached ONLY by destructuring and just 27
-    // ever take a namespace binding — so narrowing the rule would reclaim most of
-    // this family into `unreached-exports`, where it belongs.
-    //
-    // That narrowing RAISES `unreachedExports` well above its baseline, and this
-    // ratchet's own note reserves raising any of those four numbers to Iris-CTO
-    // sign-off. So the definition is left exactly as it was and the blind spot is
-    // merely made countable and down-only. Nothing above is weakened; a number
-    // that could previously grow silently now cannot grow at all.
+    // That raise is the one this ratchet reserves to sign-off, and it has it:
+    // founder approval, 2026-08-14. What remains here is the residue the rule
+    // still cannot see through, and it is still strictly down-only. Comments are
+    // stripped when measuring, because a comment naming a symbol makes it look
+    // reached — the mechanism this ratchet's InvestorVerificationService
+    // allowlist entry records.
     key: "opaqueExports",
     label: "opaque-exports",
     findings: opaqueExports,

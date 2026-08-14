@@ -161,8 +161,11 @@ describe("lint-reachability — export family", () => {
         "server/services/lazyService.ts",
         "export function runLazily() { return 1; }\n",
       );
-      // The ONLY reference is a dynamic import of the module, with the symbol
-      // pulled off the namespace object at runtime.
+      // The ONLY reference is a NAMESPACE-BINDING dynamic import, with the symbol
+      // pulled off the namespace object at runtime. This is the shape that still
+      // confers opacity after the 2026-08-14 narrowing, and the reason it does is
+      // visible right here: the call site genuinely does not say which export it
+      // touches — the name is a runtime string.
       f.write(
         "server/routes-lazy.ts",
         "export async function handler(name: string) {\n" +
@@ -186,6 +189,111 @@ describe("lint-reachability — export family", () => {
       expect(out).toContain("opaque-exports: PASS — 1");
     } finally {
       rmSync(d2, { recursive: true, force: true });
+    }
+  });
+
+  it("a DESTRUCTURED dynamic import confers no opacity, but still counts as an import", () => {
+    // The 2026-08-14 narrowing (founder picker, "Approve the narrowing"), pinned
+    // behaviourally rather than structurally: the real script over a fixture
+    // tree, asserting all three outcomes at once.
+    //
+    // `const { runLazily } = await import(…)` binds a bare identifier the usage
+    // tokeniser already sees, so there is nothing hidden and nothing to exempt.
+    // Before the narrowing this fixture produced opaque:2 / unreached:0 — the
+    // sibling was laundered by the destructured one, which is how aiRouter.ts
+    // shielded ten exports occurring nowhere else in production.
+    const d = mkdtempSync(join(tmpdir(), "reach-destructured-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export async function handler() {\n" +
+          '  const { runLazily } = await import("./services/lazyService");\n' +
+          "  return runLazily();\n" +
+          "}\n",
+      );
+      f.ratchet({ unreachedExports: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      // 1. The sibling is now VISIBLE as unreached instead of hidden.
+      expect(out).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("neverCalledSibling");
+      // 2. The destructured symbol is NOT accused — the dangerous direction.
+      expect(out).not.toContain("runLazily —");
+      // 3. Nothing is opaque: the call site says which export it touches.
+      expect(out).toContain("opaque-exports: PASS — 0");
+      // 4. THE TRAP. The module IS imported, so it is not an orphan. The first
+      //    implementation skipped destructured imports out of the import
+      //    registries too, and 172 real modules were one commit away from being
+      //    reported as "nothing imports this file at all".
+      expect(
+        out,
+        "a destructure-imported module is being reported as a module orphan — " +
+          "the narrowing must skip only the OPACITY registries, never the " +
+          "import ones",
+      ).toContain("module-orphans: PASS — 0");
+      expect(out).not.toContain("MODULE ORPHAN");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("the module-orphan half of that is not vacuous — drop the import and it IS an orphan", () => {
+    // Guard for the assertion above: `module-orphans: PASS — 0` proves nothing
+    // unless the same module WOULD be reported when genuinely unimported.
+    const d = mkdtempSync(join(tmpdir(), "reach-destructured-neg-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write("server/routes-lazy.ts", "export async function handler() { return 1; }\n");
+      f.ratchet({ unreachedExports: 2, moduleOrphans: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(out).toContain("module-orphans: PASS — 1");
+      expect(out).toContain("MODULE ORPHAN");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("`.then(({ x }) => …)` destructuring is recognised too", () => {
+    // The other shape the codebase actually uses. A narrowing that only handled
+    // `const { x } = await import(…)` would leave these modules opaque for no
+    // reason — the binding is just as visible to the tokeniser.
+    const d = mkdtempSync(join(tmpdir(), "reach-then-destructured-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export function handler() {\n" +
+          '  return import("./services/lazyService").then(({ runLazily }) => runLazily());\n' +
+          "}\n",
+      );
+      f.ratchet({ unreachedExports: 1 });
+
+      const { code, out } = f.run();
+      expect(code).toBe(0);
+      expect(out).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("opaque-exports: PASS — 0");
+      expect(out).toContain("module-orphans: PASS — 0");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
     }
   });
 

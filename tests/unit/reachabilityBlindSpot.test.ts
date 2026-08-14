@@ -30,22 +30,37 @@
  * believed until the second agreed, because 99% would ordinarily mean a broken
  * scan (unit 68's lesson), and a hand-check of six symbols confirmed it.
  *
- * THE ROOT-CAUSE FIX IS DELIBERATELY NOT TAKEN, and the reason is an authority
- * boundary rather than a technical one. A DESTRUCTURING dynamic import needs no
- * opacity at all: `const { routeAITask } = await import(…)` binds a bare
- * identifier the usage tokeniser already sees. Only a namespace binding
- * (`const m = await import(…)`) genuinely hides which exports are touched. Of
- * 1,244 distinct dynamic-import specifiers, **838 are reached ONLY by
- * destructuring and 27 ever take a namespace binding** — so narrowing the rule
- * reclaims most of this family into `unreached-exports`, which would push that
- * count far above 653. This ratchet's own note reserves raising any of its four
- * numbers to Iris-CTO sign-off. So the definition is untouched, nothing above is
- * weakened, and the blind spot is merely made countable and strictly down-only.
+ * THE ROOT-CAUSE FIX HAS NOW BEEN TAKEN (founder picker, 2026-08-14, "Approve
+ * the narrowing"). A DESTRUCTURING dynamic import needs no opacity at all:
+ * `const { routeAITask } = await import(…)` binds a bare identifier the usage
+ * tokeniser already sees, so exempting the module's OTHER exports on the
+ * strength of it was pure loss. Only a namespace binding (`const m = await
+ * import(…)`), a `(await import(…)).x`, and a bare side-effect import genuinely
+ * hide which exports are touched, and those keep their exemption — the linter's
+ * standing bias is that a false OPAQUE is a miss while a false UNREACHED is an
+ * accusation. Of 1,244 distinct dynamic-import specifiers, **838 were reached
+ * ONLY by destructuring and 27 ever took a namespace binding**, which is why the
+ * narrowing moved 859 exports in one step: opaque-exports 984 → 125,
+ * unreached-exports 580 → 1439. Among the reclaimed are `achMandateSetup` /
+ * `achAutopay` symbols that the gate's OWN HEADER names as canonical "built but
+ * unwired" examples and that opacity had been hiding for as long as the rule
+ * existed.
  *
- * What this file pins is that the fifth count is WIRED and DOWN-ONLY, that the
- * gate's summary line counts its families instead of restating a number (it said
- * "four" and would have said it forever), and the mechanism itself — because the
- * mechanism is the part a future reader will doubt.
+ * THE TRAP, recorded because the next person to touch this will step in it. The
+ * first implementation simply skipped destructured imports — and `moduleOrphans`
+ * jumped 45 → 217, i.e. 172 modules that ARE imported were about to be reported
+ * as "nothing imports this file at all". A false accusation at scale, caused by
+ * conflating two different questions. They are now separate: **every** dynamic
+ * import records the module as imported (the module-orphan question), and only a
+ * non-destructured one confers opacity (the symbol-exemption question).
+ *
+ * What this file pins is that the blind-spot count is WIRED and DOWN-ONLY, that
+ * the gate's summary line counts its families instead of restating a number (it
+ * said "four" and would have said it forever), and the mechanism itself — now
+ * including the split above — because the mechanism is the part a future reader
+ * will doubt. The behavioural proof that the narrowing classifies correctly
+ * lives in `reachabilityGate.test.ts`, which runs the real script over a fixture
+ * tree; this file pins the reasoning that fixture is evidence for.
  */
 
 import { describe, it, expect } from "vitest";
@@ -113,18 +128,30 @@ describe("the summary line counts its families instead of restating a number", (
   });
 
   it("the header does not contradict it either", () => {
-    expect(gate, "the header still claims three families").not.toMatch(
-      /WHAT IT CHECKS — three families/,
-    );
+    // It DID contradict it: the header read "five counts" from the day the fifth
+    // family landed, through the arrival of the sixth, and was still saying five
+    // when the narrowing was measured. The fix is not a better number — it is no
+    // number, so this asserts the shape rather than a value.
+    expect(
+      gate,
+      "the header tallies its families in prose again. That number goes stale the " +
+        "next time a family is added — it has already done so twice. Say what the " +
+        "families ARE and let the summary line count them.",
+    ).not.toMatch(/WHAT IT CHECKS — (?:three|four|five|six|seven|\d+)\b/);
   });
 });
 
 describe("the mechanism, pinned because a future reader will doubt it", () => {
-  it("opacity is decided per MODULE, which is why one import launders many exports", () => {
-    // If this ever becomes per-symbol, the family above should collapse and its
-    // baseline should drop hard — that is the intended future, and this
-    // assertion is what tells the next reader the collapse was expected rather
-    // than a broken scan.
+  it("opacity is still decided per MODULE — the narrowing changed WHICH imports confer it", () => {
+    // This assertion used to end "if this ever becomes per-symbol, the family
+    // above should collapse and its baseline should drop hard — that is the
+    // intended future". The collapse happened (984 -> 125), so per CLAUDE.md's
+    // wave rule the assertion is rewritten to the new truth rather than deleted.
+    //
+    // AND THE NEW TRUTH IS NOT WHAT THAT SENTENCE PREDICTED. The fix did not
+    // make the opacity DECISION symbol-aware; it narrowed the POPULATION that
+    // feeds it. Once a module is opaque it is still opaque wholesale — which is
+    // why the residue is 125 rather than 0, and why this check still stands.
     const at = gate.indexOf("function isDynamicallyImported(");
     expect(at, "isDynamicallyImported is gone — has opacity been reworked?").toBeGreaterThan(-1);
     const body = gate.slice(at, gate.indexOf("\n}", at));
@@ -144,6 +171,41 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     const branch = gate.indexOf("if (isDynamicallyImported(c.file))");
     expect(branch, "the per-module exemption branch is gone").toBeGreaterThan(-1);
     expect(gate.slice(branch, branch + 160)).toContain("opaqueExports.push");
+  });
+
+  it("a destructured dynamic import still counts as an IMPORT, only not as opacity", () => {
+    // THE TRAP, pinned. These are two different questions and the first version
+    // of the narrowing answered both with one `continue`:
+    //
+    //   "does anything import this file?"        -> module-orphans
+    //   "which of its exports are touched?"      -> opaque-exports
+    //
+    // Dropping destructured imports from BOTH sets took module-orphans from 45
+    // to 217: 172 modules that are demonstrably imported were one commit away
+    // from being reported as "nothing imports this file at all". The unreached
+    // families are ACCUSATIONS, and this gate's whole posture is that a false
+    // accusation is worse than a miss.
+    const at = gate.indexOf("if (destructured) {");
+    expect(
+      at,
+      "the destructuring narrowing is gone from the gate — if opacity is back to " +
+        "exempting every dynamically-imported module, opaque-exports should be " +
+        "back near 984 and unreached-exports near 580, and both baselines must " +
+        "move in the same commit.",
+    ).toBeGreaterThan(-1);
+    // Bounded to the branch itself. An earlier version of this assertion sliced
+    // to the next `continue;` in the whole file, which ran far past the block
+    // and picked up an unrelated `recordImport(` — it passed against a mutant
+    // with the branch deleted. Measure the thing you mean to measure.
+    const close = gate.indexOf("\n    }", at);
+    expect(close, "the destructured branch has no closing brace where expected").toBeGreaterThan(at);
+    const branch = gate.slice(at, close);
+    expect(
+      branch,
+      "the destructured branch no longer records the module as imported. That is " +
+        "the 45 -> 217 module-orphans trap: skipping the opacity registries is " +
+        "the narrowing, skipping the import registries is a false accusation.",
+    ).toContain("recordImport(");
   });
 
   it("aiRouter is really consumed by destructuring, which is the worked example", () => {
@@ -169,11 +231,16 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("the laundered exports really are absent from production source", () => {
+  it("the formerly-laundered exports really are absent from production source", () => {
     // Spot-check of the claim, on the example everything else rests on. These
-    // three are exported by aiRouter and, at the time of measurement, occurred
-    // nowhere else in production. Comments are stripped so a note naming one
-    // cannot resurrect it — the failure mode this gate's own allowlist records.
+    // are exported by aiRouter and occur nowhere else in production. Comments
+    // are stripped so a note naming one cannot resurrect it — the failure mode
+    // this gate's own allowlist records.
+    //
+    // SINCE THE NARROWING these are no longer hidden: aiRouter is consumed by
+    // destructuring, so the gate now names them in `unreached-exports` — which
+    // is the point of the change, and what makes this fixture checkable against
+    // the gate's own output rather than only against a grep.
     const strip = (s: string) =>
       s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     const laundered = ["routeExtendedThinkingTask", "applyEvalQualityGate"];
@@ -197,7 +264,9 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
         consumers,
         `${sym} now HAS a production consumer (${consumers[0]}). That is good news: ` +
           `delete it from this fixture, and if the export was wired rather than ` +
-          `merely referenced, lower the opaque-exports baseline in the same commit.`,
+          `merely referenced, lower the unreached-exports baseline in the same ` +
+          `commit — since the narrowing these live in that family, not in ` +
+          `opaque-exports.`,
       ).toEqual([]);
     }
   });

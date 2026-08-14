@@ -1123,20 +1123,31 @@ themselves, so a table edited into a different disagreement makes this blocker's
 evidence stale before anyone acts on it. The statute register's note has been
 updated: it no longer says nothing cross-checks them, because something does.
 
-## B19 — 62 files nothing imports, and they are NOT one decision
+## B19 — PARTLY RESOLVED 2026-08-14: classes 2+3 deleted; class 1 stays open as WIRING work
 
-**19,685 lines across 62 modules that no production file imports**, contributing
-228 of `unreached-exports`' 653. Unit 106 counted them as their own reachability
-family (`module-orphans`), because a file is the unit this decision is made in
-while an export is not.
+**Status.** Opened at **62** modules / 19,685 lines that no production file
+imports. Unit 106 counted them as their own reachability family
+(`module-orphans`), because a file is the unit this decision is made in while an
+export is not.
 
-The number is trusted because two independent predicates agree: the gate's own
-`isModuleOrphan`, and a from-scratch sweep over all 888 `server/services` modules.
-(That sweep's FIRST run claimed 28 of 888 were imported — implausible on its face,
-and traced to an import regex that forbade `{` between `import` and the specifier,
-excluding every braced import. Corrected before it was believed.)
+**Unit 109 executed classes 2 and 3** under the founder ruling *"Delete classes 2
+and 3 now"* — 16 files, 5,002 lines, every one verified to have zero imports and
+zero mentions first. `moduleOrphans` 61→45. The class-2 and class-3 sections below
+are kept as the RECORD OF WHAT WAS DELETED, not as a to-do list; the files are
+gone.
 
-**Reading this as "delete 62 files" would be wrong, and dangerous in one of the
+**What remains open is Class 1**, and it is not a deletion decision at all — it is
+wiring, blocked on a judgement call with legal weight. Read that section, not this
+blocker's original framing.
+
+The original count is trusted because two independent predicates agreed: the
+gate's own `isModuleOrphan`, and a from-scratch sweep over all 888
+`server/services` modules. (That sweep's FIRST run claimed 28 of 888 were imported
+— implausible on its face, and traced to an import regex that forbade `{` between
+`import` and the specifier, excluding every braced import. Corrected before it was
+believed.)
+
+**Reading this as "delete the orphans" would be wrong, and dangerous in one of the
 three classes.**
 
 ### Class 1 — regulated obligations built and never wired. DO NOT DELETE.
@@ -1145,7 +1156,7 @@ three classes.**
 |---|---|---|
 | `breachNotificationTrigger.ts` | 426 | GLBA §314.4(j) 30-day, GDPR Art. 33 72-hour, and state breach deadlines (CA §1798.82, NY SHIELD, IL PIPA, MA 201 CMR 17) |
 | `paymentApplication/index.ts` | 529 | Reg-Z order a borrower payment is applied in |
-| `landlordCompliance.ts` | 502 | the COMPLETE 51-state deposit table (see **B18**) |
+| `landlordCompliance.ts` | 413 | notice periods, retaliation windows, lead-paint, fair-housing, HAP recert. Its 51-state deposit table was a DUPLICATE and was removed under **B18**; `shared/regulatory/depositReturnRules.ts` is the single owner |
 | `rental/leaseSigningPacket.ts` | 551 | lease execution packet |
 | `usuryCeiling.ts` | 205 | state usury caps |
 
@@ -1166,27 +1177,52 @@ exactly when nobody is reading code.
 is a judgement call with legal weight.** Deciding which security events count as
 "confirmed or reasonably suspected" is not a refactor.
 
-### Class 2 — superseded duplicates. Delete.
+### Class 2 — superseded duplicates. DELETED, unit 109.
 
-`authLockout.ts` (102) is dead because `server/middleware/authPathLimits.ts`
-exports a live `loginLimiter`. **The control exists; this copy of it does not
-run.** Do not read this class as a missing control — that would be the opposite
-error to Class 1.
+`authLockout.ts` (102) was dead because `server/middleware/authPathLimits.ts`
+exports a live `loginLimiter`. **The control exists; that copy of it did not
+run** — so this removed a duplicate of a control, not a control. Do not read this
+class as a missing control; that would be the opposite error to Class 1, and the
+file name invites it, which is why the classes were separated.
 
-### Class 3 — experiments. Delete, and this family already has a precedent.
+### Class 3 — experiments. DELETED, unit 109.
 
 The `*V9.ts` set (`delegationDepthV9`, `spendAutonomyV9`, `causalReasoningV9`,
 `playbookEvolutionV9`, `externalIntelligenceV9`, `compassAutoRecommendV9`), the
 `scp*` remainder (`scpCustomerLifecycle`, `scpExperimentEngine`,
-`scpSelfProvisioning`), `aiAdvisorTeamV15`, `agentTriggerMonitor`, and the four
+`scpSelfProvisioning`), `aiAdvisorTeamV15`, `agentTriggerMonitor`, and two
 `*Enhancements.ts` files — the same family the 2026-08-01 founder deletion wave
 ruled on once already.
+
+**Two corrections this section carries forward**, both from unit 109's
+verification pass:
+
+- **The `*Enhancements` family is NOT uniformly dead.** This entry originally said
+  "the four `*Enhancements.ts` files". `enhancements.test.ts` covers ELEVEN such
+  modules and **nine have real production importers**; only
+  `marketplaceEnhancements` and `securityEnhancements` were orphans. Treating the
+  family as uniformly dead would have deleted nine live modules.
+- **The `scp*` trap was checked first.** `routes-scp-v2.ts` is production-mounted
+  and lazily imports `scpGoldenSuite`, `scpConfigVersioning`, `scpEvolutionEngine`,
+  `scpMemorySystem`, `scpLLMJudges`. The three deleted here are none of those.
+
+Nine tables lost their only writer as a result and are **queued for the founder
+drop decision, not dropped**: `auth_fail_attempts`, `agent_playbooks`,
+`playbook_evolutions`, `compass_recommendations`, `spend_watchers`,
+`spend_optimizations`, `causal_investigations`, `delegated_goals`,
+`external_intelligence`.
 
 ### Mechanics when a batch is approved
 
 Deleting an orphan removes its exports from `unreachedExports` too, so **both
 baselines drop and both must be lowered in the same commit** — the ratchet fails
 on a stale-high baseline exactly so a reduction is locked in by the commit that
-earned it. `taxOptimizationEngine.ts` is on this list and is **B17**, which must
-be answered on its own terms first: it fabricates, so it is the one entry where
-deletion is the *cheap* answer rather than the lossy one.
+earned it. Unit 109 found that this understates it: the deletion also tripped
+`check-no-fabrication`'s allowlist, the tenancy debt register and
+`outwardActionCoverage`'s send-site baseline. **A deletion touches every register
+that ever counted or named the thing**, and running the gates is the only way to
+learn which.
+
+`taxOptimizationEngine.ts` was on this list and was **B17**, answered on its own
+terms first: it fabricated, so deletion was the *cheap* answer there rather than
+the lossy one.
