@@ -792,6 +792,30 @@ must not become one" — a shape test that said it was not one. Other zod schema
 the repo very likely make the same trade; `impossibleDatesAreRefused.test.ts` pins
 the four surfaces that were found, not a survey of the rest.
 
+### The test-suite type-check population — 162, and what it is NOT
+
+Unit 102 put the test suite under `tsc` for the first time and seeded
+`check:tests` at 162 errors across 64 of 705 files. **Driving that number down is
+available, unblocked, filler-grade work** — and before treating it as a defect
+hunt, read what it actually contains.
+
+The class most likely to indicate a VACUOUS test — `TS2339`, a property that does
+not exist, where `expect(x.nope).toBeUndefined()` would pass forever — has **nine**
+instances and **all nine were checked by hand**. Every one is a type-MODELLING gap,
+not a false assertion: supertest types `res.headers["set-cookie"]` as a `string`
+where Node returns an array at runtime, and an object literal's `this` infers as
+`{}` inside its own method. The tests are correct; the types describing their mocks
+are not.
+
+The bulk is `TS2493` (35, empty-tuple fixtures), `TS2322`/`TS2352` (64, hand-built
+rows standing in for Drizzle types) and `TS2345` (24). **They are unexamined**, and
+that is stated rather than implied — the nine were checked because they were the
+sharpest class, not because the rest were cleared.
+
+So: real hygiene with a real payoff (each fix makes one more test's contract
+machine-checked), but not a bug hunt. The permanent win already landed — the gate
+means the NEXT untyped test is caught on the commit that writes it.
+
 ### The reachability gate's blind spot — measured, gated, and QUEUED for sign-off
 
 **This is the clearest piece of scoped work waiting, and it needs one human
