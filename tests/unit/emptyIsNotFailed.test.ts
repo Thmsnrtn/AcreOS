@@ -114,6 +114,46 @@ describe("listFrom — the unwrapping is not a place for a fallback either", () 
   });
 });
 
+describe("the core-data doors distinguish empty from failed", () => {
+  // The Map door and the properties hook, converted in the same thread. The map
+  // is the sharpest of the three: its zero-state INSTRUCTS the customer to go
+  // geocode parcels — "Click Fetch boundaries on the Inventory page to
+  // auto-geocode your properties" — so a failed read told someone whose parcels
+  // were already geocoded to do it again, with `retry: false` so it did not even
+  // recover on its own.
+  const maps = fs.readFileSync(path.join(ROOT, "client/src/pages/maps.tsx"), "utf8");
+  const props = fs.readFileSync(path.join(ROOT, "client/src/hooks/use-properties.ts"), "utf8");
+
+  it("the map's parcel read throws instead of emptying the map", () => {
+    const at = maps.indexOf('queryKey: ["/api/properties"]');
+    expect(at, "the map's properties query is gone").toBeGreaterThan(-1);
+    const body = maps.slice(at, maps.indexOf("});", at));
+    expect(body, "the map swallows a failed parcel read into [] again").not.toContain(
+      "if (!res.ok) return []",
+    );
+    expect(body).toContain("okOrThrow(");
+  });
+
+  it("the map shows the error BEFORE the geocoding zero-state", () => {
+    const err = maps.indexOf("propsError ?");
+    const zero = maps.indexOf("filteredProperties.length === 0 ?");
+    expect(err, "the map has no error branch").toBeGreaterThan(-1);
+    expect(
+      err,
+      "the map checks for zero parcels before it checks for a failure, so an " +
+        "outage still renders 'No parcel coordinates yet' with instructions to " +
+        "geocode properties the customer may already have geocoded",
+    ).toBeLessThan(zero);
+  });
+
+  it("useProperties throws — it feeds Finance and the document generator", () => {
+    expect(props, "useProperties returns [] on failure again").not.toContain(
+      "if (!res.ok) return []",
+    );
+    expect(props).toContain("okOrThrow(");
+  });
+});
+
 describe("the dashboard widgets distinguish empty from failed", () => {
   const widgets = fs.readFileSync(
     path.join(ROOT, "client/src/components/dashboard/type-specific-widgets.tsx"),

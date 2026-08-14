@@ -67,6 +67,7 @@ import { findStateWarning, isUplBlocked } from "@/lib/upl-gating";
 import { StateUplBanner } from "@/components/upl-gating-banner";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { QueryErrorState } from "@/components/query-error-state";
+import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
@@ -1054,13 +1055,19 @@ export default function MapsPage() {
   const minAcresId = useId();
   const maxAcresId = useId();
 
-  const { data: propertiesRaw = [], isLoading } = useQuery<Property[]>({
+  const {
+    data: propertiesRaw = [],
+    isLoading,
+    isError: propsError,
+    error: propsErr,
+    refetch: refetchProps,
+  } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
     queryFn: async () => {
-      const res = await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      const res = await okOrThrow(
+        await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" }),
+      );
+      return listFrom<Property>(await res.json());
     },
     retry: false,
   });
@@ -1069,10 +1076,10 @@ export default function MapsPage() {
   const { data: dealsRaw = [] } = useQuery<DealWithProperty[]>({
     queryKey: ["/api/deals"],
     queryFn: async () => {
-      const res = await fetch("/api/deals?page=1&pageSize=100", { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      const res = await okOrThrow(
+        await fetch("/api/deals?page=1&pageSize=100", { credentials: "include" }),
+      );
+      return listFrom<DealWithProperty>(await res.json());
     },
     retry: false,
   });
@@ -1517,6 +1524,16 @@ export default function MapsPage() {
                     <MapPin className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
                   </div>
                 </Skeleton>
+              </div>
+            ) : propsError ? (
+              <div className="h-full w-full p-6 flex items-center justify-center">
+                <QueryErrorState
+                  error={propsErr instanceof Error ? propsErr : new Error(String(propsErr))}
+                  onRetry={() => void refetchProps()}
+                  title="Couldn't load your parcels"
+                  description="The map could not read your properties. This is not the same as having none on the map."
+                  testId="maps-properties-error"
+                />
               </div>
             ) : filteredProperties.length === 0 ? (
               // r6 Tasha WF-R6-001 + STR-R6-001: even with zero parcels
