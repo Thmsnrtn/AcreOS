@@ -766,6 +766,7 @@ once here, so it is recorded with the same weight:
 |---|---|
 | "BRRRR still computes inline, outside the registry" (`canon.ts`, units 12–15) | **`BRRRR` appears nowhere in this repository.** The only occurrence of the string was that note. There was no inline arithmetic to register because there is no BRRRR feature. Corrected in unit 16. |
 | "Two customer-facing webhook rails, both reachable today" (unit 42, draft) | **The public rail is not mounted at all.** `registerPublicApiV1` has zero callers, its UI page is not routed in `App.tsx`, and `/api/v1/*` is a passthrough alias to `/api/*`. Caught before the entry shipped — by re-reading `BLOCKERS.md` B7, which had already recorded it. Corrected in B8. |
+| "`user?.id \|\| user?.id` hides a lost second identity source" (unit 95, working note) | **Nothing was lost.** The second operand was `user?.claims?.sub`, correct under Replit OIDC and correctly removed by the Clerk migration; only the operator survived. The 140 occurrences are inert residue, not defect — so the unit shipped a `self-fallback` ratchet and two one-line fixes instead of the 70-file rewrite the premise implied. Caught by reading `git log -S` before writing code. |
 
 The second row is the rule working rather than failing, and it is recorded for
 the same reason: **the check that caught it was reading what this program had
@@ -805,6 +806,19 @@ stayed green, and the assertion looked survived-and-therefore-weak. It was
 neither; the mutation never touched the value under test. Anchor each mutation to
 the **exact expression the assertion reads**, and treat "diff is non-empty" as a
 precondition, not as evidence.
+
+**Measure and mutate with the SAME predicate, or you have not measured what you
+changed.** Unit 95 wrote one regex to size a codemod's population and, later, a
+second one from memory to perform it. The first required a terminator after the
+right operand — which is exactly what excludes `X.p || X.p.length`; the second
+did not. It reported 194 rewrites where 141 had been measured, and the 53-item
+gap was entirely null-guards, so `if (!data.results || data.results.length === 0)`
+became `if (!data.results.length === 0)` across 70 files: a semantic inversion
+and a null-dereference in the same edit. **The aggregate looked fine** — plausible
+count, plausible file distribution — and only reading the diff caught it. If a
+sweep's count and a sweep's edit come from two different expressions, the count
+is not evidence about the edit. Reuse the literal pattern, and where a gate owns
+one, read it out of the gate rather than retyping it.
 
 **A truncated grep can turn a live finding into a dismissed one.** Unit 50 nearly
 concluded `routes-elite-features.ts` was dead code because `| head -3` cut the

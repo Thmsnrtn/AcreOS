@@ -5893,3 +5893,108 @@ week. Both files pin the REAL cases and the properties that keep them fixed.
 6 mutations, every one verified to apply and every one caught. Ninth instance of
 prose tripping a check meant for code — `getRiskColor`'s new doc comment quotes
 the defective call it replaced.
+
+## Units 94–95 — a gate that permitted when it could not check, and the sweep that nearly ate 70 files · `f8ce69e` · this commit
+
+### Unit 94 — strict mode failed open, which undid strict mode
+
+`complianceGate` wrapped its whole body in one `try`, and the catch called
+`next()` under the comment *"Compliance gate should never block normal operation
+on error."* That is correct for the ADVISORY default — the gate's documented job
+there is to add an `X-Compliance-Warnings` header, not to gatekeep — and **wrong
+for `COMPLIANCE_STRICT_MODE=true`, whose entire promise is to block operations
+with violations.** A `checkUsury` throw let a note with a usury violation through,
+in the mode configured to stop it.
+
+**The half that is easy to miss:** the audit-log write sat inside the same `try`,
+BEFORE the strict-mode block. A failed `createAuditLogEntry` therefore also
+skipped the refusal — the two things that make strict mode meaningful, the block
+and the evidence, failed together and in the permitting direction.
+
+Restructured into DETERMINE / RECORD / DECIDE with separate `try` blocks. Either
+failure now refuses with `Errors.serviceUnavailable` in strict mode. Advisory
+mode still fails open, asserted as its own test so a later sweep does not
+"finish the job".
+
+**The shape, which units 89–93 kept finding:** UNKNOWN rendered as a definite
+favourable value. This is that substitution with the highest stakes attached —
+*we could not check* rendered as *permitted*.
+
+### Unit 95 — the doubled expression, and why it is residue rather than defect
+
+Unit 94's `as any` removal exposed `userId: user?.id || user?.id` on the audit
+line — the same expression twice, a fallback that cannot differ from what it
+falls back from. Since that write is the evidence half of strict mode, "what was
+the second operand, and when did it go?" was worth asking.
+
+**The answer is the opposite of the suspicion. Nothing was lost.** Every one was
+born as `user?.id || user?.claims?.sub` under Replit OIDC, where the id genuinely
+arrived two ways. The Clerk migration removed the second source — correctly — and
+left the operator standing with nothing on its right. Per Section I, an audit
+recommendation whose premise is no longer true does not get implemented; the
+premise here was mine, and it did not survive the git history.
+
+So the outcome is a **measurement, not a rewrite**: 140 inert occurrences
+(`v || v === v` for every v), held flat by a new `self-fallback` ratchet. The
+gate's real job is not policing no-ops — it is that `X || X` is the visible
+SIGNATURE of a collapsed fallback, so the next codemod that collapses one which
+still matters shows up as a count going the wrong way.
+
+**Two things were fixed, both small and both real.**
+
+`getUserPermissionContext` read `user?.id || user.id` directly above
+`if (!userId) return null`. The optional chain and the null-return both say *this
+function tolerates an absent user*; the fallback dereferences that same user
+unguarded, so when it IS absent the left side is falsy and the right side throws
+before either guard can act. **The only thing the fallback could contribute was
+the crash the `?.` existed to prevent.** Latent — both callers guard — and
+recorded as latent.
+
+`getUserId` in `server/types/request.ts`, the single source of truth for identity
+extraction, promised it handled *"both direct id and claims patterns"*. The claims
+half went with Replit. Stale prose asserting a capability on the identity
+chokepoint is this session's defect class in another costume, and one line to
+retire. The replacement deliberately does NOT restate the count — a number in
+prose drifting from the code is the very thing being fixed.
+
+### The near-miss, which is the part worth keeping
+
+The first attempt was a codemod rewriting all ~140 sites. It reported 194
+occurrences across 70 files — a plausible number with a plausible file
+distribution. Reading the diff before believing it showed:
+
+```diff
+- if (!data.results || data.results.length === 0) {
++ if (!data.results.length === 0) {
+```
+
+a semantic inversion AND a null-dereference, thirty-odd times, across mail
+compose, lead import, dunning and the approval kernel. The cause was not a subtle
+regex bug:
+
+> **The sweep that MEASURED the population and the sweep that REWROTE it were
+> different regexes.**
+
+The measuring one required a terminator after the right operand — exactly what
+excludes `X.p || X.p.length`. The rewriting one, written later from memory, did
+not. 141 measured, 194 rewritten, and the whole gap was boolean guards the
+measurement had never counted. *Measure and mutate with the same predicate, or
+you have not measured what you changed.* The test therefore runs the ratchet's
+OWN pattern, read out of the JSON rather than retyped, over both the shape it
+must catch and the shapes that broke the codemod.
+
+The negative fixtures are real repo lines, not invented ones. The sharpest class
+is **prefix extension**: `err.status || err.statusCode`, `lead.phone ||
+lead.phoneNormalized`, `data.drainage ?? data.drainageClass`. Eleven sites where
+the second property name BEGINS WITH the first, so an over-broad pattern reads a
+genuine two-source read as a self-reference — and a rewrite would collapse it.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 700 files, 9,152 passed, 1 skipped ·
+13 mutations, every one verified to apply, **0 survivors**. Three survived the
+first mutation round and each exposed a real gap: the negative fixtures all
+carried a leading `!`, so the trailing lookahead was never exercised; the glob
+assertion accepted `client/src/**/*.tsx` alone as proof client was covered; and
+nothing stopped a `"mode": "external"` line turning the gate into a DELEGATED
+no-op that still prints in the output.

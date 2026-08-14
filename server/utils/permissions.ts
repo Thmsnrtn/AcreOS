@@ -264,7 +264,19 @@ export async function getUserPermissionContext(
   user: any,
   org: Organization
 ): Promise<UserPermissionContext | null> {
-  const userId = user?.id || user.id;
+  // `user?.id` and not `user?.id || user.id`. The optional chain and the
+  // `return null` below both say the same thing — this function tolerates an
+  // absent user — and the `|| user.id` fallback threw before either could act:
+  // when `user` is nullish the left side is `undefined`, which is falsy, so the
+  // unguarded `user.id` runs and raises a TypeError. A fallback to the same
+  // property cannot supply a value the first read did not, so the only thing it
+  // could ever contribute was that throw.
+  //
+  // Latent rather than live: both callers (`viewerReadOnlyGate`, which returns
+  // early on `!user || !org`, and `GET /api/me/permissions`, which sits behind
+  // `isAuthenticated`) pass a real user today. Recorded as latent instead of
+  // dressed up as a fix for a live crash.
+  const userId = user?.id;
   if (!userId) return null;
 
   const teamMember = await storage.getTeamMember(org.id, userId);
