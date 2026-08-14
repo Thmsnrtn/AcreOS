@@ -745,6 +745,37 @@ Note the table-count ratchet is strict down-only (currently 759, north star
 ≤450) — a new table needs a deliberate bump with a written justification in
 `scripts/ratchets/table-count.json`.
 
+### The reachability gate's blind spot — measured, gated, and QUEUED for sign-off
+
+**This is the clearest piece of scoped work waiting, and it needs one human
+decision before it can be done.** Unit 97 converted the gate's informational
+"986 exports live in dynamically-imported modules" line into a fifth counted,
+down-only family (`opaque-exports`). Nothing in it is *proven* dead — that is the
+point of the name — but the measurement is unambiguous:
+
+- Opacity is applied per-MODULE while consumption is per-SYMBOL, so **one dynamic
+  import launders every export in the module.** `aiRouter.ts` is imported for
+  three names and thereby exempts thirteen.
+- Of **1,244** distinct dynamic-import specifiers, **838 are reached ONLY by
+  destructuring** and just **27** ever take a namespace binding. A destructured
+  name is a bare identifier the usage tokeniser already sees, so those 838
+  modules need no opacity at all.
+- Measured twice — bare identifiers, then permissively including `mod.symbol`
+  property access, comments stripped both times — **9 of 986 are referenced
+  outside their own file.**
+
+**What blocks it:** narrowing the rule reclaims most of that family into
+`unreached-exports`, pushing it far above its 653 baseline, and
+`reachability.json`'s own note reserves raising any of the four to Iris-CTO
+sign-off. Do not narrow the rule and re-baseline without it.
+
+**When the sign-off lands**, the work is: narrow `isDynamicallyImported` to
+namespace-bound specifiers only, re-measure all five counts, lower
+`opaqueExports` and raise `unreachedExports` in the same commit with the note
+naming this decision — then work the newly-visible population down by deletion,
+cheapest first. `reachabilityBlindSpot.test.ts` pins the current mechanism
+precisely so that collapse reads as expected rather than as a broken scan.
+
 ## 5. What must NOT be rebuilt or reconsidered
 
 - **Do not create a second receipt system.** Generalise

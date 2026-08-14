@@ -50,6 +50,7 @@ type Baselines = Partial<{
   tablesNoWriter: number;
   tablesNoReader: number;
   unregisteredRoutes: number;
+  opaqueExports: number;
 }>;
 type Allow = { kind: string; id: string; reason: string };
 
@@ -68,7 +69,20 @@ function fixture(dir: string) {
         mode: "external",
         evaluator: "scripts/lint-reachability.mjs",
         direction: "down",
-        baselines,
+        // Every family defaults to 0 and a fixture overrides only what it is
+        // about. The gate FAILS a family with no baseline, so before this
+        // default the `opaque-exports` family broke four unrelated fixtures at
+        // once — none of which were testing opacity. A fixture should fail
+        // because the behaviour it pins changed, not because the gate grew a
+        // family it never mentioned.
+        baselines: {
+          unreachedExports: 0,
+          tablesNoWriter: 0,
+          tablesNoReader: 0,
+          unregisteredRoutes: 0,
+          opaqueExports: 0,
+          ...baselines,
+        },
         allowlist,
       }),
     );
@@ -141,12 +155,10 @@ describe("lint-reachability — export family", () => {
           "  return (mod as Record<string, () => number>)[name]();\n" +
           "}\n",
       );
-      f.ratchet({
-        unreachedExports: 0,
-        tablesNoWriter: 0,
-        tablesNoReader: 0,
-        unregisteredRoutes: 0,
-      });
+      // opaqueExports is 1 here, and that IS the assertion: this fixture is the
+      // canonical worked example of the blind spot, so the number the gate now
+      // carries for it should be exactly one.
+      f.ratchet({ opaqueExports: 1 });
 
       const { code, out } = f.run();
       expect(code).toBe(0);
@@ -154,6 +166,9 @@ describe("lint-reachability — export family", () => {
       // It is reported as opaque, explicitly NOT asserted dead.
       expect(out).toContain("NOT asserted dead");
       expect(out).toContain("runLazily");
+      // …and, since this change, COUNTED rather than only narrated. The prose
+      // above was true and ungated for as long as the family existed.
+      expect(out).toContain("opaque-exports: PASS — 1");
     } finally {
       rmSync(d2, { recursive: true, force: true });
     }
@@ -291,7 +306,13 @@ describe("lint-reachability — ratchet semantics", () => {
     const { code, out } = f.run();
     expect(code).toBe(0);
     expect(out).toContain("unreached-exports: PASS — 2 (baseline 2)");
-    expect(out).toContain("PASS — all four reachability counts at baseline");
+    // The summary used to hardcode "four" and would have gone on saying it after
+    // the fifth family landed — which is how this very assertion broke. It now
+    // derives from FAMILIES.length, so the check does too: whatever the number
+    // is, the line must report as many counts as the run actually printed.
+    const reported = [...out.matchAll(/^\[lint-reachability\] \S+: PASS — /gm)].length;
+    expect(reported, "no family lines were printed").toBeGreaterThan(0);
+    expect(out).toContain(`PASS — all ${reported} reachability counts at baseline`);
   });
 
   it("FAILs on an increase and refuses to suggest bumping the baseline", () => {
@@ -399,13 +420,18 @@ describe("lint-reachability — the real repo", () => {
     expect(code).toBe(0);
   });
 
-  it("declares the four baselines in scripts/ratchets/reachability.json", async () => {
+  it("declares all five baselines in scripts/ratchets/reachability.json", async () => {
     const cfg = (
       await import("../../scripts/ratchets/reachability.json", {
         with: { type: "json" },
       })
     ).default as { baselines: Record<string, number>; allowlist: Allow[] };
     expect(Object.keys(cfg.baselines).sort()).toEqual([
+      // opaqueExports is the SIZE OF THE BLIND SPOT — exports the other four
+      // families cannot assert on because their module is dynamically imported
+      // somewhere. Nothing in it is proven dead; the point is that it may only
+      // shrink, where before it was printed as prose and could grow unwatched.
+      "opaqueExports",
       "tablesNoReader",
       "tablesNoWriter",
       "unreachedExports",

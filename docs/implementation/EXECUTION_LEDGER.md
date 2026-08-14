@@ -6067,3 +6067,87 @@ it is now pinned. **Tenth instance of prose tripping a check meant for code**, a
 a new direction again: the replacement comment QUOTED the retired claim, so the
 assertion forbidding a new count matched the quotation of the old one. Paraphrased
 rather than quoted, and the reason recorded inline.
+
+## Unit 97 — the reachability gate's blind spot was the only number free to grow · this commit
+
+`lint-reachability.mjs` is the CI form of the audit CLAUDE.md calls this repo's
+single most common defect — built but unwired. It gates four counts and then
+printed a fifth as prose:
+
+```
+986 export(s) live in dynamically-imported modules — NOT asserted dead
+(static analysis cannot see through `await import(`).
+```
+
+Honest, and **ungated**. 986 exports sat outside every baseline in the repo, and
+nothing stopped that number rising.
+
+### Why it is so large — opacity is per-MODULE, consumption is per-SYMBOL
+
+`server/services/aiRouter.ts` is pulled in by
+`const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
+from five call sites. Those names are genuinely reached. The module's other TEN
+exports — `MODEL_PRESETS`, `isClaudeModel`, `routeVisionTask`,
+`routeExtendedThinkingTask`, `getDbModelConfigs`, `applyEvalQualityGate` and the
+rest — occur nowhere else in production source, and are invisible to the gate
+purely because a SIBLING export is dynamically imported.
+
+**One dynamic import launders every export in the module.**
+
+### The measurement, taken twice before it was believed
+
+First pass matched bare identifiers only: 9 referenced, 977 not. **99% is what a
+broken scan looks like**, so it was not believed (unit 68's lesson). The obvious
+explanation — namespace consumption via `mod.symbol`, which a bare-identifier
+regex rejects — was tested by re-running permissively, including property access.
+**Both passes returned the same 9 / 977**, comments stripped each time because a
+comment naming a symbol makes it look reached (the mechanism this ratchet's own
+`InvestorVerificationService` allowlist entry records). Six symbols were then
+hand-checked. The number is real.
+
+### The root-cause fix is deferred, and the reason is authority, not difficulty
+
+A DESTRUCTURING dynamic import needs no opacity at all: the destructured name is
+a bare identifier the usage tokeniser already sees. Only a namespace binding
+genuinely hides which exports are touched. Of **1,244** distinct dynamic-import
+specifiers, **838 are reached ONLY by destructuring and 27** ever take a
+namespace binding — so narrowing the rule reclaims most of this family into
+`unreached-exports`, pushing it far above 653.
+
+`reachability.json`'s own note reserves raising any of those four numbers to
+Iris-CTO sign-off. That is a human authority boundary, so per Section X it is
+recorded and the program continues: **the definition is untouched, nothing above
+is weakened, and the blind spot is merely made countable and strictly down-only.**
+
+### Two stale counts fixed on the way, both the session's own defect class
+
+The summary line read `all four reachability counts` — correct while there were
+four, and it would have said four forever. It now derives from `FAMILIES.length`.
+The header said `three families` while there were four. Both are the same shape as
+unit 95's `getUserId` comment and unit 96's `formatCents` register: **a number in
+prose that has no way to notice the next entry**, this time inside the gate that
+hunts exactly that.
+
+### The self-test was updated, not weakened
+
+`reachabilityGate.test.ts` builds fixture repos and runs the gate against them.
+The new family broke four fixtures at once — none of which were testing opacity —
+because the gate fails a family with no baseline. The fixture harness now defaults
+every family to 0 and a fixture overrides only what it is about, so **a fixture
+fails because the behaviour it pins changed, not because the gate grew a family it
+never mentioned.** The dynamic-import fixture is the canonical worked example, so
+its prose assertion (`"NOT asserted dead"`) gained a counted one:
+`opaque-exports: PASS — 1`. And the summary assertion now derives its expected
+number from the run's own output rather than hardcoding it — the literal is what
+broke it.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 702 files, 9,170 passed, 1 skipped ·
+14 mutations, every one verified to apply, **0 survivors**. Two survived the first
+round: a needle whose whitespace never matched (a mutation that does not apply
+tests nothing), and an assertion that `isDynamicallyImported` still takes
+`relPath` — which my own mutation satisfied by reintroducing `relPath` as a local.
+Replaced with assertions on the module-path REGISTRIES it consults
+(`dynamicResolved`, `dynamicUnresolvedTails`), which a symbol-aware rewrite cannot
+keep.

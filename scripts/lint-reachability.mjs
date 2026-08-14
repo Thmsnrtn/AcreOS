@@ -28,7 +28,9 @@
 // a CI check.
 //
 // ----------------------------------------------------------------------------
-// WHAT IT CHECKS — three families, independently counted
+// WHAT IT CHECKS — five counts, independently baselined (the summary line at the
+// bottom derives the number from FAMILIES.length rather than restating it, because
+// it said "four" for as long as there were four and would have said it forever)
 //
 //   1. unreached-exports   Every `export function|const|class` in
 //                          server/services/** and server/jobs/**, cross-
@@ -46,6 +48,17 @@
 //                          cross-referenced against server/routes.ts,
 //                          server/index.ts, ROUTE_MANIFEST, and any other
 //                          production server file.
+//   4. opaque-exports      THE SIZE OF THIS GATE'S OWN BLIND SPOT. Exports that
+//                          families 1–3 cannot assert on, because a module that
+//                          is dynamically imported ANYWHERE has ALL of its
+//                          exports exempted (see the dynamic-import bullet
+//                          below). Nothing here is proven dead — that is the
+//                          point — but the number may only SHRINK, so the one
+//                          population this linter admits it cannot see is no
+//                          longer the one population free to grow without limit.
+//                          See FAMILY 5 near the FAMILIES array for the
+//                          measurement and for the root-cause fix that is
+//                          deliberately deferred.
 //
 // ----------------------------------------------------------------------------
 // WHY IT IS A RATCHET, NOT A HARD GATE
@@ -686,6 +699,62 @@ const FAMILIES = [
       "  server/routes.ts (and add it to ROUTE_MANIFEST), or DELETE the file, or\n" +
       "  ALLOWLIST it with a reason.",
   },
+  {
+    // FAMILY 5 — the gate's own blind spot, counted instead of narrated.
+    //
+    // These are exports the four families above CANNOT assert on, because
+    // `isDynamicallyImported()` marks their whole MODULE opaque. Until now they
+    // were printed as an informational line with no gate, which meant the one
+    // population this linter admits it cannot see was also the one population
+    // free to grow without limit.
+    //
+    // WHY IT MATTERS, in one example. `server/services/aiRouter.ts` is pulled in
+    // by `const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
+    // from five call sites. Those three names ARE reached. The module's other
+    // ten exports — MODEL_PRESETS, isClaudeModel, routeVisionTask,
+    // routeExtendedThinkingTask, getDbModelConfigs, applyEvalQualityGate and the
+    // rest — appear NOWHERE else in production source, and are invisible to this
+    // gate purely because a sibling export is dynamically imported. **One dynamic
+    // import launders every export in the module.**
+    //
+    // Measured across the whole population: of the exports in this family,
+    // effectively all of them have no occurrence anywhere in production outside
+    // their own file — checked twice, once matching bare identifiers only and
+    // once permissively including `mod.symbol` property access, with comments
+    // stripped both times (a comment naming a symbol makes it look reached, which
+    // is the mechanism already recorded in this ratchet's InvestorVerificationService
+    // allowlist entry). Both passes agree.
+    //
+    // WHAT WOULD FIX THE ROOT CAUSE, and why it is not done here. Opacity is
+    // applied per-MODULE but consumption is per-SYMBOL. A DESTRUCTURING dynamic
+    // import needs no opacity at all: `const { routeAITask } = await import(...)`
+    // binds `routeAITask` as a bare identifier, which the usage tokeniser already
+    // sees. Only a namespace binding (`const m = await import(...)`) genuinely
+    // hides which exports are touched. Of 1,244 distinct dynamic-import
+    // specifiers in the repo, 838 are reached ONLY by destructuring and just 27
+    // ever take a namespace binding — so narrowing the rule would reclaim most of
+    // this family into `unreached-exports`, where it belongs.
+    //
+    // That narrowing RAISES `unreachedExports` well above its baseline, and this
+    // ratchet's own note reserves raising any of those four numbers to Iris-CTO
+    // sign-off. So the definition is left exactly as it was and the blind spot is
+    // merely made countable and down-only. Nothing above is weakened; a number
+    // that could previously grow silently now cannot grow at all.
+    key: "opaqueExports",
+    label: "opaque-exports",
+    findings: opaqueExports,
+    describe: (f) =>
+      `${f.file}:${f.line}  ${f.kind} ${f.symbol} — unassertable: this module is ` +
+      `dynamically imported somewhere, so every export in it is exempt`,
+    remedy:
+      "This count is the SIZE OF THE BLIND SPOT, so lowering it is progress even\n" +
+      "  though nothing here is proven dead. Three ways down, cheapest first:\n" +
+      "  DELETE the export if nothing calls it (most of this family has no\n" +
+      "  occurrence in production outside its own file); or convert the dynamic\n" +
+      "  `await import()` to a STATIC import where it exists only to break a cycle\n" +
+      "  that no longer exists, which makes the whole module assertable; or\n" +
+      "  ALLOWLIST it with a reason. Do NOT raise the baseline.",
+  },
 ];
 
 console.log(
@@ -705,8 +774,13 @@ if (opaqueExports.length > 0) {
     `${TAG} ${opaqueExports.length} export(s) live in dynamically-imported modules — ` +
       `NOT asserted dead (static analysis cannot see through \`await import(\`).`,
   );
-  for (const o of (REPORT_ALL ? opaqueExports : opaqueExports.slice(0, 5))) {
-    console.log(`  ? ${o.file}:${o.line}  ${o.symbol}`);
+  // Sample only when NOT reporting all — with --report the `opaque-exports`
+  // family below prints every one of these, and printing them twice buries the
+  // other families' findings between two copies of the same list.
+  if (!REPORT_ALL) {
+    for (const o of opaqueExports.slice(0, 5)) {
+      console.log(`  ? ${o.file}:${o.line}  ${o.symbol}`);
+    }
   }
 }
 
@@ -788,5 +862,7 @@ if (failed) {
   );
   process.exit(1);
 }
-console.log(`${TAG} PASS — all four reachability counts at baseline`);
+console.log(
+  `${TAG} PASS — all ${FAMILIES.length} reachability counts at baseline`,
+);
 process.exit(0);
