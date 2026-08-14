@@ -111,10 +111,34 @@ interface NoiSnapshot {
   collectedRentMonthlyCents: number;
   vacancyAdjMonthlyCents: number;
   opExpenseMonthlyCents: number;
+  /**
+   * WHERE `opExpenseMonthlyCents` CAME FROM, and it is not decoration.
+   *
+   * `"operator_supplied"` means the uploader gave the figure. `"rule_of_thumb"`
+   * means nobody did and the server used 40% of collected rent — a real
+   * underwriting convention, and still a number this product invented. NOI and
+   * `capRateAtAskingPct` are both DERIVED from it, so without this field a
+   * caller reading "cap rate 7.2%" cannot tell whether the expenses behind it
+   * were counted or assumed.
+   *
+   * The constitution's rule is that no invented number may be presented as real,
+   * and this module's siblings already show the shape of the answer:
+   * `camReconciliation` refuses a fabricated pro-rata share and says why,
+   * `computeDepositDeadline` returns `{ known: false, unknownReason }`, and
+   * `nextPaymentVerdict` returns the REASON for every blank. Disclosure rather
+   * than refusal is right here — the rule of thumb IS how the first pass at a
+   * park is underwritten — but disclosure has to actually reach the caller.
+   */
+  opExpenseBasis: "operator_supplied" | "rule_of_thumb";
+  /** The fraction of collected rent assumed, when the basis is the rule of thumb. */
+  opExpenseAssumedPctOfCollected: number | null;
   noiMonthlyCents: number;
   noiAnnualCents: number;
   capRateAtAskingPct: number | null;
 }
+
+/** The convention, named once so the response and the disclosure cannot disagree. */
+const OPEX_RULE_OF_THUMB_PCT = 0.4;
 
 function computeNoi(parsed: z.infer<typeof rentRollSchema>, askingPriceCents: number | null): NoiSnapshot {
   const occupied = parsed.units.filter((u) => !u.isVacant);
@@ -123,7 +147,10 @@ function computeNoi(parsed: z.infer<typeof rentRollSchema>, askingPriceCents: nu
   const vacancyAdj = parsed.vacancyRate !== undefined
     ? Math.round(grossPotential * parsed.vacancyRate)
     : grossPotential - collected;
-  const opex = parsed.monthlyOpExpenseEstimateCents ?? Math.round(collected * 0.40);  // Imelda: ~40% rule of thumb
+  // The operator's figure if there is one; otherwise the convention, and the
+  // basis is reported alongside so the two can never be mistaken for each other.
+  const operatorOpex = parsed.monthlyOpExpenseEstimateCents;
+  const opex = operatorOpex ?? Math.round(collected * OPEX_RULE_OF_THUMB_PCT);
   const noiMonthly = collected - vacancyAdj - opex;
   const noiAnnual = noiMonthly * 12;
   const capRate = askingPriceCents && askingPriceCents > 0
@@ -137,6 +164,9 @@ function computeNoi(parsed: z.infer<typeof rentRollSchema>, askingPriceCents: nu
     collectedRentMonthlyCents: collected,
     vacancyAdjMonthlyCents: vacancyAdj,
     opExpenseMonthlyCents: opex,
+    opExpenseBasis: operatorOpex !== undefined ? "operator_supplied" : "rule_of_thumb",
+    opExpenseAssumedPctOfCollected:
+      operatorOpex !== undefined ? null : OPEX_RULE_OF_THUMB_PCT,
     noiMonthlyCents: noiMonthly,
     noiAnnualCents: noiAnnual,
     capRateAtAskingPct: capRate !== null ? Math.round(capRate * 10000) / 100 : null,  // pct, 2dp

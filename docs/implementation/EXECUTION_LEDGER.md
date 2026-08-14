@@ -6503,3 +6503,54 @@ excludes itself and says why.
 12 mutations, every one verified to apply, **0 survivors** — including unwiring
 `check:tests` from `npm run check`, re-excluding tests from the config, and
 removing each of the evaluator's two refuse-to-measure guards.
+
+## Unit 103 — a cap rate whose expenses were invented, and no way to tell · this commit
+
+`routes-rent-roll-import.ts` computed an NOI snapshot for an uploaded rent roll
+and returned it from both `/rent-roll/preview` and `/rent-roll/import`:
+
+```ts
+const opex = parsed.monthlyOpExpenseEstimateCents ?? Math.round(collected * 0.40);
+//                                                                          ^ Imelda: ~40% rule of thumb
+```
+
+When the uploader supplied a figure, that is THEIR number. When they did not, the
+server used 40% of collected rent — a real underwriting convention, and still a
+number this product invented. **The response shape could not tell the two apart**,
+and `noiMonthlyCents`, `noiAnnualCents` and `capRateAtAskingPct` are all derived
+from it. Someone reading *"cap rate 7.2%"* could not know whether the expenses
+behind it were counted or assumed.
+
+This is the session's core defect on a financial verdict: a missing value replaced
+by a definite one, then presented as computed.
+
+### Disclosure, not refusal — and the repo already had the pattern
+
+The neighbouring modules show the shape of the answer: `camReconciliation`
+refuses a fabricated pro-rata share and says why, `computeDepositDeadline` returns
+`{ known: false, unknownReason }`, and `nextPaymentVerdict` returns the REASON for
+every blank. Refusal is wrong here — the rule of thumb genuinely *is* how a first
+pass at a park is underwritten — but **a comment on the line reaches nobody.** The
+snapshot now carries `opExpenseBasis: "operator_supplied" | "rule_of_thumb"` and
+`opExpenseAssumedPctOfCollected`, the latter null when nothing was assumed, so a
+caller is never handed a percentage implying an assumption that was not made.
+
+The fraction is now a named constant used by BOTH the arithmetic and the
+disclosure. Inline, the two could drift and the response would misreport its own
+assumption — this session's recurring defect in miniature.
+
+### Stated plainly: no surface renders this today
+
+The rent-roll import dialog previews rows and never displays the NOI block, so
+nothing on screen is currently lying. Fixed anyway for two reasons. The API is a
+product surface in its own right — an operator or an agent reads the response. And
+unit 90's lesson runs the other way here: fixing the server first is what makes the
+renderer, whenever it arrives, unable to present the assumed number as counted.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 706 files, 9,209 passed, 1 skipped ·
+8 mutations, every one verified to apply, **0 survivors** — including hardcoding
+the basis to `"operator_supplied"`, reporting the assumed percentage even when the
+operator supplied one, and inlining the fraction so the disclosure and the maths
+could diverge.
