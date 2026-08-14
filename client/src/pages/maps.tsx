@@ -135,12 +135,30 @@ interface DealWithProperty {
 
 // ─── Property Intelligence Panel ───────────────────────────────────────────────
 
-function getRiskColor(risk: "low" | "moderate" | "high"): string {
+/**
+ * Takes `undefined`, and that is the point.
+ *
+ * The call site read `getRiskColor(intel.slopeRisk ?? "low")`, so a parcel whose
+ * slope GRADE is known but whose RISK classification is missing had its number
+ * painted `text-acr-pos` — green, the visual claim "low risk" — on a panel whose
+ * own header two lines above says *"Every value is real-or-honest: a missing
+ * field renders 'Not yet pulled · Check now', never a fabricated number or a
+ * default flood zone."* The component already knew the risk was unknown: it hides
+ * the `(low|moderate|high)` label when the field is absent, and coloured it
+ * favourably anyway.
+ *
+ * Unknown renders neutral. A customer deciding whether to buy a parcel should not
+ * read "we have not classified this slope" as "this slope is fine".
+ */
+function getRiskColor(risk: "low" | "moderate" | "high" | undefined): string {
+  if (!risk) return "text-muted-foreground";
   const map = { low: "text-acr-pos", moderate: "text-acr-warn", high: "text-acr-neg" };
   return map[risk] ?? "text-muted-foreground";
 }
 
-function getRiskBg(risk: "low" | "moderate" | "high"): string {
+/** Same rule as getRiskColor: unknown is neutral, never the favourable band. */
+function getRiskBg(risk: "low" | "moderate" | "high" | undefined): string {
+  if (!risk) return "bg-muted";
   const map = { low: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos", moderate: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn", high: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" };
   return map[risk] ?? "bg-muted";
 }
@@ -766,7 +784,7 @@ function PropertyIntelligencePanel({
               iconClass="text-muted-foreground"
               value={
                 intel.slopeGrade !== undefined ? (
-                  <span className={getRiskColor(intel.slopeRisk ?? "low")}>
+                  <span className={getRiskColor(intel.slopeRisk)}>
                     {intel.slopeGrade.toFixed(1)}°
                     {intel.slopeRisk && (
                       <span className="ml-1 text-micro opacity-70">({intel.slopeRisk})</span>

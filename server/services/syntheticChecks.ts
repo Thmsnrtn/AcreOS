@@ -61,7 +61,12 @@ async function checkSesSend(): Promise<CheckResult> {
   });
   return {
     checkKey: "ses_send",
-    status: t.error ? "failing" : t.result?.status ?? "ok",
+    // `?? "failing"`, not `?? "ok"`. Unreachable today — `timeIt` returns
+    // `result: null` only alongside an `error`, which the ternary catches first,
+    // and every check body returns an object carrying `status`. But a check that
+    // cannot report its status is not a check that passed, and a monitoring
+    // default should fail toward attention rather than toward silence.
+    status: t.error ? "failing" : t.result?.status ?? "failing",
     latencyMs: t.latencyMs,
     errorMessage: t.error,
     metadata: t.result?.quota ? { quota: t.result.quota } : undefined,
@@ -87,7 +92,7 @@ async function checkStripeWebhookFreshness(): Promise<CheckResult> {
   });
   return {
     checkKey: "stripe_webhook_freshness",
-    status: t.error ? "failing" : t.result?.status ?? "ok",
+    status: t.error ? "failing" : t.result?.status ?? "failing",
     latencyMs: t.latencyMs,
     errorMessage: t.error,
     metadata: t.result ? { lastSeenIso: t.result.lastSeenIso, ageHours: t.result.ageHours } : undefined,
@@ -148,7 +153,7 @@ async function checkTwilioStatus(): Promise<CheckResult> {
   });
   return {
     checkKey: "twilio_status",
-    status: t.error ? "failing" : t.result?.status ?? "ok",
+    status: t.error ? "failing" : t.result?.status ?? "failing",
     latencyMs: t.latencyMs,
     errorMessage: t.error,
   };
