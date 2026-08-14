@@ -328,7 +328,38 @@ HEAD before it is acted on.
 
 ## 4. The next highest-value unblocked task
 
-**START HERE (state as of unit 78).** The founder answered four of the six open
+**START HERE (state as of unit 100).** Everything below this box is still true;
+read it for the reasoning. What changed most recently:
+
+| what | where |
+|---|---|
+| **All six blockers are decided and executed** (units 75–88) | the two tables below |
+| **One thread is blocked on a HUMAN decision** — narrowing the reachability gate's module-level opacity needs Iris-CTO sign-off to raise `unreachedExports` | *The reachability gate's blind spot*, below |
+| **One thread is blocked on `DATABASE_URL`** — the note-payment data migration (B1). Do NOT "tidy" the five legacy writers | *Two note-payment data models*, below |
+| **Units 95–100 ran one thread to completion**: canonical state has one owner, and prose that claims it must be derived rather than written | ledger units 95–100 |
+
+**What units 95–100 established, because it is the most reusable thing here.**
+Six units, one question asked six ways: *this file says it is the only X — is it?*
+`formatCents` named four different functions across seven definitions;
+`delinquencyIsDeterminable` had three; `parseCalendarDate` had three; and in every
+case the module's own comment counted its rivals in prose and was **wrong on both
+the count and the names**, because a hand-written register cannot notice the next
+entry. Each is now derived from a source scan (`formatCentsIsCanonical`,
+`singleOwnerClaims`, `impossibleDatesAreRefused`).
+
+That thread also produced the session's sharpest live defect —
+`?date=2026-02-30` on the payoff endpoint quoted a borrower two extra days of
+interest, and a `2026-02-30` move-out moved a statutory deposit deadline two days
+late — so the question **"does this validator check SHAPE or VALIDITY?"** is worth
+reusing on things other than dates.
+
+**Two standing methodology rules earned this session**, both in §7: *measure and
+mutate with the same predicate*, and *a number in prose decays exactly like an
+audit's does — point at the derivation instead of restating it*.
+
+---
+
+**Earlier state (as of unit 78).** The founder answered four of the six open
 blockers on 2026-08-13, and units 75–78 executed all four. That changes what is
 next more than any technical finding has:
 
@@ -886,6 +917,23 @@ count, plausible file distribution — and only reading the diff caught it. If a
 sweep's count and a sweep's edit come from two different expressions, the count
 is not evidence about the edit. Reuse the literal pattern, and where a gate owns
 one, read it out of the gate rather than retyping it.
+
+**A number in prose decays exactly like an audit's factual claim does.** §6 says
+verify the audit's premises before acting; §6a says the same of this program's own
+notes. Units 95–100 found the third form: **a count or a list written into a
+comment.** `getUserId` promised it handled "both direct id and claims patterns"
+after the claims half went with Replit OIDC. `shared/finance/cents.ts` said "Four
+other `formatCents` exist" and named three, while seven did — and the population had
+GROWN since the note was written, precisely because prose cannot notice the eighth.
+`lint-reachability.mjs` printed "all four reachability counts" and would have said
+four forever. Two note pages said "the client cannot import server code, so the
+check is restated here", which is true of `server/` and skips `shared/`.
+
+The fix is the same every time and it is cheap: **do not restate what you can
+derive.** Point the comment at a test that scans source. Where the count must live
+somewhere, put it in a ratchet baseline, which fails when it drifts, rather than in
+a sentence, which does not. When you write a number into a comment, ask what would
+make it wrong and whether anything would notice.
 
 **A truncated grep can turn a live finding into a dismissed one.** Unit 50 nearly
 concluded `routes-elite-features.ts` was dead code because `| head -3` cut the
