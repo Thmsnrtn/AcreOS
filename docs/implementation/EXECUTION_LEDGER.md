@@ -6701,3 +6701,82 @@ silently resolved, and the live registry answering a fixed 30 days for every sta
 (which collapses the finding and must fail). One earlier mutation was discarded
 rather than counted: adding a field to a rule object does not remove a state, so
 it never exercised the overlap guard it was meant to test.
+
+## Unit 106 — 62 files nothing imports, counted in the unit a decision is made in · this commit
+
+Unit 105's registry-ghost sweep left a second number: **62 `server/services`
+modules that no production file imports.** This unit chased it, and the first
+thing it found was that the gate already knows.
+
+`lint-reachability.mjs` labels 228 of its 653 unreached exports
+`[MODULE ORPHAN — nothing imports this file at all]`, and those 228 resolve to
+**exactly 62 distinct files** — the same 62 the from-scratch sweep produced from a
+completely different predicate (import-specifier basenames + comment-stripped
+mentions). **Two independent measurements agreeing is why this number is
+trusted**, and it is worth contrasting with the same sweep's first run, which
+claimed 28 of 888 modules were imported — implausible on its face, and traced to
+an import regex that forbade `{` between `import` and the specifier, excluding
+every braced import.
+
+**So there was no new detector to build, and not building one is the result.**
+What was missing is the UNIT. 653 unreached exports is a number worked down one
+symbol at a time; **62 files, 19,685 lines, that nothing imports** is a number
+someone can rule on in one sitting, and deleting one orphan removes several
+exports from 653 at once. Added as the `module-orphans` family.
+
+### Reading it as "delete 62 files" would be wrong, and dangerous in one class
+
+| class | what to do | examples |
+|---|---|---|
+| **Regulated obligations built and never wired** | **WIRE — do not delete** | `breachNotificationTrigger.ts`, `paymentApplication/`, `landlordCompliance.ts`, `usuryCeiling.ts`, `rental/leaseSigningPacket.ts` |
+| **Superseded duplicates** | delete | `authLockout.ts` — dead because `authPathLimits.ts#loginLimiter` is live |
+| **Experiments** | delete | the `*V9.ts` set, `scp*`, `aiAdvisorTeamV15`, the four `*Enhancements.ts` |
+
+**`breachNotificationTrigger.ts` (426 lines) is the sharpest thing here.** Written
+by a named privacy audit, its header names GLBA §314.4(j)'s 30 days, GDPR Art.
+33's 72 hours and the state statutes (CA §1798.82, NY SHIELD, IL PIPA, MA 201 CMR
+17), then says *"Calling code: any security event where personal data exposure is
+confirmed or reasonably suspected"* and lists five examples. **Nothing calls it.**
+
+That is the canonical defect the reachability gate was built for (`lateFees`
+§1026.36(c)(2), `respa/earlyIntervention` §1024.39) — and worse, because the
+trigger is an INCIDENT: the absence only manifests during a breach, which is
+exactly when nobody is reading code. Wiring it is a blocker rather than a
+refactor because deciding which events count as "reasonably suspected" carries
+legal weight.
+
+**The opposite error is equally available**, which is why class 2 is stated
+separately: `authLockout.ts` being unreached does NOT mean brute-force protection
+is missing. `authPathLimits.ts` exports a live `loginLimiter`. The control exists;
+this copy of it does not run. Verified before either claim was written down.
+
+The remedy string in the gate is asserted to keep the wire-don't-delete class, so
+a future reader working the number down cannot take "unreached ⇒ delete" from the
+tool itself.
+
+### The self-test's defaults were a hardcoded list, and did not survive
+
+Unit 102 gave `reachabilityGate.test.ts`'s fixture harness a defaults block so a
+new family would not break unrelated fixtures — **and wrote it as a hardcoded list
+of five.** The sixth family broke four fixtures at once, exactly as before. *A
+defaults list that must be edited whenever a family is added is the same defect it
+was introduced to fix*, so it now DERIVES the key set from the shipped
+`reachability.json`, and the `Baselines` type is an open record rather than a
+closed union for the same reason.
+
+Two fixture expectations were rewritten to the new truth rather than relaxed: the
+ratchet-semantics fixture writes two service files nothing imports, so they
+genuinely ARE module orphans and it now declares `moduleOrphans: 2` instead of
+pretending zero — the new family finding them is the gate working on its own test
+data.
+
+### Verification
+
+`npm run check` EXIT=0 · all six reachability counts at baseline ·
+11 mutations, every one verified to apply, **0 survivors** — including counting
+exports instead of distinct files (which would read ~228 and is the number this
+family exists to stop being), dropping the `moduleOrphan` filter, rewriting the
+remedy to say "delete anything unreached", and reverting the harness to its
+hardcoded defaults list. One mutation was re-targeted rather than counted:
+`f.moduleOrphan` first occurs in the `unreached-exports` describe, so the initial
+attempt patched a different family and tested nothing.

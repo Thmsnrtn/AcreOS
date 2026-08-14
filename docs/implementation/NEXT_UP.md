@@ -792,6 +792,21 @@ must not become one" — a shape test that said it was not one. Other zod schema
 the repo very likely make the same trade; `impossibleDatesAreRefused.test.ts` pins
 the four surfaces that were found, not a survey of the rest.
 
+### Breach notification is written and nothing calls it — BLOCKERS B19, class 1
+
+The single sharpest entry in the orphan list. `server/services/breachNotificationTrigger.ts`
+(426 lines) computes GLBA §314.4(j), GDPR Art. 33 and state breach-notification
+deadlines, was written by a named privacy audit, and its own header says *"Calling
+code: any security event where personal data exposure is confirmed or reasonably
+suspected"* followed by five examples. **Nothing calls it.**
+
+This is the canonical "built but unwired" defect the reachability gate exists for,
+and worse than `lateFees`/`respa` because the trigger is an INCIDENT: the absence
+only shows up during a breach. **Wiring is the fix, not deletion** — and it is a
+blocker because deciding which security events count as "reasonably suspected"
+carries legal weight. `paymentApplication/`, `usuryCeiling.ts` and
+`rental/leaseSigningPacket.ts` are the same shape.
+
 ### Four states with two different deposit deadlines — BLOCKERS B18, needs legal judgement
 
 `statuteRegister.ts` had warned, in its own words, that two overlapping deposit
@@ -818,8 +833,14 @@ array is invisible to the gate built to find dead modules. Sweeping
 `server/services/**`: **801 imported, 25 mentioned-but-never-imported, 62
 referenced by nothing at all.** Three of the 25 live in `companyAgents.ts`'s
 `ownedServices` arrays — that is where `taxOptimizationEngine` (B17) was hiding.
-The 62 are unexamined and are the obvious next place to look for a dead subsystem
-worth deleting.
+
+**The 62 were examined in unit 106 — see BLOCKERS B19.** They are now the
+`module-orphans` reachability family, and the gate turned out to already know
+about them (228 of its 653 unreached exports carry a `[MODULE ORPHAN]` label,
+resolving to exactly the same 62 files — two independent predicates agreeing).
+**Do not read them as a delete list**: one of the three classes is regulated
+obligations built and never wired, where deleting removes capability the product
+may be legally required to have.
 
 ### A tax engine that invents tax rates — BLOCKERS B17, founder decision
 

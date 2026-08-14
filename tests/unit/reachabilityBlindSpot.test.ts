@@ -202,3 +202,49 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     }
   });
 });
+
+describe("module orphans are counted as files, not only as exports", () => {
+  it("the family exists and is fed the orphan FILES", () => {
+    // Unit 106. These 62 were already inside unreached-exports (228 of its 653
+    // carry the [MODULE ORPHAN] label) — what the family adds is the unit the
+    // decision is made in. A file is rulable; an export is not.
+    expect(gate, "the moduleOrphans family is gone").toContain(`key: "moduleOrphans"`);
+    const at = gate.indexOf(`key: "moduleOrphans"`);
+    const block = gate.slice(at, at + 500);
+    expect(block, "the family no longer derives from the moduleOrphan flag").toContain(
+      "f.moduleOrphan",
+    );
+    // DISTINCT files — without the Set this counts exports and would read ~228,
+    // which is the number it exists to stop being.
+    expect(block).toContain("new Set(");
+  });
+
+  it("it has a baseline and may only shrink", () => {
+    expect(config.baselines.moduleOrphans).toBeGreaterThan(0);
+    expect(config.direction).toBe("down");
+  });
+
+  it("the remedy does NOT say 'delete them'", () => {
+    // The load-bearing part. One of the three classes is regulated obligations
+    // built and never wired — breachNotificationTrigger computes GLBA/GDPR/state
+    // breach deadlines and its own header lists the events that should call it.
+    // A remedy that read "delete unreached files" would invite removing a legal
+    // obligation the product may be required to have.
+    const at = gate.indexOf(`key: "moduleOrphans"`);
+    const block = gate.slice(at, gate.indexOf("},\n  {", at));
+    expect(block, "the orphan remedy lost its wire-don't-delete class").toMatch(
+      /must be WIRED, not deleted/,
+    );
+    expect(block).toMatch(/B19/);
+  });
+
+  it("and B19 records the triage", () => {
+    const blockers = fs.readFileSync(
+      path.join(ROOT, "docs/implementation/BLOCKERS.md"),
+      "utf8",
+    );
+    expect(blockers).toMatch(/## B19 —/);
+    expect(blockers).toContain("breachNotificationTrigger");
+    expect(blockers, "the superseded-vs-missing distinction is gone").toContain("loginLimiter");
+  });
+});

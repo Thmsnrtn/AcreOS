@@ -700,6 +700,48 @@ const FAMILIES = [
       "  ALLOWLIST it with a reason.",
   },
   {
+    // FAMILY 6 — whole FILES nothing imports, counted as files.
+    //
+    // `unreachedExports` already contains these — 228 of its 653 carry the
+    // `[MODULE ORPHAN]` label — so this adds no new detection. What it adds is
+    // the unit a decision is actually made in. 653 unreached exports is a number
+    // you work down one symbol at a time; **62 files, 19,685 lines, that nothing
+    // imports** is a number someone can rule on in one sitting, and deleting one
+    // orphan removes several exports from 653 at once.
+    //
+    // It is NOT one decision, and the list makes that obvious. Three classes:
+    //
+    //   • REGULATED OBLIGATIONS BUILT AND NEVER WIRED. `breachNotificationTrigger.ts`
+    //     computes GLBA §314.4(j) / GDPR Art. 33 / state breach deadlines and its
+    //     own header names the five events that should call it — nothing does.
+    //     `paymentApplication/`, `landlordCompliance.ts`, `usuryCeiling.ts`,
+    //     `rental/leaseSigningPacket.ts` are the same shape. Deleting these
+    //     removes capability the product may be legally required to have; WIRING
+    //     is the fix, and where to hook it is a judgement call.
+    //   • SUPERSEDED DUPLICATES. `authLockout.ts` is dead because
+    //     `middleware/authPathLimits.ts#loginLimiter` is live — the control
+    //     exists, this copy of it does not run. Deletion is the answer.
+    //   • EXPERIMENTS. The `*V9.ts` set, `scp*`, `aiAdvisorTeamV15`,
+    //     `*Enhancements.ts` — the family the 2026-08-01 founder deletion wave
+    //     already ruled on once.
+    //
+    // Recorded as BLOCKERS B19 with the full list. This count exists so the
+    // population cannot quietly grow while that decision waits, and so that
+    // deleting a batch is locked in by the commit that earns it.
+    key: "moduleOrphans",
+    label: "module-orphans",
+    findings: [...new Set(unreachedExports.filter((f) => f.moduleOrphan).map((f) => f.file))].map(
+      (file) => ({ file }),
+    ),
+    describe: (f) => `${f.file} — nothing in production imports this file`,
+    remedy:
+      "Three different answers, and the file tells you which (see BLOCKERS B19):\n" +
+      "  a REGULATED obligation built and never wired must be WIRED, not deleted;\n" +
+      "  a SUPERSEDED duplicate should be deleted; an EXPERIMENT should be deleted.\n" +
+      "  Deleting one also removes its exports from unreached-exports — lower BOTH\n" +
+      "  baselines in the same commit.",
+  },
+  {
     // FAMILY 5 — the gate's own blind spot, counted instead of narrated.
     //
     // These are exports the four families above CANNOT assert on, because

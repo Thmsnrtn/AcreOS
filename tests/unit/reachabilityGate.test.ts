@@ -25,7 +25,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 
@@ -45,14 +45,30 @@ function run(...args: string[]): { code: number; out: string } {
   }
 }
 
-type Baselines = Partial<{
-  unreachedExports: number;
-  tablesNoWriter: number;
-  tablesNoReader: number;
-  unregisteredRoutes: number;
-  opaqueExports: number;
-}>;
+/**
+ * A fixture names only the families it is ABOUT; the rest are zeroed from the
+ * real config. Kept as an open record rather than a closed union for the same
+ * reason the defaults are derived — a closed list has to be edited every time
+ * the gate grows a family, which is what broke four fixtures when
+ * `module-orphans` landed.
+ */
+type Baselines = Record<string, number>;
 type Allow = { kind: string; id: string; reason: string };
+
+/**
+ * Every family the REAL ratchet config declares, zeroed.
+ *
+ * Reading the shipped baselines' keys means a fixture automatically covers a
+ * family added later; the values are irrelevant here, only the key set is.
+ */
+function zeroedFamilies(): Record<string, number> {
+  const real = JSON.parse(
+    readFileSync(join(REPO_ROOT, "scripts/ratchets/reachability.json"), "utf8"),
+  ) as { baselines: Record<string, number> };
+  const keys = Object.keys(real.baselines);
+  if (keys.length === 0) throw new Error("no families in the real ratchet config — harness broken");
+  return Object.fromEntries(keys.map((k) => [k, 0]));
+}
 
 /** Build a miniature repo under `dir` and return a runner bound to it. */
 function fixture(dir: string) {
@@ -70,19 +86,18 @@ function fixture(dir: string) {
         evaluator: "scripts/lint-reachability.mjs",
         direction: "down",
         // Every family defaults to 0 and a fixture overrides only what it is
-        // about. The gate FAILS a family with no baseline, so before this
-        // default the `opaque-exports` family broke four unrelated fixtures at
-        // once — none of which were testing opacity. A fixture should fail
-        // because the behaviour it pins changed, not because the gate grew a
-        // family it never mentioned.
-        baselines: {
-          unreachedExports: 0,
-          tablesNoWriter: 0,
-          tablesNoReader: 0,
-          unregisteredRoutes: 0,
-          opaqueExports: 0,
-          ...baselines,
-        },
+        // about. The gate FAILS a family with no baseline, so a new family
+        // otherwise breaks every unrelated fixture at once — a fixture should
+        // fail because the behaviour it pins changed, not because the gate grew
+        // a family it never mentioned.
+        //
+        // DERIVED from the real config's keys, not a hardcoded list. It WAS a
+        // hardcoded list of five, added for exactly this reason when
+        // `opaque-exports` landed — and it then failed to survive the sixth
+        // family, `module-orphans`, four fixtures at a time. A defaults list that
+        // has to be edited whenever a family is added is the same defect it was
+        // introduced to fix.
+        baselines: { ...zeroedFamilies(), ...baselines },
         allowlist,
       }),
     );
@@ -298,7 +313,10 @@ describe("lint-reachability — ratchet semantics", () => {
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  const base = { tablesNoWriter: 0, tablesNoReader: 0, unregisteredRoutes: 0 };
+  // `a.ts` and `b.ts` are imported by nothing, so they are genuinely MODULE
+  // ORPHANS as well as unreached exports — the module-orphans family added in
+  // unit 106 counts them, and the fixture says 2 rather than pretending 0.
+  const base = { tablesNoWriter: 0, tablesNoReader: 0, unregisteredRoutes: 0, moduleOrphans: 2 };
 
   it("PASSes at baseline", () => {
     const f = fixture(dir);
@@ -420,17 +438,22 @@ describe("lint-reachability — the real repo", () => {
     expect(code).toBe(0);
   });
 
-  it("declares all five baselines in scripts/ratchets/reachability.json", async () => {
+  it("declares every family baseline in scripts/ratchets/reachability.json", async () => {
     const cfg = (
       await import("../../scripts/ratchets/reachability.json", {
         with: { type: "json" },
       })
     ).default as { baselines: Record<string, number>; allowlist: Allow[] };
     expect(Object.keys(cfg.baselines).sort()).toEqual([
-      // opaqueExports is the SIZE OF THE BLIND SPOT — exports the other four
-      // families cannot assert on because their module is dynamically imported
-      // somewhere. Nothing in it is proven dead; the point is that it may only
-      // shrink, where before it was printed as prose and could grow unwatched.
+      // moduleOrphans counts whole FILES nothing imports — 228 of the unreached
+      // exports resolve to 62 files, and a file is the unit a delete-or-wire
+      // decision is made in (BLOCKERS B19). It is NOT a delete list: one class
+      // is regulated obligations built and never wired.
+      "moduleOrphans",
+      // opaqueExports is the SIZE OF THE BLIND SPOT — exports the other families
+      // cannot assert on because their module is dynamically imported somewhere.
+      // Nothing in it is proven dead; the point is that it may only shrink,
+      // where before it was printed as prose and could grow unwatched.
       "opaqueExports",
       "tablesNoReader",
       "tablesNoWriter",
