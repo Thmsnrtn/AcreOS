@@ -5820,3 +5820,76 @@ honest ones. Measured and recorded rather than guessed at.
 `npm run check` EXIT=0 · `tests/unit` 697 files, 9,121 passed, 1 skipped ·
 10 mutations across the three units, every one verified to apply and every one
 caught.
+
+---
+
+## Units 92–93 — the favourable value doubling as the default · `b037f59` `ffca730`
+
+Unit 90 left a measured remainder: ~29 `if (!res.ok) return [] / null` sites in
+`client/src`. Reading them one by one produced a better rule than converting them
+would have:
+
+> **The question is not whether the fetch swallowed the error. It is whether the
+> null RENDERS AS AN ABSENCE OR AS A CLAIM.**
+
+Most render an absence and are honest as they stand — `land-credit-badge` shows
+no score, the AVM panel omits its estimate, `version-check` simply does not offer
+an update. Converting those would turn a silent absence into an error state on an
+optional badge: worse, and not a fix. **Checking prevented a harmful sweep**,
+which is the same value as a fix and is worth recording as such.
+
+### Unit 92 — a failed compliance read rendered as a green Compliant badge
+
+`compliance-badge` was the exception, and the sharpest instance in the repo:
+
+```ts
+const status = propStatus || (checks.length > 0 ? deriveStatus(checks) : "compliant");
+```
+
+A failed fetch produced an empty `checks` array, so a read that never happened
+rendered **Compliant** — icon, label and `aria-label` — on a compliance surface.
+The popover underneath said *"No checks performed yet"* at the same moment: the
+two halves of one component describing different worlds.
+
+**The favourable value was doing double duty as the default.** It now carries an
+`unknown` state ("Not checked"), because the canonical laws require unknown to
+stay distinguishable and it cannot be represented by reusing the good answer. The
+test asserts ORDER rather than absence — `checks.length > 0 ? … : "compliant"`
+survives and is still right when the server ANSWERED and reported no applicable
+checks; the bug was that it was the outermost branch.
+
+### Unit 93 — the same question, asked everywhere
+
+36 `?? "low" | "ok" | "none"` defaults across `client/src`, `server/`, `shared/`.
+34 are placeholders or real enum members. Two were verdicts:
+
+**`getRiskColor(intel.slopeRisk ?? "low")`** — a parcel whose slope GRADE is known
+but whose RISK classification is missing had its number painted green, on a panel
+whose own header two lines above promises *"Every value is real-or-honest: a
+missing field renders 'Not yet pulled · Check now', never a fabricated number or
+a default flood zone."* The component already knew — it hides the risk LABEL when
+absent — and coloured the number favourably anyway.
+
+Both risk helpers now accept `undefined` and answer neutrally. That signature
+change is the part that keeps the rule: if the parameter required a band, the
+next caller with an optional field would add `?? "low"` back to satisfy the type,
+and would be right to.
+
+**`syntheticChecks` `?? "ok"`**, three times — unreachable today, and recorded as
+such rather than dressed up as a live fix. The change is one word of DIRECTION: a
+check that cannot report its status has not passed, and monitoring should fail
+toward attention.
+
+### Why both tests are narrow
+
+A regex for "favourable default" cannot tell `dunningStage ?? "none"` from
+`slopeRisk ?? "low"` — one is an enum member, the other is a verdict. A sweep
+asserting zero would be wrong 34 times out of 36 and would be deleted within a
+week. Both files pin the REAL cases and the properties that keep them fixed.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 698 files, 9,132 passed, 1 skipped ·
+6 mutations, every one verified to apply and every one caught. Ninth instance of
+prose tripping a check meant for code — `getRiskColor`'s new doc comment quotes
+the defective call it replaced.
