@@ -6318,3 +6318,57 @@ its own copy back.
 14 mutations, every one verified to apply. Nine killed; the three single-clause
 ones survive for the measured reason above and are documented as such; the
 whole-check and leap-day mutations are killed, which is the property that matters.
+
+## Unit 100 — the same question asked of every date boundary · this commit
+
+Unit 99 recorded the generalisable question rather than surveying for it: *does
+this validator check the SHAPE of a value or its VALIDITY?* Asked of every
+`YYYY-MM-DD` zod declaration in the repo, there are exactly **three**. One was
+unit 99's. The other two were both wrong, and the first is a sharper instance
+than anything unit 99 found.
+
+### A refinement named after the rule it does not implement
+
+`server/routes-property-expenses.ts`:
+
+```ts
+/** A calendar day the operator asserts — YYYY-MM-DD, and a real date. */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD")
+  .refine((s) => !Number.isNaN(new Date(`${s}T00:00:00Z`).getTime()), "Not a real date");
+```
+
+**The author reached for a validity check and reached for the one that cannot
+work.** `new Date("2026-02-30T00:00:00Z")` is March 2nd with a perfectly finite
+`getTime()`, so Feb 30 passed a refinement whose message is *"Not a real date"* —
+under a doc comment promising *"and a real date"*. Unit 99's rent-ledger case was
+prose promising what the code omitted; this is prose promising what the code
+*attempts and gets wrong*, which is harder to see and reads as already-handled.
+
+It matters because `incurredOn` buckets BY MONTH downstream: an expense dated
+2026-02-30 lands in March, so a CAM reconciliation recovers it in the wrong
+period — and a CAM true-up is a bill a tenant pays.
+
+### An auction date nobody can attend
+
+`server/routes-tax-researcher.ts` had a bare shape test feeding `auctionDate` on
+tax lien/deed auctions. A date silently rolled forward two days is a courthouse
+appointment that does not exist.
+
+### The gate is derived, so the fourth one is caught without editing it
+
+Rather than list the three files, the test scans every `z.string()` declaration in
+`server/`, `shared/` and `client/src`, keeps the ones constrained to the
+`YYYY-MM-DD` shape, and requires a validity refinement in the same statement. A
+vacuity guard asserts the statement-matching regex still finds a known
+declaration, so "no offenders" cannot pass at zero. The expense case is checked
+through the **real exported schema** — `expenseCreateSchema` is exported for
+exactly that reason — rather than a test-local mirror that could drift.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 704 files, 9,194 passed, 1 skipped ·
+4 mutations, every one verified to apply, **0 survivors** — including reverting
+the expense refinement to the NaN check it used to be, which is the mutation that
+matters, and a refuses-everything mutation to prove the positive cases are real.

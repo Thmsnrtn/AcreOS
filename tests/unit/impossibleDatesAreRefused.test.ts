@@ -52,6 +52,7 @@ import { z } from "zod";
 import { parseCalendarDate, isCalendarDate } from "@shared/dates/calendar";
 import { parseIsoDateUtc } from "../../server/services/notePaymentMath";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
+import { expenseCreateSchema } from "../../server/routes-property-expenses";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -92,11 +93,9 @@ describe("the one calendar parser", () => {
     // round. The clauses stay because a standard round-trip checks all three and
     // a change to the regex could make one load-bearing.
     //
-    // What IS pinned: deleting the whole check, or getting a leap day wrong,
-    // both fail here.
-    //
-    // What this DOES pin is the property itself, across 2024 (a leap year) and
-    // 2026 (not): the parser accepts exactly the days the calendar has.
+    // What IS pinned is the property itself, across 2024 (a leap year) and 2026
+    // (not): the parser accepts exactly the days the calendar has. Deleting the
+    // whole check, or getting a leap day wrong, both fail here.
     for (const year of [2024, 2026]) {
       for (let month = 1; month <= 13; month += 1) {
         for (let day = 0; day <= 32; day += 1) {
@@ -226,5 +225,82 @@ describe("the notes predicate inherits all of it", () => {
     expect(delinquencyIsDeterminable("2026-03-01")).toBe(true);
     expect(delinquencyIsDeterminable("2026-02-30")).toBe(false);
     expect(delinquencyIsDeterminable(null)).toBe(false);
+  });
+});
+
+describe("every YYYY-MM-DD boundary in the repo checks validity, not shape", () => {
+  // Three such validators exist. The rent-ledger one is covered above; these are
+  // the other two, and the first is the sharpest instance of the class.
+
+  it("a property expense cannot be incurred on a day that does not exist", () => {
+    // The old `.refine` here read
+    // `!Number.isNaN(new Date(`${s}T00:00:00Z`).getTime())` under the message
+    // "Not a real date" — the author reached for a validity check and reached
+    // for the one that cannot work. Feb 30 passed the check named after
+    // rejecting it.
+    //
+    // It matters because `incurredOn` buckets BY MONTH downstream: 2026-02-30
+    // lands in March, so a CAM reconciliation recovers the expense in the wrong
+    // period, and a CAM true-up is a bill a tenant pays.
+    //
+    // The REAL schema is imported, not a mirror — the module exports it for
+    // exactly this reason.
+    const base = { category: "repairs" as const, amountCents: 1000 };
+    for (const bad of ["2026-02-30", "2026-04-31", "2026-13-01"]) {
+      expect(
+        expenseCreateSchema.safeParse({ ...base, incurredOn: bad }).success,
+        `${bad} was accepted as an expense date`,
+      ).toBe(false);
+    }
+    for (const good of ["2026-02-28", "2024-02-29", "2026-01-31"]) {
+      expect(
+        expenseCreateSchema.safeParse({ ...base, incurredOn: good }).success,
+        `${good} was rejected`,
+      ).toBe(true);
+    }
+  });
+
+  it("no YYYY-MM-DD zod validator is left as a bare shape test", () => {
+    // Derived from source rather than listed: the three known files are checked
+    // by reading every `\d{4}-\d{2}-\d{2}` zod declaration in the repo and
+    // requiring a validity refinement in the same statement. A fourth one added
+    // later is caught without editing this test.
+    const strip = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const walk = (dir: string, out: string[]) => {
+      for (const e of fs.readdirSync(dir)) {
+        if (e === "node_modules" || e === "dist" || e.startsWith(".")) continue;
+        const full = path.join(dir, e);
+        if (fs.statSync(full).isDirectory()) { walk(full, out); continue; }
+        if (!/\.tsx?$/.test(e) || /\.(test|spec)\.tsx?$/.test(e)) continue;
+        out.push(full);
+      }
+    };
+    const files: string[] = [];
+    for (const tree of ["server", "shared", "client/src"]) walk(path.join(ROOT, tree), files);
+
+    const offenders: string[] = [];
+    for (const f of files) {
+      const code = strip(fs.readFileSync(f, "utf8"));
+      // A zod declaration constrained to the date shape, up to its statement end.
+      for (const m of code.matchAll(/z\s*\n?\s*\.string\(\)[\s\S]{0,400}?;/g)) {
+        const decl = m[0];
+        if (!/\\d\{4\}\)?-\(?\\d\{2\}\)?-\(?\\d\{2\}/.test(decl)) continue;
+        if (/isCalendarDate|parseCalendarDate/.test(decl)) continue;
+        offenders.push(`${path.relative(ROOT, f)}: ${decl.slice(0, 90).replace(/\s+/g, " ")}`);
+      }
+    }
+    expect(
+      offenders,
+      "a YYYY-MM-DD zod validator accepts any string of the right SHAPE. " +
+        "`2026-02-30` matches that regex and is not a day; add " +
+        "`.refine((v) => isCalendarDate(v), …)` from @shared/dates/calendar.",
+    ).toEqual([]);
+  });
+
+  it("and the sweep finds the declarations it is checking (vacuity guard)", () => {
+    // If the statement-matching regex broke, "no offenders" would pass at zero.
+    const rrl = fs.readFileSync(path.join(ROOT, "server/routes-rent-ledger.ts"), "utf8");
+    expect(rrl).toMatch(/z\s*\n?\s*\.string\(\)[\s\S]{0,400}?isCalendarDate/);
   });
 });
