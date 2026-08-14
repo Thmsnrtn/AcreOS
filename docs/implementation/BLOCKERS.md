@@ -1031,7 +1031,40 @@ INVERTED assertion in the idiom of `vaWorkflowBounds.test.ts`: it pins that
 gives it one** — so wiring it up forces this decision to be answered first
 instead of shipping the 5% alongside it.
 
-## B18 — Four states where our two deposit registries give different statutory deadlines
+## B18 — PARTLY RESOLVED 2026-08-14: the duplicate is retired; widening stays open
+
+**DECIDED (picker, 2026-08-14): "Retire the dead duplicate."** Executed in unit
+108 — `SECURITY_DEPOSIT_RULES` and `computeSecurityDepositDeadline` are gone from
+`server/services/landlordCompliance.ts` (116 lines), a module nothing imported.
+`shared/regulatory/depositReturnRules.ts` is now the single owner, and all four
+disagreements are dissolved rather than adjudicated — deciding which reading of
+Fla. Stat. §83.49 is right is legal judgement this program does not have.
+
+The rollover defect went with it: that function parsed with a bare `new Date()`
+plus a NaN check, so `2026-02-30` became March 2 — the shape unit 99 removed from
+everything live.
+
+`depositRegistriesAgree.test.ts` changed job rather than being deleted: it used to
+pin the four disagreements in both directions, and now asserts **single
+ownership** (including that no rival table appears in any other module) plus the
+property that made the survivor the right one — it REFUSES a state it does not
+encode instead of defaulting. The deposit tests in `landlordCompliance.test.ts`
+were retired rather than relocated, and the reason is recorded in the file:
+**they asserted the losing side of the conflict** (`FL: 15 days`), so porting them
+would have enshrined an unreviewed reading.
+
+### STILL OPEN — coverage
+
+The retired table had 51 entries with citations; the live one is deliberately
+incomplete. **Widening it is separate, reviewable work**: each entry needs
+checking against its citation before it backs a live statutory deadline, and the
+four disputed states need a real reading. Until then the live registry returns
+`{ known: false, unknownReason }` for what it does not encode, which is the
+honest answer and is asserted by the test.
+
+The original finding is kept below for the record.
+
+### Original finding (unit 105)
 
 **`shared/governance/statuteRegister.ts` warned about this in its own words**, and
 had done for a while:

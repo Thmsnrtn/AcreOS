@@ -6849,3 +6849,71 @@ the registers are what say which.
 reappearing, a dangling registry reference returning, the rate table
 reimplemented in a new module, and the queued-tables note dropped from the
 deletion ledger.
+
+## Unit 108 — B18 executed: one deposit registry, four disagreements dissolved · this commit
+
+**Founder ruling (picker, 2026-08-14): "Retire the dead duplicate."**
+
+`SECURITY_DEPOSIT_RULES` and `computeSecurityDepositDeadline` — 116 lines — are
+gone from `server/services/landlordCompliance.ts`, a module nothing imported.
+`shared/regulatory/depositReturnRules.ts`, which the deposit clock, the
+disposition letter and the rent-ledger surface actually read, is the single owner.
+
+**The four disagreements are dissolved rather than adjudicated**, and that is the
+point: FL 15 vs 30, ME 30 vs 21, MT 10 vs 30, OK 45 vs 30, each pair citing the
+same statute. Deciding which reading of Fla. Stat. §83.49 is right is legal
+judgement, and a confident wrong deadline is worse than an honest gap.
+
+The rollover defect went with it — that function parsed with a bare `new Date()`
+plus a NaN check, so `2026-02-30` became March 2, the shape unit 99 removed from
+everything live.
+
+### Only the deposit half was removed
+
+`landlordCompliance.ts` keeps its notice-period, retaliation, lead-paint,
+fair-housing and HAP-recert logic. **B19 classes it as a regulated obligation
+built and never wired**, where deletion would remove capability rather than a
+duplicate; only the part that had a live rival went.
+
+### Two tests changed job rather than being deleted
+
+`depositRegistriesAgree.test.ts` used to pin the four disagreements in both
+directions. It now asserts the property that makes a disagreement impossible —
+**single ownership**, including that no rival table appears in any other module,
+because 51 entries pasted elsewhere would be the same defect — plus the property
+that made the survivor the right one: it REFUSES a state it does not encode rather
+than defaulting. If that ever starts returning a default, the deletion becomes a
+real loss and B18 must be reopened; the test says so.
+
+The deposit tests in `landlordCompliance.test.ts` were **retired rather than
+relocated**, and the reason is recorded in the file because it is the whole of
+B18: **they asserted the losing side of the conflict.** `expect(FL).toBe(15)`
+ported onto the live registry would have enshrined a reading nobody reviewed —
+exactly the outcome the ruling avoided.
+
+### The ratchet caught the reduction again, and that is now a pattern
+
+`unreachedExports` went stale-high 652 → 651 — the removed exports left the count
+and the gate refused to pass until it was locked in. **This is the second unit in
+a row where a deletion tripped a register I had not updated**, after B17's
+`colon-any` and tenancy-register entries. The lesson is not that the deletions
+were wrong; it is that *a deletion touches every register that ever counted or
+named the thing*, and running the gates is the only way to learn which. Neither
+was visible in the diff.
+
+`moduleOrphans` stays 61: the module still exists and is still orphaned. Only its
+deposit half went.
+
+### Verification
+
+`npm run check` EXIT=0 · all six reachability counts at baseline · 5 mutations,
+every one verified to apply, **0 survivors** — the duplicate returning to its old
+home, a rival table appearing in a NEW module, the survivor defaulting instead of
+refusing, the survivor losing one of the four disputed states, and the register's
+stale "two overlapping registries" note coming back.
+
+**Twelfth prose-trip, second of a new kind.** The statute register's note about
+this very removal quotes the retired symbol — and a register entry is a STRING IN
+CODE, which comment-stripping cannot reach. `statuteRegister.ts` is documentation
+in code form; naming things is its job, so it is exempted with that reason stated
+rather than reworded around.

@@ -807,23 +807,24 @@ blocker because deciding which security events count as "reasonably suspected"
 carries legal weight. `paymentApplication/`, `usuryCeiling.ts` and
 `rental/leaseSigningPacket.ts` are the same shape.
 
-### Four states with two different deposit deadlines — BLOCKERS B18, needs legal judgement
+### Deposit registry coverage — B18's remaining half (the duplicate is retired)
 
 `statuteRegister.ts` had warned, in its own words, that two overlapping deposit
 registries exist and *"nothing cross-checks them"*. Unit 105 ran the check: 50
 states in both, **46 agree, 4 do not** — FL 15 vs 30, ME 30 vs 21, MT 10 vs 30,
 OK 45 vs 30 — each pair citing the same statute.
 
-**Not resolved here on purpose.** Reading a statute and picking a number is legal
-judgement, and a confident wrong deadline is worse than a flagged disagreement.
-The two tables are not peers, which makes it a bigger question than four numbers:
-`depositReturnRules` is the LIVE one and deliberately incomplete (absent state →
-`known: false`), while the COMPLETE 51-entry `SECURITY_DEPOSIT_RULES` sits in
-`landlordCompliance.ts`, **which nothing imports**. The likely question is *should
-the complete table back the live one?*
+**DONE (unit 108, founder ruling): the duplicate is retired.** The four
+disagreements are dissolved rather than adjudicated, and
+`depositRegistriesAgree.test.ts` now asserts single ownership — including that no
+rival table appears in any other module — plus the property that made the survivor
+right: it REFUSES a state it does not encode instead of defaulting.
 
-`depositRegistriesAgree.test.ts` pins the four in both directions, so a fifth
-cannot appear quietly and resolving one is locked in by the commit that earns it.
+**WHAT REMAINS is coverage.** The retired table had 51 entries with citations; the
+live one is deliberately incomplete. Widening it means checking each entry against
+its citation before it backs a live statutory deadline, and giving the four
+disputed states a real reading. That is reviewable work with legal weight, not a
+port.
 
 ### The registry-ghost sweep — 25 modules that look alive because of a string
 
