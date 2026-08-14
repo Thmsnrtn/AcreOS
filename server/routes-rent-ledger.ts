@@ -141,6 +141,7 @@ import { emitRentReceived } from "./services/rentalEvents";
 // reservation.checkout on the PATCH /api/reservations/:id/status seam below.
 // Fire-and-forget — see services/strEvents.ts.
 import { emitReservationCheckout } from "./services/strEvents";
+import { isCalendarDate } from "@shared/dates/calendar";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -172,10 +173,20 @@ const postureSchema = z.object({
   notes: z.string().optional(),
 });
 
-/** YYYY-MM-DD, validated rather than coerced — a bad date must not become one. */
+/**
+ * YYYY-MM-DD, validated rather than coerced — a bad date must not become one.
+ *
+ * THE `.refine` IS WHAT MAKES THAT SENTENCE TRUE. The regex alone is a SHAPE
+ * test: `"2026-02-30"` passed it, reached `startDepositClock` as a move-out
+ * override, and `new Date("2026-02-30T00:00:00.000Z")` is March 2nd — so the
+ * statutory security-deposit return deadline landed two days late, on an
+ * obligation that carries penalties for being late. The sentence above described
+ * a guarantee the code did not provide.
+ */
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date")
+  .refine((v) => isCalendarDate(v), "That date does not exist");
 
 const scheduledPreviewSchema = z.object({
   /** Generate periods whose month starts on or before this. Default: today. */

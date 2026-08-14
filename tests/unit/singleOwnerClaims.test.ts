@@ -263,13 +263,24 @@ describe("the delinquency predicate has one owner", () => {
   it("it judges the date rather than the string's shape", () => {
     // The drift that made three copies dangerous. A shape test accepts
     // "2026-02-30"; this must not.
+    // The parse moved AGAIN after this gate first shipped: unit 99 found the
+    // same rollover defect on a statutory deposit deadline and a payoff quote,
+    // so `parseCalendarDate` now lives in the neutral `shared/dates/calendar.ts`
+    // and this module imports it. The assertion follows the definition rather
+    // than being deleted — the invariant is unchanged, only its address is.
     const src = CODE.get("shared/notes/delinquency.ts")!;
+    expect(src, "the predicate stopped delegating to the canonical parse").toMatch(
+      /from "\.\.\/dates\/calendar"/,
+    );
+    const canonical = CODE.get("shared/dates/calendar.ts")!;
     // The definition, not a substring — `toContain("parseCalendarDate")` also
     // matches `parseCalendarDateX`, which is how this assertion first survived
     // a rename mutation.
-    expect(src).toMatch(/export function parseCalendarDate\(/);
-    expect(src, "the round-trip check is gone — impossible dates roll over silently")
-      .toContain("getUTCDate() !== day");
+    expect(canonical).toMatch(/export function parseCalendarDate\(/);
+    expect(
+      canonical,
+      "the round-trip check is gone — impossible dates roll over silently",
+    ).toContain("getUTCDate() !== day");
   });
 
   it("accepts every shape the three columns actually store", () => {

@@ -6234,3 +6234,87 @@ satisfied by the first fragment of a concatenated one; and the whole argument fo
 adopting the superset — that it takes `Date` and ISO datetimes — was made in prose
 and asserted nowhere, so it is now checked **behaviourally**, by calling the
 function on all three input shapes and on `2026-02-30`.
+
+## Unit 99 — February 30th is not a day, and three money surfaces disagreed · this commit
+
+JavaScript answers the wrong question by default:
+
+```js
+new Date("2026-02-30T00:00:00.000Z")   // → March 2nd
+Number.isFinite(that.getTime())        // → true
+```
+
+So every parser in this repo that constructed a date and then checked it for NaN
+accepted a date that does not exist and returned a real one two days later. Unit
+98 found the first while consolidating a predicate; asking *where else* found two
+more, and **both were reachable from a request.**
+
+### The statutory deadline
+
+`shared/regulatory/depositReturnRules.ts` exported a `parseIsoDate` doing
+`String(iso).slice(0, 10)` and then trusting `new Date()`. It feeds the
+security-deposit RETURN DEADLINE. Proven end to end: a move-out of `2026-02-30`
+becomes March 2, so a 21-day deadline lands on **2026-03-23 instead of
+2026-03-21** — late, on an obligation that carries penalties in most states for
+being late.
+
+### The payoff quote
+
+`server/services/notePaymentMath.ts#parseIsoDateUtc` parses payoff and
+payment-posting dates, and `GET /api/notes/:id/payoff?date=…` passes the query
+string straight in. `?date=2026-02-30` quoted the borrower **two extra days of
+interest** — and the route's own `catch → 400 "date must be a valid ISO date"`
+never fired, because nothing threw. **The handler was written for exactly this
+input and could not see it.**
+
+### The boundary that should have stopped both
+
+```ts
+/** YYYY-MM-DD, validated rather than coerced — a bad date must not become one. */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, …);
+```
+
+A shape test under a comment promising it is not one. `"2026-02-30"` passed it and
+reached `startDepositClock` as a move-out override. This is the session's
+recurring shape at its sharpest — **prose asserting a guarantee the code does not
+provide**, the same defect as unit 95's `getUserId` comment and unit 96's
+`formatCents` register, except here the false promise was load-bearing on a legal
+deadline.
+
+### The fix
+
+One line of arithmetic — construct the date, then check it reads back as the
+fields you put in — now in ONE place, `shared/dates/calendar.ts`, rather than in
+each of the four parsers that needed it. The deposit rules, the payoff parser, the
+notes predicate and the rent-ledger request boundary all delegate to it. The
+payoff parser keeps its throwing contract and its `Date` branch untouched; only
+the string branch changed, which turns the rollovers back into the throw the
+function already promised.
+
+### What mutation testing corrected about my own reasoning
+
+The three clauses of the round-trip check (`year`, `month`, `day`) are **each
+individually redundant**: a rollover always disturbs more than one field —
+`2026-02-30` is March 2 (month AND day differ), `2026-13-01` is Jan 2027 (year AND
+month differ) — so deleting any one leaves the others catching every input the
+regex admits, and all three single-clause mutations survive. The first draft of
+that note claimed the MONTH clause was load-bearing; **the mutation run said
+otherwise, so the comment was corrected to the measurement rather than the other
+way round.** An "empty input space" in unit 74's catalogue, recorded rather than
+papered over. What IS pinned is an exhaustive property test across a leap year and
+a non-leap year: deleting the whole check, or getting Feb 29 wrong, both fail.
+
+### Unit 98's gate was updated, not weakened
+
+`singleOwnerClaims.test.ts` asserted `parseCalendarDate` is defined in
+`shared/notes/delinquency.ts`. It moved. Per CLAUDE.md's wave rule the assertion
+follows the definition — the invariant is unchanged, only its address is — and it
+now additionally checks that the notes module still delegates rather than growing
+its own copy back.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 704 files, 9,191 passed, 1 skipped ·
+14 mutations, every one verified to apply. Nine killed; the three single-clause
+ones survive for the measured reason above and are documented as such; the
+whole-check and leap-day mutations are killed, which is the property that matters.

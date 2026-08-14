@@ -31,6 +31,10 @@
  * convention and the cents↔decimal boundary rules.
  */
 
+// The repo's one calendar-date parser. This module had no imports and did its
+// own `new Date(...)`, which is precisely how the rollover survived here.
+import { parseCalendarDate } from "@shared/dates/calendar";
+
 // ---------------------------------------------------------------------------
 // Principal / interest split — integer cents.
 //
@@ -236,9 +240,15 @@ export function parseIsoDateUtc(value: string | Date): Date {
     if (Number.isNaN(value.getTime())) throw new Error("parseIsoDateUtc: invalid Date");
     return value;
   }
-  const day = String(value).slice(0, 10);
-  const parsed = new Date(`${day}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
+  // `new Date("2026-02-30T00:00:00.000Z")` is March 2nd and `getTime()` is a
+  // finite number, so the NaN check here never fired for a date that is not a
+  // day — and `GET /api/notes/:id/payoff?date=2026-02-30` quoted the borrower two
+  // extra days of interest while the route's own 400 handler stayed silent,
+  // because nothing threw. `parseCalendarDate` round-trips the parse and returns
+  // null for the rollovers, which turns them back into the throw this function
+  // already promised.
+  const parsed = parseCalendarDate(value);
+  if (parsed === null) {
     throw new Error(`parseIsoDateUtc: not a valid ISO date: ${String(value)}`);
   }
   return parsed;

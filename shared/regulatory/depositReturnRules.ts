@@ -1,3 +1,5 @@
+import { parseCalendarDate } from "../dates/calendar";
+
 /**
  * State security-deposit return deadlines + itemization duties.
  *
@@ -186,13 +188,13 @@ export function getDepositReturnRule(state: string | null | undefined): DepositR
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Parse a YYYY-MM-DD date column into a UTC-midnight Date. Null if unusable. */
-export function parseIsoDate(iso: string | null | undefined): Date | null {
-  if (!iso) return null;
-  const trimmed = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const d = new Date(`${trimmed}T00:00:00.000Z`);
-  return Number.isFinite(d.getTime()) ? d : null;
-}
+/*
+ * `parseIsoDate` lived here and did `String(iso).slice(0, 10)` and then trusted
+ * `new Date()`, so it ACCEPTED "2026-02-30" and returned March 2nd — making a
+ * 21-day statutory return deadline land two days late, on an obligation that
+ * carries penalties for being late. Replaced by `parseCalendarDate`, which
+ * round-trips the parse and refuses a date that is not a day.
+ */
 
 function toIso(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -268,7 +270,7 @@ export function computeDepositDeadline(args: {
     );
   }
 
-  const moveOut = parseIsoDate(args.moveOutDate);
+  const moveOut = parseCalendarDate(args.moveOutDate);
   if (!moveOut) {
     return unknown(
       `A move-out date is required before the ${rule.state} deposit clock can start (${rule.citation}). ` +
@@ -309,11 +311,11 @@ export function depositDeadlineCountdown(
   deadlineDate: string | null | undefined,
   today: Date = new Date(),
 ): DepositCountdown {
-  const deadline = parseIsoDate(deadlineDate);
+  const deadline = parseCalendarDate(deadlineDate);
   if (!deadline) {
     return { deadlineDate: null, daysRemaining: null, overdue: false, urgent: false };
   }
-  const todayUtc = parseIsoDate(toIso(today)) ?? today;
+  const todayUtc = parseCalendarDate(toIso(today)) ?? today;
   const daysRemaining = Math.round((deadline.getTime() - todayUtc.getTime()) / DAY_MS);
   return {
     deadlineDate: toIso(deadline),
