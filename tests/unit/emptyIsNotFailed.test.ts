@@ -35,12 +35,28 @@
  * empty-state branch.** A page that checks `length === 0` first is one where
  * every failure is an empty state again, no matter how honest the fetch became.
  *
- * NOT SWEPT HERE, deliberately: the remaining call sites. Several are correct —
- * `compliance-badge`, `land-credit-badge` and the AVM comps genuinely mean "no
- * record for this property" — and the rest need the 404/5xx distinction made per
- * site, which `!res.ok` cannot make for them. `client/src/lib/fetch-honesty.ts`
- * is the pair of helpers that lets each site say which it means; converting them
- * is a later unit, and a blanket change would break the honest ones.
+ * THE REMAINING CALL SITES WERE THEN READ ONE BY ONE, and the rule that came out
+ * of it is worth more than the conversions would have been:
+ *
+ *   **The question is not whether the fetch swallowed the error. It is whether
+ *   the null RENDERS AS AN ABSENCE OR AS A CLAIM.**
+ *
+ * Most of them render an absence and are honest as they stand: `land-credit-badge`
+ * shows no score, the AVM panel omits its estimate, `research-summary-panel`
+ * drops the comps block, `version-check` simply does not offer an update, and
+ * `use-ui-state` falls back to local state under a comment that already explains
+ * its 404. None of those asserts anything. Converting them would turn a silent
+ * absence into an error state on an optional badge — worse, and not a fix.
+ *
+ * **`compliance-badge` was the exception, and it was the sharpest instance in the
+ * repository.** It resolved `checks.length > 0 ? deriveStatus(checks) :
+ * "compliant"`, and a failed fetch produced an empty `checks` array — so a read
+ * that never happened rendered a green **Compliant** badge, `aria-label`
+ * included, on a COMPLIANCE surface. The popover underneath said "No checks
+ * performed yet" at the same moment, so the component contradicted itself. It now
+ * carries an `unknown` state ("Not checked"), because the canonical laws are
+ * explicit that unknown must stay distinguishable — and it cannot be represented
+ * by reusing the favourable value.
  */
 
 import { describe, it, expect } from "vitest";
@@ -151,6 +167,61 @@ describe("the core-data doors distinguish empty from failed", () => {
       "if (!res.ok) return []",
     );
     expect(props).toContain("okOrThrow(");
+  });
+});
+
+describe("a failed compliance read is not a pass", () => {
+  const badge = fs.readFileSync(
+    path.join(ROOT, "client/src/components/compliance-badge.tsx"),
+    "utf8",
+  );
+
+  it("the status vocabulary has an unknown state", () => {
+    // It cannot be represented by reusing "compliant", which is what the bug
+    // was: the favourable value doubling as the default.
+    expect(badge).toMatch(/type ComplianceStatus =[^;]*"unknown"/s);
+    expect(badge, "the unknown state has no label").toMatch(/case "unknown": return "Not checked"/);
+  });
+
+  it("an unresolved read never defaults to compliant", () => {
+    // ORDER, not presence. `checks.length > 0 ? deriveStatus(checks) :
+    // "compliant"` is still there and is still RIGHT — when the server answered
+    // and reported no applicable checks, "compliant" is a real verdict. The bug
+    // was that it was the OUTERMOST branch, so an unresolved read fell into it.
+    // The unknown case has to be decided first.
+    const at = badge.indexOf("const status: ComplianceStatus =");
+    expect(at, "the status resolution is gone").toBeGreaterThan(-1);
+    const expr = badge.slice(at, badge.indexOf(";", at));
+    expect(expr).toContain("isError || isLoading || !data".slice(0, 0) + "unresolved");
+    expect(
+      expr.indexOf('unresolved ? "unknown"'),
+      'the badge decides "compliant" before it decides whether it knows ' +
+        "anything, so a read that never happened renders as a pass",
+    ).toBeLessThan(expr.indexOf('"compliant"'));
+    expect(badge, "the unresolved predicate no longer covers a failed fetch")
+      .toContain("isError || isLoading || !data");
+  });
+
+  it("the fetch tells a 404 from a failure", () => {
+    // 404 = this entity has no compliance record, a real answer. Anything else
+    // must reach `isError`, or the badge cannot know it does not know.
+    expect(badge).toContain("nullOn404");
+    expect(badge, "the badge swallows every failure into null again").not.toContain(
+      "if (!res.ok) return null",
+    );
+  });
+
+  it("the popover and the badge agree about what is known", () => {
+    // They disagreed: the badge said Compliant while the popover said "No checks
+    // performed yet". Two halves of one component describing different worlds.
+    expect(badge).toMatch(/could not be read\. This is not a pass/);
+  });
+
+  it("a caller-supplied verdict still wins", () => {
+    // The one case where a positive status is actually HELD rather than assumed
+    // — the parent passes `checks` or `status` it already has.
+    expect(badge).toContain("propStatus ??");
+    expect(badge).toContain("!propChecks && !propStatus");
   });
 });
 

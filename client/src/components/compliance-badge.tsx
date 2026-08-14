@@ -1,9 +1,24 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, HelpCircle } from "lucide-react";
+import { nullOn404 } from "@/lib/fetch-honesty";
 
-type ComplianceStatus = "compliant" | "review_needed" | "non_compliant";
+/**
+ * `unknown` is a state, not an absence.
+ *
+ * The badge used to resolve `checks.length > 0 ? deriveStatus(checks) :
+ * "compliant"`, and a FAILED FETCH produced an empty `checks` array — so a read
+ * that never happened rendered a green **Compliant** badge, with
+ * `aria-label="Compliance status: Compliant"`, on a compliance surface. The
+ * popover underneath said "No checks performed yet" at the same time, so the two
+ * halves of the component disagreed about whether anything had been checked.
+ *
+ * That is the canonical laws' rule exactly: unknown is a valid state and must
+ * stay distinguishable from a favourable one. It cannot be represented by
+ * reusing "compliant".
+ */
+type ComplianceStatus = "compliant" | "review_needed" | "non_compliant" | "unknown";
 
 interface ComplianceCheck {
   name: string;
@@ -26,6 +41,8 @@ function statusIcon(status: ComplianceStatus) {
       return <AlertTriangle className="w-4 h-4 text-acr-warn" />;
     case "non_compliant":
       return <XCircle className="w-4 h-4 text-acr-neg" />;
+    case "unknown":
+      return <HelpCircle className="w-4 h-4 text-muted-foreground" />;
   }
 }
 
@@ -34,6 +51,7 @@ function statusLabel(status: ComplianceStatus): string {
     case "compliant": return "Compliant";
     case "review_needed": return "Review needed";
     case "non_compliant": return "Non-compliant";
+    case "unknown": return "Not checked";
   }
 }
 
@@ -54,19 +72,30 @@ function deriveStatus(checks: ComplianceCheck[]): ComplianceStatus {
 export function ComplianceBadge({ entityType, entityId, checks: propChecks, status: propStatus }: ComplianceBadgeProps) {
   const skipFetch = !!propChecks || !entityId;
 
-  const { data } = useQuery({
+  const { data, isError, isLoading } = useQuery({
     queryKey: ["compliance", entityType, entityId],
     queryFn: async () => {
+      // `nullOn404`: a 404 means this entity has no compliance record, which is
+      // a real answer. Anything else throws, so `isError` is true and the badge
+      // can say "Not checked" instead of inheriting the favourable default.
       const res = await fetch(`/api/compliance/${entityType}/${entityId}/check`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
+      return nullOn404<{ checks?: ComplianceCheck[] }>(res);
     },
     enabled: !skipFetch,
     staleTime: 30 * 1000, // real-time-ish for creation flows
   });
 
   const checks: ComplianceCheck[] = propChecks || data?.checks || [];
-  const status = propStatus || (checks.length > 0 ? deriveStatus(checks) : "compliant");
+
+  // The default is "unknown", NOT "compliant". Reached whenever nothing has been
+  // checked — because the fetch failed, because it is still in flight, or
+  // because the entity genuinely has no record — and every one of those is a
+  // state in which this component does not know. A caller that passes `status`
+  // or `checks` directly still wins, which is the only case where a positive
+  // verdict is actually held.
+  const unresolved = !propChecks && !propStatus && (isError || isLoading || !data);
+  const status: ComplianceStatus =
+    propStatus ?? (unresolved ? "unknown" : checks.length > 0 ? deriveStatus(checks) : "compliant");
 
   return (
     <Popover>
@@ -82,7 +111,11 @@ export function ComplianceBadge({ entityType, entityId, checks: propChecks, stat
       <PopoverContent className="w-auto p-3 min-w-[240px]" align="end">
         <p className="text-xs font-semibold mb-2">Compliance Checks</p>
         {checks.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No checks performed yet.</p>
+          <p className="text-xs text-muted-foreground">
+            {status === "unknown"
+              ? "Compliance status could not be read. This is not a pass."
+              : "No checks performed yet."}
+          </p>
         ) : (
           <div className="space-y-1.5">
             {checks.map((check, i) => (
