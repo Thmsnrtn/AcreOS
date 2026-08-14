@@ -6635,3 +6635,69 @@ NEXT_UP §7 for sweeps over source, applied to a test's own internals.
 survivors** — including adding a real import of the engine to `companyAgents.ts`
 (the case the whole file exists for), and making the detector return `false` and
 then `true`.
+
+## Unit 105 — the cross-check the statute register said nobody ran · this commit
+
+Unit 104's real lesson was about the reachability gate's SECOND blind spot: it
+counts string literals as uses, so a module named only in a registry array looks
+alive. Sweeping for that across `server/services/**` — 888 modules — found **25
+"registry ghosts"**, of which three (`taxOptimizationEngine`, `learningAnalytics`,
+`tenantMetering`) are named ONLY inside `companyAgents.ts`'s `ownedServices`
+string arrays, and two only inside `statuteRegister.ts`.
+
+**The sweep's first run said 28 of 888 modules were imported.** Implausible on its
+face, which is what caught it: the import regex required no `{` between `import`
+and the specifier, so it missed every braced import — i.e. almost all of them.
+Corrected to match `from "…"` / `import("…")` / `require("…")`, the answer is 801
+imported, 25 ghosts, 62 wholly unreferenced. *Sample before believing a count*,
+again.
+
+### The finding was already written down
+
+Following a ghost into `statuteRegister.ts` surfaced this, in the repo's own
+words and unenforced:
+
+> TWO overlapping deposit registries exist (`shared/regulatory/depositReturnRules.ts`
+> and `SECURITY_DEPOSIT_RULES` in `server/services/landlordCompliance.ts`). They can
+> disagree, **and nothing cross-checks them.**
+
+So this unit ran the comparison. **Fifty states appear in both. Forty-six agree.
+Four do not, each pair citing the same statute:** FL 15 vs 30, ME 30 vs 21, MT 10
+vs 30, OK 45 vs 30.
+
+A deposit-return deadline is a statutory obligation whose breach carries penalties
+in most states. The four are not a systematic offset — they are four readings of
+four statutes that cannot both be right.
+
+### Which is correct is NOT decided here
+
+Reading a statute and picking a number is legal judgement, and a confident wrong
+deadline is worse than a flagged disagreement — exactly what refuse-not-fabricate
+exists to prevent. Recorded as **BLOCKERS B18**.
+
+The context that makes it a bigger question than four numbers: the tables are not
+peers. `depositReturnRules` is the LIVE one and deliberately incomplete (absent
+state → `{ known: false, unknownReason }`). `SECURITY_DEPOSIT_RULES` is COMPLETE —
+51 entries with citations — and **nothing imports its module**. The fuller table
+sits in dead code, and parses its move-out date with the bare `new Date()` +
+NaN check that unit 99 removed from everything live. So the decision is probably
+"should the complete table back the live one?", not "pick one per state".
+
+### The gate
+
+`depositRegistriesAgree.test.ts` pins the four **in both directions**: a fifth
+fails the build, and resolving one also fails until it is removed from the
+register — a fix locked in by the commit that earns it. It pins the day counts
+too, so a table edited into a different disagreement makes B18's evidence stale
+before anyone acts on it. And `statuteRegister.ts`'s note no longer says nothing
+cross-checks them, **because something now does** — a register asserting a fact
+the repo has since falsified is §6a applied to a governance file.
+
+### Verification
+
+`npm run check` EXIT=0 · 7 mutations, every one verified to apply, **0
+survivors** — including a fifth state starting to disagree, a known one being
+silently resolved, and the live registry answering a fixed 30 days for every state
+(which collapses the finding and must fail). One earlier mutation was discarded
+rather than counted: adding a field to a rule object does not remove a state, so
+it never exercised the overlap guard it was meant to test.

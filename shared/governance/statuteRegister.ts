@@ -429,7 +429,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     reviewStatus: "UNREVIEWED",
     failureMode:
       "A landlord relies on a countdown the platform computed and misses the statutory deadline. In most states the penalty is not 'return it late' — it is forfeiture of the right to withhold ANYTHING, plus statutory damages (often 2–3x the deposit) plus the tenant's attorney fees. Deposit mishandling is the single most common landlord-tenant claim.",
-    note: "TWO overlapping deposit registries exist (shared/regulatory/depositReturnRules.ts and SECURITY_DEPOSIT_RULES in server/services/landlordCompliance.ts). They can disagree, and nothing cross-checks them.",
+    note: "TWO overlapping deposit registries exist (shared/regulatory/depositReturnRules.ts and SECURITY_DEPOSIT_RULES in server/services/landlordCompliance.ts). They DO disagree, and tests/unit/depositRegistriesAgree.test.ts now cross-checks them: 50 states appear in both, 46 agree, and FOUR give different statutory day counts while citing the same statute — FL 15 vs 30, ME 30 vs 21, MT 10 vs 30, OK 45 vs 30. Which reading is correct is legal judgement, so it is recorded as BLOCKERS B18 rather than guessed; the test pins the four so a fifth cannot appear quietly and a resolved one must be locked in. Note the two tables are not peers: depositReturnRules is the LIVE one and deliberately incomplete (absent state -> known:false), while SECURITY_DEPOSIT_RULES is complete but sits in a module nothing imports.",
   },
   {
     id: "state.lease-nonrenewal-notice",

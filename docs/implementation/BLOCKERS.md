@@ -1010,3 +1010,62 @@ INVERTED assertion in the idiom of `vaWorkflowBounds.test.ts`: it pins that
 `taxOptimizationEngine` has no production importer, and **fails the day someone
 gives it one** — so wiring it up forces this decision to be answered first
 instead of shipping the 5% alongside it.
+
+## B18 — Four states where our two deposit registries give different statutory deadlines
+
+**`shared/governance/statuteRegister.ts` warned about this in its own words**, and
+had done for a while:
+
+> TWO overlapping deposit registries exist (`shared/regulatory/depositReturnRules.ts`
+> and `SECURITY_DEPOSIT_RULES` in `server/services/landlordCompliance.ts`). They can
+> disagree, and nothing cross-checks them.
+
+Unit 105 ran the cross-check. **Fifty states appear in both. Forty-six agree.
+Four do not, and each pair cites the same statute:**
+
+| state | `landlordCompliance` | `depositReturnRules` | citation |
+|---|---|---|---|
+| FL | 15 days | 30 days | Fla. Stat. §83.49 |
+| ME | 30 days | 21 days | 14 M.R.S. §6033 |
+| MT | 10 days | 30 days | Mont. Code §70-25-202 |
+| OK | 45 days | 30 days | 41 Okla. Stat. §115 |
+
+A security-deposit return deadline is a statutory obligation whose breach carries
+penalties in most states, often multiple damages. The four are not a systematic
+offset — they are four specific readings of four specific statutes that cannot
+both be right.
+
+### Why this is a blocker and not a fix
+
+**Reading a statute and picking a number is legal judgement**, and getting a
+statutory deadline wrong is worse than flagging that two of ours disagree. This
+program does not have that authority, and a confident wrong number here is
+precisely the failure mode the constitution's refuse-not-fabricate rule exists to
+prevent.
+
+### The context whoever resolves it needs — the two tables are not peers
+
+- **`depositReturnRules.ts` is the LIVE one.** The deposit clock, the disposition
+  letter and the rent-ledger surface all read it. It is deliberately incomplete
+  and returns `{ known: false, unknownReason }` for a state it does not encode,
+  which is the honest posture and the one the callers are built around.
+- **`SECURITY_DEPOSIT_RULES` is COMPLETE** — 51 entries, every state plus DC, each
+  with a citation — and **nothing imports `landlordCompliance.ts`.** It is the
+  fuller table sitting in a module with no production caller, found by the same
+  registry-ghost sweep that produced B17. It also parses its move-out date with a
+  bare `new Date()` plus a NaN check, which is the rollover defect unit 99 fixed
+  everywhere that is live (`new Date("2026-02-30")` is March 2nd).
+
+So the real question is probably not "pick one per state" but **"should the
+complete table back the live one?"** — which is a bigger decision than four
+numbers, and needs the same eyes.
+
+### What unit 105 DID do
+
+`tests/unit/depositRegistriesAgree.test.ts` runs the comparison the register said
+nobody ran, and pins the four **in both directions**: a FIFTH disagreement fails
+the build, and RESOLVING one also fails until it is removed from the register —
+so a fix is locked in by the commit that earns it. It also pins the day counts
+themselves, so a table edited into a different disagreement makes this blocker's
+evidence stale before anyone acts on it. The statute register's note has been
+updated: it no longer says nothing cross-checks them, because something does.

@@ -792,6 +792,35 @@ must not become one" — a shape test that said it was not one. Other zod schema
 the repo very likely make the same trade; `impossibleDatesAreRefused.test.ts` pins
 the four surfaces that were found, not a survey of the rest.
 
+### Four states with two different deposit deadlines — BLOCKERS B18, needs legal judgement
+
+`statuteRegister.ts` had warned, in its own words, that two overlapping deposit
+registries exist and *"nothing cross-checks them"*. Unit 105 ran the check: 50
+states in both, **46 agree, 4 do not** — FL 15 vs 30, ME 30 vs 21, MT 10 vs 30,
+OK 45 vs 30 — each pair citing the same statute.
+
+**Not resolved here on purpose.** Reading a statute and picking a number is legal
+judgement, and a confident wrong deadline is worse than a flagged disagreement.
+The two tables are not peers, which makes it a bigger question than four numbers:
+`depositReturnRules` is the LIVE one and deliberately incomplete (absent state →
+`known: false`), while the COMPLETE 51-entry `SECURITY_DEPOSIT_RULES` sits in
+`landlordCompliance.ts`, **which nothing imports**. The likely question is *should
+the complete table back the live one?*
+
+`depositRegistriesAgree.test.ts` pins the four in both directions, so a fifth
+cannot appear quietly and resolving one is locked in by the commit that earns it.
+
+### The registry-ghost sweep — 25 modules that look alive because of a string
+
+Unit 105's method is reusable and cheap. `lint-reachability.mjs` counts string
+literals as uses (by design, and documented), so a module named only in a registry
+array is invisible to the gate built to find dead modules. Sweeping
+`server/services/**`: **801 imported, 25 mentioned-but-never-imported, 62
+referenced by nothing at all.** Three of the 25 live in `companyAgents.ts`'s
+`ownedServices` arrays — that is where `taxOptimizationEngine` (B17) was hiding.
+The 62 are unexamined and are the obvious next place to look for a dead subsystem
+worth deleting.
+
 ### A tax engine that invents tax rates — BLOCKERS B17, founder decision
 
 Unit 104 found `server/services/taxOptimizationEngine.ts` applying an invented 5%
