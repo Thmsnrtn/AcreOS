@@ -42,7 +42,7 @@ import { acquiredNotes, type AcquiredNote } from "@shared/schema/notes-vertical"
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "./predicate";
-import { parseCalendarDate } from "@shared/notes/delinquency";
+import { parseCalendarDate } from "@shared/dates/calendar";
 
 // HUD-approved housing counsellor hotline — §1026.41(d)(8) mandates
 // disclosure when the borrower is 45+ days delinquent. The hotline
@@ -404,7 +404,7 @@ export async function generateStatementsForCycle(
 // ============================================================================
 
 /*
- * `parseCalendarDate` now lives in `@shared/notes/delinquency` and is imported
+ * `parseCalendarDate` now lives in `@shared/dates/calendar` and is imported
  * at the top of this file. This module WROTE the canonical body — it was the
  * most capable of the three copies (Date, ISO datetime, and 'YYYY-MM-DD',
  * all with the roll-over rejection) — so consolidation moved it out rather

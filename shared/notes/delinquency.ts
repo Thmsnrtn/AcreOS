@@ -45,7 +45,10 @@
 // stays the import site for the notes surfaces.
 import { parseCalendarDate } from "../dates/calendar";
 
-export { parseCalendarDate };
+// NOT re-exported. `periodicStatements` briefly imported the parser through
+// this module — a two-hop path that made a Reg-Z statements module depend on
+// the notes-delinquency module for a generic date parse. It imports
+// `@shared/dates/calendar` directly now.
 
 
 /**

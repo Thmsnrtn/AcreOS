@@ -6372,3 +6372,58 @@ exactly that reason — rather than a test-local mirror that could drift.
 4 mutations, every one verified to apply, **0 survivors** — including reverting
 the expense refinement to the NaN check it used to be, which is the mutation that
 matters, and a refuses-everything mutation to prove the positive cases are real.
+
+## Unit 101 — the completeness audit CLAUDE.md mandates, run on units 95–100 · this commit
+
+CLAUDE.md's wave discipline says to run an independent completeness audit before
+a wave merges, told to treat each claim as a hypothesis and hunt for residue —
+because *"an agent reports success for the part it built, and is blind to the part
+it didn't."* Six units had landed. This is that audit, applied to my own work, and
+**it found residue.**
+
+### What was checked, and what held
+
+Every new export has production consumers (`isCalendarDate` 4 files,
+`parseCalendarDate` 6, `delinquencyIsDeterminable` 5); both new lint families are
+genuinely wired (`self-fallback` and `opaque-exports` print PASS lines in
+`npm run check`, not just when invoked directly); every new test file matches
+vitest's `**/*.test.ts` include and runs under `npm test`, not only under the
+`tests/unit` path I had been using; and no test outside `tests/unit` touches any
+changed module, so that narrower loop was sufficient.
+
+### What did not
+
+**A two-hop import.** `periodicStatements/index.ts` imported `parseCalendarDate`
+from `@shared/notes/delinquency` — left over from unit 98's intermediate state,
+before unit 99 moved the parser to `@shared/dates/calendar`. It worked, and it made
+a Reg-Z periodic-statements module depend on the notes-delinquency module for a
+generic date parse.
+
+**Two re-exports with no consumer.** Removing the parser from
+`acquiredNoteSchedule.ts` and `shared/notes/delinquency.ts` in unit 98 left both
+re-exporting it. `delinquencyIsDeterminable`'s re-export is real —
+`routes-notes.ts` imports it from there — but `parseCalendarDate`'s was consumed by
+nothing once the two-hop was straightened. **A re-export with no consumer is the
+same dead weight as any other unreached export**, and it is invisible to the
+reachability gate here because these modules are dynamically imported (unit 97's
+blind spot, met from the other side).
+
+**A test importing through the dead path**, which is what had hidden it:
+`singleOwnerClaims.test.ts` pulled the parser through the notes module. Worth
+noting *why* `tsc` did not catch any of this — **tests are outside the tsconfig
+project**, so the suite is their only guard. The re-export removal turned a silent
+indirection into a failing test, which is the gate working.
+
+### And a stale location in my own prose
+
+`singleOwnerClaims.test.ts`'s header said the predicate "now lives in
+`shared/notes/delinquency.ts`" and described the parser moving to `shared/`
+without naming where. The parser moved again in unit 99. **That is precisely the
+defect the file exists to catch** — a comment naming a location that has since
+changed — so it now names the real one and says why the paragraph is there.
+
+### Verification
+
+`npm run check` EXIT=0 · `tests/unit` 704 files, 9,194 passed, 1 skipped ·
+all five reachability counts unchanged at baseline, which is the point: the
+cleanup removed indirection, not coverage.

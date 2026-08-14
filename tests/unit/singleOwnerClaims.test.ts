@@ -55,15 +55,24 @@
  *
  * Neither collision was visible to any existing gate, and neither would have been
  * found by reading the diff — which is the argument for the check.
+ *
+ * **WHERE THE PARSER ACTUALLY IS, as of unit 99:** `shared/dates/calendar.ts`,
+ * not `shared/notes/delinquency.ts`. It moved once more when the same rollover
+ * defect turned up on a statutory deposit deadline and a payoff quote, which made
+ * a notes-specific home wrong for it. This paragraph exists because the sentence
+ * above would otherwise be the exact thing this file was written to catch — a
+ * comment naming a location that has since changed.
  */
 
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  delinquencyIsDeterminable,
-  parseCalendarDate,
-} from "@shared/notes/delinquency";
+import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
+// The parser lives in the neutral module, not behind the notes one. Unit 100's
+// completeness audit removed the re-export that made this import work: a
+// re-export with no production consumer is the same dead weight as any other
+// unreached export, and a test importing through it hid that.
+import { parseCalendarDate } from "@shared/dates/calendar";
 
 const ROOT = path.resolve(__dirname, "../..");
 

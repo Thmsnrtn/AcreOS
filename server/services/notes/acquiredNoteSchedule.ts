@@ -71,12 +71,13 @@
 // their own comments said "the client cannot import server code", which is true
 // of `server/` and skips the option that resolves it. `shared/` is browser-safe
 // by construction and both sides already import from it.
-import {
-  delinquencyIsDeterminable,
-  parseCalendarDate,
-} from "@shared/notes/delinquency";
+import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
+import { parseCalendarDate } from "@shared/dates/calendar";
 
-export { delinquencyIsDeterminable, parseCalendarDate };
+// `delinquencyIsDeterminable` only — `routes-notes.ts` imports it from here.
+// `parseCalendarDate` was re-exported too and nothing consumed it; a re-export
+// with no consumer is the same dead weight as any other unreached export.
+export { delinquencyIsDeterminable };
 
 export type NoteDelinquencyStatus =
   | "current"
