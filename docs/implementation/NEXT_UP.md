@@ -792,6 +792,28 @@ must not become one" — a shape test that said it was not one. Other zod schema
 the repo very likely make the same trade; `impossibleDatesAreRefused.test.ts` pins
 the four surfaces that were found, not a survey of the rest.
 
+### A tax engine that invents tax rates — BLOCKERS B17, founder decision
+
+Unit 104 found `server/services/taxOptimizationEngine.ts` applying an invented 5%
+capital-gains rate to the thirty states missing from its twenty-state table, and
+telling the caller those states *"tax capital gains as ordinary income"* — a false
+statement of law, because `undefined === 0` is `false` so an unlisted state takes
+the else branch. Also `replacementValue * 0.3 // assume 30% appreciation` driving
+a dollar-figure `deferralBenefit`, and federal constants assuming the top bracket
+for every taxpayer.
+
+**It is unreached**, so nothing customer-facing is lying today, and that is why it
+is a decision rather than a fix: deleting a named 423-line service is founder
+authority (the negotiation-copilot KILL, the SCP/voice/vision deletions), and
+tidying dead constants is the change most likely to be wasted. **Do not make the
+fabrication more credible-looking while it waits.**
+
+**It is also invisible to the reachability gate**, because the only occurrence
+outside its own file is the STRING `"taxOptimizationEngine"` in an
+`ownedServices` array — and that linter counts string literals as uses, by its own
+documentation. `unreachedTaxEngineStaysUnreached.test.ts` fails the day someone
+imports it, so the decision cannot be skipped by wiring it up.
+
 ### The test-suite type-check population — 162, and what it is NOT
 
 Unit 102 put the test suite under `tsc` for the first time and seeded

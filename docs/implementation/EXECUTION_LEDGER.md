@@ -6554,3 +6554,84 @@ renderer, whenever it arrives, unable to present the assumed number as counted.
 the basis to `"operator_supplied"`, reporting the assumed percentage even when the
 operator supplied one, and inlining the fraction so the disclosure and the maths
 could diverge.
+
+## Unit 104 — a tax engine that invents tax rates, and a guard that fires if anyone uses it · this commit
+
+Unit 103's question generalised: *is this number the user's, or ours?* Unit 93
+swept STRING defaults (`?? "low"`); the numeric analogue on money paths had never
+been measured. **330** `?? <non-zero literal>` sites in `server/` + `shared/`.
+Nearly all are legitimate optional-parameter knobs — temperature, thresholds,
+learning rates, tolerances. **One file is not.**
+
+### `server/services/taxOptimizationEngine.ts`
+
+```ts
+const stateCapGainsRates: Record<string, number> = {  // "representative sample, 2024"
+  CA: 0.133, OR: 0.099, /* …20 states… */ GA: 0.0549,
+};
+const stateRate = stateCapGainsRates[state.toUpperCase()] ?? 0.05;
+```
+
+Twenty states listed; **the other thirty get an invented 5%.** The comment says
+"representative sample", so the gap was known — the `??` is what turns a known
+gap into a confident number.
+
+**And the note beneath it states tax law falsely for exactly those states:**
+
+```ts
+note: stateCapGainsRates[state.toUpperCase()] === 0
+  ? `${state} has no state capital gains tax.`
+  : `${state} taxes capital gains as ordinary income.`,
+```
+
+`undefined === 0` is `false`, so an unlisted state takes the ELSE branch. Ask
+about Tennessee — no state income tax on capital gains — and it answers *"TN
+taxes capital gains as ordinary income"* **and** applies 5%. Both false, in a
+sentence a reader takes as legal fact.
+
+Not one line: `calculate1031Benefits` does `replacementValue * 0.3 // assume 30%
+appreciation` and returns `deferralBenefit` as rounded dollars; the federal
+constants assume the TOP bracket for everyone; `analyzePortfolio` **persists**
+`estimatedTaxSavings` into `tax_strategies`.
+
+### Why nothing was fixed
+
+**It is unreached** — `stateTaxImpact` has zero callers and nothing imports the
+module. Deleting a named 423-line service is the same class as the
+negotiation-copilot KILL and the SCP/voice/vision deletions, all founder rulings;
+and "tidying" the constants of dead code is the change most likely to be wasted
+(B10's standing note about the legacy note-payment writers). **A more
+credible-looking fabrication is worse than an obvious one.** Recorded as
+**BLOCKERS B17** with all three options and their costs.
+
+### What was NOT left alone
+
+The only occurrence of `taxOptimizationEngine` outside its own file is the
+**string** inside an `ownedServices` array in `companyAgents.ts` — and
+`lint-reachability.mjs` counts string literals as uses, by design and by its own
+documentation (*"prose and registries resurrect corpses"*). **So a dead subsystem
+that fabricates tax figures is invisible to the one gate built to find dead
+subsystems.**
+
+`unreachedTaxEngineStaysUnreached.test.ts` is therefore an INVERTED assertion in
+the idiom of `vaWorkflowBounds.test.ts`: it pins the engine as unimported and
+**fails the day someone imports it**, so wiring it up forces B17 to be answered
+first instead of shipping the 5% alongside it. It also pins that the three
+fabrications are still the ones B17 describes — if the engine changes, the
+blocker's evidence is stale and must be re-read before it is acted on (§6a's rule
+about this program's own notes).
+
+### The mutation that mattered
+
+The detector guard tested a **copy** of the import regex rather than the one the
+sweep used, so breaking the sweep's copy made *"nothing imports it"* trivially
+true while the guard still passed. Extracted to one `importsModule()` used by
+both. **Same predicate or no measurement** — the rule this session recorded in
+NEXT_UP §7 for sweeps over source, applied to a test's own internals.
+
+### Verification
+
+`npm run check` EXIT=0 · 9 mutations, every one verified to apply, **0
+survivors** — including adding a real import of the engine to `companyAgents.ts`
+(the case the whole file exists for), and making the detector return `false` and
+then `true`.

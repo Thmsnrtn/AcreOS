@@ -935,3 +935,78 @@ to be re-found.
 change (answer only for a signed-in caller's own address, or return a bare
 `{ received: true }`), and `getWaitlist()` must not be used for a single-address
 lookup — a `findByEmail` query, not a page-1 scan.
+
+## B17 — A tax engine that fabricates tax figures, unreached, and invisible to the gate that finds unreached things
+
+**Found by unit 104**, generalising unit 103's question — *is this number the
+user's, or ours?* — from string defaults (unit 93) to NUMERIC ones on money
+paths. 330 `?? <non-zero literal>` sites in `server/` + `shared/`; nearly all are
+legitimate optional-parameter knobs (temperature, thresholds, learning rates).
+One file is not.
+
+### What `server/services/taxOptimizationEngine.ts` computes
+
+```ts
+const stateCapGainsRates: Record<string, number> = {  // "representative sample, 2024"
+  CA: 0.133, OR: 0.099, /* …20 states… */ GA: 0.0549,
+};
+const stateRate = stateCapGainsRates[state.toUpperCase()] ?? 0.05;
+```
+
+**Twenty states are listed. The other thirty get an invented 5%.** The comment
+says "representative sample", so the incompleteness was known; the `??` is what
+turns a known gap into a confident number.
+
+**And the note beneath it states tax law falsely for exactly those states:**
+
+```ts
+note: stateCapGainsRates[state.toUpperCase()] === 0
+  ? `${state} has no state capital gains tax.`
+  : `${state} taxes capital gains as ordinary income.`,
+```
+
+`undefined === 0` is `false`, so an unlisted state takes the ELSE branch. Ask it
+about Tennessee — no state income tax on capital gains — and it answers *"TN
+taxes capital gains as ordinary income"* **and** applies 5%. Both false, in a
+sentence a reader would take as legal fact.
+
+It is not one line. `calculate1031Benefits` does
+`const estimatedGain = replacementValue * 0.3; // assume 30% appreciation` and
+returns `taxWithout1031` and `deferralBenefit` as rounded dollar figures. The
+federal constants assume the TOP bracket for every taxpayer. `analyzePortfolio`
+**persists** `estimatedTaxSavings` strings into `tax_strategies`.
+
+### Why this is recorded rather than fixed
+
+**It is unreached.** `stateTaxImpact` has zero callers; nothing imports
+`taxOptimizationEngine` at all. The only occurrence outside the file is the
+STRING `"taxOptimizationEngine"` inside an `ownedServices` array in
+`companyAgents.ts` — and `lint-reachability.mjs` counts string literals as uses,
+by design and by its own documentation ("prose and registries resurrect
+corpses"). **So a dead subsystem that fabricates tax figures is invisible to the
+one gate built to find dead subsystems.**
+
+That makes all three live options founder-level:
+
+1. **Delete it.** 423 lines, zero callers, and on this program's own test —
+   *does removing it remove a capability or a lie?* — it removes a lie. Deleting
+   a named service is the same class as the negotiation-copilot KILL (B12) and
+   the SCP/voice/vision deletions, all of which were founder rulings.
+2. **Make it refuse.** Return `{ known: false, reason }` for an unlisted state
+   the way `computeDepositDeadline` does, drop `calculate1031Benefits`'
+   assumed-appreciation path, and gate the whole engine behind a disclaimer. Real
+   work, and it keeps a tax-advice surface the product may not want.
+3. **Leave it.** The only option that is definitely wrong if it is ever wired up,
+   which is why it is written down here instead of left to be re-found.
+
+**Do NOT "tidy" the constants in the meantime.** Same reasoning as B10's legacy
+note-payment writers: making one locally correct is the change most likely to be
+wasted, and a more credible-looking fabrication is worse than an obvious one.
+
+### What unit 104 DID do
+
+Nothing to the engine. It added `unreachedTaxEngineStaysUnreached.test.ts`, an
+INVERTED assertion in the idiom of `vaWorkflowBounds.test.ts`: it pins that
+`taxOptimizationEngine` has no production importer, and **fails the day someone
+gives it one** — so wiring it up forces this decision to be answered first
+instead of shipping the 5% alongside it.
