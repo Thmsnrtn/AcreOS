@@ -324,7 +324,20 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "now uses requireLadderFlag: founder bypass kept, tier bypass dropped, " +
         "fails closed. No automated customer-count gate exists — the ratchet " +
         "instead fails the moment either surface is switched on, and says to " +
-        "confirm the threshold and change the assertion deliberately.",
+        "confirm the threshold and change the assertion deliberately. " +
+        "STRENGTHENED 2026-08-15: the API assertions were NAME-based " +
+        "(registerPublicApiV1, /api/v1) and a SECOND public-API surface existed " +
+        "under a different name — routes-epic-services.ts's /developer/* block, " +
+        "mounted at /api behind plain isAuthenticated, minting `acr_…` keys for " +
+        "any customer and serving a spec titled 'AcreOS Public API', while " +
+        "routes-api-keys.ts stayed dormant for this same ladder. The decision " +
+        "was enforced in one place and defeated in another. The keys were also " +
+        "INERT (nothing verified provider='api_key'), so the response's 'store " +
+        "this key securely' was a promise the product could not keep. Founder " +
+        "ruling (picker): the three endpoints are removed, developerApiService.ts " +
+        "is KEPT as a staged seam. The assertions are now SHAPE-based — no " +
+        "mounted route may mint an API key outside a founder gate, and none may " +
+        "serve the spec — so a third surface under a third name trips them too.",
     },
   },
 

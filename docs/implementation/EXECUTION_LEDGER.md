@@ -7309,3 +7309,91 @@ not change by one character. So the rule is wider than it was written: **any edi
 that shifts a line trips a line-keyed register**, not only a deletion. The entry
 now records that, so the next reader who sees this failure does not go hunting for
 a fabrication defect that was never there.
+
+## Unit 113 — a public API surface the ladder check could not see · this commit
+
+**Founder ruling (picker, 2026-08-15): "Remove the three /developer/* endpoints."**
+
+Found by generalising this session's most productive thread. `formatCents`,
+`parseCalendarDate`, `delinquencyIsDeterminable`, the deposit registries and
+`sanitizePrompt` were all the same shape — **canonical state with more than one
+owner** — so instead of finding the sixth by hand, the question was made
+mechanical: *which exported function names are defined in more than one
+production module?* **62.** Most are benign coincidence (`estimateCost` for AI
+routing vs embeddings). Three were not, and the sharpest was `hashApiKey` /
+`generateApiKey`, defined **three** times.
+
+### What the three implementations actually were
+
+| module | hash | store | reachable via |
+|---|---|---|---|
+| `apiKeys.ts` | HMAC-SHA256 **with a pepper** | `apiKeys` | `requireApiKey`, MCP bearer path |
+| `dataApiKeys.ts` | bare SHA-256 | `systemApiKeys` | `/api/data-api` (**founder-gated issuance**) |
+| `developerApiService.ts` | bare SHA-256 | `organizationIntegrations` | `/api/developer/*` |
+
+**The crypto delta is small and is stated as such** rather than dramatized: all
+three mint 256-bit random keys, so bare SHA-256 is not brute-forceable and the
+pepper's advantage is narrow. My first read — that the two weak ones were dead
+code — was **wrong**, and the correction matters: both are reached through
+*destructured dynamic imports*, which unit 110's narrowing correctly still
+records as imports. Checking that saved a false "these are orphans" conclusion.
+
+### The real finding, which was governance
+
+`POST /api/developer/api-keys` was mounted at `/api` behind plain
+`isAuthenticated` — **any authenticated customer could mint a key** — beside
+`GET /developer/openapi` serving a document titled *"AcreOS Public API"*. All
+while `routes-api-keys.ts` is kept dormant **for this same ladder**, which the
+reachability ratchet's note records as the reason its `unregisteredRoutes`
+baseline is 1. **The decision was enforced in one place and defeated in another.**
+
+And the keys were **inert**: nothing verifies `provider = "api_key"` (the only
+consumer, `mcp-server.ts`, matches `provider = 'mcp_api_key'`), and
+`createApiKeyRateLimit` — written for exactly this — has zero importers. The
+response nonetheless said *"Store this key securely. It will not be shown
+again."* A promise the product cannot keep.
+
+`/api/data-api` was checked and is **fine**: its data endpoints take partner keys,
+and issuance is `requireFounder`. Not every neighbour is guilty.
+
+### Why the existing ladder test missed it
+
+`expansionLadder.test.ts` pinned `registerPublicApiV1` and `/api/v1` — the public
+API **by name**. A second surface under a different name walked past it. The
+assertions are now **shape-based**: no mounted route may mint an API key outside
+a founder gate, and none may serve the spec. Mutation-tested with a re-added
+`/developer` route (caught) and — the one that matters — the same spec served
+from a *differently named* path (caught).
+
+### A gap in the reachability gate itself
+
+Removing the callers made `developerApiService.ts` a module orphan, and the
+`module-orphans` family turned out to be **the only one with no allowlist path**.
+So a deliberately-staged module left exactly one option: raise the baseline —
+the move the gate's own remedy text tells you not to make. **A gate whose only
+available answer is the one it forbids trains people to make it.** The family is
+now allowlistable, and the founder's "keep the service" ruling is its first entry.
+
+Implementing it reproduced unit 110's trap almost exactly: filtering the orphan
+out of `findings` without registering it in `consideredKeys` made the live
+exemption read as **stale**, so the gate demanded deletion of the entry doing its
+job. Two questions ("is it a candidate?" / "is it reported?") answered by one
+expression, again.
+
+### Two more registers, and a brittle assertion
+
+`as-any` 1383→1381 and `colon-any` 2975→2972 — the tenth and eleventh register
+catches. One is worth naming: the removed `as any` sat on the
+`organizationIntegrations` insert, erasing that the `credentials` blob had no
+declared shape. **That is how a hash could be written under `provider='api_key'`
+while the only verifier reads `provider='mcp_api_key'`.**
+
+`reachabilityBlindSpot.test.ts` then failed for a non-reason: it sliced
+`gate.slice(at, at + 500)`, and the new comment pushed the checked code past
+character 500 with no behaviour change. **An arbitrary window measures "is this
+near the top" and reports it as "is this derived from the flag."** Third instance
+of that shape — unit 95's mismatched measure/mutate regexes, unit 110's
+slice-to-the-next-`continue;`, this. Rebound to the family object and
+mutation-tested.
+
+`npm run check` exits 0; `tests/unit` is 707 files / 9,229 tests green.

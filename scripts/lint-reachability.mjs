@@ -786,9 +786,34 @@ const FAMILIES = [
     // deleting a batch is locked in by the commit that earns it.
     key: "moduleOrphans",
     label: "module-orphans",
-    findings: [...new Set(unreachedExports.filter((f) => f.moduleOrphan).map((f) => f.file))].map(
-      (file) => ({ file }),
-    ),
+    // ALLOWLISTABLE since unit 113, and the gap that forced it is worth recording:
+    // this family was the ONLY one with no escape valve. Every other family can
+    // exempt a legitimately-unreached thing with a written reason; this one could
+    // not, so a deliberately-staged module left exactly one option — RAISE THE
+    // BASELINE, which is the move the gate's own remedy text tells you not to
+    // make. A gate whose only available answer is the one it forbids trains
+    // people to make it.
+    //
+    // The case that surfaced it: the founder ruled (picker, 2026-08-15) to REMOVE
+    // the three mounted /developer/* endpoints and KEEP developerApiService.ts for
+    // when the expansion ladder's trigger fires. That is precisely "a
+    // deliberately-staged seam" — the reason the allowlist exists — and it had
+    // nowhere to go.
+    //
+    // NOTE the `consideredKeys.add` before the filter, and do not "simplify" it
+    // away. The staleness check asks whether an allowlist entry was ever a
+    // CANDIDATE, not whether it ended up in findings — so filtering without
+    // registering makes a live exemption read as stale, and the gate demands you
+    // delete the very entry that is doing its job. The first version of this
+    // block did exactly that. Same shape as unit 110's module-orphan trap:
+    // answering two questions ("is it a candidate?" / "is it reported?") with one
+    // expression.
+    findings: [...new Set(unreachedExports.filter((f) => f.moduleOrphan).map((f) => f.file))]
+      .filter((file) => {
+        consideredKeys.add(`module-orphan:${file}`);
+        return !allowlisted("module-orphan", file);
+      })
+      .map((file) => ({ file })),
     describe: (f) => `${f.file} — nothing in production imports this file`,
     remedy:
       "Three different answers, and the file tells you which (see BLOCKERS B19):\n" +

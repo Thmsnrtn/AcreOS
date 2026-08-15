@@ -466,3 +466,42 @@ correctness risks across 2+ machines. Disposition:
 
   Counts locked in the same commit: `unreachedExports` 1439→1436,
   `moduleOrphans` 45→44. No tables were revealed: the module had no writer.
+
+- **2026-08-15 — the three `/developer/*` endpoints in `routes-epic-services.ts` (75 lines).**
+  Founder ruling (picker, 2026-08-15): *"Remove the three /developer/* endpoints."*
+
+  | endpoint | what it did |
+  |---|---|
+  | `GET /developer/openapi` | served a document titled **"AcreOS Public API"** |
+  | `POST /developer/api-keys` | minted an `acr_…` secret for **any authenticated customer** |
+  | `GET /developer/widget-embed/:type` | handed out `pub_<orgId>_<base64(orgId)>` as a "publicApiKey" — the org id encoded, not a secret |
+
+  **Two reasons, and the second is what made it urgent.**
+
+  **1. A standing decision enforced in one place and defeated in another.**
+  CLAUDE.md's expansion ladder says *"no public API before ~50 customers"*, and
+  `routes-api-keys.ts` is kept **deliberately dormant** because of it — the
+  reachability ratchet's own note records that as the reason `unregisteredRoutes`
+  sits at 1. This router mounts at `/api` behind plain `isAuthenticated`, so any
+  customer could mint a key and fetch the spec.
+
+  **2. The keys were inert, and the response said otherwise.** `POST` returned
+  the plaintext with `warning: "Store this key securely. It will not be shown
+  again."` — and **nothing verified it**. The only consumer of
+  `organizationIntegrations` keys is `mcp-server.ts`, which matches
+  `provider = 'mcp_api_key'`; this wrote `provider = 'api_key'`. The rate limiter
+  written for it (`createApiKeyRateLimit`, "public developer API") has zero
+  importers. A customer who integrated got nothing, forever, after being told to
+  store the key securely. **Placeholder data presented as real**, which the
+  DO-NOT-DO list forbids outright.
+
+  **`services/developerApiService.ts` is KEPT, not deleted.** What was wrong was
+  mounting the surface early, not writing the spec and the minting helper; when
+  the ladder trigger fires, that module is the starting point and wiring it means
+  building the verifier that never existed. It is allowlisted in the reachability
+  ratchet as a deliberately-staged seam — the first entry of a new
+  `module-orphan` kind, added because that family was the only one with no escape
+  valve.
+
+  Counts locked in the same commit: `as-any` 1383→1381, `colon-any` 2975→2972.
+  Reachability held at baseline via the allowlist rather than a raise.

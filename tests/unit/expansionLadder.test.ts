@@ -110,6 +110,105 @@ describe("the public API stays unmounted until the ladder says otherwise", () =>
   });
 });
 
+/**
+ * WHAT THE TWO ASSERTIONS ABOVE MISSED, and why this block exists.
+ *
+ * They pin `registerPublicApiV1` and `/api/v1` — the public API surface **by
+ * name**. A SECOND one existed under a different name and neither noticed it:
+ * `routes-epic-services.ts`, mounted at `/api` behind plain `isAuthenticated`,
+ * carried
+ *
+ *     GET  /developer/openapi          a document titled "AcreOS Public API"
+ *     POST /developer/api-keys         minted an `acr_…` secret for ANY customer
+ *     GET  /developer/widget-embed/:t  handed out `pub_<orgId>_<base64(orgId)>`
+ *                                      as a "publicApiKey" — the org id encoded
+ *
+ * while `routes-api-keys.ts` was kept deliberately dormant *because of this very
+ * ladder* — the reachability ratchet's note records that as the reason its
+ * `unregisteredRoutes` baseline is 1. **The decision was enforced in one place
+ * and defeated in another**, which is what a name-based check cannot see.
+ *
+ * Worse, the keys were INERT: nothing verified `provider = "api_key"` (the only
+ * consumer, `mcp-server.ts`, matches `provider = 'mcp_api_key'`), and the rate
+ * limiter written for them had zero importers — while the response told the
+ * customer *"Store this key securely. It will not be shown again."*
+ *
+ * Founder ruling (picker, 2026-08-15): remove the three endpoints. These
+ * assertions are therefore SHAPE-based rather than name-based: they ask "does any
+ * mounted route hand a customer an API key, or publish a public-API spec?", so a
+ * third surface under a third name trips them too.
+ */
+describe("no mounted route hands a customer an API key", () => {
+  const routeFiles = fs
+    .readdirSync(path.join(ROOT, "server"))
+    .filter((f) => /^routes.*\.tsx?$/.test(f) && !/\.(test|spec)\./.test(f));
+
+  it("the /developer/* surface is gone from routes-epic-services", () => {
+    const src = stripComments(
+      fs.readFileSync(path.join(ROOT, "server/routes-epic-services.ts"), "utf8"),
+    );
+    expect(
+      src,
+      "a /developer/* route is back in routes-epic-services.ts. That router mounts " +
+        "at /api behind plain isAuthenticated, so this is customer-reachable — and " +
+        "the ladder defers a public API to ~50 customers. If that threshold has " +
+        "been crossed, build the VERIFIER first: the keys this used to mint were " +
+        "accepted by nothing.",
+    ).not.toMatch(/["'`]\/developer\//);
+  });
+
+  it("every generateApiKey call site is founder-gated or unmounted", () => {
+    // The shape check. Key MINTING is the affordance the ladder defers; where it
+    // exists it must be behind requireFounder (as /api/data-api's is) or in a
+    // router nothing mounts (as routes-api-keys.ts is).
+    const offenders: string[] = [];
+    for (const f of routeFiles) {
+      const src = stripComments(fs.readFileSync(path.join(ROOT, "server", f), "utf8"));
+      if (!/\bgenerateApiKey\s*\(/.test(src)) continue;
+      const founderGated = /requireFounder|founderOnly/.test(src);
+      const mounted = routes.includes(f.replace(/\.tsx?$/, ""));
+      if (!founderGated && mounted) offenders.push(f);
+    }
+    expect(
+      offenders,
+      "a MOUNTED route mints API keys without a founder gate. The expansion " +
+        "ladder puts a public API at ~50 customers; routes-api-keys.ts stays " +
+        "dormant for exactly that reason, and this is the same affordance by " +
+        "another name.",
+    ).toEqual([]);
+  });
+
+  it("no mounted route serves the public-API spec", () => {
+    const offenders = routeFiles.filter((f) => {
+      const src = stripComments(fs.readFileSync(path.join(ROOT, "server", f), "utf8"));
+      return /ACREOS_OPENAPI_SPEC/.test(src);
+    });
+    expect(
+      offenders,
+      "a route serves ACREOS_OPENAPI_SPEC — a document titled 'AcreOS Public API' " +
+        "instructing developers to authenticate with `Bearer acr_…`. Publishing " +
+        "the spec IS launching the API, whether or not a verifier exists.",
+    ).toEqual([]);
+  });
+
+  it("the spec and the minting helper still EXIST, kept for when the trigger fires", () => {
+    // Deliberately not deleted. What was wrong was mounting them early, not
+    // writing them — so this asserts the opposite of the three above, and stops a
+    // future reader from "finishing the cleanup" and throwing away the head start.
+    const svc = path.join(ROOT, "server/services/developerApiService.ts");
+    expect(fs.existsSync(svc), "developerApiService.ts was deleted — see the ledger").toBe(true);
+    const src = fs.readFileSync(svc, "utf8");
+    expect(src).toContain("ACREOS_OPENAPI_SPEC");
+    expect(src).toContain("export function generateApiKey");
+  });
+
+  it("the detectors would notice (guards against vacuous passes)", () => {
+    expect(routeFiles.length, "no route files found — the scan is broken").toBeGreaterThan(20);
+    expect(/\bgenerateApiKey\s*\(/.test("const k = generateApiKey();")).toBe(true);
+    expect(/["'`]\/developer\//.test('router.get("/developer/openapi"')).toBe(true);
+  });
+});
+
 describe("the marketplace gate is not overridable by a subscription tier", () => {
   it("the marketplace mount uses the strict ladder gate", () => {
     const at = routes.indexOf("app.use('/api/marketplace'");

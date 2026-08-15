@@ -279,7 +279,15 @@ describe("module orphans are counted as files, not only as exports", () => {
     // decision is made in. A file is rulable; an export is not.
     expect(gate, "the moduleOrphans family is gone").toContain(`key: "moduleOrphans"`);
     const at = gate.indexOf(`key: "moduleOrphans"`);
-    const block = gate.slice(at, at + 500);
+    // Bounded to the FAMILY OBJECT, not to a character count. This read
+    // `gate.slice(at, at + 500)` and broke the moment unit 113 added a comment
+    // explaining the new module-orphan allowlist — the code it checks for had
+    // simply moved past character 500, with nothing about the behaviour changed.
+    // An arbitrary window measures "is this near the top" and reports it as "is
+    // this derived from the flag". Third time this program has hit the shape:
+    // unit 95's mismatched measure/mutate regexes, unit 110's slice-to-the-next-
+    // `continue;`, and now this. Measure the thing you mean to measure.
+    const block = gate.slice(at, gate.indexOf("\n  },", at));
     expect(block, "the family no longer derives from the moduleOrphan flag").toContain(
       "f.moduleOrphan",
     );
