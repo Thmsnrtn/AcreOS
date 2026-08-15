@@ -268,6 +268,11 @@ describe("the sites unit 112 wrapped stay wrapped", () => {
     ["server/routes-admin.ts", /sanitizePromptInline\(\s*ticket\.subject/],
     ["server/services/founderTwin.ts", /wrapUntrusted\(\s*input\.content/],
     ["server/services/evolutionPipeline.ts", /sanitizePromptInline\(\s*proposal\.description/],
+    // Found by the indirection probe, not by the gate: `sampleTexts` is built
+    // from `profile.sampleMessages` a few lines earlier, so the field name is
+    // gone by the time it reaches the template. The customer's own typed
+    // messages, which is P0-14's exact category.
+    ["server/services/writingStyle.ts", /wrapUntrusted\(\s*sampleTexts/],
   ];
 
   it.each(cases)("%s still guards its free-text field", (file, rx) => {

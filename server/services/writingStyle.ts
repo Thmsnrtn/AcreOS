@@ -4,6 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // All calls flow through aiRouter for cost tracking, semantic caching,
 // rate limiting, and provider failover.
@@ -227,7 +228,7 @@ Only output valid JSON, no other text.`
       },
       {
         role: "user",
-        content: `Analyze these ${samples.length} sample messages:\n\n${sampleTexts}`
+        content: `Analyze these ${samples.length} sample messages:\n\n${wrapUntrusted(sampleTexts, "writing-style-samples")}`
       }
     ],
     responseFormat: "json",

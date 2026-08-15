@@ -7276,3 +7276,36 @@ no delivery path at all. An unbuilt capability, **not** an active exposure.
 
 `npm run check` exits 0 (now 23 gates); `tests/unit` is 707 files / 9,223 tests
 green.
+
+### Unit 112 addendum — the blind spot I warned about, measured
+
+The gate's header claimed indirection (`const body = lead.notes;` … `${body}`)
+was *"the big one, and why a PASS here is not a proof."* **That was a guess, and
+a gate that overstates its own hole is the same defect as one that understates
+it** — both leave the reader with a wrong picture. So it was measured: a
+one-level taint pass over local `const`/`let` assignments across all 1,383 server
+files found **four** sites, and **three are not violations**:
+
+| site | via | verdict |
+|---|---|---|
+| `executive.ts:1301` | `res.choices[0]?.message?.content` | the MODEL'S own output |
+| `modelIntelligence.ts:286` | `response.choices[0]?.message?.content` | the model's own output |
+| `warRoomService.ts:195` | internal agent messages | internal |
+| `writingStyle.ts:230` | `profile.sampleMessages` | **real** — the customer's own typed messages, P0-14's exact category |
+
+`writingStyle.ts` is now wrapped and pinned. **The tracking was deliberately NOT
+added to the gate**: it would buy one finding and cost three allowlist entries,
+which is precisely the noise the 237→10 narrowing existed to remove. The header
+now records the measurement and the ratio, and says to re-measure rather than
+trust the sentence — the probe is twenty lines, and *the number is the argument*.
+
+**And a NINTH register caught the edit — a new kind.** The standing expectation
+recorded in unit 109 was that *a deletion touches every register that ever counted
+or named the thing*. This was not a deletion. Adding one `import` line to
+`writingStyle.ts` shifted `Math.random` from line 117 to 118, and
+`check-no-fabrication`'s allowlist — keyed by `file:line` — failed in **both**
+directions at once: a "new" hit at 118 and a stale entry at 117, for code that did
+not change by one character. So the rule is wider than it was written: **any edit
+that shifts a line trips a line-keyed register**, not only a deletion. The entry
+now records that, so the next reader who sees this failure does not go hunting for
+a fabrication defect that was never there.

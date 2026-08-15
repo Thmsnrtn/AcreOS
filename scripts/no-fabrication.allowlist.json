@@ -213,9 +213,9 @@
     },
     {
       "file": "server/services/writingStyle.ts",
-      "line": 117,
+      "line": 118,
       "category": "id",
-      "note": "Writing-sample id suffix — entropy for uniqueness."
+      "note": "Writing-sample id suffix — entropy for uniqueness. Line moved 117->118 in unit 112 by an added import, NOT by a code change: this register is keyed by file:line, so any edit that shifts a line above an entry trips it."
     },
     {
       "file": "server/storage/commsRepo.ts",

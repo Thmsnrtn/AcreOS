@@ -53,8 +53,21 @@
 // WHAT IT CANNOT SEE  (read before believing a clean run)
 //
 //   • Indirection. `const body = lead.notes;` then `${body}` is invisible —
-//     the field name is gone by the time it reaches the template. This is the
-//     big one, and it is why a PASS here is not a proof.
+//     the field name is gone by the time it reaches the template.
+//
+//     THIS BULLET USED TO SAY "this is the big one", which was a guess, and the
+//     guess was wrong. Unit 112 measured it: a one-level taint pass over local
+//     `const`/`let` assignments across all 1,383 server files found FOUR sites,
+//     and three were not violations at all — `executive.ts:1301` and
+//     `modelIntelligence.ts:286` interpolate the MODEL'S OWN output
+//     (`res.choices[0].message.content`), and `warRoomService.ts:195` composes
+//     internal agent messages. The one real hit, `writingStyle.ts`'s
+//     `profile.sampleMessages`, is now wrapped.
+//
+//     So the tracking is DELIBERATELY NOT ADDED: it would buy one finding and
+//     cost three allowlist entries, which is the noise this gate was narrowed to
+//     avoid. Re-measure before assuming that ratio still holds — the probe is
+//     twenty lines and the number is the argument, not this sentence.
 //   • String concatenation instead of a template literal.
 //   • `JSON.stringify(row)` where the row's free-text fields are not named at
 //     the call site. Counted only when the stringified expression itself names
