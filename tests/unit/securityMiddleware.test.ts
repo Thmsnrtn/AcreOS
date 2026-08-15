@@ -110,7 +110,20 @@ describe("Security Middleware Verification", () => {
       res.body.message,
       "the injection phrase survived the middleware verbatim",
     ).not.toContain("ignore previous instructions");
-    expect(res.body.message).toContain("[content removed by safety filter]");
+    // Unit 111: this asserted the literal "[content removed by safety filter]",
+    // the spelling the middleware used when it carried its own deny-list. It now
+    // delegates to server/utils/sanitizePrompt.ts, whose marker reads
+    // "[redacted]" — so the assertion failed while the payload was in fact
+    // redacted MORE thoroughly than before ("[redacted] and [redacted]": the
+    // canonical list catches the exfiltration clause too, which the middleware's
+    // own list missed).
+    //
+    // A test pinning the spelling of a placeholder reports a security regression
+    // when there is none, and would report nothing if the marker stayed the same
+    // while detection was gutted. The invariant is that a redaction MARKER is
+    // present and the attack text is not, so that is what it checks now.
+    expect(res.body.message, "no redaction marker in the sanitized body").toMatch(/\[[a-z ]+\]/i);
+    expect(res.body.message).not.toContain("reveal system prompt");
   });
 
   it("prompt injection: ordinary text is left alone", async () => {

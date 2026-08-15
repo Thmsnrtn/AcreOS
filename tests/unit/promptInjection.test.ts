@@ -1,15 +1,40 @@
 /**
- * Task #230 — Prompt Injection Guard Unit Tests
+ * Task #230 — Prompt Injection Guard Unit Tests.
  *
- * Tests all 20 detection patterns and confirms legitimate inputs
- * are NOT over-blocked by the sanitizePrompt function.
+ * Unit 111 CHANGED WHAT THIS FILE IS TESTING, without changing what it asserts.
+ * `server/middleware/promptInjection.ts` no longer carries its own deny-list; it
+ * delegates to `server/utils/sanitizePrompt.ts`, the single owner. So these
+ * cases now exercise the canonical patterns through the middleware's door — and
+ * every one of them still has to pass, which is the point: the consolidation was
+ * a strict coverage increase, and this file is the proof for the 24 attacks and
+ * 14 legitimate inputs the middleware's own list used to be responsible for.
+ *
+ * THE PLACEHOLDER IS DERIVED, NOT HARDCODED. It read
+ * `"[content removed by safety filter]"` — the middleware's spelling — and every
+ * assertion failed on consolidation even though every attack was still caught.
+ * That is a test pinning a cosmetic detail instead of the invariant. It now asks
+ * the sanitizer what its redaction marker is, so a future rename cannot masquerade
+ * as a security regression.
  */
 
 import { describe, it, expect } from "vitest";
 import { sanitizePrompt, promptInjectionMiddleware } from "../../server/middleware/promptInjection";
 import type { Request, Response, NextFunction } from "express";
 
-const PLACEHOLDER = "[content removed by safety filter]";
+/**
+ * Derived: "do anything now" matches one pattern in full, so the sanitized form
+ * IS the marker. The guard below fails loudly if that stops being true rather
+ * than letting every assertion silently weaken to `toContain("")`.
+ */
+const PLACEHOLDER = sanitizePrompt("do anything now");
+
+describe("the derived placeholder is a real marker (vacuity guard)", () => {
+  it("is a non-empty token that is not the input", () => {
+    expect(PLACEHOLDER.length).toBeGreaterThan(3);
+    expect(PLACEHOLDER).not.toBe("do anything now");
+    expect(PLACEHOLDER).toMatch(/^\[.*\]$/);
+  });
+});
 
 // ─── Injection patterns that MUST be caught ───────────────────────────────────
 

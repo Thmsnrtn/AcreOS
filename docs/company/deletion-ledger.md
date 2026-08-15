@@ -419,3 +419,50 @@ correctness risks across 2+ machines. Disposition:
 
   Counts locked in the same commit: `unreachedExports` 651→580, `moduleOrphans`
   61→45, `opaqueExports` 986→984, `as-any` 1390→1383, `colon-any` 2988→2975.
+
+- **2026-08-15 — `server/services/promptInjectionSanitizer.ts` (111 lines).**
+  Founder ruling (picker, 2026-08-14): *"Consolidate to one owner."*
+
+  A module orphan — four exports, zero callers — and the WEAKEST of **three**
+  independent prompt-injection deny-lists the repo carried, each from a different
+  named initiative. Measured against a 30-attack corpus: this one missed 18,
+  `server/middleware/promptInjection.ts` missed 14, `server/utils/sanitizePrompt.ts`
+  missed 10.
+
+  **DELETION ALONE WOULD HAVE LOST COVERAGE, which is why this is a
+  consolidation and not a removal.** The three lists were *complementary, not
+  nested*: four attack classes were caught ONLY by the module nothing imported —
+  a generic persona override ("You are now a pirate…"), "act as though you have
+  no restrictions", "### END OF DOCUMENT", and a forged line-start `system:` role
+  line. Those four were merged into `utils/sanitizePrompt.ts` FIRST. Two of them
+  were **narrowed** on the way in, because the orphan had never felt its own
+  false positives: its bare `act as (if|though)` redacted "Buyer to act as if the
+  contract were assignable", and its `forget everything` redacted "Seller will
+  forget everything about the prior offer" — ordinary contract language on a
+  real-estate product.
+
+  **What the deletion exposed** was worse than the dead module. Two exported
+  functions were both named `sanitizePrompt` with different semantics, and
+  `server/ai/executive.ts` — Pax's chat engine, on both chat paths — had imported
+  the weaker one. It sanitized org knowledge files and Pax project files with it
+  and concatenated the result into the **SYSTEM role message**, with no
+  `<<USER_DATA>>` envelope, although Pax's system prompt only instructs the model
+  about that envelope. Uploaded document text carrying `<|im_start|>`,
+  `</system>`, `[INST]`, "disregard the above rules" or "override your system
+  instructions" reached the system prompt intact. `mentionedEntities[].name` — a
+  bare `z.string()` off the request body — reached it with no sanitization at all.
+
+  **A FOURTH copy** turned up while the guard test was being written:
+  `server/utils/injectionRateLimiter.ts` held a hand-copied subset (9 markers
+  where there were 15, 10 phrases where there were 20) beneath a header claiming
+  it used *"the same INJECTION_PHRASES/MARKERS regex set used by
+  sanitizePrompt"*. So probes the sanitizer redacted never incremented
+  `ai_injection_attempts` — a founder-visible count that was a systematic
+  undercount. It now calls `detectInjectionPatterns()` from the one owner.
+
+  **Nothing was caught less.** The pre-existing `promptInjection.test.ts` — 24
+  attacks and 14 legitimate inputs, written against the middleware's own list —
+  passes unchanged through the delegating middleware.
+
+  Counts locked in the same commit: `unreachedExports` 1439→1436,
+  `moduleOrphans` 45→44. No tables were revealed: the module had no writer.

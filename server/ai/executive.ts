@@ -6,7 +6,7 @@ import { eq, desc } from "drizzle-orm";
 import { executeTool } from "./tools";
 // Tier 1B (elevation blueprint): customer-content fields in tool results are
 // wrapped in the untrusted envelope before re-entering the model channel.
-import { serializeToolResultForModel } from "./untrustedEnvelope";
+import { serializeToolResultForModel, wrapUntrusted } from "./untrustedEnvelope";
 // Tahoe E8: the Pax tool list is now sourced from the App Intent registry
 // (single source of truth across Pax tool-use, command palette, external
 // agents) rather than a hand-maintained list in tools.ts.
@@ -26,7 +26,11 @@ import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
-import { sanitizePrompt } from "../middleware/promptInjection";
+// Unit 111: THE canonical sanitizer. This import used to read
+// `from "../middleware/promptInjection"` — a different function with the same
+// name and a weaker deny-list, which is exactly how one Pax path ended up
+// protected differently from its siblings.
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
 import { pickPaxModelForOrg, type PaxModelChoice } from "../services/paxModelTier";
@@ -1212,8 +1216,16 @@ async function loadOrgKnowledgeContext(orgId: number): Promise<string> {
   try {
     const files = await storage.getActiveKnowledgeFiles(orgId);
     if (files.length === 0) return "";
+    // Unit 111: uploaded document text lands in the SYSTEM role message, so it
+    // gets the same envelope the tool-result path already uses — the canonical
+    // sanitizer plus <<USER_DATA>> markers Pax's system prompt actually
+    // instructs the model about. It previously used middleware/promptInjection's
+    // same-named-but-weaker sanitizePrompt and no envelope at all, so
+    // `<|im_start|>`, `</system>` and `[INST]` reached the system prompt intact.
+    // `f.name` is user-supplied too (it is the upload's filename), which is why
+    // it goes through the source-label slot rather than into the marker line raw.
     const sections = files.map(f =>
-      `--- KNOWLEDGE: ${f.name} ---\n${sanitizePrompt(f.extractedContent ?? "")}\n--- END: ${f.name} ---`
+      wrapUntrusted(f.extractedContent ?? "", `knowledge:${f.name}`)
     ).join("\n\n");
     // Non-blocking usage tracking
     process.nextTick(() => storage.incrementKnowledgeFileUsage(orgId).catch(() => {}));
@@ -1230,10 +1242,18 @@ async function loadProjectContext(orgId: number, projectId: number): Promise<str
     const project = await storage.getPaxProject(orgId, projectId);
     if (!project) return "";
     const files = await storage.getPaxProjectFiles(projectId);
+    // Unit 111, same reasoning as loadOrgKnowledgeContext above. The project's
+    // own name and description are org-authored free text reaching the system
+    // prompt, so they are sanitized too — inline, since they sit on the framing
+    // lines rather than inside a data block.
     const sections = files
-      .map(f => `--- File: ${f.fileName} ---\n${sanitizePrompt(f.extractedContent ?? "")}\n--- End: ${f.fileName} ---`)
+      .map(f => wrapUntrusted(f.extractedContent ?? "", `project-file:${f.fileName}`))
       .join("\n\n");
-    return `\n\n=== PROJECT: ${project.name} ===\n${project.description ? `Description: ${project.description}\n` : ""}${sections}\n=== END PROJECT ===`;
+    const safeName = sanitizePromptInline(project.name ?? "", { source: "project.name" });
+    const safeDesc = project.description
+      ? sanitizePromptInline(project.description, { source: "project.description" })
+      : "";
+    return `\n\n=== PROJECT: ${safeName} ===\n${safeDesc ? `Description: ${safeDesc}\n` : ""}${sections}\n=== END PROJECT ===`;
   } catch {
     return "";
   }
@@ -1394,8 +1414,11 @@ export async function processChat(
   const _prefCtx = await loadUserPreferenceContext(org.id);
   const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
   const _projectCtx = options.activeProjectId ? await loadProjectContext(org.id, options.activeProjectId) : "";
+  // Unit 111: `mentionedEntities[].name` arrives as a bare `z.string()` on the
+  // request body (routes-ai.ts) and lands in the SYSTEM role message. It was the
+  // one context block reaching the system prompt with NO sanitization at all.
   const _mentionCtx = options.mentionedEntities?.length
-    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
+    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${sanitizePromptInline(String(e.type ?? "")).toUpperCase()}] ${sanitizePromptInline(e.name ?? "", { source: "mention.name" })}: ${sanitizePromptInline(e.preview ?? "", { source: "mention.preview" })}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
@@ -1882,8 +1905,11 @@ export async function* processChatStream(
   const _prefCtx = await loadUserPreferenceContext(org.id);
   const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
   const _projectCtx = options.activeProjectId ? await loadProjectContext(org.id, options.activeProjectId) : "";
+  // Unit 111: `mentionedEntities[].name` arrives as a bare `z.string()` on the
+  // request body (routes-ai.ts) and lands in the SYSTEM role message. It was the
+  // one context block reaching the system prompt with NO sanitization at all.
   const _mentionCtx = options.mentionedEntities?.length
-    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
+    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${sanitizePromptInline(String(e.type ?? "")).toUpperCase()}] ${sanitizePromptInline(e.name ?? "", { source: "mention.name" })}: ${sanitizePromptInline(e.preview ?? "", { source: "mention.preview" })}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
