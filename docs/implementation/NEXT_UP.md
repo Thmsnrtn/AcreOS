@@ -920,10 +920,10 @@ pins the split itself.
 exports is now an honest number rather than a small one, and the cheapest way down
 is deletion, cheapest first — starting with `moduleOrphans`, where one ruling
 removes a file and several exports at once (B19 classes 2+3 removed 16 files and
-5,002 lines that way). Sampling verification worth repeating: eight newly-unreached
-exports checked at random all had zero other production references, including
-`achMandateSetup`/`achAutopay` symbols that the linter's OWN HEADER names as
-canonical "built but unwired" examples and that opacity had been hiding.
+5,002 lines that way). (A correction from unit 117's wave audit: an earlier edition here claimed the
+newly-unreached included `achMandateSetup`/`achAutopay` symbols "opacity had
+been hiding" — false; those modules are statically imported, opacity never
+applied to them, and zero of the 859 reclaimed exports are ach symbols.)
 
 ## 5. What must NOT be rebuilt or reconsidered
 

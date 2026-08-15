@@ -41,10 +41,11 @@
  * accusation. Of 1,244 distinct dynamic-import specifiers, **838 were reached
  * ONLY by destructuring and 27 ever took a namespace binding**, which is why the
  * narrowing moved 859 exports in one step: opaque-exports 984 → 125,
- * unreached-exports 580 → 1439. Among the reclaimed are `achMandateSetup` /
- * `achAutopay` symbols that the gate's OWN HEADER names as canonical "built but
- * unwired" examples and that opacity had been hiding for as long as the rule
- * existed.
+ * unreached-exports 580 → 1439. (An earlier edition of this comment claimed the
+ * reclaimed included `achMandateSetup`/`achAutopay` symbols "opacity had been
+ * hiding" — FALSE, corrected by unit 117's wave audit: those modules are
+ * statically imported, so opacity never applied to them and zero of the 859 are
+ * ach symbols. A verification claim that was itself unverified.)
  *
  * THE TRAP, recorded because the next person to touch this will step in it. The
  * first implementation simply skipped destructured imports — and `moduleOrphans`

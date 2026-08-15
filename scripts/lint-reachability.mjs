@@ -836,7 +836,9 @@ const FAMILIES = [
     // exempt a module on the strength of ANY dynamic import of it. So
     // `server/services/aiRouter.ts`, pulled in by
     // `const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
-    // from five call sites, also shielded MODEL_PRESETS, isClaudeModel,
+    // from destructured call sites across a dozen server files (17 at unit
+    // 117's recount; earlier editions said "five", which was never accurate — a
+    // number in prose decays), also shielded MODEL_PRESETS, isClaudeModel,
     // routeVisionTask, routeExtendedThinkingTask, getDbModelConfigs,
     // applyEvalQualityGate and the rest — exports appearing NOWHERE else in
     // production, invisible purely because a SIBLING was destructured out of the
@@ -849,10 +851,16 @@ const FAMILIES = [
     // 1,244 distinct dynamic-import specifiers, 838 were reached ONLY by
     // destructuring and just 27 ever took a namespace binding — which is why
     // `isDestructuredDynamicImport()` moved 859 exports in one step:
-    // opaque-exports 984 -> 125, unreached-exports 580 -> 1439. Among the
-    // reclaimed are achMandateSetup/achAutopay symbols that THIS FILE'S OWN
-    // HEADER names as canonical "built but unwired" examples and that opacity had
-    // been hiding.
+    // opaque-exports 984 -> 125, unreached-exports 580 -> 1439.
+    //
+    // CORRECTED (unit 117, wave audit). Earlier editions of this comment claimed
+    // the reclaimed 859 included achMandateSetup/achAutopay symbols "that opacity
+    // had been hiding". FALSE: those modules are STATICALLY imported (jobs/
+    // achAutopayRun.ts, routes-borrower.ts), so opacity never applied to them —
+    // their unreached symbols were visible under the OLD rule too, and zero of
+    // the 859 are ach symbols. The narrowing's case never needed the flourish;
+    // the audit that caught the invented attribution is the wave rule working on
+    // this program's own output.
     //
     // That raise is the one this ratchet reserves to sign-off, and it has it:
     // founder approval, 2026-08-14. What remains here is the residue the rule

@@ -32,6 +32,17 @@
  *
  * So the detector below is deliberately simple, and every assertion that could
  * pass vacuously has a guard that fails if the scan stops seeing things.
+ *
+ * STATED LIMITS (unit 117 wave audit; deliberate, not oversights). The
+ * population is route files whose OWN source both reads body free-text and
+ * reaches an LLM. A route that reads body text and hands it to a SERVICE which
+ * calls the model is outside it — tracing that needs call-graph analysis, and a
+ * broad approximation would make this gate's number mostly noise, which is how
+ * gates die (see lint-prompt-envelope's 237→10). Those service-side sites are
+ * covered by the prompt-envelope gate at the interpolation point instead: the
+ * two gates are complementary, boundary-guard here, interpolation-guard there.
+ * The scan is also top-level server/routes*.ts only, matching where this repo
+ * defines routers.
  */
 
 import { describe, it, expect } from "vitest";
@@ -60,9 +71,27 @@ function guardedPrefixes(): string[] {
   ].map((m) => m[1]);
 }
 
-/** Reads a free-text field off the request body — either form. */
-const READS_BODY_TEXT =
-  /req\.body\.(?:message|prompt|content|query|input|text)\b|\{[^}]*\b(?:message|prompt|content)\b[^}]*\}\s*=\s*req\.body/;
+/**
+ * Reads a free-text field off the request body — three forms, and the third was
+ * a HOLE the unit-117 wave audit found in this very test: a handler that
+ * zod-parses (`streamSchema.safeParse(req.body)`) matches neither the property
+ * read nor the destructuring form, so /api/founder/chat — one of unit 115's own
+ * three surfaces — was invisible to the DERIVED check and protected only by the
+ * hardcoded three-prefix assertion below. Since zod-parse is this repo's
+ * PREFERRED body-handling pattern, the next new chat surface would have used it
+ * and walked past the gate. The zod form counts when the file both parses
+ * req.body through a schema AND declares a free-text-named field on a z.object.
+ */
+const READS_BODY_TEXT_FORMS: RegExp[] = [
+  /req\.body\.(?:message|prompt|content|query|input|text)\b/,
+  /\{[^}]*\b(?:message|prompt|content)\b[^}]*\}\s*=\s*req\.body/,
+];
+function readsBodyText(src: string): boolean {
+  if (READS_BODY_TEXT_FORMS.some((re) => re.test(src))) return true;
+  const zodParsesBody = /\.(?:safeParse|parse)\(\s*req\.body\s*\)/.test(src);
+  const zodFreeTextField = /\b(?:message|prompt|content|text|input)\s*:\s*z\./.test(src);
+  return zodParsesBody && zodFreeTextField;
+}
 
 /** Reaches a model. */
 const REACHES_LLM = /chat\.completions\.create|messages\.create|routeAITask\s*\(/;
@@ -73,7 +102,7 @@ function llmChatRouteFiles(): string[] {
   for (const f of fs.readdirSync(path.join(ROOT, "server"))) {
     if (!/^routes.*\.ts$/.test(f) || /\.(test|spec)\./.test(f)) continue;
     const src = stripLineComments(fs.readFileSync(path.join(ROOT, "server", f), "utf8"));
-    if (READS_BODY_TEXT.test(src) && REACHES_LLM.test(src)) out.push(f.replace(/\.ts$/, ""));
+    if (readsBodyText(src) && REACHES_LLM.test(src)) out.push(f.replace(/\.ts$/, ""));
   }
   return out.sort();
 }
@@ -99,7 +128,13 @@ function mountPrefixFor(file: string): string | null {
 }
 
 function isGuarded(prefix: string, guarded: string[]): boolean {
-  return guarded.some((g) => prefix === g || prefix.startsWith(`${g}/`) || g.startsWith(`${prefix}/`));
+  // Two directions only. The third — `g.startsWith(prefix + "/")`, "some
+  // narrower guard exists under this mount" — was here originally and is
+  // UNSOUND: a router mounted at /api would count as guarded because /api/ai
+  // is, while its own LLM route at /api/something-else has no guard at all
+  // (unit 117 wave audit). Express middleware applies to the mount prefix and
+  // below; a guard on a SIBLING subtree protects nothing here.
+  return guarded.some((g) => prefix === g || prefix.startsWith(`${g}/`));
 }
 
 describe("the scan actually sees things (vacuity guards, first)", () => {
@@ -113,10 +148,28 @@ describe("the scan actually sees things (vacuity guards, first)", () => {
     expect(llmChatRouteFiles().length).toBeGreaterThan(0);
   });
 
-  it("the body-text pattern matches BOTH forms", () => {
-    expect(READS_BODY_TEXT.test("const x = req.body.message;")).toBe(true);
-    expect(READS_BODY_TEXT.test("const { message } = req.body;")).toBe(true);
-    expect(READS_BODY_TEXT.test("const { threadId } = req.body;")).toBe(false);
+  it("the body-text detector matches ALL THREE forms", () => {
+    expect(readsBodyText("const x = req.body.message;")).toBe(true);
+    expect(readsBodyText("const { message } = req.body;")).toBe(true);
+    // The zod form the wave audit found missing: schema-parse plus a free-text
+    // field declaration. Either alone is not enough.
+    expect(
+      readsBodyText('const s = z.object({ message: z.string() });\nconst p = s.safeParse(req.body);'),
+    ).toBe(true);
+    expect(readsBodyText("const p = idSchema.safeParse(req.body);")).toBe(false);
+    expect(readsBodyText("const { threadId } = req.body;")).toBe(false);
+  });
+
+  it("the derived population includes founder-chat (the zod-parse case itself)", () => {
+    // Before the widening this file's own derived check MISSED
+    // routes-founder-chat: its /stream handler reads the message via
+    // streamSchema.safeParse(req.body). If this fails, the hole is back.
+    expect(
+      llmChatRouteFiles(),
+      "routes-founder-chat dropped out of the derived population — the zod-parse " +
+        "form has stopped matching, so the next zod-parsing chat surface will " +
+        "not be caught on the commit that writes it",
+    ).toContain("routes-founder-chat");
   });
 
   it("can resolve a mount prefix it knows the answer for", () => {
