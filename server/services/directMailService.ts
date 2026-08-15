@@ -505,6 +505,24 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
   }
 }
 
+/**
+ * Cheap pre-flight reject before a PAID Lob verification call. Ported from the
+ * deleted addressValidation.ts (unit 116) — it was that module's one capability
+ * the live rival lacked: obviously-bad input (no street line, neither city+state
+ * nor zip) fails here for free instead of costing a Lob API call.
+ *
+ * Lob rate limits, recorded here because the deleted module was the only place
+ * they were written down: 150 req/s live keys, 5 req/s test keys — batch callers
+ * should pace sequentially rather than fan out.
+ */
+export function isAddressMinimallyValid(address: { line1?: string; city?: string; state?: string; zip?: string }): boolean {
+  const { line1, city, state, zip } = address;
+  if (!line1 || line1.trim().length < 5) return false;
+  // Need at least city+state OR zip
+  if (!zip && (!city || !state)) return false;
+  return true;
+}
+
 export async function verifyAddress(address: RecipientAddress): Promise<VerifyAddressResult> {
   logger.info(`[DirectMailService] Verifying address: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
   

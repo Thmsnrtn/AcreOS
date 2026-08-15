@@ -1136,6 +1136,15 @@ zero mentions first. `moduleOrphans` 61→45. The class-2 and class-3 sections b
 are kept as the RECORD OF WHAT WAS DELETED, not as a to-do list; the files are
 gone.
 
+**Unit 116 executed the full triage of the remainder** (founder ruling, picker
+2026-08-15: *"Delete all 15"*). A 27-agent workflow classified all 44 remaining
+orphans — every DELETE adversarially refuted, importers re-verified centrally:
+**15 deleted** (~4,100 lines; see the deletion ledger for the per-file evidence —
+eight were fabricators, which converts "wire it" into "delete it"), **12 keep**
+(staged seams and infrastructure with a reason to exist unwired), **11
+refuted-or-unclear** (stay here, unresolved), and **6 wire** — which is Class 1
+below, now including `wireInstructions.ts`. `moduleOrphans` 44→29.
+
 **What remains open is Class 1**, and it is not a deletion decision at all — it is
 wiring, blocked on a judgement call with legal weight. Read that section, not this
 blocker's original framing.

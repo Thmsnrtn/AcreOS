@@ -505,3 +505,57 @@ correctness risks across 2+ machines. Disposition:
 
   Counts locked in the same commit: `as-any` 1383→1381, `colon-any` 2975→2972.
   Reachability held at baseline via the allowlist rather than a raise.
+
+- **2026-08-15 — B19 orphan triage executed: 15 modules, ~4,100 lines** (founder
+  ruling, picker: *"Delete all 15"*). A 27-agent triage classified all 44 module
+  orphans — every DELETE recommendation adversarially refuted by a second agent,
+  importers re-verified centrally per wave discipline. Result: 15 delete / 6 wire
+  (class 1 regulated, untouched) / 12 keep / 11 refuted-or-unclear (stay in B19).
+
+  **Superseded duplicates** (the live rival named in each case):
+  `addressValidation.ts` (→ `directMailService.verifyAddress`; its one unique
+  capability, the pre-flight cheap-reject, PORTED as
+  `directMailService.isAddressMinimallyValid` with Lob's rate limits recorded),
+  `atlasToolRegistry.ts` (→ the App Intent registry; its `atlas_tool_usage`
+  table exists in no migration — nothing to drop), `compoundSagas.ts`
+  (→ `sagaOrchestratorV12`), `data-cache/free-source-router.ts` (→ the live
+  broker, which already does free-source-first and carries the FEMA host fix this
+  copy would have regressed).
+
+  **Fabricators** — the refuse-not-fabricate rule converts "wire it" into
+  "delete it": `freedomCalculator.ts` (summed payments with NO status filter;
+  the founder/Quinn 503 at `routes-data-intelligence.ts:429` is the honest
+  answer and stays), `opportunityZoneAnalyzer.ts` (invented OZ tax rates stated
+  as fact — the deleted-tax-engine pattern exactly), `portfolioIntelligence.ts`
+  (hardcoded 0.15 capital-gains rate, three times), `productEvolutionEngine.ts`
+  (build estimates derived from `gap.length` — a string length),
+  `quizGrading.ts` (keyword-overlap presented as a student grade),
+  `tenantMetering.ts` (invented price list existing in no billing system),
+  `soren/seoSeed.ts` (rows stamped `source: "serp_scrape"` for scrapes that
+  never happened), `autonomousSalesPipeline.ts` (invented ARPU/LTV; the ledger's
+  2026-08-01 "KILL with their parents" ruling already covered it),
+  `negotiationPipeline.ts` (invented high-motivation statistic; live rivals:
+  `negotiationOrchestrator` + `aiOfferService` + `sellerPsychologyStrategy`).
+
+  **Structurally unsound:** `learningAnalytics.ts` — its org parameter was a
+  lie: `courses`/`course_enrollments`/`tutor_sessions` carry NO tenant key, so
+  wiring it would have shipped one org's dashboard filled with every org's data.
+  **Experiment:** `reactionChainSeeder.ts`.
+
+  **Companions:** `client/src/components/freedom-progress-card.tsx` (zero
+  importers, queried a nonexistent endpoint) and three test files whose imports
+  were `vitest` only — they tested INLINE COPIES of their dead subject and
+  pinned nothing (`freedomCalculator`, `negotiationPipeline`,
+  `portfolioIntelligence`). `addressValidation.test.ts` was REPOINTED at the
+  ported function instead, per the wave rule. Two `ownedServices` strings
+  removed from `companyAgents.ts` — the B17 trap, third occurrence.
+
+  **DELETION-REVEALED, queued:** `product_specifications`,
+  `build_buy_decisions`, `feature_impact_scores` (only writer:
+  productEvolutionEngine), `opportunity_zone_holdings` (only writer:
+  opportunityZoneAnalyzer), `tutor_sessions` (last reader: learningAnalytics).
+  `tablesNoWriter` 58→62, `tablesNoReader` 70→75. **NOT dropped** — all five
+  join the founder drop queue (now sixteen tables).
+
+  Counts locked in the same commit: `unreachedExports` 1436→1405,
+  `moduleOrphans` 44→29, `opaqueExports` 125→120.

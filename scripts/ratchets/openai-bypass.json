@@ -10,7 +10,7 @@
     "**/*.spec.ts",
     "server/services/aiRouter.ts"
   ],
-  "baselineCount": 85,
+  "baselineCount": 83,
   "direction": "down",
-  "lastBumpNote": "89 -> 85 on 2026-08-13: the standalone negotiation copilot, deleted (BLOCKERS B12, founder ruling \u2014 the deletion ledger's KILL verdict, executed). services/negotiationCopilot.ts held four direct chat.completions.create() call sites, none of them routed through the aiRouter chokepoint, so a KILLed subsystem accounted for four of this ratchet's remaining bypasses \u2014 spend a per-org quota and a platform daily ceiling could not see, on a surface with no live caller. Locked in per this ratchet's strictly-down rule."
+  "lastBumpNote": "85 -> 83 on 2026-08-15: unit 116 deleted fifteen module orphans (~4,100 LOC) under the founder's 'Delete all 15' ruling — the 2 direct-OpenAI call sites lived in the deleted files. Not a typing improvement, a deletion: the cheapest way to satisfy any of these gates. Locked in per this ratchet's strictly-down rule. PRIOR NOTE — 89 -> 85 on 2026-08-13: the standalone negotiation copilot, deleted (BLOCKERS B12, founder ruling — the deletion ledger's KILL verdict, executed). services/negotiationCopilot.ts held four direct chat.completions.create() call sites, none of them routed through the aiRouter chokepoint, so a KILLed subsystem accounted for four of this ratchet's remaining bypasses — spend a per-org quota and a platform daily ceiling could not see, on a surface with no live caller. Locked in per this ratchet's strictly-down rule."
 }

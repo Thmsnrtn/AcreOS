@@ -78,6 +78,27 @@ try {
     console.error(String(err.message ?? err));
     process.exit(1);
   }
+  // A KILLED tsc is not a clean tsc. Unit 116 caught this evaluator reporting
+  // "current count is 0, baseline says 162" during a run where vitest fork
+  // workers were also dying — tsc was starved/killed mid-run, emitted some
+  // non-error text, and the parse below dutifully counted zero `error TS` lines.
+  // Zero-errors-because-it-crashed and zero-errors-because-the-code-is-clean are
+  // different facts, and a register must never report the first as the second:
+  // the stale-high failure it produces tells the operator to LOWER the baseline
+  // to a number that was never true.
+  if (err.signal) {
+    console.error(`${TAG} FAIL — tsc was killed by ${err.signal}; refusing to report a count.`);
+    process.exit(1);
+  }
+  const parsed = output.split("\n").filter((l) => /error TS\d+/.test(l)).length;
+  if (parsed === 0) {
+    console.error(
+      `${TAG} FAIL — tsc exited ${err.status} yet no "error TS" lines parsed. ` +
+        `A non-zero exit with zero diagnostics means the run is not trustworthy ` +
+        `(crash, OOM, or an output format change) — refusing to report a count.`,
+    );
+    process.exit(1);
+  }
 }
 
 const lines = output.split("\n").filter((l) => /error TS\d+/.test(l));

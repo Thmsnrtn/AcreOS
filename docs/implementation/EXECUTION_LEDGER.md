@@ -7512,3 +7512,81 @@ fails before any conclusion is drawn from it. Mutations: remove the customer-fac
 guard (caught), remove all three (caught).
 
 `npm run check` exits 0; `tests/unit` is 709 files / 9,248 tests green.
+
+## Unit 116 — B19 triage executed: 15 orphans deleted, and the registers caught it seven ways · this commit
+
+**Founder ruling (picker, 2026-08-15): "Delete all 15."**
+
+The full triage of the 44 remaining module orphans ran as a 27-agent workflow —
+classify in batches, then adversarially refute every DELETE recommendation
+(default-refuted when uncertain, because a wrong delete removes a working
+feature). Per wave discipline the reports were then verified centrally: my own
+grep confirmed zero importers for all fifteen, including destructured-dynamic
+forms, before the decision went to the founder.
+
+**15 delete / 6 wire / 12 keep / 11 refuted-or-unclear.** The refuted column is
+the wave rule working — eleven modules a single-pass sweep would have deleted
+survived their refutation (`agentRateLimiter`, `costBasisTracker`,
+`depreciationService`, `email/deliverabilityCheck`, `cmaPdfService`, `import.ts`,
+`paxMemoryTriggers`, three solene modules, `jobs/cmoPerformanceIngest`).
+
+**Eight of the fifteen were fabricators**, which converts "wire it" into "delete
+it" under the standing rule: an invented 15% capital-gains rate (three times), OZ
+tax rates stated as fact, a price list existing in no billing system, build
+estimates derived from a string's LENGTH, keyword-overlap presented as a student
+grade, provenance stamps for scrapes that never happened, invented ARPU/LTV, an
+invented negotiation statistic. `learningAnalytics` was structurally unsound in a
+worse way: its org parameter was a lie — the three tables it reads carry no
+tenant key, so wiring it would have shipped cross-org data.
+
+**Salvage before deletion, per the wave rule:** `isAddressMinimallyValid` (the
+one capability the live rival lacked — a free pre-flight reject before a PAID Lob
+call) was ported into `directMailService` with Lob's rate limits recorded, and
+`addressValidation.test.ts` was repointed at the ported function instead of dying
+with its module. The three test files that WERE deleted imported only `vitest` —
+they tested inline copies of their subject and pinned nothing.
+
+### Nine registers caught the deletion
+
+`unreachedExports` 1436→1405 · `moduleOrphans` 44→29 · `opaqueExports` 125→120 ·
+`as-any` 1381→1364 · `colon-any` 2972→2950 · **`openai-bypass` 85→83** (a
+register this program had never tripped before — the standing rule keeps finding
+new registers) · the tenancy debt register lost two entries
+(`autonomousSalesPipeline::identifyLeads`, `productEvolutionEngine::generateSpec`) ·
+`lint-date-format`'s baseline named the deleted `freedom-progress-card.tsx` ·
+and `check-tests-typecheck` (see below, which was wrong rather than merely stale).
+Every one failed stale-high and was locked in by this commit. Plus the
+deletion-revealed exception, invoked explicitly: `tablesNoWriter` 58→62 and
+`tablesNoReader` 70→75 — `product_specifications`, `build_buy_decisions`,
+`feature_impact_scores` (writer: productEvolutionEngine),
+`opportunity_zone_holdings` (writer: opportunityZoneAnalyzer), `tutor_sessions`
+(last reader: learningAnalytics). All five queued for the founder drop decision;
+none dropped.
+
+And the **B17 trap, third occurrence**: `companyAgents.ts`'s `ownedServices`
+arrays named `tenantMetering` and `learningAnalytics` — dangling registry strings
+that make a deleted module look alive to the reachability linter and invite a
+rebuild. Removed.
+
+### An eighth register — and it was WRONG, in the dangerous direction
+
+Running the full suite concurrently with two 27-agent audit workflows starved
+the machine: four vitest fork workers failed to START (all 9,157 tests that ran
+passed; the four files pass 56/56 alone), and `check-tests-typecheck` reported
+**"current count is 0, baseline says 162"** — a stale-high failure instructing
+the operator to lower the baseline to a number that was never true. tsc had been
+killed mid-run and emitted non-error text, which walked past the empty-output
+guard, and the parse dutifully counted zero `error TS` lines.
+**Zero-because-it-crashed and zero-because-clean are different facts.** The
+evaluator now refuses to report a count when tsc dies on a signal or exits
+non-zero with no diagnostics — mutation-tested with a simulated exit-137 crash.
+
+### A measurement lesson recorded
+
+The before/after table diff initially returned EMPTY while the counts said
++4/+5 — piping the linter's large `--report` output through `grep -c` truncated
+it (SIGPIPE), so the diff compared two empty files. **Two empty files agree about
+everything.** Redirect-to-file first, then grep the file; the vacuity check
+(`wc -l` on both sides) is what caught it.
+
+Type-check exits 0; all gates green at the new baselines.

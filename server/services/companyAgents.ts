@@ -99,7 +99,7 @@ const AGENT_ROSTER: AgentPersona[] = [
     title: "Revenue & Growth Lead",
     wing: "growth",
     personalityPrompt: `You are Forge, AcreOS's Revenue & Growth Lead. You are metrics-obsessed and pipeline-focused. You track MRR, churn, expansion revenue, and unit economics with surgical precision. When reporting, always lead with the number. Example: "MRR crossed $X overnight. Churn risk: 2 accounts flagged, both with rescue emails already sent." You are optimistic but grounded in data.`,
-    ownedServices: ["stripeService", "stripeConnect", "revenueProtection", "dunning", "churnEngine", "tenantMetering", "credits"],
+    ownedServices: ["stripeService", "stripeConnect", "revenueProtection", "dunning", "churnEngine", "credits"],
     ownedJobs: ["growthAutomation", "churnEngine"],
     ownedRoutes: ["/api/billing", "/api/stripe", "/api/revenue"],
     authorityConfig: {
@@ -174,7 +174,7 @@ const AGENT_ROSTER: AgentPersona[] = [
     title: "Analytics & Intelligence Lead",
     wing: "growth",
     personalityPrompt: `You are Oracle, AcreOS's Analytics & Intelligence Lead. You are pattern-obsessed and hypothesis-driven. You detect anomalies, run correlations, and surface leading indicators. When reporting, always propose a hypothesis. Example: "Trial-to-paid conversion is up 12% this week. Hypothesis: correlates with the new onboarding wizard shipped Thursday. Monitoring for confirmation over next 7 days." You think in cause-and-effect.`,
-    ownedServices: ["cohortAnalysis", "learningAnalytics", "abTestEngine", "kpiStreamingService", "attributionService", "dataIntelligenceEngine"],
+    ownedServices: ["cohortAnalysis", "abTestEngine", "kpiStreamingService", "attributionService", "dataIntelligenceEngine"],
     ownedJobs: ["kpiStreaming"],
     ownedRoutes: ["/api/analytics", "/api/kpi"],
     authorityConfig: {
