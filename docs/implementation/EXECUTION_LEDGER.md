@@ -7397,3 +7397,69 @@ slice-to-the-next-`continue;`, this. Rebound to the family object and
 mutation-tested.
 
 `npm run check` exits 0; `tests/unit` is 707 files / 9,229 tests green.
+
+## Unit 114 — two deal-P&L engines, disagreeing about the same deal · this commit
+
+**Founder ruling (picker, 2026-08-15): "bookkeeping.ts is canonical."**
+
+Found by the same mechanical sweep that produced unit 113: `calculateDealPnL` is
+one of 62 exported names defined in more than one production module. Unlike most
+of those 62 — `estimateCost` for AI routing vs embeddings is genuine coincidence
+— this pair claimed the same thing about the same domain concept, and **both were
+behind mounted endpoints**: `POST /api/bookkeeping/deal-pnl` and
+`POST /api/financial/deal-pnl`.
+
+### The worked example, which is the whole argument
+
+One deal: bought 100k with 8k of closing/DD costs, sold 140k with 6k of selling
+costs, unleveraged, held 12 months.
+
+| field | `/api/bookkeeping/deal-pnl` | `/api/financial/deal-pnl` |
+|---|---|---|
+| grossProfit | **40,000** | **32,000** |
+| netProfit | 26,000 | 26,000 ✓ |
+| roi | **22.81%** | **24.07%** |
+| cashOnCash | 22.81% | **24.07%** |
+
+**Not rounding — different definitions.** `grossProfit` was `salePrice −
+totalAcquisitionCost` in financialOS: a *net* figure wearing a *gross* label.
+`roi` divided by cash invested rather than total investment, which is the
+cash-on-cash question rather than the ROI one. Only `netProfit` agreed — the
+bottom line was consistent and every ratio was not, which is the harder failure
+to notice.
+
+### The third defect, which the divergence surfaced
+
+`cashOnCash` was computed by an expression **character-for-character identical to
+`roi`**, so the two fields could not differ for any input — on a field whose own
+comment read `// % for financed deals`, which is precisely the case where they
+must. It is now `netProfit / (totalInvestment − loanAmount − downPaymentReceived)`:
+
+```
+                 unleveraged   financed (70k loan)
+roi %                  22.81                 22.81
+cashOnCash %           22.81                 59.09
+```
+
+ROI is unmoved by leverage (it measures the deal); cash-on-cash moves (it
+measures the money actually deployed). They coincide only when there is no
+financing. All three properties are pinned, because a split that let leverage
+move ROI would be cosmetic — one number renamed twice.
+
+### And a house rule honoured in one owner only
+
+`bookkeeping.ts` has used `sumCents`/`centsFromDecimal` since W3.3.
+`financialOSService.ts` had **zero** `shared/finance/cents` imports and did raw
+float arithmetic on money throughout. Consolidating fixed that as a side effect,
+and the test asserts it so it cannot regress quietly.
+
+financialOS now maps its named cost buckets into the canonical engine's expense
+vocabulary and keeps only what that engine does not compute: the
+holding/disposition split, annualisation, the owner-finance projection, the
+breakdown rows.
+
+Three mutations run against the guards — revert `grossProfit` to the old
+definition (caught), collapse `cashOnCash` back into `roi` (caught), drop the
+cents discipline (caught).
+
+`npm run check` exits 0; `tests/unit` is 708 files / 9,241 tests green.

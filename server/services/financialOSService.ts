@@ -47,6 +47,8 @@ import { deals, notes, payments, organizations, properties } from "@shared/schem
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { addDays, addMonths, format, differenceInDays } from "date-fns";
 
+import { calculateDealPnL as bookkeepingDealPnL, type DealExpense } from "./bookkeeping";
+import { centsFromDecimal, sumCents } from "@shared/finance/cents";
 // ---------------------------------------------------------------------------
 // 1031 Exchange Clock
 //
@@ -339,7 +341,7 @@ export function calculateDealPnL(input: DealPnLInput): {
   netProfit: number;
   roi: number; // %
   annualizedRoi: number; // %
-  cashOnCash: number; // % for financed deals
+  cashOnCash: number; // % — differs from roi exactly when the deal is financed
   holdingMonths: number;
   profitPerMonth: number;
 
@@ -355,34 +357,97 @@ export function calculateDealPnL(input: DealPnLInput): {
 
   breakdown: Array<{ category: string; amount: number; type: "cost" | "income" }>;
 } {
-  const totalAcquisitionCost =
-    input.purchasePrice +
-    input.closingCostsAtPurchase +
-    input.dueDiligenceCosts +
-    input.mailingCosts +
-    input.travelCosts +
-    input.lienPayoffs;
+  // ── The shared figures come from ONE owner ────────────────────────────────
+  //
+  // Unit 114, founder ruling (picker, 2026-08-15): `bookkeeping.calculateDealPnL`
+  // is canonical for grossProfit, netProfit and roi. This function used to
+  // compute them itself and DISAGREED. On one deal — bought 100k with 8k of
+  // closing/DD costs, sold 140k with 6k of selling costs, unleveraged, held 12
+  // months — the two mounted endpoints answered:
+  //
+  //     grossProfit   40,000  vs  32,000
+  //     roi           22.81%  vs  24.07%
+  //     netProfit     26,000  vs  26,000   (the one they agreed on)
+  //
+  // Not rounding — different DEFINITIONS. `grossProfit` was `salePrice -
+  // totalAcquisitionCost` here, i.e. already net of acquisition costs: a net
+  // figure wearing a gross label. `roi` divided by cash invested rather than
+  // total investment, which is the cash-on-cash question, not the ROI one.
+  //
+  // So the costs below are mapped into the canonical engine's expense vocabulary
+  // and it answers. What stays here is what it does not compute: the holding /
+  // disposition split, annualisation, the owner-finance projection and the
+  // breakdown rows.
+  const expenses: DealExpense[] = ([
+    { category: "title", description: "Closing costs (purchase)", amount: input.closingCostsAtPurchase, date: "" },
+    { category: "other", description: "Due diligence", amount: input.dueDiligenceCosts, date: "" },
+    { category: "marketing", description: "Mailing", amount: input.mailingCosts, date: "" },
+    { category: "other", description: "Travel", amount: input.travelCosts, date: "" },
+    { category: "other", description: "Lien payoffs", amount: input.lienPayoffs, date: "" },
+    { category: "carrying", description: "Property taxes (hold)", amount: (input.annualTaxes / 12) * input.holdingMonths, date: "" },
+    { category: "carrying", description: "Insurance", amount: input.insuranceCost, date: "" },
+    { category: "carrying", description: "Interest paid", amount: input.interestPaid, date: "" },
+    { category: "title", description: "Closing costs (sale)", amount: input.closingCostsAtSale, date: "" },
+    { category: "legal", description: "Agent commission", amount: input.agentCommission, date: "" },
+    { category: "marketing", description: "Resale marketing", amount: input.marketingCosts, date: "" },
+  ] as DealExpense[]).filter((e) => e.amount !== 0);
 
+  // The canonical engine is date-driven; this one is month-driven. Deriving the
+  // dates from holdingMonths keeps a single source for holdingDays/taxTreatment
+  // instead of a second calendar convention. Epoch-anchored and UTC so the
+  // result is deterministic — see shared/dates/calendar.ts for why this repo
+  // does not build dates from `new Date()` in computation paths.
+  const purchaseDate = new Date(Date.UTC(2000, 0, 1));
+  const saleDate = new Date(Date.UTC(2000, 0, 1));
+  saleDate.setUTCMonth(saleDate.getUTCMonth() + Math.max(0, Math.round(input.holdingMonths)));
+
+  const core = bookkeepingDealPnL(
+    input.purchasePrice,
+    input.salePrice,
+    expenses,
+    purchaseDate,
+    saleDate,
+    input.isOwnerFinanced ? "seller_finance" : "flip",
+    input.downPaymentReceived,
+  );
+
+  // ── The figures this engine adds, in integer cents ────────────────────────
   const holdingTaxes = (input.annualTaxes / 12) * input.holdingMonths;
-  const totalHoldingCost = holdingTaxes + input.insuranceCost + input.interestPaid;
-
+  const totalAcquisitionCost =
+    sumCents([
+      input.purchasePrice,
+      input.closingCostsAtPurchase,
+      input.dueDiligenceCosts,
+      input.mailingCosts,
+      input.travelCosts,
+      input.lienPayoffs,
+    ]) / 100;
+  const totalHoldingCost =
+    sumCents([holdingTaxes, input.insuranceCost, input.interestPaid]) / 100;
   const totalDispositionCost =
-    input.closingCostsAtSale + input.agentCommission + input.marketingCosts;
+    sumCents([input.closingCostsAtSale, input.agentCommission, input.marketingCosts]) / 100;
+  const netSaleProceeds =
+    (centsFromDecimal(input.salePrice) - centsFromDecimal(totalDispositionCost)) / 100;
 
-  const netSaleProceeds = input.salePrice - totalDispositionCost;
-  const totalCosts = totalAcquisitionCost + totalHoldingCost;
-  const grossProfit = input.salePrice - totalAcquisitionCost;
-  const netProfit = netSaleProceeds - totalAcquisitionCost - totalHoldingCost;
-
-  const cashInvested =
-    totalAcquisitionCost - input.loanAmount + totalHoldingCost;
-  const roi = cashInvested > 0 ? (netProfit / cashInvested) * 100 : 0;
+  const { grossProfit, netProfit } = core;
+  const roi = core.roi;
   const annualizedRoi =
     input.holdingMonths > 0 ? roi / (input.holdingMonths / 12) : roi;
-  const cashOnCash =
-    cashInvested > 0 ? (netProfit / cashInvested) * 100 : 0;
   const profitPerMonth =
     input.holdingMonths > 0 ? netProfit / input.holdingMonths : 0;
+
+  // CASH-ON-CASH IS NOT ROI. It used to be computed by an expression identical
+  // to `roi` above, so the two fields could never differ — while the field's own
+  // comment read "% for financed deals", which is precisely the case where they
+  // must differ. Cash-on-cash asks what the money YOU actually put in returned,
+  // so financing and any down payment received come out of the denominator.
+  const totalInvestment =
+    (centsFromDecimal(input.purchasePrice) + centsFromDecimal(core.totalCosts)) / 100;
+  const cashInvested =
+    (centsFromDecimal(totalInvestment) -
+      centsFromDecimal(input.loanAmount) -
+      centsFromDecimal(input.downPaymentReceived ?? 0)) / 100;
+  const cashOnCash = cashInvested > 0 ? (netProfit / cashInvested) * 100 : 0;
 
   // Owner finance projection
   let ownerFinanceProjection: ReturnType<typeof calculateDealPnL>["ownerFinanceProjection"];
@@ -392,11 +457,16 @@ export function calculateDealPnL(input: DealPnLInput): {
     input.termMonths &&
     input.downPaymentReceived !== undefined
   ) {
-    const totalMonthlyPayments = input.monthlyPayment * input.termMonths;
-    const totalCollected = input.downPaymentReceived + totalMonthlyPayments;
+    const totalMonthlyPayments = (centsFromDecimal(input.monthlyPayment) * input.termMonths) / 100;
+    const totalCollected =
+      (centsFromDecimal(input.downPaymentReceived) + centsFromDecimal(totalMonthlyPayments)) / 100;
     const totalInterestEarned =
-      totalCollected - (input.salePrice - input.downPaymentReceived);
-    const totalProfitProjected = totalCollected - totalAcquisitionCost - totalHoldingCost;
+      (centsFromDecimal(totalCollected) -
+        (centsFromDecimal(input.salePrice) - centsFromDecimal(input.downPaymentReceived))) / 100;
+    const totalProfitProjected =
+      (centsFromDecimal(totalCollected) -
+        centsFromDecimal(totalAcquisitionCost) -
+        centsFromDecimal(totalHoldingCost)) / 100;
     const projectedRoi =
       cashInvested > 0 ? (totalProfitProjected / cashInvested) * 100 : 0;
 
@@ -406,7 +476,7 @@ export function calculateDealPnL(input: DealPnLInput): {
       totalCollected,
       totalInterestEarned,
       totalProfitProjected,
-      projectedRoi,
+      projectedRoi: Math.round(projectedRoi * 100) / 100,
     };
   }
 
@@ -430,8 +500,8 @@ export function calculateDealPnL(input: DealPnLInput): {
     grossProfit,
     netProfit,
     roi,
-    annualizedRoi,
-    cashOnCash,
+    annualizedRoi: Math.round(annualizedRoi * 100) / 100,
+    cashOnCash: Math.round(cashOnCash * 100) / 100,
     holdingMonths: input.holdingMonths,
     profitPerMonth,
     ownerFinanceProjection,
