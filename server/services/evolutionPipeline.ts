@@ -33,6 +33,7 @@ import { MODELS } from "./models";
 import { logger } from "../utils/logger";
 import { requireOpenAIClient } from "../utils/openaiClient";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 // ---------------------------------------------------------------------------
 // OpenRouter client
 // ---------------------------------------------------------------------------
@@ -332,7 +333,7 @@ Existing file content:
 ${fileContent || "(new file — no existing content)"}
 
 Required change:
-${proposal.description}
+${sanitizePromptInline(proposal.description ?? "", { source: "proposal.description" })}
 
 Code location: ${proposal.codeLocation}
 

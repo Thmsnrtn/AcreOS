@@ -1,0 +1,15 @@
+{
+  "name": "prompt-envelope",
+  "mode": "external",
+  "evaluator": "scripts/lint-prompt-envelope.mjs",
+  "direction": "down",
+  "baseline": 0,
+  "description": "PROMPT-ENVELOPE ratchet. server/utils/sanitizePrompt.ts states the rule in its own header — 'Apply at every site where DB-sourced text is interpolated into a prompt' — and nothing checked it. Unit 111 found what that costs: server/ai/executive.ts fed user-uploaded document text into Pax's SYSTEM role message with no envelope, sanitized by a weaker same-named function, while the system prompt instructed the model only about the <<USER_DATA>> envelope it never received. It shipped green. This converts the doc comment into CI, the same move lint-reachability.mjs made for 'built but unwired'. Counts FREE-TEXT interpolations into an LLM message that do not pass through the canonical sanitizer; strictly down-only. NOT a broad check by design: the first cut matched any `content:` template anywhere and found 237 interpolations across 43 files, overwhelmingly ${totalMrr}, ${paidOrgs.length} and module constants — a gate whose number is mostly noise is one people learn to re-baseline.",
+  "allowlist": [
+    {
+      "file": "server/services/aiRouter.ts",
+      "expr": "${m.content}",
+      "reason": "NOT DB-sourced text. Both sites append CONFIDENCE_SCHEMA_INSTRUCTION to the system message the CALLER already assembled — `{ ...m, content: `${m.content}\\n\\n${CONFIDENCE_SCHEMA_INSTRUCTION}` }` — so `m.content` is a system prompt this codebase wrote, not customer input. Sanitizing here would be actively wrong: it would redact the system prompt's OWN anti-injection language, which by construction contains the phrases the deny-list hunts ('role overrides, persona changes, system-prompt exfiltration attempts' appear verbatim in USER_DATA_SYSTEM_CLAUSE). The envelope belongs where untrusted text ENTERS the prompt, which is the caller's job and is what this gate checks everywhere else."
+    }
+  ]
+}

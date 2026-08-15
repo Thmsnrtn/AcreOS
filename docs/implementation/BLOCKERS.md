@@ -1159,6 +1159,30 @@ three classes.**
 | `landlordCompliance.ts` | 413 | notice periods, retaliation windows, lead-paint, fair-housing, HAP recert. Its 51-state deposit table was a DUPLICATE and was removed under **B18**; `shared/regulatory/depositReturnRules.ts` is the single owner |
 | `rental/leaseSigningPacket.ts` | 551 | lease execution packet |
 | `usuryCeiling.ts` | 205 | state usury caps |
+| `wireInstructions.ts` | 261 | ALTA Pillar 2 wire-fraud prevention (added to this class 2026-08-15) |
+
+**`wireInstructions.ts` — checked 2026-08-15, and the finding is the reassuring
+direction, so it is stated precisely rather than dramatically.** Wire fraud is
+real estate's largest loss vector, so the first question was whether a live
+surface delivers wire instructions *without* these controls. It does not:
+
+- It is the **only** wire-instructions implementation in the repo — no rival, so
+  this is class 1 (build it) and not class 2 (delete a duplicate).
+- Its six `title_orders` columns (`wire_instructions_pdf_s3_key`,
+  `..._password_hint`, `..._hmac`, `..._issued_at`, `wire_confirmation_phone`,
+  `wire_confirmed_at`) have exactly one writer — itself — and **zero readers
+  anywhere**, server or client.
+- `routes-title-partners.ts` IS mounted (5 endpoints) and exposes **no wire
+  endpoint**.
+
+So there is **no wire-instruction delivery path at all**. This is an unbuilt
+capability, not an active exposure. Wiring it is a feature build with external
+dependencies the module deliberately does not own — encrypted PDF generation and
+S3 upload, out-of-band SMS for the password, and a customer confirmation surface
+— which is why it sits here rather than in a work queue. It also sits adjacent to
+the money-custody hard stop, so its scope is a founder decision. The module's
+fail-closed posture is correct meanwhile: `issueWireInstructions` throws rather
+than produce an unsigned wire instruction.
 
 `breachNotificationTrigger.ts` is the sharpest thing in this file. It was written
 deliberately by a named privacy audit, its header names the exact statutes and

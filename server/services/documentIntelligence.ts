@@ -35,6 +35,17 @@ import {
 import { eq, and, desc, ilike, or } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { wrapUntrusted } from '../ai/untrustedEnvelope';
+import { USER_DATA_SYSTEM_CLAUSE } from '../utils/sanitizePrompt';
+
+/**
+ * Unit 112: uploaded document text is the textbook indirect-injection vector —
+ * an attacker authors the PDF, the customer uploads it, and the model reads it
+ * as prose. These three surfaces fed `rawText` into the prompt raw. The cap
+ * matches what the upload path already truncates to, so the envelope does not
+ * silently shorten a document that used to fit.
+ */
+const MAX_DOC_CHARS = 8000;
 
 /**
  * Thrown when a document id does not belong to the calling organization. The
@@ -323,13 +334,13 @@ export class DocumentIntelligenceService {
         messages: [
           {
             role: "system",
-            content: `You are a legal document parser specializing in real estate documents. ${prompt}
+            content: `${USER_DATA_SYSTEM_CLAUSE}\n\nYou are a legal document parser specializing in real estate documents. ${prompt}
             
 Return a JSON object with the extracted data. Be precise with amounts, dates, and names.`,
           },
           {
             role: "user",
-            content: `Parse the following ${documentType} document and extract the relevant information:\n\n${rawText}`,
+            content: `Parse the following ${documentType} document and extract the relevant information:\n\n${wrapUntrusted(rawText, `document:${documentType}`, { maxLength: MAX_DOC_CHARS })}`,
           },
         ],
         response_format: { type: "json_object" },
@@ -398,7 +409,7 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
         messages: [
           {
             role: "system",
-            content: `You are a legal document analyzer. Extract key terms and clauses from real estate documents.
+            content: `${USER_DATA_SYSTEM_CLAUSE}\n\nYou are a legal document analyzer. Extract key terms and clauses from real estate documents.
             
 Return a JSON object with a "keyTerms" array containing objects with:
 - term: the name/type of the term (e.g., "Purchase Price", "Closing Date", "Earnest Money")
@@ -408,7 +419,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
           },
           {
             role: "user",
-            content: `Extract key terms from this ${doc.documentType} document:\n\n${doc.rawText}`,
+            content: `Extract key terms from this ${doc.documentType} document:\n\n${wrapUntrusted(doc.rawText ?? "", `document:${doc.documentType}`, { maxLength: MAX_DOC_CHARS })}`,
           },
         ],
         response_format: { type: "json_object" },
@@ -447,7 +458,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
         messages: [
           {
             role: "system",
-            content: `You are a legal risk analyst specializing in real estate documents. Identify potential issues, red flags, and concerns.
+            content: `${USER_DATA_SYSTEM_CLAUSE}\n\nYou are a legal risk analyst specializing in real estate documents. Identify potential issues, red flags, and concerns.
             
 Return a JSON object with a "riskFlags" array containing objects with:
 - issue: description of the potential problem
@@ -458,7 +469,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
           },
           {
             role: "user",
-            content: `Analyze this ${doc.documentType} for potential risks and red flags:\n\n${doc.rawText}`,
+            content: `Analyze this ${doc.documentType} for potential risks and red flags:\n\n${wrapUntrusted(doc.rawText ?? "", `document:${doc.documentType}`, { maxLength: MAX_DOC_CHARS })}`,
           },
         ],
         response_format: { type: "json_object" },

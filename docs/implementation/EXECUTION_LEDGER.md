@@ -7186,3 +7186,93 @@ deny-list in the middleware (caught).
   mutation-tested against gutted detection.
 
 `npm run check` exits 0; `tests/unit` is 706 files / 9,207 tests green.
+
+## Unit 112 — the prompt-envelope rule was written down and unenforced; now it is a gate · this commit
+
+**Founder ruling (picker, 2026-08-14): "Sweep the interpolation sites + gate it."**
+
+`server/utils/sanitizePrompt.ts` has carried the rule in its own header since
+P0-14: *"Apply at every site where DB-sourced text is interpolated into a
+prompt."* Nothing checked it, and unit 111 showed the cost — Pax's system prompt
+took raw uploaded document text and shipped GREEN, because the rule lived in a
+doc comment.
+
+This is CLAUDE.md's most-common-defect one level up: not *built but unwired* but
+**decided but unchecked**. Same remedy as `lint-reachability.mjs` — convert the
+recurring manual audit into CI.
+
+### The narrowing is the work
+
+The first cut matched any `content:` template anywhere: **237 interpolations
+across 43 files**, overwhelmingly `${totalMrr}`, `${paidOrgs.length}`,
+`${closingDays}` and module constants. **A gate whose number is mostly noise is
+one people learn to re-baseline** — this program has repeatedly declined churn on
+exactly that basis (34 benign favourable defaults, 29 `if (!res.ok)` sites, 207
+inline money-format sites), and a gate is no different.
+
+Tightened until every hit was real:
+
+1. the template sits in a `content:`/`prompt:` slot on an object that **also
+   carries `role:`** — that shape *is* an LLM message;
+2. the interpolated expression touches a **free-text field** from P0-14's own
+   list ("lead names, property descriptions, inbox subjects, customer-typed
+   notes") plus the fields this codebase carries uploaded prose in;
+3. it is not already guarded.
+
+**237 → 10, and all ten were genuine.** `title` and `label` are deliberately
+excluded despite being prose: here they are dominated by code-defined rosters
+(`companyAgents`'s "Chief Technology Officer", `ONBOARDING_STEPS`), and including
+them put the noise straight back.
+
+### What was wrapped
+
+| site | field | why it matters |
+|---|---|---|
+| `documentIntelligence.ts` ×3 | `doc.rawText` / `rawText` | uploaded document text — the textbook indirect-injection vector, on parse, key-terms and risk analysis |
+| `portfolioSentinel.ts` | `property.address`, `alert.description`, `triggerData` | customer-entered property data |
+| `routes-admin.ts` | `ticket.subject`, `conversation`, `org.name` | customer-authored support text, into a founder-voice reply |
+| `buyerMatchingAI.ts` | `property.description` | customer-entered, into an outbound pitch |
+| `founderTwin.ts` | `input.content` | CEO communications |
+| `evolutionPipeline.ts` | `proposal.description` | drives **code generation** |
+
+The three document surfaces also gained `USER_DATA_SYSTEM_CLAUSE` in their system
+prompts — wrapping without the clause is half a fix, because the markers arrive
+and the model was never told what they mean.
+
+### The one allowlist entry, and why it is not a cop-out
+
+`aiRouter.ts`'s two `${m.content}` sites append `CONFIDENCE_SCHEMA_INSTRUCTION`
+to the system message **the caller already assembled**. Sanitizing there would be
+actively wrong: it would redact the system prompt's own anti-injection language,
+which by construction contains the very phrases the deny-list hunts ("role
+overrides, persona changes, system-prompt exfiltration attempts" appear verbatim
+in `USER_DATA_SYSTEM_CLAUSE`). The envelope belongs where untrusted text
+*enters*.
+
+### A defect in my own gate, caught before it shipped
+
+Line numbers were computed on comment-stripped source, so the gate reported
+`documentIntelligence.ts:380` for a site living at **411**. **A gate that names
+the wrong line is worse than one that names none** — the reader looks, sees
+nothing wrong, and learns to distrust the output. Fixed by *blanking* comments to
+spaces instead of removing them, preserving every byte offset. A fixture test
+compares the reported line against the real one, and it fails when the blanking
+is reverted.
+
+Four mutations run against the gate: gut the detector (caught), drop the `role:`
+requirement (caught, by the non-message fixture), unwrap a document surface
+(caught), revert the offset-preserving strip (caught). The third mutation attempt
+initially reported "16 passed" because its anchor did not match — **a mutation
+that does not mutate proves nothing**, so it was re-run with the assertion that
+the anchor exists.
+
+### Also recorded
+
+`wireInstructions.ts` (ALTA Pillar 2 wire-fraud prevention) is added to B19 class
+1 with the check that matters stated plainly: it is the **only** wire-instructions
+implementation, its six `title_orders` columns have one writer and **zero
+readers**, and `routes-title-partners.ts` exposes no wire endpoint — so there is
+no delivery path at all. An unbuilt capability, **not** an active exposure.
+
+`npm run check` exits 0 (now 23 gates); `tests/unit` is 707 files / 9,223 tests
+green.
