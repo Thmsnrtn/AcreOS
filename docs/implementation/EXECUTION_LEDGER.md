@@ -7463,3 +7463,52 @@ definition (caught), collapse `cashOnCash` back into `roi` (caught), drop the
 cents discipline (caught).
 
 `npm run check` exits 0; `tests/unit` is 708 files / 9,241 tests green.
+
+## Unit 115 — twelve chat surfaces guarded, three not · this commit
+
+`server/routes.ts` mounts `promptInjectionMiddleware` on a **hand-written list**
+of prefixes. Checking whether that list was complete found **three chat surfaces
+missing**, each taking `req.body.message` straight into a model:
+
+| prefix | route | audience |
+|---|---|---|
+| `/api/realtime` | `POST /ask` — the command-palette AI | **customer-facing** |
+| `/api/founder/chat` | `POST /stream` | founder only |
+| `/api/founder/intelligence` | `POST /agent-chat` | founder only |
+
+Twelve siblings were guarded and these three were not, for no reason anyone
+decided. **A hand-maintained list grows a gap the moment someone adds a surface
+without remembering the list exists** — the same shape as unit 113's expansion
+ladder, enforced on one router and defeated on another.
+
+Severity, stated honestly: this is the PRIMARY channel — a user's own message to
+their own assistant — so the realistic exposure is self-jailbreak, not the
+cross-tenant *indirect* injection that units 111–112 addressed. What makes it
+worth fixing is consistency in a security control: twelve equivalent surfaces
+already have this guard, and inconsistency is how the next one gets missed too.
+
+`promptInjectionCoverage.test.ts` now **derives** the requirement — any mounted
+router that reads a body text field and reaches an LLM must sit under a guarded
+prefix — so the next surface is caught on the commit that writes it.
+
+### Two broken detectors, caught before they became conclusions
+
+Writing that test produced two wrong scans in a row, and both are recorded in it
+because both are the kind that read as *good news*:
+
+1. A `req\.body\.(message|prompt|…)` pattern found **nothing** — these handlers
+   destructure (`const { message } = req.body`). An empty result that looks like
+   a clean bill of health is the most dangerous kind of wrong.
+2. A naive block-comment stripper (`/\/\*[\s\S]*?\*\//g`) mispaired against the
+   file's content and silently blanked the region containing all twelve
+   `app.use(..., promptInjectionMiddleware)` lines, so the scan reported **zero
+   guarded prefixes**. This repo already carries that lesson — `stripJsonc` ate
+   JSON globs the same way, and `expansionLadder.test.ts` uses a line-based
+   stripper that *throws* if it runs away — and it was learned again anyway.
+
+Both are now vacuity guards that run **first** in the file: if the scan stops
+seeing the twelve prefixes, or stops matching both destructuring forms, the suite
+fails before any conclusion is drawn from it. Mutations: remove the customer-facing
+guard (caught), remove all three (caught).
+
+`npm run check` exits 0; `tests/unit` is 709 files / 9,248 tests green.

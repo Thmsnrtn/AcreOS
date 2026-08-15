@@ -953,6 +953,23 @@ export async function registerRoutes(
   app.use("/api/founder/v11", promptInjectionMiddleware);
   app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
   app.use("/api/support", promptInjectionMiddleware);
+  // Unit 115: three chat surfaces that take `req.body.message` straight into a
+  // model and had no guard, while twelve siblings above did. The list was
+  // maintained by hand, so a new chat surface joined it only if someone
+  // remembered — which is the same shape as the expansion ladder being enforced
+  // on one router and defeated on another (unit 113).
+  //
+  //   /api/realtime           POST /ask        — command-palette AI, CUSTOMER-facing
+  //   /api/founder/chat       POST /stream     — founder only
+  //   /api/founder/intelligence POST /agent-chat — founder only
+  //
+  // `promptInjectionCoverage.test.ts` now DERIVES the required set from the code
+  // (any mounted router that reads a body text field and reaches an LLM), so the
+  // next one is caught on the commit that writes it rather than the audit that
+  // finds it.
+  app.use("/api/realtime", promptInjectionMiddleware);
+  app.use("/api/founder/chat", promptInjectionMiddleware);
+  app.use("/api/founder/intelligence", promptInjectionMiddleware);
 
   // ============================================
   // SEC-004: CSRF protection for state-changing requests
