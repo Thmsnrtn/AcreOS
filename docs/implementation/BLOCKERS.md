@@ -1489,3 +1489,38 @@ starting point:
   with a recorded reactivation criterion, and `revenue_generated` is
   billing-adjacent. Dropping a frozen subsystem's metering table pre-empts its
   reactivation. **Class C.**
+
+---
+
+## B22 — `check-route-cost-class.mjs` is unwired, and red if wired
+
+**Found:** unit 130, while closing the vacuity findings.
+**Blocked on:** nothing technical — it needs a decision about whether route cost
+classification is a rule this repo actually wants, and a baseline if so.
+
+**Not wired.** `grep -rn "check-route-cost-class\|route-cost-class" package.json
+.github/ .githooks/` returns nothing. It is not in `npm run check`, not in any
+workflow, not in a hook. A gate nobody runs is a file — this repo's single most
+common defect class, aimed at governance instead of features.
+
+**And it would fail on contact.** Run against `origin/main...HEAD` it reports
+**1,862 unclassified route call sites** of 1,868 (6 classified). Verified this
+is NOT caused by unit 130's fix: `git show HEAD:scripts/check-route-cost-class.mjs`
+run on the same tree also exits 1. The gate has been red for as long as it has
+existed; nothing noticed because nothing ran it.
+
+**What unit 130 DID change**, and why it is still worth having: `gitDiff()`
+swallowed every error and returned `""`, so a shallow CI clone, an unfetched base
+ref, or any git failure was indistinguishable from a genuinely route-free diff —
+it printed "no new routes in diff" and exited 0. That is the same false-clean
+class as the ratchet engine passing on a missing glob root. It now distinguishes
+"git failed" from "empty diff" and floors its populations (270 route files,
+1,868 call sites).
+
+**The decision this needs.** Either (a) the cost-class rule is real, in which
+case it needs a frozen baseline of the 1,862 the way `check-org-scoped-fetch`
+froze its tenancy debt, plus wiring into `npm run check`; or (b) it is an
+abandoned experiment, in which case delete it — the deletion ledger's usual
+verdict for a thing built and never wired. Do NOT wire it as-is: that fails the
+build on day one and gets `--no-verify`'d into irrelevance within a week, which
+is the failure mode `check-tests-typecheck`'s header already warns about.
