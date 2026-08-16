@@ -10,11 +10,11 @@ import { serveStatic } from "./static";
 import { registerWellKnownRoutes } from "./routes-well-known";
 import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
-import { recordStripeWebhookFailure } from "./metrics";
+import { recordStripeWebhookFailure, metricsHandler } from "./metrics";
 import { notifyOnCall } from "./services/oncall";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
-import { metricsMiddleware, metricsHandler } from "./middleware/metrics";
+import { metricsMiddleware } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
 import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
@@ -675,7 +675,9 @@ app.use("/mcp", mcpLimiter);
   // the SPA shell. Registered before serveStatic.
   registerWellKnownRoutes(app);
 
-  // Prometheus scrape endpoint — serves collected metrics in text exposition format
+  // Prometheus scrape endpoint — the prom-client exporter from server/metrics.ts
+  // (single registry, valid text exposition, bearer-gated on the documented
+  // METRICS_TOKEN env var; fails closed in production when unset).
   app.get("/metrics", metricsHandler);
 
   // Initialize distributed tracing before routes so Express instrumentation captures all routes

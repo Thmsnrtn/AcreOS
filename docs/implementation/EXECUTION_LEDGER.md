@@ -7749,3 +7749,62 @@ directions verified.
   exports it, the broker imports it.
 
 `npm run check` exits 0; `tests/unit` is 712 files / 9,303 tests green.
+
+## Unit 120 — two approved consolidations shipped, and a third found while shipping them · this commit
+
+### /metrics onto prom-client (founder-approved)
+
+The live handler read `METRICS_BEARER_TOKEN` while every operator doc says
+`METRICS_TOKEN` (production scrape: dark, 404); its exposition was malformed
+(`…}_count` — suffixes after the label braces abort the whole scrape on parse);
+and the correctly-implemented prom-client handler was dead, so counters really
+incremented in production — `acreos_stripe_webhook_failed_total` from the live
+Stripe webhook catch block — were rendered by nobody and the SLO alert on them
+**could never fire**. Now: one handler (prom-client), one registry, the
+documented env var, valid text with `# HELP`/`# TYPE`, seconds not ms,
+fail-closed 503 instead of a silent 404 when the token is unset in production.
+The middleware feeds the same registry (function identity verified at runtime).
+`routes-metrics.ts` lost its false "Prometheus can reach this" comment, ~200
+lines of a THIRD hand-rolled exposition, and four business counters with zero
+incrementer call sites that could only ever render 0. Central pass repointed
+`monitoring/alert-rules.yml`'s seven stale expressions at the canonical series
+(error rate now derives from the `status="5xx"` label; ms thresholds became
+seconds).
+
+### sendLetter onto BYOK-first credentials (founder-approved)
+
+`mailProvider` resolved Lob credentials by its own order — legacy
+`organization_integrations` row, then the PLATFORM key, never the BYOK vault —
+so an org whose key lives in the vault (the documented Universal-BYOK path)
+shipped letters on **AcreOS's own Lob account**, against the BYO-rails ruling.
+`directMailService.getLobClient` is now the single credential authority;
+`mailProvider`'s independent query is deleted and a source-scan test pins that a
+second resolution order cannot exist. Caller map verified: one production
+caller (`autopilot/hands/send-letter.ts`); behaviour changes ONLY for
+BYOK-vault orgs, whose letters now ship on their own account. The platform
+fallback itself stays — the founder explicitly deferred killing it.
+
+### The credential redactor: SIX copies, not four
+
+Consolidating `sanitizeEvidence` (audited at four copies) found **two more** —
+`pax/continuousAudit` and `embeddings/voyageClient`. A duplicate hunt that
+trusts its inventory stops early. The measured divergence: a Slack token or a
+session JWT was redacted by ONE copy of six and persisted verbatim by five;
+`gho_` OAuth tokens by three of six. **Which secrets survived into an audit row
+depended on which agent wrote the row.** Two of the copies carried comments
+claiming they matched a shared contract ("same prefix set as the wave's other
+Phase-C agents" / "an independent copy of the prefix list specified in the
+phase-C contract") — both false, the `sanitizePrompt` shape again.
+`server/utils/redactCredentials.ts` now owns the union; six sites delegate
+(voyage keeps its distinct marker via a parameter); a scan test forbids a
+seventh list. One union choice worth recording: AWS keys match `{4,}` not
+`{16}`, because two retired copies were deliberately loose and their pinning
+tests encode it — **for a redactor the union is the LOOSEST form**; over-redacting
+prose is noise, an unredacted key is the defect.
+
+Registers this unit tripped: `res-status-raw` 504→500 (four raw sites lived in
+the deleted renderers), `check-no-fabrication`'s line-keyed allowlist
+(continuousAudit's `Math.random` shifted 723→702 — the second line-shift catch),
+both locked in.
+
+`npm run check` exits 0; the suite is 725 files / 9,537 tests green.

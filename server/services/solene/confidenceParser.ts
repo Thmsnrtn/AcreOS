@@ -14,14 +14,16 @@
  *   hedged_confidence   — "I think", "probably", "maybe", "likely", "might be"
  *   no_signal           — none of the above matched
  *
- * Sanitization mirrors constitutionalGuard.sanitizeEvidence behavior
- * inline (we deliberately do NOT import constitutionalGuard — that surface
- * is frozen by the L3.11 contract). The credential-prefix set comes
- * straight from feedback_credential_value_handling.md: sk_/pk_ Stripe
- * keys, phc_ / phx_ PostHog, ghp_ GitHub PATs, AKIA/ASIA AWS, Bearer auth
+ * Sanitization delegates to server/utils/redactCredentials (unit 120 —
+ * one pattern list, everywhere). We still deliberately do NOT import
+ * constitutionalGuard — that surface
+ * is frozen by the L3.11 contract). The pattern set is the union owned
+ * by redactCredentials — Stripe, PostHog, GitHub, AWS, Bearer, Slack, JWT
  * headers. All redacted to "[REDACTED]" before being included in the
  * persisted phrase.
  */
+
+import { redactCredentials } from "../../utils/redactCredentials";
 
 export type ParsedConfidenceKind =
   | "explicit_percentage"
@@ -100,29 +102,9 @@ const UNCERTAINTY_CONFIDENCE = 0.4;
 
 const PHRASE_MAX_LEN = 500;
 
-const CREDENTIAL_PATTERNS: RegExp[] = [
-  // Stripe secret/publishable: sk_live_... / sk_test_... / pk_live_... etc.
-  /\b(?:sk|pk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g,
-  // PostHog project keys
-  /\bphc_[A-Za-z0-9]{8,}\b/g,
-  /\bphx_[A-Za-z0-9]{8,}\b/g,
-  // GitHub PATs
-  /\bghp_[A-Za-z0-9]{8,}\b/g,
-  // Bearer auth headers
-  /\bBearer\s+[A-Za-z0-9._\-+/=]{8,}/g,
-  // AWS access keys (long-lived + STS)
-  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
-];
-
+/** Delegates to THE credential redactor (unit 120) — one pattern list, everywhere. */
 function sanitizePhrase(s: string): string {
-  let out = String(s ?? "");
-  for (const rx of CREDENTIAL_PATTERNS) {
-    out = out.replace(rx, "[REDACTED]");
-  }
-  if (out.length > PHRASE_MAX_LEN) {
-    out = `${out.slice(0, PHRASE_MAX_LEN)}... [truncated]`;
-  }
-  return out;
+  return redactCredentials(s, PHRASE_MAX_LEN);
 }
 
 // ============================================================================

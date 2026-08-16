@@ -70,38 +70,14 @@ import {
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 
+import { redactCredentials } from "../../utils/redactCredentials";
 // ============================================================================
 // CREDENTIAL SANITIZATION — inline (don't import frozen constitutionalGuard).
 // ============================================================================
 
-const CREDENTIAL_PATTERNS: RegExp[] = [
-  // Stripe secret/pub
-  /\b(?:sk|pk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g,
-  // PostHog / posthog-style prefixes
-  /\bphc_[A-Za-z0-9]{8,}\b/g,
-  /\bphx_[A-Za-z0-9]{8,}\b/g,
-  // GitHub PAT / OAuth
-  /\bghp_[A-Za-z0-9]{8,}\b/g,
-  /\bgho_[A-Za-z0-9]{8,}\b/g,
-  // Bearer tokens
-  /\bBearer\s+[A-Za-z0-9._\-+/=]{8,}/g,
-  // AWS access keys
-  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
-];
-
-/**
- * Strip credential-looking substrings before persistence. Truncates over-long
- * inputs so a single rogue field can't blow up the row size.
- */
+/** Delegates to THE credential redactor (unit 120) — one pattern list, everywhere. */
 export function sanitizeText(s: string, maxLen = SPECULATION_TRIGGER_MAX): string {
-  let out = String(s ?? "");
-  for (const rx of CREDENTIAL_PATTERNS) {
-    out = out.replace(rx, "[REDACTED]");
-  }
-  if (out.length > maxLen) {
-    out = `${out.slice(0, maxLen)}... [truncated]`;
-  }
-  return out;
+  return redactCredentials(s, maxLen);
 }
 
 // ============================================================================

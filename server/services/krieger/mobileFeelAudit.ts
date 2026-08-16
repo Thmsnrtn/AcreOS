@@ -69,6 +69,7 @@ import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { enqueueDispatch } from "../solene/dispatchQueue";
 import { logger } from "../../utils/logger";
 
+import { redactCredentials } from "../../utils/redactCredentials";
 // ============================================================================
 // PUBLIC TYPES
 // ============================================================================
@@ -102,27 +103,15 @@ export interface DetectorFinding {
 // evidence snippet runs through this before persistence. Same prefix set as
 // the wave's other Phase-C agents (Iris, Soren, Beatrice).
 
-const CREDENTIAL_PATTERNS: RegExp[] = [
-  /sk_(?:live|test)_[A-Za-z0-9]+/g,
-  /pk_(?:live|test)_[A-Za-z0-9]+/g,
-  /phc_[A-Za-z0-9]+/g,
-  /phx_[A-Za-z0-9]+/g,
-  /ghp_[A-Za-z0-9]+/g,
-  /gho_[A-Za-z0-9]+/g,
-  /\bBearer\s+[A-Za-z0-9._\-]+/g,
-  /\bAKIA[0-9A-Z]{16}/g,
-  /\bASIA[0-9A-Z]{16}/g,
-];
-
 /**
- * Replace any credential-prefix matches with [REDACTED]. Exported for tests.
+ * Delegates to THE credential redactor (unit 120). This module used to carry
+ * its own nine-pattern list under a comment claiming the "same prefix set as
+ * the wave's other Phase-C agents" — false: it missed Slack tokens and JWTs
+ * that constitutionalGuard's copy caught, so which secrets survived into an
+ * audit row depended on which agent wrote it. Exported for tests.
  */
 export function sanitizeEvidence(s: string): string {
-  let out = s;
-  for (const re of CREDENTIAL_PATTERNS) {
-    out = out.replace(re, "[REDACTED]");
-  }
-  return out;
+  return redactCredentials(s);
 }
 
 // ============================================================================

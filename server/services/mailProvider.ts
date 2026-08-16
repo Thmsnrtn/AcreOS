@@ -1,10 +1,7 @@
-import { db } from "../db";
-import { organizationIntegrations } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
 import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
-import { readIntegrationCredentials } from './integrationCredentials';
+import { getLobClient } from './directMailService';
 
 export enum MailProvider {
   LOB = "lob",
@@ -56,6 +53,17 @@ interface ProviderCredentials {
   isTestKey: boolean;
 }
 
+/**
+ * A resolved, ready-to-send Lob client. Credential RESOLUTION does not live in
+ * this module — `directMailService.getLobClient` is the single authority (BYOK
+ * vault → legacy organization_integrations row → platform key). This module
+ * only adapts the resolved client into its own send/timeout/result plumbing.
+ */
+interface ResolvedLobClient {
+  client: InstanceType<typeof Lob>;
+  isTestKey: boolean;
+}
+
 const LOB_LETTER_COST = 0.85;
 const LOB_POSTCARD_COST = 0.45;
 
@@ -80,38 +88,43 @@ function withLobTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function getOrgMailCredentials(organizationId: number): Promise<ProviderCredentials | null> {
-  const [lobIntegration] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "lob"),
-        eq(organizationIntegrations.isEnabled, true)
-      )
-    )
-    .limit(1);
-
-  // Reads either shape. This function saw ONLY the plaintext field, and
-  // directMail.ts saw only the envelope, so which of an org's own Lob keys got
-  // used — or whether the platform key got used instead, with AcreOS paying the
-  // bill — depended on which module happened to send the mail.
-  const creds = readIntegrationCredentials<{ apiKey?: string }>(
-    lobIntegration,
-    organizationId,
-    "lob mail credentials",
-  );
-
-  if (creds?.apiKey) {
-    return {
-      provider: MailProvider.LOB,
-      apiKey: creds.apiKey,
-      isTestKey: creds.apiKey.startsWith('test_'),
-    };
+/**
+ * Resolve the Lob client for a send.
+ *
+ * Org-scoped resolution is DELEGATED to `directMailService.getLobClient` — the
+ * one credential authority — so every live sendLetter path agrees on whose Lob
+ * account pays: BYOK vault first, then the legacy organization_integrations
+ * row, then the platform key. This module previously ran its OWN resolution
+ * (legacy row → platform, never the vault), so an org whose key lived in the
+ * BYOK vault — the documented Universal-BYOK path — sent letters on ACREOS'S
+ * account, against the BYO-rails ruling (founder, 2026-07-29). One resolver,
+ * one answer.
+ *
+ * getLobClient throws only when no platform key is configured at all
+ * (resolvePlatformLobKey); in that case we fall through to
+ * getDefaultCredentials so the legacy LOB_API_KEY env fallback — and the
+ * MAIL_MOCK / refuse-to-fabricate path behind it — behaves exactly as before.
+ */
+async function resolveLobClient(organizationId?: number): Promise<ResolvedLobClient | null> {
+  if (organizationId) {
+    try {
+      const { client, source, isTestKey } = await getLobClient(organizationId);
+      logger.info(`[Mail] Lob client resolved for org ${organizationId} (source: ${source})`);
+      return { client, isTestKey };
+    } catch (error) {
+      logger.warn(
+        `[Mail] Lob credential resolution failed for org ${organizationId} - trying legacy env fallback`,
+        error instanceof Error ? error : undefined,
+      );
+    }
   }
 
-  return null;
+  const credentials = getDefaultCredentials();
+  if (!credentials) return null;
+  return {
+    client: new Lob({ apiKey: credentials.apiKey }),
+    isTestKey: credentials.isTestKey,
+  };
 }
 
 function getDefaultCredentials(): ProviderCredentials | null {
@@ -150,11 +163,11 @@ function formatAddressForLob(addr: MailAddress): any {
 }
 
 async function sendLetterViaLob(
-  credentials: ProviderCredentials,
+  resolved: ResolvedLobClient,
   options: LetterOptions
 ): Promise<MailResult> {
   try {
-    const lob = new Lob({ apiKey: credentials.apiKey });
+    const lob = resolved.client;
 
     const letter = await withLobTimeout<any>((lob.letters as any).create({
       to: formatAddressForLob(options.to),
@@ -170,7 +183,7 @@ async function sendLetterViaLob(
       mailingId: letter.id,
       expectedDeliveryDate: letter.expected_delivery_date,
       trackingUrl: letter.tracking_number ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${letter.tracking_number}` : undefined,
-      isTestMode: credentials.isTestKey,
+      isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
       cost: LOB_LETTER_COST,
     };
@@ -179,18 +192,18 @@ async function sendLetterViaLob(
       success: false,
       // Distinct, retryable signal when the Lob API stalls past LOB_TIMEOUT_MS.
       error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
-      isTestMode: credentials.isTestKey,
+      isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
     };
   }
 }
 
 async function sendPostcardViaLob(
-  credentials: ProviderCredentials,
+  resolved: ResolvedLobClient,
   options: PostcardOptions
 ): Promise<MailResult> {
   try {
-    const lob = new Lob({ apiKey: credentials.apiKey });
+    const lob = resolved.client;
 
     const postcard = await withLobTimeout<any>((lob.postcards as any).create({
       to: formatAddressForLob(options.to),
@@ -205,7 +218,7 @@ async function sendPostcardViaLob(
       success: true,
       mailingId: postcard.id,
       expectedDeliveryDate: postcard.expected_delivery_date,
-      isTestMode: credentials.isTestKey,
+      isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
       cost: LOB_POSTCARD_COST,
     };
@@ -214,24 +227,16 @@ async function sendPostcardViaLob(
       success: false,
       // Distinct, retryable signal when the Lob API stalls past LOB_TIMEOUT_MS.
       error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
-      isTestMode: credentials.isTestKey,
+      isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
     };
   }
 }
 
 export async function sendLetter(options: LetterOptions): Promise<MailResult> {
-  let credentials: ProviderCredentials | null = null;
+  const resolved = await resolveLobClient(options.organizationId);
 
-  if (options.organizationId) {
-    credentials = await getOrgMailCredentials(options.organizationId);
-  }
-
-  if (!credentials) {
-    credentials = getDefaultCredentials();
-  }
-
-  if (!credentials) {
+  if (!resolved) {
     // No mail credentials configured. Only produce a mock mailing id under an
     // explicit dev flag — never as the silent default, which would fabricate a
     // successful send and let a real letter no-op while reporting success.
@@ -253,22 +258,14 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
     };
   }
 
-  logger.info(`[Mail] Sending letter via ${credentials.provider} to ${options.to.name}`);
-  return sendLetterViaLob(credentials, options);
+  logger.info(`[Mail] Sending letter via ${MailProvider.LOB} to ${options.to.name}`);
+  return sendLetterViaLob(resolved, options);
 }
 
 export async function sendPostcard(options: PostcardOptions): Promise<MailResult> {
-  let credentials: ProviderCredentials | null = null;
+  const resolved = await resolveLobClient(options.organizationId);
 
-  if (options.organizationId) {
-    credentials = await getOrgMailCredentials(options.organizationId);
-  }
-
-  if (!credentials) {
-    credentials = getDefaultCredentials();
-  }
-
-  if (!credentials) {
+  if (!resolved) {
     // No mail credentials configured. Only produce a mock mailing id under an
     // explicit dev flag — never as the silent default, which would fabricate a
     // successful send and let a real postcard no-op while reporting success.
@@ -290,8 +287,8 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
     };
   }
 
-  logger.info(`[Mail] Sending postcard via ${credentials.provider} to ${options.to.name}`);
-  return sendPostcardViaLob(credentials, options);
+  logger.info(`[Mail] Sending postcard via ${MailProvider.LOB} to ${options.to.name}`);
+  return sendPostcardViaLob(resolved, options);
 }
 
 export function getProviderInfo(): {

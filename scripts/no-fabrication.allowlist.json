@@ -165,9 +165,9 @@
     },
     {
       "file": "server/services/pax/continuousAudit.ts",
-      "line": 723,
+      "line": 702,
       "category": "algo",
-      "note": "Fisher-Yates shuffle for audit sampling — randomness is the algorithm."
+      "note": "Fisher-Yates shuffle for audit sampling — randomness is the algorithm. Line moved 723->702 in unit 120 by the credential-redaction consolidation removing ~21 lines above it — a file:line-keyed register trips on ANY edit that shifts a line (see writingStyle.ts 117->118, unit 112)."
     },
     {
       "file": "server/services/paxObserver.ts",

@@ -102,6 +102,16 @@ interface LobClientResult {
   isTestKey: boolean;
 }
 
+/**
+ * THE single Lob credential authority (founder-approved consolidation,
+ * 2026-08-16). Resolution order: BYOK vault → legacy organization_integrations
+ * row → platform key under the live-send interlock. Every Lob send path must
+ * resolve its client HERE — mailProvider.ts delegates to this function rather
+ * than running its own lookup, because two resolution orders is how a
+ * BYOK-vault org's letters ended up on AcreOS's own Lob account, against the
+ * BYO-rails ruling (2026-07-29). tests/unit/lobCredentialAuthority.test.ts
+ * pins both the order and the absence of a second resolver.
+ */
 export async function getLobClient(orgId: number): Promise<LobClientResult> {
   // Universal BYOK (2026-05-22) — preferred path. Falls back to the
   // legacy organization_integrations row, then platform env.

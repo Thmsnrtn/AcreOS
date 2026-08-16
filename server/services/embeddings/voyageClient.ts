@@ -22,6 +22,7 @@
 
 import { logger } from "../../utils/logger";
 
+import { redactCredentials } from "../../utils/redactCredentials";
 // ----------------------------------------------------------------------------
 // Constants — env-overridable so the founder can swap model versions without
 // a code change. Defaults reflect the shipped target (voyage-3-large @ 1024-d).
@@ -92,39 +93,16 @@ export interface VoyageStatus {
 // Credential-shaped substring sanitizer
 // ----------------------------------------------------------------------------
 
-/**
- * Patterns that strongly correlate with credential values. The list mirrors
- * `feedback_credential_value_handling.md`. Each pattern matches a prefix +
- * a contiguous run of identifier-safe characters; we replace with a fixed
- * marker so the sanitized text still reads naturally.
- *
- * Exported only for the test file — production callers should use the
- * top-level `sanitizeForVoyage` helper.
- */
-export const CREDENTIAL_PATTERNS: ReadonlyArray<RegExp> = [
-  // Stripe-style secret / publishable / restricted keys.
-  /\bsk_[A-Za-z0-9_-]{8,}/g,
-  /\bpk_[A-Za-z0-9_-]{8,}/g,
-  // PostHog project / phx keys.
-  /\bphc_[A-Za-z0-9_-]{8,}/g,
-  /\bphx_[A-Za-z0-9_-]{8,}/g,
-  // GitHub personal access tokens.
-  /\bghp_[A-Za-z0-9_-]{8,}/g,
-  // Bearer headers — the value after `Bearer ` is the secret.
-  /Bearer\s+[A-Za-z0-9_\-.=]{8,}/g,
-  // AWS access keys (long-lived + temp).
-  /\bAKIA[A-Z0-9]{12,}/g,
-  /\bASIA[A-Z0-9]{12,}/g,
-];
-
 const REDACTED_MARKER = "[redacted-credential]";
 
+/**
+ * Delegates to THE credential redactor (unit 120) with this module's own
+ * marker preserved — the egress guard before text reaches the Voyage API is
+ * the same concept as the audit-row redactors, and six independent pattern
+ * lists disagreed about Slack tokens, JWTs and gho_ until they had one owner.
+ */
 export function sanitizeForVoyage(text: string): string {
-  let out = text;
-  for (const pat of CREDENTIAL_PATTERNS) {
-    out = out.replace(pat, REDACTED_MARKER);
-  }
-  return out;
+  return redactCredentials(text, undefined, REDACTED_MARKER);
 }
 
 // ----------------------------------------------------------------------------
