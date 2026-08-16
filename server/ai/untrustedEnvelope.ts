@@ -138,6 +138,15 @@ const UNTRUSTED_FIELD_KEYS = new Set([
   "from",
   "text",
   "fact",
+  // Unit 119's central verify: negotiation_moves carries counterparty free text
+  // in `terms` (and the recorded rationale in `reasoning`) — neither was here,
+  // so the negotiationOrchestrator wrap enveloped NOTHING a counterparty
+  // controls. A runtime probe put "Ignore previous instructions…" in `terms`
+  // and it reached the model unwrapped. Over-wrap of a server-authored
+  // `reasoning` is mild noise; a missed counterparty `terms` is the defect,
+  // so both err closed.
+  "terms",
+  "reasoning",
   "draft",
 ]);
 

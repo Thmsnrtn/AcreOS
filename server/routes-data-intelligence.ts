@@ -920,29 +920,66 @@ router.get("/freedom-number", async (req: Request, res: Response) => {
     const { calculateFreedomNumber } = await import("./services/prospectIntelligence");
     const { db } = await import("./db");
     const { payments, notes } = await import("@shared/schema");
-    const { eq, and, sum } = await import("drizzle-orm");
+    const { eq, and, gte, sum, count } = await import("drizzle-orm");
 
     const org = req.organization;
-    // TODO(tsc): no organizations.settings.monthlyExpenses nor freedomNumber
-    // column; honor the query param, otherwise default the denominator.
-    const monthlyExpenses = parseFloat(req.query.monthlyExpenses as string) || 5000;
+
+    // There is no organizations.settings.monthlyExpenses nor freedomNumber
+    // column — the denominator has no system of record, so an absent query
+    // param is an absent fact. Refuse-not-fabricate: 422, never a default.
+    const rawMonthlyExpenses = req.query.monthlyExpenses;
+    const monthlyExpenses =
+      typeof rawMonthlyExpenses === "string" ? parseFloat(rawMonthlyExpenses) : NaN;
+    if (!Number.isFinite(monthlyExpenses) || monthlyExpenses <= 0) {
+      return Errors.validationFailed(res, [
+        {
+          path: ["monthlyExpenses"],
+          message:
+            "monthlyExpenses (a positive dollar amount) must be supplied — there is no stored expense figure to fall back on, and the freedom number cannot be computed without its denominator.",
+        },
+      ]);
+    }
+
+    // Trailing-12-month window: an all-time payment total divided by 12
+    // misstates monthly income for any portfolio older or younger than a year.
+    const windowStart = new Date();
+    windowStart.setMonth(windowStart.getMonth() - 12);
 
     const [incomeResult] = await db
       .select({ total: sum(payments.amount) })
       .from(payments)
-      .where(eq(payments.organizationId, org.id));
+      .where(and(eq(payments.organizationId, org.id), gte(payments.paymentDate, windowStart)));
 
     const [notesResult] = await db
-      .select({ noteCount: sum(notes.id) })
+      .select({ noteCount: count() })
       .from(notes)
       .where(and(eq(notes.organizationId, org.id), eq(notes.status, "active")));
 
-    const monthlyIncome = Number(incomeResult?.total || 0) / 12;
-    const noteCount = Number(notesResult?.noteCount || 0);
-    const avgNotePayment = noteCount > 0 && monthlyIncome > 0 ? monthlyIncome / noteCount : 200;
+    const monthlyIncome = Number(incomeResult?.total ?? 0) / 12;
+    const noteCount = Number(notesResult?.noteCount ?? 0);
+
+    // avgNotePayment is derived only from real payments over real active
+    // notes. Without both there is no honest basis for the per-note
+    // projections: they come back as nulls with known:false, never $200.
+    const avgNotePaymentKnown = noteCount > 0 && monthlyIncome > 0;
+    const avgNotePayment = avgNotePaymentKnown ? monthlyIncome / noteCount : 0;
 
     const analysis = calculateFreedomNumber(monthlyExpenses, monthlyIncome, avgNotePayment, noteCount);
-    res.json(analysis);
+
+    if (!avgNotePaymentKnown) {
+      return res.json({
+        ...analysis,
+        avgNotePayment: null,
+        avgNotePaymentKnown: false,
+        notesNeeded: null,
+        dealsNeededToGenNotes: null,
+        estimatedTimeToFreedom: null,
+        weeklyMailersNeeded: null,
+        freedomStatement: `Passive income covers ${analysis.freedomPercent}% of your $${monthlyExpenses.toLocaleString()}/mo target. Note-based projections are unavailable until at least one active note has payment history in the last 12 months.`,
+      });
+    }
+
+    res.json({ ...analysis, avgNotePayment, avgNotePaymentKnown: true });
   } catch (err: any) {
     Errors.internal(res, err);
   }

@@ -10,6 +10,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import OpenAI from "openai";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { wrapUntrustedFields } from "../ai/untrustedEnvelope";
 
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
@@ -907,10 +908,15 @@ build_negotiation_plan as your final tool to produce the structured output.`,
           if (toolCall.type !== "function") continue;
           const result = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
           toolsInvoked.push(`${toolCall.function.name}:${result}`);
+          // Tier 1B: executeTool pre-stringifies its payload, so parse it back
+          // and wrap counterparty free-text fields (thread/move rows) in the
+          // untrusted envelope before the result re-enters the model channel.
+          let payload: unknown = result;
+          try { payload = JSON.parse(result); } catch { /* non-JSON result stays a plain string */ }
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: result,
+            content: JSON.stringify(wrapUntrustedFields(payload, `tool:${toolCall.function.name}`)),
           });
         }
       }

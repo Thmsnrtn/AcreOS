@@ -16,6 +16,7 @@ import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { serializeToolResultForModel } from "./untrustedEnvelope";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -5356,7 +5357,9 @@ export async function processSupportChat(
         toolResults.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
+          // Tier 1B: customer-content fields wrapped in the untrusted
+          // envelope before re-entering the model channel.
+          content: serializeToolResultForModel(toolCall.function.name, result)
         });
       }
     }

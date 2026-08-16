@@ -7700,3 +7700,52 @@ caught my comment.
 
 Committed alone while the ruled-fixes wave edits its disjoint files; the full
 gate run lands with the wave's integration commit.
+
+## Unit 119 — five already-ruled fixes as a wave, and what central verification added · this commit
+
+The refuse-not-fabricate hard-stop and the tool-result-boundary doctrine are
+standing rules, so these five needed no new decision — they ran as a five-agent
+wave with exclusive file sets, each fix verified by a fresh agent, then verified
+centrally per CLAUDE.md's wave discipline.
+
+| fix | before | after |
+|---|---|---|
+| `GET /freedom-number` | invented $5,000 expenses, invented $200 note payment, `sum(notes.id)` as a count, all-time payments ÷ 12 as income | 422 when the denominator is missing; `count()`; trailing-12-month income; `avgNotePaymentKnown: false` with nulls instead of $200 |
+| `executionEngine` | `success: true` for actions with NO registered executor; audit rows indistinguishable from the action having run | `success: false, no_executor_registered`; audit says nothing executed |
+| `addressVerification` | `deliverable: true` from the no-provider and USPS-error fallbacks | fallbacks marked unverified; USPS success marked verified |
+| `freeSourceFirst` dial | a founder Switch wired to NOTHING — broker ordering unconditional | broker consults `routing.data`; both dial positions change the ordering (pinned) |
+| tool-result boundary | three sites feeding raw tool results into model messages | wrapped via the canonical serializer; a source-scan test guards the boundary |
+
+### What the wave's own verifier caught (ok=false on 1 of 5)
+
+The negotiationOrchestrator wrap **enveloped nothing a counterparty controls**:
+`negotiation_moves` has no `text` column — counterparty free text lives in
+`terms` (plus `reasoning`), and neither was in `UNTRUSTED_FIELD_KEYS`. A runtime
+probe put *"Ignore previous instructions…"* in `terms` and it reached the model
+unwrapped. The wrap was applied and did nothing — **a guard that runs and
+protects nothing is worse than a missing guard, because it reads as done.** Both
+fields are now in the key set (over-wrapping a server-authored `reasoning` is
+mild noise; missing counterparty `terms` is the defect) and the probe now shows
+the injection wrapped and redacted.
+
+Second catch: the boundary test's scan matched only `content: JSON.stringify(x)`
+— but the pre-fix negotiationOrchestrator shape was `content: result`, a bare
+identifier (executeTool pre-stringifies). **A scan that misses the shape an
+actual defect took certifies the past, not the future.** Widened; both
+directions verified.
+
+### What central verification added on top
+
+- A wave agent's new `catch (error: any)` tripped the `colon-any` ratchet —
+  typed to `unknown` with proper narrowing. The register did its job against a
+  fleet, not just against me.
+- The wave's test seam `orderSourcesForLookup` was exported from
+  `data-source-broker.ts`, which is an OPAQUE module (dynamically imported), so
+  `opaque-exports` grew 120→121 — a count that may only shrink. The seam moved
+  to its own statically-imported module (`dataSourceOrdering.ts`), where the
+  gate sees a real production consumer. Doing that nearly created a SECOND
+  `TIER_PRIORITY` — the duplicate-owner defect this session exists to hunt,
+  about to be introduced by the hunt itself. One owner now: the ordering module
+  exports it, the broker imports it.
+
+`npm run check` exits 0; `tests/unit` is 712 files / 9,303 tests green.
