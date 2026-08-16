@@ -33,11 +33,23 @@ export interface CounterpartyHit {
 }
 
 /**
- * Resolve `email` against every table that stores a CUSTOMER'S COUNTERPARTY
- * address. Returns the first hit, or null when the address belongs to no
- * counterparty of record.
+ * Resolve `email` against the tables that store a CUSTOMER'S COUNTERPARTY
+ * address IN A COLUMN. Returns the first hit, or null when the address belongs
+ * to no counterparty of record in those five.
  *
- * Coverage — "lead / borrower / buyer / seller" in this schema:
+ * IT IS NOT "EVERY TABLE", and the earlier wording said so — corrected here
+ * because an over-claimed guard is worse than a narrow one: the next reader
+ * trusts it instead of adding the check they were about to add.
+ *
+ * KNOWN GAP: `dealRooms.participants` is a jsonb array, not a column, so a
+ * deal-room participant invited by email and never separately recorded as a
+ * lead is INVISIBLE to this function. Closing it means either a jsonb
+ * containment query here or — better — normalising participants out of the
+ * blob, which is a schema change and outside a guard's remit. Until then this
+ * is a real hole in a founder-ruled hard stop, and it is written down rather
+ * than implied away.
+ *
+ * The five it DOES cover — "lead / borrower / buyer / seller" in this schema:
  *   - `leads`                    the seller/buyer/borrower of record. Notes hang
  *                                off it (notes.borrowerId → leads.id) and so do
  *                                buyer reservations (buyerReservations.buyerId),
