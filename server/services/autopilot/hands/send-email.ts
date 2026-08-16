@@ -40,17 +40,8 @@
  * something; without the guard, the label would merely be a compiler-satisfying
  * stamp that laundered an open question into a settled-looking one.
  */
-import { sql } from "drizzle-orm";
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
-import { db } from "../../../db";
-import {
-  autopayEnrollments,
-  borrowerPaymentProfiles,
-  borrowerSessions,
-  buyerReservations,
-  leads,
-} from "@shared/schema";
 import { sendEmail } from "../../emailService";
 import { filterSuppressed } from "../../emailSuppressions";
 import { logger } from "../../../utils/logger";

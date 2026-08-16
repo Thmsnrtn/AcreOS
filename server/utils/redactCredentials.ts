@@ -27,9 +27,21 @@
  */
 
 const CREDENTIAL_PATTERNS: { name: string; rx: RegExp }[] = [
-  // Stripe secret/publishable — generic {8,} form (the union: krieger's
-  // live|test-only variant missed keyless `sk_…` shapes the others caught).
-  { name: "stripe-key", rx: /\b(?:sk|pk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g },
+  // Stripe secret/publishable. {4,} not {8,}, for the same reason the AWS rule
+  // below is {4,}: FOR A REDACTOR THE UNION IS THE LOOSEST FORM.
+  //
+  // This shipped as {8,} in the six-copy consolidation and that was a real miss,
+  // caught by krieger's own pinning test: `pk_test_xyz789` leaves a 6-character
+  // suffix after the `pk_test_` prefix, so the {8,} form matched NOTHING and the
+  // key survived into an audit row. The consolidation's whole claim was that it
+  // was the union of the six copies it replaced; on this line it was narrower
+  // than at least one of them.
+  //
+  // An `sk_`/`pk_` prefix is already strong evidence on its own — the prefix is
+  // the signal, the length is not — so the minimum exists only to avoid matching
+  // a bare `sk_` in prose. Over-redacting a short token that looks like a Stripe
+  // key is noise; an unredacted one is the defect.
+  { name: "stripe-key", rx: /\b(?:sk|pk)_(?:test|live)?_?[A-Za-z0-9]{4,}\b/g },
   { name: "posthog-project", rx: /\bphc_[A-Za-z0-9]{8,}\b/g },
   { name: "posthog-personal", rx: /\bphx_[A-Za-z0-9]{8,}\b/g },
   { name: "github-pat", rx: /\bghp_[A-Za-z0-9]{8,}\b/g },

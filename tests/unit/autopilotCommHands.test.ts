@@ -11,6 +11,20 @@ vi.mock("../../server/services/smsService", () => ({
   sendSMSToLead: vi.fn(),
 }));
 
+// ── The system-only guard (founder ruling 2026-08-16) ─────────────────────────
+// send-email now resolves its recipient against every table holding a
+// CUSTOMER'S counterparty before sending, and REFUSES on a hit. The chainable db
+// mock below answers every `.limit()` with a lead row, so without this mock all
+// five of the guard's lookups "hit" and every email test in this file refuses.
+//
+// Mocked to null (no hit) as the DEFAULT so the pre-existing suppression and
+// witnessing invariants below still test what they were written to test — and
+// pinned with its own case at the bottom of the file, so this mock cannot
+// silently become the reason the guard stops being covered here.
+vi.mock("../../server/services/autopilot/hands/counterpartyMatch", () => ({
+  counterpartyMatch: vi.fn(async () => null),
+}));
+
 // Chainable drizzle-db mock for send-sms's consent lookup.
 const leadRowHolder: { row: any } = { row: { doNotContact: false, tcpaConsent: true } };
 vi.mock("../../server/db", () => {
@@ -176,5 +190,63 @@ describe("send_sms hand — TCPA consent + quiet hours", () => {
     const r = await executeHandWitnessed("send_sms", { organization_id: 1, lead_id: 9, message: "hi" }, "founder_1");
     expect(r.success).toBe(true);
     expect(sendSMSToLead).toHaveBeenCalledOnce();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The counterpartyMatch mock above is a DEFAULT, not an exemption.
+//
+// Mocking it to null is what lets the suppression and witnessing tests above
+// test their own subject. But a mock that is only ever null would mean this
+// file silently stopped covering the guard the moment it was added — the exact
+// "the test that pinned the old behaviour was quietly relaxed" move CLAUDE.md's
+// wave discipline forbids. So the coupling is pinned here instead.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("send_email honours the system-only guard (founder ruling 2026-08-16)", () => {
+  beforeEach(() => {
+    vi.mocked(filterSuppressed).mockResolvedValue({ allowed: ["x@y.com"], suppressed: [] } as any);
+    vi.mocked(sendEmail).mockResolvedValue({ success: true } as any);
+  });
+
+  it("refuses when the recipient is a customer's counterparty, and never sends", async () => {
+    const { counterpartyMatch } = await import(
+      "../../server/services/autopilot/hands/counterpartyMatch"
+    );
+    vi.mocked(counterpartyMatch).mockResolvedValueOnce({
+      kind: "lead / seller / buyer / borrower (leads)",
+      organizationId: 42,
+    } as any);
+
+    const res: any = await executeHandWitnessed(
+      "send_email",
+      { to: "seller@example.com", subject: "s", html: "<p>b</p>" },
+      "founder_1",
+    );
+
+    expect(res.success, "a counterparty recipient must NOT be sent to").toBe(false);
+    expect(res.output, "the refusal must name the reason, not fail silently").toMatch(
+      /counterparty|system-only|own connected/i,
+    );
+    expect(vi.mocked(sendEmail), "sendEmail was called for a counterparty").not.toHaveBeenCalled();
+  });
+
+  it("and the guard is consulted on every send, not only on refusals", async () => {
+    // If a future refactor moved the lookup behind a flag or a fast path, the
+    // refusal test above could still pass while most sends skipped the guard.
+    const { counterpartyMatch } = await import(
+      "../../server/services/autopilot/hands/counterpartyMatch"
+    );
+    vi.mocked(counterpartyMatch).mockClear();
+
+    await executeHandWitnessed(
+      "send_email",
+      { to: "user@acreos.io", subject: "s", html: "<p>b</p>" },
+      "founder_1",
+    );
+
+    expect(
+      vi.mocked(counterpartyMatch),
+      "send_email sent without consulting the counterparty guard",
+    ).toHaveBeenCalled();
   });
 });
