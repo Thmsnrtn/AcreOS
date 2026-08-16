@@ -720,3 +720,113 @@ correctness risks across 2+ machines. Disposition:
     `"automation_executions"` (the only one of the thirteen carrying an
     `organization_id`); it must go — set size 150 → 149. The gate already FAILS
     on it: *"stale allowlist entries: 1"*.
+
+- **2026-08-16 — `scripts/check-route-cost-class.mjs` (681 lines, 29,146 bytes)
+  deleted.** Founder ruling (picker, this date): resolve **BLOCKERS B22**, and
+  the option selected was **DELETE** — B22's branch (b), "an abandoned
+  experiment … the deletion ledger's usual verdict for a thing built and never
+  wired". Recorded as a KILL of a GATE, which is a first for this log: every
+  prior row killed product code, and a dead gate is the same defect class
+  pointed at governance instead of features.
+
+  **What it was meant to enforce.** "L5b — Route cost-class lint": that every
+  *new* route handler added to `server/routes*.ts` declares a cost class, by
+  carrying `costClass(...)` or `withCostClass(...)` in its argument list. The
+  middleware it was written to protect — `server/utils/costClass.ts` — is LIVE
+  and is NOT deleted: `costClass(` appears ten times in `server/` outside its
+  declaring file, nine of them real middleware applications across four
+  `server/routes-*.ts` files (`routes-support-tickets` ×3, `routes-founder-letters`
+  ×2, `routes-admin-finance` ×2, `routes-transparency` ×2) and one a comment
+  (`server/middleware/apiTelemetry.ts:190`). What died is the enforcement, not
+  the capability.
+
+  **NOTHING EVER RAN IT — the whole reason this is a deletion and not a fix.**
+  Re-established from scratch this date rather than taken from B22: `grep -rn
+  "check-route-cost-class"` across the whole tree (excluding `node_modules/`
+  and `.git/`) returns the script's own log strings, two prose comments, and
+  B22 itself — no invocation anywhere. It is in none of `package.json`'s 25
+  `lint:*`/`check:*` entries, none of the 20 files in `.github/workflows/`, and
+  not in `.githooks/pre-commit`; the repo has no Makefile; and there is no
+  wildcard runner (`scripts/check-*.mjs`) that would have swept it up. A gate
+  nobody runs is a file.
+
+  **And it would have failed on contact, measured both ways.** In audit mode
+  (`--all`) it reports **1,862 unclassified route call sites of 1,868** across
+  **270** route files — 6 classified — and exits 0, because audit mode never
+  fails. In its real (CI) mode against `origin/main...HEAD` it exits **1** on
+  **29 added route lines** in a **1,111,071-byte** diff. Its own header records
+  why 6 and not 9: `ROUTE_METHOD_RE` matches only receivers named `app` or
+  `router`, so the three `costClass`'d routes registered on the `api` router in
+  `server/routes-support-tickets.ts` were invisible to it in both directions.
+  Wiring it as-is would have failed the build on day one.
+
+  **THE DEBT IS NOT A REGRESSION UNIT 130 INTRODUCED — verified, with one
+  correction to B22's wording.** B22 says the gate "was red before and after"
+  unit 130 touched it. What is actually true is sharper and worth writing down:
+  the pre-130 version (`git show 51b2efa:…`, 220 lines) run on THIS tree exits
+  **0** — falsely. Its `gitDiff()` was `catch { return ""; }`, and the diff it
+  asks git for is 1,111,071 bytes against Node's 1,048,576-byte default
+  `maxBuffer`; `execSync` on that exact command at the default throws
+  **ENOBUFS** (reproduced directly), the old `catch` swallowed it, and the gate
+  printed *"no new routes in diff vs origin/main"*. So the pre-130 run was not
+  a pass, it was an unanswered question wearing a pass's clothes. The
+  measurement that IS comparable — `--all` on the same tree — returns the
+  **identical 1,862 / 270** under both versions. Unit 130 did not create the
+  redness; it replaced a false clean with a true failure. **Deleting this hides
+  nothing that unit 130 broke.**
+
+  **Salvage check, because losing a good idea to a cleanup is a real cost.**
+  The route EXTRACTOR is NOT worth preserving: `scripts/check-route-order.mjs`
+  (208 lines, wired as `lint:route-order`) already has a strictly broader one —
+  it walks `server/` recursively (floors `serverFiles` 1000 / live 1,370,
+  `routes` 2100 / live 2,860) where this gate did a non-recursive `readdirSync`
+  filtered to `routes*.ts` (270 files, 1,868 calls), and its `pat` matches
+  `api|app|router` where `ROUTE_METHOD_RE` matched only `app|router`. The
+  paren-balancing block walker (`readRouteBlock`) is not unique either;
+  `depth === 0` balancing walkers already exist in `check-org-scoped-fetch.mjs`,
+  `check-org-leading-index.mjs`, `lint-prompt-envelope.mjs` and
+  `audit-schema-drift.mjs`. **Two things here have no equivalent elsewhere and
+  are recorded so a rebuild starts from them, not from zero:** (1) it was the
+  repo's ONLY diff-delta gate — the sole user of `--unified=0 …...HEAD` and
+  `LINT_BASE_REF` in `scripts/` — and its `gitDiff()` null-vs-`""` discipline
+  plus 256 MB `maxBuffer` is the fix for the measured ENOBUFS above, which will
+  bite the next delta gate anyone writes; (2) `check-route-order.mjs` has
+  vacuity FLOORS but no predicate SELF-TESTS and no in-repo CANARIES, and this
+  gate had both (positive *and* negative predicate cases, synthetic
+  single-/multi-line end-to-end, a diff-parser test that also proves it does
+  not invent routes from unrelated hunks, and three named live files that must
+  keep reading as classified). That pattern is the better idea in this file and
+  belongs in the gates that survive.
+
+  **What would have to be true to rebuild it** — all three, or it comes back
+  dead: (a) a **frozen baseline of the 1,862**, the way
+  `scripts/check-org-scoped-fetch.mjs` freezes its tenancy debt in
+  `BASELINE_OFFENDERS` / `BASELINE_UNUSED_ORG` with stale entries failing the
+  gate, so pre-existing debt is pinned and only NEW routes fail; (b) **wiring**
+  — a `lint:*` entry in `package.json` reachable from `npm run check`, since an
+  unwired gate is what this row is deleting; and (c) the receiver set widened
+  to `api|app|router` FIRST, because freezing 1,862 while blind to a whole
+  receiver freezes a number that is wrong by construction.
+
+  **Registers checked after the deletion, by running them** (no ratchet file
+  edited; both are outside this unit's file set and neither needed a change):
+  `node scripts/lint-reachability.mjs` → **exit 0**, all six counts unmoved at
+  baseline (`unreached-exports` 1401, `tables-no-writer` 48, `tables-no-reader`
+  60, `unregistered-routes` 4, `module-orphans` 28, `opaque-exports` 120) —
+  notable because `scripts/` IS a scanned consumer directory for that gate, so
+  a deletion there can strand an export; it did not. `node
+  scripts/check-ledger-refs.mjs` → **exit 0**, populations unchanged
+  (`ledgerVerdictRows` 11, `ledgerRefs` 20, `registryOpenBlocks` 25,
+  `registryRefs` 16). This row cites the deleted path deliberately and safely:
+  the "Executed deletions (log)" section is the one that gate does not scan,
+  precisely so an executed deletion may name what it deleted.
+
+  **Residue, flagged not fixed — outside this unit's file set.** Two prose
+  comments now point at a file that no longer exists, and both were already
+  false before the deletion (they describe enforcement that never ran):
+  `server/utils/costClass.ts:37` (*"The `scripts/check-route-cost-class.mjs`
+  script enforces that any…"*) and `server/utils/outboundFetch.ts:22`
+  (*"…will eventually be extended to…"*). Neither is reached by
+  `check-ledger-refs` (it scans the verdict table and the defect registry, not
+  source comments), so nothing fails on them — which is exactly why they need
+  to be named here rather than left to rot.

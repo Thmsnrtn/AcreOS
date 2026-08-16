@@ -1492,7 +1492,36 @@ starting point:
 
 ---
 
-## B22 — `check-route-cost-class.mjs` is unwired, and red if wired
+## B22 — RESOLVED 2026-08-16: option (b), the gate is deleted
+
+**DECIDED (picker, 2026-08-16): resolve B22, and the option selected was
+DELETE** — branch (b) below, "an abandoned experiment … the deletion ledger's
+usual verdict for a thing built and never wired". Executed the same date:
+`scripts/check-route-cost-class.mjs` (681 lines) is gone. The ledger row is the
+last entry in `docs/company/deletion-ledger.md`'s **"Executed deletions (log)"**
+section, dated 2026-08-16 — it carries the re-established evidence that nothing
+ever ran it, the measured 1,862/1,868, the proof that the redness predates unit
+130, the salvage check against `scripts/check-route-order.mjs`, and the three
+conditions a rebuild would have to meet.
+
+**The middleware is NOT deleted.** `server/utils/costClass.ts` stays: nine live
+`costClass(...)` applications across four `server/routes-*.ts` files. What was
+killed is enforcement nobody ran, not the capability.
+
+**One correction to this entry's own wording, measured before deleting.** Below
+it says the pre-unit-130 script "run on the same tree also exits 1". It does
+not — it exits **0**, falsely: its `catch { return "" }` swallowed an ENOBUFS on
+a 1,111,071-byte diff (Node's default `maxBuffer` is 1,048,576) and printed "no
+new routes in diff". The comparable measurement is `--all`, which returns the
+identical **1,862 / 270** under both versions. The conclusion B22 drew is
+unchanged and if anything stronger: unit 130 did not create the debt, it only
+made a false clean into a true failure.
+
+**Residue left for a session that owns those files:** two now-dangling prose
+comments, `server/utils/costClass.ts:37` and `server/utils/outboundFetch.ts:22`,
+both of which asserted enforcement that never ran even while the file existed.
+
+**Original entry below, kept for history.**
 
 **Found:** unit 130, while closing the vacuity findings.
 **Blocked on:** nothing technical — it needs a decision about whether route cost
