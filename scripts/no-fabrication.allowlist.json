@@ -1,5 +1,6 @@
 {
   "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact path is enumerated here: server (routes-*.ts, storage.ts, services/**) AND client/src/** — the rendering layer was added 2026-08-13 because this lint's own rationale names the UI (\"we are lying with a confident UI\") while scanning only the server, so a component inventing a displayed number never passed under it. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data — those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
+  "_lastBumpNote": "53 -> 57 on 2026-08-16: a one-time RE-SEED, not a relaxation. The gate enforced its hard-stop against ONE STRING, `Math.random`, so the rule was only as strong as a spelling — a seeded PRNG, node:crypto randomInt, getRandomValues, or faker fabricating the very same customer-visible number all shipped GREEN. FORBIDDEN_TOKEN became FORBIDDEN_TOKENS (Math.random, getRandomValues, makeSeededRng(, randomInt(, faker.) and the register absorbed the 4 pre-existing hits the widened predicate revealed. Every one of the 4 was verified BY HAND against its call site before being written down — 4 of 4, not a sample — and every one is legitimate: a CSPRNG issuing a reactivation-token secret (lifecycleProgram:459), the definition of the mulberry32 PRNG itself (efficacy:47), and two Thompson-sampling selectPlay calls whose draw picks WHICH play runs and provably never reaches a display (continuousLoop:919/922 — scorePlays has exactly one non-test caller, and it returns a playId). Had any of the 4 been driving a displayed score it would have been reported as a defect instead of allowlisted; that distinction is the whole point of the annotation. The token list was MEASURED before adoption, not asserted: randomUUID( (72 hits) and randomBytes( (32) were measured and REJECTED — ids and crypto keys would have taken the register to ~161 entries and buried these four under a hundred `id` rows, which is how a gate earns a re-baseline instead of a reading. randomInt( and faker. measured 0 and cost nothing to close. Recorded in check-no-fabrication.mjs as REJECTED_CANDIDATES and re-checkable with `--measure`. The strictly-down rule resumes from 57: this is the only bump that widening the predicate buys.",
   "allowlist": [
     {
       "file": "server/routes-avm.ts",
@@ -42,6 +43,13 @@
       "line": 347,
       "category": "weighted-pick",
       "note": "Weighted random selection over agent versions — randomness is the selection mechanism."
+    },
+    {
+      "file": "server/services/autopilot/efficacy.ts",
+      "line": 47,
+      "token": "makeSeededRng(",
+      "category": "algo",
+      "note": "The DEFINITION of this repo's mulberry32 seeded PRNG — the injected RNG for Thompson sampling over recorded play outcomes. Produces no value at this site; it exists so the sampler is pure and unit-testable. Entered the register 2026-08-16 when makeSeededRng( joined FORBIDDEN_TOKENS: it is legitimate HERE, and the point of watching it is the call sites, not this line."
     },
     {
       "file": "server/services/ceoDecisionReplayV10.ts",
@@ -152,6 +160,13 @@
       "note": "Legal-action id suffix — entropy for uniqueness."
     },
     {
+      "file": "server/services/lifecycleProgram.ts",
+      "line": 459,
+      "token": "getRandomValues",
+      "category": "id",
+      "note": "CSPRNG fill of 24 bytes -> base64url reactivation token for a win-back email link. Only its SHA-256 hash is persisted; the plaintext goes in a URL and is never rendered as a fact. This is SECRET material — the one place unpredictability is the requirement rather than a smell. Entered the register 2026-08-16 with the getRandomValues token."
+    },
+    {
       "file": "server/services/notificationDispatcher.ts",
       "line": 138,
       "category": "id",
@@ -210,6 +225,20 @@
       "line": 130,
       "category": "id",
       "note": "Alert id suffix — entropy for uniqueness."
+    },
+    {
+      "file": "server/services/solene/continuousLoop.ts",
+      "line": 919,
+      "token": "makeSeededRng(",
+      "category": "weighted-pick",
+      "note": "Per-tick-seeded RNG feeding selectPlay() — Thompson sampling over each growth play's REAL recorded successes/failures. What comes back is a playId (WHICH play the autopilot runs next), never a number. Verified by hand 2026-08-16: scorePlays() is the only consumer of the draw, selectPlay() is scorePlays()' only non-test caller, and it returns scored[0].playId — the `sample` and `posteriorMean` fields never leave the module, so no route or component can render the draw as a score. The number that IS displayed alongside the pick (trackRecord successes/total) comes from getPlayStats, real outcomes. Randomness is the selection mechanism, which is the same judgment already made for promptRegistry:193 and leadAssigner:135."
+    },
+    {
+      "file": "server/services/solene/continuousLoop.ts",
+      "line": 922,
+      "token": "makeSeededRng(",
+      "category": "weighted-pick",
+      "note": "Same selectPlay call in the catch branch — the best-effort fallback when the exploration governor is unavailable. Same reasoning, same verification as line 919."
     },
     {
       "file": "server/services/writingStyle.ts",
