@@ -43,9 +43,13 @@
 
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 const ROOT = path.resolve(__dirname, "../..");
+const EVALUATOR_PATH = path.join(ROOT, "scripts/check-tests-typecheck.mjs");
+const RATCHET_PATH = path.join(ROOT, "scripts/ratchets/tests-typecheck.json");
 
 /**
  * JSONC → JSON: drop whole-line `//` comments, and nothing else.
@@ -138,6 +142,132 @@ describe("the test suite is type-checked, and the gate runs", () => {
   it("the ratchet is bidirectional, like every other one here", () => {
     expect(evaluator, "an improvement would not be locked in").toMatch(/stale-high baseline/);
     expect(evaluator, "the gate invites a baseline bump").toMatch(/Do NOT raise the baseline/);
+  });
+});
+
+/**
+ * The guards, DRIVEN rather than read.
+ *
+ * Every assertion above this point matches a STRING in the evaluator's source,
+ * and an adversarial verifier showed what that is worth: all of them pass
+ * against the pre-hardening file too. Source-string assertions pin that a
+ * sentence exists, not that a guard fires — the same name-keyed weakness this
+ * whole program has been closing everywhere else, sitting in the test file for
+ * the gate that motivated it.
+ *
+ * So these run the REAL evaluator against a fake `tsc` that emits controlled
+ * output, and assert on its exit status and what it says. They cannot pass
+ * against an evaluator that lacks the guards.
+ */
+describe("the evaluator's guards actually fire (driven, not read)", () => {
+  const FAKE_MODES = {
+    // A healthy run: many diagnostics, a full program. The control.
+    healthy: [
+      'echo "tests/unit/a.test.ts(1,1): error TS2322: Type A is not assignable to type B."',
+      'echo "Files:                         7836"',
+      "exit 2",
+    ],
+    // The 2026-08-16 incident: tsc starved mid-run. One diagnostic, tiny program.
+    // This is the shape that printed "Good news: 161 error(s) were fixed."
+    truncated: [
+      'echo "tests/unit/a.test.ts(1,1): error TS2493: Tuple type of length 0 has no element at index 0."',
+      'echo "Files:                          214"',
+      "exit 2",
+    ],
+    // A NORMAL run whose diagnostic ELABORATION quotes a type named RangeError.
+    // Must PASS: elaborations are user text, not compiler chrome.
+    elaboration: [
+      'echo "tests/unit/a.test.ts(1,1): error TS2322: Type A is not assignable to type B."',
+      "echo \"  Type 'A' is missing the following properties from type 'RangeError': message, name\"",
+      'echo "Files:                         7836"',
+      "exit 2",
+    ],
+    // Genuine crash chrome, flush-left. Must REFUSE.
+    crash: [
+      'echo "tests/unit/a.test.ts(1,1): error TS2322: Type A is not assignable to type B."',
+      'echo "RangeError: Maximum call stack size exceeded"',
+      'echo "Files:                         7836"',
+      "exit 2",
+    ],
+    // A status outside {0,2} — an abort, a bad argv, an ENOBUFS. Must REFUSE.
+    badexit: [
+      'echo "tests/unit/a.test.ts(1,1): error TS2322: Type A is not assignable to type B."',
+      'echo "Files:                         7836"',
+      "exit 3",
+    ],
+  } as const;
+
+  /** Run the real evaluator with a fake tsc, at a baseline of 1. */
+  function runWith(mode: keyof typeof FAKE_MODES): { code: number; out: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ctt-"));
+    try {
+      fs.mkdirSync(path.join(dir, "bin"));
+      fs.mkdirSync(path.join(dir, "scripts/ratchets"), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "bin/npx"),
+        `#!/bin/bash\n${FAKE_MODES[mode].join("\n")}\n`,
+        { mode: 0o755 },
+      );
+      fs.copyFileSync(EVALUATOR_PATH, path.join(dir, "scripts/check-tests-typecheck.mjs"));
+      // Baseline 1 so the ONLY thing that can differ between modes is a guard.
+      const cfg = JSON.parse(fs.readFileSync(RATCHET_PATH, "utf8")) as Record<string, unknown>;
+      cfg.baselineCount = 1;
+      fs.writeFileSync(
+        path.join(dir, "scripts/ratchets/tests-typecheck.json"),
+        JSON.stringify(cfg, null, 2),
+      );
+      const res = spawnSync(process.execPath, [path.join(dir, "scripts/check-tests-typecheck.mjs")], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` },
+      });
+      return { code: res.status ?? -1, out: `${res.stdout ?? ""}${res.stderr ?? ""}` };
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("the control passes — else every refusal below is unattributable", () => {
+    // Vacuity guard, first. If a healthy fake run does not pass, the harness is
+    // broken and the four assertions after it prove nothing about the guards.
+    const r = runWith("healthy");
+    expect(r.code, `healthy control should exit 0. Output:\n${r.out}`).toBe(0);
+    expect(r.out).toContain("7836 files loaded");
+  });
+
+  it("REFUSES a truncated run instead of calling it good news", () => {
+    // The incident, reproduced: same diagnostic count as the control's baseline,
+    // but a program a fraction of the size.
+    const r = runWith("truncated");
+    expect(r.code, `expected refusal. Output:\n${r.out}`).toBe(1);
+    expect(
+      r.out,
+      "the gate told the operator to lower a ratchet baseline on the strength of " +
+        "a tsc that never finished — the single most dangerous thing it can print",
+    ).not.toMatch(/Lock it in|Good news/);
+  });
+
+  it("does NOT refuse a normal run whose elaboration quotes RangeError", () => {
+    // The false positive this guard shipped with: tsc splits one diagnostic over
+    // several lines and only the first carries the error code, so indented
+    // elaborations quoting user types were being scanned for crash text.
+    const r = runWith("elaboration");
+    expect(
+      r.code,
+      `a type named RangeError in an elaboration must not block CI. Output:\n${r.out}`,
+    ).toBe(0);
+  });
+
+  it("still REFUSES genuine crash chrome", () => {
+    // The other direction: narrowing the filter must not have disarmed it.
+    const r = runWith("crash");
+    expect(r.code, `expected refusal. Output:\n${r.out}`).toBe(1);
+    expect(r.out).toMatch(/crash signature/);
+  });
+
+  it("REFUSES an exit status it has never measured", () => {
+    const r = runWith("badexit");
+    expect(r.code, `expected refusal. Output:\n${r.out}`).toBe(1);
+    expect(r.out).not.toMatch(/Lock it in|Good news/);
   });
 });
 

@@ -121,9 +121,23 @@ const TSC_ARGV = ["tsc", "--noEmit", "-p", "tsconfig.tests.json", "--extendedDia
 // and widen this set deliberately — do not delete the check.
 const TSC_KNOWN_GOOD_EXIT = new Set([0, 2]);
 
-// Scanned against NON-diagnostic lines only: a real `error TSxxxx` line can
-// legitimately quote `RangeError` in a type name, but crash text never carries a
-// TS error code.
+// Scanned against COMPILER-CHROME lines only — see `isCompilerChrome` below.
+//
+// The first cut of this filter said "non-diagnostic lines only", reasoning that
+// a real `error TSxxxx` line can legitimately quote `RangeError` in a type name
+// but crash text never carries a TS error code. Half right, and the missing half
+// was a live false positive: tsc splits one diagnostic across MULTIPLE lines, and
+// only the first carries the `error TSxxxx` code. The indented elaboration lines
+// ("  Type '{ … }' is missing the following properties from type 'X'") do not,
+// so they sailed through a not-a-diagnostic filter straight into the crash scan.
+//
+// MEASURED on this repo's real output (2026-08-16): of 265 lines, 162 are
+// diagnostics and ALL 102 remaining non-blank lines are indented elaborations.
+// So the "non-diagnostic" filter was inspecting 102 lines of quoted user types
+// and zero lines of actual compiler chrome. A test fixture, type or symbol named
+// `RangeError` — or an elaboration quoting one — would have refused the run and
+// blocked CI with "a RangeError escaped". A guard that fires on the contents of
+// the thing it is measuring is worse than no guard: it teaches people to delete it.
 const CRASH_SIGNATURES = [
   [/FATAL ERROR/, "node aborted with FATAL ERROR"],
   [/heap out of memory/i, "V8 ran out of heap"],
@@ -202,8 +216,26 @@ const isDiagnostic = (l) => /error TS\d+/.test(l);
 const lines = allLines.filter(isDiagnostic);
 const count = lines.length;
 
+/**
+ * True for a line that is tsc talking about ITSELF, rather than quoting the code
+ * under check. Only these are eligible for CRASH_SIGNATURES.
+ *
+ * A diagnostic spans a leading `file(l,c): error TSxxxx: …` line plus zero or
+ * more INDENTED elaboration lines, and only the first carries the error code —
+ * so "not a diagnostic" is not the same as "not part of a diagnostic". Every
+ * elaboration quotes user type text verbatim, which is precisely where a symbol
+ * named RangeError would appear. Crash chrome ("FATAL ERROR: …", "Killed",
+ * a V8 stack) is emitted flush-left and never as an indented continuation.
+ *
+ * Erring toward NOT scanning a line is the safe direction here: a missed crash
+ * signature still has to get past the exit-status guard and the filesLoaded
+ * floor, whereas a false crash signature refuses a perfectly good run.
+ */
+const isCompilerChrome = (l) =>
+  l.trim().length > 0 && !isDiagnostic(l) && !/^[ \t]/.test(l);
+
 for (const [re, why] of CRASH_SIGNATURES) {
-  const hit = allLines.filter((l) => !isDiagnostic(l)).find((l) => re.test(l));
+  const hit = allLines.filter(isCompilerChrome).find((l) => re.test(l));
   if (hit) {
     refuse(`tsc output carries a crash signature — ${why}.`, `> ${hit.trim().slice(0, 200)}`);
   }
