@@ -613,6 +613,59 @@ for (const p of schemaFiles) {
   }
 }
 
+/**
+ * TABLE ALIASES — `export const marketIndicators = marketIndicatorsDuplicate;`
+ *
+ * A pgTable can be exported under a SECOND name, and callers then query the
+ * alias. The reader/writer scan below matches identifiers textually, so it
+ * looks for the pgTable's own varName and never sees the alias — and the table
+ * is reported as having no reader AND no writer while being fully live.
+ *
+ * NOT HYPOTHETICAL, and the cost was nearly a dropped production table. The
+ * 2026-08-16 dead-table triage (founder ruling) had `market_indicators_temp` in
+ * its candidate set on the strength of this gate. shared/schema.ts:12435 exports
+ * `marketIndicators` as an alias of `marketIndicatorsDuplicate`, and
+ * server/services/marketPrediction.ts BOTH reads it (`.from(marketIndicators)`)
+ * and writes it (`.insert(marketIndicators)`). It survived only because the
+ * agent executing the ruling read the schema instead of trusting this gate.
+ *
+ * This linter's standing bias is that a MISS beats an ACCUSATION — an unreached
+ * export is a claim about someone's code. A false "no reader AND no writer" on a
+ * live table is the most expensive accusation it can make, because the action it
+ * invites is DROP TABLE.
+ *
+ * Resolution is transitive (`a = b; b = c;`) and bounded, and only RHS names
+ * that resolve to a known pgTable are accepted — so an unrelated re-export of a
+ * non-table const contributes nothing.
+ */
+const TABLE_ALIAS_RE = /export\s+const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*([A-Za-z_$][\w$]*)\s*;/g;
+/** tables varName → Set of every additional identifier that names it */
+const tableAliases = new Map();
+{
+  const rawAliases = new Map(); // alias → target identifier
+  for (const p of schemaFiles) {
+    const text = read(p);
+    TABLE_ALIAS_RE.lastIndex = 0;
+    let m;
+    while ((m = TABLE_ALIAS_RE.exec(text)) !== null) {
+      if (m[1] !== m[2]) rawAliases.set(m[1], m[2]);
+    }
+  }
+  for (const [alias, target0] of rawAliases) {
+    let target = target0;
+    // Bounded chase: `a = b; b = c;` resolves to c. The cap is the alias count,
+    // so a cycle terminates instead of hanging the gate.
+    for (let i = 0; i < rawAliases.size && !tables.has(target); i++) {
+      const next = rawAliases.get(target);
+      if (next === undefined) break;
+      target = next;
+    }
+    if (!tables.has(target)) continue; // not a table alias — ignore entirely
+    if (!tableAliases.has(target)) tableAliases.set(target, new Set());
+    tableAliases.get(target).add(alias);
+  }
+}
+
 // Drizzle query shapes. Optional `schema.` qualifier is tolerated.
 const WRITE_RES = [
   /\.(?:insert|update|delete)\s*\(\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)/g,
@@ -650,8 +703,11 @@ for (const p of productionFiles) {
 const tablesNoWriter = [];
 const tablesNoReader = [];
 for (const t of tables.values()) {
-  const written = writeNames.has(t.varName) || writeNames.has(t.tableName);
-  const read_ = readNames.has(t.varName) || readNames.has(t.tableName);
+  // Every identifier this table answers to: its own var, its SQL name, and any
+  // `export const alias = thisTable;` re-export. See TABLE_ALIAS_RE above.
+  const names = [t.varName, t.tableName, ...(tableAliases.get(t.varName) ?? [])];
+  const written = names.some((n) => writeNames.has(n));
+  const read_ = names.some((n) => readNames.has(n));
   if (!written) {
     consideredKeys.add(`table-writer:${t.tableName}`);
     if (!allowlisted("table-writer", t.tableName)) tablesNoWriter.push(t);
