@@ -38,6 +38,7 @@ import { logger } from "../utils/logger";
 import { wrapUntrusted } from '../ai/untrustedEnvelope';
 import { USER_DATA_SYSTEM_CLAUSE } from '../utils/sanitizePrompt';
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 /**
  * Unit 112: uploaded document text is the textbook indirect-injection vector —
  * an attacker authors the PDF, the customer uploads it, and the model reads it
@@ -566,7 +567,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
             },
             {
               role: "user",
-              content: `Document 1: ${doc1.documentName}\nDocument 2: ${doc2.documentName}\n\nDifferences:\n${JSON.stringify(differences, null, 2)}`,
+              content: `Document 1: ${sanitizePromptInline(doc1.documentName ?? "")}\nDocument 2: ${sanitizePromptInline(doc2.documentName ?? "")}\n\nDifferences:\n${JSON.stringify(differences, null, 2)}`,
             },
           ],
           max_tokens: 300,

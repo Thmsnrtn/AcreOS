@@ -11,6 +11,7 @@ import { getComparableProperties, calculateOfferPrices, type ComparableProperty,
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -185,7 +186,7 @@ async function generateAISummary(report: Omit<DueDiligenceReport, "aiSummary">):
     const prompt = `You are a real estate due diligence expert. Analyze the following property data and provide a concise executive summary (2-3 paragraphs) highlighting key investment considerations, potential issues, and overall assessment.
 
 Property Details:
-- Location: ${report.summary.address}, ${report.summary.county} County, ${report.summary.state}
+- Location: ${sanitizePromptInline(report.summary.address ?? "")}, ${report.summary.county} County, ${report.summary.state}
 - APN: ${report.summary.apn}
 - Size: ${report.parcelInfo.acres ?? "Unknown"} acres
 - Zoning: ${report.parcelInfo.zoning ?? "Unknown"}

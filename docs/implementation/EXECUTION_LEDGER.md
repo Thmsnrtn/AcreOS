@@ -7866,3 +7866,49 @@ auto-import target with an incompatible contract. Deleted.
 
 Mutations: regrow telemetry's queue+POST (caught), invert the settings bridge
 order (caught).
+
+## Unit 122 — fifteen unenveloped prompt sites, exposed by the gate getting its sight back · this commit
+
+The prompt-envelope gate (unit 112) was widened by the enforcement-gate wave to
+close two blind spots, and the widening **exposed fifteen real violations that
+were always violations** — they had simply been invisible:
+
+1. **The motivating defect's own shape.** The gate required the template literal
+   to sit literally in the `content:` slot, so the executive.ts form —
+   `const prompt = \`…${doc.extractedText}…\`` then `content: prompt` — scored
+   zero. **The gate could not see the defect that built it**, and hoisting a
+   prompt one line up was a complete bypass (57 of 160 identifier-valued message
+   slots in `server/` are hoisted).
+2. **Field-list name-keying.** A fixed roster of exact names is walked past by
+   spelling the prose field `marketNotes` instead of `notes`.
+
+All fifteen wrapped: customer-entered property addresses (`agent-skills`,
+`complianceGuardian`, `dueDiligence`), lead first/last names, customer-authored
+campaign subject and body (`campaignOptimizer`), founder direction notes
+(`cmo/scriptGenerator`), generated script bodies (`cmo/scriptScorer`),
+**uploaded document filenames** (`documentIntelligence` — an upload's filename is
+attacker-chosen), CEO override notes (`overrideLearner`), and tracked subject
+lines (`sequenceOptimizer`).
+
+### Three wraps I applied and then reverted
+
+The mechanical pass wrapped 13 sites in `agent-skills.ts` where the report named
+4 — the extra hits were the same field names in **non-prompt** positions: two
+`leadName` fields in returned payloads and one user-facing `message` string.
+Sanitizing those would render `[redacted]` **to a customer**, turning a
+prompt-hygiene fix into a display defect. Reverted after reading each one; the
+two `sellerName` consts were checked and do feed prompts only.
+**`sanitizePromptInline` belongs on the path INTO a model, never on the path out
+to a person** — the same expression is correct in one and wrong in the other.
+
+### A blind spot the fix revealed in the gate itself
+
+`complianceGuardian.ts:664` is still counted although it is now guarded: the
+gate captures interpolations with `\$\{[^}]*\}`, which **truncates at the first
+`}`** — here that is inside the `.map(({ check, rule }) => …)` callback, so the
+capture ends before the `sanitizePromptInline(` I added. The site is safe; the
+reader cannot see it. That is the same truncating-reader shape this session has
+now hit four times (the SIGPIPE'd diff, the mispaired comment stripper, the
+fixed-width slice, this). Left at baseline 1 with the defect named here rather
+than allowlisted as if it were a real exemption — the fix is a brace-balanced
+capture, and it belongs in the same commit as the gate's other changes.

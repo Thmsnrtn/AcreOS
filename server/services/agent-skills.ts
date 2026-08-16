@@ -8,6 +8,7 @@ import { generateOfferLetter as generateOfferDocument } from "./documents";
 import { PropertyEnrichmentService } from "./propertyEnrichment";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
 export interface AgentContext {
@@ -202,7 +203,7 @@ const generateOfferSkill: Skill = {
       }
 
       const org = await storage.getOrganization(context.organizationId);
-      const sellerName = lead ? `${lead.firstName} ${lead.lastName}` : "[Seller Name]";
+      const sellerName = lead ? `${sanitizePromptInline(lead.firstName ?? "")} ${sanitizePromptInline(lead.lastName ?? "")}` : "[Seller Name]";
       const propertyAddress = property?.address || "[Property Address]";
       const propertyLocation = property ? `${property.city || ""}, ${property.state || ""}`.trim() : "";
 
@@ -2288,7 +2289,7 @@ const scoreLeadSkill: Skill = {
 
       return {
         success: true,
-        data: { leadId, leadName: `${lead.firstName} ${lead.lastName}`, score, grade, factors, nextAction },
+        data: { leadId, leadName: `${lead.firstName ?? ""} ${lead.lastName ?? ""}`, score, grade, factors, nextAction },
         message: `Lead score: ${score}/100 (${grade}) — ${nextAction}`,
       };
     } catch (error: any) {
@@ -2325,7 +2326,7 @@ const draftOfferLetterSkill: Skill = {
       }
 
       const lead = leadId ? await storage.getLead(context.organizationId, leadId) : null;
-      const sellerName = lead ? `${lead.firstName} ${lead.lastName}` : "Property Owner";
+      const sellerName = lead ? `${sanitizePromptInline(lead.firstName ?? "")} ${sanitizePromptInline(lead.lastName ?? "")}` : "Property Owner";
 
       const toneGuide =
         tone === "friendly"
@@ -2340,7 +2341,7 @@ const draftOfferLetterSkill: Skill = {
       const prompt = `Write a land purchase offer letter. Be ${toneGuide}.
 
 Seller: ${sellerName}
-Property: ${property.address || "the property"}, ${property.county ? property.county + " County, " : ""}${property.state || ""}
+Property: ${sanitizePromptInline(property.address || "the property")}, ${property.county ? property.county + " County, " : ""}${property.state || ""}
 APN: ${property.apn || "N/A"}
 Acreage: ${(property as any).sizeAcres || "N/A"} acres
 Offer Price: $${offerPrice.toLocaleString()}
@@ -2508,7 +2509,7 @@ const suggestFollowUpSkill: Skill = {
 
       const prompt = `You are a land investing expert. Recommend the best next follow-up action for this lead.
 
-Lead: ${lead.firstName} ${lead.lastName}
+Lead: ${sanitizePromptInline(lead.firstName ?? "")} ${sanitizePromptInline(lead.lastName ?? "")}
 Status: ${lead.status}
 Source: ${lead.source || "unknown"}
 Days since last contact: ${daysSinceContact !== null ? daysSinceContact : "never contacted"}
@@ -2546,11 +2547,11 @@ Be specific and actionable.`;
         success: true,
         data: {
           leadId,
-          leadName: `${lead.firstName} ${lead.lastName}`,
+          leadName: `${lead.firstName ?? ""} ${lead.lastName ?? ""}`,
           daysSinceContact,
           ...suggestion,
         },
-        message: `Follow-up suggestion for ${lead.firstName}: ${suggestion.channel || "email"} — ${suggestion.timing || "as soon as possible"}`,
+        message: `Follow-up suggestion for ${lead.firstName ?? ""}: ${suggestion.channel || "email"} — ${suggestion.timing || "as soon as possible"}`,
       };
     } catch (error: any) {
       return { success: false, error: error.message || "Follow-up suggestion failed" };
@@ -2599,7 +2600,7 @@ const marketAnalysisSkill: Skill = {
       const prompt = `You are an expert real estate professional and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
 
 Internal data: ${countyProperties.length} properties tracked in this county${avgMarketValue ? `, average market value $${Math.round(avgMarketValue).toLocaleString()}` : ""}.
-${existing?.marketNotes ? `Previous research notes: ${existing.marketNotes}` : ""}
+${existing?.marketNotes ? `Previous research notes: ${sanitizePromptInline(existing.marketNotes)}` : ""}
 
 Return a JSON object with:
 - demandLevel: "Low" | "Moderate" | "High" | "Very High"

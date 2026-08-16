@@ -23,6 +23,7 @@ import { getOpenAIClient } from "../../utils/openaiClient";
 import { logger } from "../../utils/logger";
 import { listActiveArchetypes } from "./archetypes";
 import { selectVoiceForScript, type VoicePoolEntry } from "./voicePool";
+import { sanitizePromptInline } from "../../utils/sanitizePrompt";
 import {
   addCost,
   emptyBreakdown,
@@ -166,7 +167,7 @@ export async function generateScripts(input: GenerateScriptInput): Promise<Gener
   const systemPrompt = buildSystemPrompt(input.brandProfile, archetypeSlugs, rejectionContext);
   const userPrompt = `Generate ${input.count} ${input.funnelStage}-funnel scripts for intent="${input.intent}".
 
-${input.notes ? `Founder direction: ${input.notes}` : "No specific founder direction — choose archetypes you think will hit hardest for this intent given the audience."}
+${input.notes ? `Founder direction: ${sanitizePromptInline(input.notes)}` : "No specific founder direction — choose archetypes you think will hit hardest for this intent given the audience."}
 
 Return strict JSON only.`;
 

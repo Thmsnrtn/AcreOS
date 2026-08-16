@@ -13,6 +13,7 @@ import { eq, and, desc, isNull, or, sql, inArray } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export type RuleType = "subdivision" | "building" | "zoning" | "environmental" | "disclosure" | "recording" | "tax";
 export type CheckStatus = "pending" | "compliant" | "non_compliant" | "not_applicable" | "needs_review";
 
@@ -636,7 +637,7 @@ class ComplianceGuardianService {
 # Compliance Report for Property ${propertyId}
 
 ## Property Information
-- **Location:** ${property.address || "N/A"}, ${property.city || ""}, ${property.county}, ${property.state}
+- **Location:** ${sanitizePromptInline(property.address || "N/A")}, ${property.city || ""}, ${property.county}, ${property.state}
 - **APN:** ${property.apn}
 - **Size:** ${property.sizeAcres} acres
 - **Zoning:** ${property.zoning || "Unknown"}
@@ -653,7 +654,7 @@ ${checks
     ({ check, rule }) =>
       `### ${rule?.ruleName || check.checkType}
 - Status: ${check.status}
-- Description: ${check.checkDescription || "N/A"}
+- Description: ${sanitizePromptInline(check.checkDescription || "N/A")}
 `
   )
   .join("\n")}
@@ -663,7 +664,7 @@ ${checks
     const prompt = `Generate a professional compliance report for a real estate property.
 
 Property Details:
-- Address: ${property.address || "N/A"}, ${property.city || ""}, ${property.county}, ${property.state}
+- Address: ${sanitizePromptInline(property.address || "N/A")}, ${property.city || ""}, ${property.county}, ${property.state}
 - APN: ${property.apn}
 - Size: ${property.sizeAcres} acres
 - Zoning: ${property.zoning || "Unknown"}
