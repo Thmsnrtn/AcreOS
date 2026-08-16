@@ -1259,3 +1259,68 @@ learn which.
 `taxOptimizationEngine.ts` was on this list and was **B17**, answered on its own
 terms first: it fabricated, so deletion was the *cheap* answer there rather than
 the lossy one.
+
+---
+
+## B20 — 185 async FUNCTIONS query org-scoped tables without org context
+
+**Found:** unit 123, by widening `check-org-scoped-fetch.mjs` from the method
+shape to the function shape.
+**Blocked on:** nothing — a triage queue, frozen so the widened lint could land
+and block regressions. Recorded here because it is a re-seed of newly *visible*
+debt, and a register nobody works down is how a gate earns a re-baseline.
+
+**The gap.** B14's lint had been pointed at the right FILES since unit 54, and
+was still only looking at the right SYNTAX. It extracted `async <name>(` —
+class / object-literal method form — and nothing else, because the regex read
+the identifier in `async function getDeal(` as `function` and then demanded an
+immediate `(`. So:
+
+```ts
+async getDeal(dealId: number) { … }          // CAUGHT
+export async function getDeal(dealId) { … }  // GREEN
+```
+
+Identical table, identical bare id, identical cross-tenant read, in a file the
+lint already walked. **The rule was enforced against a keyword, not against the
+defect** — the same PARTIAL-nameonly class as B18's name-keyed registry and the
+`/^server\/routes-.*\.ts$/` filename filter the reachability gate carried until
+the same unit.
+
+Widening extraction raised the scanned population from **2,485 units to 4,606**
+and surfaced **122 rule-1 + 63 rule-2** offenders that were always there. They
+sit in `BASELINE_FUNCTION_OFFENDERS` / `BASELINE_FUNCTION_UNUSED_ORG` — separate
+registers from the method-shape ones, so neither can hide a regression in the
+other, and both may only SHRINK.
+
+**Triage order, measured across all 122 by predicate shape** (13 hand-read
+against schema before freezing; 13/13 real, zero parser false positives):
+
+- **43 resolve a row by id / FK — START HERE.** This is the B14/unit-53 leak
+  shape, where an id arrives from a URL. `writingStyle.deleteStyleProfile(id)`
+  is a bare-PK DELETE; `leadQualification.acknowledgeAlert` is the exact twin of
+  the already-registered `alerting.ts` entry; `wireInstructions
+  .recordWireConfirmation` and `achMandateSetup.revokeAchMandatesForNote` sit on
+  the **money rail**, which is where this ranks above the other two groups.
+- **38 `eq()` on a non-id column** (token / email / natural key). Mixed: some are
+  capability-based by design — the same class as the registered
+  `noteRepo::getNoteByAccessToken`, where the token IS the authorization.
+- **41 aggregate / range scan, no `eq()` at all.** Mostly founder and platform
+  instruments that span orgs deliberately (`ai-telemetry` model distribution,
+  `aiCostCeiling`'s explicitly platform-wide sum). Real by the rule and the
+  cheapest to clear: wrap the access in `unscopedForPlatformOps(reason)` and
+  delete the register line.
+
+**The predicate was deliberately NOT narrowed to the 43.** Narrowing to
+"resolves by id" would make the function shape mean something different from the
+method shape, and would open a fresh bypass — a filterless cross-tenant LIST
+leaks more than a single-row fetch. B14's register already carries aggregate
+entries for that reason and has demonstrably shrunk (2026-07-29, 2026-08-06), so
+a register of this size is workable here rather than aspirational.
+
+**Still outside the lint, measured rather than waved at:** `server/routes-*.ts`
+and `server/routes/**`. Admitting them WITH inline `async (req, res) => {}`
+handler extraction measures 271 files, 66 rule-1 + 73 rule-2 = **139 further
+entries**. That is a separate unit of work with its own extractor — seeding 139
+more rows now would produce exactly the unworkable register this entry warns
+about.

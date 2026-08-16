@@ -63,6 +63,87 @@
  * its OWN four-doors rule and an explicit `/founder/admin/*` namespace for deep
  * panels. The customer-side rule is about the customer's five doors; applying
  * it to the founder plane would be enforcing a rule that was never written.
+ *
+ * THE SECOND DEFECT: THE PARSER, NOT THE DETECTORS (fixed 2026-08-16).
+ * -------------------------------------------------------------------
+ * An enforcement audit found this file green while the rule it cites was
+ * breakable — not because a detector was too narrow, but because the ROUTE
+ * PARSER was. `routes()` matched only the BLOCK form,
+ * `<Route path="…">…</Route>`, so a route written self-closing —
+ *
+ *     <Route path="/copilot" component={CopilotPage} />
+ *
+ * — was never PARSED AT ALL. There was nothing for either detector to match
+ * against: the path check never saw `/copilot`, the component check never saw
+ * `CopilotPage`, and the file reported "one destination, two aliases" exactly
+ * as before. Verified: that line pasted into `App.tsx` left this suite 12/12
+ * green. App.tsx had 301 `<Route>` tags carrying a path; the old regex parsed
+ * 269 of them. **32 routes — 11% of the router — were invisible to a gate whose
+ * whole job is to look at routes.** That is the PARTIAL-nameonly failure in its
+ * purest form: the gate keyed on a SYNTAX, and the same surface expressed in
+ * the other syntax walked past a passing test.
+ *
+ * The fix is not another detector. It is:
+ *
+ *   1. `routeTags()` — a brace- and quote-aware scan of EVERY `<Route …>`
+ *      opening tag, self-closing or not, so `routes()` covers both forms. A
+ *      self-closing route's attribute list IS its body, so `component={…}`
+ *      still reaches the component detector.
+ *   2. `it("the parser sees EVERY <Route> tag in App.tsx")` — the assertion
+ *      that matters. Parsed-with-path + recognised-pathless must equal the
+ *      total `<Route` count. It converts "my regex missed a syntax" from a
+ *      SILENT POPULATION SHRINK into a red test. Under the old shape, dropping
+ *      32 routes cost nothing; under this one it fails loudly, and every
+ *      assertion downstream inherits the guarantee that it inspected the whole
+ *      router.
+ *
+ * Widening the parser added 32 routes and ZERO new AI hits (the AI set is the
+ * same four routes before and after) — the newly visible 32 are the public
+ * marketing/portal routes, all self-closing. So this costs no noise; it closes
+ * a hole.
+ *
+ * WHAT THIS FILE STILL CANNOT CATCH — stated plainly rather than papered over.
+ * -------------------------------------------------------------------
+ * A NEUTRALLY-NAMED AI destination at a NEUTRALLY-NAMED path —
+ * `<Route path="/workspace" component={WorkspacePage} />`, where `WorkspacePage`
+ * happens to be a full chat surface — is NOT caught, in either syntax. Both
+ * detectors key on names, and by construction neither name says "AI".
+ *
+ * It is left uncaught on purpose, and the decision was MEASURED, not assumed.
+ * The only mechanical way to reach a neutrally-named surface is to follow each
+ * route's component into its module and judge the CONTENT — AI-SDK imports,
+ * `useChat`, `/api/ai/*` calls, streaming. Run against this repo's 160
+ * customer routes with a resolvable page module, that predicate scores:
+ *
+ *     depth 0 (the page file only)      5 / 160 routes flagged
+ *     depth 1 (+ its direct imports)   10 / 160
+ *     depth 2 (+ one level further)   113 / 160   ← 71% of the customer surface
+ *     depth 3                         113 / 160   (saturated)
+ *
+ * Depth 0-1 is cheap but trivially evaded — move the chat into a child
+ * component and the scan goes quiet, which is a gate that only catches the
+ * careless. Depth 2 is where it stops being evadable, and there it flags 113
+ * routes against ZERO actual violations: `/leases`, `/permits`, `/rent-roll`,
+ * `/closing-costs`, `/zoning`…
+ *
+ * The reason is structural, and it is the rule itself. Pax is SUPPOSED to be
+ * reachable from everywhere behind the doors. So "this route can reach AI
+ * code" is true almost everywhere BY DESIGN — the predicate measures
+ * compliance with the rule, not violation of it, and inverting a compliance
+ * signal into an alarm is how you get a 113-line failure that the next person
+ * re-baselines to 113 and stops reading. This program already narrowed one
+ * proposed check from 237 hits to 10 for exactly that reason; a 113-hit check
+ * would be the same mistake with this file's name on it.
+ *
+ * So the honest boundary is: **this file pins that every route in App.tsx is
+ * SEEN, and that no route NAMED for AI — by path or by component, in either
+ * syntax — is a second destination. It does not pin the content of a route
+ * named for nothing.** A reviewer, not a regex, owns that case, and the test
+ * "records the residual limit" below states it as an executable fact so this
+ * file cannot be mistaken for claiming coverage it does not have. Do not
+ * "fix" that by bolting on an import-scanning heuristic without re-measuring
+ * the table above; an overstated gate is worse than a scoped one, and is the
+ * defect this whole audit is about.
  */
 
 import { describe, it, expect } from "vitest";
@@ -75,19 +156,75 @@ const ROOT = path.resolve(__dirname, "../..");
 const app = fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
 
 /**
- * Every `<Route path="...">` and the body it renders.
+ * EVERY `<Route …>` opening tag in App.tsx — both syntaxes.
  *
- * Bounded at the closing `</Route>` — not at the next `<Route`, because a
- * nested or commented route would otherwise merge two bodies and let one
- * route's redirect satisfy an assertion about another's.
+ * The previous version of this file went straight from a regex to a route
+ * list, and that regex required the tag to end in a bare `>`. Self-closing
+ * routes (`<Route path="/x" component={X} />`) therefore did not exist as far
+ * as this gate was concerned — 32 of App.tsx's routes, silently.
+ *
+ * So the tag scan is separated out and made syntax-agnostic: find each
+ * `<Route` (word-bounded, so `<RouteFallback>` is not one) and walk forward to
+ * the `>` that closes the opening tag, tracking `{}` depth and quotes so an
+ * inline `component={() => <X a=">" />}` cannot end the tag early. The result
+ * is the DENOMINATOR the vacuity assertion below measures `routes()` against.
  */
-function routes(): Array<{ path: string; body: string }> {
-  const out: Array<{ path: string; body: string }> = [];
-  const re = /<Route\s+path=\{?["'`]([^"'`]+)["'`]\}?\s*>/g;
-  for (const m of app.matchAll(re)) {
-    const from = (m.index ?? 0) + m[0].length;
-    const close = app.indexOf("</Route>", from);
-    out.push({ path: m[1], body: app.slice(from, close === -1 ? from + 400 : close) });
+function routeTags(source: string = app): Array<{ tag: string; end: number; selfClosing: boolean }> {
+  const out: Array<{ tag: string; end: number; selfClosing: boolean }> = [];
+  for (const m of source.matchAll(/<Route\b/g)) {
+    const start = m.index ?? 0;
+    let i = start + m[0].length;
+    let depth = 0;
+    let quote = "";
+    while (i < source.length) {
+      const c = source[i];
+      if (quote) {
+        if (c === quote && source[i - 1] !== "\\") quote = "";
+      } else if (c === '"' || c === "'" || c === "`") {
+        quote = c;
+      } else if (c === "{") {
+        depth++;
+      } else if (c === "}") {
+        depth--;
+      } else if (c === ">" && depth === 0) {
+        break;
+      }
+      i++;
+    }
+    const selfClosing = source[i - 1] === "/";
+    out.push({ tag: source.slice(start, selfClosing ? i - 1 : i), end: i, selfClosing });
+  }
+  return out;
+}
+
+/** The `path` attribute of an opening tag, wherever in the tag it sits. */
+const PATH_ATTR = /\bpath=\{?\s*["'`]([^"'`]+)["'`]/;
+
+/**
+ * Every routed path and the body it renders — BOTH the block form
+ * `<Route path="…">…</Route>` and the self-closing form
+ * `<Route path="…" component={X} />`.
+ *
+ * The block body is bounded at the closing `</Route>` — not at the next
+ * `<Route`, because a nested or commented route would otherwise merge two
+ * bodies and let one route's redirect satisfy an assertion about another's.
+ * For a self-closing route the OPENING TAG IS THE BODY: that is where
+ * `component={…}` lives, which is what the component-name detector reads. The
+ * opening tag is prepended to the block body too, so a block route that also
+ * carries a `component=` prop is judged on both.
+ */
+function routes(source: string = app): Array<{ path: string; body: string; selfClosing: boolean }> {
+  const out: Array<{ path: string; body: string; selfClosing: boolean }> = [];
+  for (const t of routeTags(source)) {
+    const m = PATH_ATTR.exec(t.tag);
+    if (!m) continue; // pathless catch-all (`<Route component={NotFound} />`)
+    if (t.selfClosing) {
+      out.push({ path: m[1], body: t.tag, selfClosing: true });
+      continue;
+    }
+    const close = source.indexOf("</Route>", t.end);
+    const inner = source.slice(t.end + 1, close === -1 ? t.end + 400 : close);
+    out.push({ path: m[1], body: t.tag + inner, selfClosing: false });
   }
   return out;
 }
@@ -133,10 +270,81 @@ const REDIRECTS = /<Redirect\s+to=/;
 describe("there is exactly one customer-facing AI destination", () => {
   const ai = customerAiRoutes();
 
-  it("finds the AI routes at all (vacuity guard)", () => {
-    // A changed Route syntax would otherwise make this file pass by inspecting
-    // nothing — the failure mode every source scan in this program has hit.
-    expect(routes().length, "no <Route path=…> parsed from App.tsx").toBeGreaterThan(50);
+  it("the parser sees EVERY <Route> tag in App.tsx (parser vacuity guard)", () => {
+    // THE ASSERTION THIS FILE WAS MISSING, and the reason it was green while
+    // the rule was breakable.
+    //
+    // The old guard was `routes().length > 50`. It could not tell "parsed the
+    // whole router" from "parsed 269 of 301 routes and lost the other 32",
+    // because it compared the population to a floor rather than to the file.
+    // A self-closing route was never parsed, so no detector ever ran on it —
+    // the surface was not MISSED by the checks, it was INVISIBLE to them.
+    //
+    // This compares the parse to the source. Every `<Route` in App.tsx must be
+    // enumerated, and every enumerated tag that DECLARES a path must have had
+    // that path READ. A future syntax this file cannot handle — a computed
+    // `path={ROUTES.x}`, a `path` attribute written after `component`, a
+    // wrapper element — then fails here loudly instead of quietly shrinking
+    // the population every assertion below depends on.
+    const tags = routeTags();
+    const parsed = routes();
+    // Counted with a different spelling than routeTags() uses, so a narrowed
+    // regex in the walker cannot hide behind its own definition.
+    const rawTagStarts = (app.match(/<Route(?![A-Za-z0-9_])/g) ?? []).length;
+    // "Declares a path" (crude), vs PATH_ATTR's "…and this file could read it".
+    const declarePath = tags.filter((t) => /\bpath=/.test(t.tag));
+
+    expect(rawTagStarts, "no <Route …> tags found in App.tsx at all").toBeGreaterThan(250);
+    expect(
+      tags.length,
+      "the tag walker enumerated fewer <Route> tags than exist in App.tsx — " +
+        "it is skipping tags, so every count below is understated",
+    ).toBe(rawTagStarts);
+    // Two ways the parse can fall short, and the message has to distinguish
+    // them or the next person debugs the wrong one. Mutation-testing this file
+    // produced both: a computed `path={ROUTES.x}` leaves the tag unreadable,
+    // whereas a parser regressed to block-only reads the path fine and drops
+    // the route anyway.
+    const unreadable = declarePath.filter((t) => !PATH_ATTR.test(t.tag));
+    expect(
+      parsed.length,
+      `${declarePath.length - parsed.length} of ${declarePath.length} <Route> tag(s) ` +
+        "that declare a path were dropped from the population every assertion " +
+        "below inspects. " +
+        (unreadable.length
+          ? "Their path syntax is unreadable to PATH_ATTR: " +
+            unreadable.map((t) => t.tag.replace(/\s+/g, " ").slice(0, 90)).join(" | ")
+          : "Their paths ARE readable, so routes() is discarding tags for some " +
+            "other reason — check that BOTH the self-closing and block branches " +
+            "still push (dropping the self-closing branch alone costs 32 routes).") +
+        " — teach routes()/PATH_ATTR the syntax rather than lowering this " +
+        "assertion. A gate that silently stops looking at part of the router " +
+        "is the exact defect this guard exists to make impossible.",
+    ).toBe(declarePath.length);
+
+    // Both syntaxes must actually be present, or one branch of the parser is
+    // dead code and could rot without anything noticing — which is how the
+    // self-closing branch came to be missing in the first place.
+    expect(
+      parsed.filter((r) => r.selfClosing).length,
+      "no SELF-CLOSING <Route … /> parsed. Either App.tsx stopped using that " +
+        "form, or the parser regressed to the block-only shape that let " +
+        '`<Route path="/copilot" component={CopilotPage} />` walk past this suite.',
+    ).toBeGreaterThan(10);
+    expect(
+      parsed.filter((r) => !r.selfClosing).length,
+      "no BLOCK-form <Route …>…</Route> parsed",
+    ).toBeGreaterThan(10);
+
+    // The only tags allowed to carry no path are wouter catch-alls.
+    const pathless = tags.filter((t) => !/\bpath=/.test(t.tag));
+    expect(
+      pathless.map((t) => t.tag.replace(/\s+/g, " ").trim()).join(" | "),
+      "more pathless <Route> tags than the single NotFound catch-all. A " +
+        "pathless route matches everything, so a new one is a routing change " +
+        "this gate cannot reason about — name it explicitly here.",
+    ).toBe("<Route component={NotFound}");
+
     expect(ai.map((r) => r.path), "the /ai door is gone").toContain("/ai");
   });
 
@@ -154,6 +362,12 @@ describe("there is exactly one customer-facing AI destination", () => {
       "{() => <ProtectedRoute component={AiInsightsPage} />}",
       "{() => <ProtectedRoute component={OutreachCopilot} />}",
       "{() => <ProtectedRoute component={SoleneConsole} />}",
+      // A self-closing route's BODY is its own opening tag — the shape
+      // `routes()` now produces for that form. The detector has to match there
+      // too, or widening the parser would hand the detectors a body they
+      // cannot read and change nothing.
+      '<Route path="/negotiation" component={NegotiationCopilotPage}',
+      '<Route path="/x" component={PaxWorkbench}',
     ];
     for (const body of bodies) {
       expect(AI_COMPONENT.test(body), `the component detector missed: ${body}`).toBe(true);
@@ -166,6 +380,90 @@ describe("there is exactly one customer-facing AI destination", () => {
     ]) {
       expect(AI_COMPONENT.test(body), `the component detector over-matches: ${body}`).toBe(false);
     }
+  });
+
+  it("the SELF-CLOSING bypass is caught end-to-end (it was green before 2026-08-16)", () => {
+    // The verified bypass, verbatim. Pasted into App.tsx it left this suite
+    // 12/12 green, because the old parser matched only `…>` and this route was
+    // never parsed at all — the detectors were never even offered it.
+    //
+    // Running the real parser + the real detectors over a synthetic source
+    // pins the fix permanently, instead of relying on someone re-performing
+    // the mutation by hand. If routes() ever regresses to the block-only
+    // shape, `parsed` loses /copilot and this fails on the first assertion.
+    const SYNTHETIC = [
+      '      <Route path="/copilot" component={CopilotPage} />',
+      '      <Route path="/negotiation" component={NegotiationCopilotPage} />',
+      '      <Route path="/ai">',
+      "        {() => <ProtectedRoute component={PaxPage} />}",
+      "      </Route>",
+    ].join("\n");
+
+    const parsed = routes(SYNTHETIC);
+    expect(
+      parsed.map((r) => r.path),
+      "the parser dropped a self-closing route again — the exact regression " +
+        "this test exists to prevent",
+    ).toEqual(["/copilot", "/negotiation", "/ai"]);
+
+    const offenders = parsed.filter(
+      (r) =>
+        !r.path.startsWith("/founder") &&
+        (AI_NAMED.test(r.path) || AI_COMPONENT.test(r.body)) &&
+        isDestination(r.path) &&
+        r.path !== "/ai" &&
+        !REDIRECTS.test(r.body),
+    );
+    expect(
+      offenders.map((r) => r.path).sort(),
+      "a self-closing AI destination parsed but was not flagged as one",
+    ).toEqual(["/copilot", "/negotiation"]);
+
+    // …and each is caught for the right reason: /copilot by its PATH, and
+    // /negotiation — a business noun — only by its COMPONENT. Both detectors
+    // must reach the self-closing body, not just one.
+    const copilot = parsed.find((r) => r.path === "/copilot")!;
+    const negotiation = parsed.find((r) => r.path === "/negotiation")!;
+    expect(AI_NAMED.test(copilot.path), "/copilot not caught by the path detector").toBe(true);
+    expect(AI_NAMED.test(negotiation.path), "/negotiation should NOT look AI-named").toBe(false);
+    expect(
+      AI_COMPONENT.test(negotiation.body),
+      "the component detector cannot read a self-closing route's body — " +
+        "widening the parser would then have changed nothing",
+    ).toBe(true);
+  });
+
+  it("records the residual limit: a neutral component at a neutral path is NOT caught", () => {
+    // Stated as an executable fact rather than a footnote, so nobody reads
+    // this file as claiming coverage it does not have.
+    //
+    // `<Route path="/workspace" component={WorkspacePage} />` where
+    // WorkspacePage is a full chat surface is a real AI destination and this
+    // gate does not flag it. Both detectors key on names; by construction
+    // neither name says AI. The parser DOES see it now — that part is fixed —
+    // but seeing is not judging.
+    //
+    // The only mechanical alternative is to follow each route's component into
+    // its module and judge content (AI-SDK imports, useChat, /api/ai calls).
+    // MEASURED on this repo, over the 160 customer routes with a resolvable
+    // page module: 5 hits at import-depth 0, 10 at depth 1, and 113 at depth 2
+    // — where it first stops being evadable by moving the chat into a child
+    // component. 113 of 160 is 71% of the customer surface flagged against
+    // zero real violations, because Pax being reachable from everywhere behind
+    // the doors is what the rule ASKS FOR. That check would measure compliance
+    // and report it as violation, and the next person would re-baseline it.
+    // Scoped-and-honest beats broad-and-ignored. A human reviewer owns this
+    // case; if that ever changes, re-measure the hit count BEFORE adopting.
+    const SYNTHETIC = '      <Route path="/workspace" component={WorkspacePage} />';
+    const parsed = routes(SYNTHETIC);
+
+    // The parser sees it. This half IS pinned.
+    expect(parsed.map((r) => r.path), "the parser stopped seeing the route entirely").toEqual([
+      "/workspace",
+    ]);
+    // The detectors do not fire. This half is NOT pinned, and says so.
+    expect(AI_NAMED.test("/workspace")).toBe(false);
+    expect(AI_COMPONENT.test(parsed[0].body)).toBe(false);
   });
 
   it("only /ai renders a page; every other AI DESTINATION redirects into it or is frozen", () => {

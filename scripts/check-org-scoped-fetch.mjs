@@ -34,6 +34,27 @@
 // The moral is the one the repo keeps relearning — the defect was never a
 // missing rule, only a rule applied to some surfaces and not others.
 //
+// THE FUNCTION SHAPE (added 2026-08-16, enforcement audit GAP A)
+// ─────────────────────────────────────────────────────────────
+// The same moral, one level down. Having been pointed at the right FILES,
+// this lint was still only looking at the right SYNTAX: it extracted
+// `async <name>(` — class / object-literal method form — and nothing else.
+// `async function <name>(` never matched, because the regex read the
+// identifier as "function" and then demanded an immediate `(`.
+//
+// So the rule was enforced against a keyword rather than against a defect:
+//
+//     async getDeal(dealId: number) { … }          → CAUGHT
+//     export async function getDeal(dealId) { … }  → GREEN
+//
+// Identical table, identical bare id, identical cross-tenant read, in a file
+// this lint already walked. Widening extraction to the function shape raised
+// the scanned population from 2,485 units to 4,606 and surfaced 122 rule-1 +
+// 63 rule-2 offenders that had always been there. They are frozen in the
+// clearly-labelled FUNCTION SHAPE registers below — see that block for the
+// measured triage split and for why the predicate was deliberately not
+// narrowed further.
+//
 // Heuristic
 // ─────────
 // No TypeScript execution — focused regex passes, same family as
@@ -43,13 +64,20 @@
 //      blocks and record the TS identifiers of tables that declare an
 //      `organizationId` column ("org-scoped tables").
 //   2. Walk server/storage.ts, server/storage/*.ts and server/services/**.
-//      For every `async <method>(…) { … }` (brace-matched), collect the
+//      For every `async <method>(…) { … }` AND every
+//      `async function <name>(…) { … }` (both brace-matched), collect the
 //      org-scoped table identifiers it touches via `from(<ident>)`,
 //      `db.update(<ident>)`, or `db.delete(<ident>)`.
-//   3. If the method touches at least one org-scoped table and the method
-//      text (signature + body) contains NO org context marker
+//   3. If the unit touches at least one org-scoped table and its text
+//      (signature + body) contains NO org context marker
 //      (`organizationId`, `orgId`, `forOrg(`, `unscopedForPlatformOps(`),
-//      it is an offender.
+//      it is an offender. Method-shape offenders answer to BASELINE_OFFENDERS,
+//      function-shape offenders to BASELINE_FUNCTION_OFFENDERS; likewise for
+//      rule 2. One rule, two shapes, two independently shrinkable registers.
+//   4. VACUITY GUARD: if the scan sees implausibly few files, tables, methods,
+//      functions or org-touching units, it FAILS instead of reporting PASS.
+//      An empty scan is a broken scanner, not a clean repo — this file's own
+//      comment-masking bug once blanked the lines a scan was counting.
 //
 // `unscopedForPlatformOps(reason)` is the sanctioned escape hatch — it is
 // greppable and logs its reason, so methods using it are intentionally
@@ -363,6 +391,276 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/storage/tasksRepo.ts::createNextRecurringTask",
 ]);
 
+// ============================================================================
+// FUNCTION SHAPE — registers frozen 2026-08-16 (enforcement audit, GAP A)
+// ============================================================================
+//
+// THE MOVE, AND WHY THE COUNT WENT UP
+// ───────────────────────────────────
+// Until now this lint extracted only `async <name>(` — class / object-literal
+// METHOD syntax. `async function <name>(` never matched, so the rule ("a unit
+// that queries an org-scoped table with no org context is a tenancy defect")
+// was enforced against a SYNTAX rather than against the rule. The bypass was
+// not theoretical: an exported async function doing
+// `db.select().from(deals).where(eq(deals.id, dealId))` shipped GREEN in a
+// file this lint already walked, while the identical method was caught.
+//
+// Adding `extractAsyncFunctions` raised the scanned population from 2,485 to
+// 4,606 units and surfaced 122 rule-1 offenders and 63 rule-2 offenders that
+// were always there and always invisible. This is a ONE-TIME RE-SEED of newly
+// VISIBLE debt, not a raised ceiling: the pre-existing method registers above
+// were not touched, and both registers below may only SHRINK from here.
+//
+// MEASURED, NOT ASSUMED (the audit's own discipline applied to itself)
+// ────────────────────────────────────────────────────────────────────
+// 13 of the 122 were hand-read against schema before freezing. 13/13 are real
+// instances of the rule — zero parser false positives, zero mis-spanned
+// bodies. Every table involved was confirmed to carry `organization_id`.
+// Triage split, measured across all 122 by predicate shape:
+//
+//   43  resolve a row by id / FK  → START HERE. This is the KYC-leak shape.
+//                                   e.g. writingStyle.deleteStyleProfile(id)
+//                                   is a bare-PK DELETE; leadQualification
+//                                   .acknowledgeAlert is the exact twin of
+//                                   the already-registered alerting.ts one;
+//                                   wireInstructions.recordWireConfirmation
+//                                   and achMandateSetup.revokeAchMandates-
+//                                   ForNote sit on the money rail.
+//   38  eq() on a non-id column (token / email / natural key). Mixed: some
+//       are capability-based by design — same class as the already-registered
+//       noteRepo::getNoteByAccessToken, where the token IS the auth.
+//   41  aggregate / range scan, no eq() at all. Mostly founder + platform
+//       instruments that span all orgs deliberately (ai-telemetry model
+//       distribution, aiCostCeiling's explicitly platform-wide sum). These
+//       are real by the rule and cheap to clear: wrap the access in
+//       `unscopedForPlatformOps(reason)` and delete the line.
+//
+// The predicate was deliberately NOT narrowed to the 43. Narrowing to
+// "resolves by id" would have made the function shape mean something
+// different from the method shape — and would have opened a fresh bypass,
+// since a filterless cross-tenant LIST leaks more than a single-row fetch.
+// The existing 151-entry method register already carries aggregate entries
+// (countFieldScoutVisits, getCampaignResponsesCount) for the same reason, and
+// it has demonstrably shrunk (entries removed 2026-07-29 and 2026-08-06), so
+// a register of this size is workable in this repo rather than aspirational.
+//
+// NOT INCLUDED, AND MEASURED RATHER THAN WAVED AT: `server/routes-*.ts` +
+// `server/routes/**` are still outside findScannedFiles(). Measured cost of
+// admitting them WITH inline `async (req, res) => {}` handler extraction:
+// 271 files, 66 rule-1 + 73 rule-2 = 139 further entries. That is a separate
+// unit of work with its own extractor, not a tail on this one — seeding 139
+// more rows here would produce a register nobody works down, which is how a
+// gate earns a re-baseline. Recorded here so the number is known, not
+// rediscovered.
+//
+// Stale-entry discipline is identical to the registers above: a fix that is
+// not accompanied by deleting its line FAILS this lint.
+
+const BASELINE_FUNCTION_OFFENDERS = new Set([
+  "server/services/achMandateSetup.ts::getAchMandateSummary",
+  "server/services/achMandateSetup.ts::revokeAchMandatesForNote",
+  "server/services/actions/outwardAction.ts::markClaim",
+  "server/services/agentLlmTraces.ts::getTraceById",
+  "server/services/agentLlmTraces.ts::getTracesForDecision",
+  "server/services/agentMemoryConsolidation.ts::buildAgentWeekSlice",
+  "server/services/agentRetractCron.ts::snapshotCurrentTelemetry",
+  "server/services/ai-telemetry.ts::getCacheHitRate",
+  "server/services/ai-telemetry.ts::getModelDistribution",
+  "server/services/ai-telemetry.ts::getPromptCacheAdoption",
+  "server/services/aiCostCeiling.ts::sumPlatformCostCentsSince",
+  "server/services/andrei/supportResolverCalibration.ts::computeSupportResolverCalibration",
+  "server/services/andrei/supportResolverCalibration.ts::runSupportResolverCalibrationGrader",
+  "server/services/atrSafeHarbor.ts::getAtrDetermination",
+  "server/services/audit/detectors/observationRateDetector.ts::countObservations",
+  "server/services/audit/detectors/taxReserveDetector.ts::trailing12moRevenueCents",
+  "server/services/autonomousDecisionExecutor.ts::captureTelemetryBaseline",
+  "server/services/autonomousDecisionExecutor.ts::getRecentAutonomousDecisions",
+  "server/services/autonomousDecisionExecutor.ts::runAutonomousDecisionExecutor",
+  "server/services/autonomyHealth.ts::gradeAvgOutcomeScore",
+  "server/services/autonomyHealth.ts::gradeFounderInterventionRate",
+  "server/services/autonomyHealth.ts::gradePendingQueue",
+  "server/services/autonomyHealth.ts::gradeSafetyRailTripRate",
+  "server/services/autopilot/attribution.ts::getConversionSummary",
+  "server/services/autopilot/guidedResume.ts::resumePreflight",
+  "server/services/autopilot/learnedGates.ts::readSupportConfidenceOutcomeHistory",
+  "server/services/autopilot/narrate.ts::composeFounderBrief",
+  "server/services/autopilot/proofReceiptStore.ts::auditAllReceiptChains",
+  "server/services/autopilot/proofReceiptStore.ts::getPrevReceiptHash",
+  "server/services/autopilot/proofReceiptStore.ts::verifyReceiptChain",
+  "server/services/autopilot/senses.ts::getOpenSupportCaseCount",
+  "server/services/browserAutomation.ts::cancelJob",
+  "server/services/browserAutomation.ts::executeJob",
+  "server/services/browserAutomation.ts::getJobById",
+  "server/services/browserAutomation.ts::getQueuedJobs",
+  "server/services/browserAutomation.ts::markCredentialUsed",
+  "server/services/browserAutomation.ts::updateJobStatus",
+  "server/services/calibration.ts::computeCalibration",
+  "server/services/ceoCommandBridge.ts::handlePauseMarketing",
+  "server/services/ceoCommandBridge.ts::handleResumeMarketing",
+  "server/services/comms/tracking-pool.ts::autoReleaseIdle",
+  "server/services/comms/tracking-pool.ts::releaseNumber",
+  "server/services/companyBriefingGenerator.ts::generateCompanyBriefing",
+  "server/services/companyMind.ts::recentFounderOverrides",
+  "server/services/companyMind.ts::recentNegativeOutcomes",
+  "server/services/coverageLedger.ts::discoverCountyEndpoint",
+  "server/services/customer-surface/errorBoundaryAggregator.ts::detectAndPageOnSpike",
+  "server/services/customer-surface/errorBoundaryAggregator.ts::getRecentTripCounts",
+  "server/services/customer-surface/errorBoundaryAggregator.ts::getRecentTrips",
+  "server/services/dailyAiCostGuard.ts::summarizeAiCostLast24h",
+  "server/services/dataCoop/countyRollupJob.ts::gatherCountyRollup",
+  "server/services/dealFeedEnhancements.ts::getHotStreakCounties",
+  "server/services/decisionExperiments.ts::analyzeExperiment",
+  "server/services/decisionExplanation.ts::explainAction",
+  "server/services/decisionLogRag.ts::findSimilarPastDecisions",
+  "server/services/emailSuppressions.ts::isSuppressed",
+  "server/services/emailSuppressions.ts::unsuppress",
+  "server/services/evolutionPipeline.ts::processPendingProposals",
+  "server/services/evolutionPipeline.ts::stage5Deploy",
+  "server/services/evolutionPipeline.ts::stage6RegressionCheck",
+  "server/services/expansionRadar.ts::resolveExpansionCandidate",
+  "server/services/finance/runwayModel.ts::bucketBalanceAsOf",
+  "server/services/finance/runwayModel.ts::monthlyOpexUsd",
+  "server/services/financial-ledger-invariant.ts::assertFinancialLedgerInvariant",
+  "server/services/financial-ledger.ts::getBucketBalance",
+  "server/services/form1098Batch.ts::loadBorrowers",
+  "server/services/form1098Batch.ts::loadProperties",
+  "server/services/form1099Batch.ts::getForm1099BatchStatus",
+  "server/services/founder/readinessLadder.ts::measureMailRail",
+  "server/services/founderBriefing.ts::gatherStats",
+  "server/services/founderNarrative.ts::buildSummary",
+  "server/services/founderTodo.ts::fetchDecisions",
+  "server/services/founderTodo.ts::fetchExperimentPromotions",
+  "server/services/gdprService.ts::exportUserData",
+  "server/services/leadQualification.ts::acknowledgeAlert",
+  "server/services/leadQualification.ts::dismissAlert",
+  "server/services/ledgerDeadLetter.ts::runLedgerDeadLetterSweep",
+  "server/services/lifecycleEvents.ts::countByStageWindow",
+  "server/services/lifecycleEvents.ts::dailyCount",
+  "server/services/lifecycleProgram.ts::markReactivationTokenRedeemed",
+  "server/services/mail/mailFlusher.ts::flushOne",
+  "server/services/marketNetworkContributor.ts::getStagingEntries",
+  "server/services/migrationJobs.ts::runImportJob",
+  "server/services/mlSnapshots.ts::pairOutcome",
+  "server/services/multiWeekPlanner.ts::readWindowMetrics",
+  "server/services/orgEmailIdentity.ts::verifyIdentity",
+  "server/services/outcomeLedger.ts::applyCheckInAnswer",
+  "server/services/outcomeLedger.ts::getOutcomeLedgerCounts",
+  "server/services/outcomeVerificationV12.ts::verifyEmailDelivery",
+  "server/services/outcomeVerificationV12.ts::verifyMetricChange",
+  "server/services/outcomeVerificationV12.ts::verifyPaymentStatus",
+  "server/services/outreachStopLoss.ts::readMonthToDateMailDataSpendCents",
+  "server/services/pax/userContext.ts::deleteUserContext",
+  "server/services/pax/userContext.ts::getContextDistribution",
+  "server/services/pax/userContext.ts::loadUserContext",
+  "server/services/pax/userContext.ts::setPersonalizationOptOut",
+  "server/services/periodicStatements/index.ts::computeStatementFields",
+  "server/services/promptEvolutionMetaAgent.ts::analyseAgent",
+  "server/services/recognitionWorker.ts::isAlreadyPosted",
+  "server/services/reconciliation.ts::fetchAcreosTotal",
+  "server/services/recourseDrafter.ts::generateDraftReply",
+  "server/services/reliability/sloCompute.ts::aiSuccessBurnRate",
+  "server/services/reliability/sloCompute.ts::aiSuccessSlo",
+  "server/services/reserveFloorChecker.ts::computeReserveFloor",
+  "server/services/solene/connectionsSweep.ts::buildSweepBrief",
+  "server/services/solene/letterReply.ts::confirmLetterReply",
+  "server/services/solene/tickMetric.ts::countFounderDecisionsThisWeek",
+  "server/services/solene/tickMetric.ts::getTickMetric",
+  "server/services/strategicProposals.ts::buildWeeklyDomainSummary",
+  "server/services/team-system-audit/index.ts::defaultAuditFiringSource",
+  "server/services/teamWebhookDispatcher.ts::markDispatched",
+  "server/services/teamWebhookDispatcher.ts::markError",
+  "server/services/telemetryDigest.ts::readTelemetrySnapshot",
+  "server/services/telemetryDigest.ts::runTelemetryDigest",
+  "server/services/telemetryOptimizer.ts::queryRawStats",
+  "server/services/trendAnalyzer.ts::getWeeklyTrends",
+  "server/services/unsubscribeTokens.ts::markTokenUsed",
+  "server/services/vendorSecretRotation.ts::getLastRotationTimestamp",
+  "server/services/wireInstructions.ts::issueWireInstructions",
+  "server/services/wireInstructions.ts::recordWireConfirmation",
+  "server/services/writingStyle.ts::addSampleMessage",
+  "server/services/writingStyle.ts::deleteStyleProfile",
+]);
+
+// RULE 2, FUNCTION SHAPE — frozen 2026-08-16, same re-seed as above.
+//
+// Functions that HAVE an organization and still resolve an org-scoped table by
+// primary key. The (a)/(b) triage in BASELINE_UNUSED_ORG applies unchanged.
+// A worked example of each, both verified by hand:
+//
+//   (a) amlMonitor.checkDealAmlPatterns(orgId, dealId, …) takes an org and
+//       then runs `where(eq(deals.id, dealId))` with no org predicate — the
+//       precise cashFlowForecaster shape that motivated rule 1, in a shape
+//       rule 1 could not see. A dealId from another tenant reads that
+//       tenant's deal through a signature whose type says it is scoped.
+//   (b) byok/key-vault.getByokCredential selects under a correct org filter,
+//       then bumps lastUsedAt via `where(eq(byokCredentials.id, row.id))` on
+//       the row it just read. Safe, and textually identical to (a).
+const BASELINE_FUNCTION_UNUSED_ORG = new Set([
+  "server/services/achMandateSetup.ts::confirmAchMandateSetup",
+  "server/services/actions/outwardAction.ts::withOutwardAction",
+  "server/services/agentPromotionGate.ts::addSimulationRequirement",
+  "server/services/amlMonitor.ts::checkDealAmlPatterns",
+  "server/services/andrei/supportResolverCalibration.ts::gradeAutoResolvedTicket",
+  "server/services/atlasMemory.ts::storeMemory",
+  "server/services/atrSafeHarbor.ts::persistAtrDetermination",
+  "server/services/autonomousDecisionExecutor.ts::processInboxItem",
+  "server/services/autopilot/hands/registry.ts::executeHandWitnessed",
+  "server/services/byok/key-vault.ts::getByokCredential",
+  "server/services/commissionService.ts::saveCommissionConfig",
+  "server/services/commissionService.ts::saveCommissionRecordsStore",
+  "server/services/commissionService.ts::saveSplitConfig",
+  "server/services/comms/tracking-pool.ts::assignNumber",
+  "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment",
+  "server/services/dealFeedEngine.ts::getTodaysFeed",
+  "server/services/dealHandoffService.ts::generateAtlasBriefing",
+  "server/services/dealHandoffService.ts::saveHandoffsStore",
+  "server/services/dealHandoffService.ts::sendHandoffNotification",
+  "server/services/disclosureTimingDispatcher.ts::resolveRecipientEmail",
+  "server/services/dueDiligence.ts::generateDueDiligenceReport",
+  "server/services/form1099Batch.ts::generate1099Batch",
+  "server/services/founder-chat/assert-entity-org.ts::resolveEntityOrg",
+  "server/services/gdprService.ts::anonymizeUser",
+  "server/services/leadEnrichment.ts::enrichLead",
+  "server/services/leadQualification.ts::checkForHotLeads",
+  "server/services/leadQualification.ts::generateSuggestedResponse",
+  "server/services/leadScoreDecay.ts::applyScoreRecovery",
+  "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
+  "server/services/migrationJobs.ts::createImportJob",
+  "server/services/migrationJobs.ts::markImportComplete",
+  "server/services/migrationJobs.ts::runExportJob",
+  "server/services/offerBatchService.ts::createOfferBatch",
+  "server/services/onboardingAutonomy.ts::handleActivationVerdict",
+  "server/services/onboardingAutonomy.ts::handleWeek1Checkin",
+  "server/services/outcomeCalibrationLoop.ts::calibrateSellerIntent",
+  "server/services/outcomeLedger.ts::writeOutcome",
+  "server/services/pax/continuousAudit.ts::runPaxAudit",
+  "server/services/paxMemoryTriggers.ts::onConstraintMentioned",
+  "server/services/paxMemoryTriggers.ts::onDealClosed",
+  "server/services/paxMemoryTriggers.ts::onGoalSet",
+  "server/services/paxMemoryTriggers.ts::onUserCorrection",
+  "server/services/paymentApplication/index.ts::applyAcquiredNotePayment",
+  "server/services/paymentApplication/index.ts::applyPayment",
+  "server/services/periodicStatements/delivery.ts::notifyStatementGenerated",
+  "server/services/periodicStatements/index.ts::generateOneAcquiredStatement",
+  "server/services/periodicStatements/index.ts::generateOneStatement",
+  "server/services/pipelineIntelligence.ts::recommendDisposition",
+  "server/services/propertyTaxService.ts::creditMonthlyTaxEscrow",
+  "server/services/propertyVisionReimaging.ts::reimageProperty",
+  "server/services/publicWebhookDispatcher.ts::attemptDelivery",
+  "server/services/rental/depositClock.ts::startDepositClock",
+  "server/services/revenueProtection.ts::processOrganization",
+  "server/services/solene/doctrineIngest.ts::ingestDoctrineFile",
+  "server/services/solene/founderPrecedent.ts::recordFounderPrecedent",
+  "server/services/solene/verifyQueue.ts::enqueueDunningEventVerify",
+  "server/services/solene/verifyQueue.ts::enqueueMailShipmentVerify",
+  "server/services/solene/verifyQueue.ts::enqueueVerifyDispatch",
+  "server/services/solene/verifyQueue.ts::recordVerifyOutcome",
+  "server/services/taxDelinquentPipeline.ts::addToOutreach",
+  "server/services/territoryService.ts::saveTerritoriesStore",
+  "server/services/titleChainService.ts::runPostCloseAutomation",
+  "server/services/webhookDispatcher.ts::saveWebhookEndpoints",
+]);
+
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -590,6 +888,51 @@ function extractAsyncMethods(source) {
   return methods;
 }
 
+/**
+ * Extract every `async function <name>(…) { … }` — the FUNCTION SHAPE.
+ *
+ * Added 2026-08-16 (enforcement audit, GAP A). `extractAsyncMethods` above
+ * keys on `async <name>(`, which is class/object-literal method syntax. A
+ * plain or exported async FUNCTION is `async function <name>(` — the regex
+ * sees the identifier "function", then demands `(` and finds ` <name>(`, so
+ * it never matches. The result was a gate that keyed on SYNTAX rather than on
+ * the rule: this ships GREEN in a file the lint already walks —
+ *
+ *     export async function getDeal(dealId: number) {
+ *       return db.select().from(deals).where(eq(deals.id, dealId));
+ *     }
+ *
+ * — while the semantically identical `async getDeal(dealId)` method is caught.
+ * Same table, same bare id, same cross-tenant read; only the keyword differs.
+ * Covers `export async function`, `export default async function`, bare
+ * `async function`, and the `async function*` generator form.
+ */
+function extractAsyncFunctions(source) {
+  const functions = [];
+  const fnRe = /\basync\s+function\s*\*?\s*([A-Za-z0-9_$]+)\s*(?:<[^>(]*>)?\s*\(/g;
+  let match;
+  while ((match = fnRe.exec(source)) !== null) {
+    const name = match[1];
+    const parenOpen = source.indexOf("(", match.index + match[0].length - 1);
+    if (parenOpen === -1) continue;
+    const parenClose = matchParen(source, parenOpen);
+    if (parenClose === -1) continue;
+    const braceOpen = source.indexOf("{", parenClose);
+    if (braceOpen === -1) continue;
+    const between = source.slice(parenClose + 1, braceOpen);
+    // Same guard as extractAsyncMethods: if something other than a return-type
+    // annotation sits between the params and the brace, we ran off the end.
+    if (/[;=]/.test(between) && !/=>/.test(between)) continue;
+    const braceClose = matchBrace(source, braceOpen);
+    if (braceClose === -1) continue;
+    const text = source.slice(match.index, braceClose + 1);
+    const line = source.slice(0, match.index).split("\n").length;
+    functions.push({ name, text, line });
+    fnRe.lastIndex = parenClose;
+  }
+  return functions;
+}
+
 const ORG_CONTEXT_RE = /organizationId|orgId|forOrg\s*\(|unscopedForPlatformOps\s*\(/;
 
 /**
@@ -666,10 +1009,20 @@ function main() {
   const scannedFiles = findScannedFiles();
 
   const newOffenders = [];
+  // Register hits are counted PER SHAPE. The method-shape counts keep the
+  // exact reporting shape (and the exact numbers) that
+  // tests/unit/orgScopedFetchCoverage.test.ts pins as a down-only ratchet, so
+  // widening the walk to functions cannot quietly inflate that ceiling. The
+  // function-shape registers report their own baselines on their own line.
+  // NEW offenders and STALE entries stay COMBINED — those are the enforcement,
+  // and a regression in either shape must fail the whole gate.
   const baselineSeen = new Set();
+  const baselineSeenFunction = new Set();
   const newUnusedOrg = [];
   const unusedOrgSeen = new Set();
+  const unusedOrgSeenFunction = new Set();
   let scannedMethods = 0;
+  let scannedFunctions = 0;
   let methodsTouchingOrgTables = 0;
   let conformingMethods = 0;
 
@@ -679,35 +1032,99 @@ function main() {
     // commented-out code can no longer count as "touching" a table or as
     // providing org context.
     const source = maskComments(readFileSync(file, "utf8"));
-    for (const method of extractAsyncMethods(source)) {
-      scannedMethods += 1;
-      const touched = touchedOrgScopedTables(method.text, orgScopedIdents);
+
+    // Two SHAPES, one RULE. `async name(` is method syntax; `async function
+    // name(` is function syntax. They were never semantically different for
+    // tenancy purposes — only the method shape used to be looked at, which is
+    // what made the function shape a working bypass (see the FUNCTION SHAPE
+    // register header). Each shape answers to its own register so the two
+    // ratchets stay independently auditable and independently shrinkable.
+    const units = [
+      ...extractAsyncMethods(source).map((u) => ({ ...u, shape: "method" })),
+      ...extractAsyncFunctions(source).map((u) => ({ ...u, shape: "function" })),
+    ];
+    for (const unit of units) {
+      if (unit.shape === "method") scannedMethods += 1;
+      else scannedFunctions += 1;
+      const touched = touchedOrgScopedTables(unit.text, orgScopedIdents);
       if (touched.length === 0) continue;
       methodsTouchingOrgTables += 1;
-      if (ORG_CONTEXT_RE.test(method.text)) {
+      const isFn = unit.shape === "function";
+      const key = `${rel}::${unit.name}`;
+      if (ORG_CONTEXT_RE.test(unit.text)) {
         conformingMethods += 1;
         // Rule 2: it HAS an org — does it use it? See the note on
         // loneIdPredicates for why rule 1 cannot answer that.
-        const lone = loneIdPredicates(method.text, orgScopedIdents);
+        const lone = loneIdPredicates(unit.text, orgScopedIdents);
         if (lone.length > 0) {
-          const key2 = `${rel}::${method.name}`;
-          if (BASELINE_UNUSED_ORG.has(key2)) unusedOrgSeen.add(key2);
-          else newUnusedOrg.push({ key: key2, file: rel, line: method.line, name: method.name, touched: [...new Set(lone)] });
+          const register = isFn ? BASELINE_FUNCTION_UNUSED_ORG : BASELINE_UNUSED_ORG;
+          if (register.has(key)) (isFn ? unusedOrgSeenFunction : unusedOrgSeen).add(key);
+          else
+            newUnusedOrg.push({
+              key,
+              file: rel,
+              line: unit.line,
+              name: unit.name,
+              shape: unit.shape,
+              touched: [...new Set(lone)],
+            });
         }
         continue;
       }
-      const key = `${rel}::${method.name}`;
-      if (BASELINE_OFFENDERS.has(key)) {
-        baselineSeen.add(key);
+      const register = isFn ? BASELINE_FUNCTION_OFFENDERS : BASELINE_OFFENDERS;
+      if (register.has(key)) {
+        (isFn ? baselineSeenFunction : baselineSeen).add(key);
       } else {
-        newOffenders.push({ key, file: rel, line: method.line, name: method.name, touched });
+        newOffenders.push({ key, file: rel, line: unit.line, name: unit.name, shape: unit.shape, touched });
       }
     }
   }
 
-  const staleAllowlistEntries = [...BASELINE_OFFENDERS].filter((k) => !baselineSeen.has(k));
-  const staleUnusedOrg = [...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k));
+  const staleAllowlistEntries = [
+    ...[...BASELINE_OFFENDERS].filter((k) => !baselineSeen.has(k)),
+    ...[...BASELINE_FUNCTION_OFFENDERS].filter((k) => !baselineSeenFunction.has(k)),
+  ];
+  const staleUnusedOrg = [
+    ...[...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k)),
+    ...[...BASELINE_FUNCTION_UNUSED_ORG].filter((k) => !unusedOrgSeenFunction.has(k)),
+  ];
 
+  // ── VACUITY GUARD ────────────────────────────────────────────────────────
+  // A scan that stops SEEING things must FAIL, never read as a clean bill of
+  // health. This repo has been bitten by exactly that: a block-comment
+  // stripper mispaired and blanked the very lines a scan was counting, and
+  // the scan reported PASS. The floors below are set well under the measured
+  // 2026-08-16 values (365 tables / 906 files / 2485 methods / 2121
+  // functions), so ordinary churn never trips them, but a regex that stops
+  // matching or a directory walk that returns nothing does.
+  const vacuity = [];
+  if (scannedFiles.length < 300) vacuity.push(`only ${scannedFiles.length} files scanned (expected >= 300)`);
+  if (orgScopedIdents.size < 200) vacuity.push(`only ${orgScopedIdents.size} org-scoped tables found (expected >= 200)`);
+  if (scannedMethods < 1500) vacuity.push(`only ${scannedMethods} async methods extracted (expected >= 1500)`);
+  if (scannedFunctions < 1200) vacuity.push(`only ${scannedFunctions} async functions extracted (expected >= 1200)`);
+  if (methodsTouchingOrgTables < 700)
+    vacuity.push(`only ${methodsTouchingOrgTables} units touch org-scoped tables (expected >= 700)`);
+  if (vacuity.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL (VACUITY GUARD) — this scan saw far less " +
+        "than it should. That is a broken scanner reporting a clean bill of " +
+        "health, not a clean repo. Do NOT lower these floors to get green; " +
+        "find out why the scan went blind:",
+    );
+    for (const v of vacuity) console.error(`  - ${v}`);
+    console.error("");
+    process.exit(1);
+  }
+
+  // NOTE ON THE SHAPE OF THIS OUTPUT. The two lines below keep their original
+  // wording and their METHOD-SHAPE numbers on purpose: orgScopedFetchCoverage
+  // .test.ts parses them and pins `baseline (allowlisted)` and rule 2's
+  // `baseline` as down-only ceilings. Reporting the widened total there would
+  // have read as those registers growing by 185 — the opposite of the truth,
+  // which is that the method registers did not move at all and a previously
+  // invisible population was frozen alongside them. `new offenders` and
+  // `stale allowlist entries` DO span both shapes: they are the enforcement.
   console.log(
     `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size}; ` +
       `scanned ${scannedMethods} storage + service methods across ${scannedFiles.length} files`,
@@ -723,6 +1140,13 @@ function main() {
   console.log(
     `[check-org-scoped-fetch] rule 2 (has an org, resolves by id anyway): ` +
       `baseline ${unusedOrgSeen.size}, new ${newUnusedOrg.length}, stale ${staleUnusedOrg.length}`,
+  );
+
+  console.log(
+    `[check-org-scoped-fetch] function shape (widened 2026-08-16): ` +
+      `scanned ${scannedFunctions} async functions; ` +
+      `rule 1 baseline ${baselineSeenFunction.size}, ` +
+      `rule 2 baseline ${unusedOrgSeenFunction.size} — both down-only`,
   );
 
   if (
@@ -747,7 +1171,7 @@ function main() {
     );
     console.error("");
     for (const off of newUnusedOrg) {
-      console.error(`  - ${off.file}:${off.line} — ${off.name}() on: ${off.touched.join(", ")}`);
+      console.error(`  - [${off.shape}] ${off.file}:${off.line} — ${off.name}() on: ${off.touched.join(", ")}`);
     }
     console.error("");
   }
@@ -765,15 +1189,17 @@ function main() {
   if (newOffenders.length > 0) {
     console.error("");
     console.error(
-      "[check-org-scoped-fetch] FAIL — the following NEW storage methods query " +
-        "org-scoped tables without any organization context. Convert them to " +
-        "take an organizationId (preferably via forOrg() from " +
+      "[check-org-scoped-fetch] FAIL — the following NEW methods/functions " +
+        "query org-scoped tables without any organization context. Convert " +
+        "them to take an organizationId (preferably via forOrg() from " +
         "server/utils/orgScopedDb.ts), or — for genuine platform ops — route " +
-        "the access through unscopedForPlatformOps(reason).",
+        "the access through unscopedForPlatformOps(reason). Writing the unit " +
+        "as `async function` rather than a class method is not a way out: " +
+        "both shapes are checked.",
     );
     console.error("");
     for (const off of newOffenders) {
-      console.error(`  - ${off.file}:${off.line} — ${off.name}() touches: ${off.touched.join(", ")}`);
+      console.error(`  - [${off.shape}] ${off.file}:${off.line} — ${off.name}() touches: ${off.touched.join(", ")}`);
     }
     console.error("");
   }

@@ -85,7 +85,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "tests/unit/spendGateStatusRouting.test.ts",
         "tests/unit/founderHardStopGuardrails.test.ts",
       ],
-      note: "Two independent enforcements: spendIsAutonomous() is true only for Tier 1 ($0–$500) and the executor hard-stops every non-approved gate status; separately checkHardGuardrails() blocks any actionPayload.amount over HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents = $500) before the AI is consulted. HARDENED unit 118: an enforcement audit bypassed the old checkHardGuardrails deny-list with trivially varied strings (execute_agreement, countersign, gdpr_erasure, discount_apply and eleven more — every one returned blocked:false). It now classifies INTENT TOKENS (single-token triggers plus noun+verb pairs in either order, camelCase/underscore-split), erring CLOSED — a false block defers to founder review, a false pass would execute a hard-stop autonomously. hardStopIntentClassifier.test.ts pins the full bypass corpus blocked AND the executor's legitimate universe unblocked, and pins the execution switch's default honest (it used to record success:true for item types with no executor).",
+      note: "Two independent enforcements: spendIsAutonomous() is true only for Tier 1 ($0–$500) and the executor hard-stops every non-approved gate status; separately checkHardGuardrails() blocks any actionPayload.amount over HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents = $500) before the AI is consulted. HARDENED unit 118: an enforcement audit bypassed the old checkHardGuardrails deny-list with trivially varied strings (execute_agreement, countersign, gdpr_erasure, discount_apply and eleven more — every one returned blocked:false). It now classifies INTENT TOKENS (single-token triggers plus noun+verb pairs in either order, camelCase/underscore-split), erring CLOSED — a false block defers to founder review, a false pass would execute a hard-stop autonomously. hardStopIntentClassifier.test.ts pins the full bypass corpus blocked AND the executor's legitimate universe unblocked, and pins the execution switch's default honest (it used to record success:true for item types with no executor). CORRECTED unit 123, and this note is itself part of the finding: the sentence above named `spendIsAutonomous()` as the first enforcement, and the reachability linter counts a symbol named in a COMMENT as a use — so THIS REGISTRY ENTRY is what kept `spendIsAutonomous` out of the unreached-exports register while it had no production caller at all. It resolved tiers through `tierForAmount`, which the file's own comment called a 'public mirror of the service's private getTier — kept in sync', while the live path (requestSpend -> getTier -> tier.founderApprovalRequired, reached from autonomousDecisionExecutor.ts) used the private copy. spendHardStop.test.ts therefore pinned a function production could not reach. MUTATION-VERIFIED before the fix: one early return in getTier making $0-$2,500 resolve to the autonomous Tier 1 — the exact autonomous $500-$50K regression this hard stop exists to prevent — left that test passing 2/2. The private getTier is now DELETED and its single call site resolves through the one function the test reaches; the $500 boundary is a single exported constant (AUTONOMOUS_SPEND_CEILING_CENTS) serving as Tier 1's ceiling, Tier 2's floor AND the executor's HARD_GUARDRAIL_AMOUNT_LIMIT, which were three independent 50_000 literals. Two independent ENFORCEMENTS of one rule are a safety property; two spellings of one NUMBER are a drift waiting to happen. The test now sweeps ~1,600 amounts across every tier edge instead of nine hand-picked points.",
     },
   },
   {
@@ -357,8 +357,24 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     source: "CLAUDE.md DO-NOT-DO list; founder decision 2026-07-17",
     enforcement: {
       kind: "code-invariant",
-      refs: ["server/services/emailService.ts"],
-      note: "emailService purpose lanes separate system mail from counterparty mail. A dedicated ratchet test would strengthen this (GOVERNANCE DEBT).",
+      refs: [
+        "server/services/emailService.ts",
+        "tests/unit/emailPurposeEnforcement.test.ts",
+      ],
+      note:
+        "emailService purpose lanes separate system mail from counterparty " +
+        "mail. CORRECTED 2026-08-16: this entry claimed `code-invariant` — " +
+        "which this file defines as \"enforced structurally in code + covered " +
+        "by a test\" — while naming ONLY the implementation, and its own note " +
+        "said a ratchet test 'would strengthen this (GOVERNANCE DEBT)'. That " +
+        "note was stale: emailPurposeEnforcement.test.ts (founder decision " +
+        "2026-07-17) already pins the two-lane contract — purpose " +
+        "'counterparty' with no org identity refuses honestly and the SES " +
+        "client is NEVER constructed, no silent @acreos.io fallback, while " +
+        "BYO creds and a verified sending domain both pass. The enforcement " +
+        "existed and the registry did not know it. Nothing was downgraded and " +
+        "no debt counter moved; the pointer was corrected to name the test " +
+        "that was already running.",
     },
   },
 
@@ -372,8 +388,15 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     source: "CLAUDE.md DO-NOT-DO list; business-types maturity",
     enforcement: {
       kind: "code-invariant",
-      refs: ["shared/business-types.ts", "tests/unit/verticalPackPurchasable.test.ts"],
-      note: "The hard-stop bars building a dedicated residential-comps data PLANE (bulk ingest, dedicated vendors) — it does not bar routing residential lookups through the EXISTING provider registry. Ruling #11 wave V3 (2026-07-29) promoted residential verticals by routing comps/valuation via the registry's ATTOM seam (pay-per-call/BYOK, honest unkeyed degradation, server/services/residentialComps.ts); no plane was built and none ships before the revenue trigger.",
+      refs: [
+        "scripts/check-residential-comps-hold.mjs",
+        "tests/unit/residentialCompsHold.test.ts",
+        "shared/business-types.ts",
+        "tests/unit/verticalPackPurchasable.test.ts",
+      ],
+      note:
+        "The hard-stop bars building a dedicated residential-comps data PLANE (bulk ingest, dedicated vendors, new tables) — it does not bar routing residential lookups through the EXISTING provider registry. Ruling #11 wave V3 (2026-07-29) promoted residential verticals by routing comps/valuation via the registry's ATTOM seam (pay-per-call/BYOK, honest unkeyed degradation, server/services/residentialComps.ts); no plane was built and none ships before the revenue trigger. " +
+        "CORRECTED 2026-08-16: this entry claimed code-invariant while naming ONLY business-types.ts and verticalPackPurchasable.test.ts, which govern whether a residential vertical PACK is PURCHASABLE. Neither can see a data plane being built — the label said code-invariant and the code enforced an adjacent thing. check-residential-comps-hold.mjs (wired into `npm run check`) is the actual backstop: five rules over dedicated vendors, a comps corpus caught by SHAPE as well as name, bulk-ingest residential filters, and the integrity of the sanctioned seam itself. It must pass at zero, so residentialCompsHold.test.ts drives the real script against synthetic repos and proves each predicate still fires — a preventative gate whose only evidence is a green run is indistinguishable from one that matches nothing.",
     },
   },
   {

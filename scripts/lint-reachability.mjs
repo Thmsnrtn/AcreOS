@@ -45,11 +45,15 @@
 //                          BOTH directions: a table nothing writes is dead
 //                          weight; a table nothing reads is a black hole that
 //                          silently accumulates rows forever.
-//   3. unregistered-routes Every server/routes-*.ts exporting a
-//                          `register*Routes` function or a default Router,
-//                          cross-referenced against server/routes.ts,
-//                          server/index.ts, ROUTE_MANIFEST, and any other
-//                          production server file.
+//   3. unregistered-routes Every non-test file ANYWHERE under server/ that
+//                          exports a route registrar (`register…(app: Express)`)
+//                          or an Express Router, cross-referenced against
+//                          ROUTE_MANIFEST and every other production server
+//                          file that IMPORTS it. Mountedness is computed as a
+//                          FIXED POINT: a referrer that is itself an unmounted
+//                          router confers nothing, so a sub-router reachable
+//                          only from an unmounted registrar is unmounted too.
+//                          (Widened 2026-08-16 — see the blind-spot note below.)
 //   4. opaque-exports      THE SIZE OF THIS GATE'S OWN BLIND SPOT. Exports that
 //                          families 1–3 cannot assert on, because their module
 //                          is dynamically imported in a way that hides WHICH
@@ -115,6 +119,24 @@
 //   • Table reads via a bare column reference (`eq(foo.id, …)` inside somebody
 //     else's delete) are NOT counted as a read. Counting them would make
 //     essentially every table "read" and destroy the signal.
+//   • Route mountedness is decided by MODULE PATH, not by symbol name. 97 of the
+//     277 route candidates export a Router named literally `router`, so a
+//     `t.includes("router")`/`\brouter\b` sweep marks essentially every server
+//     file a referrer and launders the whole family. Registrar FUNCTION names
+//     (`registerFooRoutes`) are distinctive enough to keep; Router variable
+//     names are not, and are matched by resolved import specifier only.
+//
+// ----------------------------------------------------------------------------
+// VACUITY GUARD — an empty scan must FAIL, not read as a clean bill of health
+//
+// Every count here is "how many bad things did I find", so a scan that stops
+// seeing FILES reports zero and passes. This repo has been bitten by exactly
+// that (a block-comment stripper that mispaired and blanked the lines a scan was
+// counting). `minima` in the ratchet file therefore floors the SCAN populations
+// — production files and route candidates — and the run fails if either drops
+// below. The floors sit well under the live numbers: they exist to catch a
+// broken walk/regex, not to forbid deletion. A `--root` fixture run must pass
+// its own `--ratchet` with fixture-sized minima.
 //
 // Therefore: a symbol reported here is a STRONG HINT, not a proof. Verify
 // before deleting. The linter never claims certainty it does not have.
@@ -641,13 +663,116 @@ for (const t of tables.values()) {
 }
 
 // ============================================================================
-// FAMILY 3 — route files never registered
+// FAMILY 3 — routers never mounted
+// ----------------------------------------------------------------------------
+// WIDENED 2026-08-16. This family used to filter candidates with
+// `/^server\/routes-[\w.-]+\.ts$/` — a FILENAME shape. Everything about the
+// finding is about MOUNTING, and nothing about it is about the filename, so a
+// router that declined to be called `routes-*.ts` was invisible: put it at
+// `server/publicapi/routes.ts`, `server/anything/index.ts`, or a subdirectory
+// of your choosing and the gate had nothing to say. That is the exact defect
+// this family exists for ("built but unwired"), and it is also the shape the
+// expansion-ladder bypass took — a new public-API surface in a subdirectory.
+//
+// The predicate is now the PROPERTY, not the name: any non-test file under
+// server/ that exports a route registrar or an Express Router. Three shapes,
+// because all three are how this repo actually mounts things:
+//
+//   • `export function registerFooRoutes(app)` — the legacy name shape, kept so
+//     an unannotated registrar is still seen.
+//   • `export function registerAnything(app: Express)` — the SAME thing under a
+//     name the old regex refused. `server/api-v1/index.ts` exports
+//     `registerPublicApiV1(app: Express)`, mounts three sub-routers at
+//     `/api/v1/*`, and has zero callers; `Routes?` is why nothing saw it.
+//   • `export const fooRouter = Router()` / a default-exported Router.
+//
+// MOUNTEDNESS IS A FIXED POINT, not a one-hop reference check. The old rule
+// asked "does any other server file mention this?", which an unmounted parent
+// satisfies: `api-v1/index.ts` imports leads/properties/webhooks, so all three
+// looked mounted while `/api/v1/*` served 404. A referrer that is itself an
+// unmounted candidate therefore confers nothing, and the loop runs to a fixed
+// point. Non-candidate server files still confer mountedness on sight — this
+// linter's standing bias is that a miss beats an accusation.
+//
+// REFERENCES ARE RESOLVED, NOT SUBSTRING-MATCHED. The old check used
+// `t.includes("./" + basename)`, which is wrong in both directions once
+// subdirectories are in scope: `./routes` matches the import of a completely
+// different `server/routes.ts`, while a real `./routes/lob-webhooks` import
+// does NOT contain `./lob-webhooks`. Specifiers are now resolved against the
+// importing file's directory, exactly as family 1 does.
 // ============================================================================
 
-const routeFiles = productionFiles.filter((p) => /^server\/routes-[\w.-]+\.ts$/.test(p));
+const ROUTE_SCAN_ROOT = "server/";
 
+/** `export function registerFooRoutes(` — the historical shape. */
 const REGISTER_EXPORT_RE = /export\s+(?:async\s+)?function\s+(register[\w$]*Routes?)\s*\(/g;
+/** `export function registerAnything(app: Express)` — a registrar by SIGNATURE. */
+const REGISTER_APP_EXPORT_RE =
+  /export\s+(?:async\s+)?function\s+(register[A-Z][\w$]*)\s*\(\s*[A-Za-z_$][\w$]*\s*:\s*(?:express\.)?(?:Express|Application|Router)\b/g;
+/** `export const fooRouter = Router()` / `export const r: Router = express.Router()`. */
+const EXPORT_ROUTER_RE =
+  /export\s+const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*(?:express\.)?Router\s*(?:<[^>]*>)?\s*\(/g;
 const DEFAULT_EXPORT_RE = /export\s+default\s+([A-Za-z_$][\w$]*)/;
+const ROUTER_CTOR_RE = /\b(?:express\.)?Router\s*(?:<[^>]*>)?\s*\(/;
+
+/** relPath → {file, base, registrars[], routers[]} */
+const routeCandidates = new Map();
+for (const p of productionFiles) {
+  if (!p.startsWith(ROUTE_SCAN_ROOT) || !p.endsWith(".ts")) continue;
+  const text = read(p);
+  const registrars = new Set();
+  let m;
+  for (const re of [REGISTER_EXPORT_RE, REGISTER_APP_EXPORT_RE]) {
+    re.lastIndex = 0;
+    while ((m = re.exec(text)) !== null) registrars.add(m[1]);
+  }
+  const routers = new Set();
+  EXPORT_ROUTER_RE.lastIndex = 0;
+  while ((m = EXPORT_ROUTER_RE.exec(text)) !== null) routers.add(m[1]);
+  // A default export only counts when the file actually builds a Router —
+  // otherwise every `export default someService` under server/ becomes a
+  // "route", which is noise the narrow filename filter used to hide for free.
+  const dm = DEFAULT_EXPORT_RE.exec(text);
+  if (dm && ROUTER_CTOR_RE.test(text)) routers.add(dm[1]);
+
+  if (registrars.size === 0 && routers.size === 0) continue;
+  routeCandidates.set(p, {
+    file: p,
+    base: p.split("/").pop(),
+    registrars: [...registrars],
+    routers: [...routers],
+  });
+}
+
+/**
+ * Which production server files IMPORT a given module — importer identity is
+ * what the fixed point needs, so this is its own pass (family 1's
+ * `importedModules` is a flat set that has forgotten who imported what).
+ * Covers static, side-effect and dynamic (`await import(…)`) specifiers.
+ */
+const ROUTE_SPEC_RE =
+  /(?:\bfrom\s*|\bimport\s*|\brequire\s*)\(?\s*["'`]([^"'`\n]+)["'`]/g;
+/** module stem (no extension) → Set<importer relPath> */
+const serverImportersOf = new Map();
+for (const q of productionFiles) {
+  if (!q.startsWith(ROUTE_SCAN_ROOT)) continue;
+  const t = read(q);
+  ROUTE_SPEC_RE.lastIndex = 0;
+  let m;
+  while ((m = ROUTE_SPEC_RE.exec(t)) !== null) {
+    const spec = m[1];
+    if (!spec.startsWith(".")) continue; // package/alias — never a server module
+    const stem = resolve("/", dirname(q), spec)
+      .slice(1)
+      .split("\\")
+      .join("/")
+      .replace(/\.(ts|tsx|mts|cts|js|mjs)$/, "");
+    for (const form of [stem, `${stem}/index`]) {
+      if (!serverImportersOf.has(form)) serverImportersOf.set(form, new Set());
+      serverImportersOf.get(form).add(q);
+    }
+  }
+}
 
 /** ROUTE_MANIFEST body only — KNOWN_NON_MOUNTED deliberately does NOT count. */
 let manifestBody = "";
@@ -660,45 +785,71 @@ if (existsSync(join(ROOT, manifestPath))) {
   if (start >= 0 && open >= 0 && close > open) manifestBody = t.slice(open, close);
 }
 
-const unregisteredRoutes = [];
-for (const p of routeFiles) {
-  const text = read(p);
-  const base = p.split("/").pop();
-  const moduleSpec = `./${base.replace(/\.ts$/, "")}`;
-
-  const symbols = [];
-  REGISTER_EXPORT_RE.lastIndex = 0;
-  let m;
-  while ((m = REGISTER_EXPORT_RE.exec(text)) !== null) symbols.push(m[1]);
-  const hasDefault = DEFAULT_EXPORT_RE.test(text);
-  if (symbols.length === 0 && !hasDefault) continue; // nothing mountable to check
-
-  if (manifestBody.includes(`"${base}"`)) continue; // listed as mounted
-
-  // Referenced by any OTHER production server file (routes.ts, index.ts, or a
-  // sub-router that mounts it) — by register symbol or by module specifier.
-  let referenced = false;
-  for (const q of productionFiles) {
-    if (q === p || !q.startsWith("server/")) continue;
+/** candidate relPath → Set<referrer relPath | "__MANIFEST__"> */
+const routeReferrers = new Map();
+for (const [p, c] of routeCandidates) {
+  const refs = new Set();
+  // ROUTE_MANIFEST keys on BASENAME, so honour it only for top-level
+  // server/<file>.ts — otherwise `server/auth/routes.ts` could be excused by an
+  // entry describing a different file that merely shares a basename.
+  if (/^server\/[^/]+$/.test(p) && manifestBody.includes(`"${c.base}"`)) {
+    refs.add("__MANIFEST__");
+  }
+  for (const q of serverImportersOf.get(p.replace(/\.ts$/, "")) ?? []) {
     // routeManifest.ts is handled above via ROUTE_MANIFEST only — its
     // KNOWN_NON_MOUNTED prose NAMES the orphan symbols, which would otherwise
     // read as a reference and hide exactly the files it is documenting.
-    if (q === manifestPath) continue;
-    const t = read(q);
-    if (symbols.some((s) => t.includes(s)) || t.includes(moduleSpec)) {
-      referenced = true;
-      break;
+    if (q === p || q === manifestPath) continue;
+    refs.add(q);
+  }
+  // Registrar FUNCTION names are distinctive enough to match as bare text (a
+  // file may call `registerFooRoutes(app)` re-exported through a barrel this
+  // resolver does not follow). Router VARIABLE names are NOT: 97 candidates
+  // export one named literally `router`, and matching that marks every server
+  // file a referrer. So registrars only — see the blind-spot note in the header.
+  if (c.registrars.length > 0) {
+    for (const q of productionFiles) {
+      if (q === p || q === manifestPath || !q.startsWith(ROUTE_SCAN_ROOT)) continue;
+      const t = read(q);
+      if (c.registrars.some((s) => t.includes(s))) refs.add(q);
     }
   }
-  if (referenced) continue;
+  routeReferrers.set(p, refs);
+}
 
-  const id = base;
-  consideredKeys.add(`route:${id}`);
-  if (allowlisted("route", id)) continue;
+// Fixed point: start with every candidate presumed unmounted, then repeatedly
+// discharge any candidate referenced by the manifest or by a file that is not
+// itself still-unmounted. Converges in a handful of passes (the graph is
+// shallow); the bound only exists so a cycle cannot spin.
+const unmountedRouters = new Set(routeCandidates.keys());
+for (let pass = 0; pass < routeCandidates.size + 1; pass++) {
+  let changed = false;
+  for (const p of [...unmountedRouters]) {
+    for (const r of routeReferrers.get(p)) {
+      if (r === "__MANIFEST__" || !unmountedRouters.has(r)) {
+        unmountedRouters.delete(p);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (!changed) break;
+}
+
+const unregisteredRoutes = [];
+for (const p of [...unmountedRouters].sort()) {
+  const c = routeCandidates.get(p);
+  // id is the full path, not the basename: once subdirectories are in scope,
+  // `routes.ts` and `index.ts` are not unique names.
+  consideredKeys.add(`route:${p}`);
+  if (allowlisted("route", p)) continue;
   unregisteredRoutes.push({
     file: p,
-    id,
-    symbols: symbols.length ? symbols : ["default export (Router)"],
+    id: p,
+    symbols: [
+      ...c.registrars,
+      ...c.routers.map((r) => `Router ${r}`),
+    ],
   });
 }
 
@@ -749,11 +900,17 @@ const FAMILIES = [
     key: "unregisteredRoutes",
     label: "unregistered-routes",
     findings: unregisteredRoutes,
-    describe: (f) => `${f.file}  exports ${f.symbols.join(", ")} — never mounted`,
+    describe: (f) =>
+      `${f.file}  exports ${f.symbols.join(", ")} — never mounted` +
+      (routeReferrers.get(f.file)?.size
+        ? ` (its only referrer(s) — ${[...routeReferrers.get(f.file)].join(", ")} — are` +
+          ` themselves unmounted)`
+        : ""),
     remedy:
       "An unmounted router is a feature that 404s in production. MOUNT it in\n" +
       "  server/routes.ts (and add it to ROUTE_MANIFEST), or DELETE the file, or\n" +
-      "  ALLOWLIST it with a reason.",
+      "  ALLOWLIST it with a reason. Note the id is now the full path, not the\n" +
+      "  basename — this family scans ALL of server/, not just routes-*.ts.",
   },
   {
     // FAMILY 6 — whole FILES nothing imports, counted as files.
@@ -888,8 +1045,50 @@ const FAMILIES = [
 console.log(
   `${TAG} scanned ${productionFiles.length} production files · ` +
     `${candidates.size} exported symbols in ${exportFiles.length} service/job files · ` +
-    `${tables.size} pgTable definitions · ${routeFiles.length} route files`,
+    `${tables.size} pgTable definitions · ${routeCandidates.size} route candidates ` +
+    `(registrar or Router) under ${ROUTE_SCAN_ROOT}`,
 );
+
+// ----------------------------------------------------------------------------
+// VACUITY GUARD — see the header. A scan that stops seeing files reports zero
+// findings, which is indistinguishable from a clean bill of health unless the
+// POPULATIONS are floored too. Checked before the families so a broken walk
+// fails loudly instead of printing six reassuring PASS lines.
+// ----------------------------------------------------------------------------
+const minima = ratchet.minima ?? {};
+const POPULATIONS = [
+  ["productionFiles", productionFiles.length],
+  ["exportFiles", exportFiles.length],
+  ["pgTables", tables.size],
+  ["routeCandidateFiles", routeCandidates.size],
+];
+let vacuous = false;
+for (const [name, actual] of POPULATIONS) {
+  const floor = minima[name];
+  if (floor === undefined) {
+    vacuous = true;
+    console.error(
+      `${TAG} VACUITY GUARD: no "minima.${name}" in ${relative(ROOT, RATCHET_FILE)}. ` +
+        `Add "${name}": <a floor comfortably below ${actual}> — an unfloored ` +
+        `population lets a broken scan pass as clean.`,
+    );
+    continue;
+  }
+  if (actual < floor) {
+    vacuous = true;
+    console.error(
+      `${TAG} VACUITY GUARD: ${name} = ${actual}, below the floor of ${floor}. ` +
+        `This scan is NOT a clean bill of health — it stopped seeing files.\n` +
+        `  Suspect the walk, the extension filter, or a regex before you suspect ` +
+        `progress. If a deletion wave genuinely shrank this population, lower ` +
+        `"minima.${name}" in the same commit and say which wave.`,
+    );
+  }
+}
+if (vacuous && !MEASURE_ONLY) {
+  console.error(`${TAG} FAIL — vacuity guard tripped; counts below are not trustworthy.`);
+  process.exit(1);
+}
 
 if (skippedByAllowlist.length > 0) {
   console.log(`${TAG} allowlist — ${skippedByAllowlist.length} skipped, with reasons:`);

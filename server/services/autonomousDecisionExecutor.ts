@@ -189,6 +189,7 @@ import { emailService } from "./emailService";
 import { format } from "date-fns";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
+import { AUTONOMOUS_SPEND_CEILING_CENTS } from "./financialAuthorityGate";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -569,7 +570,15 @@ async function executeFeatureRequestApproval(
 // Hard guardrails — code-level blocks checked BEFORE AI is consulted
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HARD_GUARDRAIL_AMOUNT_LIMIT = 50_000; // cents ($500)
+// The >$500 founder hard stop, imported rather than retyped.
+//
+// This was its own `50_000` literal, making it the THIRD independent copy of
+// one constitutional boundary — alongside financialAuthorityGate's Tier 1
+// ceiling and Tier 2 floor. The constitution's own note calls these "two
+// independent enforcements", which is the argument FOR sharing the number: two
+// enforcements of one rule are a safety property, two spellings of one number
+// are a drift waiting to happen. financialAuthorityGate.ts is the owner.
+const HARD_GUARDRAIL_AMOUNT_LIMIT = AUTONOMOUS_SPEND_CEILING_CENTS; // cents ($500)
 const HARD_GUARDRAIL_RECIPIENT_LIMIT = 100;
 
 const BILLING_SUBSCRIPTION_ACTIONS = [

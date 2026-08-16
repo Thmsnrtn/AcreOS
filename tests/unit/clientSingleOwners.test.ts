@@ -127,7 +127,13 @@ describe("trackEvent has one sink", () => {
       handler,
       "POST /api/telemetry answers success again for events it does not store.",
     ).not.toMatch(/success:\s*true/);
-    expect(handler).toContain("410");
+    // The refusal goes through the canonical helper rather than a hand-rolled
+    // `res.status(410).json({ ... })`. The first cut of this endpoint spelled the
+    // body out by hand, which duplicated Errors.gone's exact shape AND tripped the
+    // res-status-raw ratchet — so the assertion is on the helper, not the number.
+    expect(handler, "the 410 refusal stopped going through Errors.gone").toMatch(
+      /Errors\.gone\(/,
+    );
   });
 
   it("the analytics sink still actually captures (vacuity guard)", () => {

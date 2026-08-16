@@ -434,12 +434,10 @@ export function registerDashboardRoutes(app: Express): void {
   // work not done is the defect; a clear refusal is not.
   api.post("/api/telemetry", isAuthenticated, async (_req, res) => {
     logger.info("[telemetry] retired endpoint called — client should use the analytics sink");
-    return res.status(410).json({
-      error: "GONE",
-      message:
-        "Client telemetry is captured directly by the analytics sink; this endpoint stored nothing and no longer accepts events.",
-      statusCode: 410,
-    });
+    return Errors.gone(
+      res,
+      "Client telemetry is captured directly by the analytics sink; this endpoint stored nothing and no longer accepts events.",
+    );
   });
   
   // ============================================
