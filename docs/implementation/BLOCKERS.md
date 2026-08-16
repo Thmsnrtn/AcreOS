@@ -954,6 +954,16 @@ ratchet carves out for exactly this case). **The tables are NOT dropped**; a
 production `DROP TABLE` is a founder-only hard stop, and they join the existing
 drop-decision queue. Recorded in `docs/company/deletion-ledger.md`.
 
+**ANSWERED 2026-08-16 (B21) — and NOT the way this entry assumed.** The drop
+queue was ruled on ("triage 3 ways, drop only experiment residue") and these two
+were classified **class B, NOT DROPPED**. Reading their columns is what moved
+them: both are org-scoped, both reference the customer's own properties
+(`applicable_properties` / `property_ids`), and `tax_strategies` carries a
+lifecycle the CUSTOMER moves (`recommended → implementing → completed →
+dismissed`). A tax position a customer acted on is a tax record, whatever wrote
+it. That the writer fabricated makes the ROWS suspect; it does not make them
+AcreOS's to delete. See B21.
+
 The original finding is kept below for the record.
 
 ### Original finding (unit 104)
@@ -1245,6 +1255,15 @@ drop decision, not dropped**: `auth_fail_attempts`, `agent_playbooks`,
 `spend_optimizations`, `causal_investigations`, `delegated_goals`,
 `external_intelligence`.
 
+**ANSWERED 2026-08-16 (B21).** Seven of those nine were dropped:
+`playbook_evolutions`, `compass_recommendations`, `spend_watchers`,
+`spend_optimizations`, `causal_investigations`, `delegated_goals`,
+`external_intelligence`. Two were
+NOT: `agent_playbooks`, because two tables that are neither writer-less nor
+reader-less hold FKs into it; and `auth_fail_attempts`, because its columns are
+`ip`, `email` and `user_agent` — failed-login telemetry naming a person is
+personal data, not experiment residue, whatever deleted its writer. See B21.
+
 ### Mechanics when a batch is approved
 
 Deleting an orphan removes its exports from `unreachedExports` too, so **both
@@ -1324,3 +1343,149 @@ handler extraction measures 271 files, 66 rule-1 + 73 rule-2 = **139 further
 entries**. That is a separate unit of work with its own extractor — seeding 139
 more rows now would produce exactly the unworkable register this entry warns
 about.
+
+---
+
+## B21 — RESOLVED 2026-08-16: the dead-table drop queue, ruled on and executed
+
+**DECIDED (picker, 2026-08-16): *"Triage 3 ways, drop only experiment
+residue."*** This is the answer to the queue B17 and B19 kept appending to — the
+sixteen tables that had lost their only writer and were held because a
+production `DROP TABLE` is a founder-only hard stop.
+
+**What was blocked, and is no longer:** the queue asked one question ("may these
+be dropped?") of a set that turned out not to be one kind of thing. The ruling
+supplied the discriminator, so the queue stopped being a single blocked decision
+and became a classification with three outcomes.
+
+### What was ruled
+
+Three classes, and only one of them is droppable:
+
+- **CLASS A — experiment / agent residue.** Provably left behind by a module a
+  deletion-ledger row ALREADY records as killed, **and** holding no customer
+  content. Conjunctive on purpose: provenance alone is not enough.
+- **CLASS B — customer or regulated records.** Anything that could hold customer
+  data or carry a retention obligation. **Not dropped.** Customer-data deletion
+  is a founder-only hard stop and this ruling did not authorise it.
+- **CLASS C — unclear.** **Not dropped**, recorded with the specific open
+  question so the next session starts from a question, not a re-derivation.
+
+### What was measured
+
+`node scripts/lint-reachability.mjs --measure`: `tables-no-writer` 62,
+`tables-no-reader` 75, **intersection 48**. All 48 classified — the full table,
+with per-table evidence and per-class-B obligation, is in
+`docs/company/deletion-ledger.md` under *"2026-08-16 — 48-table dead-storage
+triage"*. Split: **15 class A** (13 dropped, 2 blocked), **22 class B**,
+**11 class C**.
+
+Two checks the linter cannot do for itself were run by hand, and one of them
+changed an answer:
+
+- **Raw SQL.** A table reached via `` sql`SELECT … FROM foo` `` is alive and
+  invisible to a Drizzle-shaped linter. All 48 snake_case names searched for
+  SQL-shaped access across `server/`, `client/`, `shared/`. **Zero hits.** The
+  two `server/` mentions are prose in comments.
+- **Aliases.** The linter keys on the `pgTable` identifier. `rg "^export const
+  \w+ = \w+;"` over `shared/schema*.ts` finds **exactly one** alias in the whole
+  schema — `marketIndicators = marketIndicatorsDuplicate` — and
+  `server/services/marketPrediction.ts` both reads and writes through it. So
+  `market_indicators_temp` is **NOT DEAD**; it is a false positive that the
+  intersection alone would have deleted out from under a live service.
+
+### What was dropped
+
+Thirteen tables, in `migrations/0236_drop_experiment_residue_tables.sql`,
+mirrored statement-for-statement in `scripts/migrate.mjs`, with the thirteen
+`pgTable` definitions removed from `shared/schema.ts`:
+
+`playbook_evolutions`, `agent_improvement_plans`, `agent_synergy_map`,
+`compass_recommendations`, `spend_watchers`, `spend_optimizations`,
+`causal_investigations`, `delegated_goals`, `external_intelligence`,
+`product_specifications`, `build_buy_decisions`, `feature_impact_scores`,
+`automation_executions`.
+
+**NOT APPLIED.** This session had no `DATABASE_URL` and did not seek one. The
+statements are idempotent (`DROP TABLE IF EXISTS`) because `scripts/migrate.mjs`
+is the Fly `release_command` and re-runs on every deploy. **No `CASCADE`
+anywhere** — cascade would silently take dependent objects this ruling never
+named; verified zero inbound FKs to all thirteen across `migrations/`,
+`scripts/migrate.mjs`, `shared/` and `server/`.
+
+**And it deletes less than it looks like.** Twelve of the thirteen have no
+`CREATE TABLE` anywhere — that is precisely why they sat in
+`scripts/schema-migrate-mirror.allowlist.json`, whose own gate note records that
+`db:push` is not run in prod. For those twelve the DROP is expected to be a no-op
+against a table prod never had, and the real deletion is the schema definition.
+`automation_executions` (created by `migrations/0001_brief_giant_man.sql`) is the
+one that exists.
+
+### Counts measured, for central lock-in
+
+The `table-count` and reachability baselines are locked centrally and were **not
+edited here**:
+
+| ratchet | before | after |
+|---|---|---|
+| `table-count` | 763 | **750** |
+| `tablesNoWriter` | 62 | **49** |
+| `tablesNoReader` | 75 | **62** |
+
+**Three registers outside this unit's file set are now stale and fail CI until
+updated in the same commit** — each measured by running the gate, not guessed:
+
+- `scripts/schema-migrate-mirror.allowlist.json` — 12 stale entries
+  (`agent_improvement_plans`, `agent_synergy_map`, `build_buy_decisions`,
+  `causal_investigations`, `compass_recommendations`, `delegated_goals`,
+  `external_intelligence`, `feature_impact_scores`, `playbook_evolutions`,
+  `product_specifications`, `spend_optimizations`, `spend_watchers`). 95 → 83.
+  `node scripts/check-schema-migrate-mirror.mjs` currently exits 1 naming all 12.
+- `tests/unit/schemaMigrationDrift.test.ts` — `BASELINE_ORPHANS`, the same 12
+  names, 95 → 83. Its "baseline only shrinks" test fails on stale entries by
+  design.
+- `scripts/check-org-leading-index.mjs` — `BASELINE_OFFENDERS` still contains
+  `"automation_executions"`, the only one of the thirteen carrying an
+  `organization_id`. Set size 150 → 149. `node
+  scripts/check-org-leading-index.mjs` currently exits 1: *"stale allowlist
+  entries: 1"*.
+
+### What is STILL awaiting a founder decision
+
+The queue is not empty, but it is no longer one undifferentiated pile. Of the
+sixteen tables B17 and B19 had queued: **ten were dropped**; **five were answered
+"no"** — `tax_strategies`, `tax_forecast_scenarios`, `opportunity_zone_holdings`,
+`auth_fail_attempts`, `tutor_sessions` are class B, and "drop only experiment
+residue" is a decision about them rather than a deferral; **one stays open**
+(`agent_playbooks`). Two items JOIN the open list that were not on the original
+queue. Three open in total, each with a stated reason rather than a shrug:
+
+| table | class | why it is still open |
+|---|---|---|
+| `agent_playbooks` | A | Class A by content — agent SOPs, no org key, writer deleted 2026-08-14. Blocked structurally: `institutional_patterns.linked_playbook_id` and `signal_correlations.auto_trigger_playbook_id` hold FKs into it, and **neither of those tables is writer-less or reader-less**. Dropping it requires dropping two columns from two LIVE tables — a bigger change than "drop experiment residue", and it needs its own yes. |
+| `scp_evolution_metrics` | A | Class A by content. Blocked on one token: `server/services/scpGoldenSuite.ts` names the identifier in its import list and uses it nowhere. Removing the schema export without deleting that import breaks the build; that file was outside this unit's file set. **Unblock is a one-line edit**, not a decision. |
+| `automation_rules` | B | The 2026-07-29 ledger row already asks for the drop ("remain in `shared/schema.ts` pending a drop migration"), and this unit still declined: the rows are CUSTOMER-AUTHORED (`name`, `description`, `conditions`, `actions`, `created_by`, `organization_id`). Customers wrote rules that could never run; the rules are still their words. **This one needs the founder's explicit customer-data nod**, which is exactly the hard stop the ledger row did not have. |
+
+### Where this unit's brief was contradicted, on purpose
+
+The brief supplied example classifications as a starting point. Reading the
+columns moved **five tables** (in the four groups below) out of class A, and the
+reasons are recorded so a later session does not re-litigate them from the same
+starting point:
+
+- **`opportunity_zone_holdings`** — columns are `investment_date`,
+  `initial_investment`, `deferred_gain_rollover`, `step_up_basis`, `exit_value`,
+  org- and property-scoped. That is a customer's OZ investment record feeding
+  IRC §1400Z-2 elections and annual Form 8997, on a 10-year hold. **Class B.**
+- **`tax_strategies` / `tax_forecast_scenarios`** — org-scoped, keyed to the
+  customer's own properties, and `tax_strategies` carries a lifecycle the
+  customer moves. That the deleted writer FABRICATED makes the rows suspect; it
+  does not make them AcreOS's to delete. **Class B.**
+- **`auth_fail_attempts`** — the provenance is class A (`authLockout.ts`, deleted
+  2026-08-14 as a superseded duplicate), but the columns are `ip`, `email`,
+  `user_agent`. Failed-login telemetry naming a person is personal data under
+  GDPR/CCPA and security-incident forensic material. **Class B.**
+- **`tenant_metrics`** — no ledger row ever killed it, white-label is **FREEZE**
+  with a recorded reactivation criterion, and `revenue_generated` is
+  billing-adjacent. Dropping a frozen subsystem's metering table pre-empts its
+  reactivation. **Class C.**

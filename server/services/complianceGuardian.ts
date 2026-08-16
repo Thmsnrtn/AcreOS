@@ -675,7 +675,7 @@ ${checks
   .map(
     ({ check, rule }) =>
       `- ${rule?.ruleName || check.checkType}: ${check.status}
-  Description: ${check.checkDescription || "N/A"}
+  Description: ${sanitizePromptInline(check.checkDescription || "N/A")}
   Findings: ${JSON.stringify(check.findings || {})}
 `
   )

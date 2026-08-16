@@ -24,6 +24,35 @@
  *   - Unauthorized employee access to non-scoped tenants
  *   - Lost laptop holding unencrypted PII
  *
+ * WHERE IT IS ACTUALLY WIRED (2026-08-16, founder ruling "Wire
+ * breachNotificationTrigger only"). Read this before adding a call site.
+ *
+ * The five examples above are incident TYPES, not code locations, and a
+ * search of this repo found NO automated emitter for any of them: nothing
+ * detects a leaked DB credential, an externally-shared backup, a
+ * sub-processor compromise, a confirmed cross-tenant read, or a lost
+ * device. Every one is discovered by a human. So the honest hook is the
+ * one mounted, human-driven surface where a security event is DECLARED —
+ * the founder-only incident tracker (`server/routes-incidents.ts`,
+ * mounted at server/routes.ts) — at both moments awareness can arrive:
+ *
+ *   POST  /api/founder/incidents      — known to be an exposure at open
+ *   PATCH /api/founder/incidents/:id  — reclassified as one after triage
+ *
+ * `exposureKind` distinguishes which of the five (or which of the four
+ * other kinds) occurred; the operator supplies it, along with
+ * `affectedDataSubjects` and `categoriesExposed`. Those three are NEVER
+ * defaulted or inferred at a call site: `affectedOrgCount` on an incident
+ * counts ORGS, not data subjects, and substituting one for the other
+ * would be a fabricated statutory input. No exposure block on the request
+ * means no assessment runs.
+ *
+ * Preventive controls that BLOCK (the untrusted-bash egress screens in
+ * solene/dispatchToolExecutor, the IDOR guards in utils/orgScope, the
+ * bulk-export rate limiter) are deliberately NOT wired here: a blocked
+ * attempt is not an exposure, and starting a 72-hour GDPR countdown from
+ * one would manufacture obligations that do not exist.
+ *
  * THIS DOES NOT REPLACE LEGAL COUNSEL. The triggers and timelines below
  * are best-effort statutory references; the founder must consult counsel
  * before notifying any authority or affected user.
@@ -144,36 +173,47 @@ export const NOTIFICATION_DEADLINES: JurisdictionDeadline[] = [
 
 // ─── Triggering surface ─────────────────────────────────────────────────────
 
-export type PersonalDataCategory =
-  | "name"
-  | "email"
-  | "phone"
-  | "address"
-  | "ssn"
-  | "tax_id"
-  | "credit_card"
-  | "bank_account"
-  | "drivers_license"
-  | "credit_score"
-  | "eviction_record"
-  | "criminal_record"
-  | "ip_address"
-  | "geolocation"
-  | "health"
-  | "biometric"
-  | "credentials"
-  | "session_token";
+// These are RUNTIME arrays, not bare type unions, because the call sites
+// have to validate operator-supplied input against them (a route's Zod
+// schema cannot read a TypeScript union). Deriving the types from the
+// arrays keeps one source of truth — a category added here is immediately
+// accepted at every wired call site, and cannot drift.
+export const PERSONAL_DATA_CATEGORIES = [
+  "name",
+  "email",
+  "phone",
+  "address",
+  "ssn",
+  "tax_id",
+  "credit_card",
+  "bank_account",
+  "drivers_license",
+  "credit_score",
+  "eviction_record",
+  "criminal_record",
+  "ip_address",
+  "geolocation",
+  "health",
+  "biometric",
+  "credentials",
+  "session_token",
+] as const;
 
-export type ExposureKind =
-  | "unauthorized_access"      // confirmed actor read or copied data
-  | "data_exfiltration"        // confirmed bulk export off-platform
-  | "credentials_leaked"       // creds in public repo / paste site
-  | "vendor_compromise"        // sub-processor incident
-  | "internal_misuse"          // employee or operator overreach
-  | "device_loss"              // unencrypted laptop / phone
-  | "misconfiguration"         // S3 bucket public, RLS gap, etc.
-  | "ransomware"
-  | "physical_intrusion";
+export type PersonalDataCategory = (typeof PERSONAL_DATA_CATEGORIES)[number];
+
+export const EXPOSURE_KINDS = [
+  "unauthorized_access",      // confirmed actor read or copied data
+  "data_exfiltration",        // confirmed bulk export off-platform
+  "credentials_leaked",       // creds in public repo / paste site
+  "vendor_compromise",        // sub-processor incident
+  "internal_misuse",          // employee or operator overreach
+  "device_loss",              // unencrypted laptop / phone
+  "misconfiguration",         // S3 bucket public, RLS gap, etc.
+  "ransomware",
+  "physical_intrusion",
+] as const;
+
+export type ExposureKind = (typeof EXPOSURE_KINDS)[number];
 
 export interface BreachInput {
   /** Brief description suitable for system_alerts.title (max 200 chars). */

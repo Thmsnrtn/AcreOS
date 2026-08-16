@@ -87,7 +87,6 @@ const BASELINE_OFFENDERS = new Set([
   "ai_memory",
   "api_jobs",
   "api_usage_logs",
-  "automation_executions",
   "autopay_enrollments",
   "borrower_payment_profiles",
   "borrower_sessions",

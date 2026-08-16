@@ -7,5 +7,9 @@
   ],
   "baselineCount": 1682,
   "direction": "down",
-  "lastBumpNote": "1692 -> 1682 on 2026-07-29: reduction landed by founder ruling #12(c) Wave A ('Nothing lies'). Dead-surface purge (routes-tax-optimization 501 router, /automation twin, Field Scout) plus the skip-trace and rentals rewrites removed these. Locked in per this ratchet's down-only rule."
+  "lastBumpNote": "1692 -> 1682 on 2026-07-29: reduction landed by founder ruling #12(c) Wave A ('Nothing lies'). Dead-surface purge (routes-tax-optimization 501 router, /automation twin, Field Scout) plus the skip-trace and rentals rewrites removed these. Locked in per this ratchet's down-only rule.",
+  "minima": {
+    "files": 1
+  },
+  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1 file(s) (the single file server/storage.ts). Floor set to 1, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. This ratchet scans exactly ONE file, so the floor is 1 — a real canary: it catches the file being renamed, moved or deleted, which would otherwise read as its line count dropping to zero. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here — never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
 }

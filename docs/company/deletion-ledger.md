@@ -559,3 +559,164 @@ correctness risks across 2+ machines. Disposition:
 
   Counts locked in the same commit: `unreachedExports` 1436→1405,
   `moduleOrphans` 44→29, `opaqueExports` 125→120.
+
+- **2026-08-16 — 48-table dead-storage triage; thirteen dropped (migration 0236).**
+  Founder ruling (picker, this date): *"Triage 3 ways, drop only experiment
+  residue."*
+
+  **The population, measured not assumed.** `node scripts/lint-reachability.mjs
+  --measure` reports `tables-no-writer: 62` and `tables-no-reader: 75`. The
+  INTERSECTION — no `.insert/.update/.delete` **and** no `.from(`/`db.query.`
+  anywhere in code — is **48 tables**. Every one of the 48 is classified below;
+  none is left unstated.
+
+  **The raw-SQL check, because the linter only sees Drizzle.** A table reached
+  through `` sql`SELECT … FROM foo` `` is alive and this linter cannot see it.
+  Each of the 48 snake_case names was searched across `server/`, `client/` and
+  `shared/` (minus the schema files) for SQL-shaped access — `FROM x`, `INTO x`,
+  `UPDATE x`, `JOIN x`, `DELETE FROM x`, `TABLE x`. **Result: zero.** Not one of
+  the 48 has a raw-SQL access site. Two mentions inside `server/` turned out to
+  be prose in comments (`entityPortfolio.ts:279` names `opportunity_zone_holdings`;
+  `server/ai/paxModelTier.ts:115` describes a `ai_eval_gate_runs` pipeline as a
+  *"remaining unblock"*, i.e. something not built).
+
+  **The alias check, which the raw-SQL check would have missed.** The linter
+  keys on the `pgTable` identifier, so a table re-exported under a second name is
+  invisible to it. `rg "^export const \w+ = \w+;"` over `shared/schema*.ts` finds
+  exactly one such alias in the entire schema — and it is load-bearing:
+
+  > `shared/schema.ts:12463` — `export const marketIndicators = marketIndicatorsDuplicate;`
+
+  `server/services/marketPrediction.ts` **reads it (`.from(marketIndicators)`,
+  `orderBy`) and writes it (`.insert(marketIndicators).values(…)`)**. So
+  `market_indicators_temp` is **NOT DEAD** — it is a linter false positive, and
+  the only reason it looks dead is the alias. It is class C below and must not be
+  dropped. One table found this way; had the sweep skipped the alias check, a
+  live market-data table would have been deleted out from under a live service.
+
+  **CLASS A — experiment / agent residue. 15 tables. THIRTEEN DROPPED.**
+  The bar was deliberately conjunctive: (a) provably left behind by a module a
+  ledger row ALREADY records as killed, and (b) holds no customer content.
+
+  | table | evidence | disposition |
+  |---|---|---|
+  | `playbook_evolutions` | writer `playbookEvolutionV9` deleted 2026-08-14 (B19 class 3); named in that entry's own DELETION-REVEALED list. Champion/challenger mutation records. No org key. | **DROPPED** |
+  | `agent_improvement_plans` | owning service `agentSelfImprovement` + `AgentGrowth.tsx` deleted 2026-08-06 (V6–V14 row). Per-agent goals / skill requests. No org key. | **DROPPED** |
+  | `agent_synergy_map` | owning service `agentSynergyMap` + `SynergyMap.tsx` deleted 2026-08-06 (V6–V14 row). Agent-pair collaboration counters. No org key. | **DROPPED** |
+  | `compass_recommendations` | writer `compassAutoRecommendV9` deleted 2026-08-14; in that entry's DELETION-REVEALED list. Agent mode suggestions to the founder. No org key. | **DROPPED** |
+  | `spend_watchers` | writer `spendAutonomyV9` deleted 2026-08-14; in that list. AcreOS's OWN vendor spend figures. No org key. | **DROPPED** |
+  | `spend_optimizations` | writer `spendAutonomyV9` deleted 2026-08-14; in that list. AcreOS's own savings proposals. No org key. | **DROPPED** |
+  | `causal_investigations` | writer `causalReasoningV9` deleted 2026-08-14; in that list. Internal anomaly root-cause analyses. No org key. | **DROPPED** |
+  | `delegated_goals` | writer `delegationDepthV9` deleted 2026-08-14; in that list. Agent-to-agent goal cascade. No org key. | **DROPPED** |
+  | `external_intelligence` | writer `externalIntelligenceV9` deleted 2026-08-14; in that list. Competitor / market notes. No org key. | **DROPPED** |
+  | `product_specifications` | only writer `productEvolutionEngine` deleted 2026-08-15 as a FABRICATOR; in that entry's DELETION-REVEALED list. AcreOS's own roadmap specs. No org key. | **DROPPED** |
+  | `build_buy_decisions` | same writer, same wave, same list. AcreOS's own build-vs-buy analyses. No org key. | **DROPPED** |
+  | `feature_impact_scores` | same writer, same wave, same list. AcreOS's own feature adoption scores. No org key. | **DROPPED** |
+  | `automation_executions` | the 2026-07-29 "/automation rules twin" row deleted the surface because `createAutomationExecution` had **ZERO call sites** — the log can never have held a row — and that row says the tables "remain in `shared/schema.ts` pending a drop migration". Derived execution log, not authored by anyone. | **DROPPED** |
+  | `agent_playbooks` | class A **by content** (agent SOPs, no org key, writer deleted 2026-08-14) but **structurally blocked**: `institutional_patterns.linked_playbook_id` and `signal_correlations.auto_trigger_playbook_id` hold FKs into it, and neither of those tables is writer-less or reader-less. Dropping it means altering two LIVE tables. | **NOT dropped — stays queued** |
+  | `scp_evolution_metrics` | class A by content (per-agent SCPv2 evolution counters, no customer row), but `server/services/scpGoldenSuite.ts` still names the identifier in its import list. It is an **unused import** — the symbol appears nowhere else in that file — yet removing the schema export without deleting that one token breaks the build, and that file was outside this unit's file set. | **NOT dropped — one-token unblock recorded** |
+
+  **CLASS B — customer or regulated records. 22 tables. NONE DROPPED.**
+  Customer-data deletion is a founder-only hard stop and this ruling did not
+  authorise it. The obligation named is the one that would bind the rows:
+
+  | table | obligation that applies |
+  |---|---|
+  | `investor_verification_documents` | BSA/AML CIP recordkeeping (31 CFR 1023.410 — 5 years past account closure); the rows point at uploaded passports / driver's licences / proof-of-funds. GLBA safeguarding. |
+  | `investor_verification_history` | the KYC decision AUDIT TRAIL (who changed status, when, why). Destroying it destroys the evidence that the KYC in the sibling table was performed. |
+  | `background_check_results` | FCRA / FACTA Disposal Rule (16 CFR 682) governs how consumer-report data is destroyed, not whether it may be; `report_data` is a third-party investigative report on a named person. |
+  | `contractor_w9_documents` | IRS — W-9 backup-withholding records retained 4 years after the year of the 1099 (Treas. Reg. §31.6001-1). Rows carry TIN/SSN document pointers. |
+  | `borrower_payment_profiles` | Reg-E / NACHA authorization records for a borrower's stored payment method (last4, brand, autopay day) plus borrower email + phone. Money rail. |
+  | `property_photos` | customer-uploaded property imagery; `storage_key` is the ONLY pointer to the object-storage blob, so dropping the table orphans the customer's files rather than deleting them. |
+  | `lien_search_records` | title/lien diligence on a customer's property — part of the transaction file a closing is defended with; `raw_data` holds courthouse source records. |
+  | `cma_reports` | valuation work product, org-scoped, with a domain-expert reviewer and sign-off timestamp; the schema comment says outright "the data row is the legal artifact". Separately, `scripts/check-residential-comps-hold.mjs` names this table as part of the standing residential-comps hold. |
+  | `auction_readiness_checklists` | per-property pre-auction diligence with an expert sign-off timestamp and signer — the record that diligence occurred. |
+  | `compliance_checklist_items` | per-DEAL disclosure compliance evidence (`completed_by`, `completed_at`, `notes`) under state real-estate disclosure statutes. |
+  | `regulatory_requirements` | the legal-citation database those checklist items reference by FK. Not customer rows itself, but dropping it orphans a class-B customer record and destroys the citation basis for disclosures already made. |
+  | `depreciation_schedules` | IRS basis records — must survive until 3 years after the property is disposed of (Pub 946), routinely decades. Per-property, org-scoped. |
+  | `opportunity_zone_holdings` | **contradicts this unit's brief, deliberately.** The brief listed it as class A; its COLUMNS are `investment_date`, `initial_investment`, `deferred_gain_rollover`, `step_up_basis`, `exit_value`, org- and property-scoped. That is a customer's OZ investment record feeding IRC §1400Z-2 elections and annual Form 8997 — a 10-year hold whose basis records must outlive it. Class B. |
+  | `tax_strategies` | **contradicts the brief.** Org-scoped, references the customer's own `applicable_properties`, and carries a lifecycle the customer moves (`recommended → implementing → completed → dismissed`). A tax position a customer acted on is a tax record. Class B. |
+  | `tax_forecast_scenarios` | **contradicts the brief.** Org-scoped multi-year projections keyed to the customer's `property_ids`, with projected capital gain and tax liability. Same reasoning as above. |
+  | `deferred_revenue` | ASC 606 revenue recognition tied to real Stripe subscription/invoice ids. Accounting records — 7-year retention, audit-relevant. |
+  | `esign_webhook_events` | the ESIGN/UETA processing-dedup ledger for Dropbox Sign (`event_id` unique, `signature_request_id`). It is the record that a signature event was seen exactly once. E-sign is a **KEEP** module ("Elite features"), so this is more likely a *built-but-unwired* writer than residue — see the note below. |
+  | `automation_rules` | **the ledger already prescribes a drop for this one** (2026-07-29, "/automation rules twin": tables "remain … pending a drop migration"). It is still class B: the rows are CUSTOMER-AUTHORED (`name`, `description`, `conditions`, `actions`, `created_by`, `organization_id`). Customers authored rules that could never run; the rules are still their words. Only the derived execution log was dropped. |
+  | `tax_sale_alerts` | customer-authored saved searches and notification preferences, org-scoped. Customer configuration, not derived state. |
+  | `webhook_deliveries` | org-scoped delivery log whose `payload` and `response_body` hold customer record contents verbatim. Also: **BLOCKERS B8** is an open adjudication of exactly which of the two webhook rails survives — dropping one side pre-empts that decision. |
+  | `tutor_sessions` | Academy residue (last reader `learningAnalytics`, deleted 2026-08-15) — but the rows are `user_id` + a `messages` jsonb of `{role, content, timestamp}`. That is a **user's conversation transcript**. The Academy KILL row names three tables to drop (`courses`, `course_modules`, `course_enrollments`) and this is not among them. Class B. |
+  | `auth_fail_attempts` | **contradicts the brief.** Left behind by `authLockout.ts` (deleted 2026-08-14 as a superseded duplicate), so the provenance is class A — but the columns are `ip`, `email`, `user_agent`, `failure_reason`. Failed-login telemetry naming a person is personal data under GDPR/CCPA and is also security-incident forensic material. Whatever the right answer is, it is not "experiment residue". |
+
+  **CLASS C — everything else / unclear. 11 tables. NONE DROPPED.**
+  What is unclear is stated per table, so the next session starts from a
+  question rather than a re-derivation:
+
+  | table | what is unclear |
+  |---|---|
+  | `market_indicators_temp` | **NOT DEAD — linter false positive.** Live read AND write through the `marketIndicators` alias in `server/services/marketPrediction.ts`. What is unclear is only whether the table should keep the `_temp` name and the `marketIndicatorsDuplicate` identifier; the alias is what hid it from the gate and it deserves an allowlist entry rather than a drop. |
+  | `tenant_metrics` | **contradicts the brief**, which listed it class A. No ledger row ever killed it, and white-label is **FREEZE**, not KILL, with a recorded reactivation criterion ("first enterprise/white-label contract"). Its `revenue_generated` column is billing-adjacent. Dropping a frozen subsystem's metering table pre-empts its reactivation. (Its likely former writer, `tenantMetering.ts`, was deleted 2026-08-15 as a fabricator — but that wave's own DELETION-REVEALED list does not name this table, so the provenance is not proven.) |
+  | `photo_analysis` | derived Vision-API output, but `photo_id` is a NOT-NULL FK into `property_photos`, which is class B and retained. Dropping the analysis while keeping the photos is incoherent; the two should be adjudicated together. |
+  | `ai_models` | platform model registry (model keys, per-1M token costs). No customer content and no ledger KILL — it reads as built-but-unwired: `scripts/migrate.mjs` creates it and nothing has ever read it. Whether AI cost accounting is *supposed* to consult it is a live question, not residue. |
+  | `ai_eval_gate_runs` | CI eval verdicts, no customer content, no ledger KILL. `server/ai/paxModelTier.ts:115` describes writing and reading this table as a **"REMAINING UNBLOCK … left as a founder-owned follow-on"** — so it is a deliberately staged seam, not a corpse. Dropping it would delete the destination of a decision the founder still owns. |
+  | `org_credits` | money-adjacent. Its own header says it is a best-effort CACHE whose source of truth is `financial_ledger`. Unclear whether the cache was retired on purpose (in which case dropping it is right) or whether a rate gate lost its fast path. |
+  | `retention_events` | activation/retention funnel telemetry behind `/founder/activation` (migration 0055). No ledger KILL; carries `user_id`. Reads as a founder surface whose writer was never wired, which is a wiring question, not a deletion one. |
+  | `cohort_assignments` | same wave, same funnel, same question; carries `user_id` and a `variant` that would decide what an org SEES if the funnel is ever wired. |
+  | `county_redemption_rates` | county/year statistical reference data for redemption-risk prediction. No org key, no customer content, but also no ledger KILL — it is reference data that would have to be re-acquired, not residue of a killed module. |
+  | `deal_sources` | the county-scraper source registry (`base_url`, `scraping_config`, including an `api_key` field). No ledger KILL. `scraped_deals` alongside it is also writer-less, so the whole scraping lane is dormant — that lane needs one verdict, not a table-by-table one. |
+  | `personal_bests` | genuinely unused, but NOT deletion residue: `server/services/personalBests.ts` is alive (dynamically imported by `server/routes-platform-features.ts:303`) and computes personal bests **from `deals` on the fly**, never touching this table. So it is built-but-unwired storage next to a live in-memory computation — the question is whether milestones should persist, not whether this is a corpse. |
+
+  **WHAT THE DROP ACTUALLY DELETES IN PRODUCTION, stated because it is less
+  than it looks.** Twelve of the thirteen have no `CREATE TABLE` anywhere in
+  `migrations/*.sql` or `scripts/migrate.mjs` — measured, that is why they sat in
+  `scripts/schema-migrate-mirror.allowlist.json`, whose gate note records that
+  `db:push` is NOT run in prod. For those twelve the `DROP TABLE IF EXISTS` is
+  expected to be a no-op against a table prod never had, and the real deletion is
+  the removal of the `pgTable` definitions. `automation_executions` is the single
+  exception: created by `migrations/0001_brief_giant_man.sql`, it exists.
+
+  **No `CASCADE` anywhere**, deliberately: cascade would silently take dependent
+  objects this ruling never named. Verified before writing: zero
+  `REFERENCES <table>` matches across `migrations/` and `scripts/migrate.mjs`,
+  and zero inbound `.references(() => …)` across `shared/` and `server/`, for all
+  thirteen. The two outbound FKs point at tables that SURVIVE
+  (`playbook_evolutions` → `agent_playbooks`, `automation_executions` →
+  `automation_rules`).
+
+  **Executed:** `migrations/0236_drop_experiment_residue_tables.sql`, mirrored
+  statement-for-statement in `scripts/migrate.mjs` (a migration file nothing runs
+  is this repo's most common defect), and the thirteen `pgTable` definitions
+  removed from `shared/schema.ts`. **Not applied** — this session has no
+  `DATABASE_URL` and did not seek one.
+
+  **Counts MEASURED after the change** (`table-count` and `lint-reachability`
+  baselines are locked centrally and were not edited here):
+  `table-count` 763 → **750**; `tablesNoWriter` 62 → **49**; `tablesNoReader`
+  75 → **62**.
+
+  **What happened to the sixteen-table founder queue, counted exactly.** Ten of
+  the sixteen were dropped (`playbook_evolutions`, `compass_recommendations`,
+  `spend_watchers`, `spend_optimizations`, `causal_investigations`,
+  `delegated_goals`, `external_intelligence`, `product_specifications`,
+  `build_buy_decisions`, `feature_impact_scores`). Five were **answered "no"** —
+  they are class B, and "drop only experiment residue" is a decision about them,
+  not a deferral: `tax_strategies`, `tax_forecast_scenarios`,
+  `opportunity_zone_holdings`, `auth_fail_attempts`, `tutor_sessions`. One
+  remains genuinely open: `agent_playbooks`. Two items JOIN the open list that
+  were not on the original queue — `scp_evolution_metrics` (class A, blocked on a
+  one-token import edit outside this unit's file set) and `automation_rules`
+  (class B, but the 2026-07-29 ledger row already asks for its drop, so the
+  conflict needs the founder's explicit customer-data nod). **Open: three.**
+
+  **Registers this deletion invalidates** — every one measured by running the
+  gate, not guessed. All three are outside this unit's file set and must be
+  updated in the same commit or CI fails:
+  - `scripts/schema-migrate-mirror.allowlist.json` — 12 stale entries
+    (`agent_improvement_plans`, `agent_synergy_map`, `build_buy_decisions`,
+    `causal_investigations`, `compass_recommendations`, `delegated_goals`,
+    `external_intelligence`, `feature_impact_scores`, `playbook_evolutions`,
+    `product_specifications`, `spend_optimizations`, `spend_watchers`);
+    allowlist 95 → 83.
+  - `tests/unit/schemaMigrationDrift.test.ts` — `BASELINE_ORPHANS`, the same 12
+    names, 95 → 83. Its second test fails on stale entries by design.
+  - `scripts/check-org-leading-index.mjs` — `BASELINE_OFFENDERS` contains
+    `"automation_executions"` (the only one of the thirteen carrying an
+    `organization_id`); it must go — set size 150 → 149. The gate already FAILS
+    on it: *"stale allowlist entries: 1"*.

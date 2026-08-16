@@ -7670,42 +7670,14 @@ export const insertAutomationRuleSchema = createInsertSchema(automationRules).om
 export type InsertAutomationRule = z.infer<typeof insertAutomationRuleSchema>;
 export type AutomationRule = typeof automationRules.$inferSelect;
 
-// Automation rule execution log
-export const automationExecutions = pgTable("automation_executions", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  ruleId: integer("rule_id").references(() => automationRules.id).notNull(),
-  
-  trigger: text("trigger").notNull(),
-  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
-  
-  conditionsMet: boolean("conditions_met").default(true),
-  conditionsResult: jsonb("conditions_result").$type<{
-    field: string;
-    passed: boolean;
-    actual: any;
-    expected: any;
-  }[]>(),
-  
-  actionsExecuted: jsonb("actions_executed").$type<{
-    type: string;
-    success: boolean;
-    result?: any;
-    error?: string;
-  }[]>(),
-  
-  status: text("status").notNull().default("completed"), // pending, running, completed, failed
-  error: text("error"),
-  
-  executedAt: timestamp("executed_at").defaultNow(),
-});
-
-export const insertAutomationExecutionSchema = createInsertSchema(automationExecutions).omit({
-  id: true,
-  executedAt: true,
-});
-export type InsertAutomationExecution = z.infer<typeof insertAutomationExecutionSchema>;
-export type AutomationExecution = typeof automationExecutions.$inferSelect;
+// automation_executions — DROPPED 2026-08-16 (migration 0236, founder ruling
+// "Triage 3 ways, drop only experiment residue"). The /automation rules twin
+// was deleted 2026-07-29 (deletion ledger) because it had NO EXECUTION ENGINE:
+// `createAutomationExecution` had ZERO call sites, so this log could never hold
+// a row, and that ledger entry itself recorded the table as "pending a drop
+// migration (execution rule 2)". `automationRules` above is deliberately KEPT —
+// its rows are customer-AUTHORED (name, description, conditions, actions), and
+// deleting customer data is a founder-only hard stop this ruling did not touch.
 
 // ============================================
 // NOTIFICATIONS SYSTEM (8.3)
@@ -15556,40 +15528,14 @@ export const scenarioSimulations = pgTable("scenario_simulations", {
 ]);
 export type ScenarioSimulation = typeof scenarioSimulations.$inferSelect;
 
-// --- Agent Self-Improvement Plans ---
-
-export const agentImprovementPlans = pgTable("agent_improvement_plans", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull(),
-  reviewId: integer("review_id").references(() => agentPerformanceReviews.id),
-  status: text("status").notNull().default("active"),      // "active" | "completed" | "superseded"
-  goals: jsonb("goals").$type<Array<{
-    description: string;
-    metric: string;
-    baselineValue: number;
-    targetValue: number;
-    currentValue?: number;
-    status: "in_progress" | "achieved" | "missed";
-  }>>().notNull(),
-  skillRequests: jsonb("skill_requests").$type<Array<{
-    skill: string;
-    reason: string;
-    status: "requested" | "approved" | "denied";
-    approvedAt?: string;
-  }>>().notNull().default([]),
-  weeklyProgress: jsonb("weekly_progress").$type<Array<{
-    week: string;
-    notes: string;
-    metricsSnapshot: Record<string, number>;
-  }>>().notNull().default([]),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("aip_agent_idx").on(table.agentCodename),
-  index("aip_status_idx").on(table.status),
-  index("aip_review_idx").on(table.reviewId),
-]);
-export type AgentImprovementPlan = typeof agentImprovementPlans.$inferSelect;
+// --- Agent Self-Improvement Plans — DROPPED 2026-08-16 (migration 0236) ---
+// `agent_improvement_plans` held per-AGENT goals, skill requests and weekly
+// progress notes. Its owning service `agentSelfImprovement.ts` and the
+// AgentGrowth.tsx founder component were deleted 2026-08-06 (deletion ledger,
+// "Founder narrative routers V6–V14"). No organization_id, no customer row:
+// class A under the 2026-08-16 founder ruling "drop only experiment residue".
+// `agentPerformanceReviews`, which it referenced, is NOT dropped — it is
+// neither writer-less nor reader-less.
 
 // --- Founder Digital Twin: voice, patterns, preferences ---
 
@@ -15842,31 +15788,13 @@ export const companySeasons = pgTable("company_seasons", {
 ]);
 export type CompanySeason = typeof companySeasons.$inferSelect;
 
-// --- Agent Synergy Map ---
-
-export const agentSynergyMap = pgTable("agent_synergy_map", {
-  id: serial("id").primaryKey(),
-  agentA: text("agent_a").notNull(),
-  agentB: text("agent_b").notNull(),
-  totalCollaborations: integer("total_collaborations").notNull().default(0),
-  successCount: integer("success_count").notNull().default(0),
-  failureCount: integer("failure_count").notNull().default(0),
-  synergyScore: numeric("synergy_score"),                  // 0.0-1.0
-  conflictRate: numeric("conflict_rate"),                   // how often they disagree
-  bestAt: jsonb("best_at").$type<string[]>().notNull().default([]),        // task types they excel at together
-  worstAt: jsonb("worst_at").$type<string[]>().notNull().default([]),      // task types where they struggle
-  recentOutcomes: jsonb("recent_outcomes").$type<Array<{
-    taskType: string;
-    success: boolean;
-    timestamp: string;
-  }>>().notNull().default([]),
-  recommendation: text("recommendation"),                  // AI-generated routing advice
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("asm_pair_idx").on(table.agentA, table.agentB),
-  index("asm_synergy_idx").on(table.synergyScore),
-]);
-export type AgentSynergy = typeof agentSynergyMap.$inferSelect;
+// --- Agent Synergy Map — DROPPED 2026-08-16 (migration 0236) ---
+// `agent_synergy_map` held agent-PAIR collaboration counters and an AI-written
+// routing recommendation. Its owning service `agentSynergyMap.ts` and the
+// SynergyMap.tsx founder component were deleted 2026-08-06 (deletion ledger,
+// "Founder narrative routers V6–V14" — the three services those dead routers
+// solely owned). No organization_id, no customer row: class A under the
+// 2026-08-16 founder ruling "drop only experiment residue".
 
 // --- Company Chronicle ---
 
@@ -15947,207 +15875,31 @@ export const ceoBriefings = pgTable("ceo_briefings", {
 ]);
 export type CEOBriefing = typeof ceoBriefings.$inferSelect;
 
-// --- Playbook Evolutions: mutation tracking and A/B testing ---
-
-export const playbookEvolutions = pgTable("playbook_evolutions", {
-  id: serial("id").primaryKey(),
-  championPlaybookId: integer("champion_playbook_id").notNull().references(() => agentPlaybooks.id),
-  championGeneration: integer("champion_generation").notNull().default(1),
-  mutationType: text("mutation_type").notNull(),           // "step_swap" | "timing_change" | "agent_swap" | "condition_add" | "step_remove" | "step_add"
-  mutationDescription: text("mutation_description").notNull(),
-  analysis: text("analysis"),                              // why the playbook is degrading
-  hypothesis: text("hypothesis"),                          // why this mutation should help
-  mutatedSteps: jsonb("mutated_steps").$type<Array<{
-    order: number;
-    agentCodename: string;
-    action: string;
-    description: string;
-    delayMs?: number;
-  }>>().notNull(),
-  status: text("status").notNull().default("proposed"),    // "proposed" | "testing" | "champion_wins" | "challenger_wins"
-  championSuccessRate: numeric("champion_success_rate"),
-  challengerSuccessRate: numeric("challenger_success_rate"),
-  challengerExecutions: integer("challenger_executions").notNull().default(0),
-  challengerSuccessCount: integer("challenger_success_count").notNull().default(0),
-  requiredTestRuns: integer("required_test_runs").notNull().default(5),
-  testStartedAt: timestamp("test_started_at"),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("pe_playbook_idx").on(table.championPlaybookId),
-  index("pe_status_idx").on(table.status),
-]);
-export type PlaybookEvolution = typeof playbookEvolutions.$inferSelect;
-
-// --- Compass Recommendations: auto-suggested mode changes ---
-
-export const compassRecommendations = pgTable("compass_recommendations", {
-  id: serial("id").primaryKey(),
-  currentMode: text("current_mode").notNull(),
-  recommendedMode: text("recommended_mode").notNull(),
-  urgency: text("urgency").notNull(),                      // "immediate" | "daily_briefing" | "weekly_review"
-  rationale: text("rationale").notNull(),
-  matchedConditions: jsonb("matched_conditions").$type<Array<{
-    metric: string;
-    description: string;
-    source: string;
-  }>>().notNull().default([]),
-  failedConditions: jsonb("failed_conditions").$type<Array<{
-    metric: string;
-    description: string;
-    source: string;
-  }>>().notNull().default([]),
-  confidence: integer("confidence").notNull().default(50),
-  status: text("status").notNull().default("pending"),     // "pending" | "accepted" | "dismissed"
-  ceoResponse: text("ceo_response"),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("cr_status_idx").on(table.status),
-  index("cr_urgency_idx").on(table.urgency),
-]);
-export type CompassRecommendation = typeof compassRecommendations.$inferSelect;
-
-// --- Spend Watchers: service cost monitoring ---
-
-export const spendWatchers = pgTable("spend_watchers", {
-  id: serial("id").primaryKey(),
-  serviceName: text("service_name").notNull(),
-  category: text("category").notNull(),                    // "compute" | "ai" | "email" | "sms" | "storage" | "payments" | "other"
-  costAmount: numeric("cost_amount").notNull(),
-  metrics: jsonb("metrics").$type<Record<string, any>>(),
-  trend: text("trend"),                                    // "up" | "down" | "flat"
-  trendPercent: integer("trend_percent"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("sw_service_idx").on(table.serviceName),
-  index("sw_category_idx").on(table.category),
-]);
-export type SpendWatcher = typeof spendWatchers.$inferSelect;
-
-// --- Spend Optimizations: proposed and tracked savings ---
-
-export const spendOptimizations = pgTable("spend_optimizations", {
-  id: serial("id").primaryKey(),
-  serviceName: text("service_name").notNull(),
-  description: text("description").notNull(),
-  estimatedSavings: numeric("estimated_savings").notNull(),
-  actualSavings: numeric("actual_savings"),
-  effort: text("effort").notNull(),                        // "low" | "medium" | "high"
-  autoExecutable: boolean("auto_executable").notNull().default(false),
-  status: text("status").notNull().default("proposed"),    // "proposed" | "approved" | "skipped" | "executed"
-  approvedAt: timestamp("approved_at"),
-  executedAt: timestamp("executed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("so_status_idx").on(table.status),
-  index("so_service_idx").on(table.serviceName),
-]);
-export type SpendOptimization = typeof spendOptimizations.$inferSelect;
-
-// --- Causal Investigations: root cause analysis ---
-
-export const causalInvestigations = pgTable("causal_investigations", {
-  id: serial("id").primaryKey(),
-  anomalyType: text("anomaly_type").notNull(),             // "metric_drop" | "metric_spike" | "pattern_break"
-  metric: text("metric").notNull(),
-  currentValue: numeric("current_value").notNull(),
-  expectedValue: numeric("expected_value").notNull(),
-  deviationPercent: integer("deviation_percent").notNull(),
-  detectedBy: text("detected_by").notNull(),               // agent codename
-  timeline: jsonb("timeline").$type<Array<{
-    timestamp: string;
-    source: string;
-    eventType: string;
-    description: string;
-  }>>().notNull().default([]),
-  hypotheses: jsonb("hypotheses").$type<Array<{
-    rank: number;
-    cause: string;
-    probability: string;
-    evidence: string[];
-    affectedSegment: string;
-    testProposal: string;
-  }>>().notNull().default([]),
-  primaryCause: text("primary_cause"),
-  primaryCauseProbability: text("primary_cause_probability"),
-  testProposal: text("test_proposal"),
-  affectedSegments: jsonb("affected_segments").$type<string[]>().notNull().default([]),
-  confirmedCause: text("confirmed_cause"),
-  actionTaken: text("action_taken"),
-  status: text("status").notNull().default("open"),        // "open" | "resolved" | "dismissed"
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("ci_status_idx").on(table.status),
-  index("ci_metric_idx").on(table.metric),
-  index("ci_detected_by_idx").on(table.detectedBy),
-]);
-export type CausalInvestigation = typeof causalInvestigations.$inferSelect;
-
-// --- Delegated Goals: agent-to-agent goal cascading ---
-
-export const delegatedGoals = pgTable("delegated_goals", {
-  id: serial("id").primaryKey(),
-  goal: text("goal").notNull(),
-  ownerAgent: text("owner_agent").notNull(),
-  delegatedBy: text("delegated_by").notNull(),             // "ceo" or agent codename
-  parentGoalId: integer("parent_goal_id"),                 // null = top-level CEO goal
-  depth: integer("depth").notNull().default(0),            // 0 = CEO goal, 1 = sub-goal, 2 = sub-sub-goal
-  targetMetric: text("target_metric"),
-  targetValue: numeric("target_value"),
-  deadline: timestamp("deadline"),
-  priority: integer("priority").notNull().default(3),      // 1 = highest
-  status: text("status").notNull().default("active"),      // "active" | "completed" | "blocked" | "cancelled"
-  progress: integer("progress").notNull().default(0),      // 0-100
-  progressLog: jsonb("progress_log").$type<Array<{
-    timestamp: string;
-    progress: number;
-    update: string;
-  }>>().notNull().default([]),
-  breakdown: text("breakdown"),                            // coordinator's analysis
-  subGoalCount: integer("sub_goal_count"),
-  rationale: text("rationale"),                            // why this agent was chosen
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("dg_owner_idx").on(table.ownerAgent),
-  index("dg_parent_idx").on(table.parentGoalId),
-  index("dg_status_idx").on(table.status),
-  index("dg_delegated_by_idx").on(table.delegatedBy),
-]);
-export type DelegatedGoal = typeof delegatedGoals.$inferSelect;
-
-// --- External Intelligence: outside-the-product awareness ---
-
-export const externalIntelligence = pgTable("external_intelligence", {
-  id: serial("id").primaryKey(),
-  sourceName: text("source_name").notNull(),
-  feedType: text("feed_type").notNull(),                   // "competitor" | "platform_risk" | "market_signal"
-  ownerAgent: text("owner_agent").notNull(),
-  severity: text("severity").notNull(),                    // "info" | "watch" | "action_needed"
-  title: text("title").notNull(),
-  summary: text("summary").notNull(),
-  impacts: jsonb("impacts").$type<string[]>().notNull().default([]),
-  recommendedActions: jsonb("recommended_actions").$type<string[]>().notNull().default([]),
-  confidence: integer("confidence").notNull().default(50),
-  status: text("status").notNull().default("noted"),       // "noted" | "pending_review" | "acknowledged" | "acted_upon"
-  actionTaken: text("action_taken"),
-  acknowledgedAt: timestamp("acknowledged_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("ei_feed_type_idx").on(table.feedType),
-  index("ei_severity_idx").on(table.severity),
-  index("ei_status_idx").on(table.status),
-  index("ei_source_idx").on(table.sourceName),
-]);
-export type ExternalIntelligenceEntry = typeof externalIntelligence.$inferSelect;
+// --- V9 EXPERIMENT RESIDUE — SEVEN TABLES DROPPED 2026-08-16 (migration 0236)
+//
+// Founder ruling (picker, 2026-08-16): "Triage 3 ways, drop only experiment
+// residue." `playbook_evolutions`, `compass_recommendations`, `spend_watchers`,
+// `spend_optimizations`, `causal_investigations`, `delegated_goals` and
+// `external_intelligence` all lost their only writer when the B19 class-3
+// deletion wave removed `playbookEvolutionV9`, `compassAutoRecommendV9`,
+// `spendAutonomyV9`, `causalReasoningV9`, `delegationDepthV9` and
+// `externalIntelligenceV9` on 2026-08-14 (founder ruling: "Delete classes 2 and
+// 3 now"). That deletion-ledger entry names six of the seven in its own
+// DELETION-REVEALED list and queues them for exactly this decision.
+//
+// Class A, not class B: none of the seven carried an `organization_id` or any
+// customer row. They held AcreOS's INTERNAL operating state — champion/
+// challenger mutations of agent playbooks, mode-change suggestions to the
+// founder, AcreOS's own vendor spend figures and savings proposals, internal
+// anomaly root-cause analyses, agent-to-agent goal cascades, and competitor /
+// market notes.
+//
+// STILL HERE, deliberately: `agentPlaybooks` (above). It is class A by content
+// too, but `institutionalPatterns.linkedPlaybookId` and
+// `signalCorrelations.autoTriggerPlaybookId` — on tables that are neither
+// writer-less nor reader-less — hold foreign keys into it, so dropping it means
+// altering two live tables. That is a larger change than this ruling authorises
+// and stays on the founder queue.
 
 // ============================================
 // SOVEREIGN COMPANY PROTOCOL v10 — THE CONSCIOUS ORGANIZATION
@@ -17898,49 +17650,16 @@ export const strategicPlans = pgTable("strategic_plans", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// ─── Phase 16: Product Evolution Engine ──────────────────────────────────────
-
-export const productSpecifications = pgTable("product_specifications", {
-  id: serial("id").primaryKey(),
-  specId: text("spec_id").notNull().unique(),
-  title: text("title").notNull(),
-  userStories: jsonb("user_stories").$type<Array<{ story: string; acceptanceCriteria: string[] }>>().default([]),
-  technicalRequirements: jsonb("technical_requirements").$type<string[]>().default([]),
-  complianceRequirements: jsonb("compliance_requirements").$type<string[]>().default([]),
-  revenueImpactEstimate: text("revenue_impact_estimate"),
-  effortEstimate: text("effort_estimate"),
-  demandScore: integer("demand_score").default(0),
-  sourceFeatureRequestIds: jsonb("source_feature_request_ids").$type<number[]>().default([]),
-  status: text("status").notNull().default("draft"),
-  approvedByBoard: boolean("approved_by_board").default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const buildBuyDecisions = pgTable("build_buy_decisions", {
-  id: serial("id").primaryKey(),
-  capabilityGap: text("capability_gap").notNull(),
-  buildEstimate: jsonb("build_estimate").$type<{ effortWeeks: number; costCents: number; risk: string }>(),
-  buyOptions: jsonb("buy_options").$type<Array<{ vendor: string; costCents: number; pros: string[]; cons: string[] }>>().default([]),
-  partnerOptions: jsonb("partner_options").$type<Array<{ partner: string; terms: string; pros: string[]; cons: string[] }>>().default([]),
-  recommendation: text("recommendation"),
-  decision: text("decision"),
-  decidedBy: text("decided_by"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const featureImpactScores = pgTable("feature_impact_scores", {
-  id: serial("id").primaryKey(),
-  featureName: text("feature_name").notNull(),
-  deployedAt: timestamp("deployed_at").notNull(),
-  adoptionRate: real("adoption_rate"),
-  retentionImpact: real("retention_impact"),
-  revenueImpactCents: integer("revenue_impact_cents"),
-  supportImpact: real("support_impact"),
-  overallScore: real("overall_score"),
-  measuredAt: timestamp("measured_at").notNull().defaultNow(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+// ─── Phase 16: Product Evolution Engine — DROPPED 2026-08-16 ─────────────────
+// `product_specifications`, `build_buy_decisions` and `feature_impact_scores`
+// were dropped by migration 0236 (founder ruling, picker 2026-08-16: "Triage 3
+// ways, drop only experiment residue"). Their ONLY writer was
+// server/services/productEvolutionEngine.ts, deleted 2026-08-15 in the B19
+// orphan triage as a FABRICATOR — it derived build estimates from `gap.length`,
+// a string length. The deletion ledger's entry for that wave names all three in
+// its DELETION-REVEALED list and queues them for exactly this decision. Content
+// was AcreOS's OWN roadmap (its specs, its build-vs-buy analyses, its own
+// feature adoption scores) — no organization_id, no customer row.
 
 // ─── Phase 18: Agent Evolution & Meta-Learning ───────────────────────────────
 
@@ -18161,9 +17880,8 @@ export type BoardVote = typeof boardVotes.$inferSelect;
 export type BoardDecision = typeof boardDecisions.$inferSelect;
 export type ConstitutionalPrinciple = typeof constitutionalPrinciples.$inferSelect;
 export type StrategicPlan = typeof strategicPlans.$inferSelect;
-export type ProductSpecification = typeof productSpecifications.$inferSelect;
-export type BuildBuyDecision = typeof buildBuyDecisions.$inferSelect;
-export type FeatureImpactScore = typeof featureImpactScores.$inferSelect;
+// ProductSpecification / BuildBuyDecision / FeatureImpactScore removed with
+// their tables on 2026-08-16 (migration 0236).
 export type AgentPromptEvolution = typeof agentPromptEvolutions.$inferSelect;
 export type AgentSpawnProposal = typeof agentSpawnProposals.$inferSelect;
 export type MetaLearningInsight = typeof metaLearningInsights.$inferSelect;

@@ -26,6 +26,14 @@
  * cannot notice is somebody quietly narrowing the WALK — deleting the services
  * branch would take the count to zero offenders and pass, exactly as it did
  * before. So: the scope stays, and the debt register may only shrink.
+ *
+ * Since 2026-08-16 that applies to FOUR registers, not two: the lint was
+ * widened from the method shape (`async name(`) to the function shape
+ * (`async function name(`), which it had never looked at, and the two new
+ * registers it froze are pinned here on the same terms. Every count this file
+ * reads is a count of BAD THINGS FOUND, so each one is read through a scan
+ * population floor — a ceiling that reads clean because the scanner went blind
+ * is worse than no ceiling, since it reports the blindness as progress.
  */
 
 import { describe, it, expect } from "vitest";
@@ -62,10 +70,97 @@ const BASELINE_ENTRIES = 171;
  */
 const RULE_2_BASELINE = 59;
 
+/**
+ * THE FUNCTION SHAPE (widened 2026-08-16), the two registers this file used to
+ * leave unpinned.
+ *
+ * The lint had been enforcing the tenancy rule against a KEYWORD rather than a
+ * defect: it extracted `async <name>(` and nothing else, so
+ * `export async function getDeal(dealId)` shipped green while the identical
+ * class method was caught. Widening extraction to the function shape took the
+ * scanned population from 2,485 units to 4,606 and froze two new registers.
+ * Until this block existed, only the lint's own stale-entry check defended
+ * them — nothing stopped the registers from GROWING.
+ *
+ * Measured from a live `node scripts/check-org-scoped-fetch.mjs` on
+ * 2026-08-16: rule 1 baseline 122, rule 2 baseline 63 (register sizes 122 and
+ * 63; stale 0, so every frozen entry still matches a real unit).
+ *
+ * WHY THE HEADROOM (+4 each, the same slack RULE_2_BASELINE carries). It is not
+ * licence to admit offenders: a genuinely new one FAILS the lint outright —
+ * `new offenders: 0` is asserted above — and joining the register is a
+ * deliberate edit, not something that happens by accident. The slack absorbs
+ * the one way these counts tick up while tenancy debt stays flat: rewriting an
+ * already-registered offending class METHOD as a standalone `async function`
+ * moves its entry from the method register into this one, +1 here and -1 there
+ * for zero net change. Past a handful of those, growth means somebody widened
+ * a register to get green, which is the thing this ceiling exists to fail.
+ *
+ * These numbers may only come DOWN. Lower them in the commit that earns the
+ * reduction (fix the unit, delete the register line — the lint's stale check
+ * forces the second half); never raise them.
+ */
+const FUNCTION_RULE_1_BASELINE = 126;
+const FUNCTION_RULE_2_BASELINE = 67;
+
+/**
+ * VACUITY FLOOR for the function-shape scan, not a ratchet.
+ *
+ * Every count above counts BAD THINGS FOUND, so a scan that stops SEEING units
+ * finds none and reports reassuring ceilings over an empty population — a
+ * counting gate whose number falls because the SCAN BROKE, then hands the
+ * operator a lower baseline that was never true. `scanned N async functions`
+ * is the population those two ceilings are computed over, so it is floored
+ * here: measured at 2,121 on 2026-08-16, floored at 1,600 (~75% of live) so
+ * ordinary deletion — the north star — never trips it while a regex that stops
+ * matching or a walk that returns nothing does.
+ *
+ * The lint carries its own internal floor (1,200 functions) and that is the
+ * first line of defence; this one is deliberately independent and higher, so a
+ * change that blinds the extractor AND relaxes the gate's own floor still
+ * fails here. If a real deletion wave takes the population under this floor,
+ * lower it in the same commit and name the wave. Do NOT lower it to get green.
+ */
+const FUNCTION_SCAN_FLOOR = 1600;
+
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to
   // know the walk is live; reading the source only proves the code is present.
   return execFileSync("node", [LINT], { cwd: ROOT, encoding: "utf8" });
+}
+
+/**
+ * Parses the function-shape summary line, and refuses to return a number over
+ * a scan that saw nothing.
+ *
+ * The vacuity check lives HERE rather than only in its own `it()` on purpose:
+ * every function-shape assertion in this file goes through this helper, so a
+ * clean ceiling can never be reported over an empty scan even if the dedicated
+ * vacuity test were deleted. A line that no longer matches fails as loudly as a
+ * breached floor — a parse that silently stops matching is the same failure as
+ * a scan that silently stops scanning.
+ */
+function functionShape(out: string): { scanned: number; rule1: number; rule2: number } {
+  const m =
+    /function shape \(widened [^)]*\): scanned (\d+) async functions; rule 1 baseline (\d+), rule 2 baseline (\d+)/.exec(
+      out,
+    );
+  expect(
+    m,
+    "the function-shape summary line is gone or changed shape, so the two " +
+      "widened registers are unpinned again. Do not delete the assertion — " +
+      "re-point it at whatever the lint now prints:\n" + out,
+  ).not.toBeNull();
+  const scanned = Number(m![1]);
+  expect(
+    scanned,
+    `the function-shape scan saw only ${scanned} async functions (floor ` +
+      `${FUNCTION_SCAN_FLOOR}, measured 2,121 on 2026-08-16). The ceilings ` +
+      "below are computed over this population: a broken extractor makes them " +
+      "read clean over nothing. Find out why the scan went blind — do NOT " +
+      "lower this floor to get green.",
+  ).toBeGreaterThan(FUNCTION_SCAN_FLOOR);
+  return { scanned, rule1: Number(m![2]), rule2: Number(m![3]) };
 }
 
 describe("the tenancy lint covers the service layer", () => {
@@ -164,6 +259,63 @@ describe("the debt register only shrinks", () => {
       "the rule-2 register GREW. A method that has an org and ignores it should " +
         "fail the lint, not join its baseline.",
     ).toBeLessThanOrEqual(RULE_2_BASELINE);
+  });
+
+  it("the function-shape scan is not vacuous (guards both ceilings below)", () => {
+    // Stated as its own test so the floor is visible in the run output rather
+    // than only inside a helper. `functionShape()` enforces it on every call.
+    const { scanned } = functionShape(run());
+    expect(scanned).toBeGreaterThan(FUNCTION_SCAN_FLOOR);
+  });
+
+  it(`the function-shape rule-1 register is at or below ${FUNCTION_RULE_1_BASELINE}`, () => {
+    // `export async function getDeal(dealId)` was a working bypass of this
+    // whole lint until 2026-08-16. The 122 units it surfaced had always been
+    // there; freezing them was the only way to land the widening, and this
+    // ceiling is what stops the register from being the place new offenders go.
+    const { rule1 } = functionShape(run());
+    expect(
+      rule1,
+      "the FUNCTION-shape tenancy debt register GREW. A function that queries " +
+        "an org-scoped table without org context must fail the lint, not join " +
+        "its baseline — writing a unit as `async function` instead of a class " +
+        "method was the bypass this widening closed, and admitting entries " +
+        "here reopens it one line at a time.",
+    ).toBeLessThanOrEqual(FUNCTION_RULE_1_BASELINE);
+  });
+
+  it(`the function-shape rule-2 register is at or below ${FUNCTION_RULE_2_BASELINE}`, () => {
+    // Rule 2 in the function shape: it HAS an org and resolves an org-scoped
+    // table by primary key anyway — the shape that let a caller-supplied id
+    // reach another tenant's row through a scoped-looking signature.
+    const { rule2 } = functionShape(run());
+    expect(
+      rule2,
+      "the FUNCTION-shape rule-2 register GREW. Same rule as the method-shape " +
+        "one it mirrors: a unit that has an org and ignores it should fail the " +
+        "lint, not be admitted to its baseline.",
+    ).toBeLessThanOrEqual(FUNCTION_RULE_2_BASELINE);
+  });
+
+  it("the function registers are real paths, not drifted text", () => {
+    // Same guard the method register gets above, for the same reason: a key
+    // with a typo'd PATH matches nothing and looks like coverage. The
+    // population floors (80 and 46 distinct files measured 2026-08-16, floored
+    // at 40 and 20) are the vacuity half — a parse that stops matching would
+    // otherwise report an empty set of files as "all present".
+    for (const [name, floor] of [
+      ["BASELINE_FUNCTION_OFFENDERS", 40],
+      ["BASELINE_FUNCTION_UNUSED_ORG", 20],
+    ] as const) {
+      const at = src.indexOf(`const ${name} = new Set([`);
+      expect(at, `${name} is gone from the lint — the widened register was deleted, not shrunk`)
+        .toBeGreaterThan(-1);
+      const block = src.slice(at, src.indexOf("]);", at));
+      const files = new Set([...block.matchAll(/"(server\/[^":]+\.ts)::/g)].map((m) => m[1]));
+      expect(files.size, `no ${name} entries parsed`).toBeGreaterThan(floor);
+      const missing = [...files].filter((f) => !fs.existsSync(path.join(ROOT, f)));
+      expect(missing.join(", "), `${name} entries name files that do not exist`).toBe("");
+    }
   });
 
   it("the rule-2 register records that it holds two different things", () => {

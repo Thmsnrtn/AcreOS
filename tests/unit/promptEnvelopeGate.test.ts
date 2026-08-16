@@ -22,10 +22,36 @@
  * across 43 files — overwhelmingly `${totalMrr}`, `${paidOrgs.length}`,
  * `${closingDays}` and module constants. **A gate whose number is mostly noise
  * is one people learn to re-baseline**, so the definition was tightened until
- * every hit was real: the template must sit in a `content:` slot on an object
- * that also carries `role:` (that shape IS an LLM message), and the interpolated
- * expression must touch a free-text field from P0-14's own list. That took 237
- * to 10, and all ten were genuine.
+ * every hit was real: the template must REACH a `content:`/`prompt:` slot on an
+ * object that also carries `role:` (that shape IS an LLM message), and the
+ * interpolated expression must touch a free-text field from P0-14's own list.
+ * That took 237 to 10, and all ten were genuine.
+ *
+ * "REACHES", NOT "SITS IN" — and this header said "sit in" for one unit longer
+ * than the gate did, which is the stale half this file exists to prevent.
+ * Until unit 112's second pass the first rule genuinely was SITS-IN: the
+ * backtick had to be written literally in the slot. That made the gate blind to
+ * the very defect that built it. `executive.ts` did not write the template in
+ * the slot; it wrote
+ *
+ *     const systemPrompt = `… ${doc.extractedText} …`;
+ *     messages: [{ role: "system", content: systemPrompt }]
+ *
+ * and a slot holding a bare identifier matched nothing, so the gate scored ZERO
+ * on its own motivating defect. Hoisting a prompt one line up was a total
+ * bypass — and hoisting is simply how this codebase writes a long prompt: the
+ * script header records 57 of the 160 identifier-valued message slots in
+ * `server/` resolving to one. `hoistedMessageTemplates()` now walks the
+ * identifier back to its `const`/`let`/`var` template in the enclosing block and
+ * applies rules 2 and 3 unchanged; the ratchet's `lastBumpNote` records the cost
+ * as +7 findings, seven of seven confirmed real by hand.
+ *
+ * The resolver is guarded by a brace-balance scope check, and that guard is a
+ * DECISION, not an implementation detail: when the declaring block closed before
+ * the `content:` use, the `const` it found is not the one in scope, so the gate
+ * REFUSES the site rather than guessing. This gate misses rather than accuses,
+ * because a false accusation is how you teach people to ignore a gate. The
+ * refusal is pinned below like any other behaviour.
  *
  * `title` and `label` are deliberately EXCLUDED from the field list even though
  * they are prose, because in this repo they are dominated by code-defined
@@ -35,7 +61,10 @@
  * This file pins the gate's WIRING and its BEHAVIOUR on fixtures. The
  * fixture cases matter more than the count: a detector nobody has exercised
  * against a known-bad and a known-good input is a detector that can silently
- * become `return []`.
+ * become `return []`. That was literally true of the hoisted path until the
+ * fixtures below were written — it shipped protected only by the repo-wide
+ * count, which is the one number that cannot tell "the code got wrapped" apart
+ * from "the resolver stopped resolving".
  */
 
 import { describe, it, expect } from "vitest";
@@ -71,6 +100,20 @@ function fixture(dir: string) {
       JSON.stringify({ name: "prompt-envelope", direction: "down", baseline, allowlist }),
     );
   return { write, ratchet, run: (...a: string[]) => run("--root", dir, ...a) };
+}
+
+/**
+ * The gate prints what it SAW before it prints what it found. Reading that back
+ * is how a fixture tells "the resolver looked and found nothing wrong" apart
+ * from "the resolver never resolved anything" — the two produce an identical
+ * zero, and this whole family of gates dies on that ambiguity. Throwing when
+ * the line is absent is deliberate: a population assertion that silently skips
+ * is worse than none.
+ */
+function population(out: string): { files: number; templates: number } {
+  const m = out.match(/scanned (\d+) server files, (\d+) LLM message templates/);
+  if (!m) throw new Error(`the gate printed no population line; cannot judge the count:\n${out}`);
+  return { files: Number(m[1]), templates: Number(m[2]) };
 }
 
 describe("the gate is wired", () => {
@@ -254,6 +297,198 @@ describe("it catches the defect it was built for", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the hoisted shape — the bypass the first cut could not see", () => {
+  // Rule 1 is REACHES, not SITS-IN. Before unit 112's second pass it was
+  // SITS-IN, and `executive.ts`'s `const systemPrompt = …` / `content:
+  // systemPrompt` scored zero — the gate blind to its own motivating defect.
+  // The widening shipped protected ONLY by the repo-wide count, and a count
+  // cannot distinguish "the code got wrapped" from "the resolver stopped
+  // resolving". These fixtures make that distinction, which is the whole job.
+
+  it("flags a hoisted prompt const that reaches a message slot", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "envelope-hoisted-"));
+    try {
+      const f = fixture(dir);
+      // KNOWN-BAD: the unit-111 shape exactly — the template is written one
+      // line above the message, and the slot holds a bare identifier.
+      f.write(
+        "server/services/hoistedBad.ts",
+        "export async function analyze(doc: { rawText: string }) {\n" +
+          "  const p = `Analyze this document:\\n\\n${doc.rawText}`;\n" +
+          '  return ai({ messages: [{ role: "user", content: p }] });\n' +
+          "}\n",
+      );
+      // KNOWN-GOOD: byte-for-byte the same hoisted shape, field wrapped. Without
+      // this counterpart the test above could be satisfied by a gate that flags
+      // everything, which is the other way a detector goes useless.
+      f.write(
+        "server/services/hoistedGood.ts",
+        "export async function analyze(doc: { rawText: string }) {\n" +
+          '  const p = `Analyze this document:\\n\\n${wrapUntrusted(doc.rawText, "document")}`;\n' +
+          '  return ai({ messages: [{ role: "user", content: p }] });\n' +
+          "}\n",
+      );
+      f.ratchet(0);
+
+      const { code, out } = f.run("--report");
+      // Both consts must have RESOLVED. If the resolver regressed to `return []`
+      // this reads 0 and every assertion below would pass vacuously against an
+      // empty scan — the exact shape of failure this file is written against.
+      expect(
+        population(out).templates,
+        "the hoisted resolver reached neither const; the assertions below would be vacuous",
+      ).toBe(2);
+      expect(code).toBe(1);
+      expect(out).toContain("server/services/hoistedBad.ts");
+      expect(out).toContain("${doc.rawText}");
+      // The finding must SAY it came through an identifier, so a reader landing
+      // on the const line knows why that line is named and where to look next.
+      expect(
+        out,
+        "the finding does not name the identifier it resolved through",
+      ).toMatch(/\[hoisted: p → content: at line \d+\]/);
+      expect(out, "the wrapped hoisted site was accused anyway").not.toContain("hoistedGood.ts");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses, rather than guesses, when the declaring block closed before the use", () => {
+    // The scope guard is a deliberate REFUSAL: `scopeStillOpen()` walks the span
+    // between the const and the use and bails the moment brace depth goes
+    // negative, because the `const` it resolved is then a DIFFERENT binding in a
+    // block that already closed. Flagging it would be an accusation about code
+    // the gate cannot actually read, and this gate misses rather than accuses.
+    //
+    // A lone "not reported" assertion would also pass against a gate whose
+    // hoisted resolver returned `[]`, so it proves nothing on its own. The
+    // CONTROL below is the mutation control, run through the same binary: the
+    // identical file minus the block that closes MUST be flagged. Subject and
+    // control differ only in the wrapping block.
+    const ctrlDir = fs.mkdtempSync(path.join(os.tmpdir(), "envelope-scope-ctrl-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "envelope-scope-"));
+    try {
+      const ctrl = fixture(ctrlDir);
+      ctrl.write(
+        "server/services/outOfScope.ts",
+        "export async function analyze(doc: { rawText: string }, q: string) {\n" +
+          "  const p = `Draft a note about:\\n\\n${doc.rawText}`;\n" +
+          "  void p;\n" +
+          '  return ai({ messages: [{ role: "user", content: p }] });\n' +
+          "}\n",
+      );
+      ctrl.ratchet(0);
+      const control = ctrl.run("--report");
+      expect(
+        population(control.out).templates,
+        "the CONTROL resolved nothing, so the resolver is dead and the subject below proves nothing",
+      ).toBe(1);
+      expect(control.code, "the control shape must be flagged").toBe(1);
+      expect(control.out).toContain("server/services/outOfScope.ts");
+
+      // SUBJECT: same const, same field, same slot — but the block declaring it
+      // closes first, so the binding reaching `content:` is the parameter.
+      const f = fixture(dir);
+      f.write(
+        "server/services/outOfScope.ts",
+        "export async function analyze(doc: { rawText: string }, p: string) {\n" +
+          "  if (doc.rawText) {\n" +
+          "    const p = `Draft a note about:\\n\\n${doc.rawText}`;\n" +
+          "    void p;\n" +
+          "  }\n" +
+          '  return ai({ messages: [{ role: "user", content: p }] });\n' +
+          "}\n",
+      );
+      f.ratchet(0);
+      const { code, out } = f.run("--report");
+      // ZERO templates, not zero findings: the refusal happens at RESOLUTION,
+      // before the field predicate ever runs. Same file count as the control,
+      // one fewer template — that differential is the assertion.
+      expect(population(out).files).toBe(population(control.out).files);
+      expect(
+        population(out).templates,
+        "the gate resolved the out-of-scope const anyway — it is guessing about a binding it cannot see",
+      ).toBe(0);
+      expect(out, "an out-of-scope const was accused").not.toContain("outOfScope.ts:");
+      expect(out).toContain("PASS");
+      expect(code).toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(ctrlDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the real-tree scan is not allowed to go quiet", () => {
+  it("carries explicit population floors, comfortably below the live numbers", () => {
+    // The defect class this file guards against: a count that drops because the
+    // SCAN broke, reported as good news. The gate's own vacuity floors are the
+    // answer, so pin that they are WRITTEN DOWN rather than defaulted — a
+    // MISSING floor must fail as loudly as a breached one (the pattern in
+    // scripts/ratchets/reachability.json's `minima` block).
+    //
+    // MEASURED 2026-08-16 on this tree, via
+    //   node scripts/lint-prompt-envelope.mjs --measure
+    // → "scanned 1370 server files, 174 LLM message templates".
+    // The committed floors (1000 / 100) sit below those on purpose: they exist
+    // to catch a scan that stopped seeing, not to forbid deleting a prompt.
+    // Re-measure with the command above before changing any number here.
+    const cfg = JSON.parse(fs.readFileSync(CONFIG, "utf8")) as {
+      minScannedFiles?: number;
+      minMessageTemplates?: number;
+    };
+    expect(
+      typeof cfg.minScannedFiles,
+      "minScannedFiles is missing; the gate would fall back to a default nobody measured",
+    ).toBe("number");
+    expect(
+      typeof cfg.minMessageTemplates,
+      "minMessageTemplates is missing; the gate would fall back to a default nobody measured",
+    ).toBe("number");
+
+    const { out } = run("--measure");
+    const live = population(out);
+    expect(
+      live.files,
+      `scanned ${live.files} server files, floor ${cfg.minScannedFiles} — the scan lost sight of the tree`,
+    ).toBeGreaterThanOrEqual(cfg.minScannedFiles!);
+    expect(
+      live.templates,
+      `resolved ${live.templates} message templates, floor ${cfg.minMessageTemplates} — a reader broke`,
+    ).toBeGreaterThanOrEqual(cfg.minMessageTemplates!);
+
+    // THE AGGREGATE FLOOR IS NOT ENOUGH, and that was MEASURED, not assumed.
+    // Stubbing `hoistedMessageTemplates()` to `return []` on a scratch copy of
+    // the gate and running it against this tree on 2026-08-16 gave:
+    //
+    //     scanned 1370 server files, 117 LLM message templates
+    //     unenveloped free-text interpolations: 0 (baseline 1)
+    //
+    // 117 clears the committed floor of 100, so the gate would NOT have cried
+    // vacuous — it would have printed its stale-high branch: "Good news: 1
+    // site(s) were wrapped. Lock it in — set baseline: 0." A register telling
+    // the operator to lock in a number that was never true is the single most
+    // dangerous thing a counting gate can emit, and the aggregate floor sails
+    // straight past it, because ONE of two readers dying still leaves the other
+    // one's population standing.
+    //
+    // So the floor is tightened to sit between the two: live 174, dead-reader
+    // 117, floor 140. It keeps 34 templates of headroom for prompts that are
+    // legitimately deleted, and inlining a hoisted prompt (or hoisting an inline
+    // one) does not move this total at all — only deletion does. The fixtures in
+    // "the hoisted shape" above are the primary guard on that reader; this is
+    // the backstop for the case where nobody re-runs them.
+    const READER_FLOOR = 140; // 2026-08-16: live 174, hoisted-reader-dead 117.
+    expect(
+      live.templates,
+      `resolved ${live.templates} message templates, floor ${READER_FLOOR}. Measured 2026-08-16: ` +
+        `174 live, 117 with the hoisted reader dead. A drop toward that second number means a ` +
+        `READER BROKE, and any count below is fiction — do NOT lower this floor or the baseline ` +
+        `until --measure shows the templates are genuinely gone from server/.`,
+    ).toBeGreaterThanOrEqual(READER_FLOOR);
   });
 });
 

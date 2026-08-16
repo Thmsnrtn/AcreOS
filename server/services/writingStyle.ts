@@ -340,10 +340,21 @@ Respond with a JSON object:
 }`
       },
       {
+        // `propertyDetails.address` arrives raw from the request body
+        // (`POST /api/writing-styles/:id/generate` destructures it out of
+        // `req.body` and passes it straight through), so it is exactly P0-14's
+        // "property descriptions / customer-typed" category reaching a model.
+        // Wrapped in the same idiom this file already uses for the sample
+        // messages above. lint-prompt-envelope.mjs cannot see this site — its
+        // inline `content:` reader is one regex that stops at the first inner
+        // backtick, and the `recipientName` ternary on the line above opens one
+        // — so the count does NOT move when this is wrapped or unwrapped. It was
+        // found and fixed by hand; do not read a green gate as cover for
+        // unwrapping it.
         role: "user",
         content: `Write a ${messageContext.intent.replace("_", " ")} message about: ${messageContext.topic}
 ${messageContext.recipientName ? `Recipient: ${messageContext.recipientName}` : ""}
-${messageContext.propertyDetails ? `Property: ${messageContext.propertyDetails.address || "Property"}, ${messageContext.propertyDetails.acres} acres, $${messageContext.propertyDetails.price}` : ""}
+${messageContext.propertyDetails ? `Property: ${messageContext.propertyDetails.address ? wrapUntrusted(messageContext.propertyDetails.address, "property-address") : "Property"}, ${messageContext.propertyDetails.acres} acres, $${messageContext.propertyDetails.price}` : ""}
 ${messageContext.previousMessages?.length ? `Previous messages in conversation:\n${messageContext.previousMessages.join("\n")}` : ""}`
       }
     ],

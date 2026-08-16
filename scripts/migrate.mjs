@@ -9301,6 +9301,68 @@ const STATEMENTS = [
   //
   // Idempotent — a second run deletes nothing.
   `DELETE FROM "platform_feature_flags" WHERE "key" IN ('feature_vision_ai', 'feature_voice_ai', 'feature_negotiation_copilot')`,
+
+  // ── 0236: founder-authorized drop of EXPERIMENT RESIDUE tables ─────────────
+  // Founder ruling (picker, 2026-08-16): "Triage 3 ways, drop only experiment
+  // residue." Mirrors migrations/0236_drop_experiment_residue_tables.sql, which
+  // carries the long form; the full 48-table triage is in
+  // docs/company/deletion-ledger.md.
+  //
+  // lint-reachability's no-writer (62) ∩ no-reader (75) set is 48 tables. Those
+  // 48 were classified three ways. Only CLASS A is dropped: storage left behind
+  // by a module the deletion ledger ALREADY records as killed, holding no
+  // customer content. Class B (customer / regulated records) and class C
+  // (unclear) are untouched — customer-data deletion is a founder-only hard
+  // stop and this ruling did not authorise it.
+  //
+  //   playbook_evolutions / agent_improvement_plans / agent_synergy_map
+  //     ledger 2026-08-06 + 2026-08-14 — agentSelfImprovement, agentSynergyMap
+  //     and playbookEvolutionV9 all deleted; per-agent derived state, no org key.
+  //   compass_recommendations / spend_watchers / spend_optimizations /
+  //   causal_investigations / delegated_goals / external_intelligence
+  //     ledger 2026-08-14 (B19 classes 2+3) — named in that entry's own
+  //     DELETION-REVEALED list and queued for exactly this decision. AcreOS's
+  //     internal operating state, not customer rows.
+  //   product_specifications / build_buy_decisions / feature_impact_scores
+  //     ledger 2026-08-15 — only writer productEvolutionEngine.ts, deleted as a
+  //     fabricator. AcreOS's own roadmap, not customer data.
+  //   automation_executions
+  //     ledger 2026-07-29 — the /automation twin had NO execution engine;
+  //     createAutomationExecution had ZERO call sites, so this log can never
+  //     have held a row. That entry itself says the tables "remain in
+  //     shared/schema.ts pending a drop migration".
+  //
+  // NOT DROPPED, on purpose: automation_rules (customer-AUTHORED rules);
+  // agent_playbooks (institutional_patterns and signal_correlations — neither
+  // dead — hold FKs into it); scp_evolution_metrics (a stale unused import in
+  // services/scpGoldenSuite.ts must go first). See the .sql for the rest.
+  //
+  // DROP TABLE IF EXISTS is idempotent, so re-running every deploy is safe.
+  // NO CASCADE anywhere: cascade would silently take dependent objects this
+  // ruling never named. Verified zero inbound FKs to all thirteen across
+  // migrations/, this file, shared/ and server/.
+  //
+  // Twelve of the thirteen have no CREATE TABLE in migrations/*.sql or in this
+  // file (that is why they sit in scripts/schema-migrate-mirror.allowlist.json),
+  // so those DROPs are expected to be no-ops against tables prod never had —
+  // the real deletion is removing their pgTable definitions from
+  // shared/schema.ts. automation_executions is the exception: created by
+  // migrations/0001_brief_giant_man.sql, it does exist.
+  //
+  // table-count ratchet 763 -> 750.
+  `DROP TABLE IF EXISTS "playbook_evolutions"`,
+  `DROP TABLE IF EXISTS "agent_improvement_plans"`,
+  `DROP TABLE IF EXISTS "agent_synergy_map"`,
+  `DROP TABLE IF EXISTS "compass_recommendations"`,
+  `DROP TABLE IF EXISTS "spend_watchers"`,
+  `DROP TABLE IF EXISTS "spend_optimizations"`,
+  `DROP TABLE IF EXISTS "causal_investigations"`,
+  `DROP TABLE IF EXISTS "delegated_goals"`,
+  `DROP TABLE IF EXISTS "external_intelligence"`,
+  `DROP TABLE IF EXISTS "product_specifications"`,
+  `DROP TABLE IF EXISTS "build_buy_decisions"`,
+  `DROP TABLE IF EXISTS "feature_impact_scores"`,
+  `DROP TABLE IF EXISTS "automation_executions"`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
