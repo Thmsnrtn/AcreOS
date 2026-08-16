@@ -31,8 +31,11 @@
 // Exit codes
 // ──────────
 //   0 — all org-scoped tables conform (or every offender is in the baseline
-//        allowlist below)
-//   1 — at least one offender reported that is NOT in the baseline allowlist
+//        allowlist below), AND the scan itself proved sound
+//   1 — at least one offender reported that is NOT in the baseline allowlist,
+//        a stale allowlist entry, a scan population under its floor, a missing
+//        anchor schema file, or a pgTable the parser could not read (see
+//        "DESYNCS ARE RETURNED, NOT SWALLOWED" at the parser)
 //
 // Baseline allowlist
 // ──────────────────
@@ -252,6 +255,51 @@ const REPO_ROOT = resolve(__dirname, "..");
 const SHARED_DIR = join(REPO_ROOT, "shared");
 
 // ----------------------------------------------------------------------------
+// VACUITY GUARDS — anchors + population floors
+//
+// Every number this gate acts on is a count of BAD THINGS FOUND (new offenders,
+// stale allowlist entries), so a scan that stops seeing schema reports zero and
+// reads as a clean bill of health. This repo has already been burned by exactly
+// that class of lie three times in one day: a starved tsc reported 161 errors
+// "fixed", scripts/ratchet.mjs with one misspelled glob root printed "PASS — all
+// ratchets at baseline" while scanning ZERO files (and then invited the reader to
+// re-baseline to 0), and lint-reachability declared a live table dead and reached
+// a DROP TABLE candidate list on that basis.
+//
+// The ways THIS gate can go blind are concrete: shared/schema/ is renamed or
+// re-nested so findSchemaFiles() returns nothing; the schema is split into a
+// package the discovery does not walk; the pgTable call regex stops matching a
+// new declaration style. In each case scannedTables collapses and the verdict
+// stays "PASS".
+//
+// ANCHORS: the two schema files everything in this repo keys on must be found by
+// the discovery walk. Unlike check-residential-comps-hold.mjs there is NO fixture
+// mode here — nothing drives this script against synthetic repos, so a missing
+// anchor is always a broken scan. If a fixture harness is ever added, it must
+// supply these files (or add an explicit, deliberate fixture mode; do not simply
+// delete the anchors).
+//
+// FLOORS: measured 2026-08-16 by running this gate against the live repo —
+//   schema files    84   (shared/schema.ts + 83 under shared/schema/)
+//   pgTable blocks 746   (NOT the 759 an older doc quotes: thirteen tables were
+//                         dropped by the founder-authorised migration earlier
+//                         that day, so the number was re-measured rather than
+//                         copied)
+//   org-scoped     364
+//   conforming     217
+// Each floor sits ~75% of live: a broken walk or a dead regex trips it, while
+// ordinary table deletion — which this repo actively wants — does not. If a real
+// deletion wave takes a population under its floor, LOWER THE FLOOR IN THE SAME
+// COMMIT and name the wave. Never raise one to silence something, and never
+// delete one: an unfloored population is the whole defect.
+// ----------------------------------------------------------------------------
+const ANCHOR_SCHEMA_FILES = ["shared/schema.ts", "shared/schema/rental.ts"];
+const MIN_SCHEMA_FILES = 60; // live 84
+const MIN_PGTABLE_BLOCKS = 560; // live 746
+const MIN_ORG_SCOPED_TABLES = 270; // live 364
+const MIN_CONFORMING_TABLES = 160; // live 217
+
+// ----------------------------------------------------------------------------
 // File discovery
 // ----------------------------------------------------------------------------
 
@@ -286,17 +334,41 @@ function findSchemaFiles() {
 // opening `pgTable(` to the matching closing `)`. The contents are then
 // scanned for the columns map + the optional `(table) => [ … ]` indexes
 // callback (or the older `(t) => ({ … })` object form).
-
+//
+// DESYNCS ARE RETURNED, NOT SWALLOWED. This walker is an approximation of a
+// TypeScript parser, so it can lose the thread — an escaped quote at the end of
+// a string literal, a nested backtick inside a `${…}` interpolation, a regex
+// literal carrying an unbalanced paren. Until 2026-08-16 the loss was silent
+// (`if (endIdx === -1) continue;`), which is the worst possible behaviour for
+// this gate: the table vanished from the population, and a table that was never
+// parsed is INDISTINGUISHABLE from a table that conforms. The same walker has
+// already mis-parsed real schema once (an apostrophe in a comment swallowed
+// financial_ledger's index callback — see the BASELINE_OFFENDERS note), and that
+// bug produced a false ACCUSATION, which at least got investigated. A silent
+// drop produces a false ALL-CLEAR, which does not.
+//
+// So each unparseable call site is returned as a desync with its table name and
+// line, and main() fails on any of them. A parser that cannot read a table must
+// say which table.
 function extractPgTableBlocks(source) {
   const blocks = [];
+  const desyncs = [];
   // Match the literal call site so we can capture the table name and then
   // walk forward to the matching closing paren.
   const callRe = /\bpgTable\s*\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   let match;
   while ((match = callRe.exec(source)) !== null) {
     const tableName = match[1];
+    const matchLine = source.slice(0, match.index).split("\n").length;
     const openIdx = source.indexOf("(", match.index);
-    if (openIdx === -1) continue;
+    if (openIdx === -1) {
+      desyncs.push({
+        tableName,
+        line: matchLine,
+        reason: "no opening paren after the pgTable( call site",
+      });
+      continue;
+    }
     // Walk parens to find the matching close.
     let depth = 0;
     let endIdx = -1;
@@ -349,14 +421,26 @@ function extractPgTableBlocks(source) {
       }
       prevChar = ch;
     }
-    if (endIdx === -1) continue;
+    if (endIdx === -1) {
+      // The walk ran to EOF without closing. Report the table by name — never
+      // drop it. Whatever state the walker ended in is the best clue available
+      // to whoever has to fix the schema or this parser.
+      desyncs.push({
+        tableName,
+        line: matchLine,
+        reason:
+          `paren walk from the pgTable( call ran to end-of-file without balancing ` +
+          `(ended depth ${depth}` +
+          (inString ? `, still inside a ${inString === "`" ? "template literal" : "string"} opened with ${inString}` : "") +
+          (inComment ? `, still inside a ${inComment} comment` : "") +
+          `)`,
+      });
+      continue;
+    }
     const body = source.slice(openIdx + 1, endIdx);
-    // Find the line number of the pgTable call for error messages.
-    const before = source.slice(0, match.index);
-    const line = before.split("\n").length;
-    blocks.push({ tableName, body, line });
+    blocks.push({ tableName, body, line: matchLine });
   }
-  return blocks;
+  return { blocks, desyncs };
 }
 
 // ----------------------------------------------------------------------------
@@ -409,9 +493,13 @@ function main() {
   let orgScopedTables = 0;
   let conformingTables = 0;
 
+  const parserDesyncs = [];
+
   for (const file of files) {
+    const rel = file.replace(REPO_ROOT + "/", "");
     const source = readFileSync(file, "utf8");
-    const blocks = extractPgTableBlocks(source);
+    const { blocks, desyncs } = extractPgTableBlocks(source);
+    for (const d of desyncs) parserDesyncs.push({ ...d, file: rel });
     for (const { tableName, body, line } of blocks) {
       scannedTables += 1;
       if (!hasOrganizationIdColumn(body)) continue;
@@ -423,7 +511,7 @@ function main() {
         continue;
       }
       const entry = {
-        file: file.replace(REPO_ROOT + "/", ""),
+        file: rel,
         line,
         tableName,
         leadingColumns: leads,
@@ -446,6 +534,53 @@ function main() {
     if (!seenInBaseline.has(name)) staleAllowlistEntries.push(name);
   }
 
+  // ── Vacuity guards — evaluated BEFORE any count may read as clean ────────
+  const hardFailures = [];
+
+  const relFiles = new Set(files.map((f) => f.replace(REPO_ROOT + "/", "")));
+  const missingAnchors = ANCHOR_SCHEMA_FILES.filter((f) => !relFiles.has(f));
+  if (missingAnchors.length > 0) {
+    hardFailures.push(
+      `ANCHOR FILE(S) NOT DISCOVERED — ${missingAnchors.join(", ")} ` +
+        `(found ${ANCHOR_SCHEMA_FILES.length - missingAnchors.length}/${ANCHOR_SCHEMA_FILES.length}). ` +
+        `findSchemaFiles() is no longer reaching the schema, so every count below is measuring ` +
+        `a tree that is not this repo's schema. Fix the discovery walk — do not delete the anchor.`,
+    );
+  }
+
+  const floors = [
+    ["schema files", files.length, MIN_SCHEMA_FILES, "84 on 2026-08-16"],
+    ["pgTable blocks", scannedTables, MIN_PGTABLE_BLOCKS, "746 on 2026-08-16"],
+    ["org-scoped tables", orgScopedTables, MIN_ORG_SCOPED_TABLES, "364 on 2026-08-16"],
+    ["conforming tables", conformingTables, MIN_CONFORMING_TABLES, "217 on 2026-08-16"],
+  ];
+  for (const [label, observed, floor, measured] of floors) {
+    if (observed < floor) {
+      hardFailures.push(
+        `VACUOUS SCAN — ${label}: ${observed} (floor ${floor}; live was ${measured}). ` +
+          `Every count this gate acts on is a count of BAD THINGS FOUND, so a scan that stopped ` +
+          `seeing schema reports zero offenders and reads as PASS. Fix the SCAN. If a real ` +
+          `deletion wave earned this drop, lower the floor in the same commit and name the wave.`,
+      );
+    }
+  }
+
+  if (parserDesyncs.length > 0) {
+    hardFailures.push(
+      `PARSER DESYNC — ${parserDesyncs.length} pgTable call site(s) could not be parsed and were ` +
+        `therefore NOT in any count above. A table the walker cannot read looks exactly like a ` +
+        `table that conforms, which is why this is a failure and not a skip:\n` +
+        parserDesyncs
+          .map(
+            (d) =>
+              `        · ${d.file}:${d.line} — pgTable("${d.tableName}"): ${d.reason}`,
+          )
+          .join("\n") +
+        `\n      Fix the schema (an unterminated string / an unbalanced paren inside a template ` +
+        `literal is the usual cause) or teach the walker the construct. Do not restore the silent skip.`,
+    );
+  }
+
   // Always print a summary so the run is auditable.
   console.log(
     `[check-org-leading-index] scanned ${scannedTables} pgTable blocks ` +
@@ -458,10 +593,32 @@ function main() {
       `new offenders: ${newOffenders.length}, ` +
       `stale allowlist entries: ${staleAllowlistEntries.length}`,
   );
+  console.log(
+    `[check-org-leading-index] populations vs floors: schema files ${files.length} ` +
+      `(floor ${MIN_SCHEMA_FILES}), pgTable blocks ${scannedTables} (floor ${MIN_PGTABLE_BLOCKS}), ` +
+      `org-scoped ${orgScopedTables} (floor ${MIN_ORG_SCOPED_TABLES}), ` +
+      `conforming ${conformingTables} (floor ${MIN_CONFORMING_TABLES}); ` +
+      `anchors found ${ANCHOR_SCHEMA_FILES.length - missingAnchors.length}/${ANCHOR_SCHEMA_FILES.length}; ` +
+      `parser desyncs ${parserDesyncs.length} (must be 0)`,
+  );
 
-  if (newOffenders.length === 0 && staleAllowlistEntries.length === 0) {
+  if (
+    newOffenders.length === 0 &&
+    staleAllowlistEntries.length === 0 &&
+    hardFailures.length === 0
+  ) {
     console.log("[check-org-leading-index] PASS");
     process.exit(0);
+  }
+
+  if (hardFailures.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-leading-index] FAIL — the scan itself cannot be trusted, so the counts " +
+        "above mean nothing:",
+    );
+    for (const f of hardFailures) console.error(`  ✗ ${f}`);
+    console.error("");
   }
 
   if (newOffenders.length > 0) {
