@@ -85,7 +85,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "tests/unit/spendGateStatusRouting.test.ts",
         "tests/unit/founderHardStopGuardrails.test.ts",
       ],
-      note: "Two independent enforcements: spendIsAutonomous() is true only for Tier 1 ($0–$500) and the executor hard-stops every non-approved gate status; separately checkHardGuardrails() blocks any actionPayload.amount over HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents = $500) before the AI is consulted.",
+      note: "Two independent enforcements: spendIsAutonomous() is true only for Tier 1 ($0–$500) and the executor hard-stops every non-approved gate status; separately checkHardGuardrails() blocks any actionPayload.amount over HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents = $500) before the AI is consulted. HARDENED unit 118: an enforcement audit bypassed the old checkHardGuardrails deny-list with trivially varied strings (execute_agreement, countersign, gdpr_erasure, discount_apply and eleven more — every one returned blocked:false). It now classifies INTENT TOKENS (single-token triggers plus noun+verb pairs in either order, camelCase/underscore-split), erring CLOSED — a false block defers to founder review, a false pass would execute a hard-stop autonomously. hardStopIntentClassifier.test.ts pins the full bypass corpus blocked AND the executor's legitimate universe unblocked, and pins the execution switch's default honest (it used to record success:true for item types with no executor).",
     },
   },
   {
@@ -103,7 +103,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "shared/billing/tier-pricing.ts",
         "server/services/railSunsetDecisionCards.ts",
       ],
-      note: "checkHardGuardrails() blocks BILLING_SUBSCRIPTION_ACTIONS (incl. 'pricing_change') before the AI is consulted, matched against actionType/itemType/category. Prices themselves are static constants, and open pricing questions reach the founder as decision cards.",
+      note: "checkHardGuardrails() blocks BILLING_SUBSCRIPTION_ACTIONS (incl. 'pricing_change') before the AI is consulted, matched against actionType/itemType/category. Prices themselves are static constants, and open pricing questions reach the founder as decision cards. HARDENED unit 118: an enforcement audit bypassed the old checkHardGuardrails deny-list with trivially varied strings (execute_agreement, countersign, gdpr_erasure, discount_apply and eleven more — every one returned blocked:false). It now classifies INTENT TOKENS (single-token triggers plus noun+verb pairs in either order, camelCase/underscore-split), erring CLOSED — a false block defers to founder review, a false pass would execute a hard-stop autonomously. hardStopIntentClassifier.test.ts pins the full bypass corpus blocked AND the executor's legitimate universe unblocked, and pins the execution switch's default honest (it used to record success:true for item types with no executor).",
     },
   },
   {
@@ -131,7 +131,13 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "classes; it does NOT cover legal exposure from non-signing acts — an " +
         "accepted sub-$500 offer letter can still form a contract. That " +
         "residual exposure is real and named deliberately, per " +
-        "refuse-not-fabricate.",
+        "refuse-not-fabricate. HARDENED unit 118: an enforcement audit " +
+        "bypassed the deny-list with execute_agreement (word order), " +
+        "countersign, accept_loi, bind_terms and purchase_agreement_send — " +
+        "all blocked:false. checkHardGuardrails now classifies intent tokens " +
+        "(singles + noun/verb pairs, order-free), erring closed; " +
+        "hardStopIntentClassifier.test.ts pins the bypass corpus blocked and " +
+        "the executor's legitimate universe unblocked.",
     },
   },
   {
@@ -148,7 +154,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "tests/unit/founderHardStopGuardrails.test.ts",
         "server/services/founder-chat/tool-registry.ts",
       ],
-      note: "checkHardGuardrails() blocks DATA_DELETION_ACTIONS (data_deletion, bulk_delete, account_deletion, record_purge, permanent_delete) AND any payload carrying a delete/permanent/purge intent flag, before the AI is consulted. Founder-chat destructive tools additionally carry a kill switch + confirmation.",
+      note: "checkHardGuardrails() blocks DATA_DELETION_ACTIONS (data_deletion, bulk_delete, account_deletion, record_purge, permanent_delete) AND any payload carrying a delete/permanent/purge intent flag, before the AI is consulted. Founder-chat destructive tools additionally carry a kill switch + confirmation. HARDENED unit 118: an enforcement audit bypassed the old checkHardGuardrails deny-list with trivially varied strings (execute_agreement, countersign, gdpr_erasure, discount_apply and eleven more — every one returned blocked:false). It now classifies INTENT TOKENS (single-token triggers plus noun+verb pairs in either order, camelCase/underscore-split), erring CLOSED — a false block defers to founder review, a false pass would execute a hard-stop autonomously. hardStopIntentClassifier.test.ts pins the full bypass corpus blocked AND the executor's legitimate universe unblocked, and pins the execution switch's default honest (it used to record success:true for item types with no executor).",
     },
   },
   {

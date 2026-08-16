@@ -7654,3 +7654,49 @@ fresh-eyes audit exists for. The wave rule applies to THIS program's output, not
 only to fleets of other agents.
 
 `npm run check` exits 0; `tests/unit` is 706 files / 9,214 tests green.
+
+## Unit 118 — the four hard-stops, enforced by intent instead of spelling · this commit
+
+The unenforced-rules audit's sharpest finding, verified against code before
+acting: `checkHardGuardrails` — the function the constitution cites as the
+enforcement for the pricing, legal-signing, data-deletion and money-custody
+hard-stops — matched a deny-list of exact strings with `actionType.includes(t)`.
+`execute_agreement` (word order), `countersign`, `accept_loi`, `gdpr_erasure`,
+`discount_apply`, `trial_extend`, `comp_account`, `waive_fee`, `set_price` and
+more all returned `blocked: false`, against a rule stated as *"NEVER autonomous,
+forever."* **A deny-list of exact strings can never enforce a "never" — whoever
+names the action picks the string.**
+
+The enforcement now classifies **intent tokens**: action strings split on
+underscores/dashes/camelCase, blocking on single-token triggers (`countersign`,
+`gdpr`, `purge`, `payout`) or noun+verb pairs in either order (`agreement` +
+`execute`). Four categories — billing/pricing, data deletion, legal signing,
+money movement. The old exact-string lists stay as fast paths with better
+messages.
+
+**The direction of error is chosen and stated**: a false block routes to founder
+review ("deferred") — mild friction; a false pass executes a hard-stop
+autonomously — the forbidden thing. So collisions err closed
+(`payment_reminder_send` defers even though a reminder is benign). The cost side
+is pinned: the executor's real universe (its own switch cases,
+`dunning_recovery`, `comps_refresh`, `clear_cache`, `contract_review`…) must
+stay unblocked, and the block-everything mutation fails 19 tests.
+
+**A second fabrication found at the call site's far end**: the execution
+switch's `default:` returned `success: true, "Generic approval"` for item types
+with **no registered executor** — a "committed" preview record and an audit row
+for an action nothing ran, the same defect as `executionEngine`'s fail-open. It
+now records `success: false` with an explicit nothing-was-executed detail. This
+is also the honest backstop for the classifier's stated limit: a purely novel
+euphemism (`tidy_documents`) still passes token classification — pinned as a
+test so nobody reads the corpus as bypass-proof — but executes nothing.
+
+Mutations: gut the classifier (29 tests fail), block everything (19 fail —
+the cost side works), revert the default (1 fails). The constitution's four
+notes are updated to describe the hardened enforcement. And the prose-trip
+shape appeared a fourteenth time: my own comment explaining the removed
+fabrication quoted its detail string, and the test forbidding that string
+caught my comment.
+
+Committed alone while the ruled-fixes wave edits its disjoint files; the full
+gate run lands with the wave's integration commit.
