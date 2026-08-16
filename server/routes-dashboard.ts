@@ -423,22 +423,23 @@ export function registerDashboardRoutes(app: Express): void {
   // TELEMETRY
   // ============================================
   
-  api.post("/api/telemetry", isAuthenticated, async (req, res) => {
-    const { events } = req.body;
-    const user = req.user;
-    const org = req.organization;
-    
-    // Log events for now (can be sent to analytics service later)
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('[Telemetry]', { metadata: { detail: { userId: user?.id, orgId: org?.id, events } } });
-    }
-    
-    // In production, you could send to:
-    // - PostHog
-    // - Mixpanel
-    // - Your own analytics database
-    
-    res.json({ success: true });
+  // Unit 121: this endpoint stored nothing and, in production, logged nothing
+  // either — it answered `{ success: true }` to every batch. Its only caller
+  // (client/src/lib/telemetry.ts) now routes to the live PostHog sink instead,
+  // so nothing should reach here at all.
+  //
+  // It is kept as an HONEST 410 rather than deleted: an old bundle cached in a
+  // browser will keep POSTing for a while, and a 404 would read as a routing
+  // bug to whoever sees it in the logs. Refuse-not-fabricate — a receipt for
+  // work not done is the defect; a clear refusal is not.
+  api.post("/api/telemetry", isAuthenticated, async (_req, res) => {
+    logger.info("[telemetry] retired endpoint called — client should use the analytics sink");
+    return res.status(410).json({
+      error: "GONE",
+      message:
+        "Client telemetry is captured directly by the analytics sink; this endpoint stored nothing and no longer accepts events.",
+      statusCode: 410,
+    });
   });
   
   // ============================================

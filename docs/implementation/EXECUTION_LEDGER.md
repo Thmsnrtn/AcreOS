@@ -7808,3 +7808,61 @@ the deleted renderers), `check-no-fabrication`'s line-keyed allowlist
 both locked in.
 
 `npm run check` exits 0; the suite is 725 files / 9,537 tests green.
+
+## Unit 121 — three duplicates with live consequences · this commit
+
+The tail of the duplicate-exports sweep. All three were "same name, same
+concept, different answer", and each one's consequence was visible to a user.
+
+### A founder toggle that reported success and reached nothing
+
+**Founder ruling (picker, 2026-08-15): bridge the reads.** This repo has TWO
+settings services — `founderSettings.ts`/`founder_settings` (TEXT, env fallback,
+what the RUNTIME reads) and `settings.ts`/`platform_settings` (JSONB, scope
+walk, validation, audit rows, what `PATCH /api/founder/studio/dial` WRITES).
+They are mostly disjoint; the catalogs overlap on **exactly two live keys**, and
+both were on opposite sides of a broken wire:
+
+```
+founder flips archival.enabled in the studio
+  → settings.setSetting → platform_settings → founder_audit row → 200 OK
+the archival sweep reads it
+  → founderSettings.getSetting → founder_settings → not there → stays off
+```
+
+**A control that reports success while reaching nothing is worse than a missing
+control**, because the audit trail then says it was set. `getSetting` now
+consults `platform_settings` first for an overlapping key and falls through
+unchanged otherwise, so an untouched knob behaves exactly as before.
+`settingsOverlap.test.ts` pins the ordering, the fail-safe fallthrough, the
+JSONB→string conversion (`archival.ts` compares against the literal `"true"` —
+returning a boolean through a `Promise<string|null>` would have been the same
+bug with extra steps), and — the load-bearing assertion — **that the overlap is
+exactly those two keys**, so a third one is a decision rather than a surprise.
+
+### `trackEvent`: two sinks, one discarding in production
+
+`@/lib/analytics` captures to PostHog and is read by the acquisition dashboard.
+`@/lib/telemetry` queued and flushed to `POST /api/telemetry`, which in
+production **logged nothing, stored nothing, forwarded nothing, and answered
+`{ success: true }`**. Same name, same signature, both imported bare in the same
+SPA: whether an event survived depended on which module the author's editor
+auto-imported, and four modules were on the discarding side — `today.tsx` among
+them. `telemetry.ts` is now a thin alias over the live sink (its queue is
+deleted rather than ported — posthog-js already batches and flushes on unload,
+and a second queue in front of it is a second owner). The endpoint answers **410
+with a reason** rather than a false receipt, and is kept rather than deleted
+because a cached bundle will keep POSTing and a 404 would read as a routing bug.
+
+### `useIsMobile`: same breakpoint, opposite answer
+
+`@/hooks/use-mobile` returns `{ isMobile, isTablet, … }`; a second copy in
+`MobileCardList.tsx` returned a bare boolean. Both used 768px — they agreed on
+the value and disagreed on the SHAPE, **and an object is always truthy**, so
+anyone who auto-imported the wrong one and wrote `if (useIsMobile())` got the
+mobile branch on a 1440px desktop. The copy had zero importers and was unused
+inside its own file: a dead export whose only effect was to be an ambiguous
+auto-import target with an incompatible contract. Deleted.
+
+Mutations: regrow telemetry's queue+POST (caught), invert the settings bridge
+order (caught).
