@@ -1472,7 +1472,17 @@ export class WebhookHandlers {
           const lenderOrg = await storage.getOrganization(note.organizationId);
           const collector = lenderOrg?.name?.trim() || 'your lender';
           const custodyLine = `This payment was collected by ${collector}. AcreOS is the software your lender uses — it doesn't hold your payment or take a share of it.`;
-          await emailService.sendEmail({
+          const receiptResult = await emailService.sendEmail({
+            // COUNTERPARTY (founder decision 2026-07-17). The lender org owns
+            // this message — it is their borrower (storage.getLead(
+            // note.organizationId, note.borrowerId)), their charge on their own
+            // connected processor, their identity. The body already says
+            // "AcreOS is the software your lender uses", which only stays true
+            // if the mail leaves under the lender's identity rather than the
+            // platform's. No connected identity → honest refusal, no @acreos.io
+            // fallback.
+            organizationId: note.organizationId,
+            purpose: 'counterparty',
             to: borrowerEmail,
             subject: `Payment Receipt — $${amount.toFixed(2)}`,
             html: `
@@ -1490,7 +1500,21 @@ export class WebhookHandlers {
             `,
             text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPaid To: ${collector}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}\n\n${custodyLine}`,
           });
-          logger.info(`[webhook] Payment receipt sent to ${borrowerEmail}`);
+          // sendEmail RETURNS a refusal (it does not throw), so the catch below
+          // never sees one. Log what actually happened — the payment itself is
+          // already recorded and must not be rolled back for a mail failure.
+          if (receiptResult.success) {
+            logger.info(`[webhook] Payment receipt sent to ${borrowerEmail}`);
+          } else {
+            logger.warn('[webhook] Payment receipt NOT sent — borrower has no receipt', {
+              metadata: {
+                organizationId: note.organizationId,
+                noteId: note.id,
+                errorType: receiptResult.errorType,
+                error: receiptResult.error,
+              },
+            });
+          }
         }
       } catch (emailErr) {
         logger.warn('[webhook] Could not send payment receipt email', emailErr instanceof Error ? emailErr : undefined);

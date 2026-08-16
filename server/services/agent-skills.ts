@@ -294,6 +294,21 @@ const sendEmailSkill: Skill = {
         subject,
         html: body.includes("<") ? body : `<p>${body.replace(/\n/g, "</p><p>")}</p>`,
         organizationId: context.organizationId,
+        // COUNTERPARTY (founder decision 2026-07-17). This skill belongs to the
+        // communications agent only ("Handles all lead communication"), its
+        // recipient is agent-chosen and free-form, its one optional param is a
+        // leadId, and its own example addresses seller@example.com — every
+        // reachable recipient is one of the customer's contacts, not an AcreOS
+        // user. The same engine's own send_email action already labels this
+        // lane (workflow-engine.ts, "BYO identity or nothing"), and
+        // run_agent_skill reaches these same recipients through here; an
+        // unlabelled lane on this side is a way around that rule, not a
+        // different case from it.
+        //
+        // The isConfigured() gate above does NOT stand in for the label:
+        // getCredentials() falls back to platform creds (emailService.ts:265),
+        // so it returns true for an org with no identity of its own.
+        purpose: "counterparty",
       });
 
       if (result.success) {

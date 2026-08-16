@@ -367,14 +367,28 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
       .where(eq(dealRooms.id, dealRoomId))
       .returning();
 
-    // Send email invitation to the new participant
+    // Send email invitation to the new participant.
+    //
+    // The participant row is already committed, so a mail failure must not fail
+    // the request — but it must not be hidden either: an invitee who never got
+    // the link is indistinguishable from one who ignored it. The outcome rides
+    // back on the response.
+    let invitationSent = false;
+    let invitationError: string | undefined;
     try {
       const { emailService } = await import('./services/emailService');
       const org = req.organization;
       const dealRoomUrl = `${process.env.APP_URL ?? 'http://localhost:5000'}/deal-rooms/${dealRoomId}`;
-      await emailService.sendEmail({
+      // COUNTERPARTY (founder decision 2026-07-17). `email` is a free-form
+      // address from the request body and the default role is "buyer" — this is
+      // the org inviting the other side of its deal into the room. The body is
+      // signed "— {org.name} Team", so sending it from the platform identity is
+      // the re-front the ruling forbids: the customer's name over AcreOS's
+      // envelope. No connected identity → refusal, reported below.
+      const inviteResult = await emailService.sendEmail({
         to: email,
         subject: `You've been invited to a deal room`,
+        purpose: 'counterparty',
         html: `
           <p>Hi,</p>
           <p>You have been invited to join a deal room as a <strong>${role}</strong>.</p>
@@ -385,14 +399,28 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
         text: `You've been invited to join a deal room as a ${role}. Access it here: ${dealRoomUrl}`,
         organizationId: org?.id,
       });
+      invitationSent = inviteResult.success;
+      if (!inviteResult.success) {
+        // sendEmail returns refusals rather than throwing, so the catch below
+        // never sees the "no connected identity" case.
+        invitationError = inviteResult.error;
+        logger.warn('[deal-rooms] Invitation email not sent', {
+          metadata: {
+            dealRoomId,
+            organizationId: org?.id,
+            errorType: inviteResult.errorType,
+          },
+        });
+      }
     } catch (emailErr) {
       // Non-fatal: participant is already added; log and continue
+      invitationError = emailErr instanceof Error ? emailErr.message : 'Invitation email failed';
       logger.error('[deal-rooms] Failed to send invitation email', undefined, { metadata: { detail: emailErr } });
     }
 
     broadcastToDealRoom(req, dealRoomId, { type: 'participant_added', participant: newParticipant });
 
-    res.status(201).json({ dealRoom: updated });
+    res.status(201).json({ dealRoom: updated, invitationSent, invitationError });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");
   }

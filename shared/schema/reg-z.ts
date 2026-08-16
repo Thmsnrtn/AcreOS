@@ -42,6 +42,71 @@ import { organizations } from "../schema";
 // can re-download exactly what we sent.
 // ============================================================================
 
+/**
+ * The delivery-status vocabulary for `periodic_statements.delivery_status`.
+ *
+ * A reader must be able to tell WHICH of the non-delivered outcomes
+ * happened, because they have different owners and different remedies:
+ *
+ *   pending                 — generated, notifier has not run yet.
+ *   delivered               — the borrower email left the building.
+ *   bounced                 — SES rejected the RECIPIENT (bad/dead address).
+ *   failed                  — transient send error (throttle, network, SES
+ *                             outage). The borrower and the org are both
+ *                             fine; the send is worth another attempt.
+ *   suppressed              — no borrower email on file. Nothing to send TO.
+ *                             Owner: the org's borrower record.
+ *   blocked_no_org_identity — the ORG has no connected sending identity, so
+ *                             the counterparty send was refused rather than
+ *                             re-fronted onto AcreOS's platform identity
+ *                             (founder decision 2026-07-17: "no re-fronting
+ *                             platform send rails"). Nothing about the
+ *                             borrower or the network is wrong — the
+ *                             customer has not connected email. Owner: the
+ *                             org, prompted by a founder/org alert.
+ *
+ * `blocked_no_org_identity` is deliberately NOT `failed`: parking a
+ * §1026.41 statutory statement in `failed` would retry it forever against
+ * an org that will never satisfy the precondition by retrying.
+ */
+export const PERIODIC_STATEMENT_DELIVERY_STATUSES = [
+  "pending",
+  "delivered",
+  "bounced",
+  "failed",
+  "suppressed",
+  "blocked_no_org_identity",
+] as const;
+
+export type PeriodicStatementDeliveryStatus =
+  (typeof PERIODIC_STATEMENT_DELIVERY_STATUSES)[number];
+
+/**
+ * Named constant for the BYO-identity block so no caller has to spell the
+ * literal (a typo'd literal would silently become a retryable unknown
+ * status rather than a terminal one).
+ */
+export const DELIVERY_STATUS_BLOCKED_NO_ORG_IDENTITY =
+  "blocked_no_org_identity" as const;
+
+/**
+ * TERMINAL statuses — the notifier must never re-attempt a send for a row
+ * carrying one of these. This set IS the retry policy: everything not
+ * listed here is retried when the notifier is re-entered.
+ *
+ * `delivered` is terminal because re-sending would double-mail the
+ * borrower. `blocked_no_org_identity` is terminal because retrying cannot
+ * change the outcome — only the org connecting an email identity can, and
+ * that is what the founder/org alert exists to prompt.
+ *
+ * Recovery is deliberately operator-driven, not automatic: an ops
+ * `generateStatementsForCycle(org, date, { regenerate: true })` rewrites
+ * the whole row — including `deliveryStatus: "pending"` — which is the one
+ * sanctioned way back out of a terminal state.
+ */
+export const PERIODIC_STATEMENT_TERMINAL_DELIVERY_STATUSES: readonly PeriodicStatementDeliveryStatus[] =
+  ["delivered", DELIVERY_STATUS_BLOCKED_NO_ORG_IDENTITY];
+
 export const periodicStatements = pgTable(
   "periodic_statements",
   {
@@ -144,8 +209,12 @@ export const periodicStatements = pgTable(
     generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     deliveryMethod: text("delivery_method"), // 'email' | 'portal_only' | 'mail' (future)
+    // Plain `text`, NOT a pg enum and NOT CHECK-constrained (see the
+    // CREATE TABLE in scripts/migrate.mjs:4650-4680 — `"delivery_status"
+    // text NOT NULL DEFAULT 'pending'`). Adding a value to
+    // PERIODIC_STATEMENT_DELIVERY_STATUSES therefore needs NO migration;
+    // the vocabulary below is the only place the set is declared.
     deliveryStatus: text("delivery_status").notNull().default("pending"),
-    // 'pending' | 'delivered' | 'bounced' | 'failed' | 'suppressed'
     deliveryError: text("delivery_error"),
 
     // S3 key of the rendered PDF. Render-on-demand is supported but caching

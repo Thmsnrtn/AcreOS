@@ -148,14 +148,38 @@ export function registerInboundEmailRoutes(app: Express): void {
         const { to, subject, body } = parsed.data;
         const replyTo = generateReplyToAddress(leadId, org.id);
 
-        // Send via SES
-        await sendEmail({
+        // Send via SES.
+        //
+        // COUNTERPARTY (founder decision 2026-07-17). `to` is the other side of
+        // a lead email thread — the client fills it from the inbound message's
+        // fromEmail or the lead's own address (client/src/components/
+        // deal-inbox.tsx), i.e. the org's seller/buyer, never an AcreOS user.
+        // organizationId is the sending org's own id — the same one already
+        // baked into the reply-to address above — so the send rides the org's
+        // BYO SES credentials / verified sending identity. With no connected
+        // identity emailService refuses rather than falling back to @acreos.io.
+        const sendResult = await sendEmail({
           to,
           subject,
           html: body,
           text: body,
           replyTo,
+          organizationId: org.id,
+          purpose: 'counterparty',
         });
+
+        // A refused send must NOT leave an outbound record behind: the thread
+        // would then show a reply the seller never received. Report the
+        // service's own actionable message instead.
+        if (!sendResult.success) {
+          logger.warn("[InboundEmail] reply not sent", {
+            metadata: { leadId, organizationId: org.id, errorType: sendResult.errorType },
+          });
+          return Errors.unprocessable(
+            res,
+            sendResult.error || "Reply could not be sent.",
+          );
+        }
 
         // Store outbound record
         await storeOutboundEmail({

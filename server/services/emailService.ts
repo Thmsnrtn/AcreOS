@@ -841,6 +841,16 @@ export class EmailService {
       subject?: string;
       templateData: Record<string, any>;
       organizationId?: number;
+      /**
+       * Lane for the underlying send (founder decision, 2026-07-17). Forwarded
+       * verbatim to sendEmail — this wrapper does NOT decide the lane, because
+       * only the call site knows whether the recipient is one of AcreOS's own
+       * users or one of the customer's counterparties. Omitted here means
+       * omitted there, so the sendEmail default ("system") still applies and a
+       * miswired lane stays visible as an absent field rather than an
+       * unreviewable explicit "system".
+       */
+      purpose?: 'system' | 'counterparty';
     }
   ): Promise<EmailResult> {
     const templates: Record<string, { subject: string; html: string }> = {
@@ -897,6 +907,7 @@ export class EmailService {
       html: template.html,
       organizationId: options.organizationId,
       transactional,
+      purpose: options.purpose,
     });
   }
 

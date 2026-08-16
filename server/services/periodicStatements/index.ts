@@ -624,7 +624,19 @@ async function generateOneStatement(input: GenerateOneInput): Promise<boolean> {
   // the cron batch; we catch + log so the remaining loans keep generating.
   try {
     const { notifyStatementGenerated } = await import("./delivery");
-    await notifyStatementGenerated(persistedId);
+    const notifyResult = await notifyStatementGenerated(persistedId);
+    // A BYO-identity block is not an error and not a success — the row is
+    // generated and portal-readable, but the statutory email will never
+    // go out until the org connects email. It is TERMINAL (never retried),
+    // so if it is not logged here it is invisible in the cron's
+    // "generated=N errors=M" summary. The founder/org alert is raised
+    // inside the notifier; this is the operator-facing breadcrumb.
+    if (notifyResult.blockedNoOrgIdentity) {
+      logger.warn(
+        `[periodicStatements] statement ${persistedId} (loan ${loanId}, org ${organizationId}) generated but email BLOCKED — org has no connected email identity; not retried`,
+        { metadata: { statementId: persistedId, organizationId, loanId } },
+      );
+    }
   } catch (notifyErr) {
     logger.warn(
       `[periodicStatements] notify failed for statement ${persistedId} (loan ${loanId}) — generation succeeded, email did not`,
@@ -1139,7 +1151,14 @@ async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Pr
   // accordingly.
   try {
     const { notifyStatementGenerated } = await import("./delivery");
-    await notifyStatementGenerated(persistedId);
+    const notifyResult = await notifyStatementGenerated(persistedId);
+    // Same breadcrumb as the originated path — see the comment there.
+    if (notifyResult.blockedNoOrgIdentity) {
+      logger.warn(
+        `[periodicStatements] acquired-note statement ${persistedId} (note ${loanId}, org ${organizationId}) generated but email BLOCKED — org has no connected email identity; not retried`,
+        { metadata: { statementId: persistedId, organizationId, loanId } },
+      );
+    }
   } catch (notifyErr) {
     logger.warn(
       `[periodicStatements] notify failed for acquired-note statement ${persistedId} (note ${loanId}) — generation succeeded, email did not`,
