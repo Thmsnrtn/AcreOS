@@ -85,6 +85,50 @@ RTO is unproven.
 
 ---
 
+## Rebuilding the schema from the repository (no backup involved)
+
+**Verified 2026-08-17 against PostgreSQL 16.** Everything above restores from a
+`pg_dump`. This is the other path: standing the schema up from source alone —
+what you need for a new staging environment, a local database, or the case where
+the dump itself is gone.
+
+```bash
+createdb acreos_rebuild
+psql "$URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'   # pgvector, required
+
+# TWO passes. Both are required, and the order is fixed.
+for pass in 1 2; do
+  for f in migrations/*.sql; do psql "$URL" -f "$f"; done
+  DATABASE_URL="$URL" node scripts/migrate.mjs
+done
+```
+
+**Why twice.** The dependency graph is genuinely circular: `migrations/*.sql`
+contains tables that `migrate.mjs` ALTERs, and `migrate.mjs` contains tables
+(`rehabs`, `acquired_notes`, `rental_leases`) that later migrations reference.
+Neither ordering satisfies both. Every statement is idempotent, so a second pass
+picks up whatever the first could not resolve. Measured: pass 1 leaves 39
+migration files failing on missing prerequisites, pass 2 drops that to 17, and
+after it **all 746 tables in shared/schema.ts exist**, with `migrate.mjs`
+exiting 0 and zero unexpected failures. The remaining 17 are re-runs of
+already-applied work, not gaps.
+
+Verify rather than trust the count — a table list is the only real answer:
+
+```bash
+psql "$URL" -tAc "SELECT table_name FROM information_schema.tables
+                   WHERE table_schema='public' ORDER BY 1"
+```
+
+**What this looked like before it was fixed:** `node scripts/migrate.mjs`
+against an empty database EXITED 0 having created 193 of 747 tables, with no
+`organizations` table at all — and step 5 below, which verifies a restore with
+`--dry-run`, passed on exactly that. The script now refuses to run when
+foundational tables are absent, so both the rebuild and the restore check fail
+loudly instead of reporting a clean bill of health over a broken database.
+
+---
+
 ## `migrate.mjs --dry-run` / `--check` (pre-deploy schema gate)
 
 `scripts/migrate.mjs` is the Drizzle-bypass idempotent patcher run as the Fly

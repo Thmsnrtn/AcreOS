@@ -16,7 +16,7 @@
 CREATE TABLE IF NOT EXISTS earnest_money_events (
   id                varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id   integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  hold_id           varchar NOT NULL REFERENCES earnest_money_holds(id) ON DELETE CASCADE,
+  hold_id           uuid    NOT NULL REFERENCES earnest_money_holds(id) ON DELETE CASCADE,
 
   -- Transition. from_state is null for the initial 'recorded' event.
   from_state        text,

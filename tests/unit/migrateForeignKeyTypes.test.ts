@@ -50,6 +50,56 @@ const norm = (raw: string): string => {
   return NORMALISE[t] ?? t;
 };
 
+/**
+ * Types Postgres will happily join across a foreign key.
+ *
+ * VERIFIED BY EXPERIMENT against PostgreSQL 16, not assumed — an earlier
+ * version of this file compared type NAMES and reported
+ * `error_boundary_trips.user_id text -> users.id varchar` as a defect. It is
+ * not one: Postgres accepts a text → varchar foreign key (both are string
+ * types sharing an equality operator), and that exact table was created
+ * without complaint during the rebuild that produced these findings. Comparing
+ * spellings rather than compatibility would have made this gate cry wolf on
+ * legitimate DDL, which is how gates get disabled.
+ *
+ *   CREATE TABLE p ("id" varchar PRIMARY KEY);
+ *   CREATE TABLE c ("pid" text REFERENCES p("id"));   -- ACCEPTED
+ *   CREATE TABLE p2 ("id" uuid PRIMARY KEY);
+ *   CREATE TABLE c2 ("pid" varchar REFERENCES p2("id"));
+ *     -- ERROR: foreign key constraint cannot be implemented
+ *
+ * So a string may reference a string; a string may NOT reference a uuid.
+ */
+const COMPATIBILITY_CLASS: Record<string, string> = {
+  text: "string",
+  varchar: "string",
+  char: "string",
+  citext: "string",
+};
+
+const compatClass = (t: string): string => COMPATIBILITY_CLASS[t] ?? t;
+
+/**
+ * Words that begin a TABLE-level clause, not a column. Without this the
+ * unquoted-column support below would read `CONSTRAINT foo CHECK (…)` as a
+ * column named "constraint" of type "foo".
+ */
+const TABLE_LEVEL_KEYWORDS = new Set([
+  "constraint",
+  "primary",
+  "unique",
+  "check",
+  "foreign",
+  "exclude",
+  "like",
+  // A multi-line FK puts REFERENCES at the start of its own line, which reads
+  // as a column named "references" of type "organizations" otherwise.
+  "references",
+  "on",
+  "default",
+  "deferrable",
+]);
+
 interface ForeignKey {
   table: string;
   column: string;
@@ -71,10 +121,19 @@ function parseCorpus(sources: { name: string; sql: string }[]) {
       const [, tableName, body] = m;
       const cols = columns.get(tableName) ?? new Map<string, string>();
       for (const line of body.split("\n")) {
-        // `"col" type …` — the leading quote is what distinguishes a column
-        // line from a table-level constraint or a comment.
-        const col = line.match(/^\s*"([a-z0-9_]+)"\s+([a-z][a-z ]*?)(?=\s|,|$)/i);
+        // `"col" type …` or `col type …`. Quoting is NOT a reliable signal:
+        // migrations/*.sql is split roughly half and half, and an
+        // earlier version of this parser required the quotes. That silently
+        // skipped every column of every unquoted file — including
+        // migrations/0073, which is where `acquired_notes.id` is defined. With
+        // that column invisible, three real varchar → uuid mismatches in
+        // migrations/0096 resolved to nothing and the gate reported zero. The
+        // hole was found by rebuilding a database and noticing tables the gate
+        // said were fine had not been created.
+        const col = line.match(/^\s*"?([a-z0-9_]+)"?\s+([a-z][a-z ]*?)(?=\s|,|\(|$)/i);
         if (!col) continue;
+        // Table-level constraints look exactly like a column line otherwise.
+        if (TABLE_LEVEL_KEYWORDS.has(col[1].toLowerCase())) continue;
         const [, colName, rawType] = col;
         cols.set(colName, norm(rawType));
 
@@ -114,7 +173,7 @@ const { columns, foreignKeys } = parseCorpus(sources);
 const resolvable = foreignKeys.filter((fk) => columns.get(fk.refTable)?.get(fk.refColumn));
 
 const mismatches = resolvable.filter(
-  (fk) => columns.get(fk.refTable)!.get(fk.refColumn)! !== fk.type,
+  (fk) => compatClass(columns.get(fk.refTable)!.get(fk.refColumn)!) !== compatClass(fk.type),
 );
 
 describe("the DDL parser actually parsed something (vacuity guards, first)", () => {
@@ -168,7 +227,7 @@ describe("the check fails on a real mismatch (positive control)", () => {
       },
     ]);
     const bad = probe.foreignKeys.filter(
-      (fk) => probe.columns.get(fk.refTable)?.get(fk.refColumn) !== fk.type,
+      (fk) => compatClass(probe.columns.get(fk.refTable)!.get(fk.refColumn)!) !== compatClass(fk.type),
     );
     expect(bad).toHaveLength(1);
     expect(bad[0]).toMatchObject({ table: "child", column: "parent_id", type: "varchar" });
@@ -189,7 +248,7 @@ describe("the check fails on a real mismatch (positive control)", () => {
       },
     ]);
     const bad = probe.foreignKeys.filter(
-      (fk) => probe.columns.get(fk.refTable)?.get(fk.refColumn) !== fk.type,
+      (fk) => compatClass(probe.columns.get(fk.refTable)!.get(fk.refColumn)!) !== compatClass(fk.type),
     );
     expect(bad, "serial and integer must not be reported as a mismatch").toEqual([]);
   });

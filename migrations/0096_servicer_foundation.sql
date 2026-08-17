@@ -19,7 +19,7 @@
 CREATE TABLE IF NOT EXISTS note_ownership_of_record (
   id                varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id   integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  note_id           varchar NOT NULL REFERENCES acquired_notes(id) ON DELETE CASCADE,
+  note_id           uuid    NOT NULL REFERENCES acquired_notes(id) ON DELETE CASCADE,
   owner_org_id      integer NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   owner_type        text NOT NULL,
   basis_percentage  numeric(5,2) NOT NULL DEFAULT 100.00,

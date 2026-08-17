@@ -29,9 +29,22 @@
 //
 // WHY A RATCHET, NOT A HARD GATE
 // ──────────────────────────────
-// ~165 tables are currently gap (created historically via db:push, never
-// back-filled into a migration). Failing on all of them on day one would be
-// `--no-verify`'d away. Instead the current gaps are frozen in
+// 2026-08-17 — THE ALLOWLIST IS NOW EMPTY AND THE GATE REPORTS ZERO GAPS.
+// Every table in shared/schema.ts can be created from this repository. The last
+// 83 entries (db:push-only tables, frozen with no reasons recorded) were
+// generated from the Drizzle definitions by scripts/generate-schema-ddl.ts and
+// added to scripts/migrate.mjs, then PROVED by rebuilding a real PostgreSQL 16
+// database from migrations/*.sql + migrate.mjs and diffing the resulting table
+// list against shared/schema.ts: 746 of 746 present, zero unexpected failures.
+//
+// So this is a hard gate in practice now, and adding an entry back to the
+// allowlist should be treated as a regression rather than routine — the ratchet
+// machinery below stays because it is what got the count to zero, and because
+// a stale entry must still fail loudly if a gap is ever closed another way.
+//
+// The history that motivated it: ~165 tables were gap at the start (created via
+// db:push, never back-filled into a migration). Failing on all of them on day
+// one would have been `--no-verify`'d away. Instead the gaps were frozen in
 // scripts/schema-migrate-mirror.allowlist.json and the gate FAILS on:
 //   - any NEW schema table with no CREATE (the deploy-500 regression), OR
 //   - any STALE allowlist entry (a table that got a migration, or was deleted)

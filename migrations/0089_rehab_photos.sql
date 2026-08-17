@@ -23,8 +23,8 @@
 CREATE TABLE IF NOT EXISTS rehab_photos (
   id              varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  rehab_id        varchar NOT NULL REFERENCES rehabs(id) ON DELETE CASCADE,
-  line_item_id    varchar REFERENCES rehab_line_items(id) ON DELETE SET NULL,
+  rehab_id        uuid    NOT NULL REFERENCES rehabs(id) ON DELETE CASCADE,
+  line_item_id    uuid    REFERENCES rehab_line_items(id) ON DELETE SET NULL,
   s3_key          text NOT NULL,
   caption         text,
   tag             text CHECK (tag IN ('before','during','after','defect','lender_draw','tax')),

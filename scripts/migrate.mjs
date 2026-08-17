@@ -3882,41 +3882,66 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "custom_autonomy_rules_org_text_uniq"
      ON "custom_autonomy_rules" ("organization_id", "rule_text")`,
 
+  // `SELECT … WHERE EXISTS (org 1)` rather than `VALUES (1, …)`, 2026-08-17.
+  // These eleven seeds are FK-bound to organizations(id). Before
+  // custom_autonomy_rules was creatable from this repo the whole INSERT failed
+  // with "relation does not exist", which classifies as a missing dependency
+  // and is skipped. Now that the table IS created, an empty database instead
+  // gets a FOREIGN KEY VIOLATION — which classifies as unexpected and aborts
+  // the run. The guard makes the seed a no-op when the system org is absent
+  // (a fresh rebuild or a restore drill) while leaving production, where org 1
+  // exists, to insert exactly as before. Still idempotent, still ON CONFLICT.
+  //
+  // Worth stating plainly: fixing rebuildability is what surfaced this. A
+  // statement that had been silently skipped for the wrong reason started
+  // running for the right one.
+
   // Hard stops — agent must NEVER propose a change touching these.
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'regex:\\.env(\\..*)?$',          'hard_stop', true)
+     SELECT 1, 'regex:\\.env(\\..*)?$',          'hard_stop', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'regex:server/routes/billing',  'hard_stop', true)
+     SELECT 1, 'regex:server/routes/billing',  'hard_stop', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'regex:server/services/stripe', 'hard_stop', true)
+     SELECT 1, 'regex:server/services/stripe', 'hard_stop', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'regex:\\bsecrets?\\b',         'hard_stop', true)
+     SELECT 1, 'regex:\\bsecrets?\\b',         'hard_stop', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'regex:package-lock\\.json$',   'hard_stop', true)
+     SELECT 1, 'regex:package-lock\\.json$',   'hard_stop', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
 
   // Founder-approval surfaces — agent may propose, but cannot auto-merge.
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'client/src/',                  'founder_approval', true)
+     SELECT 1, 'client/src/',                  'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'server/db/schema',             'founder_approval', true)
+     SELECT 1, 'server/db/schema',             'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'server/routes/auth',           'founder_approval', true)
+     SELECT 1, 'server/routes/auth',           'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'server/services/billing',      'founder_approval', true)
+     SELECT 1, 'server/services/billing',      'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'server/services/pricing',      'founder_approval', true)
+     SELECT 1, 'server/services/pricing',      'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
   `INSERT INTO "custom_autonomy_rules" (organization_id, rule_text, rule_type, is_active)
-     VALUES (1, 'shared/schema.ts',             'founder_approval', true)
+     SELECT 1, 'shared/schema.ts',             'founder_approval', true
+     WHERE EXISTS (SELECT 1 FROM "organizations" WHERE "id" = 1)
      ON CONFLICT ("organization_id", "rule_text") DO NOTHING`,
 
   // 2026-05-12 — Rosy River C3: evolution_history gains pr_number + pr_url
@@ -9421,6 +9446,1240 @@ const STATEMENTS = [
   // nullable and Postgres treats NULLs as distinct, so the obvious rule would
   // permit exactly the duplicate it appears to forbid while blocking the
   // legitimate case. A false uniqueness claim is worse than none.
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // THE 83 db:push-ONLY TABLES — generated from shared/schema.ts, 2026-08-17
+  // ══════════════════════════════════════════════════════════════════════════
+  // These tables existed in production ONLY because someone once ran
+  // `drizzle-kit push` by hand. `db:push` does NOT run on deploy — Fly's
+  // release_command is this script — so a database built from this repository
+  // simply did not have them, and every query against them would 500.
+  //
+  // They were all 83 entries of scripts/schema-migrate-mirror.allowlist.json,
+  // carrying no reasons. The allowlist is now empty and the mirror gate reports
+  // zero gaps: every table in shared/schema.ts can be created from this repo.
+  //
+  // NOT HAND-WRITTEN. Generated by introspecting the Drizzle table definitions
+  // (getTableConfig) so the DDL cannot drift from the ORM's own idea of the
+  // schema — column types, nullability, defaults, single-column foreign keys,
+  // composite primary keys, unique constraints and named indexes all come from
+  // shared/schema.ts itself. Emitted in dependency order.
+  //
+  // VERIFIED BY EXECUTION, not by inspection: applied to a real PostgreSQL 16
+  // database rebuilt from migrations/*.sql + this script. 83 of 83 tables and
+  // 132 indexes created, zero errors. (The first run created 81 — two tables
+  // have `text[]` columns whose defaults were being emitted as jsonb, which
+  // Postgres rejects outright. Fixed in the generator, not patched by hand.)
+  //
+  // Idempotent like everything else here: CREATE TABLE / CREATE INDEX
+  // IF NOT EXISTS, so this is a no-op against a database that already has them
+  // — which is exactly what production is.
+
+  `CREATE TABLE IF NOT EXISTS "agent_action_log" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "action_type" text NOT NULL,
+    "action_name" text NOT NULL,
+    "input" jsonb,
+    "output" jsonb,
+    "reasoning" text,
+    "confidence" integer,
+    "cost_cents" integer DEFAULT 0,
+    "authority_level" integer,
+    "trust_score_at_time" integer,
+    "outcome" text NOT NULL,
+    "duration_ms" integer,
+    "related_goal_id" integer,
+    "related_decision_id" integer,
+    "alternatives_considered" jsonb,
+    "triggered_by_observation_id" integer,
+    "tiers_tried" jsonb,
+    "model_used" text,
+    "correlation_id" text,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_agent_idx" ON "agent_action_log" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_type_idx" ON "agent_action_log" ("action_type")`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_outcome_idx" ON "agent_action_log" ("outcome")`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_created_idx" ON "agent_action_log" ("created_at")`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_obs_idx" ON "agent_action_log" ("triggered_by_observation_id")`,
+  `CREATE INDEX IF NOT EXISTS "agent_action_log_correlation_idx" ON "agent_action_log" ("correlation_id")`,
+  `CREATE TABLE IF NOT EXISTS "agent_action_undo_log" (
+    "id" serial PRIMARY KEY,
+    "action_log_id" integer REFERENCES "agent_action_log"("id") ON DELETE no action,
+    "agent_codename" text NOT NULL,
+    "action_name" text NOT NULL,
+    "undo_available" boolean NOT NULL DEFAULT false,
+    "undo_expiry" timestamp,
+    "undo_executed_at" timestamp,
+    "undo_result" jsonb,
+    "original_input" jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "aaul_action_log_idx" ON "agent_action_undo_log" ("action_log_id")`,
+  `CREATE INDEX IF NOT EXISTS "aaul_undo_avail_idx" ON "agent_action_undo_log" ("undo_available", "undo_expiry")`,
+  `CREATE TABLE IF NOT EXISTS "agent_budget_envelopes" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "month_key" text NOT NULL,
+    "budget_cents" integer NOT NULL,
+    "spent_cents" integer NOT NULL DEFAULT 0,
+    "category" text NOT NULL DEFAULT 'general',
+    "auto_approve_under_cents" integer DEFAULT 50000,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "abe_agent_month_idx" ON "agent_budget_envelopes" ("agent_codename", "month_key")`,
+  `CREATE TABLE IF NOT EXISTS "agent_conversations" (
+    "id" serial PRIMARY KEY,
+    "conversation_id" text NOT NULL,
+    "agent_codename" text,
+    "role" text NOT NULL,
+    "content" text NOT NULL,
+    "tool_calls" jsonb,
+    "metadata" jsonb,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "agent_conv_id_idx" ON "agent_conversations" ("conversation_id")`,
+  `CREATE INDEX IF NOT EXISTS "agent_conv_agent_idx" ON "agent_conversations" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "agent_conv_created_idx" ON "agent_conversations" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_debates" (
+    "id" serial PRIMARY KEY,
+    "proposition" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'in_progress',
+    "category" text NOT NULL,
+    "initiated_by" text NOT NULL,
+    "for_agents" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "against_agents" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "arguments" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "votes" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "ceo_decision" text,
+    "ceo_reasoning" text,
+    "outcome" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "decided_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ad_status_idx" ON "agent_debates" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "ad_category_idx" ON "agent_debates" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "ad_created_idx" ON "agent_debates" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_goals" (
+    "id" serial PRIMARY KEY,
+    "assigned_agent" text NOT NULL,
+    "assigned_by" text NOT NULL,
+    "goal" text NOT NULL,
+    "success_criteria" text,
+    "priority" text NOT NULL DEFAULT 'medium',
+    "deadline" timestamp,
+    "status" text NOT NULL DEFAULT 'pending',
+    "director_task_id" integer,
+    "progress_log" jsonb DEFAULT '[]'::jsonb,
+    "result" jsonb,
+    "created_at" timestamp DEFAULT now(),
+    "completed_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "agent_goals_agent_idx" ON "agent_goals" ("assigned_agent")`,
+  `CREATE INDEX IF NOT EXISTS "agent_goals_status_idx" ON "agent_goals" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "agent_goals_created_idx" ON "agent_goals" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_initiatives" (
+    "id" serial PRIMARY KEY,
+    "proposed_by" text NOT NULL,
+    "title" text NOT NULL,
+    "thesis" text NOT NULL,
+    "evidence" jsonb NOT NULL,
+    "projected_impact" jsonb,
+    "required_agents" jsonb,
+    "estimated_effort" text,
+    "status" text NOT NULL DEFAULT 'proposed',
+    "ceo_notes" text,
+    "voted_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ai_init_proposed_by_idx" ON "agent_initiatives" ("proposed_by")`,
+  `CREATE INDEX IF NOT EXISTS "ai_init_status_idx" ON "agent_initiatives" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "ai_init_created_idx" ON "agent_initiatives" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_override_learnings" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "decision_id" integer,
+    "action_name" text NOT NULL,
+    "original_recommendation" text,
+    "ceo_override_action" text,
+    "ceo_override_notes" text,
+    "learned_pattern" text NOT NULL,
+    "pattern_category" text NOT NULL,
+    "occurrence_count" integer NOT NULL DEFAULT 1,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "aol_agent_idx" ON "agent_override_learnings" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "aol_action_idx" ON "agent_override_learnings" ("action_name")`,
+  `CREATE TABLE IF NOT EXISTS "agent_performance_reviews" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "period_start" timestamp NOT NULL,
+    "period_end" timestamp NOT NULL,
+    "metrics" jsonb NOT NULL,
+    "strengths" jsonb NOT NULL,
+    "improvements" jsonb NOT NULL,
+    "learnings" jsonb NOT NULL,
+    "peer_feedback" jsonb,
+    "overall_grade" text NOT NULL,
+    "summary" text NOT NULL,
+    "ceo_comments" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "apr_agent_idx" ON "agent_performance_reviews" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "apr_period_idx" ON "agent_performance_reviews" ("period_start", "period_end")`,
+  `CREATE TABLE IF NOT EXISTS "agent_playbooks" (
+    "id" serial PRIMARY KEY,
+    "name" text NOT NULL,
+    "description" text,
+    "owner_agent" text NOT NULL,
+    "trigger_condition" text NOT NULL,
+    "trigger_config" jsonb,
+    "steps" jsonb NOT NULL,
+    "is_approved" boolean NOT NULL DEFAULT false,
+    "approved_at" timestamp,
+    "is_active" boolean NOT NULL DEFAULT false,
+    "total_executions" integer NOT NULL DEFAULT 0,
+    "success_rate" numeric,
+    "last_executed_at" timestamp,
+    "generation" integer NOT NULL DEFAULT 1,
+    "parent_playbook_id" integer,
+    "created_by" text NOT NULL,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ap_owner_idx" ON "agent_playbooks" ("owner_agent")`,
+  `CREATE INDEX IF NOT EXISTS "ap_active_idx" ON "agent_playbooks" ("is_active", "is_approved")`,
+  `CREATE TABLE IF NOT EXISTS "agent_prompt_evolutions" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "current_prompt_hash" text NOT NULL,
+    "proposed_prompt" text NOT NULL,
+    "proposal_reason" text NOT NULL,
+    "performance_data_before" jsonb DEFAULT '{}'::jsonb,
+    "performance_data_after" jsonb,
+    "ab_test_id" text,
+    "status" text NOT NULL DEFAULT 'proposed',
+    "approved_by_board" boolean DEFAULT false,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "agent_spawn_proposals" (
+    "id" serial PRIMARY KEY,
+    "proposal_id" text NOT NULL,
+    "proposed_by" text NOT NULL,
+    "codename" text NOT NULL,
+    "title" text NOT NULL,
+    "wing" text NOT NULL,
+    "personality_prompt" text NOT NULL,
+    "owned_services" jsonb DEFAULT '[]'::jsonb,
+    "capability_gap" text NOT NULL,
+    "justification" text NOT NULL,
+    "board_vote_id" text,
+    "status" text NOT NULL DEFAULT 'proposed',
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "agent_workflows" (
+    "id" serial PRIMARY KEY,
+    "name" text NOT NULL,
+    "description" text,
+    "trigger_type" text NOT NULL,
+    "trigger_config" jsonb,
+    "steps" jsonb NOT NULL,
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_by" text NOT NULL DEFAULT 'system',
+    "total_runs" integer NOT NULL DEFAULT 0,
+    "success_rate" numeric,
+    "avg_duration_ms" integer,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "aw_trigger_type_idx" ON "agent_workflows" ("trigger_type")`,
+  `CREATE INDEX IF NOT EXISTS "aw_active_idx" ON "agent_workflows" ("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "attention_insights" (
+    "id" serial PRIMARY KEY,
+    "period_start" timestamp NOT NULL,
+    "period_end" timestamp NOT NULL,
+    "time_spent" jsonb NOT NULL,
+    "intervention_impact" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "recommendations" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "focus_card" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ai_ins_period_idx" ON "attention_insights" ("period_start")`,
+  `CREATE TABLE IF NOT EXISTS "autonomy_score_snapshots" (
+    "id" serial PRIMARY KEY,
+    "org_id" integer NOT NULL,
+    "date" text NOT NULL,
+    "total_decisions" integer NOT NULL DEFAULT 0,
+    "autonomous_decisions" integer NOT NULL DEFAULT 0,
+    "cascade_resolved" integer NOT NULL DEFAULT 0,
+    "founder_escalations" integer NOT NULL DEFAULT 0,
+    "founder_override_count" integer NOT NULL DEFAULT 0,
+    "founder_time_spent_ms" integer NOT NULL DEFAULT 0,
+    "avg_decision_latency_ms" integer NOT NULL DEFAULT 0,
+    "autonomy_score" real NOT NULL DEFAULT 0,
+    "trust_score" real NOT NULL DEFAULT 0,
+    "founder_confidence_score" real NOT NULL DEFAULT 0,
+    "breakdown_by_category" jsonb DEFAULT '{}'::jsonb,
+    "breakdown_by_agent" jsonb DEFAULT '{}'::jsonb,
+    "week_over_week_delta" real,
+    "recommendations" jsonb DEFAULT '[]'::jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "as_org_date_idx" ON "autonomy_score_snapshots" ("org_id", "date")`,
+  `CREATE TABLE IF NOT EXISTS "board_decisions" (
+    "id" serial PRIMARY KEY,
+    "decision_id" text NOT NULL,
+    "meeting_id" text,
+    "category" text NOT NULL,
+    "description" text NOT NULL,
+    "vote_summary" jsonb DEFAULT '{"for":0,"against":0,"abstain":0}'::jsonb,
+    "passed" boolean NOT NULL,
+    "execution_plan" text,
+    "executed_at" timestamp,
+    "execution_result" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "bd_category_idx" ON "board_decisions" ("category")`,
+  `CREATE TABLE IF NOT EXISTS "board_meetings" (
+    "id" serial PRIMARY KEY,
+    "meeting_id" text NOT NULL,
+    "meeting_type" text NOT NULL DEFAULT 'weekly',
+    "status" text NOT NULL DEFAULT 'scheduled',
+    "scheduled_at" timestamp NOT NULL,
+    "started_at" timestamp,
+    "completed_at" timestamp,
+    "agenda_items" jsonb DEFAULT '[]'::jsonb,
+    "attendees" jsonb DEFAULT '[]'::jsonb,
+    "kpi_snapshot" jsonb DEFAULT '{}'::jsonb,
+    "summary" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "bm_status_idx" ON "board_meetings" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "bm_scheduled_idx" ON "board_meetings" ("scheduled_at")`,
+  `CREATE TABLE IF NOT EXISTS "board_votes" (
+    "id" serial PRIMARY KEY,
+    "meeting_id" text NOT NULL,
+    "proposal_id" text NOT NULL,
+    "proposal" text NOT NULL,
+    "proposal_type" text NOT NULL,
+    "voting_agents" jsonb DEFAULT '[]'::jsonb,
+    "votes" jsonb DEFAULT '[]'::jsonb,
+    "required_majority" real NOT NULL DEFAULT 0.7,
+    "result" text,
+    "executed_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "bv_meeting_idx" ON "board_votes" ("meeting_id")`,
+  `CREATE INDEX IF NOT EXISTS "bv_proposal_idx" ON "board_votes" ("proposal_id")`,
+  `CREATE TABLE IF NOT EXISTS "cascade_resolutions" (
+    "id" serial PRIMARY KEY,
+    "resolution_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "trigger_type" text NOT NULL,
+    "trigger_context" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "origin_agent" text NOT NULL,
+    "layers_attempted" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "resolved_at_layer" text,
+    "final_decision" text,
+    "final_confidence" real,
+    "founder_escalated" boolean NOT NULL DEFAULT false,
+    "founder_resolution" text,
+    "total_duration_ms" integer,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "resolved_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "cr_org_idx" ON "cascade_resolutions" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "cr_origin_idx" ON "cascade_resolutions" ("origin_agent")`,
+  `CREATE INDEX IF NOT EXISTS "cr_resolved_layer_idx" ON "cascade_resolutions" ("resolved_at_layer")`,
+  `CREATE INDEX IF NOT EXISTS "cr_escalated_idx" ON "cascade_resolutions" ("founder_escalated")`,
+  `CREATE TABLE IF NOT EXISTS "ceo_absence_mode" (
+    "id" serial PRIMARY KEY,
+    "is_active" boolean NOT NULL DEFAULT false,
+    "started_at" timestamp,
+    "ends_at" timestamp,
+    "trust_boost" integer NOT NULL DEFAULT 15,
+    "batched_items" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "emergency_breaks" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "return_briefing" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "cam_active_idx" ON "ceo_absence_mode" ("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "ceo_briefings" (
+    "id" serial PRIMARY KEY,
+    "date" timestamp NOT NULL,
+    "overall_status" text NOT NULL,
+    "narrative" text NOT NULL,
+    "all_clear_agents" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "watch_items" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "needs_ceo_items" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "actions_taken" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "total_agents" integer NOT NULL DEFAULT 0,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "cb_date_idx" ON "ceo_briefings" ("date")`,
+  `CREATE INDEX IF NOT EXISTS "cb_status_idx" ON "ceo_briefings" ("overall_status")`,
+  `CREATE TABLE IF NOT EXISTS "company_agents" (
+    "id" serial PRIMARY KEY,
+    "codename" text NOT NULL,
+    "title" text NOT NULL,
+    "wing" text NOT NULL,
+    "personality_prompt" text,
+    "owned_services" jsonb,
+    "owned_jobs" jsonb,
+    "owned_routes" jsonb,
+    "authority_config" jsonb,
+    "trust_score" integer NOT NULL DEFAULT 50,
+    "status" text NOT NULL DEFAULT 'active',
+    "last_activity_at" timestamp,
+    "metrics" jsonb,
+    "created_at" timestamp DEFAULT now(),
+    "updated_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "company_agents_codename_idx" ON "company_agents" ("codename")`,
+  `CREATE INDEX IF NOT EXISTS "company_agents_wing_idx" ON "company_agents" ("wing")`,
+  `CREATE INDEX IF NOT EXISTS "company_agents_status_idx" ON "company_agents" ("status")`,
+  `CREATE TABLE IF NOT EXISTS "company_briefing_cache" (
+    "id" serial PRIMARY KEY,
+    "briefing_data" jsonb NOT NULL,
+    "health_score" integer NOT NULL,
+    "mood" text NOT NULL,
+    "generated_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "company_chronicle" (
+    "id" serial PRIMARY KEY,
+    "period_type" text NOT NULL,
+    "period_label" text NOT NULL,
+    "period_start" timestamp NOT NULL,
+    "period_end" timestamp NOT NULL,
+    "narrative" text NOT NULL,
+    "highlights" jsonb NOT NULL,
+    "metrics" jsonb,
+    "key_learnings" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "searchable_text" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "cc_period_type_idx" ON "company_chronicle" ("period_type")`,
+  `CREATE INDEX IF NOT EXISTS "cc_period_start_idx" ON "company_chronicle" ("period_start")`,
+  `CREATE TABLE IF NOT EXISTS "company_priorities" (
+    "id" serial PRIMARY KEY,
+    "priority" text NOT NULL,
+    "description" text,
+    "weight" integer NOT NULL DEFAULT 5,
+    "set_by" text NOT NULL DEFAULT 'ceo',
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "company_priorities_active_idx" ON "company_priorities" ("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "company_seasons" (
+    "id" serial PRIMARY KEY,
+    "season" text NOT NULL,
+    "is_active" boolean NOT NULL DEFAULT false,
+    "activated_at" timestamp,
+    "deactivated_at" timestamp,
+    "activated_by" text NOT NULL DEFAULT 'ceo',
+    "reason" text,
+    "config" jsonb NOT NULL,
+    "results" jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "cs_active_idx" ON "company_seasons" ("is_active")`,
+  `CREATE INDEX IF NOT EXISTS "cs_season_idx" ON "company_seasons" ("season")`,
+  `CREATE TABLE IF NOT EXISTS "constitutional_principles" (
+    "id" serial PRIMARY KEY,
+    "principle_id" text NOT NULL,
+    "title" text NOT NULL,
+    "description" text NOT NULL,
+    "category" text NOT NULL,
+    "is_immutable" boolean NOT NULL DEFAULT true,
+    "enforcement_level" text NOT NULL DEFAULT 'block',
+    "violation_count" integer NOT NULL DEFAULT 0,
+    "last_violation_at" timestamp,
+    "amendment_requires" real NOT NULL DEFAULT 0.9,
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "content_drafts" (
+    "id" serial PRIMARY KEY,
+    "type" text NOT NULL,
+    "platform" text,
+    "title" text,
+    "content" text NOT NULL,
+    "drafted_by" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'draft',
+    "approved_at" timestamp,
+    "published_at" timestamp,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "contract_templates" (
+    "id" serial PRIMARY KEY,
+    "template_id" text NOT NULL,
+    "name" text NOT NULL,
+    "category" text NOT NULL,
+    "content" text NOT NULL,
+    "variables" jsonb DEFAULT '[]'::jsonb,
+    "max_value_cents" integer,
+    "requires_review" boolean DEFAULT false,
+    "approved_by" text,
+    "version" integer NOT NULL DEFAULT 1,
+    "is_active" boolean DEFAULT true,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "county_reviews" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "state" text NOT NULL,
+    "county" text NOT NULL,
+    "rating" integer NOT NULL,
+    "pros" text NOT NULL,
+    "cons" text NOT NULL,
+    "investor_trust_score" integer,
+    "verified_deals" integer,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "crisis_playbooks" (
+    "id" serial PRIMARY KEY,
+    "playbook_id" text NOT NULL,
+    "crisis_type" text NOT NULL,
+    "steps" jsonb DEFAULT '[]'::jsonb,
+    "communication_plan" jsonb DEFAULT '[]'::jsonb,
+    "financial_protocol" jsonb,
+    "last_used_at" timestamp,
+    "usage_count" integer NOT NULL DEFAULT 0,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "custom_autonomy_rules" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "rule_text" text NOT NULL,
+    "rule_type" text NOT NULL DEFAULT 'scope',
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_at" timestamp DEFAULT now(),
+    "expires_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "idx_autonomy_rules_org" ON "custom_autonomy_rules" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_autonomy_rules_active" ON "custom_autonomy_rules" ("organization_id", "is_active")`,
+  `CREATE TABLE IF NOT EXISTS "daily_deal_feed" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "opportunities" jsonb NOT NULL,
+    "generated_at" timestamp NOT NULL DEFAULT now(),
+    "viewed_at" timestamp,
+    "archived_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ddf_org_generated_idx" ON "daily_deal_feed" ("organization_id", "generated_at")`,
+  `CREATE TABLE IF NOT EXISTS "deal_feed_interactions" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "opportunity_id" text NOT NULL,
+    "action" text NOT NULL,
+    "metadata" jsonb,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "dfi_org_opportunity_idx" ON "deal_feed_interactions" ("organization_id", "opportunity_id")`,
+  `CREATE INDEX IF NOT EXISTS "dfi_org_created_idx" ON "deal_feed_interactions" ("organization_id", "created_at")`,
+  `CREATE TABLE IF NOT EXISTS "decision_patterns" (
+    "id" serial PRIMARY KEY,
+    "pattern_key" text NOT NULL,
+    "agent_codename" text NOT NULL,
+    "decision_category" text NOT NULL,
+    "description" text NOT NULL,
+    "total_decisions" integer NOT NULL DEFAULT 0,
+    "approved_count" integer NOT NULL DEFAULT 0,
+    "rejected_count" integer NOT NULL DEFAULT 0,
+    "overridden_count" integer NOT NULL DEFAULT 0,
+    "auto_approve_rate" numeric,
+    "predicted_action" text,
+    "prediction_confidence" numeric,
+    "is_autopilot_eligible" boolean NOT NULL DEFAULT false,
+    "is_autopilot_active" boolean NOT NULL DEFAULT false,
+    "recent_decisions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "condition_rules" jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "dp_pattern_key_idx" ON "decision_patterns" ("pattern_key")`,
+  `CREATE INDEX IF NOT EXISTS "dp_agent_idx" ON "decision_patterns" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "dp_autopilot_idx" ON "decision_patterns" ("is_autopilot_active")`,
+  `CREATE INDEX IF NOT EXISTS "dp_eligible_idx" ON "decision_patterns" ("is_autopilot_eligible")`,
+  `CREATE TABLE IF NOT EXISTS "entity_comments" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "entity_type" text NOT NULL,
+    "entity_id" integer NOT NULL,
+    "user_id" text NOT NULL,
+    "content" text NOT NULL,
+    "mentions" jsonb DEFAULT '[]'::jsonb,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ec_entity_idx" ON "entity_comments" ("entity_type", "entity_id")`,
+  `CREATE INDEX IF NOT EXISTS "ec_org_created_idx" ON "entity_comments" ("organization_id", "created_at")`,
+  `CREATE TABLE IF NOT EXISTS "error_boundary_trips" (
+    "id" serial PRIMARY KEY,
+    "fired_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "error_id" text NOT NULL,
+    "error_name" text NOT NULL,
+    "error_message_excerpt" text NOT NULL,
+    "route_path" text NOT NULL,
+    "user_id" text REFERENCES "users"("id") ON DELETE set null,
+    "organization_id" integer REFERENCES "organizations"("id") ON DELETE set null,
+    "component_stack_excerpt" text,
+    "client_meta" jsonb,
+    "severity" text NOT NULL DEFAULT 'warn'
+  )`,
+  `CREATE INDEX IF NOT EXISTS "error_boundary_trips_fired_idx" ON "error_boundary_trips" ("fired_at")`,
+  `CREATE INDEX IF NOT EXISTS "error_boundary_trips_route_fired_idx" ON "error_boundary_trips" ("route_path", "fired_at")`,
+  `CREATE INDEX IF NOT EXISTS "error_boundary_trips_org_fired_idx" ON "error_boundary_trips" ("organization_id", "fired_at")`,
+  `CREATE TABLE IF NOT EXISTS "evolution_circuit_breaker" (
+    "id" serial PRIMARY KEY,
+    "is_tripped" boolean NOT NULL DEFAULT false,
+    "consecutive_reverts" integer NOT NULL DEFAULT 0,
+    "tripped_at" timestamp,
+    "resume_at" timestamp,
+    "resumed_by" text,
+    "updated_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "evolution_history" (
+    "id" serial PRIMARY KEY,
+    "proposal_id" integer,
+    "proposal_description" text NOT NULL,
+    "target_file" text NOT NULL,
+    "generated_code" text,
+    "stages_completed" text[] DEFAULT '{}'::text[],
+    "stage_failed_at" text,
+    "stage_failure_reason" text,
+    "review_model_output" text,
+    "intent_verification_output" text,
+    "static_analysis_output" text,
+    "branch_name" text,
+    "commit_hash" text,
+    "status" text NOT NULL DEFAULT 'proposed',
+    "deployed_at" timestamp,
+    "reverted_at" timestamp,
+    "revert_reason" text,
+    "error_rate_before_deploy" numeric(8, 4),
+    "error_rate_after_deploy" numeric(8, 4),
+    "quality_score_before" numeric(5, 2),
+    "quality_score_after" numeric(5, 2),
+    "pr_number" integer,
+    "pr_url" text,
+    "regression_check_due_at" timestamp with time zone,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "evolution_history_status_idx" ON "evolution_history" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "evolution_history_created_idx" ON "evolution_history" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "feedback_learnings" (
+    "id" serial PRIMARY KEY,
+    "learning_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "rule" text NOT NULL,
+    "rule_config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "source_override_ids" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "confidence" real NOT NULL DEFAULT 0.5,
+    "reinforcement_count" integer NOT NULL DEFAULT 1,
+    "applied_to_strategies" jsonb DEFAULT '[]'::jsonb,
+    "applied_to_policies" jsonb DEFAULT '[]'::jsonb,
+    "applied_to_memory" jsonb DEFAULT '[]'::jsonb,
+    "status" text NOT NULL DEFAULT 'active',
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fl_org_idx" ON "feedback_learnings" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "fl_status_idx" ON "feedback_learnings" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "fl_confidence_idx" ON "feedback_learnings" ("confidence")`,
+  `CREATE TABLE IF NOT EXISTS "financial_approvals" (
+    "id" serial PRIMARY KEY,
+    "request_id" text NOT NULL,
+    "requested_by" text NOT NULL,
+    "amount_cents" integer NOT NULL,
+    "tier" integer NOT NULL,
+    "purpose" text NOT NULL,
+    "category" text NOT NULL,
+    "approvers" jsonb DEFAULT '[]'::jsonb,
+    "approval_status" jsonb DEFAULT '{}'::jsonb,
+    "required_approvers" integer NOT NULL,
+    "cooling_period_ends" timestamp,
+    "status" text NOT NULL DEFAULT 'pending',
+    "executed_at" timestamp,
+    "reasoning" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fa_status_idx" ON "financial_approvals" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "fa_requested_by_idx" ON "financial_approvals" ("requested_by")`,
+  `CREATE INDEX IF NOT EXISTS "fa_tier_idx" ON "financial_approvals" ("tier")`,
+  `CREATE TABLE IF NOT EXISTS "founder_briefs" (
+    "id" serial PRIMARY KEY,
+    "agent_type" text NOT NULL,
+    "brief_type" text NOT NULL,
+    "content" jsonb NOT NULL,
+    "generated_at" timestamp DEFAULT now(),
+    "read_at" timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS "founder_dependency_events" (
+    "id" serial PRIMARY KEY,
+    "event_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "event_type" text NOT NULL,
+    "agent_codename" text,
+    "category" text NOT NULL,
+    "description" text NOT NULL,
+    "blocked_duration_ms" integer,
+    "was_preventable" boolean,
+    "prevention_suggestion" text,
+    "resolved_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fde_org_idx" ON "founder_dependency_events" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "fde_type_idx" ON "founder_dependency_events" ("event_type")`,
+  `CREATE INDEX IF NOT EXISTS "fde_agent_idx" ON "founder_dependency_events" ("agent_codename")`,
+  `CREATE TABLE IF NOT EXISTS "founder_drafts" (
+    "id" serial PRIMARY KEY,
+    "draft_type" text NOT NULL,
+    "title" text NOT NULL,
+    "content" text NOT NULL,
+    "data_sources" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "status" text NOT NULL DEFAULT 'draft',
+    "ceo_edits" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fd_type_idx" ON "founder_drafts" ("draft_type")`,
+  `CREATE INDEX IF NOT EXISTS "fd_status_idx" ON "founder_drafts" ("status")`,
+  `CREATE TABLE IF NOT EXISTS "founder_intents" (
+    "id" serial PRIMARY KEY,
+    "intent_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "raw_input" text NOT NULL,
+    "parsed_goals" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "generated_strategies" jsonb DEFAULT '[]'::jsonb,
+    "generated_policies" jsonb DEFAULT '[]'::jsonb,
+    "generated_chains" jsonb DEFAULT '[]'::jsonb,
+    "simulation_result" jsonb,
+    "status" text NOT NULL DEFAULT 'draft',
+    "progress_snapshot" jsonb DEFAULT '{}'::jsonb,
+    "founder_approved" boolean NOT NULL DEFAULT false,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now(),
+    "completes_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fi14_org_idx" ON "founder_intents" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "fi14_status_idx" ON "founder_intents" ("status")`,
+  `CREATE TABLE IF NOT EXISTS "founder_overrides" (
+    "id" serial PRIMARY KEY,
+    "override_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "original_decision_id" text,
+    "original_action" text NOT NULL,
+    "founder_action" text NOT NULL,
+    "founder_reason" text,
+    "context" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "agent_codename" text,
+    "category" text NOT NULL,
+    "learning_extracted" boolean NOT NULL DEFAULT false,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fo_org_idx" ON "founder_overrides" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "fo_agent_idx" ON "founder_overrides" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "fo_category_idx" ON "founder_overrides" ("category")`,
+  `CREATE INDEX IF NOT EXISTS "fo_learning_idx" ON "founder_overrides" ("learning_extracted")`,
+  `CREATE TABLE IF NOT EXISTS "founder_twin_context" (
+    "id" serial PRIMARY KEY,
+    "context_type" text NOT NULL,
+    "key" text NOT NULL,
+    "value" jsonb NOT NULL,
+    "confidence" numeric NOT NULL DEFAULT '0.5',
+    "source_count" integer NOT NULL DEFAULT 1,
+    "examples" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ftc_type_idx" ON "founder_twin_context" ("context_type")`,
+  `CREATE INDEX IF NOT EXISTS "ftc_key_idx" ON "founder_twin_context" ("key")`,
+  `CREATE TABLE IF NOT EXISTS "founder_wellbeing" (
+    "id" serial PRIMARY KEY,
+    "date" timestamp NOT NULL,
+    "metrics" jsonb NOT NULL,
+    "insights" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "energy_score" integer,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "fw_date_idx" ON "founder_wellbeing" ("date")`,
+  `CREATE TABLE IF NOT EXISTS "institutional_patterns" (
+    "id" serial PRIMARY KEY,
+    "pattern_name" text NOT NULL,
+    "description" text NOT NULL,
+    "trigger_signals" jsonb NOT NULL,
+    "effective_response" text NOT NULL,
+    "ineffective_response" text,
+    "context_conditions" jsonb,
+    "success_rate" numeric NOT NULL,
+    "sample_size" integer NOT NULL DEFAULT 0,
+    "last_triggered" timestamp,
+    "contributing_agents" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "linked_playbook_id" integer REFERENCES "agent_playbooks"("id") ON DELETE no action,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ip_name_idx" ON "institutional_patterns" ("pattern_name")`,
+  `CREATE INDEX IF NOT EXISTS "ip_success_idx" ON "institutional_patterns" ("success_rate")`,
+  `CREATE TABLE IF NOT EXISTS "intent_progress_logs" (
+    "id" serial PRIMARY KEY,
+    "intent_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "snapshot" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "adjustments_made" jsonb DEFAULT '[]'::jsonb,
+    "blockers" jsonb DEFAULT '[]'::jsonb,
+    "projected_completion" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ipl_intent_idx" ON "intent_progress_logs" ("intent_id")`,
+  `CREATE INDEX IF NOT EXISTS "ipl_org_idx" ON "intent_progress_logs" ("org_id")`,
+  `CREATE TABLE IF NOT EXISTS "lead_emails" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "lead_id" integer NOT NULL REFERENCES "leads"("id") ON DELETE no action,
+    "direction" text NOT NULL,
+    "from_email" text NOT NULL,
+    "to_email" text NOT NULL,
+    "subject" text,
+    "body_text" text,
+    "body_html" text,
+    "message_id" text,
+    "in_reply_to" text,
+    "received_at" timestamp DEFAULT now(),
+    "read_at" timestamp,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "legal_actions" (
+    "id" serial PRIMARY KEY,
+    "action_id" text NOT NULL,
+    "action_type" text NOT NULL,
+    "category" text NOT NULL,
+    "tier" text NOT NULL,
+    "risk_score" integer NOT NULL,
+    "template_id" text,
+    "requested_by" text NOT NULL,
+    "counterparty" text,
+    "value_at_stake_cents" integer,
+    "status" text NOT NULL DEFAULT 'pending',
+    "executed_at" timestamp,
+    "reviewed_by" jsonb DEFAULT '[]'::jsonb,
+    "outcome" text,
+    "reasoning" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "la_status_idx" ON "legal_actions" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "la_tier_idx" ON "legal_actions" ("tier")`,
+  `CREATE TABLE IF NOT EXISTS "market_adaptations" (
+    "id" serial PRIMARY KEY,
+    "adaptation_id" text NOT NULL,
+    "signal_type" text NOT NULL,
+    "signal" text NOT NULL,
+    "analysis" text NOT NULL,
+    "proposed_action" text,
+    "board_decision_id" text,
+    "status" text NOT NULL DEFAULT 'detected',
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "meta_learning_insights" (
+    "id" serial PRIMARY KEY,
+    "insight_id" text NOT NULL,
+    "pattern" text NOT NULL,
+    "correlated_outcome" text NOT NULL,
+    "confidence" real NOT NULL,
+    "sample_size" integer NOT NULL,
+    "affected_agents" jsonb DEFAULT '[]'::jsonb,
+    "recommendation" text,
+    "applied_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "mission_statements" (
+    "id" serial PRIMARY KEY,
+    "statement" text NOT NULL,
+    "is_active" boolean NOT NULL DEFAULT true,
+    "adopted_at" timestamp NOT NULL DEFAULT now(),
+    "adopted_by_board" boolean DEFAULT false,
+    "board_meeting_id" text,
+    "previous_statement_id" integer,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "openrouter_model_catalog" (
+    "id" serial PRIMARY KEY,
+    "model_id" text NOT NULL,
+    "display_name" text NOT NULL,
+    "input_cost_per_million" numeric(12, 6),
+    "output_cost_per_million" numeric(12, 6),
+    "context_window" integer,
+    "capabilities" text[] DEFAULT '{}'::text[],
+    "is_new" boolean DEFAULT false,
+    "last_benchmarked_at" timestamp,
+    "benchmark_score_simple" numeric(5, 2),
+    "benchmark_score_moderate" numeric(5, 2),
+    "benchmark_score_complex" numeric(5, 2),
+    "is_active" boolean DEFAULT true,
+    "discovered_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "openrouter_catalog_active_idx" ON "openrouter_model_catalog" ("is_active")`,
+  `CREATE INDEX IF NOT EXISTS "openrouter_catalog_new_idx" ON "openrouter_model_catalog" ("is_new")`,
+  `CREATE TABLE IF NOT EXISTS "outcome_verification_queue" (
+    "id" serial PRIMARY KEY,
+    "action_log_id" integer REFERENCES "agent_action_log"("id") ON DELETE no action,
+    "agent_codename" text NOT NULL,
+    "action_name" text NOT NULL,
+    "input" jsonb,
+    "scheduled_for" timestamp NOT NULL,
+    "status" text NOT NULL DEFAULT 'pending',
+    "verified_at" timestamp,
+    "verification_result" jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ovq_status_scheduled_idx" ON "outcome_verification_queue" ("status", "scheduled_for")`,
+  `CREATE INDEX IF NOT EXISTS "ovq_agent_idx" ON "outcome_verification_queue" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "ovq_action_log_idx" ON "outcome_verification_queue" ("action_log_id")`,
+  `CREATE TABLE IF NOT EXISTS "perpetual_ops_checks" (
+    "id" serial PRIMARY KEY,
+    "check_type" text NOT NULL,
+    "status" text NOT NULL,
+    "details" jsonb DEFAULT '{}'::jsonb,
+    "next_check_at" timestamp,
+    "last_passed_at" timestamp,
+    "failure_count" integer NOT NULL DEFAULT 0,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "personal_bests" (
+    "id" serial PRIMARY KEY,
+    "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "metric" text NOT NULL,
+    "value" numeric NOT NULL,
+    "previous_value" numeric,
+    "achieved_at" timestamp DEFAULT now(),
+    "deal_id" integer REFERENCES "deals"("id") ON DELETE no action
+  )`,
+  `CREATE TABLE IF NOT EXISTS "platform_issues" (
+    "id" serial PRIMARY KEY,
+    "title" text NOT NULL,
+    "description" text NOT NULL,
+    "severity" text NOT NULL,
+    "affected_files" jsonb,
+    "reported_by" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'open',
+    "fix_prompt" text,
+    "resolved_at" timestamp,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "pre_authorized_tradeoffs" (
+    "id" serial PRIMARY KEY,
+    "tradeoff_id" text NOT NULL,
+    "condition" text NOT NULL,
+    "action" text NOT NULL,
+    "severity" text NOT NULL,
+    "auto_execute" boolean NOT NULL DEFAULT true,
+    "execution_count" integer NOT NULL DEFAULT 0,
+    "last_executed_at" timestamp,
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "provider_cache" (
+    "id" serial PRIMARY KEY,
+    "provider" text NOT NULL,
+    "category" text NOT NULL,
+    "cache_key" text NOT NULL,
+    "response_data" jsonb NOT NULL,
+    "cost_cents" integer NOT NULL DEFAULT 0,
+    "expires_at" timestamp NOT NULL,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "idx_provider_cache_key" ON "provider_cache" ("cache_key")`,
+  `CREATE INDEX IF NOT EXISTS "idx_provider_cache_expires" ON "provider_cache" ("expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "idx_provider_cache_provider_category" ON "provider_cache" ("provider", "category")`,
+  `CREATE TABLE IF NOT EXISTS "quiet_hours_config" (
+    "id" serial PRIMARY KEY,
+    "start_hour" integer NOT NULL DEFAULT 22,
+    "end_hour" integer NOT NULL DEFAULT 7,
+    "timezone" text NOT NULL DEFAULT 'America/Chicago',
+    "days_of_week" jsonb DEFAULT '[0,1,2,3,4,5,6]'::jsonb,
+    "emergency_override" boolean NOT NULL DEFAULT true,
+    "is_active" boolean NOT NULL DEFAULT false,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "reaction_chain_links" (
+    "id" serial PRIMARY KEY,
+    "from_chain_id" text NOT NULL,
+    "to_chain_id" text NOT NULL,
+    "link_type" text NOT NULL DEFAULT 'on_complete',
+    "condition_filter" jsonb DEFAULT '{}'::jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "rcl_from_idx" ON "reaction_chain_links" ("from_chain_id")`,
+  `CREATE INDEX IF NOT EXISTS "rcl_to_idx" ON "reaction_chain_links" ("to_chain_id")`,
+  `CREATE TABLE IF NOT EXISTS "reaction_chain_runs" (
+    "id" serial PRIMARY KEY,
+    "run_id" text NOT NULL,
+    "chain_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "trigger_event" jsonb NOT NULL,
+    "status" text NOT NULL DEFAULT 'running',
+    "current_step_index" integer NOT NULL DEFAULT 0,
+    "step_results" jsonb DEFAULT '[]'::jsonb,
+    "halt_reason" text,
+    "resumed_by" text,
+    "total_duration_ms" integer,
+    "started_at" timestamp NOT NULL DEFAULT now(),
+    "completed_at" timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "rr_chain_idx" ON "reaction_chain_runs" ("chain_id")`,
+  `CREATE INDEX IF NOT EXISTS "rr_org_idx" ON "reaction_chain_runs" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "rr_status_idx" ON "reaction_chain_runs" ("status")`,
+  `CREATE TABLE IF NOT EXISTS "reaction_chains" (
+    "id" serial PRIMARY KEY,
+    "chain_id" text NOT NULL,
+    "org_id" integer NOT NULL,
+    "name" text NOT NULL,
+    "description" text,
+    "trigger_event_type" text NOT NULL,
+    "trigger_conditions" jsonb DEFAULT '{}'::jsonb,
+    "steps" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "enabled" boolean NOT NULL DEFAULT true,
+    "priority" integer NOT NULL DEFAULT 50,
+    "max_concurrent_runs" integer NOT NULL DEFAULT 5,
+    "cooldown_ms" integer DEFAULT 0,
+    "total_runs" integer NOT NULL DEFAULT 0,
+    "successful_runs" integer NOT NULL DEFAULT 0,
+    "avg_duration_ms" integer,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "rc_org_idx" ON "reaction_chains" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "rc_trigger_idx" ON "reaction_chains" ("trigger_event_type")`,
+  `CREATE INDEX IF NOT EXISTS "rc_enabled_idx" ON "reaction_chains" ("enabled")`,
+  `CREATE TABLE IF NOT EXISTS "regulatory_feeds" (
+    "id" serial PRIMARY KEY,
+    "feed_id" text NOT NULL,
+    "source" text NOT NULL,
+    "title" text NOT NULL,
+    "summary" text NOT NULL,
+    "impact_assessment" text,
+    "urgency" text NOT NULL DEFAULT 'low',
+    "affected_areas" jsonb DEFAULT '[]'::jsonb,
+    "action_required" text,
+    "action_taken" text,
+    "status" text NOT NULL DEFAULT 'new',
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "rf_status_idx" ON "regulatory_feeds" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "rf_urgency_idx" ON "regulatory_feeds" ("urgency")`,
+  `CREATE TABLE IF NOT EXISTS "regulatory_filing_calendar" (
+    "id" serial PRIMARY KEY,
+    "filing_type" text NOT NULL,
+    "jurisdiction" text NOT NULL,
+    "due_date" timestamp NOT NULL,
+    "recurrence" text NOT NULL DEFAULT 'annual',
+    "template_id" text,
+    "status" text NOT NULL DEFAULT 'upcoming',
+    "filed_at" timestamp,
+    "filed_by" text,
+    "confirmation_ref" text,
+    "notes" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "rfc_due_date_idx" ON "regulatory_filing_calendar" ("due_date")`,
+  `CREATE INDEX IF NOT EXISTS "rfc_status_idx" ON "regulatory_filing_calendar" ("status")`,
+  `CREATE TABLE IF NOT EXISTS "self_audit_reports" (
+    "id" serial PRIMARY KEY,
+    "report_id" text NOT NULL,
+    "audit_type" text NOT NULL,
+    "period" text NOT NULL,
+    "findings" jsonb DEFAULT '[]'::jsonb,
+    "overall_score" integer NOT NULL,
+    "recommendations" jsonb DEFAULT '[]'::jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "shared_deal_links" (
+    "id" serial PRIMARY KEY,
+    "deal_id" integer NOT NULL REFERENCES "deals"("id") ON DELETE no action,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "token" text NOT NULL,
+    "expires_at" timestamp NOT NULL,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "signal_correlations" (
+    "id" serial PRIMARY KEY,
+    "signal_a" text NOT NULL,
+    "signal_b" text NOT NULL,
+    "predicted_outcome" text NOT NULL,
+    "correlation" numeric NOT NULL,
+    "observation_count" integer NOT NULL DEFAULT 0,
+    "last_observed" timestamp,
+    "auto_trigger_playbook_id" integer REFERENCES "agent_playbooks"("id") ON DELETE no action,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "sc_signals_idx" ON "signal_correlations" ("signal_a", "signal_b")`,
+  `CREATE INDEX IF NOT EXISTS "sc_correlation_idx" ON "signal_correlations" ("correlation")`,
+  `CREATE TABLE IF NOT EXISTS "spend_anomalies" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "amount_cents" integer NOT NULL,
+    "expected_cents" integer NOT NULL,
+    "deviation_sigma" real NOT NULL,
+    "peer_review_status" text DEFAULT 'pending',
+    "reviewing_agents" jsonb DEFAULT '[]'::jsonb,
+    "resolution" text,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "sa_agent_v2_idx" ON "spend_anomalies" ("agent_codename")`,
+  `CREATE TABLE IF NOT EXISTS "strategic_compass" (
+    "id" serial PRIMARY KEY,
+    "is_active" boolean NOT NULL DEFAULT true,
+    "mode" text NOT NULL DEFAULT 'growth',
+    "north_star" text NOT NULL,
+    "priorities" jsonb NOT NULL,
+    "agent_directives" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "metrics" jsonb,
+    "last_updated_by" text NOT NULL DEFAULT 'ceo',
+    "changelog" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "sc_compass_active_idx" ON "strategic_compass" ("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "strategic_plans" (
+    "id" serial PRIMARY KEY,
+    "plan_id" text NOT NULL,
+    "title" text NOT NULL,
+    "quarter" text NOT NULL,
+    "objectives" jsonb DEFAULT '[]'::jsonb,
+    "approved_by_board" boolean DEFAULT false,
+    "board_meeting_id" text,
+    "status" text NOT NULL DEFAULT 'draft',
+    "progress_percent" integer DEFAULT 0,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "trust_evolution_log" (
+    "id" serial PRIMARY KEY,
+    "agent_codename" text NOT NULL,
+    "previous_score" integer NOT NULL,
+    "new_score" integer NOT NULL,
+    "delta" integer NOT NULL,
+    "reason" text NOT NULL,
+    "period_start" timestamp NOT NULL,
+    "period_end" timestamp NOT NULL,
+    "decisions_in_period" integer NOT NULL DEFAULT 0,
+    "accuracy_rate" numeric,
+    "promotion_suggested" boolean DEFAULT false,
+    "promotion_action" text,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "trust_evolution_agent_idx" ON "trust_evolution_log" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "trust_evolution_created_idx" ON "trust_evolution_log" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "user_activation_events" (
+    "id" serial PRIMARY KEY,
+    "user_id" text NOT NULL,
+    "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "event_name" text NOT NULL,
+    "occurred_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "user_activation_events_org_idx" ON "user_activation_events" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "user_activation_events_event_idx" ON "user_activation_events" ("event_name")`,
+  `CREATE TABLE IF NOT EXISTS "user_feedback" (
+    "id" serial PRIMARY KEY,
+    "user_id" text NOT NULL,
+    "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "page" text NOT NULL,
+    "feedback" text NOT NULL,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "user_feedback_org_idx" ON "user_feedback" ("org_id")`,
+  `CREATE TABLE IF NOT EXISTS "user_sessions" (
+    "id" serial PRIMARY KEY,
+    "user_id" text NOT NULL,
+    "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "started_at" timestamp DEFAULT now(),
+    "ended_at" timestamp,
+    "page_views" jsonb DEFAULT '[]'::jsonb
+  )`,
+  `CREATE INDEX IF NOT EXISTS "user_sessions_org_idx" ON "user_sessions" ("org_id")`,
+  `CREATE INDEX IF NOT EXISTS "user_sessions_user_idx" ON "user_sessions" ("user_id")`,
+  `CREATE TABLE IF NOT EXISTS "war_rooms" (
+    "id" serial PRIMARY KEY,
+    "title" text NOT NULL,
+    "severity" text NOT NULL,
+    "trigger_event" text NOT NULL,
+    "trigger_data" jsonb,
+    "participants" jsonb NOT NULL,
+    "lead_agent" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'active',
+    "resolution" text,
+    "resolved_by" text,
+    "ceo_joined" boolean NOT NULL DEFAULT false,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "resolved_at" timestamp,
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "wr_status_idx" ON "war_rooms" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "wr_severity_idx" ON "war_rooms" ("severity")`,
+  `CREATE INDEX IF NOT EXISTS "wr_created_idx" ON "war_rooms" ("created_at")`,
+  `CREATE TABLE IF NOT EXISTS "webhook_deliveries" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
+    "endpoint_url" text NOT NULL,
+    "event_type" text NOT NULL,
+    "payload" jsonb NOT NULL,
+    "status_code" integer,
+    "response_body" text,
+    "attempt_number" integer NOT NULL DEFAULT 1,
+    "delivered_at" timestamp,
+    "next_retry_at" timestamp,
+    "created_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "agent_workflow_runs" (
+    "id" serial PRIMARY KEY,
+    "workflow_id" integer NOT NULL REFERENCES "agent_workflows"("id") ON DELETE no action,
+    "status" text NOT NULL DEFAULT 'running',
+    "triggered_by" text NOT NULL,
+    "trigger_data" jsonb,
+    "current_step" integer NOT NULL DEFAULT 0,
+    "step_results" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "started_at" timestamp NOT NULL DEFAULT now(),
+    "completed_at" timestamp,
+    "duration_ms" integer
+  )`,
+  `CREATE INDEX IF NOT EXISTS "awr_workflow_idx" ON "agent_workflow_runs" ("workflow_id")`,
+  `CREATE INDEX IF NOT EXISTS "awr_status_idx" ON "agent_workflow_runs" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "awr_started_idx" ON "agent_workflow_runs" ("started_at")`,
+  `CREATE TABLE IF NOT EXISTS "processed_feedback" (
+    "id" serial PRIMARY KEY,
+    "feedback_id" integer NOT NULL REFERENCES "user_feedback"("id") ON DELETE no action,
+    "category" text,
+    "core_request" text,
+    "severity" text,
+    "product_area" text,
+    "processed_at" timestamp DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS "war_room_messages" (
+    "id" serial PRIMARY KEY,
+    "war_room_id" integer NOT NULL REFERENCES "war_rooms"("id") ON DELETE no action,
+    "from_agent" text NOT NULL,
+    "message_type" text NOT NULL,
+    "content" text NOT NULL,
+    "data" jsonb,
+    "created_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "wrm_room_idx" ON "war_room_messages" ("war_room_id")`,
+  `CREATE INDEX IF NOT EXISTS "wrm_from_idx" ON "war_room_messages" ("from_agent")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
