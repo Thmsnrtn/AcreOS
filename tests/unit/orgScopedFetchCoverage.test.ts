@@ -200,6 +200,82 @@ describe("the tenancy lint covers the service layer", () => {
   });
 });
 
+/**
+ * `--blind-spot` measures how much of the corpus the CURRENT extractor never
+ * reads: both extractors locate a body with `indexOf("{", parenClose)`, which
+ * lands inside an inline return type such as `): Promise<{ total: number }> {`.
+ * Every query in those bodies is invisible to a TENANT-ISOLATION gate.
+ *
+ * The measurement is a flag rather than a fix on purpose. Correcting the
+ * extractor in place would re-baseline four frozen registers as a side effect
+ * of a bug fix, and raising a baseline here needs owner sign-off
+ * (docs/autonomous/OWNER_DECISIONS_PENDING.md, OD-3). What these tests guard is
+ * that the number the owner will decide on is HONEST — a measurement that
+ * quietly stops measuring is the failure mode this whole file exists for.
+ */
+describe("the extractor's blind spot is measured honestly", () => {
+  const blindSpot = (): string =>
+    execFileSync("node", [LINT, "--blind-spot"], { cwd: ROOT, encoding: "utf8" });
+
+  it("resolves EVERY declaration in the real corpus, with none left unreadable", () => {
+    const out = blindSpot();
+    const m = /(\d+) declaration\(s\) the correct finder also could not resolve/.exec(out);
+    expect(m, `the --blind-spot report changed shape:\n${out}`).not.toBeNull();
+    expect(
+      Number(m![1]),
+      "the body-finder cannot read some declaration it used to read. A shape " +
+        "it refuses is a shape the FIXED gate would skip, so this is coverage " +
+        "loss arriving early. The report names them — go look, do not raise " +
+        "this number.\n" + out,
+    ).toBe(0);
+  });
+
+  it("still faces the shape that once defeated it (vacuity guard)", () => {
+    // The finder returned -1 on `Promise<((prompt: string) => Promise<string>) | null>`
+    // because the `=` of `=>` hit its ran-off-the-declaration bail. The
+    // assertion above only means something while the corpus still contains an
+    // arrow-typed return annotation for it to get right.
+    const arrowReturn = /\basync\s+function\s+\w+\s*\([^)]*\)\s*:[^{;]*=>/;
+    const probe = fs.readFileSync(path.join(ROOT, "server/services/autopilot/operator.ts"), "utf8");
+    expect(
+      arrowReturn.test(probe),
+      "operator.ts no longer declares an async function returning a function " +
+        "type, so the zero above may just mean the hard case left the corpus. " +
+        "Re-point this at another one rather than deleting it.",
+    ).toBe(true);
+  });
+
+  it("reports a real blind spot over a real population (vacuity guard)", () => {
+    const out = blindSpot();
+    const files = /--blind-spot: (\d+) files scanned/.exec(out);
+    const missed = /(\d+) async function\(s\) whose BODY the current extractor never reads/.exec(out);
+    expect(files, `the --blind-spot report changed shape:\n${out}`).not.toBeNull();
+    expect(missed, `the --blind-spot report changed shape:\n${out}`).not.toBeNull();
+    expect(Number(files![1]), "the blind-spot scan walked almost nothing").toBeGreaterThan(500);
+    expect(
+      Number(missed![1]),
+      "the blind spot measures as ZERO. Either the extractor was fixed — in " +
+        "which case OD-3 is resolved and this test should be rewritten to the " +
+        "new truth, not deleted — or the measurement went blind. Find out " +
+        "which.\n" + out,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not change the gate's verdict", () => {
+    // The whole justification for shipping this as a flag is that it observes
+    // without re-baselining. If the flag ever moved a register, that claim is
+    // false and the frozen counts moved without sign-off.
+    const normal = run();
+    expect(normal).toContain("[check-org-scoped-fetch] PASS");
+    expect(normal).toContain("new offenders: 0");
+    expect(
+      blindSpot(),
+      "--blind-spot printed the gate's verdict, so it is no longer a pure " +
+        "measurement.",
+    ).not.toContain("[check-org-scoped-fetch] PASS");
+  });
+});
+
 describe("the debt register only shrinks", () => {
   it(`is at or below ${BASELINE_ENTRIES} entries`, () => {
     const out = run();

@@ -921,6 +921,81 @@ function extractAsyncFunctions(source) {
   return functions;
 }
 
+
+/**
+ * Find the brace that opens a FUNCTION BODY, skipping a return-type annotation.
+ *
+ * THE BLIND SPOT THIS EXISTS TO MEASURE. Both extractors above locate a body
+ * with `source.indexOf("{", parenClose)`. When the declaration carries an
+ * INLINE OBJECT RETURN TYPE —
+ *
+ *     export async function getSummary(id: number): Promise<{ total: number }> {
+ *
+ * — the first `{` after the parameters is the one inside `Promise<`, not the
+ * body. `matchBrace` then closes the RETURN TYPE, so the extracted unit text is
+ * the signature plus the type, the body is never scanned, and every query
+ * inside it is invisible to a TENANT-ISOLATION gate. The `[;=]` guard does not
+ * catch it, because a return-type annotation contains neither.
+ *
+ * Measured 2026-08-17: 348 `async function` declarations under server/ match
+ * `): Promise<{`, and the flaw is at BOTH extraction sites, so methods are
+ * affected too.
+ *
+ * This walks the annotation, tracking `<>`, `()` and `[]` depth and skipping
+ * string literals, and returns the first `{` seen at depth 0 — the body. It
+ * returns -1 when it cannot tell, which the caller must treat as a LOUD skip
+ * rather than a silent one; refusing to guess is the whole point, since a
+ * mis-identified body is exactly the defect being fixed.
+ */
+function findBodyBrace(source, parenClose) {
+  let i = parenClose + 1;
+  let angle = 0;
+  let paren = 0;
+  let square = 0;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      i++;
+      while (i < source.length) {
+        if (source[i] === "\\") { i += 2; continue; }
+        if (source[i] === quote) break;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "/") { while (i < source.length && source[i] !== "\n") i++; continue; }
+    if (c === "/" && source[i + 1] === "*") { const e = source.indexOf("*/", i + 2); if (e === -1) return -1; i = e + 2; continue; }
+    if (c === "<") { angle++; i++; continue; }
+    if (c === ">") { if (angle > 0) angle--; i++; continue; }
+    if (c === "(") { paren++; i++; continue; }
+    if (c === ")") { if (paren > 0) paren--; i++; continue; }
+    if (c === "[") { square++; i++; continue; }
+    if (c === "]") { if (square > 0) square--; i++; continue; }
+    if (c === "{") {
+      if (angle === 0 && paren === 0 && square === 0) return i;
+      // A brace inside a type annotation — skip its whole balanced block.
+      const close = matchBrace(source, i);
+      if (close === -1) return -1;
+      i = close + 1;
+      continue;
+    }
+    // `=>` is part of a FUNCTION TYPE in the annotation, not an assignment.
+    // Consuming it as a unit matters twice: the bare `=` bail below would
+    // otherwise refuse the whole declaration, and letting the `>` fall through
+    // to the `>` arm would decrement angle depth that no `<` ever opened —
+    // after which the annotation's real closing `>` drives depth negative and
+    // the body brace is found at the wrong nesting.
+    // Measured on server/services/autopilot/operator.ts:198, whose return type
+    // is `Promise<((prompt: string) => Promise<string>) | null>`.
+    if (c === "=" && source[i + 1] === ">") { i += 2; continue; }
+    if (c === ";" || c === "=") return -1; // ran off the declaration
+    i++;
+  }
+  return -1;
+}
+
 const ORG_CONTEXT_RE = /organizationId|orgId|forOrg\s*\(|unscopedForPlatformOps\s*\(/;
 
 /**
@@ -992,7 +1067,63 @@ function touchedOrgScopedTables(methodText, orgScopedIdents) {
 // Main
 // ----------------------------------------------------------------------------
 
+/**
+ * `--blind-spot`: report what the CORRECT body-finder would see, WITHOUT
+ * changing this gate's verdict.
+ *
+ * Fixing the extractor in place would raise the frozen registers, and raising a
+ * baseline in this repo requires sign-off. So the measurement is available on
+ * demand and the verdict is untouched: the owner gets the number needed to
+ * decide (docs/autonomous/OWNER_DECISIONS_PENDING.md, OD-3) without a silent
+ * re-baseline happening as a side effect of a bug fix.
+ */
+function reportBlindSpot() {
+  const files = findScannedFiles();
+  // Two separate populations, each with its OWN list. An earlier version of
+  // this function printed one sampled list under the other's count, so eight
+  // names appeared beneath the number 1 — a report that misattributes its own
+  // evidence is worse than one that prints no evidence at all.
+  const misExtracted = [];
+  const unparseable = [];
+  const fnRe = /\basync\s+function\s*\*?\s*([A-Za-z0-9_$]+)\s*(?:<[^>(]*>)?\s*\(/g;
+  for (const file of files) {
+    const source = maskComments(readFileSync(file, "utf8"));
+    const rel = file.replace(process.cwd() + "/", "");
+    fnRe.lastIndex = 0;
+    let match;
+    while ((match = fnRe.exec(source)) !== null) {
+      const parenOpen = source.indexOf("(", match.index + match[0].length - 1);
+      if (parenOpen === -1) continue;
+      const parenClose = matchParen(source, parenOpen);
+      if (parenClose === -1) continue;
+      const naive = source.indexOf("{", parenClose);
+      const correct = findBodyBrace(source, parenClose);
+      const where = `${rel}:${source.slice(0, match.index).split("\n").length}  ${match[1]}`;
+      if (correct === -1) { unparseable.push(where); continue; }
+      if (naive !== correct) misExtracted.push(where);
+      fnRe.lastIndex = parenClose;
+    }
+  }
+  console.log(`[check-org-scoped-fetch] --blind-spot: ${files.length} files scanned`);
+  console.log(`  ${misExtracted.length} async function(s) whose BODY the current extractor never reads`);
+  console.log(`  (the naive indexOf("{") lands on an inline return type's brace, e.g. \`): Promise<{ … }> {\`)`);
+  for (const e of misExtracted.slice(0, 8)) console.log(`    - ${e}`);
+  if (misExtracted.length > 8) console.log(`    … and ${misExtracted.length - 8} more (sample of ${misExtracted.length})`);
+  console.log("");
+  console.log(`  ${unparseable.length} declaration(s) the correct finder also could not resolve — these would be LOUD skips, not silent ones`);
+  // Listed in FULL, not sampled: this is the population that would make the
+  // fixed gate say "I could not read this" out loud, so the owner needs all of
+  // them, not a taste.
+  for (const e of unparseable) console.log(`    - ${e}`);
+  console.log("");
+  console.log("  This gate's verdict is UNCHANGED by this flag. Fixing the extractor");
+  console.log("  in place raises the frozen registers, which needs owner sign-off —");
+  console.log("  see docs/autonomous/OWNER_DECISIONS_PENDING.md OD-3.");
+}
+
 function main() {
+  if (process.argv.includes("--blind-spot")) { reportBlindSpot(); return; }
+
   const orgScopedIdents = collectOrgScopedTableIdents();
   const scannedFiles = findScannedFiles();
 

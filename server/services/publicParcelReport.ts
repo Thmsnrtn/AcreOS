@@ -45,6 +45,11 @@ import {
   type PublicReportFactCategory,
   type PublicReportFacts,
 } from "@shared/schema";
+import {
+  normalizeParcelRef,
+  parcelMatchKey,
+  type ParcelRef,
+} from "@shared/parcel/parcelRef";
 import { resolveParcel } from "./parcel/resolveParcel";
 import {
   LCS_DIMENSION_WEIGHTS,
@@ -103,18 +108,58 @@ export interface ReportKey {
   countyLabel: string;
   /** Display APN (trimmed input). */
   apn: string;
-  /** Comparison key: uppercase alphanumerics only. */
+  /**
+   * CANDIDATE key, not an identity: `parcelMatchKey`'s loose APN — uppercase
+   * alphanumerics only, punctuation stripped. See `looseApnKey` below.
+   */
   apnKey: string;
 }
 
 /**
- * Canonicalize a (state, county, apn) triple into the permalink identity, or
- * null when the input cannot be a real parcel reference. Different spellings
- * of the same parcel ("Travis County" / "travis", "123-45-678" / "12345678")
- * normalize to ONE row, which is what makes the permalink idempotent.
+ * The loose APN — `parcelMatchKey`'s APN segment, taken from parcelRef rather
+ * than re-derived here, so the punctuation rule has exactly one owner.
  *
- * The APN must contain at least one digit — real APNs do, and this refuses
- * crawler-fuzzed junk like /p/tx/travis/about from ever creating rows.
+ * The extraction is exact, not a guess: `parcelMatchKey` is
+ * `${state} ${county} ${strippedApn}` and the stripped APN contains only
+ * [A-Z0-9], so it can never contain the separator — the final space-separated
+ * segment IS the loose APN. (It is also never empty: parcelRef refuses an APN
+ * with no digit, and a digit survives the strip.) parcelRefAdoption.test.ts
+ * pins this against `parcelMatchKey` so the two cannot drift apart.
+ */
+function looseApnKey(ref: ParcelRef): string {
+  const segments = parcelMatchKey(ref).split(" ");
+  return segments[segments.length - 1];
+}
+
+/**
+ * Canonicalize a (state, county, apn) triple into the permalink identity, or
+ * null when the input cannot be a real parcel reference.
+ *
+ * WHICH KEY THIS NEEDS, and why it is the loose one. `apnKey` is a CANDIDATE
+ * key — it is what `findReport` looks a permalink up by and what the upsert in
+ * `getOrCreateReport` conflicts on, i.e. its whole job is that
+ * /p/tx/travis/123-45-678 and /p/tx/travis/12345678 land on the SAME saved
+ * page instead of generating two. That is URL dedup, so `parcelMatchKey` is
+ * the right rule and it is used deliberately here.
+ *
+ * The cost is stated plainly rather than hidden: in a county where the APN
+ * separator is significant, two genuinely different parcels share one public
+ * report row. That is the standing behaviour of this surface (the column is
+ * `public_parcel_reports.apn_key`, already written and uniquely indexed on the
+ * stripped form) — tightening it to `parcelKey` would orphan every saved
+ * permalink, since rows stored under "12345678" would no longer be found by a
+ * request for "123-45-678". Changing it is a data migration, not an edit here.
+ * Until then: this is a lookup, and NOTHING may promote it to a claim that two
+ * parcels are the same parcel. The strict identity for the same triple is
+ * `parcelKey(normalizeParcelRef({state, county, apn}).ref)`.
+ *
+ * The parcel-shaped rules (two-letter state, county present, APN present and
+ * containing a digit, whitespace collapsed) come from parcelRef — the same
+ * owner dueDiligence and the tax-delinquent importer use. What stays local is
+ * only genuinely URL-shaped: the real-US-state whitelist (stricter than
+ * parcelRef's two-letter test — it refuses /p/zz/…), the county slug, and the
+ * permalink length bounds. The accept/reject set is unchanged by the adoption;
+ * parcelRefAdoption.test.ts proves it differentially against the old rule.
  */
 export function normalizeReportKey(
   stateRaw: string,
@@ -125,8 +170,16 @@ export function normalizeReportKey(
   if (!US_STATE_CODES.has(state)) return null;
 
   const countyDecoded = safeDecode(countyRaw).trim();
-  const countySlug = countyDecoded
-    .toLowerCase()
+  const apn = safeDecode(apnRaw).trim();
+
+  // ONE definition of "the same parcel" — shared/parcel/parcelRef.ts. It
+  // REFUSES a half-formed key (no county, no APN, digitless APN) instead of
+  // guessing, which is also what keeps crawler-fuzzed junk like
+  // /p/tx/travis/about from ever creating a row.
+  const parcelRef = normalizeParcelRef({ state, county: countyDecoded, apn });
+  if (!parcelRef.ok) return null;
+
+  const countySlug = parcelRef.ref.county
     .replace(/\s+county$/i, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -136,12 +189,13 @@ export function normalizeReportKey(
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 
-  const apn = safeDecode(apnRaw).trim();
-  const apnKey = apn.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Permalink length bounds: a URL-shape guard, not a parcel rule.
+  const apnKey = looseApnKey(parcelRef.ref);
   if (apnKey.length < 2 || apnKey.length > 64) return null;
-  if (!/\d/.test(apnKey)) return null;
 
-  return { state, countySlug, countyLabel, apn, apnKey };
+  // `apn` stays the caller's display spelling (what the page and the county
+  // GIS query use); `apnKey` is the loose lookup key described above.
+  return { state: parcelRef.ref.state, countySlug, countyLabel, apn, apnKey };
 }
 
 function safeDecode(v: string): string {

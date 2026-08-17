@@ -21,6 +21,7 @@
 import { db } from "../db";
 import { leads } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
@@ -211,6 +212,59 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
     .filter((r): r is NormalizedDelinquentRecord => r !== null);
 }
 
+// ─── Parcel identity ─────────────────────────────────────────────────────────
+
+/**
+ * Dedup key for "have we already imported this parcel?".
+ *
+ * That is an IDENTITY question, so this uses `parcelKey` — the strict rule from
+ * shared/parcel/parcelRef.ts, the one owner of "the same parcel" — and NOT
+ * `parcelMatchKey`. Treating a row as a duplicate DROPS it: the loose key
+ * collapses "12-345-678" into "12345678", and in a county where the separator
+ * is significant that silently discards a different parcel's lead, with nothing
+ * downstream able to notice. A candidate key must never decide an identity.
+ *
+ * This replaces an inline rule (state lower · county lower · apn lower, joined
+ * by "|") — one of four competing parcel normalisations that were live in this
+ * repo, none of which agreed with the others.
+ *
+ * WHAT THE SWITCH CHANGES. The key is never persisted; it is rebuilt here for
+ * BOTH sides of every comparison — the existing rows are re-keyed from the DB
+ * in the same pass that keys the incoming CSV rows. So a normalisation change
+ * cannot MISS a stored key the way a persisted key would; it can only
+ * re-partition rows that are all being re-keyed together, and that
+ * re-partition is one-directional:
+ *   - MERGE, never split. The old rule and parcelRef are both case-insensitive
+ *     on all three parts, so case moves nothing. parcelRef additionally
+ *     collapses internal whitespace runs, so "12  345" and "12 345" become ONE
+ *     parcel where they used to be two. That direction removes duplicate
+ *     imports; it cannot create them.
+ *   - Refusals keep yesterday's rule verbatim (see below), so nothing that
+ *     deduped before stops deduping now.
+ * Both sides being normalised here is also why the comparison stays correct
+ * without knowing what case the tuple happens to be stored in — we compare
+ * case-insensitively rather than assuming a stored case.
+ */
+export function parcelDedupKey(
+  state: string | null | undefined,
+  county: string | null | undefined,
+  apn: string | null | undefined,
+): string {
+  const ref = normalizeParcelRef({ state, county, apn });
+  if (ref.ok) return parcelKey(ref.ref);
+
+  // parcelRef REFUSES a half-formed natural key (absent or non-two-letter
+  // state, absent county, digitless APN) rather than guessing — and imported
+  // county lists genuinely arrive without a county or a state. A refusal must
+  // not silently mean "not a duplicate": that would re-import the same rows on
+  // every retry. So refused rows fall back to the pre-parcelRef rule, byte for
+  // byte, under a prefix that can never collide with a parcelKey (a parcelKey
+  // always begins with a two-letter upper-case state code and a space).
+  // This fallback is explicitly NOT a parcel identity — it only has to be
+  // exactly as good as the key it replaces.
+  return `unnormalized|${(state ?? "").toLowerCase().trim()}|${(county ?? "").toLowerCase().trim()}|${(apn ?? "").toLowerCase().trim()}`;
+}
+
 // ─── Main pipeline ────────────────────────────────────────────────────────────
 
 export async function processTaxDelinquentImport(
@@ -258,14 +312,11 @@ export async function processTaxDelinquentImport(
       )
     );
 
-  const tupleKey = (state: string | null | undefined, county: string | null | undefined, apn: string) =>
-    `${(state ?? "").toLowerCase().trim()}|${(county ?? "").toLowerCase().trim()}|${apn.toLowerCase().trim()}`;
-
   const existingTupleSet = new Set(
     existingTuples
       .map((r) => ({ state: r.state, payload: decodePayload(r.notes) }))
       .filter((r) => Boolean(r.payload.apn))
-      .map((r) => tupleKey(r.state, r.payload.county, r.payload.apn!))
+      .map((r) => parcelDedupKey(r.state, r.payload.county, r.payload.apn!))
   );
 
   const toInsert: typeof leads.$inferInsert[] = [];
@@ -273,10 +324,11 @@ export async function processTaxDelinquentImport(
   for (let i = 0; i < normalized.length; i++) {
     const rec = normalized[i];
 
-    // Dedup check on the composite (state, county, apn) tuple.
+    // Dedup check on the composite (state, county, apn) tuple — IDENTITY, so
+    // parcelDedupKey (strict `parcelKey`), never the loose match key.
     const recState = rec.state || options.state;
     const recCounty = rec.county || options.county;
-    const recKey = tupleKey(recState, recCounty, rec.apn);
+    const recKey = parcelDedupKey(recState, recCounty, rec.apn);
     if (existingTupleSet.has(recKey)) {
       result.duplicates++;
       continue;

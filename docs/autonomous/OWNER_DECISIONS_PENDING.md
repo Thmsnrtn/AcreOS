@@ -75,5 +75,33 @@ the new offenders to zero immediately; (c) leave it recorded.
 not because anything got worse — but it IS a baseline raise, and this repo
 requires sign-off for that.
 
+**MEASURED 2026-08-17, so the decision is no longer abstract.**
+`node scripts/check-org-scoped-fetch.mjs --blind-spot` now reports the real
+number without touching the verdict:
+
+  909 files scanned
+  335 async functions whose BODY the current extractor never reads
+    0 declarations the correct finder also cannot resolve
+
+That second number was **1** when first measured, and the one was the finder's
+own bug, not an exotic construct: it bailed on the `=` of `=>`, so any function
+returning a FUNCTION TYPE was unreadable
+(`operator.ts:198`, `Promise<((prompt: string) => Promise<string>) | null>`).
+Fixed and mutation-tested. It is at 0 over the whole corpus now, and
+`orgScopedFetchCoverage.test.ts` fails if it ever leaves 0 — a shape the finder
+refuses is a shape the FIXED gate would skip, which is coverage loss worth
+catching before the re-seed rather than after.
+
+The correct body-finder (`findBodyBrace`) is already written and tested in the
+gate; it walks the return-type annotation tracking `<>`, `()` and `[]` depth and
+skipping strings and comments, and returns -1 rather than guessing. It is
+DELIBERATELY NOT WIRED into the verdict, because doing so would re-baseline the
+frozen registers as a side effect of a bug fix. Wiring it is one line in
+`main()`.
+
+**What approving (a) costs:** one line to wire, then a re-measure, then a
+hand-verified sample before freezing — the same discipline used for the
+function-shape widening (0 → 122) and the prompt-envelope re-seed (0 → 15).
+
 **Blocked:** honest measurement of tenancy coverage. The gate's current number
-understates the debt.
+understates the debt by up to 335 function bodies.

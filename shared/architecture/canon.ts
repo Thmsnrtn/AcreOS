@@ -441,16 +441,35 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
   },
   {
     id: "opportunity",
+    // LANDED 2026-08-17. Was: status "absent", tables [], disposition BUILD,
+    // gap "Early acquisition intelligence is carried on `leads` and on
+    // properties.status. BI11: a Deal represents a transaction process AFTER
+    // sufficient commitment; pre-commitment interest belongs to Opportunity.
+    // Without it, one Property cannot host several simultaneous strategy
+    // evaluations (BI93)."
+    //
+    // `opportunities` (shared/schema/opportunity.ts, migrations/0237) now owns
+    // Opportunity identity and lifecycle: org, ParcelRef natural key, kind
+    // (acquisition/disposition/financing), strategy, status, provenance. It
+    // owns NO economics — `scenarios`, `decision_snapshots` and `outcomes`
+    // already do, and all three already accepted an `opportunity` subject that
+    // pointed at no table (server/services/decisions/decisionStore.ts:102 was
+    // resolving an opportunity subjectId AS a properties.id for want of one).
+    // Two rows differing only in `strategy` make BI93 expressible.
+    //
+    // CHECKED AGAINST THE `parcel` CORRECTION BELOW-BUT-ABOVE: `opportunity_scores`
+    // is opportunity-FLAVOURED but is not an Opportunity identity — its writer
+    // (acquisitionRadar.ts:827) matches on (org, apn, county, state) with no
+    // opportunity_type in the predicate and overwrites the kind in place, so one
+    // parcel gets one row; its vocabulary is acquisition-side signal only; its
+    // payload is score-shaped. Consolidating it into scoring ABOUT an
+    // opportunity is the follow-on, recorded in shared/schema/opportunity.ts.
     purpose: "potential investment/disposition/financing action",
     layer: "reality-graph",
-    status: "absent",
-    tables: [],
-    gap:
-      "Early acquisition intelligence is carried on `leads` and on properties.status. " +
-      "BI11: a Deal represents a transaction process AFTER sufficient commitment; " +
-      "pre-commitment interest belongs to Opportunity. Without it, one Property cannot " +
-      "host several simultaneous strategy evaluations (BI93).",
-    disposition: "BUILD",
+    status: "canonical",
+    tables: ["opportunities"],
+    gap: "",
+    disposition: "KEEP_HARDEN",
   },
   {
     id: "deal",
