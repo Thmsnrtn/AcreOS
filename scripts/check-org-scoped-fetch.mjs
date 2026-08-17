@@ -111,6 +111,36 @@
 // ============================================================================
 
 const BASELINE_OFFENDERS = new Set([
+  // ── RE-SEED 2026-08-17 (founder-approved, OD-3) ──────────────────────────
+  // NOT new code and NOT newly broken. The extractor's body-finder landed on
+  // the brace of an inline `): Promise<{ … }> {` return type, so these bodies
+  // were never scanned and were silently exempt from this gate. Fixing the
+  // finder made them visible: the count rose because the gate got its sight
+  // back, not because anything got worse. DOWN-ONLY from here.
+  //
+  // A sample was hand-verified before freezing — none was an artifact, and the
+  // two classes map exactly onto the two rules:
+  //   RULE 1 (this register) — no organization anywhere. Both samples are
+  //   genuine platform ops that never declared themselves as such:
+  //   trustEvolution.runTrustEvolution and platformOpsRepo.getApiUsageStats
+  //   read across every org without routing through
+  //   unscopedForPlatformOps(reason), which is what this gate requires so the
+  //   intent is STATED rather than inferred from a filename.
+  "server/services/agentOrchestration.ts::approveStep",
+  "server/services/alertPolicy.ts::generateWeeklyDigest",
+  "server/services/alerting.ts::runDailyAlertCheck",
+  "server/services/buyerMatchingAI.ts::resolveBuyerContact",
+  "server/services/customerSupportAutoResolver.ts::attemptResolution",
+  "server/services/decisionsInbox.ts::approve",
+  "server/services/dunning.ts::getSummary",
+  "server/services/etlHandlers.ts::upsert",
+  "server/services/founderWellbeing.ts::detectDecisionFatigue",
+  "server/services/founderWellbeing.ts::generateWeeklySummary",
+  "server/services/paxLearning.ts::getAllLearnings",
+  "server/services/paxLearning.ts::getKnownFixPatterns",
+  "server/services/sellerIntentPredictor.ts::suggestOfferRange",
+  "server/storage.ts::getSubscriptionStats",
+  "server/storage/platformOpsRepo.ts::getApiUsageStats",
   "server/storage/supportOpsRepo.ts::acknowledgeAlert",
   "server/storage/supportOpsRepo.ts::acknowledgeAllAlerts",
   "server/storage/platformOpsRepo.ts::cleanExpiredBorrowerSessions",
@@ -313,6 +343,32 @@ const BASELINE_OFFENDERS = new Set([
 ]);
 
 const BASELINE_UNUSED_ORG = new Set([
+  // ── RE-SEED 2026-08-17 (founder-approved, OD-3) ──────────────────────────
+  // NOT new code and NOT newly broken. The extractor's body-finder landed on
+  // the brace of an inline `): Promise<{ … }> {` return type, so these bodies
+  // were never scanned and were silently exempt from this gate. Fixing the
+  // finder made them visible: the count rose because the gate got its sight
+  // back, not because anything got worse. DOWN-ONLY from here.
+  //
+  // A sample was hand-verified before freezing — none was an artifact, and the
+  // two classes map exactly onto the two rules:
+  //   RULE 2 (this register) — has an org and resolves by id anyway, the
+  //   shape that lets a caller-supplied id reach another tenant's row.
+  //   campaignOptimizer.optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY
+  //   ONLY while `campaign.organizationId` sits two lines above and IS used
+  //   for the other write; autonomyHealth.gradeRecentDecisions resolves
+  //   `decisions_inbox_items` rows the same way. These are real tenancy
+  //   weaknesses on live paths, not annotation debt.
+  "server/services/agentOrchestration.ts::publishEvent",
+  "server/services/buyerQualificationBot.ts::estimateClosingProbability",
+  "server/services/campaignOptimizer.ts::optimizeCampaign",
+  "server/services/dunning.ts::cancelCase",
+  "server/services/dunning.ts::resolveCase",
+  "server/services/dunning.ts::retryPayment",
+  "server/services/leadNurturer.ts::processLeadsForOrg",
+  "server/services/paxLearning.ts::learnFromHumanResolution",
+  "server/services/sequenceOptimizer.ts::applyWinningVariant",
+  "server/services/sequenceOptimizer.ts::identifyBestPerformingSegments",
   // ── RULE 2 BASELINE, frozen 2026-08-13 ────────────────────────────────────
   //
   // Methods that HAVE an organization and still resolve an org-scoped table by
@@ -457,6 +513,37 @@ const BASELINE_UNUSED_ORG = new Set([
 // not accompanied by deleting its line FAILS this lint.
 
 const BASELINE_FUNCTION_OFFENDERS = new Set([
+  // ── RE-SEED 2026-08-17 (founder-approved, OD-3) ──────────────────────────
+  // NOT new code and NOT newly broken. The extractor's body-finder landed on
+  // the brace of an inline `): Promise<{ … }> {` return type, so these bodies
+  // were never scanned and were silently exempt from this gate. Fixing the
+  // finder made them visible: the count rose because the gate got its sight
+  // back, not because anything got worse. DOWN-ONLY from here.
+  //
+  // A sample was hand-verified before freezing — none was an artifact, and the
+  // two classes map exactly onto the two rules:
+  //   RULE 1 (this register) — no organization anywhere. Both samples are
+  //   genuine platform ops that never declared themselves as such:
+  //   trustEvolution.runTrustEvolution and platformOpsRepo.getApiUsageStats
+  //   read across every org without routing through
+  //   unscopedForPlatformOps(reason), which is what this gate requires so the
+  //   intent is STATED rather than inferred from a filename.
+  "server/services/autonomousDecisionExecutor.ts::executeAlertAcknowledgement",
+  "server/services/autonomousDecisionExecutor.ts::executeFeatureRequestApproval",
+  "server/services/autonomousDecisionExecutor.ts::executeSupportEscalationApproval",
+  "server/services/autonomyFinalMile.ts::generateDailyAutonomousSummary",
+  "server/services/autopilot/rootCause.ts::runIncidentTriage",
+  "server/services/campaignEnhancements.ts::calculateCampaignROI",
+  "server/services/communityEnhancements.ts::getPublicRoadmap",
+  "server/services/data-cache/lookup-cache.ts::getCacheHitRate",
+  "server/services/dealFeedEnhancements.ts::compareCounties",
+  "server/services/emailSuppressions.ts::filterSuppressed",
+  "server/services/evolutionPrGenerator.ts::openPullRequestForEvolution",
+  "server/services/onboardingAutonomy.ts::getActivationStats",
+  "server/services/propertyIntelligenceEnhancements.ts::getPropertyTimeline",
+  "server/services/recourseDrafter.ts::aggregateAndDraft",
+  "server/services/rosyRiver.ts::getWeeklyAgentSpend",
+  "server/services/trustEvolution.ts::runTrustEvolution",
   "server/services/actions/outwardAction.ts::markClaim",
   "server/services/agentLlmTraces.ts::getTraceById",
   "server/services/agentLlmTraces.ts::getTracesForDecision",
@@ -584,6 +671,39 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
 //       then bumps lastUsedAt via `where(eq(byokCredentials.id, row.id))` on
 //       the row it just read. Safe, and textually identical to (a).
 const BASELINE_FUNCTION_UNUSED_ORG = new Set([
+  // ── RE-SEED 2026-08-17 (founder-approved, OD-3) ──────────────────────────
+  // NOT new code and NOT newly broken. The extractor's body-finder landed on
+  // the brace of an inline `): Promise<{ … }> {` return type, so these bodies
+  // were never scanned and were silently exempt from this gate. Fixing the
+  // finder made them visible: the count rose because the gate got its sight
+  // back, not because anything got worse. DOWN-ONLY from here.
+  //
+  // A sample was hand-verified before freezing — none was an artifact, and the
+  // two classes map exactly onto the two rules:
+  //   RULE 2 (this register) — has an org and resolves by id anyway, the
+  //   shape that lets a caller-supplied id reach another tenant's row.
+  //   campaignOptimizer.optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY
+  //   ONLY while `campaign.organizationId` sits two lines above and IS used
+  //   for the other write; autonomyHealth.gradeRecentDecisions resolves
+  //   `decisions_inbox_items` rows the same way. These are real tenancy
+  //   weaknesses on live paths, not annotation debt.
+  "server/services/autonomyHealth.ts::gradeRecentDecisions",
+  "server/services/customerSupportAutoResolver.ts::sophieGeniusMode",
+  "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch",
+  "server/services/executionEngine.ts::validateSafetyGates",
+  "server/services/inboundEmailService.ts::processInboundEmail",
+  "server/services/leadScoreDecay.ts::decayOrganizationLeads",
+  "server/services/migrationJobs.ts::processCommunicationsImport",
+  "server/services/migrationJobs.ts::processDocumentImport",
+  "server/services/onboardingAutonomy.ts::sweepAndFireDueSteps",
+  "server/services/propertyTaxService.ts::recordTaxPaymentFromEscrow",
+  "server/services/recognitionWorker.ts::runRecognitionTick",
+  "server/services/sellerMotivationEngine.ts::rescoreLeadsForOrg",
+  "server/services/smsService.ts::handleIncomingSMS",
+  "server/services/smsService.ts::saveTwilioCredentials",
+  "server/services/smsService.ts::sendSMSToLead",
+  "server/services/writingStyle.ts::analyzeWritingStyle",
+  "server/services/writingStyle.ts::generateStyledResponse",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup",
   "server/services/actions/outwardAction.ts::withOutwardAction",
   "server/services/agentPromotionGate.ts::addSimulationRequirement",
@@ -843,6 +963,18 @@ function findScannedFiles() {
 }
 
 /**
+ * Declarations whose BODY could not be located.
+ *
+ * A skip has to be LOUD. The defect this gate just fixed WAS a body silently
+ * not scanned: the extractor found the wrong brace, read a return type instead
+ * of a body, saw no unscoped query and reported clean. So a declaration the
+ * corrected finder cannot resolve is named here and printed in the verdict —
+ * a shape nobody can read is coverage this gate does not have, and it must say
+ * so rather than count it as passing. Measured 0 across 910 files.
+ */
+const unreadableDeclarations = [];
+
+/**
  * Extract every `async <name>(…) { … }` method from a source file as
  * { name, text (signature+body), line }.
  */
@@ -856,13 +988,17 @@ function extractAsyncMethods(source) {
     if (parenOpen === -1) continue;
     const parenClose = matchParen(source, parenOpen);
     if (parenClose === -1) continue;
-    // Find the method-body opening brace (skip return-type annotation).
-    const braceOpen = source.indexOf("{", parenClose);
-    if (braceOpen === -1) continue;
-    const between = source.slice(parenClose + 1, braceOpen);
-    // If something other than a return-type annotation sits between the
-    // params and the brace (e.g. we ran into the next statement), skip.
-    if (/[;=]/.test(between) && !/=>/.test(between)) continue;
+    // Walk PAST any return-type annotation to the real body brace.
+    // `indexOf("{")` lands inside `): Promise<{ … }> {`, so matchBrace then
+    // closed the RETURN TYPE and the body was never scanned — see
+    // findBodyBrace. A -1 is a LOUD skip, recorded and printed.
+    const braceOpen = findBodyBrace(source, parenClose);
+    if (braceOpen === -1) {
+      unreadableDeclarations.push(
+        `${name} (line ${source.slice(0, match.index).split("\n").length})`,
+      );
+      continue;
+    }
     const braceClose = matchBrace(source, braceOpen);
     if (braceClose === -1) continue;
     const text = source.slice(match.index, braceClose + 1);
@@ -905,12 +1041,15 @@ function extractAsyncFunctions(source) {
     if (parenOpen === -1) continue;
     const parenClose = matchParen(source, parenOpen);
     if (parenClose === -1) continue;
-    const braceOpen = source.indexOf("{", parenClose);
-    if (braceOpen === -1) continue;
-    const between = source.slice(parenClose + 1, braceOpen);
-    // Same guard as extractAsyncMethods: if something other than a return-type
-    // annotation sits between the params and the brace, we ran off the end.
-    if (/[;=]/.test(between) && !/=>/.test(between)) continue;
+    // Same correction as extractAsyncMethods — this extractor had the
+    // identical flaw, which is why the blind spot spanned both shapes.
+    const braceOpen = findBodyBrace(source, parenClose);
+    if (braceOpen === -1) {
+      unreadableDeclarations.push(
+        `${name} (line ${source.slice(0, match.index).split("\n").length})`,
+      );
+      continue;
+    }
     const braceClose = matchBrace(source, braceOpen);
     if (braceClose === -1) continue;
     const text = source.slice(match.index, braceClose + 1);
@@ -1068,14 +1207,25 @@ function touchedOrgScopedTables(methodText, orgScopedIdents) {
 // ----------------------------------------------------------------------------
 
 /**
- * `--blind-spot`: report what the CORRECT body-finder would see, WITHOUT
- * changing this gate's verdict.
+ * `--blind-spot`: how many declarations a NAIVE body-finder would mis-read.
  *
- * Fixing the extractor in place would raise the frozen registers, and raising a
- * baseline in this repo requires sign-off. So the measurement is available on
- * demand and the verdict is untouched: the owner gets the number needed to
- * decide (docs/autonomous/OWNER_DECISIONS_PENDING.md, OD-3) without a silent
- * re-baseline happening as a side effect of a bug fix.
+ * REWRITTEN 2026-08-17, and the change of meaning is the point. This flag was
+ * built to measure a hole that was OPEN: the extractors located a body with
+ * `indexOf("{", parenClose)`, which lands inside an inline
+ * `): Promise<{ … }> {` return type, so 335 bodies were never scanned and the
+ * gate reported them clean. The verdict was deliberately left untouched then,
+ * because fixing the extractor re-baselines four frozen registers and raising a
+ * baseline here needs sign-off.
+ *
+ * That sign-off was given (OD-3), the extractors now use `findBodyBrace`, and
+ * the registers were re-seeded once with a hand-verified sample. So this no
+ * longer measures a live blind spot — it measures the COST OF REGRESSING to the
+ * naive finder, which is why it is kept rather than deleted. The number it
+ * prints is what would go unscanned again if someone "simplified"
+ * `findBodyBrace` back to an `indexOf`.
+ *
+ * The gate's own coverage claim now lives in the verdict instead: every run
+ * prints "declarations whose body could not be located", including the zero.
  */
 function reportBlindSpot() {
   const files = findScannedFiles();
@@ -1116,9 +1266,10 @@ function reportBlindSpot() {
   // them, not a taste.
   for (const e of unparseable) console.log(`    - ${e}`);
   console.log("");
-  console.log("  This gate's verdict is UNCHANGED by this flag. Fixing the extractor");
-  console.log("  in place raises the frozen registers, which needs owner sign-off —");
-  console.log("  see docs/autonomous/OWNER_DECISIONS_PENDING.md OD-3.");
+  console.log("  The extractors NO LONGER use the naive finder — OD-3 was approved on");
+  console.log("  2026-08-17 and they call findBodyBrace, so the number above is the cost");
+  console.log("  of REGRESSING to indexOf, not a live gap. The gate's current coverage is");
+  console.log("  the \"declarations whose body could not be located\" line in its verdict.");
 }
 
 function main() {
@@ -1266,6 +1417,18 @@ function main() {
       `scanned ${scannedFunctions} async functions; ` +
       `rule 1 baseline ${baselineSeenFunction.size}, ` +
       `rule 2 baseline ${unusedOrgSeenFunction.size} — both down-only`,
+  );
+
+  // ALWAYS PRINTED, including the zero. A line that appears only when something
+  // is wrong teaches nobody that the check exists — and "no body was skipped"
+  // is exactly the claim this gate could not previously make.
+  console.log(
+    `[check-org-scoped-fetch] declarations whose body could not be located: ` +
+      `${unreadableDeclarations.length}` +
+      (unreadableDeclarations.length === 0
+        ? " (every declaration was read)"
+        : ` — NOT SCANNED, so this gate says nothing about them:\n  ` +
+          unreadableDeclarations.join("\n  ")),
   );
 
   if (

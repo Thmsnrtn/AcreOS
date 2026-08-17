@@ -91,13 +91,15 @@ See `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`.
   that had been hiding: `dueDiligence.ts` returned a `dataSource` value outside
   its own union, shipped in `26517723` while tsc was OOMing. Run the full gate,
   do not assume it will abort.
-- **335** `async function`s with an inline `): Promise<{ … }> {` return type are
-  invisible to `check-org-scoped-fetch.mjs` — its body-finder lands on the
-  return type's brace. Tenancy coverage is overstated by that amount. Measure it
-  with `node scripts/check-org-scoped-fetch.mjs --blind-spot`, which reports
-  without touching the verdict. The corrected finder is written and tested;
-  wiring it is one line in `main()` and needs sign-off because it re-baselines
-  four frozen registers (OWNER_DECISIONS_PENDING OD-3).
+- ~~335 `async function` bodies invisible to the tenancy gate~~ — **RESOLVED
+  2026-08-17** (OD-3 approved). `findBodyBrace` is wired into BOTH extractors;
+  the gate reads every declaration and prints its own coverage on every run
+  (`declarations whose body could not be located: 0`). Registers re-seeded once,
+  hand-verified, down-only again: 171→196, 59→69, 114→130, 67→84.
+  **The 58 newly-visible units are frozen DEBT, not fixed code** — the rule-2
+  entries first, since each is a live path where a caller-supplied id can reach
+  another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs `campaigns`
+  by primary key alone with the org right there on the object).
 
 ## NEXT SESSION START HERE
 

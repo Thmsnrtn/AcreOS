@@ -1,5 +1,10 @@
 # OWNER DECISIONS PENDING
 
+> **Four decisions were taken on 2026-08-17.** OD-3 is IMPLEMENTED and closed
+> below. OD-1 is DECIDED (hold) and stays listed because the hold is the live
+> state. OD-2 is DECIDED and its build is in progress. OD-4 is DECIDED but
+> waits on one query only the owner can run.
+
 Genuine owner decisions only. Ordinary engineering — schemas, refactors, tests,
 migration mechanics, deletion, dependency ordering — is not escalated here.
 
@@ -10,7 +15,7 @@ Technical (non-owner) blockers stay in `docs/implementation/BLOCKERS.md`.
 
 ---
 
-## OD-1 — Apply migration 0236? (13 experiment-residue tables)
+## OD-1 — DECIDED 2026-08-17: KEEP HOLDING
 
 **Decision:** whether to drop 13 tables from the production database.
 
@@ -24,7 +29,10 @@ removed from `shared/schema.ts`, so nothing reads or writes them.
 registers; (b) inspect the 13 tables, then paste the statements back into
 `migrate.mjs` and deploy.
 
-**Recommendation:** (b), after looking at row counts. All 13 trace to modules
+**DECISION: (a) keep holding.** 0236 stays unregistered, so no deploy can
+drop anything. Reopen only after the row counts are inspected.
+
+**Original recommendation:** (b), after looking at row counts. All 13 trace to modules
 the deletion ledger already recorded as killed. But no session has had
 `DATABASE_URL`, so nobody has actually looked inside them.
 
@@ -33,7 +41,7 @@ the deletion ledger already recorded as killed. But no session has had
 
 ---
 
-## OD-2 — BYO send-rail rollout blast radius is unmeasured
+## OD-2 — DECIDED 2026-08-17: KEEP REFUSING, ADD A PER-ORG FOUNDER ALERT
 
 **Decision:** accept the current refusal behaviour, or soften it.
 
@@ -46,7 +54,10 @@ This is the 2026-07-17 founder decision working as intended.
 `DATABASE_URL`. If a material number of orgs have no connected identity, this
 is a silent delivery outage for regulated mail on the next deploy.
 
-**Recommendation:** run one query — orgs with neither `aws_ses` integration
+**DECISION:** the 2026-07-17 ruling stands unweakened; a founder alert is
+raised per affected org so a silent regulated-mail outage becomes visible.
+
+**Original recommendation:** run one query — orgs with neither `aws_ses` integration
 credentials nor a verified sending identity — before the next deploy that
 carries this. If the number is non-trivial, add a founder alert per affected
 org rather than softening the rule.
@@ -55,7 +66,7 @@ org rather than softening the rule.
 
 ---
 
-## OD-3 — Tenancy gate re-seed raises a baseline
+## OD-3 — DECIDED AND IMPLEMENTED 2026-08-17: FIX AND RE-SEED
 
 **Decision:** approve a one-time upward re-seed of the tenancy register.
 
@@ -71,13 +82,11 @@ hand-verified sample, keep it down-only from there — the same move that
 produced the original 122 and the prompt-envelope re-seed; (b) fix and drive
 the new offenders to zero immediately; (c) leave it recorded.
 
-**Recommendation:** (a). The count rises because the gate got its sight back,
-not because anything got worse — but it IS a baseline raise, and this repo
-requires sign-off for that.
+**DECISION: (a), taken 2026-08-17.** The count rises because the gate got its
+sight back, not because anything got worse.
 
-**MEASURED 2026-08-17, so the decision is no longer abstract.**
-`node scripts/check-org-scoped-fetch.mjs --blind-spot` now reports the real
-number without touching the verdict:
+**THE MEASUREMENT THE DECISION RESTED ON.**
+`node scripts/check-org-scoped-fetch.mjs --blind-spot` reported:
 
   909 files scanned
   335 async functions whose BODY the current extractor never reads
@@ -92,22 +101,34 @@ Fixed and mutation-tested. It is at 0 over the whole corpus now, and
 refuses is a shape the FIXED gate would skip, which is coverage loss worth
 catching before the re-seed rather than after.
 
-The correct body-finder (`findBodyBrace`) is already written and tested in the
-gate; it walks the return-type annotation tracking `<>`, `()` and `[]` depth and
-skipping strings and comments, and returns -1 rather than guessing. It is
-DELIBERATELY NOT WIRED into the verdict, because doing so would re-baseline the
-frozen registers as a side effect of a bug fix. Wiring it is one line in
-`main()`.
+**DONE.** `findBodyBrace` is wired into BOTH extractors. The gate reads every
+declaration in the corpus and prints its own coverage on every run
+(`declarations whose body could not be located: 0`). The four registers were
+re-seeded ONCE with a hand-verified sample and are down-only again:
 
-**What approving (a) costs:** one line to wire, then a re-measure, then a
-hand-verified sample before freezing — the same discipline used for the
-function-shape widening (0 → 122) and the prompt-envelope re-seed (0 → 15).
+| register | was | now |
+|---|---|---|
+| entries (method shape) | 171 | 196 |
+| rule 2 (method shape) | 59 | 69 |
+| function rule 1 | 114 | 130 |
+| function rule 2 | 67 | 84 |
 
-**Blocked:** honest measurement of tenancy coverage. The gate's current number
-understates the debt by up to 335 function bodies.
+The debt did not grow — the gate stopped being blind to it. 58 units became
+visible; a sample was verified by hand and none was an artifact:
+* **rule 1** (no org anywhere) — `trustEvolution.runTrustEvolution`,
+  `platformOpsRepo.getApiUsageStats`: genuine platform ops that never declared
+  themselves through `unscopedForPlatformOps(reason)`.
+* **rule 2** (has an org, resolves by id anyway) — `campaignOptimizer
+  .optimizeCampaign` UPDATEs `campaigns` by PRIMARY KEY ONLY while
+  `campaign.organizationId` is on the same object and IS used for the other
+  write in that method. A real tenancy weakness on a live write path.
 
-**A defect was found INSIDE this blind spot on 2026-08-17, which is the
-strongest argument for approving (a).** `agentKnowledgeGraph.ts:52/94` were both
+**Follow-on, now unblocked:** those 58 are frozen debt, not fixed code. The
+rule-2 entries are the ones to drive down first — each is a live path where a
+caller-supplied id can reach another tenant's row.
+
+**A defect was found INSIDE this blind spot, which is what the decision was
+weighed against.** `agentKnowledgeGraph.ts:52/94` were both
 in the `--blind-spot` sample, and both were wrong: `getAgentKnowledge` filtered
 on `agent_type` alone over a table whose `organization_id` is NOT NULL,
 returning every tenant's agent memory into what its own docstring calls "the
@@ -117,7 +138,7 @@ hand — not by any gate. That is what 335 unread function bodies costs.
 
 ---
 
-## OD-4 — `indexAnalyzer` says the platform org is 0; everything else says 1
+## OD-4 — DECIDED 2026-08-17: REPOINT TO 1, AFTER ONE QUERY (awaiting owner)
 
 **Decision:** which organization row the index-analyzer job should act on.
 
@@ -134,9 +155,12 @@ rather than an error, which is exactly how it went unnoticed.
 **Options:** (a) repoint it at `SYSTEM_ORG_ID`; (b) leave it, if org 0 really
 does exist and holds its integrations; (c) delete the job if the reads are dead.
 
-**Recommendation:** (a), after one query — `SELECT id FROM organizations WHERE
-id IN (0, 1)`. Deliberately NOT done blind: repointing a live job changes which
-tenant's rows it touches, and no session has had `DATABASE_URL`.
+**DECISION: (a) repoint to `SYSTEM_ORG_ID`, once the owner confirms.**
+Run `SELECT id FROM organizations WHERE id IN (0, 1);` and paste the result —
+the one-line change lands immediately after. Deliberately NOT done blind:
+repointing a live job changes which tenant's rows it touches.
+
+**THIS IS THE ONE ITEM STILL WAITING ON THE OWNER.**
 
 **Blocked:** nothing. `agentMemoryTenancy.test.ts` pins the disagreement so it
 cannot quietly disappear while it remains true.

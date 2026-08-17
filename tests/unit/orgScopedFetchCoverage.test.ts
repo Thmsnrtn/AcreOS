@@ -61,14 +61,46 @@ const src = fs.readFileSync(LINT, "utf8");
 // file deleted under B19 class 3 (founder ruling). Second stale entry this day —
 // B17's deletion produced the first. The register checks both directions, so a
 // stale entry fails; lowering the count here is that reduction locked in.
-const BASELINE_ENTRIES = 171;
+
+// ── RE-SEED 2026-08-17, founder-approved (OWNER_DECISIONS_PENDING OD-3) ──────
+// The four ceilings below were RAISED ONCE, deliberately, and are down-only
+// again from here. This is the only kind of increase this file permits, and it
+// is recorded rather than quietly applied.
+//
+// WHY. The lint located a function body with `indexOf("{", parenClose)`, which
+// on a declaration carrying an inline `): Promise<{ … }> {` return type lands
+// inside the RETURN TYPE. `matchBrace` then closed the type instead of the
+// body, so the body was never scanned — the unit was reported clean because
+// nothing had been read. 335 declarations were in that state, across BOTH
+// extractors. Fixing the finder (findBodyBrace) made them visible:
+//
+//   entries      171 -> 196   (+25 method-shape)
+//   rule 2        59 ->  69   (+10)
+//   function r1  114 -> 130   (+16)
+//   function r2   67 ->  84   (+17)
+//
+// The debt did not grow; the gate stopped being blind to it. `--blind-spot`
+// still reports the measurement, and the verdict now prints "declarations whose
+// body could not be located: 0" on every run, so a future regression to
+// unreadable bodies is loud instead of silent.
+//
+// HAND-VERIFIED before freezing, per the founder's decision. None was an
+// artifact, and the two classes map onto the two rules exactly:
+//   rule 1 — no org anywhere: trustEvolution.runTrustEvolution and
+//     platformOpsRepo.getApiUsageStats are genuine platform ops that never
+//     declared themselves through unscopedForPlatformOps(reason).
+//   rule 2 — has an org and resolves by id anyway: campaignOptimizer
+//     .optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY ONLY while
+//     `campaign.organizationId` is on the same object and IS used for the other
+//     write in the same method. A real tenancy weakness on a live write path.
+const BASELINE_ENTRIES = 196;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,
  * after `priceOptimizer.recordPriceOutcome` — a cross-tenant WRITE the rule
  * found on its first run — was fixed rather than admitted.
  */
-const RULE_2_BASELINE = 59;
+const RULE_2_BASELINE = 69;
 
 /**
  * THE FUNCTION SHAPE (widened 2026-08-16), the two registers this file used to
@@ -100,8 +132,8 @@ const RULE_2_BASELINE = 59;
  * reduction (fix the unit, delete the register line — the lint's stale check
  * forces the second half); never raise them.
  */
-const FUNCTION_RULE_1_BASELINE = 114;
-const FUNCTION_RULE_2_BASELINE = 67;
+const FUNCTION_RULE_1_BASELINE = 130;
+const FUNCTION_RULE_2_BASELINE = 84;
 
 /**
  * VACUITY FLOOR for the function-shape scan, not a ratchet.
@@ -188,6 +220,23 @@ describe("the tenancy lint covers the service layer", () => {
     expect(Number(m![1])).toBeGreaterThan(2000);
   });
 
+  it("reports that every declaration's body was actually read", () => {
+    // THE CLAIM THIS GATE COULD NOT PREVIOUSLY MAKE. Until 2026-08-17 its
+    // extractors located a body with `indexOf("{", parenClose)` and skipped
+    // silently when that went wrong — a unit reported clean because nothing
+    // had been read. The verdict now states its own coverage on every run,
+    // including the zero, so a regression to unreadable bodies is loud.
+    const out = run();
+    const m = /declarations whose body could not be located: (\d+)/.exec(out);
+    expect(m, `the coverage line is gone from the verdict:\n${out}`).not.toBeNull();
+    expect(
+      Number(m![1]),
+      "the lint could not locate some declaration's body. It is NOT SCANNED, " +
+        "so the gate says nothing about it — that is coverage loss, and the " +
+        "names are printed above. Fix the finder; do not accept the skip.",
+    ).toBe(0);
+  });
+
   it("passes, with no new offenders and no stale baseline entries", () => {
     const out = run();
     expect(out).toContain("new offenders: 0");
@@ -254,17 +303,17 @@ describe("the extractor's blind spot is measured honestly", () => {
     expect(Number(files![1]), "the blind-spot scan walked almost nothing").toBeGreaterThan(500);
     expect(
       Number(missed![1]),
-      "the blind spot measures as ZERO. Either the extractor was fixed — in " +
-        "which case OD-3 is resolved and this test should be rewritten to the " +
-        "new truth, not deleted — or the measurement went blind. Find out " +
-        "which.\n" + out,
+      "the naive-finder gap measures as ZERO over a corpus that still contains " +
+        "inline object return types. The measurement went blind — the gap " +
+        "itself cannot vanish while `): Promise<{ … }> {` is still written " +
+        "anywhere in server/.\n" + out,
     ).toBeGreaterThan(0);
   });
 
   it("does not change the gate's verdict", () => {
-    // The whole justification for shipping this as a flag is that it observes
-    // without re-baselining. If the flag ever moved a register, that claim is
-    // false and the frozen counts moved without sign-off.
+    // Still true, and still worth pinning: the flag REPORTS, it does not judge.
+    // Its meaning changed on 2026-08-17 (see the header) but its separation
+    // from the verdict did not.
     const normal = run();
     expect(normal).toContain("[check-org-scoped-fetch] PASS");
     expect(normal).toContain("new offenders: 0");
