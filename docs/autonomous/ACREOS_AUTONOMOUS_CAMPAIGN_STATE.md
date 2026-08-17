@@ -32,12 +32,20 @@ canonical; the 10 that are not are almost all layer 2:
 
 | status | objects |
 |---|---|
-| canonical (8) | organization, user, deal, evidence-claim, scenario, decision-snapshot, workflow-run, outcome |
+| canonical (9) | organization, user, deal, evidence-claim, scenario, decision-snapshot, workflow-run, outcome, **opportunity** |
 | conflated (3) | property, parcel, document — all inside the `properties` god table |
 | role-table (5) | party, holding, instrument (layer 2) · plan, action-receipt (layer 6) |
-| absent (2) | relationship, opportunity (layer 2) |
+| absent (1) | relationship (layer 2) |
 
-Ratchet: `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 10`, down-only.
+Ratchet: `OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 9`, down-only.
+
+**Both layer-6 role-tables are FOUNDER-PLANE ONLY — verified, not assumed.**
+`plan_proposals` has no `organization_id` at all (agent_role, dispatch ids, cost
+estimate: the Solene orchestration plane), and every `proofReceipt` reference is
+under `autopilot/` or `governance/`, with `actions/outwardAction.ts` explicitly
+disclaiming being a receipt. So the CUSTOMER side of both objects is unbuilt,
+not merely blurred. `canonicalArchitecture.test.ts` pins the tenancy claim in
+both directions so the gap text cannot rot.
 
 **Parcel is the blocking dependency.** Cadastral identity (APN, legal
 description) is welded to economic state (purchase price, market value) and to
@@ -76,43 +84,63 @@ See `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`.
   `shared/parcel/parcelRef.ts`: the gate stayed at baseline 1401 with six new
   unadopted exports in the tree. Adoption there has to be checked by hand until
   the scan roots widen — and widening them will re-seed the count upward.
-- Full-project `tsc --noEmit` cannot complete in this container: it aborts
-  SIGABRT/OOM (exit 134, zero diagnostics). That is the truncated-run shape
-  `scripts/check-tests-typecheck.mjs` refuses to report on. Type safety is
-  currently proven by the test suite + by-hand call-site checks, NOT by a full
-  compile. Any session with more memory should run it and record the result.
-- ~348 `async function`s with an inline `): Promise<{ … }> {` return type are
+- ~~Full-project `tsc --noEmit` cannot complete in this container~~ —
+  **RESOLVED 2026-08-17.** It completes under `npm run check`
+  (`--max-old-space-size=6144`, `--incremental false`) and found a real error
+  that had been hiding: `dueDiligence.ts` returned a `dataSource` value outside
+  its own union, shipped in `26517723` while tsc was OOMing. Run the full gate,
+  do not assume it will abort.
+- **335** `async function`s with an inline `): Promise<{ … }> {` return type are
   invisible to `check-org-scoped-fetch.mjs` — its body-finder lands on the
-  return type's brace. Tenancy coverage is overstated by that amount.
+  return type's brace. Tenancy coverage is overstated by that amount. Measure it
+  with `node scripts/check-org-scoped-fetch.mjs --blind-spot`, which reports
+  without touching the verdict. The corrected finder is written and tested;
+  wiring it is one line in `main()` and needs sign-off because it re-baselines
+  four frozen registers (OWNER_DECISIONS_PENDING OD-3).
 
 ## NEXT SESSION START HERE
 
-Read this file, then `shared/architecture/canon.ts` — specifically the `parcel`
-entry, which was CORRECTED on 2026-08-17 and now describes the real situation.
+Read this file, then `shared/architecture/canon.ts` — the `parcel`, `plan` and
+`opportunity` entries were all CORRECTED or landed on 2026-08-17.
 
-**Do not build a new `parcels` table as the first move.** Parcel identity already
-has TWO owners: `properties` (apn/county/legalDescription/sizeAcres/zoning) and
-`parcel_snapshots` (apn/state/county/fipsCode/boundary/centroid/acres/
-legalDescription/zoning, 55 live references). Adding a third would make it worse.
+**DONE so far in this campaign** (each verified against code, not against a
+report — the `parcel` and `plan` entries were both WRONG when checked):
 
-The canonical Parcel is LATENT. `server/services/dueDiligence.ts:259-274` already
-resolves one by the natural key `(state, county, apn)` — upper-casing state,
-lower-casing county, trimming apn — with an org-scoped lookup that falls back to
-the null-org shared cache. That join is the entity, written as code.
+1. **`shared/parcel/parcelRef.ts` — one definition of "the same parcel."**
+   Replaced FOUR competing normalisations. Adopted at `dueDiligence.ts`,
+   `publicParcelReport.ts`, `taxDelinquentPipeline.ts` and `storage/gisRepo.ts`.
+   Two live defects fixed: dueDiligence wrote duplicate snapshots into the
+   null-org SHARED cache, and gisRepo merged "12-345" with "12345" while
+   dueDiligence kept them apart — two writers to one table disagreeing about
+   which row is which. Adoption ratchet in `parcelRefAdoption.test.ts`: **4**,
+   down-only. The remaining four are `taxSaleCsvImport.ts` ×2 (dedup on
+   `apn.toUpperCase()` with NEITHER state nor county in the key) and
+   `parcel.ts` ×2 (upstream query fan-out reinventing `parcelMatchKey`).
+2. **`opportunity` is canonical** — `opportunities`, migration 0237 REGISTERED,
+   exported, read by `decisionStore` and written by `routes-opportunities.ts`.
+   It fixed a real cross-entity defect: `decisionStore` resolved an
+   `opportunity` subjectId AS a `properties.id`, so a decision against
+   opportunity #5 froze PROPERTY #5's evidence into an immutable record.
+
+**Do not build a new `parcels` table as the first move.** Parcel identity still
+has TWO owners: `properties` and `parcel_snapshots`. A third makes it worse.
 
 The work package, in dependency order:
 
-1. **Promote (state, county, apn) to one owner.** A `parcelRef` value object in
-   `shared/` with the normalisation rules currently duplicated at each call site,
-   so "the same parcel" means one thing repo-wide. Find every place that
-   open-codes that join first — start with the 55 `parcelSnapshots` references —
-   and count them; that count is the adoption ratchet.
-2. **Re-frame `parcel_snapshots` as observation, not identity.** It is
+1. **Re-frame `parcel_snapshots` as observation, not identity.** It is
    vendor-sourced with a `source` column already ("county_gis", "regrid",
    "manual"). That is precisely an evidence claim with provenance and observation
    time, and the Evidence Fabric (`evidence_claims`) already exists to hold it.
    Until then two tables assert cadastral facts with no conflict resolution
    between them — the thing `resolveClaims` was built to do.
-3. **Only then** consider a thin identity table, if 1 and 2 leave a real need.
+2. **Retire the last four open-coded parcel keys** (above). `taxSaleCsvImport`
+   is the sharp one: a key with no county cannot be right.
+3. **`relationship`** — the last `absent` object, and the one BI184 says the
+   role-table sprawl is waiting on.
+4. **Party / holding / instrument** — role-table → canonical. Needs 3.
+5. **Only then** consider a thin parcel identity table, if 1–2 leave a real need.
 
-Then `opportunity` (needs Parcel), then `relationship` (needs Parcel + Party).
+Layer 6 (`plan`, `action-receipt`) is independent of the reality graph and can
+proceed whenever layer 2 is blocked — but note the correction above: on the
+CUSTOMER plane both are absent, not partial, so that work is a build and not a
+refactor of what Solene/autopilot already has.

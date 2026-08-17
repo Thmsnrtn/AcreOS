@@ -560,9 +560,36 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     layer: "action-workflow",
     status: "role-table",
     tables: ["plan_proposals"],
+    // CORRECTED 2026-08-17, measured rather than assumed. The entry read:
+    // "`plan_proposals` exists but Plan-vs-WorkflowRun is not a clean boundary
+    // (BI21): a proposal is not the same object as accepted, executing durable
+    // work." True as far as it went, and it compared two objects that are not
+    // on the same plane — the same mistake the `parcel` entry above was
+    // corrected for, in the opposite direction: there canon called an identity
+    // ABSENT when it had two owners; here it implies a customer-side home that
+    // does not exist.
+    //
+    // `plan_proposals` (shared/schema/solene-plan-proposals.ts) has NO
+    // organization_id column at all. Its vocabulary is agent_role,
+    // triggering_dispatch_id, executed_dispatch_id, estimated_cost_usd — the
+    // FOUNDER agent-orchestration plane (Solene), where a proposal is reviewed
+    // before paying for a dispatch. `workflow_runs` is customer-plane
+    // (workflow_id → workflows.organization_id NOT NULL). So the two are not a
+    // blurred boundary between neighbours; they are on opposite sides of the
+    // founder/customer line and never met.
+    //
+    // This is the SAME SHAPE as `action-receipt` below: a genuinely good
+    // primitive that exists only on the founder plane, with the customer plane
+    // holding nothing. Generalising the existing primitive is the move;
+    // building a second one is not.
     gap:
-      "`plan_proposals` exists but Plan-vs-WorkflowRun is not a clean boundary (BI21): " +
-      "a proposal is not the same object as accepted, executing durable work.",
+      "A plan-then-execute proposal layer EXISTS but only on the FOUNDER agent plane " +
+      "(`plan_proposals` — agent_role / dispatch ids / cost estimate, and NO " +
+      "organization_id). No CUSTOMER-side proposed sequence of work has a home: a plan " +
+      "to acquire, subdivide or refinance lives in prose on a deal, or nowhere. " +
+      "`workflow_runs` is customer-plane but is accepted executing work, not a " +
+      "proposal — so BI21's Plan-vs-WorkflowRun boundary is not blurred, it is unbuilt " +
+      "on the customer side entirely.",
     disposition: "REFACTOR",
   },
   {

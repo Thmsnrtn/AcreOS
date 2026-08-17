@@ -345,6 +345,50 @@ describe("canon registry — ratchets", () => {
     ).toBeLessThanOrEqual(OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE);
   });
 
+  /**
+   * Two canon entries say a good primitive exists but ONLY on the founder
+   * plane, with the customer plane holding nothing. That is a claim about
+   * tenancy, and it is checkable: a founder-plane table has no
+   * `organization_id`. Pinned because the claim is the whole reason both
+   * objects are still open — if either table ever gains tenancy, the gap text
+   * becomes a lie and the disposition needs rethinking, and nothing else in
+   * this file would notice.
+   */
+  describe("the founder-plane claims are true, and stay true", () => {
+    const schemaSrc = (file: string): string =>
+      fs.readFileSync(path.join(ROOT, "shared/schema", file), "utf8");
+
+    const tableBlock = (src: string, table: string): string => {
+      const at = src.indexOf(`pgTable(\n  "${table}"`);
+      const alt = src.indexOf(`pgTable("${table}"`);
+      const start = at >= 0 ? at : alt;
+      expect(start, `${table} is no longer declared where this test looks`).toBeGreaterThan(-1);
+      return src.slice(start, src.indexOf("\n);", start));
+    };
+
+    it("`plan_proposals` carries no tenancy — it is the founder agent plane", () => {
+      const block = tableBlock(schemaSrc("solene-plan-proposals.ts"), "plan_proposals");
+      // Vacuity guard: we really did find the table body, not an empty slice.
+      expect(block, "the plan_proposals block came back empty").toContain("agent_role");
+      expect(
+        block,
+        "plan_proposals gained an organization_id. canon's `plan` gap says it has " +
+          "none and that the CUSTOMER side is unbuilt — re-read that entry rather " +
+          "than deleting this test.",
+      ).not.toContain("organization_id");
+    });
+
+    it("`workflow_runs` reaches tenancy through its workflow — it IS customer-plane", () => {
+      // The other half of the same claim: the two objects canon used to compare
+      // are on opposite sides of the founder/customer line.
+      const root = fs.readFileSync(path.join(ROOT, "shared/schema.ts"), "utf8");
+      const runs = root.slice(root.indexOf('workflowRuns = pgTable("workflow_runs"'));
+      expect(runs.slice(0, 400)).toContain("workflows.id");
+      const workflows = root.slice(root.indexOf('workflows = pgTable("workflows"'));
+      expect(workflows.slice(0, 600)).toContain("organization_id");
+    });
+  });
+
   it("the baselines are not stale — they must track the registry as it improves", () => {
     // If the real numbers have dropped BELOW the baseline, the baseline was not
     // lowered in the same commit. That is the failure mode CLAUDE.md names:
