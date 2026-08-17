@@ -69,6 +69,13 @@ See `OWNER_DECISIONS_PENDING.md`.
 See `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`.
 
 ## PROOF DEBT
+- `lint-reachability` scans `server/services/**` and `server/jobs/**` for
+  exported symbols — **`shared/**` is not scanned at all**. A new shared module
+  with no production caller is therefore invisible to the "built but unwired"
+  gate (directive §33). Measured 2026-08-17 while adding
+  `shared/parcel/parcelRef.ts`: the gate stayed at baseline 1401 with six new
+  unadopted exports in the tree. Adoption there has to be checked by hand until
+  the scan roots widen — and widening them will re-seed the count upward.
 - Full-project `tsc --noEmit` cannot complete in this container: it aborts
   SIGABRT/OOM (exit 134, zero diagnostics). That is the truncated-run shape
   `scripts/check-tests-typecheck.mjs` refuses to report on. Type safety is

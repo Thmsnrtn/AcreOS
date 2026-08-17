@@ -7,6 +7,7 @@ import { db } from "../db";
 import { properties, parcelSnapshots } from "@shared/schema";
 import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { lookupParcelByAPN, type ParcelLookupResult } from "./parcel";
+import { normalizeParcelRef } from "@shared/parcel/parcelRef";
 import { getComparableProperties, calculateOfferPrices, type ComparableProperty, type OfferPrices } from "./comps";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
@@ -251,10 +252,27 @@ async function getOrCreateParcelSnapshot(
   county: string,
   apn: string
 ): Promise<CachedParcelData> {
-  // Normalize inputs
-  const normalizedState = state.toUpperCase();
-  const normalizedCounty = county.toLowerCase();
-  const normalizedApn = apn.trim();
+  // ONE definition of "the same parcel" — shared/parcel/parcelRef.ts.
+  //
+  // This block used to normalise inline, and it was the strictest of three
+  // competing rules in the repo: state upper, county lower, and apn.trim() with
+  // CASE PRESERVED. That last part was a live defect rather than a style
+  // choice. The lookup below compares the APN with eq(), so "A-1" missed a row
+  // stored as "a-1" and the caller then INSERTED a second snapshot for the same
+  // parcel — into `organizationId: null`, the SHARED cache, so one parcel could
+  // accumulate duplicate global rows and freshness was evaluated per duplicate.
+  const parcelRef = normalizeParcelRef({ state, county, apn });
+  if (!parcelRef.ok) {
+    // Refuse rather than query on a half-formed identity: a wrong parcel here
+    // attaches a due-diligence report to the wrong piece of land.
+    logger.warn("[DueDiligence] refusing parcel lookup — unusable natural key", {
+      metadata: { problems: parcelRef.problems, organizationId, __pii_safe: true },
+    });
+    return { snapshot: null, dataSource: "unavailable", isStale: false };
+  }
+  const normalizedState = parcelRef.ref.state;
+  const normalizedCounty = parcelRef.ref.county;
+  const normalizedApn = parcelRef.ref.apn;
 
   // Check for existing snapshot (org-specific or global)
   const [existingSnapshot] = await db
@@ -264,7 +282,10 @@ async function getOrCreateParcelSnapshot(
       and(
         eq(parcelSnapshots.state, normalizedState),
         sql`LOWER(${parcelSnapshots.county}) = ${normalizedCounty}`,
-        eq(parcelSnapshots.apn, normalizedApn),
+        // UPPER(), like the LOWER() on county above: the stored case is whatever
+        // some earlier caller happened to pass, so a case-sensitive eq() here is
+        // what created duplicate rows in the shared cache.
+        sql`UPPER(${parcelSnapshots.apn}) = ${normalizedApn}`,
         or(
           eq(parcelSnapshots.organizationId, organizationId),
           isNull(parcelSnapshots.organizationId)
@@ -318,8 +339,19 @@ async function saveParcelSnapshot(
     return null;
   }
 
-  const normalizedState = state.toUpperCase();
-  const normalizedApn = apn.trim();
+  // Same one owner as the lookup above. The write previously normalised state
+  // but not county and not APN case, so the row it stored could not be found by
+  // its own lookup.
+  const writeRef = normalizeParcelRef({ state, county, apn });
+  if (!writeRef.ok) {
+    logger.warn("[DueDiligence] refusing snapshot write — unusable natural key", {
+      metadata: { problems: writeRef.problems, __pii_safe: true },
+    });
+    return null;
+  }
+  const normalizedState = writeRef.ref.state;
+  const normalizedApn = writeRef.ref.apn;
+  const normalizedCounty = writeRef.ref.county;
   const data = parcelResult.parcel.data;
   const now = new Date();
 
@@ -330,7 +362,7 @@ async function saveParcelSnapshot(
         organizationId: null, // Store as global/shared cache
         apn: normalizedApn,
         state: normalizedState,
-        county: county,
+        county: normalizedCounty,
         fipsCode: null,
         source: source,
         sourceId: data.regridId || null,
