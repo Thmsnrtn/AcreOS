@@ -152,8 +152,26 @@ found them.
    is the loop, not the surface.**
 7. **`FOUNDRY_ACREOS_CROSS_POLLINATION.md`** — 3 dispositioned, 5 open.
 
-**Open owner decisions: OD-4** (one query), **OD-5** (vertical claims),
-**OD-6** (escrow retention vs erasure). OD-1/2/3 decided.
+**THE OWNER-DECISION QUEUE IS EMPTY.** All six are decided; OD-2/3/4/5 are also
+implemented. OD-1 is a live hold (0236 stays unregistered). OD-6 needed no code
+— 0239 already behaves that way — and names Customer #1 as the trigger to
+revisit.
+
+What OD-4 and OD-5 turned out to be, since both were larger than the queue said:
+
+* **OD-4** was not a stale constant reading nothing. `saveReport` INSERTs with
+  the id, so the write failed its foreign key on every weekly run while the
+  catch logged it at INFO with the error discarded — meaning
+  `GET /api/admin/index-analysis` answered "No analysis run yet" indefinitely
+  while the job computed a report and threw it away. Repointed; the catch is
+  now a WARN carrying the error.
+* **OD-5** landed as `shared/business-types/publicClaims.ts` — 13 dated
+  demotions, one channel for every public surface. The landing now renders 2
+  core chips and 12 Beta. `GET /api/trust/verticals` was retired (zero callers;
+  its own comment named a consumer that never called it). The public-claim
+  assertion is a **hard zero, not a ratchet**: the registry ratchet stays at 13
+  because `maturity` still says `core` deliberately, but nothing published to
+  strangers may outrun the evidence, and it fails in both directions.
 
 ### WHAT TO DO NEXT
 
