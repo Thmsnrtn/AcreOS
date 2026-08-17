@@ -270,11 +270,15 @@ function calculateConfidence(
 /** Turn SQL tallies into the per-variant stats block. Pure. */
 function tallyLookup(tallies: AbOutcomeTally[]): (variantId: string, event: string) => number {
   const byKey = new Map<string, number>();
+  // `\u0000` as an escape, never a literal NUL byte: a raw NUL makes the whole
+  // file binary, so grep reports "binary file matches" with no lines and ripgrep
+  // skips it entirely when walking a directory. Same separator, same runtime
+  // value, and the file stays searchable. See sourceFilesAreText.test.ts.
   for (const t of tallies) {
-    const key = `${t.variantId} ${t.event}`;
+    const key = `${t.variantId}\u0000${t.event}`;
     byKey.set(key, (byKey.get(key) ?? 0) + t.count);
   }
-  return (variantId, event) => byKey.get(`${variantId} ${event}`) ?? 0;
+  return (variantId, event) => byKey.get(`${variantId}\u0000${event}`) ?? 0;
 }
 
 /** Compute results from a test definition + its SQL-aggregated tallies. Pure. */

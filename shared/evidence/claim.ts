@@ -381,9 +381,28 @@ export interface ResolvedValue {
   policyVersion: number;
 }
 
-/** Normalised comparison key so "R-1" and "r-1 " group together. */
+/**
+ * Normalised comparison key so "R-1" and "r-1 " group together.
+ *
+ * The null sentinel is written as the ESCAPE `\u0000`, never as a literal NUL
+ * byte. It used to be a literal one, and the runtime value is identical — but a
+ * raw NUL makes the whole file BINARY to text tooling. `grep` answered "binary
+ * file matches" with no lines, and ripgrep traversing a directory skipped the
+ * file completely: `rg -l valueKey shared/` found nothing at all.
+ *
+ * This repository audits itself almost entirely by grep, and this file carries
+ * the Evidence Fabric's canonical laws. One byte made the most consequential
+ * file in the subsystem invisible to every search that did not name it
+ * explicitly — a blind spot of exactly the kind the ratchets exist to prevent,
+ * sitting in the code that defines what counts as evidence.
+ *
+ * Keep the escape. A literal NUL here also cannot survive a round trip through
+ * a Postgres `text` column or a `jsonb` document, so it must never widen from a
+ * comparison key into anything persisted.
+ */
 function valueKey(value: string | number | boolean | null): string {
-  if (value === null) return " null";
+  // Distinct from the STRING "null", which must not group with a real null.
+  if (value === null) return "\u0000null";
   if (typeof value === "string") return value.trim().toLowerCase();
   return String(value);
 }
