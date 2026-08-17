@@ -119,7 +119,7 @@ export const LANDING_COPY = {
     // (land + notes) is deduped out of the chips: it is the combination
     // of the two core verticals, not a distinct audience. Landing-side
     // conservatism, if ever needed again, goes through the explicit
-    // DEMOTE_ON_LANDING map in Positioning.tsx (reason required),
+    // shared PUBLIC_CLAIM_DEMOTIONS map (reason + date required),
     // superseding the old hardcoded demotions (e.g. subdivider shown as
     // roadmap despite its beta registry maturity).
     //

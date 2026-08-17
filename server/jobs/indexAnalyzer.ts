@@ -17,9 +17,20 @@ import { sql } from "drizzle-orm";
 import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 
-// System-level: use organization_id = 0 (platform record)
-const PLATFORM_ORG_ID = 0;
+// Was `const PLATFORM_ORG_ID = 0` — a sixth private spelling of "the platform's
+// own org", and the only one that said 0. `organizations.id` is a `serial`, so
+// it begins at 1 and row 0 does not exist unless someone inserted it
+// explicitly. Repointed to the shared constant on the founder's decision
+// (OD-4, 2026-08-17).
+//
+// This was NOT a harmless no-op read. `saveReport` INSERTs with this id, so the
+// insert failed its foreign key on every run — and the catch below swallowed it
+// as an INFO line. `getLastReport` then found nothing, and
+// GET /api/admin/index-analysis (founder-only, routes-admin.ts:2771) has been
+// answering "No analysis run yet" ever since, while the weekly job computed a
+// report and threw it away.
 const PROVIDER = "index_analysis";
 
 export interface SlowQuery {
@@ -212,7 +223,7 @@ async function saveReport(report: IndexAnalysisReport): Promise<void> {
       .from(organizationIntegrations)
       .where(
         and(
-          eq(organizationIntegrations.organizationId, PLATFORM_ORG_ID),
+          eq(organizationIntegrations.organizationId, SYSTEM_ORG_ID),
           eq(organizationIntegrations.provider, PROVIDER)
         )
       )
@@ -225,15 +236,23 @@ async function saveReport(report: IndexAnalysisReport): Promise<void> {
         .where(eq(organizationIntegrations.id, existing.id));
     } else {
       await db.insert(organizationIntegrations).values({
-        organizationId: PLATFORM_ORG_ID,
+        organizationId: SYSTEM_ORG_ID,
         provider: PROVIDER,
         isEnabled: true,
         credentials,
       });
     }
   } catch (err) {
-    // organizationId = 0 may not be in the organizations table — store in memory only
-    logger.info("[IndexAnalyzer] Could not persist report (org 0 may not exist) — report logged above");
+    // Was: `logger.info("… (org 0 may not exist) — report logged above")`, with
+    // the error discarded. That INFO line is how a foreign-key violation on
+    // EVERY run stayed invisible for the life of this job. A failed persist
+    // means the founder's index-analysis panel is empty and nobody is told why,
+    // so it is a WARN and it carries the actual error.
+    logger.warn("[IndexAnalyzer] could not persist report", {
+      error: err instanceof Error ? err.message : String(err),
+      organizationId: SYSTEM_ORG_ID,
+      provider: PROVIDER,
+    });
   }
 }
 
@@ -244,7 +263,7 @@ export async function getLastReport(): Promise<IndexAnalysisReport | null> {
       .from(organizationIntegrations)
       .where(
         and(
-          eq(organizationIntegrations.organizationId, PLATFORM_ORG_ID),
+          eq(organizationIntegrations.organizationId, SYSTEM_ORG_ID),
           eq(organizationIntegrations.provider, PROVIDER)
         )
       )

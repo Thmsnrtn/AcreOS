@@ -18,10 +18,11 @@
  *   4. The exceptions map requires a non-empty reason (runtime throw;
  *      the `LandingDemotion` type also makes `reason` required at the
  *      type level) and can only DEMOTE — a promote/no-op entry throws.
- *   5. DEMOTE_ON_LANDING is currently empty (the old hardcoded
- *      subdivider demotion was superseded by the registry truth pass);
- *      adding an entry is a deliberate act that must update this pin
- *      alongside a documented reason.
+ *   5. The demotion map carries thirteen dated entries (OD-5, 2026-08-17)
+ *      and every one has a written reason. WHICH verticals are demoted is
+ *      pinned in verticalReadiness.test.ts against measured evidence, not
+ *      here against a hand-written list — this file guards the derivation,
+ *      that one guards the claim.
  */
 
 import { describe, expect, it } from "vitest";
@@ -100,12 +101,28 @@ describe("landing vertical tiers derive from the business-type registry", () => 
   });
 });
 
-describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () => {
-  it("is currently empty — the registry truth pass superseded all hardcoded demotions", () => {
-    // Deliberate pin: if you add a demotion, you must carry a documented,
-    // dated reason in Positioning.tsx AND update this expectation — that
-    // friction is the point.
-    expect(Object.keys(DEMOTE_ON_LANDING)).toHaveLength(0);
+describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => {
+  it("carries the thirteen OD-5 demotions, and every one is dated", () => {
+    // WAS: `expect(Object.keys(DEMOTE_ON_LANDING)).toHaveLength(0)` with the
+    // note that the registry truth pass had superseded all hardcoded
+    // demotions. That pin was correct until the truth pass itself was
+    // checked: verticalReadiness.test.ts measured that all fifteen verticals
+    // declare `core` and exactly two record a decision, so the map is no
+    // longer empty and must not be.
+    //
+    // REWRITTEN, not deleted — the invariant is still "a demotion is a
+    // deliberate, documented act", and it is asserted more strongly now:
+    // every entry must carry a reason and the date it was decided. The
+    // membership itself is pinned in verticalReadiness.test.ts against the
+    // EVIDENCE rather than against a hand-written list, so this file does not
+    // duplicate that.
+    const entries = Object.entries(DEMOTE_ON_LANDING);
+    expect(entries).toHaveLength(13);
+    for (const [id, d] of entries) {
+      expect(d!.reason.trim().length, `${id} has an empty reason`).toBeGreaterThan(0);
+      expect(d!.decidedOn, `${id} is undated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(d!.to, `${id} demotes to an unexpected tier`).toBe("beta");
+    }
   });
 
   it("rejects a demotion entry with an empty/whitespace reason", () => {
@@ -118,7 +135,7 @@ describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () =>
     // is the founding wedge); if that ever changes this test must be revisited.
     expect(anyId).toBeDefined();
     const demotions: Partial<Record<BusinessTypeId, LandingDemotion>> = {
-      [anyId as BusinessTypeId]: { to: "roadmap", reason: "   " },
+      [anyId as BusinessTypeId]: { to: "roadmap", reason: "   ", decidedOn: "2026-08-17" },
     };
     expect(() => deriveLandingTiers(BUSINESS_TYPES, demotions)).toThrow(
       /non-empty reason/,
@@ -130,7 +147,7 @@ describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () =>
     expect(target).toBeDefined();
     const id = target as BusinessTypeId;
     const demotions: Partial<Record<BusinessTypeId, LandingDemotion>> = {
-      [id]: { to: "roadmap", reason: "test: documented conservatism" },
+      [id]: { to: "roadmap", reason: "test: documented conservatism", decidedOn: "2026-08-17" },
     };
     const tiers = deriveLandingTiers(BUSINESS_TYPES, demotions);
     expect(tiers.roadmap.map((c) => c.id)).toContain(id);
@@ -153,7 +170,7 @@ describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () =>
     };
     // No-op: a beta vertical demoted "to" beta.
     expect(() =>
-      deriveLandingTiers(asBeta, { commercial: { to: "beta", reason: "stale" } }),
+      deriveLandingTiers(asBeta, { commercial: { to: "beta", reason: "stale", decidedOn: "2026-08-17" } }),
     ).toThrow(/must move a vertical DOWN/);
     const asRoadmap = {
       ...BUSINESS_TYPES,
@@ -161,13 +178,13 @@ describe("DEMOTE_ON_LANDING — the only sanctioned landing conservatism", () =>
     };
     // Promote: a roadmap vertical "demoted" to beta.
     expect(() =>
-      deriveLandingTiers(asRoadmap, { commercial: { to: "beta", reason: "stale" } }),
+      deriveLandingTiers(asRoadmap, { commercial: { to: "beta", reason: "stale", decidedOn: "2026-08-17" } }),
     ).toThrow(/must move a vertical DOWN/);
     // And any still-live beta/roadmap vertical is likewise rejected on a no-op.
     const betaId = liveIdWithMaturity("beta");
     if (betaId) {
       expect(() =>
-        deriveLandingTiers(BUSINESS_TYPES, { [betaId]: { to: "beta", reason: "stale" } }),
+        deriveLandingTiers(BUSINESS_TYPES, { [betaId]: { to: "beta", reason: "stale", decidedOn: "2026-08-17" } }),
       ).toThrow(/must move a vertical DOWN/);
     }
   });

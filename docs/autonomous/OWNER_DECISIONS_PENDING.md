@@ -1,9 +1,12 @@
 # OWNER DECISIONS PENDING
 
-> **Four decisions were taken on 2026-08-17.** OD-3 is IMPLEMENTED and closed
-> below. OD-1 is DECIDED (hold) and stays listed because the hold is the live
-> state. OD-2 is DECIDED and its build is in progress. OD-4 is DECIDED but
-> waits on one query only the owner can run.
+> **ALL SIX DECISIONS ARE TAKEN. NOTHING ON THIS PAGE IS WAITING ON THE OWNER.**
+>
+> OD-2, OD-3, OD-4 and OD-5 are DECIDED AND IMPLEMENTED. OD-1 is DECIDED (hold)
+> and stays listed because the hold is the live state. OD-6 is DECIDED (accept
+> the cascade) with nothing to build — the code already behaves that way; it is
+> recorded so the choice is deliberate rather than inherited, and it is the one
+> to revisit at Customer #1.
 
 Genuine owner decisions only. Ordinary engineering — schemas, refactors, tests,
 migration mechanics, deletion, dependency ordering — is not escalated here.
@@ -159,7 +162,7 @@ hand — not by any gate. That is what 335 unread function bodies costs.
 
 ---
 
-## OD-4 — DECIDED 2026-08-17: REPOINT TO 1, AFTER ONE QUERY (awaiting owner)
+## OD-4 — DECIDED AND IMPLEMENTED 2026-08-17: REPOINTED TO SYSTEM_ORG_ID
 
 **Decision:** which organization row the index-analyzer job should act on.
 
@@ -176,19 +179,37 @@ rather than an error, which is exactly how it went unnoticed.
 **Options:** (a) repoint it at `SYSTEM_ORG_ID`; (b) leave it, if org 0 really
 does exist and holds its integrations; (c) delete the job if the reads are dead.
 
-**DECISION: (a) repoint to `SYSTEM_ORG_ID`, once the owner confirms.**
-Run `SELECT id FROM organizations WHERE id IN (0, 1);` and paste the result —
-the one-line change lands immediately after. Deliberately NOT done blind:
-repointing a live job changes which tenant's rows it touches.
+**DECISION: (a), taken without the query.** The owner chose to repoint rather
+than wait, and the reasoning holds without a database: `organizations.id` is a
+`serial`, so row 0 cannot exist unless someone inserted it deliberately, and org
+1 is what four other sites and two live services already call the platform org.
 
-**THIS IS THE ONE ITEM STILL WAITING ON THE OWNER.**
+**DONE.** `indexAnalyzer.ts` imports `SYSTEM_ORG_ID`; all six sites now agree.
 
-**Blocked:** nothing. `agentMemoryTenancy.test.ts` pins the disagreement so it
-cannot quietly disappear while it remains true.
+**THE QUEUED NOTE UNDERSTATED THIS, and the correction is the interesting part.**
+It described a READ that returns nothing. `saveReport` also INSERTs with that id
+(:239), so the write failed its foreign key on EVERY weekly run — and the catch
+logged it at INFO with the error object discarded:
+
+    logger.info("[IndexAnalyzer] Could not persist report (org 0 may not exist)")
+
+`getLastReport` then found nothing, so `GET /api/admin/index-analysis`
+(founder-only, routes-admin.ts:2771) has been answering *"No analysis run yet"*
+indefinitely while the job computed a report every Sunday and threw it away. A
+wrong tenant id and a swallowed error are individually survivable; together they
+are invisible. The catch is now a WARN carrying the real error.
+
+`agentMemoryTenancy.test.ts` pinned the 0-vs-1 disagreement. That assertion was
+REWRITTEN to the new truth rather than deleted — it now fails if any private
+platform-org constant reappears, or if the shared import is dropped — and it is
+scanned with comments stripped, because the first version matched the very
+comment explaining what had been removed.
+
+**Blocked:** nothing.
 
 ---
 
-## OD-5 — OPEN: thirteen verticals claim `core` on evidence that stops short
+## OD-5 — DECIDED AND IMPLEMENTED 2026-08-17: DEMOTE THE PUBLIC CLAIM
 
 **Decision:** what the public should be told about the twelve-to-thirteen
 verticals AcreOS advertises as `core` but cannot demonstrate.
@@ -243,19 +264,36 @@ repository reads.
   evidence until each one lands.
 - **(d) Leave it.** The ratchet holds the gap at 13 and it can only shrink.
 
-**RECOMMENDATION: (b), plus retire the unconsumed endpoint.** It stops the
-public overclaim now without throwing away work that genuinely exists — the 13
+**DECISION: (b), plus retire the unconsumed endpoint.** It stops the public
+overclaim now without throwing away work that genuinely exists — the 13
 verticals are real surfaces, not vapour, and `beta` in the registry would
 understate the in-app experience a customer actually gets. (a) is the more
 honest-looking option but it demotes the *product* to fix a *claim*. Under (b)
 the fix lands where the problem is: on what strangers are told before they can
-see it for themselves. Then (c) as engineering, per vertical, raising the
-evidence rather than lowering the claim.
+see for themselves.
 
-**What I would do on your word, none of it started:** move the demotion map
-into `shared/` so one channel governs both public surfaces; populate it with 13
-dated entries; either delete `/api/trust/verticals` or wire it through the same
-map. The ratchet lowers in whichever commit earns it.
+**DONE.** `shared/business-types/publicClaims.ts` is now the ONE conservatism
+channel — `PUBLIC_CLAIM_DEMOTIONS`, 13 entries, each carrying a written reason
+and the date it was decided, each demoting to `beta` (not a hedge chosen by
+feel: `beta` demands evidenced `surfaced`, and all 13 evidence exactly that, so
+the public claim now equals the evidence). The landing renders 2 core chips and
+13 Beta chips instead of 14 solid core.
+
+`GET /api/trust/verticals` is retired rather than wired. It had ZERO callers,
+and its own comment claimed it existed "so the landing page can filter" — the
+landing derives from the registry directly and never called it. Keeping a
+second public claim surface alive to fix it would have preserved the drift risk
+for no consumer.
+
+**The enforcement is a HARD ZERO, not a ratchet**, and that distinction is the
+point. The registry ratchet stays at 13 because `maturity` still says `core` —
+your deliberate choice. But `verticalReadiness.test.ts` now also asserts that no
+PUBLIC tier outruns its evidence, with no tolerance, because after the
+demotions there is no gap left to budget for. It reuses the same `overclaims`
+law rather than re-deriving the ladder, and it fails in BOTH directions: drop a
+demotion and an overclaim reappears; leave one in place after a vertical starts
+recording decisions and it fails as stale, since a vertical that earns `core`
+back must not be understated indefinitely. Mutation-tested 4/4.
 
 **Consequence of getting it wrong:** a prospective customer is told fifteen
 verticals are what AcreOS is for, discovers two, and correctly concludes the
@@ -265,7 +303,7 @@ rest of the product is oversold too. Reputational, not recoverable by a patch.
 
 ---
 
-## OD-6 — OPEN: how long escrow events survive a customer's erasure
+## OD-6 — DECIDED 2026-08-17: ACCEPT THE CASCADE, REVISIT AT CUSTOMER #1
 
 **Decision:** what happens to `earnest_money_events` when an organization is
 deleted. Legal, therefore yours.
@@ -301,11 +339,21 @@ erases their escrow event trail. Options:
   the financial record. Depends on whether the events are personal data once
   detached, which is a question for counsel.
 
-**RECOMMENDATION: (a) for now, revisit at Customer #1.** Nothing has run through
-this table in production yet, so there is no trail to lose today, and (b) and
-(c) both add machinery to protect data that does not exist. What matters is that
-the decision is made deliberately before the first real escrow event, rather
-than discovered afterwards.
+**DECISION: (a), revisit at Customer #1.** Nothing has run through this table in
+production yet, so there is no trail to lose today, and (b) and (c) both add
+machinery to protect data that does not exist. What matters is that the choice
+is made deliberately before the first real escrow event rather than discovered
+afterwards.
+
+**Nothing to build.** Migration 0239 already produces exactly this behaviour:
+UPDATE refused, DELETE allowed, org deletion cascading normally. This entry
+exists so that when the first escrow event lands, the retention posture is a
+recorded decision rather than a side effect of how a foreign key was declared.
+
+**The trigger to revisit is Customer #1 with real escrow activity** — at that
+point (b) or (c) becomes a live question for counsel, and
+`evidenceClaimsIntegrity.test.ts` will still be preventing anyone from
+"solving" it by reinstating a rewrite RULE.
 
 **Consequence of getting it wrong:** either an unerasable store of counterparty
 personal data (the state we were in, unintentionally), or a financial audit

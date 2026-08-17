@@ -20,21 +20,26 @@
  *              not sold.
  *
  * Dedupe: `hybrid` (land + notes) never renders as its own chip — it is
- * the combination of the two core verticals (land_flipper +
- * note_investor), not a distinct audience; a chip for it would
- * double-count the same two promises. See LANDING_EXCLUDED_IDS.
+ * the combination of land_flipper + note_investor, not a distinct
+ * audience; a chip for it would double-count the same two promises. See
+ * LANDING_EXCLUDED_IDS.
  *
- * Conservatism escape hatch: the landing may still be MORE conservative
- * than the registry, but only via DEMOTE_ON_LANDING — an explicit
- * per-vertical demotion carrying a required written reason. The map is
- * currently EMPTY: the previous hardcoded conservatism (Subdivider
- * rendered as roadmap despite its "beta" registry maturity, per the
- * Rafe Castellan verification report 2026-06-01) is superseded by this
- * wave's registry truth pass — the registry's maturity declarations are
- * the audited truth, so the landing mirrors them until a NEW documented
- * reason to demote exists. Demotions only ever move a vertical DOWN
- * (core→beta/roadmap, beta→roadmap); a promote or no-op entry throws at
- * module load so a stale entry can't linger silently.
+ * Conservatism channel: the landing may be MORE conservative than the
+ * registry, but only via the shared demotion map — an explicit
+ * per-vertical demotion carrying a required written reason and the date
+ * it was decided. Demotions only ever move a vertical DOWN
+ * (core→beta/roadmap, beta→roadmap); a promote, a no-op, or an empty
+ * reason throws at module load so a stale entry can't linger silently.
+ *
+ * THIRTEEN ENTRIES AS OF 2026-08-17 (OD-5), and the map's old docstring
+ * is why. It said the map was empty because "the registry's maturity
+ * declarations are the audited truth" — and `verticalReadiness.test.ts`
+ * measured that they are not. All fifteen verticals declare `core`;
+ * exactly two record a decision snapshot in production. Thirteen chips
+ * therefore now render as Beta rather than solid core. The registry
+ * still says `core`, deliberately: that describes the in-app experience
+ * a paying customer gets, and this file governs what a stranger is told
+ * before they can check. See shared/business-types/publicClaims.ts.
  *
  * Copy prose comes from LANDING_COPY.positioning and is deliberately
  * tier-generic — the chips carry the vertical names (each entry's
@@ -52,6 +57,11 @@ import {
   type BusinessTypeMeta,
   type VerticalMaturity,
 } from "@shared/business-types";
+import {
+  PUBLIC_CLAIM_DEMOTIONS,
+  assertDemotionsValid,
+  type PublicClaimDemotion,
+} from "@shared/business-types/publicClaims";
 import { LANDING_COPY } from "./copy";
 
 export interface LandingVerticalChip {
@@ -68,39 +78,31 @@ export interface LandingVerticalTiers {
 /**
  * Registry ids that never render as a landing chip. `hybrid` is
  * land_flipper + note_investor operated in one workspace — both halves
- * already appear as core chips, so a third chip would double-count the
- * same promise rather than name a distinct audience.
+ * already appear as their own chips, so a third would double-count the
+ * same promise rather than name a distinct audience. (It still carries a
+ * PUBLIC_CLAIM_DEMOTIONS entry, because the claim is demoted wherever it
+ * is published — the landing simply does not publish it.)
  */
 export const LANDING_EXCLUDED_IDS: readonly BusinessTypeId[] = ["hybrid"];
 
 /**
- * Explicit per-vertical demotion — the ONLY sanctioned way for the
- * landing to be more conservative than the registry. Every entry must
- * carry a non-empty written reason (enforced at runtime in
- * deriveLandingTiers, which runs at module load) and must actually move
- * the vertical DOWN a tier.
+ * Explicit per-vertical demotion — the ONLY sanctioned way for a PUBLIC
+ * surface to be more conservative than the registry.
  *
- * CURRENTLY EMPTY — the 2026-07 registry truth pass (wave V1, founder
- * ruling #11) superseded the old hardcoded demotion of subdivider
- * (beta in the registry, shown as roadmap on the landing). Add an entry
- * only with a documented, dated reason.
+ * MOVED TO shared/ ON 2026-08-17 (OD-5). This was a local
+ * `DEMOTE_ON_LANDING` map that only the landing page could reach, while
+ * `GET /api/trust/verticals` published raw `maturity` and respected no
+ * demotion at all — so a demotion approved for the landing would not have
+ * reached the other public surface. One map now governs every public
+ * claim; see shared/business-types/publicClaims.ts for the reasoning and
+ * the thirteen entries.
+ *
+ * Re-exported under the old name so this module stays the landing's own
+ * vocabulary, but it is an ALIAS, not a second map. Do not add entries
+ * here.
  */
-export const DEMOTE_ON_LANDING: Partial<
-  Record<BusinessTypeId, LandingDemotion>
-> = {};
-
-export interface LandingDemotion {
-  /** Target tier — demotion only, so "core" is not a valid target. */
-  to: Exclude<VerticalMaturity, "core">;
-  /** Required, non-empty. Why the landing under-promises the registry. */
-  reason: string;
-}
-
-const TIER_RANK: Record<VerticalMaturity, number> = {
-  core: 0,
-  beta: 1,
-  roadmap: 2,
-};
+export const DEMOTE_ON_LANDING = PUBLIC_CLAIM_DEMOTIONS;
+export type LandingDemotion = PublicClaimDemotion;
 
 /**
  * Pure derivation of the three landing chip tiers from the business-type
@@ -115,28 +117,20 @@ export function deriveLandingTiers(
   registry: Record<BusinessTypeId, BusinessTypeMeta> = BUSINESS_TYPES,
   demotions: Partial<Record<BusinessTypeId, LandingDemotion>> = DEMOTE_ON_LANDING,
 ): LandingVerticalTiers {
+  // Validation moved to shared/business-types/publicClaims.ts. It used to be
+  // inlined here — an empty-reason check and a must-move-DOWN check — and when
+  // the map moved to shared/ so the trust endpoint could reach it too, keeping
+  // a second copy of the rules would have been the duplicate architecture this
+  // consolidation exists to remove. One map, one validator.
+  assertDemotionsValid(demotions, registry);
+
   const tiers: LandingVerticalTiers = { core: [], beta: [], roadmap: [] };
   for (const meta of Object.values(registry)) {
     if (LANDING_EXCLUDED_IDS.includes(meta.id)) continue;
-    let tier: VerticalMaturity = meta.maturity;
-    const demotion = demotions[meta.id];
-    if (demotion) {
-      if (!demotion.reason || demotion.reason.trim().length === 0) {
-        throw new Error(
-          `DEMOTE_ON_LANDING["${meta.id}"] requires a non-empty reason — ` +
-            `landing conservatism must be documented, not silent.`,
-        );
-      }
-      if (TIER_RANK[demotion.to] <= TIER_RANK[meta.maturity]) {
-        throw new Error(
-          `DEMOTE_ON_LANDING["${meta.id}"] targets "${demotion.to}" but the ` +
-            `registry already declares "${meta.maturity}" — demotions must move ` +
-            `a vertical DOWN. Remove the stale entry.`,
-        );
-      }
-      tier = demotion.to;
-    }
-    tiers[tier].push({ id: meta.id, label: meta.label });
+    tiers[demotions[meta.id]?.to ?? meta.maturity].push({
+      id: meta.id,
+      label: meta.label,
+    });
   }
   return tiers;
 }

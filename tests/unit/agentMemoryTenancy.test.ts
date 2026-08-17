@@ -240,17 +240,43 @@ describe("the system org has one definition", () => {
     ).toEqual([]);
   });
 
-  it("records that indexAnalyzer still disagrees (0 vs 1)", () => {
-    // The disagreement is REAL and deliberately not silently "fixed":
-    // repointing a live job from org 0 to org 1 changes which rows it acts on,
-    // and no session has had a DATABASE_URL to look. Pinned so the note cannot
-    // quietly disappear while the disagreement remains.
-    expect(read("server/jobs/indexAnalyzer.ts")).toContain("PLATFORM_ORG_ID = 0");
+  it("indexAnalyzer is reconciled — the 0-vs-1 disagreement is gone", () => {
+    // WAS: `expect(read(...)).toContain("PLATFORM_ORG_ID = 0")` — this test
+    // pinned the DISAGREEMENT so it could not quietly disappear while it was
+    // still true. It was resolved on the founder's decision (OD-4, 2026-08-17),
+    // so the assertion is REWRITTEN to the new truth rather than deleted: the
+    // invariant it protects is "every system-org reference agrees", and that
+    // invariant now has a stronger form to check.
+    //
+    // Scanned with comments stripped. The first version matched the very
+    // comment in indexAnalyzer.ts that explains what was removed ("Was `const
+    // PLATFORM_ORG_ID = 0` …") and failed on the fixed file. Prose about a
+    // defect is not the defect — a rule that cannot tell them apart punishes
+    // writing the reason down.
+    const src = read("server/jobs/indexAnalyzer.ts")
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
+      .join("\n");
     expect(
-      read("shared/tenancy/systemOrg.ts"),
-      "the shared constant no longer records the 0-vs-1 disagreement. If " +
-        "indexAnalyzer was reconciled, say so there and drop this assertion " +
-        "deliberately.",
-    ).toContain("indexAnalyzer");
+      /const\s+PLATFORM_ORG_ID\s*=/.test(src),
+      "indexAnalyzer re-declared a private platform-org constant. Import " +
+        "SYSTEM_ORG_ID from @shared/tenancy/systemOrg instead — six private " +
+        "spellings disagreeing about which row is the platform org is what " +
+        "this whole file exists to prevent.",
+    ).toBe(false);
+    expect(
+      src,
+      "indexAnalyzer no longer imports the shared system-org constant",
+    ).toContain('from "@shared/tenancy/systemOrg"');
+  });
+
+  it("the shared constant still explains WHY 1 and not 0", () => {
+    // The reasoning outlives the disagreement. `organizations.id` is a serial,
+    // so 0 cannot exist without a deliberate insert — that is the fact that
+    // decided OD-4, and a future session repeating the mistake should find it
+    // written down rather than have to re-derive it.
+    const doc = read("shared/tenancy/systemOrg.ts");
+    expect(doc, "systemOrg.ts no longer records why the platform org is 1").toContain("serial");
+    expect(doc).toContain("indexAnalyzer");
   });
 });

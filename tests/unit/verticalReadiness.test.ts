@@ -31,11 +31,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUSINESS_TYPES, BUSINESS_TYPE_IDS, type BusinessTypeId } from "../../shared/business-types";
 import {
+  overclaims,
   projectReadiness,
   readinessOf,
   READINESS_TIERS,
   type VerticalEvidence,
 } from "../../shared/business-types/readiness";
+import {
+  PUBLIC_CLAIM_DEMOTIONS,
+  assertDemotionsValid,
+  publicMaturityOf,
+} from "../../shared/business-types/publicClaims";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -265,6 +271,77 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
     // fix_and_flip is the one that genuinely closes the loop; subdivider
     // records decisions. Both can honestly carry `core` today.
     expect(honest).toContain("fix_and_flip");
+  });
+});
+
+describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
+  // This is a HARD ZERO, not a ratchet, and the difference matters.
+  //
+  // The registry ratchet above is frozen at 13 because `maturity` still says
+  // `core` — that is the founder's deliberate choice, since `core` describes
+  // the in-app experience a paying customer actually gets. But what a STRANGER
+  // is told before they can check has no such excuse, and after the OD-5
+  // demotions there is no gap left to tolerate. A ratchet here would be
+  // budgeting for an overclaim nobody needs.
+  const rows = projectReadiness(BUSINESS_TYPES, evidence);
+
+  it("every vertical's public tier is supported by its evidence", () => {
+    // Reuses `overclaims` — the SAME law the registry ratchet uses — by asking
+    // it about a vertical wearing its public tier instead of its declared one.
+    // Re-deriving "does this tier need that evidence?" here would be a second
+    // copy of the ladder, free to drift from the first.
+    const over = rows
+      .map((r) => {
+        const meta = BUSINESS_TYPES[r.id];
+        const publicTier = publicMaturityOf(meta);
+        return {
+          id: r.id,
+          publicTier,
+          evidenced: r.evidenced,
+          bad: overclaims({ ...meta, maturity: publicTier }, evidence),
+        };
+      })
+      .filter((r) => r.bad);
+
+    expect(
+      over.map((r) => `${r.id}: publicly "${r.publicTier}" but evidences ${r.evidenced}`),
+      "A PUBLIC surface claims more than this repository can show. Add a " +
+        "PUBLIC_CLAIM_DEMOTIONS entry in shared/business-types/publicClaims.ts " +
+        "with a written reason and a date, or close the loop for that vertical.",
+    ).toEqual([]);
+  });
+
+  it("the demotion map is well-formed (reason, date, direction)", () => {
+    // Same validator the landing runs at module load, exercised here so a bad
+    // entry fails a test rather than a page render.
+    expect(() => assertDemotionsValid()).not.toThrow();
+  });
+
+  it("no demotion is stale — a vertical that closed the loop must be released", () => {
+    // The mirror direction. A vertical that starts recording decisions has
+    // EARNED its `core` claim back, and leaving the demotion in place would
+    // understate the product indefinitely — the same rot as an overclaim,
+    // pointing the other way.
+    const stale = Object.keys(PUBLIC_CLAIM_DEMOTIONS).filter((id) => {
+      const meta = BUSINESS_TYPES[id as BusinessTypeId];
+      return readinessOf(meta, evidence) === "decided";
+    });
+    expect(
+      stale,
+      "these verticals now evidence `decided` and no longer need a public " +
+        "demotion — remove their PUBLIC_CLAIM_DEMOTIONS entries.",
+    ).toEqual([]);
+  });
+
+  it("covers exactly the verticals that cannot show `decided`", () => {
+    // Positive control against a map that is merely large. The demoted set must
+    // be precisely the complement of the verticals that close the loop —
+    // neither a vertical missing (an overclaim) nor an extra one (an
+    // understatement) can pass.
+    const cannotShowCore = BUSINESS_TYPE_IDS.filter(
+      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided",
+    ).sort();
+    expect(Object.keys(PUBLIC_CLAIM_DEMOTIONS).sort()).toEqual(cannotShowCore);
   });
 });
 

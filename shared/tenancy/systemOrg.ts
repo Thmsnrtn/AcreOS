@@ -27,12 +27,19 @@
  * reads from `organization_integrations` rather than writing, so it fails as an
  * empty result rather than an error, which is exactly how it went unnoticed.
  *
- * THAT SITE IS DELIBERATELY NOT CHANGED HERE. Repointing a live job from org 0
- * to org 1 changes which rows it acts on, and no session has had a
- * `DATABASE_URL` to see what is in either. It is recorded in
- * docs/autonomous/OWNER_DECISIONS_PENDING.md instead of being silently
- * "corrected" — a guess about which tenant's rows a job should touch is the
- * kind of fix that is worse than the bug.
+ * RECONCILED 2026-08-17 on the founder's decision (OD-4). indexAnalyzer.ts now
+ * imports this constant; all six sites agree. It was escalated rather than
+ * silently "corrected" because repointing a live job changes which rows it acts
+ * on, and no session has had a `DATABASE_URL` to look first.
+ *
+ * WHAT THE FIX ACTUALLY REPAIRED, which was more than a stale constant. The
+ * queued note called it a read that returns nothing. It is not: `saveReport`
+ * INSERTs with this id, so the write failed its foreign key on EVERY weekly
+ * run — and the catch logged it at INFO with the error discarded. `getLastReport`
+ * then found nothing, so GET /api/admin/index-analysis (founder-only) answered
+ * "No analysis run yet" indefinitely while the job computed a report and threw
+ * it away. A wrong tenant id plus a swallowed error is invisible in a way that
+ * either alone is not.
  */
 
 /**
