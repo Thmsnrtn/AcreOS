@@ -185,3 +185,80 @@ repointing a live job changes which tenant's rows it touches.
 
 **Blocked:** nothing. `agentMemoryTenancy.test.ts` pins the disagreement so it
 cannot quietly disappear while it remains true.
+
+---
+
+## OD-5 — OPEN: thirteen verticals claim `core` on evidence that stops short
+
+**Decision:** what the public should be told about the twelve-to-thirteen
+verticals AcreOS advertises as `core` but cannot demonstrate.
+
+**This is queued, not acted on, because it is a customer-facing claim.**
+Relabelling is a product statement and therefore yours. The measurement is
+mine, and it is now committed and ratcheted (`verticalReadiness.test.ts`).
+
+**The measurement.** All 15 verticals declare `maturity: "core"`. Projecting
+what the repository can actually show:
+
+| evidenced | verticals |
+|---|---|
+| `decided` (records a decision snapshot) | **2** — `fix_and_flip`, `subdivider` |
+| `surfaced` (has modules + real templates, closes nothing) | **13** |
+
+Every vertical has a genuine surface — 4–7 spotlight modules, 2–5 workflow
+templates, and every declared template id resolves to a real engine
+definition. Not one dangling string. **The gap is the loop, not the surface**,
+so no amount of UI work moves it; only wiring a vertical through
+scenario → decision → outcome does.
+
+**Where the claim is actually published — two public surfaces, and they can
+already drift:**
+
+1. **Landing page** (`Positioning.tsx`) renders 14 chips (all but `hybrid`),
+   every one solid `core` with no qualifier — the strongest available claim.
+   It has a sanctioned conservatism channel, `DEMOTE_ON_LANDING`, requiring a
+   written reason and only ever moving a vertical DOWN. **That map is empty**,
+   and its docstring gives the reason: *"the registry's maturity declarations
+   are the audited truth."* That is the sentence this measurement contradicts.
+2. **`GET /api/trust/verticals`** — unauthenticated, publishes raw
+   `maturity` straight from the registry, and **respects no demotion at all**.
+   So a demotion you approve for the landing would not reach it.
+
+**Also found, and worth a separate line: that endpoint has zero callers.** Its
+own docstring says it exists "so the landing page can filter" — the landing
+does not call it; it derives from the registry directly. It is a publicly
+reachable, uncached-by-any-consumer claim surface that nothing in this
+repository reads.
+
+**Options:**
+- **(a) Demote in the registry** to what the evidence shows (`beta` for the 13).
+  Honest immediately, and both public surfaces follow automatically — the
+  landing already derives from the registry. Cost: the site advertises two core
+  verticals instead of fifteen.
+- **(b) Keep the registry, demote only the public claim** via
+  `DEMOTE_ON_LANDING` with dated reasons, and make the trust endpoint respect
+  the same map. In-app onboarding still reads `core`.
+- **(c) Keep all fifteen at `core`** and close the gap by wiring verticals
+  through the canonical loop. Truthful eventually; the claim stays ahead of the
+  evidence until each one lands.
+- **(d) Leave it.** The ratchet holds the gap at 13 and it can only shrink.
+
+**RECOMMENDATION: (b), plus retire the unconsumed endpoint.** It stops the
+public overclaim now without throwing away work that genuinely exists — the 13
+verticals are real surfaces, not vapour, and `beta` in the registry would
+understate the in-app experience a customer actually gets. (a) is the more
+honest-looking option but it demotes the *product* to fix a *claim*. Under (b)
+the fix lands where the problem is: on what strangers are told before they can
+see it for themselves. Then (c) as engineering, per vertical, raising the
+evidence rather than lowering the claim.
+
+**What I would do on your word, none of it started:** move the demotion map
+into `shared/` so one channel governs both public surfaces; populate it with 13
+dated entries; either delete `/api/trust/verticals` or wire it through the same
+map. The ratchet lowers in whichever commit earns it.
+
+**Consequence of getting it wrong:** a prospective customer is told fifteen
+verticals are what AcreOS is for, discovers two, and correctly concludes the
+rest of the product is oversold too. Reputational, not recoverable by a patch.
+
+**Blocked:** nothing. The gap is counted and down-only whichever way you go.
