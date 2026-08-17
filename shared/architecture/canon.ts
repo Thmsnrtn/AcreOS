@@ -391,11 +391,27 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     purpose: "cadastral/legal parcel identity",
     layer: "reality-graph",
     status: "conflated",
-    tables: ["properties"],
+    tables: ["properties", "parcel_snapshots"],
     gap:
-      "No distinct Parcel entity. APN identity is overloaded onto the economic object " +
-      "(BI9 forbids). One Property may span many Parcels; today that is inexpressible " +
-      "except via the subdivision parentParcelId self-reference.",
+      "APN identity is overloaded onto the economic object (BI9 forbids), AND it is " +
+      "held in a second place. CORRECTED 2026-08-17: this entry used to say 'No " +
+      "distinct Parcel entity' and name only `properties`. That was materially wrong " +
+      "and would have led the next session to build a THIRD home for the same " +
+      "identity. `parcel_snapshots` already carries apn, state, county, fipsCode, " +
+      "boundary geometry, centroid, acres, legalDescription and zoning, with 55 live " +
+      "references. So parcel identity has TWO owners today, which is what law 8 " +
+      "forbids — not zero. " +
+      "THE CANONICAL PARCEL IS LATENT, NOT ABSENT: server/services/dueDiligence.ts " +
+      "already resolves a parcel by the natural key (state, county, apn), normalising " +
+      "case on each part, and org-scopes it with a null-org fallback for the shared " +
+      "cache. That join IS the missing entity, expressed as code instead of as a row. " +
+      "THE BUILD IS THEREFORE NOT A NEW TABLE FIRST. It is: promote (state, county, " +
+      "apn) to a real identity with one owner; re-frame `parcel_snapshots` as what it " +
+      "is — vendor-sourced OBSERVATION, which belongs in the Evidence Fabric as claims " +
+      "with provenance and observation time, not as a second identity table; and leave " +
+      "`properties` owning economics only. One Property spanning many Parcels stays " +
+      "inexpressible until that separation exists (today only the subdivision " +
+      "parentParcelId self-reference approximates it).",
     disposition: "BUILD",
   },
   {

@@ -79,6 +79,33 @@ See `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`.
   return type's brace. Tenancy coverage is overstated by that amount.
 
 ## NEXT SESSION START HERE
-Read this file, then `shared/architecture/canon.ts`. The active work package is
-**Parcel**. If it is already landed, the next unblocked dependency is
-**Opportunity**.
+
+Read this file, then `shared/architecture/canon.ts` — specifically the `parcel`
+entry, which was CORRECTED on 2026-08-17 and now describes the real situation.
+
+**Do not build a new `parcels` table as the first move.** Parcel identity already
+has TWO owners: `properties` (apn/county/legalDescription/sizeAcres/zoning) and
+`parcel_snapshots` (apn/state/county/fipsCode/boundary/centroid/acres/
+legalDescription/zoning, 55 live references). Adding a third would make it worse.
+
+The canonical Parcel is LATENT. `server/services/dueDiligence.ts:259-274` already
+resolves one by the natural key `(state, county, apn)` — upper-casing state,
+lower-casing county, trimming apn — with an org-scoped lookup that falls back to
+the null-org shared cache. That join is the entity, written as code.
+
+The work package, in dependency order:
+
+1. **Promote (state, county, apn) to one owner.** A `parcelRef` value object in
+   `shared/` with the normalisation rules currently duplicated at each call site,
+   so "the same parcel" means one thing repo-wide. Find every place that
+   open-codes that join first — start with the 55 `parcelSnapshots` references —
+   and count them; that count is the adoption ratchet.
+2. **Re-frame `parcel_snapshots` as observation, not identity.** It is
+   vendor-sourced with a `source` column already ("county_gis", "regrid",
+   "manual"). That is precisely an evidence claim with provenance and observation
+   time, and the Evidence Fabric (`evidence_claims`) already exists to hold it.
+   Until then two tables assert cadastral facts with no conflict resolution
+   between them — the thing `resolveClaims` was built to do.
+3. **Only then** consider a thin identity table, if 1 and 2 leave a real need.
+
+Then `opportunity` (needs Parcel), then `relationship` (needs Parcel + Party).
