@@ -528,15 +528,23 @@ function scanOpenCodedSites(): { files: string[]; sites: OpenCodedSite[] } {
  * four spellings), and both readers are now suffix-TOLERANT against rows
  * written before either writer normalised.
  *
- * What the remaining 4 are, so the next session need not re-derive them:
- *   server/services/taxSaleCsvImport.ts ×2 — worksheet dedup on
- *     `apn.toUpperCase()` with neither state nor county in the key at all: the
- *     "APNs are not unique across counties" defect in its purest form.
+ * 4 -> 2 on 2026-08-17: `server/services/taxSaleCsvImport.ts` adopted parcelRef,
+ * retiring both of its sites. This one was DROPPING REAL PARCELS: the import
+ * deduped on `apn.toUpperCase()` with neither state nor county in the key, and
+ * an APN is unique only WITHIN a county. A state-level tax-sale list — the
+ * ordinary shape of one — had the second county's parcel 123-45-678 rejected as
+ * "already on this worksheet", and the row never imported. `county` and `state`
+ * are REQUIRED import fields, so the whole key was on the row the entire time.
+ *
+ * What the remaining 2 are, so the next session need not re-derive them:
  *   server/services/parcel.ts ×2 — upstream query fan-out (stripped / trimmed /
- *     leading-zero-stripped APN variants). The most defensible of the three,
- *     but `parcelMatchKey` is precisely what it is reinventing.
+ *     leading-zero-stripped APN variants). The most defensible of the set — it
+ *     is deliberately trying several spellings against a vendor API rather than
+ *     deciding an identity — but `parcelMatchKey` is precisely what it is
+ *     reinventing, and a fan-out that disagrees with the repo's candidate rule
+ *     will find rows the rest of the system then cannot match.
  */
-const PARCEL_KEY_OPEN_CODED_BASELINE = 4;
+const PARCEL_KEY_OPEN_CODED_BASELINE = 2;
 
 describe("adoption ratchet: open-coded parcel natural keys", () => {
   const { files, sites } = scanOpenCodedSites();
@@ -592,6 +600,7 @@ describe("adoption ratchet: open-coded parcel natural keys", () => {
       "server/services/publicParcelReport.ts",
       "server/services/dueDiligence.ts",
       "server/storage/gisRepo.ts",
+      "server/services/taxSaleCsvImport.ts",
     ]) {
       expect(
         sites.filter((s) => s.file === file),

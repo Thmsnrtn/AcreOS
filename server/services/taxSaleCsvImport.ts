@@ -31,6 +31,7 @@
  */
 
 import { referenceCoveredStates } from "./taxRuleCoverage";
+import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 
 /** Guardrails mirroring server/services/import.ts. */
 const MAX_CSV_BYTES = 5 * 1024 * 1024;
@@ -435,20 +436,49 @@ export interface ValidateOptions {
   rows: string[][];
   mapping: ColumnMapping;
   /**
-   * APNs already on the worksheet for this auction. Matching rows are
+   * Parcels already on the worksheet for this auction. Matching rows are
    * rejected as duplicates rather than double-inserted — and rather than
    * silently skipped, which is how "412 of 500" happens.
+   *
+   * THE FULL NATURAL KEY, not the APN alone. An APN is unique WITHIN A COUNTY
+   * and nowhere else; parcel 123-45-678 exists in Travis County and in Harris
+   * County and they are different pieces of land. Keyed on the APN alone, a
+   * state-level tax-sale list — which is the ordinary shape of one — rejected
+   * the second county's parcel as "already on this worksheet", and the user was
+   * told a real parcel was a duplicate. `county` and `state` are REQUIRED
+   * import fields, so the whole key was on the row the entire time.
    */
-  existingApns?: readonly string[];
+  existingParcels?: readonly { apn: string; county: string; state: string }[];
   /** Fallback when the sheet has no acquisition-source column. */
   defaultAcquisitionSource?: TaxSaleLotAcquisitionSource;
+}
+
+/**
+ * The dedup identity for one lot: state + county + APN, through the repo's one
+ * definition of "the same parcel" (shared/parcel/parcelRef.ts).
+ *
+ * `parcelKey`, not `parcelMatchKey` — deciding two rows are duplicates DROPS
+ * one of them, and the loose key merges "12-345-678" with "12345678". In a
+ * county where the separator is significant that discards a genuinely different
+ * parcel from a tax sale, which is the expensive direction to be wrong in.
+ *
+ * A key parcelRef refuses (missing county, digitless APN) falls back to a
+ * prefixed raw form so such rows still dedupe against EACH OTHER — a refusal
+ * must not silently mean "not a duplicate" and let the same row import twice.
+ * The prefix cannot collide with a parcelKey, which always begins with a
+ * two-letter upper-case state code and a space.
+ */
+function lotDedupKey(p: { apn: string; county: string; state: string }): string {
+  const ref = normalizeParcelRef({ state: p.state, county: p.county, apn: p.apn });
+  if (ref.ok) return parcelKey(ref.ref);
+  return `unnormalized|${p.state.trim().toLowerCase()}|${p.county.trim().toLowerCase()}|${p.apn.trim().toLowerCase()}`;
 }
 
 export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
   const { headers, rows, mapping } = opts;
   const valid: PreparedLot[] = [];
   const rejected: RowRejection[] = [];
-  const seenApns = new Set((opts.existingApns ?? []).map((a) => a.trim().toUpperCase()));
+  const seenApns = new Set((opts.existingParcels ?? []).map(lotDedupKey));
   const seenInFile = new Map<string, number>();
 
   const colName = (key: LotFieldKey): string | null => {
@@ -571,8 +601,9 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
     }
 
     // Duplicate detection — against the worksheet AND within the file.
+    // Keyed on the whole parcel, not the APN: see `existingParcels`.
     if (apn) {
-      const dupKey = apn.toUpperCase();
+      const dupKey = lotDedupKey({ apn, county, state });
       if (seenApns.has(dupKey)) {
         errors.push({
           field: "apn",
@@ -595,7 +626,7 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
       return;
     }
 
-    if (apn) seenInFile.set(apn.toUpperCase(), fileRow);
+    if (apn) seenInFile.set(lotDedupKey({ apn, county, state }), fileRow);
 
     const orNull = (v: string): string | null => (v === "" ? null : v);
     valid.push({

@@ -236,12 +236,22 @@ async function runImportValidation(
     (f) => f.key,
   );
 
-  // APNs already on this auction's worksheet — duplicates are reported, not
+  // Parcels already on this auction's worksheet — duplicates are reported, not
   // re-inserted and not silently skipped.
-  let existingApns: string[] = [];
+  //
+  // The county and state come back too, because the APN alone is NOT a parcel
+  // identity: it is unique within a county and nowhere else. Selecting the APN
+  // by itself made a state-level list reject the second county's parcel
+  // 123-45-678 as already present. Both columns are NOT NULL on this table, so
+  // there was never a reason to leave them behind.
+  let existingParcels: { apn: string; county: string; state: string }[] = [];
   if (body.auctionId) {
     const rows = await drizzleDb
-      .select({ apn: taxSaleListings.apn })
+      .select({
+        apn: taxSaleListings.apn,
+        county: taxSaleListings.county,
+        state: taxSaleListings.state,
+      })
       .from(taxSaleListings)
       .where(
         and(
@@ -249,14 +259,14 @@ async function runImportValidation(
           eq(taxSaleListings.auctionId, body.auctionId),
         ),
       );
-    existingApns = rows.map((r) => r.apn);
+    existingParcels = rows;
   }
 
   const outcome = validateLotRows({
     headers: sheet.headers,
     rows: sheet.rows,
     mapping,
-    existingApns,
+    existingParcels,
     defaultAcquisitionSource: body.defaultAcquisitionSource,
   });
   assertNoRowLost(outcome);
