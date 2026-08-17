@@ -506,10 +506,19 @@ const EXEMPT_TOOL_MESSAGES: Exemption[] = [
   },
   {
     file: "server/routes-founder-chat.ts",
-    expr: "JSON.stringify({ error: errMsg })",
+    expr: "JSON.stringify({ error: wrapUntrusted(errMsg, `tool-error:${toolName}`) })",
     reason:
-      "Server-authored error shell on the catch path. errMsg is String(err?.message) " +
-      "from a thrown Error, not tool output; there is no result to envelope.",
+      "NOW ENVELOPED (2026-08-17). This entry previously read 'Server-authored " +
+      "error shell on the catch path. errMsg is String(err?.message) from a thrown " +
+      "Error, not tool output; there is no result to envelope.' That is right about " +
+      "PROVENANCE and wrong about CONTENT: an Error message routinely carries the " +
+      "value that caused it — a provider echoing the record it choked on, a " +
+      "validation error quoting the offending field, a driver naming a row. The " +
+      "text was reaching the model as trusted input purely because the call threw " +
+      "instead of returning, while the success path two lines up was carefully " +
+      "wrapped. The shell is still server-authored, so the envelope goes around the " +
+      "message rather than the object. Keyed on the exact expression, so dropping " +
+      "the wrapUntrusted call fails this gate.",
   },
   {
     file: "server/services/negotiationOrchestrator.ts",
