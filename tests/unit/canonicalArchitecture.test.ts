@@ -113,8 +113,19 @@ const UNENFORCED_FITNESS_BASELINE = 0;
  *   canonical loop now runs end to end for the first time: evidence → scenario
  *   → decision → outcome, with variance as a pure projection over what the
  *   decision FROZE rather than a stored number that could drift.
+ * 2026-08-17 (10 -> 9): opportunity now has a canonical home (`opportunities`,
+ *   shared/schema/opportunity.ts, migrations/0237_opportunities.sql). It is the
+ *   FIRST Reality-Graph object to get one — the four before it were evidence,
+ *   economics, decision and learning, i.e. the layers ABOVE the graph, and each
+ *   of them was already declaring an `opportunity` subject that pointed at no
+ *   table (SCENARIO_SUBJECT_TYPES, DECISION_SUBJECT_TYPES), while
+ *   server/services/decisions/decisionStore.ts:102 resolved that subject id AS
+ *   a `properties.id` for want of anywhere else for it to point. Identity and
+ *   lifecycle only: no economics column, a ParcelRef natural key rather than a
+ *   properties.id, and two rows differing only in `strategy` to make BI93's
+ *   "one parcel, several simultaneous evaluations" expressible.
  */
-const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 10;
+const OBJECTS_WITHOUT_CANONICAL_HOME_BASELINE = 9;
 
 /**
  * The fixed cardinalities declared by the audit. These are not ratchets — they

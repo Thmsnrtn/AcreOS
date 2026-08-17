@@ -9327,6 +9327,73 @@ const STATEMENTS = [
   // exactly the state the deletion ledger describes: dead storage, costing
   // nothing but a line in three registers, waiting on a decision only the
   // founder can make.
+
+  // ── 0237 opportunities: the Reality Graph's first canonical object ─────────
+  // ONE new table — scripts/ratchets/table-count.json 750 -> 751. Mirrors
+  // migrations/0237_opportunities.sql + shared/schema/opportunity.ts.
+  //
+  // REGISTERED, unlike 0236 immediately above. The distinction is the verb, not
+  // the proximity: 0236 is `DROP TABLE` — destructive, irreversible, and worth
+  // holding until someone has looked inside the rows. This is
+  // `CREATE TABLE IF NOT EXISTS` — additive, idempotent, and reversible by not
+  // writing to it. Every other additive migration in this file is registered
+  // (0235 va_tasks two blocks up is the most recent). Holding an additive
+  // migration back would leave `shared/schema.ts` exporting a table with no
+  // relation behind it, which is the "schema without migration" defect the
+  // wave-discipline notes in CLAUDE.md name as this codebase's most common —
+  // it 500s the first caller rather than the deploy.
+  //
+  // WHY THE BUMP IS EARNED: `opportunity` is a canonical object that canon.ts
+  // recorded as ABSENT with disposition BUILD, and its absence was visible in
+  // live code rather than only in prose. `shared/economics/scenario.ts` and
+  // `shared/decisions/snapshot.ts` both declare an `opportunity` subject type,
+  // so two already-canonical tables accepted a subject id that pointed at no
+  // table; server/services/decisions/decisionStore.ts:102 resolved that id AS a
+  // `properties.id` for want of any other id space. The two subject types were
+  // the same rows wearing different labels.
+  //
+  // IDENTITY AND LIFECYCLE ONLY: no score, price, margin or ROI column.
+  // `scenarios` owns the arithmetic, `decision_snapshots` the choice, `outcomes`
+  // the result — all three already canonical. Duplicating any of them would give
+  // one number two owners (canonical law 8).
+  //
+  // NOT A SECOND HOME FOR AN EXISTING CONCEPT: checked against code, not
+  // assumed. `opportunity_scores` is the nearest existing table and is genuinely
+  // opportunity-flavoured, but its writer (acquisitionRadar.ts:827) matches on
+  // (org, apn, county, state) with NO opportunity_type in the predicate and
+  // overwrites the kind in place — one parcel gets one row, which is the precise
+  // inability BI93 names. Consolidating it into scoring ABOUT an opportunity is
+  // the follow-on, recorded in shared/schema/opportunity.ts; it rewrites a live
+  // radar surface and is deliberately not attempted here.
+  //
+  // The natural key is the ParcelRef triple, NOT a properties.id: an opportunity
+  // by definition precedes the commitment that would create a property row, and
+  // a properties.id would re-conflate the identity the parcel work just
+  // separated.
+  `CREATE TABLE IF NOT EXISTS "opportunities" (
+    "id"              serial PRIMARY KEY,
+    "organization_id" integer NOT NULL
+                        REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "shape_version"   integer NOT NULL DEFAULT 1,
+    "kind"            text NOT NULL,
+    "strategy"        text,
+    "parcel_state"    text NOT NULL,
+    "parcel_county"   text NOT NULL,
+    "parcel_apn"      text NOT NULL,
+    "status"          text NOT NULL DEFAULT 'open',
+    "origin_type"     text NOT NULL,
+    "origin_ref"      text,
+    "opened_at"       timestamp NOT NULL DEFAULT now(),
+    "closed_at"       timestamp,
+    "updated_at"      timestamp NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING per the shard-readiness invariant (check-org-leading-index.mjs).
+  `CREATE INDEX IF NOT EXISTS "opportunities_org_parcel_idx" ON "opportunities" ("organization_id", "parcel_state", "parcel_county", "parcel_apn")`,
+  `CREATE INDEX IF NOT EXISTS "opportunities_org_status_idx" ON "opportunities" ("organization_id", "status", "opened_at")`,
+  // NO UNIQUE CONSTRAINT, deliberately — see the migration file. `strategy` is
+  // nullable and Postgres treats NULLs as distinct, so the obvious rule would
+  // permit exactly the duplicate it appears to forbid while blocking the
+  // legitimate case. A false uniqueness claim is worse than none.
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

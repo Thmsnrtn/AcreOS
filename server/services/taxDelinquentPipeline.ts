@@ -245,7 +245,15 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
  * without knowing what case the tuple happens to be stored in — we compare
  * case-insensitively rather than assuming a stored case.
  */
-export function parcelDedupKey(
+// MODULE-PRIVATE. It was exported only so a test could reach it, which the
+// reachability gate correctly counts as an export with no consumer outside its
+// defining module — the "exists only for its test" shape that
+// autopilot/hands/counterpartyMatch.ts records being fixed the same way. The
+// properties it carries are covered where they belong: the merge-never-split
+// semantics on `parcelKey` itself in tests/unit/parcelRefAdoption.test.ts, and
+// the fact that this file routes through parcelRef at all by that file's
+// adoption ratchet.
+function parcelDedupKey(
   state: string | null | undefined,
   county: string | null | undefined,
   apn: string | null | undefined,

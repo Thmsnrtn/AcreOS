@@ -429,10 +429,20 @@ describe("getOrCreateReport", () => {
     const result = await getOrCreateReport(KEY);
     expect(result.ok).toBe(true); // below hard cap — generation proceeds
     expect(h.raiseAlert).toHaveBeenCalledTimes(1);
-    const alert = h.raiseAlert.mock.calls[0][0];
-    expect(alert.source).toBe("public_parcel_reports");
-    expect(alert.severity).toBe("warning");
-    expect(alert.dedupeKey).toMatch(/^daily-spike:\d{4}-\d{2}-\d{2}$/);
+    // Asserted through `toHaveBeenCalledWith` rather than by indexing
+    // `mock.calls[0][0]`. The stub is `vi.fn(async () => undefined)`, which
+    // declares NO parameters, so its `calls` entries are empty tuples: indexing
+    // them was four type errors (TS2493 + three TS18048) that the runtime never
+    // saw, because a test's type errors are invisible at runtime too — exactly
+    // what `check:tests` exists to catch. This form needs no element access, so
+    // it stays correct whatever the stub's declared arity.
+    expect(h.raiseAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "public_parcel_reports",
+        severity: "warning",
+        dedupeKey: expect.stringMatching(/^daily-spike:\d{4}-\d{2}-\d{2}$/),
+      }),
+    );
   });
 
   it("returns an honest no_free_source when the county has no free data", async () => {

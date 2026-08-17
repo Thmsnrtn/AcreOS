@@ -464,6 +464,12 @@ export const CANONICAL_OBJECTS: readonly CanonicalObject[] = [
     // parcel gets one row; its vocabulary is acquisition-side signal only; its
     // payload is score-shaped. Consolidating it into scoring ABOUT an
     // opportunity is the follow-on, recorded in shared/schema/opportunity.ts.
+    //
+    // "Canonical" here means WIRED, not merely declared: the table is exported
+    // from shared/schema.ts and its migration is registered in
+    // scripts/migrate.mjs. It shipped once as a schema file that neither was
+    // true of — a status this entry briefly claimed and which was correctly
+    // reverted until the wiring was real.
     purpose: "potential investment/disposition/financing action",
     layer: "reality-graph",
     status: "canonical",

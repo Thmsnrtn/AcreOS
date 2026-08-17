@@ -28,6 +28,7 @@ import {
 } from "@shared/decisions/snapshot";
 import { resolveSubject } from "../evidence/evidenceStore";
 import { freezeScenarioRefs } from "../economics/scenarioStore";
+import { requireOpportunity } from "../opportunities";
 import type { ResolvedValue } from "@shared/evidence/claim";
 
 /** Read cap — a subject with more decisions than this has a runaway writer. */
@@ -99,18 +100,42 @@ export async function recordDecision(
 ): Promise<RecordedDecision> {
   const resolved: ResolvedValue[] = [];
 
-  if (input.subjectType === "property" || input.subjectType === "opportunity") {
+  if (input.subjectType === "property") {
     const [propertyFacts, parcelFacts] = await Promise.all([
       resolveSubject(organizationId, "property", input.subjectId, evidenceAsOf),
       resolveSubject(organizationId, "parcel", input.subjectId, evidenceAsOf),
     ]);
     resolved.push(...propertyFacts.values(), ...parcelFacts.values());
   }
+
+  if (input.subjectType === "opportunity") {
+    // EXISTENCE AND TENANCY, then NO EVIDENCE — and both halves are corrections.
+    //
+    // This branch used to be folded in with `property` above, so an
+    // `opportunity` subjectId was passed to `resolveSubject(…, "property", …)`
+    // and to `resolveSubject(…, "parcel", …)`. Opportunity had no table, so its
+    // ids and `properties.id` were the same integer space by accident: a
+    // decision recorded against opportunity #5 froze PROPERTY #5's evidence and
+    // reported it as the opportunity's own. Two unrelated entities, no error,
+    // and the wrong facts frozen into an immutable record forever.
+    //
+    // Now `opportunities` exists, the id is checked against it — org-scoped, so
+    // a foreign or invented id refuses rather than resolving to a stranger's
+    // property. `UnavailableOpportunityError` names no id and does not say
+    // which of "absent" or "another tenant's" applies, so it is not an oracle.
+    await requireOpportunity(organizationId, input.subjectId);
+    // Deliberately resolves NOTHING. Evidence in this repo is claimed against a
+    // property id, and an opportunity carries a ParcelRef natural key instead —
+    // it exists precisely for land the org has not committed to, which is the
+    // case where no property row exists. Guessing a property is what the old
+    // code did. Zero evidence with an honestly empty unknowns list is the same
+    // posture `deal` takes below, and for the same reason.
+  }
   // A `deal` subject carries no direct evidence claims today — evidence is
   // claimed against the property. Rather than guess which property a deal
   // refers to, the snapshot records zero evidence and the unknowns list stays
-  // honestly empty. When Opportunity and Holding become canonical objects and
-  // the deal→property edge is a typed relationship, this reads through it.
+  // honestly empty. When the deal→property edge is a typed relationship
+  // (canon's still-absent `relationship` object), this reads through it.
 
   const scenarioRefs = await freezeScenarioRefs(organizationId, scenarioIds);
   const body = freezeDecision(input, resolved, evidenceAsOf, scenarioRefs);

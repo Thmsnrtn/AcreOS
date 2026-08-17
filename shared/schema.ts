@@ -18405,6 +18405,15 @@ export * from "./schema/scenarios";
 // rewrite history).
 export * from "./schema/outcomes";
 
+// The Reality Graph's first canonical object (Master Audit BI11/BI93). An
+// Opportunity is a POTENTIAL action on a parcel — pre-commitment, where a Deal
+// is the transaction process after commitment. Identity and lifecycle only: it
+// owns no economics, because `scenarios`, `decision_snapshots` and `outcomes`
+// already do. All three already accepted an `opportunity` subject that pointed
+// at no table, and decisionStore.ts resolved that subject id AS a properties.id
+// for want of anywhere else for it to point.
+export * from "./schema/opportunity";
+
 // VA task management and the org's SOP library (BLOCKERS B9, founder ruling
 // 2026-08-13). The persistence layer `services/vaManagement.ts` declared as two
 // unused string constants — `VA_TASKS_KEY` / `SOP_LIBRARY_KEY` — and never

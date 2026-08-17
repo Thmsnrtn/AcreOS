@@ -78,6 +78,7 @@ import zoningRouter from "./routes-zoning";
 import titleSearchRouter from "./routes-title-search";
 import propertyEnrichmentRouter from "./routes-property-enrichment";
 import decisionsRouter from "./routes-decisions";
+import opportunitiesRouter from "./routes-opportunities";
 import scenariosRouter from "./routes-scenarios";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
@@ -1481,6 +1482,12 @@ export async function registerRoutes(
   // Decision Memory (Master Audit BI20) — record/read frozen investment
   // decisions. API surface only; no new customer nav entry.
   app.use('/api/decisions', isAuthenticated, getOrCreateOrg, decisionsRouter);
+  // Reality Graph — Opportunity, the pre-commitment object a Deal follows.
+  // Mounted BEFORE nothing in particular, but it must exist: POST /api/decisions
+  // already accepts an `opportunity` subject, and without a way to create one
+  // that subject type could only ever refuse. API surface only; no new customer
+  // nav entry.
+  app.use('/api/opportunities', isAuthenticated, getOrCreateOrg, opportunitiesRouter);
   // Economics layer (Master Audit BI12/BK24) — compute/read versioned
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);

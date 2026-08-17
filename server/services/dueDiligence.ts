@@ -239,7 +239,19 @@ Provide a professional assessment focusing on:
 
 interface CachedParcelData {
   snapshot: typeof parcelSnapshots.$inferSelect | null;
-  dataSource: DueDiligenceReport["dataSource"];
+  /**
+   * The report's own `dataSource` is a PROVENANCE — where the data came from —
+   * and every member of that union names a real source. This one carries one
+   * extra state the report has no business expressing: `"unavailable"`, meaning
+   * the natural key was unusable and no lookup was attempted at all.
+   *
+   * Kept as a separate, wider type rather than adding "unavailable" to
+   * `DueDiligenceReport["dataSource"]`: a report that reaches a consumer
+   * labelled "unavailable" would be claiming a provenance it does not have, and
+   * every consumer switching on provenance would silently gain an unhandled
+   * case. The caller collapses it back before it can reach a report.
+   */
+  dataSource: DueDiligenceReport["dataSource"] | "unavailable";
   isStale: boolean;
 }
 
@@ -458,10 +470,19 @@ export async function generateDueDiligenceReport(
   );
   
   cachedSnapshot = cacheResult.snapshot;
-  dataSource = cacheResult.dataSource;
+  // "unavailable" is a refusal, not a provenance — see CachedParcelData. Left
+  // at the initial "property_record", which is what the report will genuinely
+  // be built from when the parcel cache could not be consulted.
+  if (cacheResult.dataSource !== "unavailable") {
+    dataSource = cacheResult.dataSource;
+  }
 
-  // Fetch fresh parcel data if no cache or stale
-  if (!cachedSnapshot || cacheResult.isStale) {
+  // Fetch fresh parcel data if no cache or stale — but NOT when the natural key
+  // was refused. `normalizeParcelRef` only refuses a key that is missing a
+  // state, a county or an APN, or whose APN contains no digit; an upstream
+  // lookup on such a key cannot match a real parcel and, at a paid tier, spends
+  // a credit to find that out. Refusing once is enough.
+  if (cacheResult.dataSource !== "unavailable" && (!cachedSnapshot || cacheResult.isStale)) {
     try {
       const stateCountyPath = buildStateCountyPath(property.state, property.county);
       parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath, organizationId);

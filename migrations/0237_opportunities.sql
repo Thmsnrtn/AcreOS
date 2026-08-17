@@ -90,11 +90,19 @@
 -- ────────
 -- Mirrors shared/schema/opportunity.ts. Idempotent.
 --
--- NOT REGISTERED IN scripts/migrate.mjs — DELIBERATELY.
--- ────────────────────────────────────────────────────
--- That file is Fly's release_command: a statement added there runs against
--- PRODUCTION on the next deploy. Registering this is an OWNER ACTION, taken
--- knowingly, not a side effect of the change that wrote the file.
+-- REGISTERED IN scripts/migrate.mjs.
+-- ──────────────────────────────────
+-- That file is Fly's release_command, so a statement added there runs against
+-- PRODUCTION on the next deploy — which is why 0236 immediately before it is
+-- deliberately absent from it. The distinction is the VERB, not the proximity:
+-- 0236 is `DROP TABLE`, destructive and irreversible; this is
+-- `CREATE TABLE IF NOT EXISTS`, additive and idempotent, and reversible by
+-- simply not writing to it. Every other additive migration in this repo is
+-- registered (0235 is the most recent). Holding this one back would leave
+-- shared/schema.ts exporting a table with no relation behind it — the
+-- "schema without a migration" defect CLAUDE.md's wave-discipline notes name as
+-- this codebase's most common, and one that 500s the first caller rather than
+-- failing loudly at deploy time.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS "opportunities" (
