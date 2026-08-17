@@ -24,6 +24,7 @@ import { getOpenAIClient } from "../../utils/openaiClient";
 import { logger } from "../../utils/logger";
 import { estimateOpenRouterCostCents } from "./costTracker";
 
+import { sanitizePromptInline } from "../../utils/sanitizePrompt";
 const SCORER_MODEL = "anthropic/claude-haiku-4.5";
 const PASS_THRESHOLD = 65;
 const RECENT_SHIPPED_LIMIT = 30;
@@ -97,7 +98,7 @@ export async function scoreScript(brand: BrandProfile, script: CmoScript): Promi
   const userPrompt = `Score this script:
 
 HOOK: ${script.hook}
-BODY: ${script.body}
+BODY: ${sanitizePromptInline(script.body ?? "")}
 CTA: ${script.cta}
 ARCHETYPE: ${script.hookArchetype}
 INTENT: ${script.intent}

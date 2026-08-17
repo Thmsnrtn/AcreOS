@@ -43,7 +43,10 @@ export function registerMicroFeatureRoutes(app: Express): void {
           documentName: "Quick Capture — Field Photo",
           fileUrl: dataUrl,
         });
-        extractedText = await documentIntelligenceService.extractText(doc.id, dataUrl);
+        // The doc was just created above with fileUrl: dataUrl, and extractText
+        // now reads the URL off the row — so this passes the org instead of
+        // re-supplying a value the service already has.
+        extractedText = await documentIntelligenceService.extractText(doc.id, org.id);
       } catch (err) {
         logger.error("Quick capture OCR failed", err instanceof Error ? err : undefined);
       }

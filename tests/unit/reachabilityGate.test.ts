@@ -21,37 +21,142 @@
  *      never mounted are reported.
  *   7. The failure text names file, symbol, and what to do — including DELETE.
  *   8. The real repo passes at its own committed baseline.
+ *   9. The VACUITY GUARD bites — in BOTH of its directions (a population below
+ *      its declared floor, and a floor that was never declared at all), and it
+ *      bites over a FIXTURE tree exactly as it does over the real repo.
+ *
+ * ON (9), because it is the reason this file was rewritten. The guard exists
+ * because the pre-guard linter, run over an EMPTY tree, printed "Good news: 1405
+ * unreachable item(s) were wired or deleted. Lock it in — set
+ * baselines.unreachedExports: 0": a totally blind scan instructing the operator
+ * to re-baseline the gate to zero. Every count this linter prints is "how many
+ * bad things did I find", so a scan that stops seeing FILES reports zero and
+ * reads as a clean bill of health unless the POPULATIONS are floored too.
+ *
+ * The fixtures below therefore declare their own fixture-sized `minima` rather
+ * than opting out of the guard. That is not a formality to get the tests green:
+ * a fixture tree is the *most* vacuity-prone tree there is (two files, a
+ * throwaway tmpdir, a `--root` the walk could silently miss), so an unfloored
+ * fixture run is precisely the scan whose zeros mean nothing. If a future change
+ * makes these tests fail, the fix is to correct the floors — never to delete
+ * `minima` from the fixture config.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const LINTER = join(REPO_ROOT, "scripts", "lint-reachability.mjs");
 
+/**
+ * spawnSync, NOT execFileSync, and the difference is load-bearing.
+ *
+ * execFileSync returns stdout and THROWS on a non-zero exit — so stderr was
+ * captured only on the failure path, and every exit-0 run in this file saw
+ * stdout alone. That made each `expect(out).not.toContain(…)` on a passing run
+ * vacuously true: the linter writes every warning with `console.error`, so
+ * anything it complained about while still exiting 0 was invisible to the
+ * assertion claiming it was absent.
+ *
+ * The vacuity guard is exactly that shape under `--measure` — it REPORTS a blind
+ * scan on stderr and deliberately does not gate — so the test proving it still
+ * speaks up could not see the thing it was asserting on. Merging both streams on
+ * both paths is what makes the negative assertions here mean anything.
+ */
 function run(...args: string[]): { code: number; out: string } {
-  try {
-    const out = execFileSync("node", [LINTER, ...args], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    });
-    return { code: 0, out };
-  } catch (err) {
-    const e = err as { status?: number; stdout?: string; stderr?: string };
-    return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  const r = spawnSync("node", [LINTER, ...args], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024, // --report over the real repo prints thousands of findings
+  });
+  if (r.error) throw r.error;
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
-type Baselines = Partial<{
-  unreachedExports: number;
-  tablesNoWriter: number;
-  tablesNoReader: number;
-  unregisteredRoutes: number;
-}>;
+/**
+ * A fixture names only the families it is ABOUT; the rest are zeroed from the
+ * real config. Kept as an open record rather than a closed union for the same
+ * reason the defaults are derived — a closed list has to be edited every time
+ * the gate grows a family, which is what broke four fixtures when
+ * `module-orphans` landed.
+ */
+type Baselines = Record<string, number>;
 type Allow = { kind: string; id: string; reason: string };
+
+type RealRatchet = {
+  baselines: Record<string, number>;
+  minima?: Record<string, number>;
+  allowlist: Allow[];
+};
+
+let realRatchetCache: RealRatchet | null = null;
+function realRatchet(): RealRatchet {
+  if (realRatchetCache === null) {
+    realRatchetCache = JSON.parse(
+      readFileSync(join(REPO_ROOT, "scripts/ratchets/reachability.json"), "utf8"),
+    ) as RealRatchet;
+  }
+  return realRatchetCache;
+}
+
+/**
+ * Every family the REAL ratchet config declares, zeroed.
+ *
+ * Reading the shipped baselines' keys means a fixture automatically covers a
+ * family added later; the values are irrelevant here, only the key set is.
+ */
+function zeroedFamilies(): Record<string, number> {
+  const keys = Object.keys(realRatchet().baselines);
+  if (keys.length === 0) throw new Error("no families in the real ratchet config — harness broken");
+  return Object.fromEntries(keys.map((k) => [k, 0]));
+}
+
+/**
+ * FIXTURE-SIZED FLOORS for the linter's vacuity guard.
+ *
+ * The guard floors the four SCAN POPULATIONS (not the finding counts) and fails
+ * the run if a floor is BREACHED **or MISSING** — see the guard block in
+ * lint-reachability.mjs, and the ratchet file's own note: "A `--root` fixture
+ * run must pass its own `--ratchet` with fixture-sized minima."
+ *
+ * These floors are deliberately small, because the trees below are two or five
+ * files. They are NOT an exemption: a fixture is floored on exactly the same
+ * terms as the repo, and `describe("… vacuity guard")` at the bottom of this
+ * file proves the guard still bites at fixture scale in both directions. Where a
+ * fixture can carry a sharper floor it passes one (see the tables/routes
+ * fixture, which floors pgTables and routeCandidateFiles at 2 against an actual
+ * 3 apiece) — a floor of 0 is unbreachable, so it buys nothing but the
+ * key's presence, and presence is the half of the guard that catches an
+ * unfloored population.
+ *
+ * Unknown populations default to 0, derived from the real config's key set for
+ * the same reason `zeroedFamilies()` derives the baselines: a population added
+ * to the guard later must not break every unrelated fixture at once. Only the
+ * populations named here get a floor above the derived zero.
+ */
+const FIXTURE_FLOORS: Record<string, number> = {
+  productionFiles: 1,
+  exportFiles: 1,
+  pgTables: 0,
+  routeCandidateFiles: 0,
+};
+
+function fixtureMinima(overrides: Record<string, number> = {}): Record<string, number> {
+  const keys = Object.keys(realRatchet().minima ?? {});
+  if (keys.length === 0) {
+    throw new Error(
+      'no "minima" in the real ratchet config — the vacuity guard is unfloored on the real repo',
+    );
+  }
+  return {
+    ...Object.fromEntries(keys.map((k) => [k, 0])),
+    ...FIXTURE_FLOORS,
+    ...overrides,
+  };
+}
 
 /** Build a miniature repo under `dir` and return a runner bound to it. */
 function fixture(dir: string) {
@@ -60,7 +165,11 @@ function fixture(dir: string) {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   };
-  const ratchet = (baselines: Baselines, allowlist: Allow[] = []) =>
+  const ratchet = (
+    baselines: Baselines,
+    allowlist: Allow[] = [],
+    minimaOverrides: Record<string, number> = {},
+  ) =>
     write(
       "scripts/ratchets/reachability.json",
       JSON.stringify({
@@ -68,7 +177,25 @@ function fixture(dir: string) {
         mode: "external",
         evaluator: "scripts/lint-reachability.mjs",
         direction: "down",
-        baselines,
+        // Every family defaults to 0 and a fixture overrides only what it is
+        // about. The gate FAILS a family with no baseline, so a new family
+        // otherwise breaks every unrelated fixture at once — a fixture should
+        // fail because the behaviour it pins changed, not because the gate grew
+        // a family it never mentioned.
+        //
+        // DERIVED from the real config's keys, not a hardcoded list. It WAS a
+        // hardcoded list of five, added for exactly this reason when
+        // `opaque-exports` landed — and it then failed to survive the sixth
+        // family, `module-orphans`, four fixtures at a time. A defaults list that
+        // has to be edited whenever a family is added is the same defect it was
+        // introduced to fix.
+        baselines: { ...zeroedFamilies(), ...baselines },
+        // The vacuity guard floors the SCAN POPULATIONS and fails on a missing
+        // floor, so a fixture must declare its own. Same derive-don't-hardcode
+        // discipline as `baselines` above, and the same reason: when the guard
+        // grew from the header prose into an enforced block, EVERY fixture in
+        // this file started exiting 1 before reaching its assertion.
+        minima: fixtureMinima(minimaOverrides),
         allowlist,
       }),
     );
@@ -132,8 +259,11 @@ describe("lint-reachability — export family", () => {
         "server/services/lazyService.ts",
         "export function runLazily() { return 1; }\n",
       );
-      // The ONLY reference is a dynamic import of the module, with the symbol
-      // pulled off the namespace object at runtime.
+      // The ONLY reference is a NAMESPACE-BINDING dynamic import, with the symbol
+      // pulled off the namespace object at runtime. This is the shape that still
+      // confers opacity after the 2026-08-14 narrowing, and the reason it does is
+      // visible right here: the call site genuinely does not say which export it
+      // touches — the name is a runtime string.
       f.write(
         "server/routes-lazy.ts",
         "export async function handler(name: string) {\n" +
@@ -141,12 +271,10 @@ describe("lint-reachability — export family", () => {
           "  return (mod as Record<string, () => number>)[name]();\n" +
           "}\n",
       );
-      f.ratchet({
-        unreachedExports: 0,
-        tablesNoWriter: 0,
-        tablesNoReader: 0,
-        unregisteredRoutes: 0,
-      });
+      // opaqueExports is 1 here, and that IS the assertion: this fixture is the
+      // canonical worked example of the blind spot, so the number the gate now
+      // carries for it should be exactly one.
+      f.ratchet({ opaqueExports: 1 });
 
       const { code, out } = f.run();
       expect(code).toBe(0);
@@ -154,8 +282,116 @@ describe("lint-reachability — export family", () => {
       // It is reported as opaque, explicitly NOT asserted dead.
       expect(out).toContain("NOT asserted dead");
       expect(out).toContain("runLazily");
+      // …and, since this change, COUNTED rather than only narrated. The prose
+      // above was true and ungated for as long as the family existed.
+      expect(out).toContain("opaque-exports: PASS — 1");
     } finally {
       rmSync(d2, { recursive: true, force: true });
+    }
+  });
+
+  it("a DESTRUCTURED dynamic import confers no opacity, but still counts as an import", () => {
+    // The 2026-08-14 narrowing (founder picker, "Approve the narrowing"), pinned
+    // behaviourally rather than structurally: the real script over a fixture
+    // tree, asserting all three outcomes at once.
+    //
+    // `const { runLazily } = await import(…)` binds a bare identifier the usage
+    // tokeniser already sees, so there is nothing hidden and nothing to exempt.
+    // Before the narrowing this fixture produced opaque:2 / unreached:0 — the
+    // sibling was laundered by the destructured one, which is how aiRouter.ts
+    // shielded ten exports occurring nowhere else in production.
+    const d = mkdtempSync(join(tmpdir(), "reach-destructured-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export async function handler() {\n" +
+          '  const { runLazily } = await import("./services/lazyService");\n' +
+          "  return runLazily();\n" +
+          "}\n",
+      );
+      f.ratchet({ unreachedExports: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      // 1. The sibling is now VISIBLE as unreached instead of hidden.
+      expect(out).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("neverCalledSibling");
+      // 2. The destructured symbol is NOT accused — the dangerous direction.
+      expect(out).not.toContain("runLazily —");
+      // 3. Nothing is opaque: the call site says which export it touches.
+      expect(out).toContain("opaque-exports: PASS — 0");
+      // 4. THE TRAP. The module IS imported, so it is not an orphan. The first
+      //    implementation skipped destructured imports out of the import
+      //    registries too, and 172 real modules were one commit away from being
+      //    reported as "nothing imports this file at all".
+      expect(
+        out,
+        "a destructure-imported module is being reported as a module orphan — " +
+          "the narrowing must skip only the OPACITY registries, never the " +
+          "import ones",
+      ).toContain("module-orphans: PASS — 0");
+      expect(out).not.toContain("MODULE ORPHAN");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("the module-orphan half of that is not vacuous — drop the import and it IS an orphan", () => {
+    // Guard for the assertion above: `module-orphans: PASS — 0` proves nothing
+    // unless the same module WOULD be reported when genuinely unimported.
+    const d = mkdtempSync(join(tmpdir(), "reach-destructured-neg-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write("server/routes-lazy.ts", "export async function handler() { return 1; }\n");
+      f.ratchet({ unreachedExports: 2, moduleOrphans: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(out).toContain("module-orphans: PASS — 1");
+      expect(out).toContain("MODULE ORPHAN");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("`.then(({ x }) => …)` destructuring is recognised too", () => {
+    // The other shape the codebase actually uses. A narrowing that only handled
+    // `const { x } = await import(…)` would leave these modules opaque for no
+    // reason — the binding is just as visible to the tokeniser.
+    const d = mkdtempSync(join(tmpdir(), "reach-then-destructured-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export function handler() {\n" +
+          '  return import("./services/lazyService").then(({ runLazily }) => runLazily());\n' +
+          "}\n",
+      );
+      f.ratchet({ unreachedExports: 1 });
+
+      const { code, out } = f.run();
+      expect(code).toBe(0);
+      expect(out).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("opaque-exports: PASS — 0");
+      expect(out).toContain("module-orphans: PASS — 0");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
     }
   });
 
@@ -283,7 +519,10 @@ describe("lint-reachability — ratchet semantics", () => {
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  const base = { tablesNoWriter: 0, tablesNoReader: 0, unregisteredRoutes: 0 };
+  // `a.ts` and `b.ts` are imported by nothing, so they are genuinely MODULE
+  // ORPHANS as well as unreached exports — the module-orphans family added in
+  // unit 106 counts them, and the fixture says 2 rather than pretending 0.
+  const base = { tablesNoWriter: 0, tablesNoReader: 0, unregisteredRoutes: 0, moduleOrphans: 2 };
 
   it("PASSes at baseline", () => {
     const f = fixture(dir);
@@ -291,7 +530,13 @@ describe("lint-reachability — ratchet semantics", () => {
     const { code, out } = f.run();
     expect(code).toBe(0);
     expect(out).toContain("unreached-exports: PASS — 2 (baseline 2)");
-    expect(out).toContain("PASS — all four reachability counts at baseline");
+    // The summary used to hardcode "four" and would have gone on saying it after
+    // the fifth family landed — which is how this very assertion broke. It now
+    // derives from FAMILIES.length, so the check does too: whatever the number
+    // is, the line must report as many counts as the run actually printed.
+    const reported = [...out.matchAll(/^\[lint-reachability\] \S+: PASS — /gm)].length;
+    expect(reported, "no family lines were printed").toBeGreaterThan(0);
+    expect(out).toContain(`PASS — all ${reported} reachability counts at baseline`);
   });
 
   it("FAILs on an increase and refuses to suggest bumping the baseline", () => {
@@ -364,12 +609,44 @@ describe("lint-reachability — table and route families", () => {
       'import { registerMountedRoutes } from "./routes-mounted";\n' +
         "export function registerRoutes(app: unknown) { registerMountedRoutes(app); }\n",
     );
-    f.ratchet({
-      unreachedExports: 99,
-      tablesNoWriter: 0,
-      tablesNoReader: 0,
-      unregisteredRoutes: 0,
-    });
+    // THE ANCHOR, and it is required since the 2026-08-16 widening — this fixture
+    // was stale for the same reason the minima were missing: the wave that
+    // changed the linter did not change the test.
+    //
+    // Mountedness is now a FIXED POINT rather than a one-hop reference check, and
+    // `routes.ts` is itself a candidate (it exports `registerRoutes`). With
+    // nothing anchoring it, routes.ts was unmounted, so its import of
+    // routes-mounted conferred nothing and the fixture reported THREE unmounted
+    // routers — including the one it exists to prove is NOT accused. That is the
+    // real `api-v1/index.ts` defect the widening was written for, reproduced by
+    // accident in the fixture.
+    //
+    // ROUTE_MANIFEST is how the real repo anchors the chain, so the fixture
+    // anchors it the same way. The invariant under test is unchanged and now
+    // actually tested: a router reachable from a MOUNTED parent is not accused; a
+    // router reachable from nothing is. Do not "fix" a future failure here by
+    // deleting routes.ts — that would delete the transitive half of the property.
+    f.write(
+      "server/routeManifest.ts",
+      "export const ROUTE_MANIFEST = [\n" +
+        '  { file: "routes.ts", note: "root registrar" },\n' +
+        "];\n",
+    );
+    f.ratchet(
+      {
+        unreachedExports: 99,
+        tablesNoWriter: 0,
+        tablesNoReader: 0,
+        unregisteredRoutes: 0,
+      },
+      [],
+      // The one fixture rich enough to carry NON-TRIVIAL floors, so it does: 3
+      // pgTables and 3 route candidates are scanned here, floored at 2 apiece.
+      // If the schema regex or the route-candidate predicate ever stops seeing
+      // this tree, THIS is the fixture that says so instead of reporting a
+      // reassuring zero.
+      { productionFiles: 3, pgTables: 2, routeCandidateFiles: 2 },
+    );
 
     const { code, out } = f.run("--report");
     expect(code).toBe(1);
@@ -383,12 +660,151 @@ describe("lint-reachability — table and route families", () => {
     expect(out).toContain("BLACK HOLE");
     expect(out).not.toContain('healthy ("healthy")');
 
-    // route family
+    // route family — exactly ONE accusation, and it is the orphan.
     expect(out).toContain("unregistered-routes: FAIL — 1");
     expect(out).toContain("server/routes-orphan.ts");
     expect(out).toContain("registerOrphanRoutes");
+    // Neither the manifest-anchored root nor the router it mounts is accused.
+    // The second of those is the TRANSITIVE half: it is discharged only because
+    // its referrer was itself discharged first, by the fixed point.
     expect(out).not.toContain("server/routes-mounted.ts");
+    expect(out).not.toContain("registerMountedRoutes");
+    expect(out).not.toContain("registerRoutes —");
     expect(out).toContain("404s in production");
+  });
+});
+
+describe("lint-reachability — vacuity guard", () => {
+  /**
+   * THE REASON THE GUARD EXISTS, pinned as tests.
+   *
+   * Run over an empty tree, the pre-guard linter printed:
+   *
+   *   Good news: 1405 unreachable item(s) were wired or deleted.
+   *   Lock it in — set "baselines.unreachedExports": 0
+   *
+   * A scan that saw NOTHING congratulated the operator and told them to
+   * re-baseline the gate to zero. Every other test in this file asserts on a
+   * count; these two assert that a count arrived at BLINDLY is refused.
+   *
+   * One production file, one export. That is a legitimate fixture — and it is
+   * also indistinguishable, count-wise, from a walk that broke and found one
+   * file by accident. The floors are what tell the two apart.
+   */
+  const SOLO = "export function soleExport() { return 1; }\n";
+  /** Genuinely true of the SOLO tree: one unreached export, in one orphan file. */
+  const SOLO_BASELINES = { unreachedExports: 1, moduleOrphans: 1 };
+
+  it("FAILs when a population falls BELOW its floor — and the same tree PASSes with an honest one", () => {
+    const d = mkdtempSync(join(tmpdir(), "reach-vacuity-breach-"));
+    try {
+      const f = fixture(d);
+      f.write("server/services/solo.ts", SOLO);
+
+      // CONTROL FIRST. Without this the failure below proves nothing: a fixture
+      // that fails for an unrelated reason would produce the same exit code, and
+      // "the guard bit" would be an assumption. Honest floors → fully green.
+      f.ratchet(SOLO_BASELINES);
+      const ok = f.run();
+      expect(
+        ok.code,
+        `the control run must be green or the breach below proves nothing:\n${ok.out}`,
+      ).toBe(0);
+      expect(ok.out).not.toContain("VACUITY GUARD");
+      expect(ok.out).toContain("[lint-reachability] PASS");
+
+      // MUTATION: the tree is unchanged; only the floor moves, to a number this
+      // tree cannot reach. Nothing else about the run differs.
+      f.ratchet(SOLO_BASELINES, [], { productionFiles: 500 });
+      const bad = f.run();
+      expect(bad.code).toBe(1);
+      expect(bad.out).toContain("VACUITY GUARD: productionFiles = 1, below the floor of 500");
+      // It accuses the SCAN, not the codebase — the whole point of the guard.
+      expect(bad.out).toContain("This scan is NOT a clean bill of health");
+      expect(bad.out).toContain("it stopped seeing files");
+      expect(bad.out).toContain("Suspect the walk, the extension filter, or a regex");
+      expect(bad.out).toContain("vacuity guard tripped; counts below are not trustworthy");
+      // And it refuses BEFORE printing per-family verdicts, so a broken scan can
+      // never emit six reassuring PASS lines.
+      expect(bad.out).not.toContain("unreached-exports: PASS");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("FAILs when a minima key is MISSING — an unfloored population is the failure mode itself", () => {
+    const d = mkdtempSync(join(tmpdir(), "reach-vacuity-missing-"));
+    try {
+      const f = fixture(d);
+      f.write("server/services/solo.ts", SOLO);
+      // Written BY HAND, not through `f.ratchet`: the property under test is the
+      // LINTER's missing-key semantics, and routing it through the harness that
+      // supplies the floors would test the harness instead. Complete in every
+      // other respect — only `pgTables` is absent.
+      f.write(
+        "scripts/ratchets/reachability.json",
+        JSON.stringify({
+          name: "reachability",
+          baselines: { ...zeroedFamilies(), ...SOLO_BASELINES },
+          minima: { productionFiles: 1, exportFiles: 1, routeCandidateFiles: 0 },
+          allowlist: [],
+        }),
+      );
+
+      const { code, out } = f.run();
+      expect(code).toBe(1);
+      expect(out).toContain('VACUITY GUARD: no "minima.pgTables"');
+      expect(out).toContain("an unfloored population lets a broken scan pass as clean");
+      expect(out).toContain("vacuity guard tripped");
+      // Only the ABSENT floor is named. The three that are declared and met stay
+      // silent, so the message points at the one thing to fix.
+      expect(out).not.toContain('no "minima.productionFiles"');
+      expect(out).not.toContain('no "minima.exportFiles"');
+      expect(out).not.toContain('no "minima.routeCandidateFiles"');
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("--measure REPORTS a vacuity breach but does not gate on it", () => {
+    // --measure exists to print counts for seeding a baseline, so it never
+    // exits 1. It must still SAY the scan was blind: a measurement taken through
+    // a broken walk is exactly the number nobody should be seeding from.
+    const d = mkdtempSync(join(tmpdir(), "reach-vacuity-measure-"));
+    try {
+      const f = fixture(d);
+      f.write("server/services/solo.ts", SOLO);
+      f.ratchet(SOLO_BASELINES, [], { productionFiles: 500 });
+
+      const { code, out } = f.run("--measure");
+      expect(code).toBe(0);
+      expect(out).toContain("VACUITY GUARD: productionFiles = 1, below the floor of 500");
+      expect(out).toContain("measure-only — no gate applied");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("every fixture config this file writes is itself FLOORED, on the repo's own key set", () => {
+    // The standing temptation, when the guard makes a fixture fail, is to drop
+    // `minima` from the fixture config and call it a test-harness concern. That
+    // would leave every fixture in this file running blind — the exact condition
+    // the guard was added to make impossible. This asserts the escape hatch is
+    // not there, and that the fixture floors track the REAL config's populations
+    // rather than a hardcoded list that goes stale when a population is added.
+    const d = mkdtempSync(join(tmpdir(), "reach-vacuity-floored-"));
+    try {
+      const f = fixture(d);
+      f.ratchet({});
+      const written = JSON.parse(
+        readFileSync(join(d, "scripts/ratchets/reachability.json"), "utf8"),
+      ) as { minima?: Record<string, number> };
+      const realKeys = Object.keys(realRatchet().minima ?? {});
+      expect(realKeys.length, "the REAL ratchet declares no minima").toBeGreaterThan(0);
+      expect(Object.keys(written.minima ?? {}).sort()).toEqual([...realKeys].sort());
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
   });
 });
 
@@ -399,13 +815,23 @@ describe("lint-reachability — the real repo", () => {
     expect(code).toBe(0);
   });
 
-  it("declares the four baselines in scripts/ratchets/reachability.json", async () => {
+  it("declares every family baseline in scripts/ratchets/reachability.json", async () => {
     const cfg = (
       await import("../../scripts/ratchets/reachability.json", {
         with: { type: "json" },
       })
     ).default as { baselines: Record<string, number>; allowlist: Allow[] };
     expect(Object.keys(cfg.baselines).sort()).toEqual([
+      // moduleOrphans counts whole FILES nothing imports — 228 of the unreached
+      // exports resolve to 62 files, and a file is the unit a delete-or-wire
+      // decision is made in (BLOCKERS B19). It is NOT a delete list: one class
+      // is regulated obligations built and never wired.
+      "moduleOrphans",
+      // opaqueExports is the SIZE OF THE BLIND SPOT — exports the other families
+      // cannot assert on because their module is dynamically imported somewhere.
+      // Nothing in it is proven dead; the point is that it may only shrink,
+      // where before it was printed as prose and could grow unwatched.
+      "opaqueExports",
       "tablesNoReader",
       "tablesNoWriter",
       "unreachedExports",
@@ -414,6 +840,37 @@ describe("lint-reachability — the real repo", () => {
     // Every real allowlist entry justifies itself.
     for (const entry of cfg.allowlist) {
       expect(entry.reason.trim().length).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it("floors all four scan populations, and the floors sit UNDER the live numbers", () => {
+    // The guard fails on a MISSING floor, so the real repo could not be passing
+    // without these — but a floor set at or above the live count would fail the
+    // gate on the next legitimate deletion, and the temptation would then be to
+    // delete the floor rather than lower it. Pin both halves.
+    const minima = realRatchet().minima ?? {};
+    expect(Object.keys(minima).sort()).toEqual([
+      "exportFiles",
+      "pgTables",
+      "productionFiles",
+      "routeCandidateFiles",
+    ]);
+
+    const { out } = run("--measure");
+    const scanned = out.match(
+      /scanned (\d+) production files · \d+ exported symbols in (\d+) service\/job files · (\d+) pgTable definitions · (\d+) route candidates/,
+    );
+    expect(scanned, `the scan summary line did not parse — harness broken:\n${out}`).not.toBeNull();
+    const live: Record<string, number> = {
+      productionFiles: Number(scanned![1]),
+      exportFiles: Number(scanned![2]),
+      pgTables: Number(scanned![3]),
+      routeCandidateFiles: Number(scanned![4]),
+    };
+    for (const [name, floor] of Object.entries(minima)) {
+      expect(live[name], `no live population parsed for ${name}`).toBeGreaterThan(0);
+      expect(live[name], `minima.${name} (${floor}) is not below the live ${live[name]}`).
+        toBeGreaterThan(floor);
     }
   });
 });

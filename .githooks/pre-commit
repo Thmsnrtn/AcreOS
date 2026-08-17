@@ -8,17 +8,151 @@
 # from being committed while not blocking on pre-existing ones.
 #
 # 2026-05-04 (Workstream B.2): switched from raw `tsc` to
-# `tsc -p tsconfig.check.json` so the hook agrees with `npm run check`
-# (the canonical project type-check). The check.json config excludes
-# legacy directories (activity-*, onboarding/**, ab-tests*) where
-# pre-existing errors made the hook unworkably noisy. Hook still
-# filters output to staged files only — both filters apply.
+# `tsc -p tsconfig.check.json` so the hook agrees with `npm run check`.
+#
+# ---------------------------------------------------------------------------
+# 2026-08-16 — TWO defects fixed here. Read both before touching this section.
+# ---------------------------------------------------------------------------
+#
+# DEFECT 1: THE PROJECT THIS HOOK POINTED AT DOES NOT EXIST, so step 1 does
+# nothing whatsoever, and has done nothing for as long as the config has been
+# absent. `tsconfig.check.json` is not in this working tree, and
+# `git log --all -- tsconfig.check.json` is empty here — though this clone is
+# shallow (235 commits), so that alone does not date the removal. The repo's
+# own records do: docs/audits/defect-registry.md DEFECT-0003 removed it on
+# purpose (it set `noResolve: true` and included only
+# `server/types/shims.d.ts`, so it type-checked zero application code), and
+# docs/audits/sweeps/v4-sweep-01 confirms its absence. `npm run check` now runs
+# plain `tsc --noEmit` against tsconfig.json.
+# MEASURED in-repo today (tsc 6.0.3):
+#
+#     $ npx tsc --noEmit --pretty false -p tsconfig.check.json ; echo $?
+#     error TS5058: The specified path does not exist: 'tsconfig.check.json'.
+#     1
+#
+# 72 bytes of output, exit status 1. The old hook threw that status away, saw
+# NON-empty output, grepped those 72 bytes for staged-file paths, matched
+# nothing, and printed "No TypeScript errors in staged files". Every commit
+# since has passed a type check that never ran once.
+#
+# The project is now `tsconfig.json` — the config `npm run check` actually
+# uses. Do NOT "restore" tsconfig.check.json to make this quieter: it was
+# removed deliberately, and restoring it would restore the theater.
+#
+# DEFECT 2: `$(npx tsc ... 2>&1 || true)` DISCARDED THE EXIT STATUS, and empty
+# output was then read as "No TypeScript errors found." A tsc that was killed,
+# OOMed, or never started produces empty output too. That is the exact
+# mechanism that made scripts/check-tests-typecheck.mjs report 1 error when the
+# truth was 162 (see its header, unit 116 + the 2026-08-16 repeat), and a
+# pre-commit hook is a worse place for it: the entire point is to stop a broken
+# commit, and this one waved them through.
+#
+# The lesson that file records, ported here verbatim in spirit: **keying a
+# trust guard on an exact number — zero output, zero errors — is what let a
+# truncated run through.** "No output" was never the property that mattered;
+# "did tsc finish loading and checking the project" was. So this hook now:
+#
+#   * runs tsc with --extendedDiagnostics, which makes a COMPLETED run print a
+#     stats block even when it finds zero errors. Silence therefore can no
+#     longer mean "clean" — it can only mean "did not run";
+#   * captures the exit status SEPARATELY from the output (no `|| true` on the
+#     tsc call), and refuses a status outside the measured-good set;
+#   * refuses a signal death (dash and bash both report 128+N);
+#   * refuses output carrying crash chrome (FATAL ERROR / heap out of memory /
+#     Debug Failure / RangeError / Killed);
+#   * requires POSITIVE evidence of completeness — tsc's own `Files:` counter —
+#     and refuses a program smaller than TSC_FILES_FLOOR below.
+#
+# and it names which of three outcomes happened, every time:
+#     (a) tsc ran, found nothing            → pass
+#     (b) tsc ran, found errors             → filter to staged files (old path)
+#     (c) tsc DID NOT COMPLETE              → BLOCK, and say so — because
+#                                             "no errors" is not what happened.
+#
+# --extendedDiagnostics is free: check-tests-typecheck.mjs A/B'd it on the same
+# program (27.238s/27.733s plain vs 26.875s/27.406s extended, identical exit
+# status and identical diagnostics) — the counters are ones tsc already keeps.
 
 set -e
 
 echo "Running pre-commit checks..."
 
-# ── 1. TypeScript type-check (staged files only, via tsconfig.check.json) ──
+# ── 1. TypeScript type-check (staged files only, via tsconfig.json) ─────────
+
+# The project tsc is pointed at. This is an ANCHOR: if it stops existing, the
+# scan silently checks nothing (that is precisely how defect 1 happened), so
+# its absence is a hard block below, never a skip.
+TSC_PROJECT="tsconfig.json"
+
+# COMPLETENESS FLOOR — the only evidence this hook has that tsc walked the
+# project rather than dying partway. Not "how many errors": "how much of the
+# program did you load". A truncated run fails this by orders of magnitude
+# whether it printed 0, 1 or 161 diagnostics.
+#
+# MEASURED 2026-08-16 on this repo, tsc 6.0.3:
+#
+#     $ npx tsc -p tsconfig.json --noEmit --listFilesOnly | wc -l
+#     6818          # 1370 server/, 875 client/src/, 4397 node_modules (libs+@types)
+#                   # 18s wall, exit 0
+#
+# `--listFilesOnly` was used to measure because a full check of this project is
+# a multi-minute, multi-GB run; its line count is the same population tsc
+# reports as `Files:`. Verified on two control programs the same day: a
+# standalone file (listFilesOnly 83 == `Files: 83`) and a 2-file scratch
+# project (listFilesOnly 84 == `Files: 84`).
+#
+# Floor set at 2000 — ~29% of the observed 6818, i.e. comfortably below the
+# live value. It exists to catch a BROKEN SCAN, not legitimate deletion: the
+# lib + @types files alone are 4397, so a program under 2000 means the include
+# globs matched nothing or tsc gave up early. If a real deletion wave genuinely
+# takes this repo under the floor, RE-MEASURE and lower it in the same commit,
+# naming the wave — do not raise it to silence anything.
+TSC_FILES_FLOOR=2000
+
+# tsc exit statuses this hook is willing to interpret, ALL MEASURED here on
+# 2026-08-16 rather than assumed:
+#   0 — Success, no diagnostics.                    (control run, exit 0)
+#   2 — DiagnosticsPresent_OutputsGenerated.        (cold run with errors)
+#   1 — DiagnosticsPresent_OutputsSkipped. This is what a WARM run returns:
+#       tsconfig.json sets "incremental": true, and a replay from
+#       node_modules/typescript/tsbuildinfo reports the identical diagnostics
+#       and the identical `Files:` count but exits 1, not 2. Measured directly
+#       (same project, no edits: cold exit 2 → warm exit 1, both `Files: 84`).
+#       check-tests-typecheck.mjs accepts only {0,2} and is RIGHT to, because
+#       tsconfig.tests.json sets "incremental": false; copying its set here
+#       would have false-blocked every warm commit in this repo.
+# Anything else (3 invalid project, 127 npx/tsc missing, 134/137 abort/kill)
+# means the run ended some way other than "checked the project". Status 1 is
+# ALSO what a missing config returns, which is exactly why exit status is a
+# screen here and not the trust signal — the `Files:` evidence below is.
+# If a tsc upgrade legitimately returns another status, MEASURE it and widen
+# this set deliberately. Do not delete the check.
+TSC_STATUS_OK="0 1 2"
+
+# Case (c). Every path that cannot prove tsc finished ends here, and NONE of
+# them may fall through to a pass. Kept as a function so a future edit cannot
+# add a fourth "did not complete" branch that quietly continues.
+tsc_did_not_complete() {
+  echo ""
+  echo "  ✗ (c) THE TYPE CHECK DID NOT COMPLETE — this is NOT \"no errors found\"."
+  echo "  ──────────────────────────────────────"
+  echo "  Reason: $1"
+  if [ -n "$2" ]; then
+    echo "  Detail: $2"
+  fi
+  echo ""
+  echo "  A tsc that was killed, OOMed or never started prints little or"
+  echo "  nothing, and this hook used to read that silence as success — it"
+  echo "  captured tsc's output with '|| true', which threw the exit status"
+  echo "  away. Commits were waved through by a type check that never ran."
+  echo "  Blocking instead: an unchecked commit is not a clean one."
+  echo ""
+  echo "  Try: re-run on an unloaded machine; check 'npx tsc --version' works;"
+  echo "       confirm '$TSC_PROJECT' still exists at the repo root."
+  echo "  --no-verify bypasses this, but then you are committing UNCHECKED code."
+  echo "  ──────────────────────────────────────"
+  exit 1
+}
 
 # Collect staged .ts / .tsx files (Added, Copied, Modified)
 STAGED_TS_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx')
@@ -26,15 +160,142 @@ STAGED_TS_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.t
 if [ -z "$STAGED_TS_FILES" ]; then
   echo "  No staged TypeScript files — skipping type check."
 else
-  echo "  Type checking staged files..."
+  echo "  Type checking staged files (project: $TSC_PROJECT)..."
 
-  # Run tsc against tsconfig.check.json (the canonical project check) and
-  # capture all output. We then grep for errors only in staged files.
-  TSC_OUTPUT=$(npx tsc --noEmit --pretty false -p tsconfig.check.json 2>&1 || true)
+  # An unfloored population cannot exist — same rule as scripts/ratchet.mjs,
+  # which rejects a floor of 0 as "not a floor". A missing floor must fail as
+  # loudly as a breached one, or deleting the floor becomes the way to pass.
+  case "$TSC_FILES_FLOOR" in
+    '' | *[!0-9]* | 0)
+      tsc_did_not_complete \
+        "TSC_FILES_FLOOR is '$TSC_FILES_FLOOR', which is not a positive integer." \
+        "That floor is the only thing standing between a starved tsc and a green commit."
+      ;;
+  esac
 
-  if [ -z "$TSC_OUTPUT" ]; then
-    echo "  No TypeScript errors found."
+  # ANCHOR CHECK. Defect 1 was invisible for months because a missing project
+  # file looked exactly like a clean run downstream.
+  if [ ! -f "$TSC_PROJECT" ]; then
+    tsc_did_not_complete \
+      "the project config '$TSC_PROJECT' does not exist, so tsc had nothing to check." \
+      "Run from the repo root. Do NOT point this at tsconfig.check.json — that file was deleted on purpose (DEFECT-0003)."
+  fi
+
+  # Output goes to a FILE, not a "$(...)" capture: command substitution strips
+  # trailing newlines, which makes "empty" ambiguous with "one blank line", and
+  # reading a file back needs no pipe (a pipe into head/grep can SIGPIPE the
+  # producer and silently truncate what we are about to trust).
+  TSC_LOG=$(mktemp "${TMPDIR:-/tmp}/acreos-precommit-tsc.XXXXXX" 2>/dev/null) \
+    || TSC_LOG="${TMPDIR:-/tmp}/acreos-precommit-tsc.$$"
+  TSC_STAGED_LOG="${TSC_LOG}.staged"
+  : > "$TSC_LOG"
+  : > "$TSC_STAGED_LOG"
+  trap 'rm -f "$TSC_LOG" "$TSC_STAGED_LOG"' EXIT INT TERM
+
+  # Mirror `npm run check`'s heap (package.json: NODE_OPTIONS=
+  # --max-old-space-size=6144). Without it this project OOMs, and an OOM is now
+  # a BLOCK — so under-provisioning the heap would block every commit.
+  if [ -z "$NODE_OPTIONS" ]; then
+    NODE_OPTIONS="--max-old-space-size=6144"
+    export NODE_OPTIONS
+  fi
+
+  # THE CALL. `set -e` is lifted for exactly these two lines so a non-zero tsc
+  # does not kill the hook before its status can be READ — that status is the
+  # evidence, and `|| true` (the old code) destroys it. Do not "simplify" this
+  # back into a command substitution.
+  set +e
+  npx tsc --noEmit --pretty false --extendedDiagnostics -p "$TSC_PROJECT" > "$TSC_LOG" 2>&1
+  TSC_STATUS=$?
+  set -e
+
+  TSC_HEAD=$(head -n 3 "$TSC_LOG" 2>/dev/null || true)
+
+  # (c-1) Killed. dash and bash both report 128+N for a signal death.
+  if [ "$TSC_STATUS" -ge 128 ]; then
+    tsc_did_not_complete \
+      "tsc was killed by signal $((TSC_STATUS - 128)) (exit status $TSC_STATUS = 128+N)." \
+      "$TSC_HEAD"
+  fi
+
+  # (c-2) No output at all. With --extendedDiagnostics a completed run ALWAYS
+  # prints a stats block — even a zero-error one — so empty output cannot mean
+  # "clean" any more. This is the branch that used to print
+  # "No TypeScript errors found." and pass.
+  if [ ! -s "$TSC_LOG" ]; then
+    tsc_did_not_complete \
+      "tsc produced no output at all (exit status $TSC_STATUS). A completed run always prints an --extendedDiagnostics stats block, so silence means it never ran."
+  fi
+
+  # (c-3) Exit status outside the measured-good set.
+  TSC_STATUS_KNOWN=no
+  for s in $TSC_STATUS_OK; do
+    if [ "$TSC_STATUS" = "$s" ]; then
+      TSC_STATUS_KNOWN=yes
+    fi
+  done
+  if [ "$TSC_STATUS_KNOWN" = no ]; then
+    tsc_did_not_complete \
+      "tsc exited with status $TSC_STATUS, outside the measured set {$TSC_STATUS_OK} (0 = no diagnostics, 1 = diagnostics/warm replay, 2 = diagnostics)." \
+      "$TSC_HEAD"
+  fi
+
+  # (c-4) Crash chrome. Scanned against COMPILER-CHROME lines only: a real
+  # diagnostic can quote a user type named RangeError, and tsc's INDENTED
+  # elaboration lines quote user types verbatim while carrying no error code.
+  # Crash text is emitted flush-left and is never an indented continuation.
+  # (check-tests-typecheck.mjs hit this exact false positive; same filter here.)
+  TSC_CRASH=$(awk '
+    /error TS[0-9]+/ { next }
+    /^[ \t]/         { next }
+    /FATAL ERROR/ || /Debug Failure/ || /RangeError/ || /Killed/ { print; exit }
+    tolower($0) ~ /heap out of memory/ { print; exit }
+  ' "$TSC_LOG")
+  if [ -n "$TSC_CRASH" ]; then
+    tsc_did_not_complete \
+      "tsc output carries a crash signature (aborted / out of heap / internal invariant / killed)." \
+      "$TSC_CRASH"
+  fi
+
+  # (c-5) Type libraries unresolved: tsc reports a couple of TS2688s and stops,
+  # so any count harvested from this run is a fragment.
+  if grep -q "Cannot find type definition file for" "$TSC_LOG"; then
+    tsc_did_not_complete \
+      "tsc could not resolve the type libraries, so it never checked the project." \
+      "Check \"types\" in $TSC_PROJECT and that node_modules is installed."
+  fi
+
+  # (c-6) POSITIVE completeness evidence must be present.
+  TSC_FILES=$(awk '/^[[:space:]]*Files:[[:space:]]+[0-9]+/ { print $2; exit }' "$TSC_LOG")
+  if [ -z "$TSC_FILES" ]; then
+    tsc_did_not_complete \
+      "tsc printed no \"Files:\" line, so there is no evidence it finished loading the project." \
+      "--extendedDiagnostics is passed above; if a tsc upgrade renamed that stat, fix THIS parser — do not drop the check."
+  fi
+
+  # (c-7) …and must clear the floor.
+  if [ "$TSC_FILES" -lt "$TSC_FILES_FLOOR" ]; then
+    tsc_did_not_complete \
+      "tsc loaded only $TSC_FILES files, under the floor of $TSC_FILES_FLOOR. The program is nowhere near complete, so whatever it printed is a fragment, not a result." \
+      "If a deletion wave genuinely took this repo under the floor, re-measure and lower TSC_FILES_FLOOR in the same commit."
+  fi
+
+  # ── The run is now trustworthy. Two legitimate outcomes remain: (a) and (b).
+  #
+  # `|| true` is correct on THIS grep and wrong on the tsc call above: grep -c
+  # exits 1 merely to say "zero matches", and the count is the signal. tsc's
+  # status is itself the evidence. Do not copy this idiom back up there.
+  TSC_ERROR_LINES=$(grep -cE 'error TS[0-9]+' "$TSC_LOG" || true)
+
+  if [ "$TSC_ERROR_LINES" -eq 0 ]; then
+    # (a) tsc ran to completion and found nothing.
+    echo "  (a) tsc completed and found no TypeScript errors at all."
+    echo "      ($TSC_FILES files loaded, floor $TSC_FILES_FLOOR, exit status $TSC_STATUS)"
   else
+    # (b) tsc ran to completion and found errors — the pre-existing behaviour.
+    echo "  (b) tsc completed and reported $TSC_ERROR_LINES error line(s) project-wide."
+    echo "      ($TSC_FILES files loaded, floor $TSC_FILES_FLOOR, exit status $TSC_STATUS)"
+
     # Build a grep pattern that matches any of the staged file paths.
     # tsc outputs errors as "path/to/file.ts(line,col): error TS..."
     PATTERN=""
@@ -46,16 +307,19 @@ else
       fi
     done
 
-    # Filter tsc output to only lines starting with a staged file path
-    STAGED_ERRORS=$(echo "$TSC_OUTPUT" | grep -E "$PATTERN" || true)
+    # Filter tsc output to only lines starting with a staged file path.
+    grep -E "$PATTERN" "$TSC_LOG" > "$TSC_STAGED_LOG" || true
 
-    if [ -n "$STAGED_ERRORS" ]; then
+    if [ -s "$TSC_STAGED_LOG" ]; then
+      ERROR_COUNT=$(grep -cE 'error TS[0-9]+' "$TSC_STAGED_LOG" || true)
       echo ""
       echo "  TypeScript errors in staged files:"
       echo "  ──────────────────────────────────────"
-      echo "$STAGED_ERRORS"
+      head -n 50 "$TSC_STAGED_LOG"
+      if [ "$ERROR_COUNT" -gt 50 ]; then
+        echo "  … and $((ERROR_COUNT - 50)) more"
+      fi
       echo "  ──────────────────────────────────────"
-      ERROR_COUNT=$(echo "$STAGED_ERRORS" | wc -l | tr -d ' ')
       echo "  Found $ERROR_COUNT error(s) in staged files. Commit blocked."
       echo ""
       echo "  Fix the errors above, or use --no-verify to bypass (not recommended)."

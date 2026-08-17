@@ -689,12 +689,14 @@ function PartnerSplitEditor({
       {partners.map((p, i) => (
         <div key={i} className="flex items-center gap-2">
           <Input
+            aria-label={`Partner ${i + 1} investor name`}
             placeholder="Investor name"
             value={p.investorName}
             onChange={(e) => updateRow(i, { investorName: e.target.value })}
             className="h-8 flex-1"
           />
           <Input
+            aria-label={`Partner ${i + 1} share percentage`}
             placeholder="50.00"
             inputMode="decimal"
             value={p.splitBps ? String(p.splitBps / 100) : ""}

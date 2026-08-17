@@ -8,74 +8,36 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  computeSecurityDepositDeadline,
   getNoticeRule,
   computeRetaliationWindow,
   requiresLeadPaintDisclosure,
   scanFairHousingText,
   computeHapRecertReminder,
-  SECURITY_DEPOSIT_RULES,
 } from "../../server/services/landlordCompliance";
 
-describe("computeSecurityDepositDeadline", () => {
-  const moveOut = new Date("2026-05-01T00:00:00Z");
-
-  it("Texas — 30 days post move-out", () => {
-    const r = computeSecurityDepositDeadline("TX", moveOut, new Date("2026-05-02T00:00:00Z"));
-    expect(r.deadlineDate).toBe("2026-05-31");
-    expect(r.daysRemaining).toBe(29);
-    expect(r.severity).toBe("ok");
-    expect(r.rule?.citation).toMatch(/§ 92\.103/);
-  });
-
-  it("California — 21 days", () => {
-    const r = computeSecurityDepositDeadline("CA", moveOut, new Date("2026-05-02T00:00:00Z"));
-    expect(r.deadlineDate).toBe("2026-05-22");
-    expect(r.daysRemaining).toBe(20);
-  });
-
-  it("New York — 14 days post HSTPA", () => {
-    const r = computeSecurityDepositDeadline("NY", moveOut, new Date("2026-05-02T00:00:00Z"));
-    expect(r.deadlineDate).toBe("2026-05-15");
-    expect(r.daysRemaining).toBe(13);
-  });
-
-  it("Florida — 15 days (worst case for landlord)", () => {
-    const r = computeSecurityDepositDeadline("FL", moveOut, new Date("2026-05-02T00:00:00Z"));
-    expect(r.deadlineDate).toBe("2026-05-16");
-  });
-
-  it("approaching severity inside 7 days", () => {
-    // TX 30d; ask on 2026-05-25 → 6 days to go.
-    const r = computeSecurityDepositDeadline("TX", moveOut, new Date("2026-05-25T00:00:00Z"));
-    expect(r.daysRemaining).toBe(6);
-    expect(r.severity).toBe("approaching");
-  });
-
-  it("red severity at <=2 days or past deadline", () => {
-    // TX 30d; ask on 2026-05-30 → 1 day. red.
-    const past = computeSecurityDepositDeadline("TX", moveOut, new Date("2026-05-30T00:00:00Z"));
-    expect(past.severity).toBe("red");
-    // Past deadline:
-    const after = computeSecurityDepositDeadline("TX", moveOut, new Date("2026-06-10T00:00:00Z"));
-    expect(after.daysRemaining).toBeLessThan(0);
-    expect(after.severity).toBe("red");
-  });
-
-  it("returns ok severity / null deadline for missing inputs", () => {
-    expect(computeSecurityDepositDeadline(null, null).deadlineDate).toBeNull();
-    expect(computeSecurityDepositDeadline("XX", moveOut).rule).toBeNull();
-  });
-
-  it("covers all 50 states + DC", () => {
-    const keys = Object.keys(SECURITY_DEPOSIT_RULES);
-    expect(keys.length).toBeGreaterThanOrEqual(51);
-    // Spot-check a sampling of states we don't otherwise test:
-    expect(SECURITY_DEPOSIT_RULES.WA.daysAfterMoveOut).toBe(30);
-    expect(SECURITY_DEPOSIT_RULES.MN.daysAfterMoveOut).toBe(21);
-    expect(SECURITY_DEPOSIT_RULES.AK.daysAfterMoveOut).toBe(14);
-  });
-});
+/*
+ * THE SECURITY-DEPOSIT TESTS WERE REMOVED HERE, NOT RELOCATED — 2026-08-14,
+ * BLOCKERS B18, founder ruling "retire the dead duplicate".
+ *
+ * They covered `SECURITY_DEPOSIT_RULES` and `computeSecurityDepositDeadline`,
+ * which this module no longer has. CLAUDE.md's rule is to rewrite an assertion to
+ * the new truth rather than delete it, and the reason that does not apply here is
+ * worth stating, because it is the whole point of B18:
+ *
+ * **These tests asserted the losing side of a real conflict.** `FL: 15 days` is
+ * one of the four states where this table and the LIVE registry
+ * (`shared/regulatory/depositReturnRules.ts`) disagreed while citing the same
+ * statute — FL 15 vs 30, ME 30 vs 21, MT 10 vs 30, OK 45 vs 30. Porting
+ * `expect(...).toBe(15)` onto the live registry would enshrine a reading nobody
+ * has reviewed, which is exactly the confident-wrong-deadline outcome B18 exists
+ * to avoid.
+ *
+ * The invariant they were protecting — that a deposit deadline is computed from
+ * the statute and not guessed — now has ONE owner, and
+ * `tests/unit/depositRegistriesAgree.test.ts` asserts that single ownership
+ * directly. The live registry keeps its honest posture: a state it does not encode
+ * returns `{ known: false, unknownReason }` rather than a number.
+ */
 
 describe("getNoticeRule", () => {
   it("California 3-day pay-or-quit", () => {

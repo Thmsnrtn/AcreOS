@@ -206,6 +206,7 @@ function DialCard({
 
         <div className="space-y-2">
           <Input
+            aria-label="Reason for this change"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Optional — why are you changing this?"

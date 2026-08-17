@@ -398,6 +398,7 @@ export default function FounderCmoPage() {
               })}
             </div>
             <Textarea
+              aria-label="Rejection note for the next batch"
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}
               placeholder="Optional — what specifically should the next batch do differently?"

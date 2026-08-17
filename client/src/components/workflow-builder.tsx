@@ -620,6 +620,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                         <div key={index} className="flex items-center gap-2 flex-wrap">
                           {index > 0 && <Badge variant="secondary">AND</Badge>}
                           <Input
+                            aria-label={`Condition ${index + 1} field`}
                             placeholder="field"
                             value={condition.field}
                             onChange={(e) => updateCondition(index, { field: e.target.value })}
@@ -637,6 +638,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                             </SelectContent>
                           </Select>
                           <Input
+                            aria-label={`Condition ${index + 1} value`}
                             placeholder="value"
                             value={condition.value}
                             onChange={(e) => updateCondition(index, { value: e.target.value })}
@@ -966,6 +968,7 @@ function PanelActionForm({ onAdd, onCancel }: PanelActionFormProps) {
                 </Select>
               ) : field.inputType === "textarea" ? (
                 <Textarea
+                  aria-label={field.label}
                   value={config[field.key] ?? ""}
                   onChange={(e) => setConfig((p) => ({ ...p, [field.key]: e.target.value }))}
                   placeholder={`Enter ${field.label.toLowerCase()}…`}
@@ -973,6 +976,7 @@ function PanelActionForm({ onAdd, onCancel }: PanelActionFormProps) {
                 />
               ) : (
                 <Input
+                  aria-label={field.label}
                   value={config[field.key] ?? ""}
                   onChange={(e) => setConfig((p) => ({ ...p, [field.key]: e.target.value }))}
                   placeholder={`Enter ${field.label.toLowerCase()}…`}
@@ -1120,10 +1124,11 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1">
-                <Label className="text-xs">
+                <Label className="text-xs" htmlFor="workflow-name">
                   Workflow name <span className="text-destructive">*</span>
                 </Label>
                 <Input
+                  id="workflow-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. New lead welcome sequence"
@@ -1131,8 +1136,9 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Description (optional)</Label>
+                <Label className="text-xs text-muted-foreground" htmlFor="workflow-description">Description (optional)</Label>
                 <Textarea
+                  id="workflow-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Briefly describe what this workflow does…"

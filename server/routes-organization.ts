@@ -4,8 +4,9 @@ import { z } from "zod";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { insertOrganizationSchema, leads, deals, properties, npsResponses, npsPromptQueue, organizations, type InsertTeamMember } from "@shared/schema";
 import { isAuthenticated } from "./auth";
+import { requireFounder } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
+import { requireAdminOrAbove, requireOwner, requirePermission, attachPermissionContext } from "./utils/permissions";
 import { requireScope } from "./middleware/roleScope";
 import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
@@ -102,7 +103,17 @@ export function registerOrganizationRoutes(app: Express): void {
   // how many simulated actions got recorded in the last 7 days.
   // Used by the testing suite to prove "yes, the harness is live"
   // before a scenario run.
-  api.get("/api/founder/safety-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // FOUNDER-GATED. This lives under /api/founder/ and reads `simulated_actions`
+  // across EVERY organization (the query is deliberately un-scoped — a founder
+  // safety dashboard is meant to see the whole platform). It carried
+  // isAuthenticated + getOrCreateOrg only, so any authenticated user of any org
+  // could read ten recent rows from other tenants, payloads included — and a
+  // simulated Lob payload carries a recipient name and mailing address.
+  //
+  // The fix is the missing guard, NOT an org filter: scoping the query would
+  // break the view this endpoint exists to provide. The cross-org read is
+  // correct once the caller is provably the founder.
+  api.get("/api/founder/safety-status", isAuthenticated, getOrCreateOrg, requireFounder, async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
       const {
@@ -713,7 +724,7 @@ export function registerOrganizationRoutes(app: Express): void {
   );
 
   // Update AI settings for the organization
-  api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, requirePermission("canAccessSettings"), async (req, res) => {
     try {
       const org = req.organization;
       const aiSettings = req.body;
@@ -866,7 +877,7 @@ export function registerOrganizationRoutes(app: Express): void {
     billingPeriod: z.enum(["monthly", "yearly"], { message: "Billing period must be 'monthly' or 'yearly'" }),
   });
 
-  api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       const parsed = purchaseSeatsSchema.safeParse(req.body);
@@ -1586,9 +1597,33 @@ export function registerOrganizationRoutes(app: Express): void {
 
   // ── Organization settings (lightweight JSONB patch) ───────────────────────
   // Used by feature-hints and other UI toggles (showTips, checklistDismissed…)
-  api.patch("/api/organization/settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.patch("/api/organization/settings", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     try {
       const org = req.organization;
+      // MIXED-CONCERN ENDPOINT, gated by FIELD rather than wholesale.
+      //
+      // Most of what this accepts is per-org UI state any member legitimately
+      // toggles (showTips, checklistDismissed, notificationsConfigured).
+      // `mailMode`, `timezone` and `currency` are not: they are org-wide
+      // operational settings, and `canAccessSettings` is false for member, va
+      // and viewer precisely to deny them.
+      //
+      // Gating the whole route would stop a member dismissing their own
+      // checklist — a real regression to fix a real gap, which is the trade a
+      // blunt gate makes. Splitting the endpoint is the right long-term shape;
+      // refusing just the org-wide subset is the honest fix that costs nobody
+      // anything today.
+      const ORG_WIDE_SETTINGS = ["mailMode", "timezone", "currency"] as const;
+      const touchesOrgWide = ORG_WIDE_SETTINGS.some(
+        (k) => (req.body ?? {})[k] !== undefined,
+      );
+      if (touchesOrgWide && !(req as AuthenticatedRequest).permissionContext?.permissions.canAccessSettings) {
+        return Errors.forbidden(
+          res,
+          "Changing organization-wide settings requires settings access. Your own display preferences can still be saved.",
+        );
+      }
+
       const allowed = z.object({
         showTips: z.boolean().optional(),
         checklistDismissed: z.boolean().optional(),

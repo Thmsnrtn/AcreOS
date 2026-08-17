@@ -15,6 +15,7 @@ import { eq, and, desc, gte, lte, or, isNull, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export type AlertType = "tax_due" | "market_change" | "competitor_activity" | "maintenance" | "document_expiring" | "compliance";
 export type AlertSeverity = "low" | "medium" | "high" | "critical";
 
@@ -683,10 +684,10 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
 
 Alert Type: ${alert.alertType}
 Severity: ${alert.severity}
-Title: ${alert.title}
-Description: ${alert.description}
-Property: ${property?.address || "Unknown"} in ${property?.county || "Unknown"}, ${property?.state || "Unknown"}
-Trigger Data: ${JSON.stringify(alert.triggerData || {})}
+Title: ${sanitizePromptInline(alert.title ?? "", { source: "alert.title" })}
+Description: ${sanitizePromptInline(alert.description ?? "", { source: "alert.description" })}
+Property: ${sanitizePromptInline(property?.address || "Unknown", { source: "property.address" })} in ${sanitizePromptInline(property?.county || "Unknown", { source: "property.county" })}, ${sanitizePromptInline(property?.state || "Unknown", { source: "property.state" })}
+Trigger Data: ${sanitizePromptInline(JSON.stringify(alert.triggerData || {}), { source: "alert.triggerData" })}
 
 Provide 3-5 specific action items as a JSON array of strings.`,
           },

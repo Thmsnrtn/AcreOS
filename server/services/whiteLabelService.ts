@@ -64,6 +64,32 @@ export interface WhiteLabelConfig {
   updatedAt: string;
 }
 
+/**
+ * Reseller feature flags whose subsystem carries a FREEZE or KILL verdict in
+ * `docs/company/deletion-ledger.md`. Each maps to the verdict, so this list can
+ * be checked against the ledger rather than trusted.
+ *
+ * WHY A FLOOR AND NOT JUST A DEFAULT. `createTenant` defaults these to `false`
+ * now, but a config written before a verdict landed still says `true`, and
+ * `isFeatureEnabled` is what a reseller asks to decide what to show their own
+ * customers. Three of these have NO CODE LEFT — `services/visionAI.ts` and
+ * `pages/vision-ai.tsx` went 2026-08-01, `services/voiceAI.ts` with them, and
+ * the negotiation copilot 2026-08-13 — so a `true` here tells a reseller to
+ * advertise a feature that cannot load.
+ *
+ * A flag comes OFF this list only when its subsystem is genuinely reactivated
+ * under the ledger's own criterion, in the same change that reactivates it.
+ */
+const RETIRED_FEATURES: Record<string, string> = {
+  academy: "KILL — education revenue stays dead (constitution adjacency-risk trap)",
+  visionAI: "KILL — executed 2026-08-01; the service and page are deleted",
+  voiceAI: "KILL — executed 2026-08-01; the pipeline and its tables are gone",
+  dealHunter: "retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine)",
+  marketplace: "FREEZE — reactivate at G2's liquidity proof, not before ~25 customers",
+  negotiationCopilot: "KILL — executed 2026-08-13; the service and page are deleted",
+  capitalMarkets: "FREEZE — reactivate when note securitization is a real revenue line (H4)",
+};
+
 class WhiteLabelService {
   private rowToConfig(row: typeof whiteLabelConfigs.$inferSelect): WhiteLabelConfig {
     return {
@@ -118,9 +144,14 @@ class WhiteLabelService {
       supportEmail: config.supportEmail || 'support@acreos.io',
       supportPhone: config.supportPhone,
       footerText: config.footerText || 'Powered by AcreOS',
+      // Every flag in RETIRED_FEATURES defaults OFF: a reseller feature set must
+      // not advertise a subsystem that is frozen, killed or already deleted.
+      // `...config.features` can still set one to `true` — a caller may pass
+      // anything — which is why isFeatureEnabled applies the same list as a
+      // floor at the READ rather than relying on these defaults.
       features: {
-        marketplace: true, academy: true, dealHunter: true, voiceAI: false,
-        visionAI: true, capitalMarkets: false, negotiationCopilot: true,
+        marketplace: false, academy: false, dealHunter: false, voiceAI: false,
+        visionAI: false, capitalMarkets: false, negotiationCopilot: false,
         portfolioOptimizer: true, complianceAI: false, taxResearcher: false,
         ...config.features,
       },
@@ -206,8 +237,22 @@ class WhiteLabelService {
 
   /**
    * Check if a feature is enabled for an organization.
+   *
+   * RETIRED FEATURES ARE FALSE REGARDLESS OF THE STORED VALUE. Seven of the ten
+   * flags name subsystems carrying a FREEZE or KILL verdict in
+   * `docs/company/deletion-ledger.md`, and three of them have no code left at
+   * all. Flipping the DEFAULTS in `createTenant` does not fix a config created
+   * before the verdict — the stored row still says `true`, and this method is
+   * the API a reseller consults to decide what to show their own customers. So
+   * the floor is applied at the READ, where it covers every row ever written.
+   *
+   * The fail-open below (`no config = everything enabled`) is left alone: an org
+   * with no white-label configuration is not a reseller tenant, and the platform
+   * gates govern it. But it must not answer `true` for a retired subsystem
+   * either, which is why the check runs first.
    */
   async isFeatureEnabled(organizationId: number, feature: keyof WhiteLabelConfig['features']): Promise<boolean> {
+    if (feature in RETIRED_FEATURES) return false;
     const config = await this.getConfig(organizationId);
     if (!config) return true; // No white-label restriction = all features enabled
     return config.features[feature] ?? false;

@@ -16,8 +16,12 @@
 import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { sellerIntentPredictorService } from "./services/sellerIntentPredictor";
+import {
+  sellerIntentPredictorService,
+  SellerIntentNotInOrgError,
+} from "./services/sellerIntentPredictor";
 import { Errors } from "./utils/errors";
+import { getOrganizationId } from "./types/request";
 
 const router = Router();
 
@@ -149,11 +153,14 @@ router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Req
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { outcome } = req.body;
     if (!outcome) return Errors.badRequest(res, "outcome is required");
-    // recordOutcome(predictionId, outcome). finalPrice/notes are not accepted
-    // by the service (they were silently dropped at runtime previously).
-    await sellerIntentPredictorService.recordOutcome(leadId, outcome);
+    // The service takes a LEAD id now. It used to take a predictionId, and this
+    // line passed a leadId to it under a comment that said so — the outcome of
+    // lead #42 landed on prediction #42. finalPrice/notes are still not
+    // accepted by the service (they were silently dropped at runtime).
+    await sellerIntentPredictorService.recordOutcome(leadId, getOrganizationId(req), outcome);
     res.json({ success: true });
   } catch (err: any) {
+    if (err instanceof SellerIntentNotInOrgError) return Errors.notFound(res, "Prediction");
     Errors.badRequest(res, err.message ?? "Bad request");
   }
 });

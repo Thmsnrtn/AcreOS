@@ -23,6 +23,7 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 import { resolveAgentData } from "./agentDataResolvers";
 import { logger } from "../utils/logger";
 
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class FounderTwinService {
@@ -45,7 +46,7 @@ class FounderTwinService {
           },
           {
             role: "user",
-            content: `CEO ${input.type}: "${input.content}"
+            content: `CEO ${input.type}: ${wrapUntrusted(input.content, `ceo:${input.type}`)}
 
 Extract patterns. Respond in JSON:
 {

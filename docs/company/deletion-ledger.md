@@ -17,7 +17,7 @@ each execution in place with a date and commit SHA. Codebase targets:
 | **Voice / AI voice** | `routes-voice.ts` (544), `routes-voice-learning.ts`, `routes-call-routing.ts`, `services/voiceAI.ts` (548), `services/callRouting.ts`, `jobs/realtimeTranscription.ts`; tables `voiceCalls`, `voiceCallRecordings` | **KILL** — *executed 2026-08-01 with two corrections* | ~2,150 LOC, flag off, client page already deprecated, no nav. **Executed 2026-08-01 (founder picker ruling + this row):** deleted `routes-voice.ts`, `routes-call-routing.ts` (every handler returned a hardcoded stub config presented as real), `services/voiceAI.ts`, `services/callRouting.ts`, `services/realtimeTranscription.ts`, orphaned `client/src/components/call-log.tsx`; dropped `voice_calls` + `voice_call_recordings`; stubbed the two ungated Twilio webhooks to 410 as this row prescribes; removed the voice branches from the two live read sites (`routes-pax-insights.ts`, `routes-founder-inspector-finance.ts`) so no surface queries a table nothing can write. **Correction 1:** `routes-voice-learning.ts` was NOT deleted — this row's listing was stale; it is live-wired (client `use-context-profile` hook calls `/api/intelligence`, and `voiceLearning`/`contextProfile` have nine live importers). **Correction 2:** this row never adjudicated the SECOND voice pipeline — `services/voiceCallAI.ts` + transcription handlers in `routes-misc.ts` + `routes-ai-operations.ts`, reading/writing `call_transcripts` — so that pipeline and its table survive pending a founder decision of their own. |
 | **Satellite / Vision AI** | `routes-vision-ai.ts`, `routes-vision-scan.ts`, `services/visionAI.ts` (588), `jobs/satelliteImageUpdate.ts`, `pages/vision-ai.tsx`; tables `satelliteSnapshots`, `satelliteAnalysis` | **KILL** — *executed 2026-08-01 in full* | ~1,850 LOC, flagged off, no sidebar entry, costs money (satellite API + scheduled job) with no wedge dependency. **Executed 2026-08-01 (founder picker ruling + this row):** `jobs/satelliteImageUpdate.ts` went in the prior wave; this wave deleted both routers, `services/visionAI.ts`, `pages/vision-ai.tsx` (+ App route, command-palette entry, OpenAPI entries), plus `services/computerVision.ts` (unlisted here but satellite-analysis-only, zero importers) and dropped both tables. |
 | **Academy / certification residuals** | `routes-certification.ts`, `services/certification.ts` (gated `feature_academy`); orphaned tables `courses`, `courseModules`, `courseEnrollments` (`shared/schema/marketplace.ts:849-926`) | **KILL** | Module was 90% retired 2026-06-08; this is the dead stump. Constitution adjacency-risk trap (`mature-machine.md` §7.7) says education revenue stays dead. Drop the three tables. |
-| **Negotiation copilot (standalone)** | `routes-negotiation.ts`, `negotiationCopilotService`, `pages/negotiation-copilot.tsx` (607) | **KILL** | Duplicate of the orchestrator, flagged off, no nav. (The old offer-wizard dead-pipeline-call cleanup is moot — that page was already removed; the surviving wizard is `blind-offer-wizard.tsx`, verified in the audit note below, and it makes no `/api/negotiation/pipeline/*` calls.) |
+| **Negotiation copilot (standalone)** | `routes-negotiation.ts`, `negotiationCopilotService`, `pages/negotiation-copilot.tsx` (607) | **KILL** — *executed 2026-08-13, with one premise correction and one deliberate omission* | Duplicate of the orchestrator, flagged off, no nav. (The old offer-wizard dead-pipeline-call cleanup is moot — that page was already removed; the surviving wizard is `blind-offer-wizard.tsx`, verified in the audit note below, and it makes no `/api/negotiation/pipeline/*` calls.) **Executed 2026-08-13 (founder picker ruling + this row):** deleted `server/routes-negotiation.ts` and its `/api/negotiation` mount + `routeManifest` entry, `server/services/negotiationCopilot.ts`, `client/src/pages/negotiation-copilot.tsx` and its seven `components/negotiation/*` satellites (BATNA calculator, pressure gauge, session history/replay, strategy panels + analytics, `meta.ts`), the App.tsx lazy import and `<Route path="/negotiation">`, and the command-center catalog row advertising the endpoint. **Premise correction:** this row assumed `/api/negotiation` was the service's only rail. It was not — `routes-ai-operations.ts` carried three more copilot endpoints (`POST /negotiation/session`, `POST /negotiation/objection`, `GET /negotiation/:id`) on the same service, with no client caller; they went in the same commit, or the KILL would have deleted a door and left a window. The live negotiation capability is `POST /api/ai/negotiation/script` in `routes-core-ai.ts`, which runs on **negotiationOrchestrator** (FREEZE-wired, row below) and is called by the deal detail view behind the Deals door — that is what the founder's ruling kept. **Deliberate omission:** the `negotiation_sessions` table was NOT dropped. Dropping it deletes customer rows, which is a founder-only hard stop; the code no longer reads or writes it and it is allowlisted in `lint-reachability` with that reason, so a DROP migration is a decision someone makes on purpose rather than a side effect of a deletion wave. `whiteLabelService`'s default feature set flipped `negotiationCopilot` to `false` — a reseller feature set must not advertise a subsystem that no longer exists. `/negotiation` KEEPS its `FROZEN_ROUTES` entry: removing it would read as "unfrozen", and the list is served to clients still running an older bundle. |
 | **Sovereign Protocol / SCPv2 extras** | `sovereign-protocol/` dir, `routes-sovereign-integration.ts`, `routes-scp-v2.ts` | **KILL (partial)** — *executed 2026-08-01 (five modules)* | Agent-constitution self-evolution machinery beyond what the autopilot actually consumes. **Executed 2026-08-01 by explicit founder ruling (picker):** deleted `scpFinancialAutonomy`, `scpOutboundExecution`, `scpIntegrationFabric`, `scpStrategicIntelligence`, `scpDynamicTools` + their unit tests — verified zero production import sites (each referenced only by its own test; `scpOutboundExecution`→`scpIntegrationFabric` was the sole inter-module edge, both killed together). Held pending explicit founder ruling: `scpCustomerLifecycle`, `scpSelfProvisioning`, `scpExperimentEngine` (ambiguous under this row's wording). **Rationale correction:** the KEEP note for `scpConfigVersioning` previously said "live-wired into Pax prompt versioning"; the code shows `paxPromptVersions.ts` imports `@sovereign/immutables`, and `scpConfigVersioning`'s only real consumer is `routes-scp-v2.ts` (plus a type import that died with `scpDynamicTools`). It stays KEEP because routes-scp-v2 is mounted — but the reason is routes-scp-v2, not Pax. |
 | **Negotiation orchestrator** | `services/negotiationOrchestrator.ts` (926), wired via `routes-core-ai.ts:430-496` into Pax deal coaching | **FREEZE (wired)** | Touches the offers/replies wedge through Pax; cheap to keep. Revisit if deal-coaching usage is zero at G1. |
 | **Marketplace** | `routes-marketplace.ts`, `services/marketplace.ts`, `matchmaking.ts`, buyer-network / transaction-fees / investor-verification / deal-rooms satellites, `pages/marketplace.tsx` (1,252); 5 tables | **FREEZE** | The Phase-2 network-effects bet — built, gated off. Do NOT polish. Remove the sidebar entry advertising an off feature. Reactivate at G2's liquidity proof: the first organic cross-customer deal, seeded concierge-style in H2. |
@@ -56,6 +56,22 @@ correctness risks across 2+ machines. Disposition:
   upsert, fail-closed when unverifiable.
 
 **Resolved by deletion (no fix needed — module is a KILL above):**
+- `betaProgram.ts` waitlist / cohort / feedback arrays — **deleted 2026-08-13 per
+  founder ruling** with `server/routes-beta.ts`, the `/api/beta` mount and the
+  `routeManifest` entry. This one was previously in "Pinned" below, and the pin
+  was doing real work: it said *"do NOT point real signup traffic at this until
+  it persists"*, which is a note that survives exactly as long as someone reads
+  it. `POST /api/beta/waitlist` was **public and unauthenticated**, appended to a
+  module-level array, and answered with a queue position and a referral code —
+  both lost at the next deploy and split across machines before that. The six
+  founder-gated admin endpoints read only what that POST wrote, so they went with
+  it rather than becoming a console over a permanently empty set.
+  `compass_pm`'s `ownedServices` / `ownedRoutes` entries removed, per the
+  `transactionFeeService` precedent above. **If beta signups return, a
+  `beta_waitlist` table and a migration are the precondition** — and
+  `GET /waitlist/status` must not return as written: it answered whether an
+  arbitrary email address was on the list (an enumeration oracle) and paged at 50,
+  so anyone past position 50 was told `found: false` even in one process.
 - `reactiveOrchestrationV14.ts` cooldown tracker (V14 narrative suite)
 - `callRouting.ts` agent/queue/call state (voice)
 - `scpLLMJudges.ts` cost accumulator (SCPv2)
@@ -71,11 +87,16 @@ correctness risks across 2+ machines. Disposition:
   their parents.
 
 **Pinned (header comment at the state declaration; fix before load-bearing use):**
+- `vaManagement.ts` VA_TASKS_KEY / SOP_LIBRARY_KEY → **RESOLVED 2026-08-13 by
+  building the layer** (founder ruling, BLOCKERS B9). These two constants were
+  never module STATE — they were the NAMES of a settings-blob store that was
+  never written, which is a subtler version of the same failure: no data was
+  lost on deploy because no data was ever kept. `va_tasks` and `va_sops` are real
+  tables now (migration 0235). The blob was the wrong destination anyway:
+  `organizations.settings` is read on nearly every org-scoped request.
 - `notificationDispatcher.ts` → persist to the existing `notifications` table
 - `marketWatchlist.ts` → DB tables + sequences
 - `abTestEngine.ts` → persist outcomes, aggregate in SQL
-- `betaProgram.ts` → DB-back before pointing ANY real signup traffic at
-  `POST /api/beta/waitlist` (currently uncalled by the client)
 - `ceoReminders.ts` → systemMeta-backed cache, single-founder tolerable
 - `agentEvolutionEngine.ts` `sharedInsights` → display-only divergence today
 
@@ -316,3 +337,496 @@ correctness risks across 2+ machines. Disposition:
   `pages/founder/solene-chat.tsx` (the live founder chat face). Shared
   `components/founder-chat/*` retained (used by solene-chat). Found by the
   WS2 cockpit inventory.
+- 2026-08-14 — `server/services/taxOptimizationEngine.ts` (423 LOC) deleted.
+  **Founder ruling (picker, this date): "Delete the engine."** Zero production
+  importers; the only occurrence of its name outside the file was the STRING
+  `"taxOptimizationEngine"` in `companyAgents.ts`'s `ownedServices` array, which
+  is what made `lint-reachability.mjs` treat it as alive (that linter counts
+  string literals as uses, by design — "prose and registries resurrect corpses").
+  Removed from that array in the same commit.
+
+  It was deleted because it FABRICATED, on a surface where a fabricated number
+  reads as advice. `stateCapGainsRates` listed twenty states under the comment
+  "representative sample, 2024" and ended `?? 0.05`, so the other thirty received
+  an invented 5%. The note beneath it read
+  `rates[s] === 0 ? "no state capital gains tax" : "taxes capital gains as
+  ordinary income"` — and `undefined === 0` is `false`, so an unlisted state took
+  the ELSE branch: asked about Tennessee, which has no state income tax on
+  capital gains, it answered that TN taxes them as ordinary income AND applied
+  5%. Both false, in a sentence a reader takes as legal fact.
+  `calculate1031Benefits` did `replacementValue * 0.3 // assume 30% appreciation`
+  and returned `deferralBenefit` as a rounded dollar figure; the federal
+  constants assumed the top bracket for every taxpayer.
+
+  On this program's test — *does removing it remove a capability or a lie?* — it
+  removed a lie. Recorded as BLOCKERS B17, found by unit 104's numeric-default
+  sweep, executed in unit 107.
+
+  **DELETION-REVEALED, and queued for a separate founder decision:** the engine
+  was the only writer of `tax_strategies` and `tax_forecast_scenarios`. Both are
+  now writer-less AND reader-less, so `tablesNoWriter` 47→49 and `tablesNoReader`
+  59→61. **The tables are NOT dropped** — a production `DROP TABLE` is a
+  founder-only hard stop — and they join the queue alongside the others already
+  awaiting that ruling. This is the exception the reachability ratchet's own note
+  carves out for raising those counts: name the deleted writer, queue the exposed
+  tables in the same commit.
+- 2026-08-14 — **sixteen module orphans deleted, 5,002 LOC.** Founder ruling
+  (picker, this date): *"Delete classes 2 and 3 now."* BLOCKERS B19.
+
+  **Class 2, superseded duplicate (1 file):** `authLockout.ts` (102).
+  `server/middleware/authPathLimits.ts` exports a live, mounted `loginLimiter`,
+  so this removed a DUPLICATE of a control, not a control. The name invites the
+  opposite reading, which is why it is written down.
+
+  **Class 3, experiments (15 files)** — the family the 2026-08-01 deletion wave
+  already ruled on once: `delegationDepthV9` (335), `spendAutonomyV9` (324),
+  `causalReasoningV9` (305), `playbookEvolutionV9` (302), `externalIntelligenceV9`
+  (266), `compassAutoRecommendV9` (236), `scpCustomerLifecycle` (616),
+  `scpExperimentEngine` (439), `scpSelfProvisioning` (359), `aiAdvisorTeamV15`
+  (706), `agentTriggerMonitor` (661), `securityEnhancements` (107),
+  `mobileEnhancements` (102), `marketplaceEnhancements` (72),
+  `integrationEnhancements` (70).
+
+  Every one verified to have ZERO imports and ZERO mentions before deletion.
+  **The `scp*` trap was checked first**, because the reachability ratchet's own
+  history records that five scp modules were once misjudged as orphans:
+  `routes-scp-v2.ts` is production-mounted and lazily imports `scpGoldenSuite`,
+  `scpConfigVersioning`, `scpEvolutionEngine`, `scpMemorySystem` and
+  `scpLLMJudges`. The three deleted here are none of those.
+
+  **CLASS 1 UNTOUCHED.** `breachNotificationTrigger` (GLBA/GDPR/state breach
+  deadlines), `paymentApplication/` (Reg-Z), `landlordCompliance`,
+  `usuryCeiling`, `rental/leaseSigningPacket` remain — deleting a regulated
+  obligation removes capability the product may be legally required to have.
+  B19 keeps them open as WIRING work.
+
+  **Tests:** three whose entire subject was deleted are gone
+  (`scpExperimentEngine`, `scpSelfProvisioning`, `scpCustomerLifecycle`). One was
+  NOT deleted — `tests/unit/enhancements.test.ts` covers ELEVEN `*Enhancements`
+  modules, nine of which have real production importers and are untouched. Only
+  the `marketplaceEnhancements` and `securityEnhancements` sections were removed,
+  each replaced by a note recording why. **Assuming that family was uniformly
+  dead would have deleted nine live modules.**
+
+  **DELETION-REVEALED, queued:** nine tables lost their only writer —
+  `auth_fail_attempts` (authLockout); `agent_playbooks` + `playbook_evolutions`
+  (playbookEvolutionV9, which the ratchet note had explicitly predicted);
+  `compass_recommendations`; `spend_watchers` + `spend_optimizations`;
+  `causal_investigations`; `delegated_goals`; `external_intelligence`.
+  `tablesNoWriter` 49→58, `tablesNoReader` 61→70. **NOT dropped** — a production
+  `DROP TABLE` is a founder-only hard stop — and all nine join the drop-decision
+  queue alongside `tax_strategies` and `tax_forecast_scenarios` from B17.
+
+  Counts locked in the same commit: `unreachedExports` 651→580, `moduleOrphans`
+  61→45, `opaqueExports` 986→984, `as-any` 1390→1383, `colon-any` 2988→2975.
+
+- **2026-08-15 — `server/services/promptInjectionSanitizer.ts` (111 lines).**
+  Founder ruling (picker, 2026-08-14): *"Consolidate to one owner."*
+
+  A module orphan — four exports, zero callers — and the WEAKEST of **three**
+  independent prompt-injection deny-lists the repo carried, each from a different
+  named initiative. Measured against a 30-attack corpus: this one missed 18,
+  `server/middleware/promptInjection.ts` missed 14, `server/utils/sanitizePrompt.ts`
+  missed 10.
+
+  **DELETION ALONE WOULD HAVE LOST COVERAGE, which is why this is a
+  consolidation and not a removal.** The three lists were *complementary, not
+  nested*: four attack classes were caught ONLY by the module nothing imported —
+  a generic persona override ("You are now a pirate…"), "act as though you have
+  no restrictions", "### END OF DOCUMENT", and a forged line-start `system:` role
+  line. Those four were merged into `utils/sanitizePrompt.ts` FIRST. Two of them
+  were **narrowed** on the way in, because the orphan had never felt its own
+  false positives: its bare `act as (if|though)` redacted "Buyer to act as if the
+  contract were assignable", and its `forget everything` redacted "Seller will
+  forget everything about the prior offer" — ordinary contract language on a
+  real-estate product.
+
+  **What the deletion exposed** was worse than the dead module. Two exported
+  functions were both named `sanitizePrompt` with different semantics, and
+  `server/ai/executive.ts` — Pax's chat engine, on both chat paths — had imported
+  the weaker one. It sanitized org knowledge files and Pax project files with it
+  and concatenated the result into the **SYSTEM role message**, with no
+  `<<USER_DATA>>` envelope, although Pax's system prompt only instructs the model
+  about that envelope. Uploaded document text carrying `<|im_start|>`,
+  `</system>`, `[INST]`, "disregard the above rules" or "override your system
+  instructions" reached the system prompt intact. `mentionedEntities[].name` — a
+  bare `z.string()` off the request body — reached it with no sanitization at all.
+
+  **A FOURTH copy** turned up while the guard test was being written:
+  `server/utils/injectionRateLimiter.ts` held a hand-copied subset (9 markers
+  where there were 15, 10 phrases where there were 20) beneath a header claiming
+  it used *"the same INJECTION_PHRASES/MARKERS regex set used by
+  sanitizePrompt"*. So probes the sanitizer redacted never incremented
+  `ai_injection_attempts` — a founder-visible count that was a systematic
+  undercount. It now calls `detectInjectionPatterns()` from the one owner.
+
+  **Nothing was caught less.** The pre-existing `promptInjection.test.ts` — 24
+  attacks and 14 legitimate inputs, written against the middleware's own list —
+  passes unchanged through the delegating middleware.
+
+  Counts locked in the same commit: `unreachedExports` 1439→1436,
+  `moduleOrphans` 45→44. No tables were revealed: the module had no writer.
+
+- **2026-08-15 — the three `/developer/*` endpoints in `routes-epic-services.ts` (75 lines).**
+  Founder ruling (picker, 2026-08-15): *"Remove the three /developer/* endpoints."*
+
+  | endpoint | what it did |
+  |---|---|
+  | `GET /developer/openapi` | served a document titled **"AcreOS Public API"** |
+  | `POST /developer/api-keys` | minted an `acr_…` secret for **any authenticated customer** |
+  | `GET /developer/widget-embed/:type` | handed out `pub_<orgId>_<base64(orgId)>` as a "publicApiKey" — the org id encoded, not a secret |
+
+  **Two reasons, and the second is what made it urgent.**
+
+  **1. A standing decision enforced in one place and defeated in another.**
+  CLAUDE.md's expansion ladder says *"no public API before ~50 customers"*, and
+  `routes-api-keys.ts` is kept **deliberately dormant** because of it — the
+  reachability ratchet's own note records that as the reason `unregisteredRoutes`
+  sits at 1. This router mounts at `/api` behind plain `isAuthenticated`, so any
+  customer could mint a key and fetch the spec.
+
+  **2. The keys were inert, and the response said otherwise.** `POST` returned
+  the plaintext with `warning: "Store this key securely. It will not be shown
+  again."` — and **nothing verified it**. The only consumer of
+  `organizationIntegrations` keys is `mcp-server.ts`, which matches
+  `provider = 'mcp_api_key'`; this wrote `provider = 'api_key'`. The rate limiter
+  written for it (`createApiKeyRateLimit`, "public developer API") has zero
+  importers. A customer who integrated got nothing, forever, after being told to
+  store the key securely. **Placeholder data presented as real**, which the
+  DO-NOT-DO list forbids outright.
+
+  **`services/developerApiService.ts` is KEPT, not deleted.** What was wrong was
+  mounting the surface early, not writing the spec and the minting helper; when
+  the ladder trigger fires, that module is the starting point and wiring it means
+  building the verifier that never existed. It is allowlisted in the reachability
+  ratchet as a deliberately-staged seam — the first entry of a new
+  `module-orphan` kind, added because that family was the only one with no escape
+  valve.
+
+  Counts locked in the same commit: `as-any` 1383→1381, `colon-any` 2975→2972.
+  Reachability held at baseline via the allowlist rather than a raise.
+
+- **2026-08-15 — B19 orphan triage executed: 15 modules, ~4,100 lines** (founder
+  ruling, picker: *"Delete all 15"*). A 27-agent triage classified all 44 module
+  orphans — every DELETE recommendation adversarially refuted by a second agent,
+  importers re-verified centrally per wave discipline. Result: 15 delete / 6 wire
+  (class 1 regulated, untouched) / 12 keep / 11 refuted-or-unclear (stay in B19).
+
+  **Superseded duplicates** (the live rival named in each case):
+  `addressValidation.ts` (→ `directMailService.verifyAddress`; its one unique
+  capability, the pre-flight cheap-reject, PORTED as
+  `directMailService.isAddressMinimallyValid` with Lob's rate limits recorded),
+  `atlasToolRegistry.ts` (→ the App Intent registry; its `atlas_tool_usage`
+  table exists in no migration — nothing to drop), `compoundSagas.ts`
+  (→ `sagaOrchestratorV12`), `data-cache/free-source-router.ts` (→ the live
+  broker, which already does free-source-first and carries the FEMA host fix this
+  copy would have regressed).
+
+  **Fabricators** — the refuse-not-fabricate rule converts "wire it" into
+  "delete it": `freedomCalculator.ts` (summed payments with NO status filter;
+  the founder/Quinn 503 at `routes-data-intelligence.ts:429` is the honest
+  answer and stays), `opportunityZoneAnalyzer.ts` (invented OZ tax rates stated
+  as fact — the deleted-tax-engine pattern exactly), `portfolioIntelligence.ts`
+  (hardcoded 0.15 capital-gains rate, three times), `productEvolutionEngine.ts`
+  (build estimates derived from `gap.length` — a string length),
+  `quizGrading.ts` (keyword-overlap presented as a student grade),
+  `tenantMetering.ts` (invented price list existing in no billing system),
+  `soren/seoSeed.ts` (rows stamped `source: "serp_scrape"` for scrapes that
+  never happened), `autonomousSalesPipeline.ts` (invented ARPU/LTV; the ledger's
+  2026-08-01 "KILL with their parents" ruling already covered it),
+  `negotiationPipeline.ts` (invented high-motivation statistic; live rivals:
+  `negotiationOrchestrator` + `aiOfferService` + `sellerPsychologyStrategy`).
+
+  **Structurally unsound:** `learningAnalytics.ts` — its org parameter was a
+  lie: `courses`/`course_enrollments`/`tutor_sessions` carry NO tenant key, so
+  wiring it would have shipped one org's dashboard filled with every org's data.
+  **Experiment:** `reactionChainSeeder.ts`.
+
+  **Companions:** `client/src/components/freedom-progress-card.tsx` (zero
+  importers, queried a nonexistent endpoint) and three test files whose imports
+  were `vitest` only — they tested INLINE COPIES of their dead subject and
+  pinned nothing (`freedomCalculator`, `negotiationPipeline`,
+  `portfolioIntelligence`). `addressValidation.test.ts` was REPOINTED at the
+  ported function instead, per the wave rule. Two `ownedServices` strings
+  removed from `companyAgents.ts` — the B17 trap, third occurrence.
+
+  **DELETION-REVEALED, queued:** `product_specifications`,
+  `build_buy_decisions`, `feature_impact_scores` (only writer:
+  productEvolutionEngine), `opportunity_zone_holdings` (only writer:
+  opportunityZoneAnalyzer), `tutor_sessions` (last reader: learningAnalytics).
+  `tablesNoWriter` 58→62, `tablesNoReader` 70→75. **NOT dropped** — all five
+  join the founder drop queue (now sixteen tables).
+
+  Counts locked in the same commit: `unreachedExports` 1436→1405,
+  `moduleOrphans` 44→29, `opaqueExports` 125→120.
+
+- **2026-08-16 — 48-table dead-storage triage; thirteen dropped (migration 0236).**
+  Founder ruling (picker, this date): *"Triage 3 ways, drop only experiment
+  residue."*
+
+  **The population, measured not assumed.** `node scripts/lint-reachability.mjs
+  --measure` reports `tables-no-writer: 62` and `tables-no-reader: 75`. The
+  INTERSECTION — no `.insert/.update/.delete` **and** no `.from(`/`db.query.`
+  anywhere in code — is **48 tables**. Every one of the 48 is classified below;
+  none is left unstated.
+
+  **The raw-SQL check, because the linter only sees Drizzle.** A table reached
+  through `` sql`SELECT … FROM foo` `` is alive and this linter cannot see it.
+  Each of the 48 snake_case names was searched across `server/`, `client/` and
+  `shared/` (minus the schema files) for SQL-shaped access — `FROM x`, `INTO x`,
+  `UPDATE x`, `JOIN x`, `DELETE FROM x`, `TABLE x`. **Result: zero.** Not one of
+  the 48 has a raw-SQL access site. Two mentions inside `server/` turned out to
+  be prose in comments (`entityPortfolio.ts:279` names `opportunity_zone_holdings`;
+  `server/ai/paxModelTier.ts:115` describes a `ai_eval_gate_runs` pipeline as a
+  *"remaining unblock"*, i.e. something not built).
+
+  **The alias check, which the raw-SQL check would have missed.** The linter
+  keys on the `pgTable` identifier, so a table re-exported under a second name is
+  invisible to it. `rg "^export const \w+ = \w+;"` over `shared/schema*.ts` finds
+  exactly one such alias in the entire schema — and it is load-bearing:
+
+  > `shared/schema.ts:12463` — `export const marketIndicators = marketIndicatorsDuplicate;`
+
+  `server/services/marketPrediction.ts` **reads it (`.from(marketIndicators)`,
+  `orderBy`) and writes it (`.insert(marketIndicators).values(…)`)**. So
+  `market_indicators_temp` is **NOT DEAD** — it is a linter false positive, and
+  the only reason it looks dead is the alias. It is class C below and must not be
+  dropped. One table found this way; had the sweep skipped the alias check, a
+  live market-data table would have been deleted out from under a live service.
+
+  **CLASS A — experiment / agent residue. 15 tables. THIRTEEN DROPPED.**
+  The bar was deliberately conjunctive: (a) provably left behind by a module a
+  ledger row ALREADY records as killed, and (b) holds no customer content.
+
+  | table | evidence | disposition |
+  |---|---|---|
+  | `playbook_evolutions` | writer `playbookEvolutionV9` deleted 2026-08-14 (B19 class 3); named in that entry's own DELETION-REVEALED list. Champion/challenger mutation records. No org key. | **DROPPED** |
+  | `agent_improvement_plans` | owning service `agentSelfImprovement` + `AgentGrowth.tsx` deleted 2026-08-06 (V6–V14 row). Per-agent goals / skill requests. No org key. | **DROPPED** |
+  | `agent_synergy_map` | owning service `agentSynergyMap` + `SynergyMap.tsx` deleted 2026-08-06 (V6–V14 row). Agent-pair collaboration counters. No org key. | **DROPPED** |
+  | `compass_recommendations` | writer `compassAutoRecommendV9` deleted 2026-08-14; in that entry's DELETION-REVEALED list. Agent mode suggestions to the founder. No org key. | **DROPPED** |
+  | `spend_watchers` | writer `spendAutonomyV9` deleted 2026-08-14; in that list. AcreOS's OWN vendor spend figures. No org key. | **DROPPED** |
+  | `spend_optimizations` | writer `spendAutonomyV9` deleted 2026-08-14; in that list. AcreOS's own savings proposals. No org key. | **DROPPED** |
+  | `causal_investigations` | writer `causalReasoningV9` deleted 2026-08-14; in that list. Internal anomaly root-cause analyses. No org key. | **DROPPED** |
+  | `delegated_goals` | writer `delegationDepthV9` deleted 2026-08-14; in that list. Agent-to-agent goal cascade. No org key. | **DROPPED** |
+  | `external_intelligence` | writer `externalIntelligenceV9` deleted 2026-08-14; in that list. Competitor / market notes. No org key. | **DROPPED** |
+  | `product_specifications` | only writer `productEvolutionEngine` deleted 2026-08-15 as a FABRICATOR; in that entry's DELETION-REVEALED list. AcreOS's own roadmap specs. No org key. | **DROPPED** |
+  | `build_buy_decisions` | same writer, same wave, same list. AcreOS's own build-vs-buy analyses. No org key. | **DROPPED** |
+  | `feature_impact_scores` | same writer, same wave, same list. AcreOS's own feature adoption scores. No org key. | **DROPPED** |
+  | `automation_executions` | the 2026-07-29 "/automation rules twin" row deleted the surface because `createAutomationExecution` had **ZERO call sites** — the log can never have held a row — and that row says the tables "remain in `shared/schema.ts` pending a drop migration". Derived execution log, not authored by anyone. | **DROPPED** |
+  | `agent_playbooks` | class A **by content** (agent SOPs, no org key, writer deleted 2026-08-14) but **structurally blocked**: `institutional_patterns.linked_playbook_id` and `signal_correlations.auto_trigger_playbook_id` hold FKs into it, and neither of those tables is writer-less or reader-less. Dropping it means altering two LIVE tables. | **NOT dropped — stays queued** |
+  | `scp_evolution_metrics` | class A by content (per-agent SCPv2 evolution counters, no customer row), but `server/services/scpGoldenSuite.ts` still names the identifier in its import list. It is an **unused import** — the symbol appears nowhere else in that file — yet removing the schema export without deleting that one token breaks the build, and that file was outside this unit's file set. | **NOT dropped — one-token unblock recorded** |
+
+  **CLASS B — customer or regulated records. 22 tables. NONE DROPPED.**
+  Customer-data deletion is a founder-only hard stop and this ruling did not
+  authorise it. The obligation named is the one that would bind the rows:
+
+  | table | obligation that applies |
+  |---|---|
+  | `investor_verification_documents` | BSA/AML CIP recordkeeping (31 CFR 1023.410 — 5 years past account closure); the rows point at uploaded passports / driver's licences / proof-of-funds. GLBA safeguarding. |
+  | `investor_verification_history` | the KYC decision AUDIT TRAIL (who changed status, when, why). Destroying it destroys the evidence that the KYC in the sibling table was performed. |
+  | `background_check_results` | FCRA / FACTA Disposal Rule (16 CFR 682) governs how consumer-report data is destroyed, not whether it may be; `report_data` is a third-party investigative report on a named person. |
+  | `contractor_w9_documents` | IRS — W-9 backup-withholding records retained 4 years after the year of the 1099 (Treas. Reg. §31.6001-1). Rows carry TIN/SSN document pointers. |
+  | `borrower_payment_profiles` | Reg-E / NACHA authorization records for a borrower's stored payment method (last4, brand, autopay day) plus borrower email + phone. Money rail. |
+  | `property_photos` | customer-uploaded property imagery; `storage_key` is the ONLY pointer to the object-storage blob, so dropping the table orphans the customer's files rather than deleting them. |
+  | `lien_search_records` | title/lien diligence on a customer's property — part of the transaction file a closing is defended with; `raw_data` holds courthouse source records. |
+  | `cma_reports` | valuation work product, org-scoped, with a domain-expert reviewer and sign-off timestamp; the schema comment says outright "the data row is the legal artifact". Separately, `scripts/check-residential-comps-hold.mjs` names this table as part of the standing residential-comps hold. |
+  | `auction_readiness_checklists` | per-property pre-auction diligence with an expert sign-off timestamp and signer — the record that diligence occurred. |
+  | `compliance_checklist_items` | per-DEAL disclosure compliance evidence (`completed_by`, `completed_at`, `notes`) under state real-estate disclosure statutes. |
+  | `regulatory_requirements` | the legal-citation database those checklist items reference by FK. Not customer rows itself, but dropping it orphans a class-B customer record and destroys the citation basis for disclosures already made. |
+  | `depreciation_schedules` | IRS basis records — must survive until 3 years after the property is disposed of (Pub 946), routinely decades. Per-property, org-scoped. |
+  | `opportunity_zone_holdings` | **contradicts this unit's brief, deliberately.** The brief listed it as class A; its COLUMNS are `investment_date`, `initial_investment`, `deferred_gain_rollover`, `step_up_basis`, `exit_value`, org- and property-scoped. That is a customer's OZ investment record feeding IRC §1400Z-2 elections and annual Form 8997 — a 10-year hold whose basis records must outlive it. Class B. |
+  | `tax_strategies` | **contradicts the brief.** Org-scoped, references the customer's own `applicable_properties`, and carries a lifecycle the customer moves (`recommended → implementing → completed → dismissed`). A tax position a customer acted on is a tax record. Class B. |
+  | `tax_forecast_scenarios` | **contradicts the brief.** Org-scoped multi-year projections keyed to the customer's `property_ids`, with projected capital gain and tax liability. Same reasoning as above. |
+  | `deferred_revenue` | ASC 606 revenue recognition tied to real Stripe subscription/invoice ids. Accounting records — 7-year retention, audit-relevant. |
+  | `esign_webhook_events` | the ESIGN/UETA processing-dedup ledger for Dropbox Sign (`event_id` unique, `signature_request_id`). It is the record that a signature event was seen exactly once. E-sign is a **KEEP** module ("Elite features"), so this is more likely a *built-but-unwired* writer than residue — see the note below. |
+  | `automation_rules` | **the ledger already prescribes a drop for this one** (2026-07-29, "/automation rules twin": tables "remain … pending a drop migration"). It is still class B: the rows are CUSTOMER-AUTHORED (`name`, `description`, `conditions`, `actions`, `created_by`, `organization_id`). Customers authored rules that could never run; the rules are still their words. Only the derived execution log was dropped. |
+  | `tax_sale_alerts` | customer-authored saved searches and notification preferences, org-scoped. Customer configuration, not derived state. |
+  | `webhook_deliveries` | org-scoped delivery log whose `payload` and `response_body` hold customer record contents verbatim. Also: **BLOCKERS B8** is an open adjudication of exactly which of the two webhook rails survives — dropping one side pre-empts that decision. |
+  | `tutor_sessions` | Academy residue (last reader `learningAnalytics`, deleted 2026-08-15) — but the rows are `user_id` + a `messages` jsonb of `{role, content, timestamp}`. That is a **user's conversation transcript**. The Academy KILL row names three tables to drop (`courses`, `course_modules`, `course_enrollments`) and this is not among them. Class B. |
+  | `auth_fail_attempts` | **contradicts the brief.** Left behind by `authLockout.ts` (deleted 2026-08-14 as a superseded duplicate), so the provenance is class A — but the columns are `ip`, `email`, `user_agent`, `failure_reason`. Failed-login telemetry naming a person is personal data under GDPR/CCPA and is also security-incident forensic material. Whatever the right answer is, it is not "experiment residue". |
+
+  **CLASS C — everything else / unclear. 11 tables. NONE DROPPED.**
+  What is unclear is stated per table, so the next session starts from a
+  question rather than a re-derivation:
+
+  | table | what is unclear |
+  |---|---|
+  | `market_indicators_temp` | **NOT DEAD — linter false positive.** Live read AND write through the `marketIndicators` alias in `server/services/marketPrediction.ts`. What is unclear is only whether the table should keep the `_temp` name and the `marketIndicatorsDuplicate` identifier; the alias is what hid it from the gate and it deserves an allowlist entry rather than a drop. |
+  | `tenant_metrics` | **contradicts the brief**, which listed it class A. No ledger row ever killed it, and white-label is **FREEZE**, not KILL, with a recorded reactivation criterion ("first enterprise/white-label contract"). Its `revenue_generated` column is billing-adjacent. Dropping a frozen subsystem's metering table pre-empts its reactivation. (Its likely former writer, `tenantMetering.ts`, was deleted 2026-08-15 as a fabricator — but that wave's own DELETION-REVEALED list does not name this table, so the provenance is not proven.) |
+  | `photo_analysis` | derived Vision-API output, but `photo_id` is a NOT-NULL FK into `property_photos`, which is class B and retained. Dropping the analysis while keeping the photos is incoherent; the two should be adjudicated together. |
+  | `ai_models` | platform model registry (model keys, per-1M token costs). No customer content and no ledger KILL — it reads as built-but-unwired: `scripts/migrate.mjs` creates it and nothing has ever read it. Whether AI cost accounting is *supposed* to consult it is a live question, not residue. |
+  | `ai_eval_gate_runs` | CI eval verdicts, no customer content, no ledger KILL. `server/ai/paxModelTier.ts:115` describes writing and reading this table as a **"REMAINING UNBLOCK … left as a founder-owned follow-on"** — so it is a deliberately staged seam, not a corpse. Dropping it would delete the destination of a decision the founder still owns. |
+  | `org_credits` | money-adjacent. Its own header says it is a best-effort CACHE whose source of truth is `financial_ledger`. Unclear whether the cache was retired on purpose (in which case dropping it is right) or whether a rate gate lost its fast path. |
+  | `retention_events` | activation/retention funnel telemetry behind `/founder/activation` (migration 0055). No ledger KILL; carries `user_id`. Reads as a founder surface whose writer was never wired, which is a wiring question, not a deletion one. |
+  | `cohort_assignments` | same wave, same funnel, same question; carries `user_id` and a `variant` that would decide what an org SEES if the funnel is ever wired. |
+  | `county_redemption_rates` | county/year statistical reference data for redemption-risk prediction. No org key, no customer content, but also no ledger KILL — it is reference data that would have to be re-acquired, not residue of a killed module. |
+  | `deal_sources` | the county-scraper source registry (`base_url`, `scraping_config`, including an `api_key` field). No ledger KILL. `scraped_deals` alongside it is also writer-less, so the whole scraping lane is dormant — that lane needs one verdict, not a table-by-table one. |
+  | `personal_bests` | genuinely unused, but NOT deletion residue: `server/services/personalBests.ts` is alive (dynamically imported by `server/routes-platform-features.ts:303`) and computes personal bests **from `deals` on the fly**, never touching this table. So it is built-but-unwired storage next to a live in-memory computation — the question is whether milestones should persist, not whether this is a corpse. |
+
+  **WHAT THE DROP ACTUALLY DELETES IN PRODUCTION, stated because it is less
+  than it looks.** Twelve of the thirteen have no `CREATE TABLE` anywhere in
+  `migrations/*.sql` or `scripts/migrate.mjs` — measured, that is why they sat in
+  `scripts/schema-migrate-mirror.allowlist.json`, whose gate note records that
+  `db:push` is NOT run in prod. For those twelve the `DROP TABLE IF EXISTS` is
+  expected to be a no-op against a table prod never had, and the real deletion is
+  the removal of the `pgTable` definitions. `automation_executions` is the single
+  exception: created by `migrations/0001_brief_giant_man.sql`, it exists.
+
+  **No `CASCADE` anywhere**, deliberately: cascade would silently take dependent
+  objects this ruling never named. Verified before writing: zero
+  `REFERENCES <table>` matches across `migrations/` and `scripts/migrate.mjs`,
+  and zero inbound `.references(() => …)` across `shared/` and `server/`, for all
+  thirteen. The two outbound FKs point at tables that SURVIVE
+  (`playbook_evolutions` → `agent_playbooks`, `automation_executions` →
+  `automation_rules`).
+
+  **Executed:** `migrations/0236_drop_experiment_residue_tables.sql`, mirrored
+  statement-for-statement in `scripts/migrate.mjs` (a migration file nothing runs
+  is this repo's most common defect), and the thirteen `pgTable` definitions
+  removed from `shared/schema.ts`. **Not applied** — this session has no
+  `DATABASE_URL` and did not seek one.
+
+  **Counts MEASURED after the change** (`table-count` and `lint-reachability`
+  baselines are locked centrally and were not edited here):
+  `table-count` 763 → **750**; `tablesNoWriter` 62 → **49**; `tablesNoReader`
+  75 → **62**.
+
+  **What happened to the sixteen-table founder queue, counted exactly.** Ten of
+  the sixteen were dropped (`playbook_evolutions`, `compass_recommendations`,
+  `spend_watchers`, `spend_optimizations`, `causal_investigations`,
+  `delegated_goals`, `external_intelligence`, `product_specifications`,
+  `build_buy_decisions`, `feature_impact_scores`). Five were **answered "no"** —
+  they are class B, and "drop only experiment residue" is a decision about them,
+  not a deferral: `tax_strategies`, `tax_forecast_scenarios`,
+  `opportunity_zone_holdings`, `auth_fail_attempts`, `tutor_sessions`. One
+  remains genuinely open: `agent_playbooks`. Two items JOIN the open list that
+  were not on the original queue — `scp_evolution_metrics` (class A, blocked on a
+  one-token import edit outside this unit's file set) and `automation_rules`
+  (class B, but the 2026-07-29 ledger row already asks for its drop, so the
+  conflict needs the founder's explicit customer-data nod). **Open: three.**
+
+  **Registers this deletion invalidates** — every one measured by running the
+  gate, not guessed. All three are outside this unit's file set and must be
+  updated in the same commit or CI fails:
+  - `scripts/schema-migrate-mirror.allowlist.json` — 12 stale entries
+    (`agent_improvement_plans`, `agent_synergy_map`, `build_buy_decisions`,
+    `causal_investigations`, `compass_recommendations`, `delegated_goals`,
+    `external_intelligence`, `feature_impact_scores`, `playbook_evolutions`,
+    `product_specifications`, `spend_optimizations`, `spend_watchers`);
+    allowlist 95 → 83.
+  - `tests/unit/schemaMigrationDrift.test.ts` — `BASELINE_ORPHANS`, the same 12
+    names, 95 → 83. Its second test fails on stale entries by design.
+  - `scripts/check-org-leading-index.mjs` — `BASELINE_OFFENDERS` contains
+    `"automation_executions"` (the only one of the thirteen carrying an
+    `organization_id`); it must go — set size 150 → 149. The gate already FAILS
+    on it: *"stale allowlist entries: 1"*.
+
+- **2026-08-16 — `scripts/check-route-cost-class.mjs` (681 lines, 29,146 bytes)
+  deleted.** Founder ruling (picker, this date): resolve **BLOCKERS B22**, and
+  the option selected was **DELETE** — B22's branch (b), "an abandoned
+  experiment … the deletion ledger's usual verdict for a thing built and never
+  wired". Recorded as a KILL of a GATE, which is a first for this log: every
+  prior row killed product code, and a dead gate is the same defect class
+  pointed at governance instead of features.
+
+  **What it was meant to enforce.** "L5b — Route cost-class lint": that every
+  *new* route handler added to `server/routes*.ts` declares a cost class, by
+  carrying `costClass(...)` or `withCostClass(...)` in its argument list. The
+  middleware it was written to protect — `server/utils/costClass.ts` — is LIVE
+  and is NOT deleted: `costClass(` appears ten times in `server/` outside its
+  declaring file, nine of them real middleware applications across four
+  `server/routes-*.ts` files (`routes-support-tickets` ×3, `routes-founder-letters`
+  ×2, `routes-admin-finance` ×2, `routes-transparency` ×2) and one a comment
+  (`server/middleware/apiTelemetry.ts:190`). What died is the enforcement, not
+  the capability.
+
+  **NOTHING EVER RAN IT — the whole reason this is a deletion and not a fix.**
+  Re-established from scratch this date rather than taken from B22: `grep -rn
+  "check-route-cost-class"` across the whole tree (excluding `node_modules/`
+  and `.git/`) returns the script's own log strings, two prose comments, and
+  B22 itself — no invocation anywhere. It is in none of `package.json`'s 25
+  `lint:*`/`check:*` entries, none of the 20 files in `.github/workflows/`, and
+  not in `.githooks/pre-commit`; the repo has no Makefile; and there is no
+  wildcard runner (`scripts/check-*.mjs`) that would have swept it up. A gate
+  nobody runs is a file.
+
+  **And it would have failed on contact, measured both ways.** In audit mode
+  (`--all`) it reports **1,862 unclassified route call sites of 1,868** across
+  **270** route files — 6 classified — and exits 0, because audit mode never
+  fails. In its real (CI) mode against `origin/main...HEAD` it exits **1** on
+  **29 added route lines** in a **1,111,071-byte** diff. Its own header records
+  why 6 and not 9: `ROUTE_METHOD_RE` matches only receivers named `app` or
+  `router`, so the three `costClass`'d routes registered on the `api` router in
+  `server/routes-support-tickets.ts` were invisible to it in both directions.
+  Wiring it as-is would have failed the build on day one.
+
+  **THE DEBT IS NOT A REGRESSION UNIT 130 INTRODUCED — verified, with one
+  correction to B22's wording.** B22 says the gate "was red before and after"
+  unit 130 touched it. What is actually true is sharper and worth writing down:
+  the pre-130 version (`git show 51b2efa:…`, 220 lines) run on THIS tree exits
+  **0** — falsely. Its `gitDiff()` was `catch { return ""; }`, and the diff it
+  asks git for is 1,111,071 bytes against Node's 1,048,576-byte default
+  `maxBuffer`; `execSync` on that exact command at the default throws
+  **ENOBUFS** (reproduced directly), the old `catch` swallowed it, and the gate
+  printed *"no new routes in diff vs origin/main"*. So the pre-130 run was not
+  a pass, it was an unanswered question wearing a pass's clothes. The
+  measurement that IS comparable — `--all` on the same tree — returns the
+  **identical 1,862 / 270** under both versions. Unit 130 did not create the
+  redness; it replaced a false clean with a true failure. **Deleting this hides
+  nothing that unit 130 broke.**
+
+  **Salvage check, because losing a good idea to a cleanup is a real cost.**
+  The route EXTRACTOR is NOT worth preserving: `scripts/check-route-order.mjs`
+  (208 lines, wired as `lint:route-order`) already has a strictly broader one —
+  it walks `server/` recursively (floors `serverFiles` 1000 / live 1,370,
+  `routes` 2100 / live 2,860) where this gate did a non-recursive `readdirSync`
+  filtered to `routes*.ts` (270 files, 1,868 calls), and its `pat` matches
+  `api|app|router` where `ROUTE_METHOD_RE` matched only `app|router`. The
+  paren-balancing block walker (`readRouteBlock`) is not unique either;
+  `depth === 0` balancing walkers already exist in `check-org-scoped-fetch.mjs`,
+  `check-org-leading-index.mjs`, `lint-prompt-envelope.mjs` and
+  `audit-schema-drift.mjs`. **Two things here have no equivalent elsewhere and
+  are recorded so a rebuild starts from them, not from zero:** (1) it was the
+  repo's ONLY diff-delta gate — the sole user of `--unified=0 …...HEAD` and
+  `LINT_BASE_REF` in `scripts/` — and its `gitDiff()` null-vs-`""` discipline
+  plus 256 MB `maxBuffer` is the fix for the measured ENOBUFS above, which will
+  bite the next delta gate anyone writes; (2) `check-route-order.mjs` has
+  vacuity FLOORS but no predicate SELF-TESTS and no in-repo CANARIES, and this
+  gate had both (positive *and* negative predicate cases, synthetic
+  single-/multi-line end-to-end, a diff-parser test that also proves it does
+  not invent routes from unrelated hunks, and three named live files that must
+  keep reading as classified). That pattern is the better idea in this file and
+  belongs in the gates that survive.
+
+  **What would have to be true to rebuild it** — all three, or it comes back
+  dead: (a) a **frozen baseline of the 1,862**, the way
+  `scripts/check-org-scoped-fetch.mjs` freezes its tenancy debt in
+  `BASELINE_OFFENDERS` / `BASELINE_UNUSED_ORG` with stale entries failing the
+  gate, so pre-existing debt is pinned and only NEW routes fail; (b) **wiring**
+  — a `lint:*` entry in `package.json` reachable from `npm run check`, since an
+  unwired gate is what this row is deleting; and (c) the receiver set widened
+  to `api|app|router` FIRST, because freezing 1,862 while blind to a whole
+  receiver freezes a number that is wrong by construction.
+
+  **Registers checked after the deletion, by running them** (no ratchet file
+  edited; both are outside this unit's file set and neither needed a change):
+  `node scripts/lint-reachability.mjs` → **exit 0**, all six counts unmoved at
+  baseline (`unreached-exports` 1401, `tables-no-writer` 48, `tables-no-reader`
+  60, `unregistered-routes` 4, `module-orphans` 28, `opaque-exports` 120) —
+  notable because `scripts/` IS a scanned consumer directory for that gate, so
+  a deletion there can strand an export; it did not. `node
+  scripts/check-ledger-refs.mjs` → **exit 0**, populations unchanged
+  (`ledgerVerdictRows` 11, `ledgerRefs` 20, `registryOpenBlocks` 25,
+  `registryRefs` 16). This row cites the deleted path deliberately and safely:
+  the "Executed deletions (log)" section is the one that gate does not scan,
+  precisely so an executed deletion may name what it deleted.
+
+  **Residue, flagged not fixed — outside this unit's file set.** Two prose
+  comments now point at a file that no longer exists, and both were already
+  false before the deletion (they describe enforcement that never ran):
+  `server/utils/costClass.ts:37` (*"The `scripts/check-route-cost-class.mjs`
+  script enforces that any…"*) and `server/utils/outboundFetch.ts:22`
+  (*"…will eventually be extended to…"*). Neither is reached by
+  `check-ledger-refs` (it scans the verdict table and the defect registry, not
+  source comments), so nothing fails on them — which is exactly why they need
+  to be named here rather than left to rot.

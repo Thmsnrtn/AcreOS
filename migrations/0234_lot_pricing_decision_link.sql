@@ -1,0 +1,17 @@
+-- Link a locked lot-pricing grid to the DecisionSnapshot that explains it.
+--
+-- lot_pricing_rules.locked_grid preserves the OUTPUT (base, premium and asking
+-- price per lot) and none of the reasoning: `rules` and `base_price_source`
+-- live in the SAME MUTABLE ROW, so editing them after a lock leaves the grid
+-- intact and destroys the explanation for it. The derived base-per-acre and the
+-- engine version were never stored at all.
+--
+-- Plain integer, no foreign key, for the same reason as
+-- offers.decision_snapshot_id: decision_snapshots.organization_id cascades on
+-- tenant delete and lot_pricing_rules' own parent does not, so an FK would
+-- couple two different deletion lifetimes. The read path resolves it through
+-- the org-scoped getDecision, so a stale id yields nothing.
+--
+-- Null is the normal state for any grid locked before this link existed, and
+-- for any lock whose recording failed. It never means no reasoning existed.
+ALTER TABLE "lot_pricing_rules" ADD COLUMN IF NOT EXISTS "locked_decision_snapshot_id" integer;

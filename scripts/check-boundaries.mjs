@@ -36,10 +36,39 @@
 // entry — file deleted or imports cleaned up — FAILS the lint so the
 // allowlist can't rot).
 //
+// VACUITY FLOORS — why a zero here needs a population behind it
+// ─────────────────────────────────────────────────────────────
+// This gate counts BAD THINGS FOUND, so a scan that stops seeing files finds
+// none and prints PASS. `walkSourceFiles()` returns its accumulator unchanged
+// when a directory is missing, and the extension/test filters can narrow to
+// nothing after a rename — either way the run reads exactly like compliance.
+//
+// The stale-baseline backstop does NOT cover this, and the reason is specific:
+// BASELINE has exactly ONE entry (shared/seo/content-routes.ts), and it lives
+// in the shared/ half. So shared/ going dark is caught by that entry going
+// stale, while the ENTIRE client/src/ half could go dark and the gate would
+// still pass on the strength of the one shared/ hit. Half a scan, full PASS.
+//
+// So each zone's file population is floored INDEPENDENTLY, and the floors are
+// evaluated BEFORE any count is allowed to read as clean. Independence is the
+// whole point: one floor over the combined 1,030 would let the 872-file client
+// half vanish entirely and still sit above any floor the 158-file shared half
+// could justify. A MISSING floor fails as loudly as a breached one (see
+// scripts/ratchets/reachability.json `minima`), so a zone cannot be added here
+// without one.
+//
+// Floors are NOT ratchets — they exist to catch a broken scan, not to forbid
+// deletion. Seeded at ~75% of live so a broken walk trips them while ordinary
+// file deletion does not. If a real deletion wave takes a population under its
+// floor, LOWER the floor in the same commit and name the wave; never raise one
+// to silence anything, and never delete a key.
+//
 // Exit codes
 // ──────────
-//   0 — no violations outside the baseline, no stale baseline entries
-//   1 — at least one new violation OR a stale baseline entry
+//   0 — no violations outside the baseline, no stale baseline entries, and
+//       every zone population at or above its floor
+//   1 — at least one new violation OR a stale baseline entry OR a zone
+//       population below its floor OR a zone with no floor declared
 // ============================================================================
 
 import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
@@ -74,6 +103,26 @@ const NODE_BUILTINS = new Set([
 // by the client build (vite.config.ts resolve.alias). Keep in sync with both
 // configs when aliases change.
 const SERVER_ONLY_ALIAS_PREFIXES = ["@sovereign/"];
+
+// ----------------------------------------------------------------------------
+// The two scanned zones, and the VACUITY FLOOR under each one's file
+// population. See the "VACUITY FLOORS" section of the header for why these are
+// per-zone rather than one floor over the total.
+//
+// MEASURED 2026-08-16 against the live repo, by running this script and reading
+// the population line it already prints:
+//
+//   [check-boundaries] scanned 158 shared/ + 872 client/src/ files; …
+//
+//   shared/     observed 158  → floor 118  (~75% of live)
+//   client/src/ observed 872  → floor 654  (~75% of live)
+//
+// Re-measure before touching these; do not re-argue them from memory.
+// ----------------------------------------------------------------------------
+const ZONES = [
+  { id: "shared", label: "shared/", segments: ["shared"], floor: 118 },
+  { id: "client", label: "client/src/", segments: ["client", "src"], floor: 654 },
+];
 
 // ----------------------------------------------------------------------------
 // File discovery
@@ -186,9 +235,56 @@ function classify(spec, fileAbs, zone) {
 // ----------------------------------------------------------------------------
 // Main
 // ----------------------------------------------------------------------------
+/**
+ * VACUITY GUARD — floor each zone's file population INDEPENDENTLY, and treat a
+ * zone with no declared floor as a failure (an unfloored population cannot
+ * exist, by design). Returns a list of failure strings; empty means the scan
+ * saw enough of the tree for its zeros to mean anything.
+ */
+function checkZonePopulations(populations) {
+  const failures = [];
+  for (const zone of ZONES) {
+    const count = populations.get(zone.id);
+    if (typeof zone.floor !== "number" || !Number.isFinite(zone.floor)) {
+      failures.push(
+        `NO FLOOR DECLARED for zone "${zone.id}" (${zone.label}) — an unfloored ` +
+          `population can go to zero silently and the gate would still PASS. ` +
+          `Measure the live count and add a floor at ~75% of it.`,
+      );
+      continue;
+    }
+    if (count === undefined) {
+      failures.push(
+        `ZONE NOT SCANNED — "${zone.id}" (${zone.label}) produced no population ` +
+          `at all. The walk never ran for this zone.`,
+      );
+      continue;
+    }
+    if (count < zone.floor) {
+      failures.push(
+        `VACUOUS SCAN — ${zone.label} yielded only ${count} file(s) (floor ` +
+          `${zone.floor}). walkSourceFiles() returns its accumulator unchanged ` +
+          `for a missing directory, so a moved/renamed root or a broken ` +
+          `extension filter shows up here as a small number and everywhere ` +
+          `else as "0 violations". If a real deletion wave earned this drop, ` +
+          `lower this zone's floor in the same commit and name the wave — do ` +
+          `NOT raise it, and do not remove it.`,
+      );
+    }
+  }
+  return failures;
+}
+
 function main() {
-  const sharedFiles = walkSourceFiles(join(REPO_ROOT, "shared"), []);
-  const clientFiles = walkSourceFiles(join(REPO_ROOT, "client", "src"), []);
+  const zoneFiles = new Map();
+  const populations = new Map();
+  for (const zone of ZONES) {
+    const files = walkSourceFiles(join(REPO_ROOT, ...zone.segments), []);
+    zoneFiles.set(zone.id, files);
+    populations.set(zone.id, files.length);
+  }
+  const sharedFiles = zoneFiles.get("shared");
+  const clientFiles = zoneFiles.get("client");
 
   const newViolations = [];
   const baselineHits = new Map(); // file → Set(rules actually seen)
@@ -224,17 +320,48 @@ function main() {
     }
   }
 
+  // Vacuity floors are evaluated BEFORE the verdict: a count of zero from a
+  // half-blind scan must never be allowed to read as clean.
+  const vacuityFailures = checkZonePopulations(populations);
+
   console.log(
-    `[check-boundaries] scanned ${sharedFiles.length} shared/ + ` +
-      `${clientFiles.length} client/src/ files; ` +
+    `[check-boundaries] scanned ${sharedFiles.length} shared/ ` +
+      `(floor ${ZONES[0].floor}) + ` +
+      `${clientFiles.length} client/src/ (floor ${ZONES[1].floor}) files; ` +
       `baseline-allowlisted files: ${baselineHits.size}; ` +
       `new violations: ${newViolations.length}; ` +
       `stale baseline entries: ${staleBaseline.length}`,
   );
 
-  if (newViolations.length === 0 && staleBaseline.length === 0) {
+  if (
+    vacuityFailures.length === 0 &&
+    newViolations.length === 0 &&
+    staleBaseline.length === 0
+  ) {
     console.log("[check-boundaries] PASS");
     process.exit(0);
+  }
+
+  if (vacuityFailures.length > 0) {
+    console.error("");
+    console.error(
+      `[check-boundaries] FAIL — ${vacuityFailures.length} zone population ` +
+        "problem(s); this gate is not trustworthy right now:",
+    );
+    for (const f of vacuityFailures) console.error(`  ✗ ${f}`);
+    console.error("");
+    console.error(
+      "  Each zone is floored SEPARATELY on purpose. The baseline allowlist has",
+    );
+    console.error(
+      "  a single entry and it sits in shared/, so a stale-baseline failure can",
+    );
+    console.error(
+      "  only ever notice shared/ going dark — the whole client/src/ half could",
+    );
+    console.error(
+      "  vanish and every other count below would still print a reassuring 0.",
+    );
   }
 
   if (newViolations.length > 0) {

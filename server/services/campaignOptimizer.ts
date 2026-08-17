@@ -7,6 +7,7 @@ import { voiceLearningService } from "./voiceLearning";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export interface CampaignMetrics {
   openRate: number;
   clickRate: number;
@@ -151,8 +152,8 @@ export class CampaignOptimizerService {
 Campaign Details:
 - Name: ${campaign.name}
 - Type: ${campaign.type}
-- Subject: ${campaign.subject || "Not specified"}
-- Content Preview: ${campaign.content?.substring(0, 200) || "Not available"}
+- Subject: ${sanitizePromptInline(campaign.subject || "Not specified")}
+- Content Preview: ${sanitizePromptInline(campaign.content?.substring(0, 200) || "Not available")}
 
 Current Performance Metrics:
 - Open Rate: ${metrics.openRate}% (Benchmark: ${PERFORMANCE_BENCHMARKS.openRate.poor}% poor, ${PERFORMANCE_BENCHMARKS.openRate.good}% good)

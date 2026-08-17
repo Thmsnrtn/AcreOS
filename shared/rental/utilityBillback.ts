@@ -1,7 +1,8 @@
 // ============================================================================
 // SHARED/RENTAL/UTILITYBILLBACK.TS — utility pass-through billback, honestly.
 // ----------------------------------------------------------------------------
-// Pure and browser-safe: no DB, no `process`, no imports. A mobile-home park
+// Pure and browser-safe: no DB, no `process`, and no imports beyond the shared
+// money renderer (itself pure and browser-safe). A mobile-home park
 // buys a master utility (water, sewer, trash, electric, gas) and passes the cost
 // back to the pads. There are exactly two lawful ways to do that, and this is
 // the ONE place either is computed, so the rules that keep a passed-through
@@ -28,6 +29,11 @@
 // a PROPOSED per-pad charge. It moves no money and posts no charge — the caller
 // freezes the statement and the operator bills on their own rails, elsewhere.
 // ============================================================================
+
+// The money renderer, from its canonical home. This file used to carry a
+// byte-identical private copy; a pad's utility bill and the finance surfaces
+// must not be able to disagree about how a dollar reads.
+import { formatCents } from "../finance/cents";
 
 export type UtilityKind = "water" | "sewer" | "trash" | "electric" | "gas";
 export type BillbackMethod = "submeter" | "rubs";
@@ -263,15 +269,6 @@ function computeRubs(args: RubsBillbackArgs): UtilityBillbackResult {
 /** Compute a utility pass-through billback in either mode. */
 export function computeUtilityBillback(args: UtilityBillbackArgs): UtilityBillbackResult {
   return args.method === "submeter" ? computeSubmeter(args) : computeRubs(args);
-}
-
-/** cents → "$1,234.56" (a real minus sign for negatives), locale-independent. */
-export function formatCents(cents: number): string {
-  const neg = cents < 0;
-  const s = (Math.abs(cents) / 100).toFixed(2);
-  const [int, frac] = s.split(".");
-  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${neg ? "−" : ""}$${withCommas}.${frac}`;
 }
 
 /**

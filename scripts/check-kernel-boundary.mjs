@@ -34,6 +34,40 @@
 // into a pack and arrives through the DomainPack seam — never via a direct
 // import.
 //
+// VACUITY: WHY THIS GATE NEEDS NO POPULATION FLOOR
+// ────────────────────────────────────────────────
+// Gates that WALK a tree need a floor on the scan population, because a broken
+// walk finds zero bad things and reads as a clean bill of health (see
+// scripts/ratchets/reachability.json `minima`). This gate does not walk. Its
+// population is the 29-entry KERNEL_MANIFEST literal below, and every entry is
+// asserted to EXIST: a manifest path whose file is gone lands in `missing` and
+// exits 1. That is a stronger anchor than a floor — a floor tolerates any count
+// above it, whereas this demands the exact named set, all of it, by name. Adding
+// a `minimum kernel modules` floor on top would be a weaker restatement of a
+// check already made, so there deliberately isn't one. If this gate ever grows a
+// directory WALK (e.g. "everything under autopilot/ except packs/"), it acquires
+// the vacuity problem in that moment and must acquire a floor with it.
+//
+// COMMENT HANDLING — masked, never deleted
+// ────────────────────────────────────────
+// Import extraction runs over maskComments(), the string-aware SAME-LENGTH
+// masker shared with scripts/lint-zindex.mjs and scripts/lint-page-hex.mjs. The
+// stripper this replaced was `source.replace(/\/\*[\s\S]*?\*\//g, "")`, which
+// this repo has been bitten by before (see the headers of
+// check-org-scoped-fetch.mjs, check-no-fabrication.mjs and
+// reachability.json's minimaNote): a `/*` inside a STRING or REGEX literal opens
+// a block the regex closes at the next `*/`, DELETING every line in between —
+// including the import lines this gate exists to read. A kernel module could
+// therefore import a pack invisibly, and the gate would print PASS.
+// Two properties matter, and same-length masking is how both are kept:
+//   1. NOTHING IS DELETED — a quoted `/*` masks nothing, so the code it used to
+//      swallow is still scanned.
+//   2. OFFSETS STAY HONEST — the deleting version removed 1,230 lines across the
+//      29 manifest files (measured 2026-08-16; up to 84 lines in
+//      domainAutonomy.ts alone), so every `file:line` this gate has ever printed
+//      for a violation was shifted by however much comment sat above it. Masking
+//      preserves newlines, so the reported line is the real line.
+//
 // Exit codes: 0 = clean; 1 = a kernel→pack import, or a manifest entry whose
 // file no longer exists (stale manifest can't rot).
 // ============================================================================
@@ -113,16 +147,51 @@ const PACKS_DIR_REL = `${AUTOPILOT}/packs/`;
 // ----------------------------------------------------------------------------
 // Import-specifier extraction (shared shape with check-boundaries.mjs).
 // ----------------------------------------------------------------------------
-function stripComments(source) {
-  const noBlocks = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  return noBlocks
-    .split("\n")
-    .map((line) => {
-      const t = line.trimStart();
-      if (t.startsWith("//") || t.startsWith("*")) return "";
-      return line;
-    })
-    .join("\n");
+// Comment masking — replaces // and /* … */ spans with spaces (string-aware;
+// same-length output so line numbers map 1:1). Lifted verbatim from the
+// lint-zindex.mjs / lint-page-hex.mjs / check-org-scoped-fetch.mjs family. It
+// BLANKS rather than DELETES, which is the whole point: see "COMMENT HANDLING"
+// in the header for the two properties that depends on.
+function maskComments(source) {
+  const out = source.split("");
+  let inString = null;
+  let prevChar = "";
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (inString) {
+      if (ch === inString && prevChar !== "\\") inString = null;
+      prevChar = ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = ch;
+      prevChar = ch;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "/") {
+      while (i < source.length && source[i] !== "\n") {
+        out[i] = " ";
+        i++;
+      }
+      prevChar = "\n";
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] !== "\n") out[i] = " ";
+        i++;
+      }
+      if (i < source.length) {
+        out[i] = " ";
+        if (i + 1 < source.length) out[i + 1] = " ";
+        i += 1;
+      }
+      prevChar = " ";
+      continue;
+    }
+    prevChar = ch;
+  }
+  return out.join("");
 }
 
 const SPEC_RE =
@@ -130,7 +199,7 @@ const SPEC_RE =
 
 function extractSpecifiers(source) {
   const specs = [];
-  const lines = stripComments(source).split("\n");
+  const lines = maskComments(source).split("\n");
   for (let i = 0; i < lines.length; i++) {
     let m;
     SPEC_RE.lastIndex = 0;

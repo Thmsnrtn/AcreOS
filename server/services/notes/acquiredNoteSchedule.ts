@@ -64,6 +64,21 @@
  * the equality by reading financeAgent.ts as TEXT and comparing the numbers.
  * That test is what makes the duplication safe.
  */
+
+// The determinability predicate and its date parse now live in `shared/`, and
+// are RE-EXPORTED here so existing importers are unaffected. They used to be
+// private to this file, which forced the two note pages to restate the check —
+// their own comments said "the client cannot import server code", which is true
+// of `server/` and skips the option that resolves it. `shared/` is browser-safe
+// by construction and both sides already import from it.
+import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
+import { parseCalendarDate } from "@shared/dates/calendar";
+
+// `delinquencyIsDeterminable` only — `routes-notes.ts` imports it from here.
+// `parseCalendarDate` was re-exported too and nothing consumed it; a re-export
+// with no consumer is the same dead weight as any other unreached export.
+export { delinquencyIsDeterminable };
+
 export type NoteDelinquencyStatus =
   | "current"
   | "early_delinquent"
@@ -144,35 +159,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // which is how due-date bugs usually enter a codebase.
 // ============================================================================
 
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/**
- * Strict 'YYYY-MM-DD' parse. Returns null rather than throwing, and rejects
- * dates that JS would silently roll over (`2025-02-30` becomes March 2nd if
- * you let `Date.UTC` have its way — we refuse it instead, because a note
- * whose stored maturity is 2025-02-30 has bad data and should surface as
- * "unknown", not as a March date nobody agreed to).
+/*
+ * The strict 'YYYY-MM-DD' parse that used to sit here is now
+ * `parseCalendarDate` in `@shared/notes/delinquency`, imported and re-exported
+ * at the top of this file. Its reasoning moved with it: it rejects dates JS
+ * would silently roll over (`2025-02-30` becomes March 2nd if you let `Date.UTC`
+ * have its way), because a note whose stored maturity is 2025-02-30 has bad data
+ * and should surface as "unknown", not as a March date nobody agreed to.
  */
-function parseIsoDate(value: string | null | undefined): Date | null {
-  if (typeof value !== "string") return null;
-  const match = ISO_DATE.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  // Round-trip check catches the rollover cases (Feb 30, Apr 31, ...).
-  if (
-    parsed.getUTCFullYear() !== year ||
-    parsed.getUTCMonth() !== month - 1 ||
-    parsed.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return parsed;
-}
 
+/** A UTC `Date` back to 'YYYY-MM-DD'. */
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -227,9 +224,9 @@ function coerceFacts(facts: AcquiredNoteScheduleFacts): CoherentFacts | null {
   const dueDay = facts?.paymentDueDay;
   if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) return null;
 
-  const origination = parseIsoDate(facts.originationDate);
-  const maturity = parseIsoDate(facts.maturityDate);
-  const acquisition = parseIsoDate(facts.acquisitionDate);
+  const origination = parseCalendarDate(facts.originationDate);
+  const maturity = parseCalendarDate(facts.maturityDate);
+  const acquisition = parseCalendarDate(facts.acquisitionDate);
   if (!origination || !maturity || !acquisition) return null;
   // A note that matures before it originates is corrupt data, not a
   // zero-length note. Refuse rather than derive from nonsense.
@@ -239,10 +236,10 @@ function coerceFacts(facts: AcquiredNoteScheduleFacts): CoherentFacts | null {
   // the whole derivation. Silently ignoring a malformed paidThroughDate would
   // fall back to the anchor and report a note as wildly past due when it is
   // in fact current — the worst possible direction to be wrong in.
-  if (facts.firstPaymentDate != null && !parseIsoDate(facts.firstPaymentDate)) {
+  if (facts.firstPaymentDate != null && !parseCalendarDate(facts.firstPaymentDate)) {
     return null;
   }
-  if (facts.paidThroughDate != null && !parseIsoDate(facts.paidThroughDate)) {
+  if (facts.paidThroughDate != null && !parseCalendarDate(facts.paidThroughDate)) {
     return null;
   }
 
@@ -251,8 +248,8 @@ function coerceFacts(facts: AcquiredNoteScheduleFacts): CoherentFacts | null {
     origination,
     maturity,
     acquisition,
-    firstPayment: parseIsoDate(facts.firstPaymentDate),
-    paidThrough: parseIsoDate(facts.paidThroughDate),
+    firstPayment: parseCalendarDate(facts.firstPaymentDate),
+    paidThrough: parseCalendarDate(facts.paidThroughDate),
   };
 }
 
@@ -545,7 +542,7 @@ export function computeNoteDelinquency(input: {
   gracePeriodDays?: number;
   asOf: Date;
 }): { daysDelinquent: number; delinquencyStatus: NoteDelinquencyStatus } {
-  const due = parseIsoDate(input?.nextPaymentDate);
+  const due = parseCalendarDate(input?.nextPaymentDate);
   const asOf = input?.asOf;
   if (!due || !(asOf instanceof Date) || Number.isNaN(asOf.getTime())) {
     return { daysDelinquent: 0, delinquencyStatus: "current" };
@@ -577,11 +574,6 @@ export function computeNoteDelinquency(input: {
  *
  * Callers branch on this BEFORE deciding to persist or display a band.
  */
-export function delinquencyIsDeterminable(
-  nextPaymentDate: string | null | undefined,
-): boolean {
-  return parseIsoDate(nextPaymentDate ?? null) !== null;
-}
 
 function bandFor(days: number): NoteDelinquencyStatus {
   const t = NOTE_DELINQUENCY_THRESHOLDS;
@@ -612,7 +604,7 @@ export function lateFeeAssessable(input: {
   lateFeeCents: number;
   asOf: Date;
 }): { assessable: boolean; reason: string } {
-  const due = parseIsoDate(input?.nextPaymentDate);
+  const due = parseCalendarDate(input?.nextPaymentDate);
   if (!due) {
     return {
       assessable: false,

@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ────────────────────────────────────────────────────────────────────
-vi.mock("../../../server/db", () => ({
+vi.mock("../../server/db", () => ({
   db: {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -47,17 +47,17 @@ vi.mock("../../../server/db", () => ({
 }));
 
 // ── comps service mock ─────────────────────────────────────────────────────────
-vi.mock("../../../server/services/comps", () => ({
+vi.mock("../../server/services/comps", () => ({
   getComparableProperties: vi.fn().mockResolvedValue({ success: false, comps: [] }),
   calculateMarketValue: vi.fn().mockResolvedValue(null),
 }));
 
 // ── OpenAI mock ────────────────────────────────────────────────────────────────
-vi.mock("../../../server/utils/openaiClient", () => ({
+vi.mock("../../server/utils/openaiClient", () => ({
   getOpenAIClient: vi.fn().mockReturnValue(null),
 }));
 
-import { PriceOptimizerService } from "../../../server/services/priceOptimizer";
+import { PriceOptimizerService } from "../../server/services/priceOptimizer";
 
 // ── Test helpers ───────────────────────────────────────────────────────────────
 const makeProperty = (overrides = {}): any => ({

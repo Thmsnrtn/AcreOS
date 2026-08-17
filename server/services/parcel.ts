@@ -19,6 +19,7 @@ import { logger } from '../utils/logger';
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
 import * as providerIntel from "./providerIntelligence";
 import { fetchGeo } from "./providers/fetchGeo";
+import { readIntegrationCredentials } from "./integrationCredentials";
 
 interface RegridParcel {
   type: "Feature";
@@ -791,8 +792,15 @@ async function lookupFromRapidAPI(
   
   try {
     const integration = await storage.getOrganizationIntegration(organizationId, "rapidapi");
-    if (integration?.credentials?.apiKey) {
-      rapidApiKey = integration.credentials.apiKey;
+    // Either shape — this read saw only the plaintext field, so a key set
+    // through POST /api/integrations was ignored and the platform key used.
+    const creds = readIntegrationCredentials<{ apiKey?: string }>(
+      integration,
+      organizationId,
+      "rapidapi",
+    );
+    if (creds?.apiKey) {
+      rapidApiKey = creds.apiKey;
       logger.info("[RapidAPI] Using org BYOK key", { metadata: { organizationId } });
     }
   } catch (error) {

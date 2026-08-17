@@ -13,11 +13,11 @@ import {
   computeCamReconciliation,
   renderCamStatementMarkdown,
   monthsInPeriod,
-  formatCents,
   type CamPoolInput,
   type CamLeaseInput,
 } from "../../shared/rental/camReconciliation";
 import type { MeasurableExpenseRow } from "../../shared/rental/noi";
+import { formatCents } from "../../shared/finance/cents";
 
 const FULL_YEAR = { periodStart: "2026-01-01", periodEnd: "2026-12-31" };
 
@@ -252,11 +252,32 @@ describe("monthsInPeriod", () => {
   });
 });
 
-describe("formatCents", () => {
+describe("formatCents — now imported from its canonical home", () => {
+  // This module used to export a byte-identical private copy, and this test
+  // pinned it. The copy is gone (formatCentsIsCanonical.test.ts holds the repo
+  // to one definition), but the INVARIANT it protected is unchanged and is
+  // asserted here still: a CAM statement is a bill a tenant pays, so the way a
+  // dollar reads on it is behaviour, not formatting trivia.
   it("formats with commas and a real minus sign", () => {
     expect(formatCents(150_000)).toBe("$1,500.00");
     expect(formatCents(-1_000)).toBe("−$10.00");
     expect(formatCents(1_234_567)).toBe("$12,345.67");
+  });
+
+  it("and the statement renderer really uses it", () => {
+    // Vacuity guard for the swap. Asserting the helper in isolation would pass
+    // even if the renderer had been left calling something else. Reuses the
+    // file's own `pool()`/`lease()` builders so it stays valid as they evolve.
+    const md = renderCamStatementMarkdown(
+      computeCamReconciliation({
+        pool: pool(),
+        lease: lease({ rentableSqft: 2_000 }),
+        rows: twoOperatingRows,
+        estimatedBilledCents: 25_000,
+      }),
+      { periodStart: FULL_YEAR.periodStart, periodEnd: FULL_YEAR.periodEnd, poolKind: "cam" },
+    );
+    expect(md).toMatch(/\$[\d,]+\.\d{2}/);
   });
 });
 

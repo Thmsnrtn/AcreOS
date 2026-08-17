@@ -355,78 +355,41 @@ router.post("/financial/1031-status", async (req: Request, res: Response) => {
 });
 
 // ============================================================================
-// EPIC 8: Developer API
+// EPIC 8: Developer API — REMOVED 2026-08-15 (founder ruling, picker)
+// ----------------------------------------------------------------------------
+// Three endpoints lived here and all three are gone:
+//
+//   GET  /developer/openapi          served a document titled "AcreOS Public API"
+//   POST /developer/api-keys         minted an `acr_…` secret for any authenticated
+//                                    customer and returned it once
+//   GET  /developer/widget-embed/:t  handed out `pub_<orgId>_<base64(orgId)>` as a
+//                                    "publicApiKey" — the org id encoded, not a secret
+//
+// TWO REASONS, and the second is the one that made this urgent.
+//
+// 1. A STANDING DECISION ENFORCED IN ONE PLACE AND DEFEATED IN ANOTHER.
+//    CLAUDE.md's expansion ladder says "no public API before ~50 customers", and
+//    routes-api-keys.ts is kept DELIBERATELY DORMANT because of it — the
+//    reachability ratchet's own note records that as the reason its
+//    unregisteredRoutes baseline sits at 1. Meanwhile this router is mounted at
+//    /api behind plain isAuthenticated, so any customer could mint a key and
+//    fetch the spec. The careful decision was made once and bypassed here.
+//
+// 2. THE KEYS WERE INERT, AND THE RESPONSE SAID OTHERWISE. `POST` returned the
+//    plaintext with `warning: "Store this key securely. It will not be shown
+//    again."` — and NOTHING verified it. The only consumer of
+//    organizationIntegrations keys is mcp-server.ts, which matches
+//    provider = 'mcp_api_key'; this wrote provider = 'api_key'. The rate limiter
+//    written for it (createApiKeyRateLimit, "public developer API") has zero
+//    importers. A customer who integrated against this got nothing, forever,
+//    after being told to store the key securely. That is placeholder data
+//    presented as real, which the DO-NOT-DO list forbids outright.
+//
+// services/developerApiService.ts is KEPT, not deleted: when the ladder trigger
+// fires, the OpenAPI spec and the key-minting helper are the starting point, and
+// the thing that was wrong was mounting them early rather than writing them.
+// Wiring it then means building the verifier that never existed.
+// See docs/company/deletion-ledger.md (2026-08-15) and the apiKeyAuthority test.
 // ============================================================================
-
-router.get("/developer/openapi", async (req: Request, res: Response) => {
-  try {
-    const { ACREOS_OPENAPI_SPEC } = await import("./services/developerApiService");
-    res.json(ACREOS_OPENAPI_SPEC);
-  } catch (err: any) {
-    Errors.internal(res, err);
-  }
-});
-
-router.post("/developer/api-keys", async (req: Request, res: Response) => {
-  try {
-    const { generateApiKey } = await import("./services/developerApiService");
-    const org = req.organization;
-    const { name, scopes = [] } = req.body;
-
-    const { publicKeyId, secretKey, keyHash } = generateApiKey();
-
-    // Store in database (organizationIntegrations table)
-    const { db } = await import("./db");
-    const { organizationIntegrations } = await import("@shared/schema");
-
-    await db.insert(organizationIntegrations).values({
-      organizationId: org.id,
-      provider: "api_key",
-      isEnabled: true,
-      credentials: {
-        keyId: publicKeyId,
-        keyHash,
-        name: name || "Default API Key",
-        scopes,
-        createdAt: new Date().toISOString(),
-      },
-    } as any);
-
-    // Return the secret key ONCE — never stored in plaintext
-    res.json({
-      keyId: publicKeyId,
-      secretKey, // ONLY shown once at creation
-      name: name || "Default API Key",
-      scopes,
-      createdAt: new Date().toISOString(),
-      warning: "Store this key securely. It will not be shown again.",
-    });
-  } catch (err: any) {
-    Errors.badRequest(res, err.message ?? "Bad request");
-  }
-});
-
-router.get("/developer/widget-embed/:type", async (req: Request, res: Response) => {
-  try {
-    const { generateWidgetEmbedCode } = await import("./services/developerApiService");
-    const org = req.organization;
-    const validTypes = ["deal_analyzer", "market_heatmap", "property_valuation", "county_score"];
-    const widgetType = req.params.type;
-
-    if (!validTypes.includes(widgetType)) {
-      return Errors.badRequest(res, "Invalid widget type");
-    }
-
-    const embedCode = generateWidgetEmbedCode({
-      widgetType: widgetType as any,
-      publicApiKey: `pub_${org.id}_${Buffer.from(String(org.id)).toString("base64")}`,
-      config: req.query,
-    });
-
-    res.json({ embedCode, widgetType });
-  } catch (err: any) {
-    Errors.internal(res, err);
-  }
-});
 
 export default router;

@@ -296,6 +296,7 @@ export function CustomFieldsManager() {
                     <Label>Options</Label>
                     <div className="flex gap-2">
                       <Input
+                        aria-label="New option value"
                         value={newOption}
                         onChange={(e) => setNewOption(e.target.value)}
                         placeholder="Add option"

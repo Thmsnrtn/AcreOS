@@ -63,7 +63,17 @@ export function useJobHealthLogs() {
     queryKey: ["/api/founder/job-health"],
     queryFn: async () => {
       const res = await fetch("/api/founder/job-health", { credentials: "include" });
-      if (!res.ok) return [];
+      // THROWS, where this used to `return []`. The lie was implemented twice,
+      // independently, on both sides of the wire: the server's catch answered
+      // 200 with an empty array and this hook turned any remaining failure back
+      // into one. Fixing the server alone would have changed nothing on screen,
+      // which is exactly the kind of half-fix that looks complete.
+      //
+      // An empty list from THIS endpoint means "no job has failed", which reads
+      // as "every job is fine". A total scheduler outage and perfect health
+      // rendered the same screen on the console whose only purpose is telling
+      // the founder whether the jobs ran.
+      if (!res.ok) throw new Error(`job-health request failed: ${res.status}`);
       return res.json();
     },
     staleTime: 30_000,

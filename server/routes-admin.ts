@@ -38,6 +38,8 @@ import { addMonths } from "./utils/dateUtils";
 import { Errors } from "./utils/errors";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
+import { sanitizePromptInline } from "./utils/sanitizePrompt";
+import { wrapUntrusted } from "./ai/untrustedEnvelope";
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -3602,8 +3604,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json(result);
     } catch (err: any) {
-      logger.error("Org health error", { message: err.message, name: err.name });
-      res.json([]);
+      // Was `res.json([])`. On a HEALTH console an empty list reads as "no org
+      // is at risk", so a failed read rendered as good news — the same inversion
+      // as /api/founder/job-health, on the surface that decides who gets called.
+      Errors.internal(res, err);
     }
   });
 
@@ -3652,10 +3656,10 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         model: "gpt-4o",
         messages: [{
           role: "system",
-          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for real estate professionals. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${org?.name || 'Unknown'}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
+          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for real estate professionals. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${sanitizePromptInline(org?.name || "Unknown", { source: "org.name" })}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
         }, {
           role: "user",
-          content: `Support ticket: "${ticket.subject}"\n\nConversation:\n${conversation}\n\nWrite a helpful, resolution-focused reply:`,
+          content: `Support ticket: ${sanitizePromptInline(ticket.subject ?? "", { source: "ticket.subject" })}\n\nConversation:\n${wrapUntrusted(conversation, "support-ticket-conversation")}\n\nWrite a helpful, resolution-focused reply:`,
         }],
         temperature: 0.5,
         max_tokens: 400,

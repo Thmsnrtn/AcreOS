@@ -1,23 +1,33 @@
 /**
- * T180 — API Metrics Routes (Founder-only)
+ * T180 — API Metrics Routes
  *
- * Provides operational metrics for monitoring:
- * GET /api/metrics/requests  — recent HTTP request counts by endpoint
- * GET /api/metrics/errors    — recent error counts
- * GET /api/metrics/cache     — cache hit/miss stats
- * GET /api/metrics/summary   — combined summary
- * GET /metrics               — Prometheus text format scrape endpoint
+ * Operational JSON metrics for monitoring. Mounted SESSION-GATED at
+ * /api/metrics (server/routes.ts: `app.use('/api/metrics', isAuthenticated,
+ * metricsRouter)`) — Prometheus does NOT scrape this router. The scrape
+ * endpoint is GET /metrics at the app level, mounted in server/index.ts on
+ * the prom-client handler from server/metrics.ts.
  *
- * Business counters (incremented via exported helpers):
- *   incrementDealsCreated()
- *   incrementCallsMade()
- *   incrementValuationsRequested()
- *   incrementMarketplaceTransactions()
- *   incrementErrors(path, statusCode)
+ * GET /api/metrics/requests — recent HTTP request counts by endpoint
+ * GET /api/metrics/errors   — recent error counts
+ * GET /api/metrics/cache    — cache hit/miss stats
+ * GET /api/metrics/summary  — combined summary
+ * GET /api/metrics          — Prometheus exposition, delegated to the same
+ *                             prom-client handler (session gate here PLUS its
+ *                             own METRICS_TOKEN bearer gate)
+ *
+ * Consolidation 2026-08-16 (founder-approved): an earlier version of this
+ * file claimed it was mounted at the app level where Prometheus could scrape
+ * it (false — it has been session-gated under /api/metrics all along) and
+ * rendered its own hand-rolled Prometheus text from in-file counters, four of
+ * which (deals/calls/valuations/marketplace) had zero incrementer call sites
+ * and could only ever read 0. All exposition now comes from the single
+ * prom-client registry in server/metrics.ts; this file keeps only the
+ * JSON window endpoints and the rolling request buffer that feeds them.
  */
 
 import { Router, type Request, type Response } from "express";
 import { getCacheStats } from "./middleware/responseCache";
+import { metricsHandler } from "./metrics";
 
 const router = Router();
 
@@ -33,88 +43,16 @@ interface RequestMetric {
 const recentRequests: RequestMetric[] = [];
 const MAX_METRICS = 1000;
 
-export function recordRequest(metric: RequestMetric): void {
-  recentRequests.push(metric);
-  if (recentRequests.length > MAX_METRICS) {
-    recentRequests.shift();
-  }
-}
-
-// ─── Prometheus-compatible counters & gauges ──────────────────────────────────
-
-// Business event counters
-let dealsCreatedTotal = 0;
-let callsMadeTotal = 0;
-let valuationsRequestedTotal = 0;
-let marketplaceTransactionsTotal = 0;
-
-// Error counter: map of "path:statusCode" → count
-const errorCounters = new Map<string, number>();
-
-// Active connections gauge (incremented/decremented externally or derived)
-let activeConnectionsGauge = 0;
-
-// HTTP request duration histogram buckets (ms)
-const DURATION_BUCKETS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
-
-// Histogram state: bucket → cumulative count
-const durationBuckets = new Map<number, number>(
-  DURATION_BUCKETS.map((b) => [b, 0])
-);
-let durationSum = 0;
-let durationCount = 0;
-
-/** Record a request duration into the histogram. */
-function observeDuration(ms: number): void {
-  durationSum += ms;
-  durationCount++;
-  for (const bucket of DURATION_BUCKETS) {
-    if (ms <= bucket) {
-      durationBuckets.set(bucket, (durationBuckets.get(bucket) ?? 0) + 1);
-    }
-  }
-}
-
-// ─── Public increment helpers ─────────────────────────────────────────────────
-
-export function incrementDealsCreated(count = 1): void {
-  dealsCreatedTotal += count;
-}
-
-export function incrementCallsMade(count = 1): void {
-  callsMadeTotal += count;
-}
-
-export function incrementValuationsRequested(count = 1): void {
-  valuationsRequestedTotal += count;
-}
-
-export function incrementMarketplaceTransactions(count = 1): void {
-  marketplaceTransactionsTotal += count;
-}
-
-export function incrementErrors(path: string, statusCode: number): void {
-  const key = `${path}:${statusCode}`;
-  errorCounters.set(key, (errorCounters.get(key) ?? 0) + 1);
-}
-
-export function setActiveConnections(count: number): void {
-  activeConnectionsGauge = count;
-}
-
-// ─── Enhanced recordRequest that also feeds Prometheus buckets ────────────────
-
-const _originalRecordRequest = recordRequest;
-
-// Monkey-patch to also update histogram on every request recorded
+/**
+ * Record one finished request into the rolling window that backs the JSON
+ * endpoints below. Called from the request logger in server/routes.ts.
+ * Prometheus counters/histograms are NOT advanced here — metricsMiddleware
+ * (server/metrics.ts) already records every request into the registry.
+ */
 export function recordRequestWithMetrics(metric: RequestMetric): void {
   recentRequests.push(metric);
   if (recentRequests.length > MAX_METRICS) {
     recentRequests.shift();
-  }
-  observeDuration(metric.durationMs);
-  if (metric.statusCode >= 400) {
-    incrementErrors(metric.path, metric.statusCode);
   }
 }
 
@@ -220,137 +158,12 @@ router.get("/summary", (req: Request, res: Response) => {
   });
 });
 
-// ─── Prometheus text format helpers ──────────────────────────────────────────
-
-function promComment(help: string, type: string, name: string): string {
-  return `# HELP ${name} ${help}\n# TYPE ${name} ${type}`;
-}
-
-function promCounter(name: string, value: number, labels: Record<string, string> = {}): string {
-  const labelStr = Object.entries(labels)
-    .map(([k, v]) => `${k}="${v.replace(/"/g, '\\"')}"`)
-    .join(",");
-  const metric = labelStr ? `${name}{${labelStr}}` : name;
-  return `${metric} ${value}`;
-}
-
-function promGauge(name: string, value: number, labels: Record<string, string> = {}): string {
-  return promCounter(name, value, labels);
-}
-
-function buildPrometheusOutput(): string {
-  const lines: string[] = [];
-  const ts = Date.now();
-
-  // ── HTTP request duration histogram ──────────────────────────────────────
-  lines.push(promComment("HTTP request duration in milliseconds", "histogram", "http_request_duration_ms"));
-  let cumulativeCount = 0;
-  for (const bucket of DURATION_BUCKETS) {
-    const count = durationBuckets.get(bucket) ?? 0;
-    cumulativeCount += count;
-    lines.push(`http_request_duration_ms_bucket{le="${bucket}"} ${cumulativeCount}`);
-  }
-  lines.push(`http_request_duration_ms_bucket{le="+Inf"} ${durationCount}`);
-  lines.push(`http_request_duration_ms_sum ${durationSum}`);
-  lines.push(`http_request_duration_ms_count ${durationCount}`);
-  lines.push("");
-
-  // ── Business counters ─────────────────────────────────────────────────────
-  lines.push(promComment("Total number of deals created", "counter", "deals_created_total"));
-  lines.push(promCounter("deals_created_total", dealsCreatedTotal));
-  lines.push("");
-
-  lines.push(promComment("Total number of voice calls made", "counter", "calls_made_total"));
-  lines.push(promCounter("calls_made_total", callsMadeTotal));
-  lines.push("");
-
-  lines.push(promComment("Total number of AVM valuations requested", "counter", "valuations_requested_total"));
-  lines.push(promCounter("valuations_requested_total", valuationsRequestedTotal));
-  lines.push("");
-
-  lines.push(promComment("Total number of marketplace transactions", "counter", "marketplace_transactions_total"));
-  lines.push(promCounter("marketplace_transactions_total", marketplaceTransactionsTotal));
-  lines.push("");
-
-  // ── Active connections gauge ──────────────────────────────────────────────
-  lines.push(promComment("Number of currently active HTTP connections", "gauge", "active_connections"));
-  lines.push(promGauge("active_connections", activeConnectionsGauge));
-  lines.push("");
-
-  // ── Error rate counters ───────────────────────────────────────────────────
-  lines.push(promComment("Total HTTP errors by path and status code", "counter", "http_errors_total"));
-  for (const [key, count] of errorCounters.entries()) {
-    const colonIdx = key.lastIndexOf(":");
-    const path = key.substring(0, colonIdx);
-    const status = key.substring(colonIdx + 1);
-    lines.push(promCounter("http_errors_total", count, { path, status_code: status }));
-  }
-  lines.push("");
-
-  // ── Process metrics ───────────────────────────────────────────────────────
-  const mem = process.memoryUsage();
-  lines.push(promComment("Process heap used in bytes", "gauge", "process_heap_used_bytes"));
-  lines.push(promGauge("process_heap_used_bytes", mem.heapUsed));
-  lines.push("");
-
-  lines.push(promComment("Process heap total in bytes", "gauge", "process_heap_total_bytes"));
-  lines.push(promGauge("process_heap_total_bytes", mem.heapTotal));
-  lines.push("");
-
-  lines.push(promComment("Process RSS memory in bytes", "gauge", "process_rss_bytes"));
-  lines.push(promGauge("process_rss_bytes", mem.rss));
-  lines.push("");
-
-  lines.push(promComment("Process uptime in seconds", "counter", "process_uptime_seconds"));
-  lines.push(promCounter("process_uptime_seconds", Math.floor(process.uptime())));
-  lines.push("");
-
-  // ── Cache metrics ─────────────────────────────────────────────────────────
-  const cacheStats = getCacheStats();
-  lines.push(promComment("Response cache current size", "gauge", "response_cache_size"));
-  lines.push(promGauge("response_cache_size", cacheStats.size));
-  lines.push("");
-
-  lines.push(promComment("Response cache max capacity", "gauge", "response_cache_max_size"));
-  lines.push(promGauge("response_cache_max_size", cacheStats.maxSize));
-  lines.push("");
-
-  // ── Recent request window metrics ─────────────────────────────────────────
-  const last5min = getWindowedMetrics(5 * 60 * 1000);
-  lines.push(promComment("HTTP requests in last 5 minutes", "gauge", "http_requests_last5m"));
-  lines.push(promGauge("http_requests_last5m", last5min.length));
-  lines.push("");
-
-  const errorCount5m = last5min.filter(r => r.statusCode >= 400).length;
-  lines.push(promComment("HTTP errors in last 5 minutes", "gauge", "http_errors_last5m"));
-  lines.push(promGauge("http_errors_last5m", errorCount5m));
-  lines.push("");
-
-  return lines.join("\n");
-}
-
-// ─── GET /metrics — Prometheus scrape endpoint ────────────────────────────────
-// Mount this at the app level (not under /api prefix) so Prometheus can reach it.
-// Usage in app: app.use(metricsRouter) — exposes GET /metrics
-//
-// F-A05-2: Require Bearer token matching METRICS_TOKEN env var.
-// Without METRICS_TOKEN set the endpoint is disabled (503) to prevent
-// accidental exposure in misconfigured deployments.
-router.get("/", (req: Request, res: Response) => {
-  const metricsToken = process.env.METRICS_TOKEN;
-  if (!metricsToken) {
-    return res.status(503).json({ error: "Metrics endpoint not configured" });
-  }
-
-  const authHeader = req.headers["authorization"] || "";
-  const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (provided !== metricsToken) {
-    res.set("WWW-Authenticate", 'Bearer realm="AcreOS Metrics"');
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-  res.send(buildPrometheusOutput());
-});
+// ─── GET /api/metrics — Prometheus exposition (delegated) ────────────────────
+// Same prom-client handler as the canonical GET /metrics scrape endpoint —
+// single owner of the registry, the exposition format, and the METRICS_TOKEN
+// bearer gate (F-A05-2: without METRICS_TOKEN it fails closed in production).
+// Reaching it here additionally requires a session because the whole router
+// is mounted behind isAuthenticated.
+router.get("/", metricsHandler);
 
 export default router;

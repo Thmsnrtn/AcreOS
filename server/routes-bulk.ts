@@ -12,6 +12,7 @@
 
 import { Router, type Response } from "express";
 import { attachPermissionContext } from "./utils/permissions";
+import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
 import { db } from "./db";
 import { leads, properties, deals, tasks } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -52,6 +53,11 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
     if (context?.permissions.viewOnlyAssignedLeads) {
       return Errors.forbidden(res, "Bulk lead updates are not available with assigned-only access");
     }
+
+    // `canAssignLeads` is declared for every role and was consulted nowhere.
+    // Gated by FIELD: a bulk status change is ordinary member work, and only
+    // the assignee touch needs the permission.
+    if (refuseUnpermittedAssignment(req, res, updates, "Bulk lead assignment")) return;
 
     const allowedUpdates: Record<string, unknown> = {};
     if (updates.status) allowedUpdates.status = updates.status;

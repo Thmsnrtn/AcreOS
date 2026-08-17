@@ -10,11 +10,11 @@ import { serveStatic } from "./static";
 import { registerWellKnownRoutes } from "./routes-well-known";
 import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
-import { recordStripeWebhookFailure } from "./metrics";
+import { recordStripeWebhookFailure, metricsHandler } from "./metrics";
 import { notifyOnCall } from "./services/oncall";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
-import { metricsMiddleware, metricsHandler } from "./middleware/metrics";
+import { metricsMiddleware } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
 import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
@@ -349,10 +349,17 @@ const authAttemptLimiter = rateLimit({
   message: { message: "Too many sign-in attempts. Please try again later." },
 });
 
+// `/api/auth` IS live and this limiter is load-bearing: /api/auth/user,
+// /api/auth/logout, /api/auth/organizations, /api/auth/switch-organization and
+// /api/auth/signup-signals all have handlers under it.
 app.use("/api/auth", authLimiter);
 // (Legacy /api/auth/google + /api/auth/microsoft rate-limiters removed with
 // the standalone social-login OAuth — Clerk owns login/OAuth now.)
-app.use("/api/login", authAttemptLimiter);
+//
+// `app.use("/api/login", authAttemptLimiter)` removed 2026-08-13 for the same
+// reason as those two, one line later than it should have been: /api/login has
+// no handler. Clerk owns login, so there is no first-party credential attempt
+// to limit here — the mount read as protection over nothing.
 
 // ── Phase 0 traffic-readiness — dual-lane CGNAT-safe limiters ───────────────
 // On top of the broad authLimiter/authAttemptLimiter above (which protect the
@@ -362,19 +369,27 @@ app.use("/api/login", authAttemptLimiter);
 // memory rule in feedback_rate_limit_ip_keying.md — 100 phones behind one
 // carrier NAT must remain in good standing for normal traffic, but burst
 // abuse from a single email or a single /24 trips quickly.
-import {
-  loginLimiter,
-  passwordResetLimiter,
-  emailVerifyLimiter,
-} from "./middleware/authPathLimits";
-// Login: 5 failures / email / 15min (hard); IP-bucket secondary is soft.
-app.use("/api/login", loginLimiter);
-// Password reset endpoints — email-only lane, ZERO ip-only blocks.
-app.use("/api/auth/password-reset", passwordResetLimiter);
-app.use("/api/auth/forgot-password", passwordResetLimiter);
-// Email verification re-send.
-app.use("/api/auth/resend-verification", emailVerifyLimiter);
-app.use("/api/auth/verify-email", emailVerifyLimiter);
+// ── Credential-path limiters: ALL FOUR WERE DEAD-MOUNTED ────────────────────
+//
+// `/api/login`, `/api/auth/password-reset`, `/api/auth/forgot-password`,
+// `/api/auth/resend-verification` and `/api/auth/verify-email` have NO HANDLER
+// in this codebase. Authentication is Clerk: sign-in, password reset and email
+// verification all happen on Clerk's infrastructure, and AcreOS never sees a
+// credential. Every one of these limiters was rate-limiting a 404, while
+// reading — to anyone auditing this file — as though the credential paths were
+// hardened.
+//
+// THIS EXACT FIX WAS ALREADY MADE HERE ONCE, twenty lines below, for
+// `/api/register` on 2026-06-02: *"those middleware were dead-mounted (correct
+// logic, never invoked)"*, and the real protection moved into
+// `getOrCreateOrg.provisionUser`, the actual chokepoint for "new user about to
+// be provisioned". The note stayed; the same reasoning was never applied to the
+// other four mounts. Removed 2026-08-13.
+//
+// The limiters themselves REMAIN in middleware/authPathLimits.ts with their
+// tests: they are correct, they are the right shape for these lanes, and they
+// are what a future first-party credential path would mount. Deleting a working
+// limiter because nothing currently needs it would be the opposite mistake.
 
 // ── Signup hardening — NOTE on /api/register ────────────────────────────────
 // The previous dispatch mounted three middleware on /api/register:
@@ -660,7 +675,9 @@ app.use("/mcp", mcpLimiter);
   // the SPA shell. Registered before serveStatic.
   registerWellKnownRoutes(app);
 
-  // Prometheus scrape endpoint — serves collected metrics in text exposition format
+  // Prometheus scrape endpoint — the prom-client exporter from server/metrics.ts
+  // (single registry, valid text exposition, bearer-gated on the documented
+  // METRICS_TOKEN env var; fails closed in production when unset).
   app.get("/metrics", metricsHandler);
 
   // Initialize distributed tracing before routes so Express instrumentation captures all routes

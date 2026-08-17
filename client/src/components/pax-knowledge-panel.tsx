@@ -207,6 +207,7 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
                 </div>
               </div>
               <Textarea
+                aria-label={`Description for ${file.name ?? "file"}`}
                 defaultValue={file.description ?? ""}
                 placeholder="Add a description…"
                 className="text-caption min-h-[40px] resize-none"

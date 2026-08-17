@@ -25,6 +25,7 @@ import {
 import { format } from "date-fns";
 import { relative } from "@/lib/format";
 import { useJobHealthLogs } from "@/hooks/use-sovereign-dashboard";
+import { QueryErrorState } from "@/components/query-error-state";
 
 const STATUS_LABEL: Record<string, string> = {
   success: "Success",
@@ -57,7 +58,8 @@ export default function JobHealth() {
   const [searchFilter, setSearchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [pendingJobTrigger, setPendingJobTrigger] = useState<string | null>(null);
-  const { data: jobs = [], isLoading } = useJobHealthLogs();
+  const { data: jobs = [], isLoading, isError, error, refetch, isFetching } =
+    useJobHealthLogs();
   const queryClient = useQueryClient();
 
   const triggerJobMutation = useMutation({
@@ -101,6 +103,28 @@ export default function JobHealth() {
     }
   }
   const uniqueJobs = Array.from(latestByJob.values()).sort((a, b) => a.jobName.localeCompare(b.jobName));
+
+  // An ERROR STATE, which this page did not have — because it could not: the
+  // server's catch answered 200 with an empty array and the hook turned any
+  // remaining failure back into one, so `isError` was never true. On THIS page
+  // that mattered more than anywhere else: an empty list reads as "no job has
+  // failed", so a total scheduler or database outage rendered the same screen as
+  // perfect health, on the console whose only purpose is telling the founder
+  // whether the jobs ran.
+  if (isError) {
+    return (
+      <PageShell>
+        <QueryErrorState
+          error={error instanceof Error ? error : new Error(String(error))}
+          onRetry={() => void refetch()}
+          isRetrying={isFetching}
+          title="Couldn't load job health"
+          description="The job-run history could not be read. This is NOT the same as no jobs having run — nothing is known right now."
+          testId="job-health-error"
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell isLoading={isLoading}>

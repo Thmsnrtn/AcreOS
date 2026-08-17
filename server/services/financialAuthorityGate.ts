@@ -83,6 +83,17 @@ async function getApprovalTtlHours(): Promise<number> {
 
 // ─── Tier Definitions ────────────────────────────────────────────────────────
 
+/**
+ * The >$500 constitutional hard stop, as ONE number.
+ *
+ * Tier 1's ceiling below IS this constant rather than a repeated `50_000`, so
+ * the boundary the rule is stated in and the boundary the table enforces cannot
+ * drift apart. spendHardStop.test.ts imports it for the same reason: a test
+ * that retypes the literal agrees with a drifted table instead of catching it.
+ */
+export const AUTONOMOUS_SPEND_CEILING_CENTS = 50_000; // $500
+
+
 interface SpendingTier {
   tier: number;
   minCents: number;
@@ -95,11 +106,11 @@ interface SpendingTier {
   founderApprovalRequired: boolean;
 }
 
-const SPENDING_TIERS: SpendingTier[] = [
+const SPENDING_TIERS: readonly SpendingTier[] = [
   {
     tier: 1,
     minCents: 0,
-    maxCents: 50_000,          // $500
+    maxCents: AUTONOMOUS_SPEND_CEILING_CENTS, // $500
     minTrust: 70,
     requiredApprovers: 1,
     approverRoles: ["self"],
@@ -109,7 +120,7 @@ const SPENDING_TIERS: SpendingTier[] = [
   },
   {
     tier: 2,
-    minCents: 50_000,
+    minCents: AUTONOMOUS_SPEND_CEILING_CENTS,
     maxCents: 250_000,         // $2,500
     minTrust: 80,
     requiredApprovers: 2,
@@ -157,8 +168,39 @@ const SPENDING_TIERS: SpendingTier[] = [
 ];
 
 /**
- * Resolve the tier for an amount (public mirror of the service's private
- * getTier — kept in sync). Anything beyond all tiers falls to the last.
+ * THE tier resolver. Anything beyond all tiers falls to the last (which
+ * requires founder approval), so an amount can never fall out of the table
+ * into autonomy.
+ *
+ * This was described in its own comment as a "public mirror of the service's
+ * private getTier — kept in sync", and that phrasing WAS the defect. The
+ * private `getTier` is what the live path called (requestSpend → getTier →
+ * tier.founderApprovalRequired, reached from
+ * autonomousDecisionExecutor.ts:1010); this function was a second, byte-
+ * equivalent copy whose only consumer was `spendIsAutonomous`, whose only
+ * consumer was spendHardStop.test.ts. So the regression test that exists to
+ * "lock the hard stop against drift" was pinning a function no production path
+ * could reach.
+ *
+ * That was not theoretical. Mutation-tested before the fix: adding a single
+ * early return to `getTier` so $0–$2,500 resolved to the autonomous Tier 1 —
+ * i.e. restoring the exact autonomous $500–$50K regression this hard stop
+ * exists to prevent — left spendHardStop.test.ts passing 2/2.
+ *
+ * The private method is now DELETED and its one call site resolves here. Not
+ * "delegates to" — deleted, because a delegating wrapper is still a place a
+ * drift can be written, and this file's whole lesson is that a second copy
+ * costs nothing until the day it costs everything.
+ *
+ * Deliberately NOT exported. The test pins the hard stop through
+ * `spendIsAutonomous` and through this file's source shape, so exporting the
+ * resolver would only add a symbol with no consumer outside this module — the
+ * "exists only for its test" shape that produced the original mirror.
+ *
+ * Found because the reachability gate could NOT see it: shared/governance/
+ * constitution.ts names `spendIsAutonomous()` in the prose of the very entry
+ * that records this hard stop, and that linter counts a name in a comment as a
+ * use. The registry describing the enforcement is what concealed its absence.
  */
 function tierForAmount(amountCents: number): SpendingTier {
   return (
@@ -171,7 +213,8 @@ function tierForAmount(amountCents: number): SpendingTier {
  * True when a spend of this many cents may be granted WITHOUT founder
  * approval. Per the >$500 constitutional hard stop (CLAUDE.md), ONLY Tier 1
  * ($0–$500) is autonomous — every larger spend routes to the founder.
- * Exported so the regression test can lock the hard stop against drift.
+ * Exported so the regression test can lock the hard stop against drift; it now
+ * resolves through the same function the live path does.
  */
 export function spendIsAutonomous(amountCents: number): boolean {
   return !tierForAmount(amountCents).founderApprovalRequired;
@@ -191,20 +234,6 @@ const DEFAULT_BUDGET_CENTS = 50_000; // $500 for any agent not explicitly listed
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class FinancialAuthorityGateService {
-
-  /**
-   * Determine which spending tier an amount falls into.
-   */
-  private getTier(amountCents: number): SpendingTier {
-    const tier = SPENDING_TIERS.find(
-      (t) => amountCents >= t.minCents && amountCents < t.maxCents,
-    );
-    if (!tier) {
-      // Fallback: anything beyond all tiers requires founder approval
-      return SPENDING_TIERS[SPENDING_TIERS.length - 1];
-    }
-    return tier;
-  }
 
   /**
    * Fetch an agent row by codename, returning null if not found.
@@ -257,7 +286,10 @@ class FinancialAuthorityGateService {
       };
     }
 
-    let tier = this.getTier(amountCents);
+    // Resolved through the module-level tierForAmount — the ONE tier resolver.
+    // A private copy used to live here; see tierForAmount's header for what
+    // that cost and why spendHardStop.test.ts could not see it.
+    let tier = tierForAmount(amountCents);
 
     // ── Anomaly → tier escalation ──
     // A spend that's more than 2σ off the agent's historical pattern

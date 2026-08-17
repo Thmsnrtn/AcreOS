@@ -40,6 +40,7 @@ import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
+import { OutcomePrompt } from "@/components/today/OutcomePrompt";
 import { getTodayLayout } from "@/components/today/TodayLayout";
 import "./today.css";
 
@@ -802,6 +803,18 @@ export default function TodayPage() {
           pipeline, derived free from county records. Owns its own query
           + mark-read; behind the Today door per the five-doors rule. */}
       {!showEmptyState && !todayError && <ParcelAlerts />}
+
+      {/* ── Section 4b: What happened? (the canonical loop's last end) ── */}
+      {/* Decisions that reached the date the operator said they'd know by,
+          and have no resolved outcome. This is the ASKING half of the
+          learning loop: everything below it worked and nothing ever
+          requested an outcome, so the record filled only with the deals
+          people happened to remember — which are the extreme ones, and a
+          calibration built on them measures memory rather than judgement.
+          Owns its own query + record mutation. Behind the Today door per
+          the five-doors rule; Today is the ATTENTION door and this is an
+          attention item, so it is a card and not a sixth entry. */}
+      {!showEmptyState && !todayError && <OutcomePrompt />}
 
       {/* ── Referral nudge (Tier 2C) ─────────────────────────────────── */}
       {/* Post-first-value only (hasAnyData) and permanently dismissible.

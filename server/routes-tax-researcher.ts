@@ -58,13 +58,22 @@ import {
 } from "./services/wonBidToCertificate";
 import { getStateRuleCoverage, UNREVIEWED_RULE_CAVEAT } from "./services/taxRuleCoverage";
 import { emitCertAcquired } from "./services/certificateEvents";
+import { isCalendarDate } from "@shared/dates/calendar";
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
   splitBps: z.number().int().min(0).max(10_000),
 }));
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+/**
+ * YYYY-MM-DD, and a date that exists. The regex is a SHAPE test — `2026-02-30`
+ * matches it — and this feeds `auctionDate` on tax lien/deed auctions, where a
+ * date silently rolled forward two days is a courthouse appointment nobody has.
+ */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
+  .refine((v) => isCalendarDate(v), "That date does not exist");
 
 // ============================================================================
 // AUCTION + LOT-LIST INSERT PATHS (Wave D)

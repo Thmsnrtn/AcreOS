@@ -318,8 +318,8 @@ export default function RehabDetailPage() {
               </Select>
             </div>
             <div className="w-32">
-              <Label className="text-xs">Sqft</Label>
-              <Input type="number" value={templateSqft} onChange={(e) => setTemplateSqft(e.target.value)} className="h-9" />
+              <Label className="text-xs" htmlFor="rehab-template-sqft">Sqft</Label>
+              <Input id="rehab-template-sqft" type="number" value={templateSqft} onChange={(e) => setTemplateSqft(e.target.value)} className="h-9" />
             </div>
             <Button disabled={!templateKey || seedTemplate.isPending} onClick={() => seedTemplate.mutate()}>
               Apply template
@@ -384,18 +384,21 @@ export default function RehabDetailPage() {
                     <td className="px-2 py-1">{it.scope}</td>
                     <td className="px-2 py-1 text-right">
                       <CellInput
+                        label={`Budget for ${it.scope}`}
                         defaultValue={(it.budgetCents / 100).toFixed(0)}
                         onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { budgetCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                       />
                     </td>
                     <td className="px-2 py-1 text-right">
                       <CellInput
+                        label={`Committed for ${it.scope}`}
                         defaultValue={(it.committedCents / 100).toFixed(0)}
                         onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { committedCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                       />
                     </td>
                     <td className="px-2 py-1 text-right">
                       <CellInput
+                        label={`Spent on ${it.scope}`}
                         defaultValue={(it.spentCents / 100).toFixed(0)}
                         onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { spentCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                       />
@@ -421,9 +424,9 @@ export default function RehabDetailPage() {
                     </SelectContent>
                   </Select>
                 </td>
-                <td className="px-2 py-2"><Input value={newScope} onChange={(e) => setNewScope(e.target.value)} placeholder="Scope description…" className="h-8" /></td>
+                <td className="px-2 py-2"><Input aria-label="New line item scope" value={newScope} onChange={(e) => setNewScope(e.target.value)} placeholder="Scope description…" className="h-8" /></td>
                 <td className="px-2 py-2 text-right">
-                  <Input type="number" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} placeholder="0" className="h-8 text-right" />
+                  <Input aria-label="New line item budget" type="number" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} placeholder="0" className="h-8 text-right" />
                 </td>
                 <td colSpan={4}></td>
                 <td className="px-2 py-2 text-right">
@@ -452,10 +455,24 @@ export default function RehabDetailPage() {
   );
 }
 
-function CellInput({ defaultValue, onCommit }: { defaultValue: string; onCommit: (v: string) => void }) {
+function CellInput({
+  defaultValue,
+  onCommit,
+  label,
+}: {
+  defaultValue: string;
+  onCommit: (v: string) => void;
+  /**
+   * Required, not optional. A bare number in a table cell is the case where an
+   * accessible name matters most — "1,250" announced with no context tells a
+   * screen-reader user nothing about which line item or which column it is.
+   */
+  label: string;
+}) {
   const [val, setVal] = useState(defaultValue);
   return (
     <Input
+      aria-label={label}
       type="number"
       value={val}
       onChange={(e) => setVal(e.target.value)}

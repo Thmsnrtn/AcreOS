@@ -2,8 +2,12 @@
  * server/utils/injectionRateLimiter.ts — Phase 4 Week 21-22 (Sayuri §2.3 hardening).
  *
  * Per-user rate limiter for prompt-injection attempts. Each call into
- * `recordAttemptIfDetected` runs the input through the same INJECTION_PHRASES
- * /MARKERS regex set used by sanitizePrompt. If any pattern matches, we:
+ * `recordAttemptIfDetected` runs the input through the same deny-list
+ * `sanitizePrompt` redacts with — literally the same arrays, via
+ * `detectInjectionPatterns()`, since unit 111. This sentence used to say "the
+ * same regex set" while the file held a hand-copied SUBSET of it, which meant
+ * the count below systematically missed attacks the sanitizer caught. If any
+ * pattern matches, we:
  *
  *   1. Insert a row into ai_injection_attempts.
  *   2. Count the user's attempts in the last 1h.
@@ -28,34 +32,14 @@
  */
 
 import { logger } from "./logger";
+import { detectInjectionPatterns } from "./sanitizePrompt";
 
-// Same patterns as sanitizePrompt — we re-check here because callers may
-// pass raw user text (not yet sanitized) to the limiter.
-const INJECTION_MARKERS: RegExp[] = [
-  /<<\s*SYS\s*>>/gi,
-  /\[\s*INST\s*\]/gi,
-  /<\|\s*im_start\s*\|>/gi,
-  /<\|\s*im_end\s*\|>/gi,
-  /<\|\s*system\s*\|>/gi,
-  /<\|\s*assistant\s*\|>/gi,
-  /<\|\s*user\s*\|>/gi,
-  /<\s*system\s*>/gi,
-  /<\/\s*system\s*>/gi,
-];
-
-const INJECTION_PHRASES: RegExp[] = [
-  /ignore\s+(?:all\s+)?(?:previous|prior|above|earlier|the\s+above)\s+(?:instructions?|prompts?|context|directions?|rules?)/gi,
-  /disregard\s+(?:all\s+)?(?:previous|prior|above|earlier|the\s+above)\s+(?:instructions?|prompts?|context|rules?)/gi,
-  /forget\s+(?:all\s+)?(?:previous|prior|above|earlier)\s+(?:instructions?|prompts?|context|rules?)/gi,
-  /override\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?|rules?)/gi,
-  /(?:repeat|print|reveal|show|output|dump|leak)\s+(?:me\s+)?(?:your\s+)?(?:system|hidden|secret|initial)\s+(?:prompt|instructions?|context|message)/gi,
-  /you\s+are\s+now\s+(?:a\s+)?(?:dan|jailbreak|evil|uncensored|unlimited|unrestricted)/gi,
-  /pretend\s+(?:you\s+are|to\s+be)\s+(?:a\s+)?(?:dan|jailbreak|evil|uncensored)/gi,
-  /act\s+as\s+(?:if\s+you\s+are\s+)?(?:a\s+)?(?:dan|jailbreak|evil|uncensored|an?\s+ai\s+with\s+no)/gi,
-  /do\s+anything\s+now/gi,
-  /developer\s+mode\s+(?:enabled|on|activated)/gi,
-];
-
+// PATTERNS COME FROM THE ONE OWNER. This block used to hold a hand-copied
+// subset of server/utils/sanitizePrompt.ts's arrays — 9 markers where there were
+// 15, 10 phrases where there were 20 — beneath a header claiming it ran "the
+// same INJECTION_PHRASES/MARKERS regex set used by sanitizePrompt" (unit 111).
+// It did not, so probes the sanitizer redacted never reached this counter and
+// the founder-visible attempt count was a systematic undercount.
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_THRESHOLD = 3;
 
@@ -63,17 +47,9 @@ const DEFAULT_THRESHOLD = 3;
 // us short-circuit on hot paths without a DB round-trip.
 const counterByUser = new Map<string, number[]>();
 
+/** Delegates: one deny-list, so detection and redaction cannot disagree. */
 function detectPatterns(input: string): string[] {
-  const matched: string[] = [];
-  for (const re of INJECTION_MARKERS) {
-    if (re.test(input)) matched.push(re.source);
-    re.lastIndex = 0;
-  }
-  for (const re of INJECTION_PHRASES) {
-    if (re.test(input)) matched.push(re.source);
-    re.lastIndex = 0;
-  }
-  return matched;
+  return detectInjectionPatterns(input);
 }
 
 function pruneAndCount(userId: string, now: number): number {

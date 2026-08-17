@@ -12,7 +12,12 @@ interface VerifiedAddress {
   state: string;
   zip: string;
   zip4?: string;
-  deliverable: boolean;
+  /** "unknown" when no verification ran — never a guessed boolean */
+  deliverable: boolean | "unknown";
+  /** true only when USPS actually answered for this address */
+  verified: boolean;
+  /** set on unverified results: why verification did not happen */
+  verificationSkipped?: "usps_not_configured" | "usps_unavailable";
   corrected: boolean;
   raw: string;
 }
@@ -37,14 +42,16 @@ export async function verifyAddress(input: AddressInput): Promise<VerifiedAddres
     return verifyViaUSPS(input, uspsKey);
   }
 
-  // Fallback: normalize capitalization and return as-is
+  // Fallback: normalize capitalization only — deliverability is NOT known here
   return {
     address1: input.address1.toUpperCase(),
     address2: input.address2?.toUpperCase(),
     city: toTitleCase(input.city),
     state: input.state.toUpperCase(),
     zip: input.zip || "",
-    deliverable: true,
+    deliverable: "unknown",
+    verified: false,
+    verificationSkipped: "usps_not_configured",
     corrected: false,
     raw: [input.address1, input.city, input.state, input.zip].filter(Boolean).join(", "),
   };
@@ -68,12 +75,14 @@ async function verifyViaUSPS(input: AddressInput, userId: string): Promise<Verif
 
     const error = get("Error") || get("Description");
     if (error && error.toLowerCase().includes("not found")) {
+      // USPS answered: the address does not exist — a verified negative
       return {
         address1: input.address1,
         city: input.city,
         state: input.state,
         zip: input.zip || "",
         deliverable: false,
+        verified: true,
         corrected: false,
         raw: [input.address1, input.city, input.state, input.zip].filter(Boolean).join(", "),
       };
@@ -87,6 +96,7 @@ async function verifyViaUSPS(input: AddressInput, userId: string): Promise<Verif
       zip: get("Zip5") || input.zip || "",
       zip4: get("Zip4") || undefined,
       deliverable: true,
+      verified: true,
       corrected: true,
       raw: "",
     };
@@ -94,12 +104,15 @@ async function verifyViaUSPS(input: AddressInput, userId: string): Promise<Verif
     return verified;
   } catch (err) {
     logger.warn("[AddressVerification] USPS API failed", { metadata: { detail: err } });
+    // USPS unreachable: deliverability cannot be asserted either way
     return {
       address1: input.address1,
       city: input.city,
       state: input.state,
       zip: input.zip || "",
-      deliverable: true,
+      deliverable: "unknown",
+      verified: false,
+      verificationSkipped: "usps_unavailable",
       corrected: false,
       raw: [input.address1, input.city, input.state, input.zip].filter(Boolean).join(", "),
     };

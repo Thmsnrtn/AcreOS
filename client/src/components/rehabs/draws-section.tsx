@@ -183,6 +183,7 @@ export function DrawsSection({ rehabId }: { rehabId: string }) {
                     </td>
                     <td className="px-2 py-1">
                       <Input
+                        aria-label={`Inspection date for draw ${d.sequence ?? d.id}`}
                         type="date"
                         defaultValue={d.inspectionAt ?? ""}
                         onBlur={(e) => updateDraw.mutate({ drawId: d.id, updates: { inspectionAt: e.target.value || null } as any })}
@@ -191,6 +192,7 @@ export function DrawsSection({ rehabId }: { rehabId: string }) {
                     </td>
                     <td className="px-2 py-1">
                       <Input
+                        aria-label={`Funded date for draw ${d.sequence ?? d.id}`}
                         type="date"
                         defaultValue={d.fundedAt ?? ""}
                         onBlur={(e) => updateDraw.mutate({ drawId: d.id, updates: { fundedAt: e.target.value || null } as any })}
@@ -199,6 +201,7 @@ export function DrawsSection({ rehabId }: { rehabId: string }) {
                     </td>
                     <td className="px-2 py-1">
                       <Input
+                        aria-label={`Inspector for draw ${d.sequence ?? d.id}`}
                         defaultValue={d.inspectorName ?? ""}
                         onBlur={(e) => updateDraw.mutate({ drawId: d.id, updates: { inspectorName: e.target.value || null } as any })}
                         className="h-7 text-xs"

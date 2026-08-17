@@ -10,6 +10,8 @@ import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, 
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { recordParcelObservations } from "./services/data-cache/observation-log";
 import { Errors } from "./utils/errors";
+// A declared permission that nothing enforces is not a permission.
+import { requirePermission } from "./utils/permissions";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { listPropertiesContract } from "@shared/contracts";
@@ -19,6 +21,7 @@ import { compsGuard } from "./middleware/expensiveEndpointGuard";
 // emitted property.created / property.status_changed. Both emitters are
 // fire-and-forget and no-op unless the pipeline status genuinely changed.
 import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/propertyEvents";
+import { readIntegrationCredentials } from "./services/integrationCredentials";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
@@ -252,7 +255,7 @@ export function registerPropertyRoutes(app: Express): void {
   );
 
   // export — registered BEFORE /api/properties/:id so the literal path wins (2026-07-11 route-order sweep).
-  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportPropertiesToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];
@@ -548,7 +551,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
 
-  api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteProperties"), async (req, res) => {
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
@@ -585,7 +588,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteProperties"), async (req, res) => {
     try {
       const org = req.organization;
       const parsed = bulkIdsSchema.safeParse(req.body);
@@ -669,7 +672,7 @@ export function registerPropertyRoutes(app: Express): void {
   });
   
   
-  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const file = req.file;
@@ -716,7 +719,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const file = req.file;
       
@@ -780,7 +783,20 @@ export function registerPropertyRoutes(app: Express): void {
 
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
-      const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
+      // Whether the org pays for this lookup itself. This asked only whether an
+      // ENVELOPE existed, so an org whose Regrid key was set through the BYOK
+      // panel in Settings — which stored it in the clear — was charged ten cents
+      // a query for lookups their own key was meant to cover, while comps.ts
+      // could not see that key either and ran the query on the platform's.
+      // Resolved the same way the query itself resolves it, so the gate and the
+      // use cannot disagree.
+      const usingOrgRegridCredentials =
+        regridIntegration?.isEnabled &&
+        !!readIntegrationCredentials<{ apiKey?: string }>(
+          regridIntegration,
+          org.id,
+          'regrid credit check',
+        )?.apiKey;
 
       if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
@@ -876,7 +892,20 @@ export function registerPropertyRoutes(app: Express): void {
 
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
-      const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
+      // Whether the org pays for this lookup itself. This asked only whether an
+      // ENVELOPE existed, so an org whose Regrid key was set through the BYOK
+      // panel in Settings — which stored it in the clear — was charged ten cents
+      // a query for lookups their own key was meant to cover, while comps.ts
+      // could not see that key either and ran the query on the platform's.
+      // Resolved the same way the query itself resolves it, so the gate and the
+      // use cannot disagree.
+      const usingOrgRegridCredentials =
+        regridIntegration?.isEnabled &&
+        !!readIntegrationCredentials<{ apiKey?: string }>(
+          regridIntegration,
+          org.id,
+          'regrid credit check',
+        )?.apiKey;
 
       if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials

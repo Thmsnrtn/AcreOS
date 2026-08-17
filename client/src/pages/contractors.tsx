@@ -133,17 +133,17 @@ export default function ContractorsPage() {
             <CardDescription>Tax ID is required to issue a 1099-NEC. Add now or fill in later before tax-time.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div><Label className="text-xs">Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Business name</Label><Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="h-9" placeholder="Marcus Construction LLC" /></div>
-            <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="contractor-name">Name *</Label><Input id="contractor-name" value={name} onChange={(e) => setName(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="contractor-business-name">Business name</Label><Input id="contractor-business-name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="h-9" placeholder="Marcus Construction LLC" /></div>
+            <div><Label className="text-xs" htmlFor="contractor-email">Email</Label><Input id="contractor-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="contractor-phone">Phone</Label><Input id="contractor-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" /></div>
             <div><Label className="text-xs">Tax ID type</Label>
               <select className="h-9 border rounded px-2 w-full" value={taxIdType} onChange={(e) => setTaxIdType(e.target.value as any)}>
                 <option value="ein">EIN</option>
                 <option value="ssn">SSN</option>
               </select>
             </div>
-            <div><Label className="text-xs">Tax ID</Label><Input value={taxId} onChange={(e) => setTaxId(e.target.value)} className="h-9" placeholder="XX-XXXXXXX" /></div>
+            <div><Label className="text-xs" htmlFor="contractor-tax-id">Tax ID</Label><Input id="contractor-tax-id" value={taxId} onChange={(e) => setTaxId(e.target.value)} className="h-9" placeholder="XX-XXXXXXX" /></div>
             <div className="col-span-full">
               <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Add contractor</Button>
             </div>

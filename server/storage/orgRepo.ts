@@ -50,7 +50,7 @@ export const orgRepo = {
     // Fire-and-forget: start Sophie's 30-day onboarding journey for
     // real (non-simulated) orgs. Sim orgs opt out to keep test state
     // clean.
-    if (newOrg && !(org as any)?.settings?.simulationMode) {
+    if (newOrg && !org?.settings?.simulationMode) {
       import("../services/onboardingAutonomy")
         .then(({ startJourney }) => startJourney(newOrg.id))
         .catch((err) =>

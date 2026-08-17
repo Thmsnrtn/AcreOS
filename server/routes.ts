@@ -18,7 +18,6 @@ import acquisitionRadarRouter from "./routes-acquisition-radar";
 import customerLetterRouter from "./routes-customer-letter";
 import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
 import avmRouter from "./routes-avm";
-import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
 // Deal Hunter retired 2026-06-08 — sourcing role lives in /deals/discover (dealFeedEngine).
 // Academy retired 2026-06-08 — education + AI tutor module removed.
@@ -39,7 +38,6 @@ import todayRouter from "./routes-today";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
 // Voice AI deleted 2026-08-01 (deletion-ledger row: Voice / AI voice, founder-authorized drop).
-import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
 import notificationsRouter from "./routes-notifications";
 import marketWatchlistRouter from "./routes-market-watchlist";
@@ -79,6 +77,8 @@ import territoriesRouter from "./routes-territories";
 import zoningRouter from "./routes-zoning";
 import titleSearchRouter from "./routes-title-search";
 import propertyEnrichmentRouter from "./routes-property-enrichment";
+import decisionsRouter from "./routes-decisions";
+import scenariosRouter from "./routes-scenarios";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
@@ -132,7 +132,7 @@ import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
 import { correlationIdMiddleware } from "./middleware/correlationId";
 
 // Feature flag gate middleware
-import { featureGate } from "./middleware/featureGate";
+import { featureGate, requireLadderFlag } from "./middleware/featureGate";
 
 // MCP handler
 import { mcpHandler } from "./mcp-server";
@@ -953,6 +953,23 @@ export async function registerRoutes(
   app.use("/api/founder/v11", promptInjectionMiddleware);
   app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
   app.use("/api/support", promptInjectionMiddleware);
+  // Unit 115: three chat surfaces that take `req.body.message` straight into a
+  // model and had no guard, while twelve siblings above did. The list was
+  // maintained by hand, so a new chat surface joined it only if someone
+  // remembered — which is the same shape as the expansion ladder being enforced
+  // on one router and defeated on another (unit 113).
+  //
+  //   /api/realtime           POST /ask        — command-palette AI, CUSTOMER-facing
+  //   /api/founder/chat       POST /stream     — founder only
+  //   /api/founder/intelligence POST /agent-chat — founder only
+  //
+  // `promptInjectionCoverage.test.ts` now DERIVES the required set from the code
+  // (any mounted router that reads a body text field and reaches an LLM), so the
+  // next one is caught on the commit that writes it rather than the audit that
+  // finds it.
+  app.use("/api/realtime", promptInjectionMiddleware);
+  app.use("/api/founder/chat", promptInjectionMiddleware);
+  app.use("/api/founder/intelligence", promptInjectionMiddleware);
 
   // ============================================
   // SEC-004: CSRF protection for state-changing requests
@@ -1326,19 +1343,29 @@ export async function registerRoutes(
   // ============================================
   // ROUTER-BASED FEATURE ROUTES
   // ============================================
-  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, featureGate("feature_marketplace"), marketplaceRouter);
+  // requireLadderFlag, not featureGate: the marketplace is gated by the
+  // approved expansion ladder ("no marketplace before ~25 customers"), which is
+  // a founder decision. featureGate lets an enterprise-tier org bypass the flag
+  // and fails OPEN when the flag store errors — reasonable for a product flag,
+  // wrong for a governance gate. See tests/unit/expansionLadder.test.ts.
+  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), marketplaceRouter);
   app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
   app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
   app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);
   app.use('/api/my-letter', isAuthenticated, getOrCreateOrg, customerLetterRouter);
   app.use('/api/portfolio-optimizer', isAuthenticated, getOrCreateOrg, portfolioOptimizerRouter);
   app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
-  app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
+  // /api/negotiation deleted 2026-08-13 (deletion-ledger row: standalone negotiation copilot).
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
   // /api/deal-hunter retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine).
   // /api/academy retired 2026-06-08 — Academy module removed.
   // /api/vision-ai deleted 2026-08-01 (deletion-ledger row: Satellite / Vision AI).
-  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, featureGate("feature_capital_markets"), capitalMarketsRouter);
+  // FREEZE — "reactivate when note securitization is a real revenue line (H4)".
+  // A deletion-ledger verdict is a founder decision, so it takes the strict
+  // gate: featureGate lets an enterprise-tier org bypass the flag entirely and
+  // fails OPEN when the flag store errors, which would reactivate a frozen
+  // surface on a transient database blip.
+  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_capital_markets"), capitalMarketsRouter);
   app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
@@ -1364,6 +1391,16 @@ export async function registerRoutes(
     // Enabled (or founder bypass) — fall through to the gated mount below.
     next();
   });
+  // WHITE-LABEL KEEPS featureGate, DELIBERATELY — do not "tighten" this to
+  // requireLadderFlag to match its neighbours.
+  //
+  // featureGate's enterprise-tier bypass exists, per its own header, "for
+  // legacy reseller / white-label routes that … are part of the enterprise
+  // contract", and the deletion ledger's reactivation criterion for white-label
+  // is "the first enterprise/white-label contract". The bypass IS that
+  // criterion, encoded. Removing it would delete a deliberate decision in the
+  // name of consistency — the failure mode the founder-bypass note in
+  // requireLadderFlag guards against on the other side.
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
@@ -1397,9 +1434,6 @@ export async function registerRoutes(
   app.post('/webhook/twilio/recording-complete', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
   app.post('/webhook/disclosure', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
 
-  // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
-  app.use('/api/beta', betaRouter);
-
   // Regulatory intelligence: state profiles, alerts, checklists, risk assessment
   app.use('/api/regulatory', regulatoryRouter);
 
@@ -1418,7 +1452,10 @@ export async function registerRoutes(
   // (registerOrganizationRoutes) — the single, validated, admin-scoped source
   // of truth. The duplicate standalone commissionsRouter mount was removed
   // 2026-08 (Wave 2 pass C).
-  app.use('/api/certification', isAuthenticated, featureGate("feature_academy"), certificationRouter);
+  // KILL — the Academy stump. The constitution's adjacency-risk trap says
+  // education revenue stays dead, so an enterprise-tier bypass on it is a
+  // subscription tier buying past a founder decision.
+  app.use('/api/certification', isAuthenticated, requireLadderFlag("feature_academy"), certificationRouter);
   app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
   app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
@@ -1441,8 +1478,26 @@ export async function registerRoutes(
   app.use('/api/zoning', isAuthenticated, zoningRouter);
   app.use('/api/title-search', isAuthenticated, getOrCreateOrg, titleSearchRouter);
   app.use('/api/properties', isAuthenticated, getOrCreateOrg, propertyEnrichmentRouter);
+  // Decision Memory (Master Audit BI20) — record/read frozen investment
+  // decisions. API surface only; no new customer nav entry.
+  app.use('/api/decisions', isAuthenticated, getOrCreateOrg, decisionsRouter);
+  // Economics layer (Master Audit BI12/BK24) — compute/read versioned
+  // deterministic scenarios. API surface only; no new customer nav entry.
+  app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
-  app.use('/api/dunning', isAuthenticated, dunningRouter);
+  // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
+  // Manager page behind FounderProtectedRoute with the note "the dunning API is
+  // founder-only (requireFounder on the whole router, P1-5)" — that was false.
+  // The router carried `isAuthenticated` and nothing else, so a client route
+  // guard was the only thing standing in front of AcreOS's own billing console:
+  // every organization's failed subscription payments, the total amount at risk
+  // across the platform, and POST /:id/{retry,cancel,resolve} — which charge a
+  // Stripe invoice and mutate another org's dunning state.
+  //
+  // Founder-only is the right verdict, not org-scoping: dunning chases
+  // subscription payments TO AcreOS, the one flow AcreOS is a party to
+  // ("be the rail, not the provider"). No org owns this queue.
+  app.use('/api/dunning', isAuthenticated, requireFounder, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
   // User-scoped appearance preferences (theme/mode/font/density/motion).
   // No org context needed — preferences are user-level.
@@ -1743,6 +1798,27 @@ export async function registerRoutes(
     app.use('/api/founder/finance', isAuthenticated, getOrCreateOrg, requireFounder, financeLedgerRouter);
   }
 
+  // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
+  // with MFA enabled in Clerk must have completed second-factor in this
+  // session; high-trust paths (admin recovery, ownership transfer)
+  // additionally require MFA *be set up*. See requireClerkMFA for the
+  // full decision matrix.
+  //
+  // ORDER IS LOAD-BEARING. Express evaluates middleware in REGISTRATION
+  // order, so this app.use MUST precede every /api/admin/* handler. It used
+  // to sit ~700 lines below, which left /api/admin/finance,
+  // /api/admin/support/saved-replies, /api/admin/support/customer-context,
+  // /api/admin/feature-flags, /api/admin/audit-log/verify[-all],
+  // /api/admin/deployments and /api/admin/dr-drills reaching their handlers
+  // and returning BEFORE the gate ever ran — second factor silently skipped
+  // on five of the seven admin surfaces. (They were still behind
+  // isAuthenticated + requireFounder, so this was a missing second factor,
+  // not an open door — but customer-context reads any org's MRR and audit
+  // trail, which is exactly what a second factor is for.)
+  // tests/unit/adminMfaOrdering.test.ts now fails the build if any
+  // /api/admin route is registered above this line.
+  app.use("/api/admin", isAuthenticated, requireClerkMFA);
+
   // Admin Finance — Tahoe L6 system-of-record + reserve floor compliance.
   // Platform-level (not org-scoped); founder-gated. Mounted distinct from
   // /api/founder/finance because the surface is "platform admin" — reserve
@@ -1824,24 +1900,44 @@ export async function registerRoutes(
     }
   });
 
+  // Delegates to featureFlagService, and that is the whole point of this handler.
+  //
+  // It used to write `enabled` DIRECTLY — and `enabled` is the back-compat
+  // column. `state` is canonical: `rowToFlag` reads `state` and only falls back
+  // to `enabled` when `state` is NULL, which no row written since the migration
+  // is. So a founder flipped a flag here, got a 200 showing `enabled: true`, and
+  // `/api/config/features`, `requireLadderFlag` and every other consumer went on
+  // reading `state` — unchanged.
+  //
+  // The dangerous direction is the other one: setting `enabled: false` on a flag
+  // whose `state` is "on" left the feature ON for every customer while the
+  // console reported it off. `feature_marketplace` and `feature_capital_markets`
+  // are governance flags behind `requireLadderFlag`, so that is a founder
+  // believing they closed an expansion gate that is still open.
+  //
+  // `featureFlagService.setFlag` writes BOTH columns from either input. It is
+  // the single owner; see tests/unit/featureFlagSingleWriter.ts.
   app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { platformFeatureFlags } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
+      const { featureFlagService } = await import("./services/featureFlags");
       const { enabled } = req.body;
       if (typeof enabled !== "boolean") {
         return Errors.badRequest(res, "enabled (boolean) is required");
       }
-      const [updated] = await db
-        .update(platformFeatureFlags)
-        .set({ enabled, updatedAt: new Date() })
-        .where(eq(platformFeatureFlags.key, req.params.key))
-        .returning();
+      const updated = await featureFlagService.setFlag(
+        req.params.key,
+        { enabled },
+        req.user?.id,
+      );
       if (!updated) {
         return Errors.notFound(res, "feature flag");
       }
       res.json(updated);
     } catch (err: any) {
+      const { RetiredFeatureFlagError } = await import("./services/featureFlags");
+      if (err instanceof RetiredFeatureFlagError) {
+        return Errors.notFound(res, "feature flag");
+      }
       Errors.internal(res, err);
     }
   });
@@ -2151,18 +2247,28 @@ export async function registerRoutes(
   app.use('/api', isAuthenticated, getOrCreateOrg, fieldScoutRouter);
 
   // Phase 5-6 routes
-  app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, investorVerificationRouter);
+  //
+  // investor-verification and buyer-network are MARKETPLACE SATELLITES — the
+  // deletion ledger's Marketplace row names them alongside matchmaking and
+  // deal-rooms under a single FREEZE verdict. `/api/marketplace` itself moved
+  // to the strict ladder gate (no enterprise bypass, fails closed) when
+  // `expansion.marketplace-25-api-50` became a real ratchet; these two were
+  // mounted with auth and nothing else, so the front door was gated while two
+  // side doors stood open. Same verdict, same flag, same gate.
+  app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), investorVerificationRouter);
   // routes-transaction-fees deleted 2026-07-29 (founder ruling "be the rail, not
   // the provider"): a platform escrow / take-a-cut / manual-payout console over
   // AcreOS's own balance. Every handler was a stub, and POST /fees/payouts/trigger
   // returned 202 "processing" while doing nothing. Custody is not AcreOS's to hold.
   // /api/call-routing deleted 2026-08-01 (Voice / AI voice kill): every handler
   // returned a hardcoded stub config presented as real — honesty gate applies.
-  app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
+  app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), buyerNetworkRouter);
   // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11
   // endpoints returned 501 and no client consumed the mount. The real tax
   // optimizer API is /api/tax-optimizer/* in routes-misc.ts.
-  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, featureGate("feature_deal_rooms"), dealRoomsRouter);
+  // FREEZE — a marketplace satellite, named in the same ledger row as
+  // buyer-network and investor-verification, both of which took this gate.
+  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_deal_rooms"), dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
   // (/api/docs registered above, before the /api catch-all auth middleware)
 
@@ -2447,12 +2553,6 @@ export async function registerRoutes(
   registerMaintenanceTicketRoutes(app);
   // Buy-and-hold vertical BH-7 — investor analytics (NOI/cap/DSCR).
   registerInvestorAnalyticsRoutes(app);
-  // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
-  // with MFA enabled in Clerk must have completed second-factor in this
-  // session; high-trust paths (admin recovery, ownership transfer)
-  // additionally require MFA *be set up*. See requireClerkMFA for the
-  // full decision matrix.
-  app.use("/api/admin", isAuthenticated, requireClerkMFA);
   registerAdminRoutes(app);
   // Coriander §1: Recovery-console endpoints (founder-gated, audit-logged).
   // Mounted alongside other /api/admin routes so the requireClerkMFA

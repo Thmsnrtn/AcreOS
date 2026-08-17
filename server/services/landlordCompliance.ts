@@ -20,121 +20,32 @@
  * required. Updates to this file MUST keep `attorneyReviewedAt` current.
  */
 
-// ---------------------------------------------------------------------------
-// SECURITY DEPOSIT RETURN — statutory deadlines after tenant move-out.
-// ---------------------------------------------------------------------------
-
-export interface SecurityDepositRule {
-  state: string;             // 2-letter
-  daysAfterMoveOut: number;  // statutory cap (worst-case for landlord)
-  itemizationRequired: boolean;
-  citation: string;
-  notes: string;
-}
-
-// Set as of 2026-05; primary statutes cited. The "worst-case" days value is
-// chosen because the platform should *never* let a landlord drift past the
-// shortest applicable window — when a state has both an undisputed and a
-// disputed window, we use the undisputed (shorter) figure.
-export const SECURITY_DEPOSIT_RULES: Record<string, SecurityDepositRule> = {
-  AL: { state: "AL", daysAfterMoveOut: 60, itemizationRequired: true,  citation: "Ala. Code § 35-9A-201",       notes: "60 days from termination of tenancy." },
-  AK: { state: "AK", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "AS 34.03.070",                notes: "14 days; 30 if landlord deducts." },
-  AZ: { state: "AZ", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "A.R.S. § 33-1321",            notes: "14 business days post move-out." },
-  AR: { state: "AR", daysAfterMoveOut: 60, itemizationRequired: true,  citation: "Ark. Code § 18-16-305",       notes: "60 days from termination." },
-  CA: { state: "CA", daysAfterMoveOut: 21, itemizationRequired: true,  citation: "Cal. Civ. Code § 1950.5(g)",  notes: "21 calendar days. Itemized statement + receipts if deductions > $125." },
-  CO: { state: "CO", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "C.R.S. § 38-12-103",          notes: "30 days standard; up to 60 if lease specifies." },
-  CT: { state: "CT", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Conn. Gen. Stat. § 47a-21(d)",notes: "30 days; 15 days after receipt of forwarding address if later." },
-  DE: { state: "DE", daysAfterMoveOut: 20, itemizationRequired: true,  citation: "25 Del. Code § 5514",         notes: "20 days." },
-  FL: { state: "FL", daysAfterMoveOut: 15, itemizationRequired: true,  citation: "Fla. Stat. § 83.49",          notes: "15 days if no deduction; 30 days notice + 60-day window if disputed." },
-  GA: { state: "GA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "O.C.G.A. § 44-7-34",          notes: "30 days." },
-  HI: { state: "HI", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "Haw. Rev. Stat. § 521-44",    notes: "14 days." },
-  ID: { state: "ID", daysAfterMoveOut: 21, itemizationRequired: true,  citation: "Idaho Code § 6-321",          notes: "21 days; 30 if landlord & tenant agree." },
-  IL: { state: "IL", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "765 ILCS 710/1",              notes: "30 days for buildings with 5+ units." },
-  IN: { state: "IN", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "Ind. Code § 32-31-3-12",      notes: "45 days." },
-  IA: { state: "IA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Iowa Code § 562A.12",         notes: "30 days." },
-  KS: { state: "KS", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "K.S.A. § 58-2550",            notes: "30 days; 14 days for itemization." },
-  KY: { state: "KY", daysAfterMoveOut: 60, itemizationRequired: true,  citation: "KRS § 383.580",               notes: "60 days; 30-day initial itemization." },
-  LA: { state: "LA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "La. R.S. § 9:3251",           notes: "30 days." },
-  ME: { state: "ME", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "14 M.R.S. § 6033",            notes: "30 days for written lease; 21 for tenancy at will." },
-  MD: { state: "MD", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "Md. Real Prop. § 8-203",      notes: "45 days." },
-  MA: { state: "MA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "M.G.L. c. 186 § 15B",         notes: "30 days; itemized list + receipts required." },
-  MI: { state: "MI", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "MCL § 554.609",               notes: "30 days." },
-  MN: { state: "MN", daysAfterMoveOut: 21, itemizationRequired: true,  citation: "Minn. Stat. § 504B.178",      notes: "21 days; 5 days if condemned." },
-  MS: { state: "MS", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "Miss. Code § 89-8-21",        notes: "45 days." },
-  MO: { state: "MO", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Mo. Rev. Stat. § 535.300",    notes: "30 days." },
-  MT: { state: "MT", daysAfterMoveOut: 10, itemizationRequired: true,  citation: "Mont. Code § 70-25-202",      notes: "10 days; 30 if deductions." },
-  NE: { state: "NE", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "Neb. Rev. Stat. § 76-1416",   notes: "14 days." },
-  NV: { state: "NV", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "NRS § 118A.242",              notes: "30 days." },
-  NH: { state: "NH", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "RSA § 540-A:7",               notes: "30 days." },
-  NJ: { state: "NJ", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "N.J.S.A. § 46:8-21.1",        notes: "30 days; 5 days for displacement/condemnation." },
-  NM: { state: "NM", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "N.M. Stat. § 47-8-18",        notes: "30 days." },
-  NY: { state: "NY", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "N.Y. Gen. Oblig. § 7-108(e)", notes: "14 days post HSTPA-2019." },
-  NC: { state: "NC", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "N.C.G.S. § 42-52",            notes: "30 days; 60 if deduction itemization pending." },
-  ND: { state: "ND", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "N.D.C.C. § 47-16-07.1",       notes: "30 days." },
-  OH: { state: "OH", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Ohio Rev. Code § 5321.16",    notes: "30 days." },
-  OK: { state: "OK", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "41 Okla. Stat. § 115",        notes: "45 days." },
-  OR: { state: "OR", daysAfterMoveOut: 31, itemizationRequired: true,  citation: "ORS § 90.300",                notes: "31 days." },
-  PA: { state: "PA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "68 P.S. § 250.512",           notes: "30 days." },
-  RI: { state: "RI", daysAfterMoveOut: 20, itemizationRequired: true,  citation: "R.I. Gen. Laws § 34-18-19",   notes: "20 days." },
-  SC: { state: "SC", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "S.C. Code § 27-40-410",       notes: "30 days." },
-  SD: { state: "SD", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "SDCL § 43-32-24",             notes: "14 days; 45 days for itemization." },
-  TN: { state: "TN", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Tenn. Code § 66-28-301",      notes: "30 days; landlord must allow inspection." },
-  TX: { state: "TX", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Tex. Prop. Code § 92.103",    notes: "30 days; itemized list required if deductions." },
-  UT: { state: "UT", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Utah Code § 57-17-3",         notes: "30 days." },
-  VT: { state: "VT", daysAfterMoveOut: 14, itemizationRequired: true,  citation: "9 V.S.A. § 4461",             notes: "14 days." },
-  VA: { state: "VA", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "Va. Code § 55.1-1226",        notes: "45 days." },
-  WA: { state: "WA", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "RCW § 59.18.280",             notes: "30 days; was 21 pre-2023." },
-  WV: { state: "WV", daysAfterMoveOut: 60, itemizationRequired: true,  citation: "W.Va. Code § 37-6A-2",        notes: "60 days; 45 if vacating before lease end." },
-  WI: { state: "WI", daysAfterMoveOut: 21, itemizationRequired: true,  citation: "Wis. Stat. § 704.28",         notes: "21 days." },
-  WY: { state: "WY", daysAfterMoveOut: 30, itemizationRequired: true,  citation: "Wyo. Stat. § 1-21-1208",      notes: "30 days; 15 days for itemization." },
-  DC: { state: "DC", daysAfterMoveOut: 45, itemizationRequired: true,  citation: "D.C. Code § 42-3502.17",      notes: "45 days." },
-};
-
-export type DepositDeadlineSeverity = "ok" | "approaching" | "red";
-
-/**
- * Compute the statutory return deadline + severity tone for surfacing.
+/*
+ * SECURITY DEPOSIT RETURN — REMOVED 2026-08-14 (BLOCKERS B18, founder ruling
+ * "retire the dead duplicate").
  *
- * `approaching` = inside the last 7 days. `red` = inside the last 2 days or
- * already past deadline. Both should escalate the UI tone.
+ * This file carried a COMPLETE 51-entry `SECURITY_DEPOSIT_RULES` table and a
+ * `computeSecurityDepositDeadline` built on it, and NOTHING IMPORTED THIS MODULE.
+ * Meanwhile `shared/regulatory/depositReturnRules.ts` — deliberately incomplete,
+ * and honest about it (`{ known: false, unknownReason }` for a state it does not
+ * encode) — is the one the deposit clock, the disposition letter and the
+ * rent-ledger surface actually read.
+ *
+ * Two registries citing the same statutes disagreed on FOUR states: FL 15 vs 30,
+ * ME 30 vs 21, MT 10 vs 30, OK 45 vs 30. `statuteRegister.ts` had warned that they
+ * "can disagree, and nothing cross-checks them"; unit 105 ran the check and unit
+ * 108 removed the duplicate rather than guess which reading of each statute is
+ * correct — that is legal judgement, and a confident wrong deadline is worse than
+ * no second table.
+ *
+ * Its `computeSecurityDepositDeadline` also parsed with a bare `new Date()` plus a
+ * NaN check, so `"2026-02-30"` became March 2 — the rollover defect unit 99
+ * removed from everything live. Deleting it removes that too.
+ *
+ * WHAT WAS NOT LOST: the wider COVERAGE is a real thing to want. The live registry
+ * still refuses the states it does not encode rather than inventing a number, and
+ * widening it is a separate, reviewable piece of work — see B18.
  */
-export function computeSecurityDepositDeadline(
-  state: string | null | undefined,
-  moveOutDate: Date | string | null | undefined,
-  now: Date = new Date(),
-): {
-  deadlineDate: string | null;
-  daysRemaining: number | null;
-  severity: DepositDeadlineSeverity;
-  rule: SecurityDepositRule | null;
-  reason: string;
-} {
-  if (!state || !moveOutDate) {
-    return { deadlineDate: null, daysRemaining: null, severity: "ok", rule: null, reason: "missing state or move-out date" };
-  }
-  const code = String(state).toUpperCase().trim();
-  const rule = SECURITY_DEPOSIT_RULES[code] ?? null;
-  if (!rule) {
-    return { deadlineDate: null, daysRemaining: null, severity: "ok", rule: null, reason: `no rule for ${code}` };
-  }
-  const moveOut = typeof moveOutDate === "string" ? new Date(moveOutDate) : moveOutDate;
-  if (Number.isNaN(moveOut.getTime())) {
-    return { deadlineDate: null, daysRemaining: null, severity: "ok", rule, reason: "invalid move-out date" };
-  }
-  const deadline = new Date(moveOut.getTime());
-  deadline.setDate(deadline.getDate() + rule.daysAfterMoveOut);
-  const days = Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000);
-  let severity: DepositDeadlineSeverity = "ok";
-  if (days <= 2) severity = "red";
-  else if (days <= 7) severity = "approaching";
-  return {
-    deadlineDate: deadline.toISOString().slice(0, 10),
-    daysRemaining: days,
-    severity,
-    rule,
-    reason: `${rule.daysAfterMoveOut}d after move-out per ${rule.citation}`,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // NOTICE-PERIOD RULES — pay-or-quit / cure-or-quit / termination.

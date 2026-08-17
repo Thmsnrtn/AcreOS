@@ -179,7 +179,7 @@ const PropertyTaxPage = React.lazy(() => import("@/pages/property-tax"));
 const AVMPage = React.lazy(() => import("@/pages/avm"));
 const AvmBulkPage = React.lazy(() => import("@/pages/avm-bulk"));
 // AcquisitionRadarPage archived 2026-06-01 — route is Redirect to /deals/discover.
-const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
+// NegotiationCopilotPage deleted 2026-08-13 (standalone negotiation copilot kill).
 // DealHunterPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // AgentCommandCenterPage archived 2026-06-01 — route is Redirect to /ai#agents.
 const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
@@ -492,8 +492,11 @@ const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboardin
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
 // FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
-const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
-const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
+// ForgotPasswordPage / ResetPasswordPage deleted 2026-08-13. Both were
+// lazy-imported here and NEVER ROUTED — bundled and unreachable — and both
+// posted to endpoints that do not exist (/api/auth/forgot-password,
+// /api/auth/reset-password). Authentication is Clerk (<SignIn>/<SignUp> on
+// /auth), and Clerk owns password reset; these were pre-Clerk residue.
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
 // page-route surface (recoverable on tab-close) for first-run setup; the
 // standalone `/pages/onboarding-wizard.tsx` page was deleted as redundant.
@@ -1436,9 +1439,7 @@ function Router() {
       <Route path="/maps">
         {() => <ProtectedRoute component={MapsPage} />}
       </Route>
-      <Route path="/negotiation">
-        {() => <FlaggedRoute route="/negotiation" component={NegotiationCopilotPage} />}
-      </Route>
+      {/* /negotiation deleted 2026-08-13 (standalone copilot kill) — renders NotFound. */}
       <Route path="/cash-flow">
         {() => <ProtectedRoute component={CashFlowPage} />}
       </Route>

@@ -26,6 +26,8 @@ import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { Errors } from "./utils/errors";
+// Bulk export is an exfiltration boundary, not a convenience.
+import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
@@ -84,7 +86,7 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
@@ -113,7 +115,7 @@ export function registerImportExportRoutes(app: Express): void {
   });
 
   // notes — registered BEFORE /api/import/:entityType so the literal path wins (2026-07-11 route-order sweep).
-  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
 
@@ -185,7 +187,9 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/import/communications",
     isAuthenticated,
     getOrCreateOrg,
+    requirePermission("canImportData"),
     uploadJobCsv.single("file"),
+
     validateCSV,
     async (req, res) => {
       try {
@@ -225,7 +229,9 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/import/documents",
     isAuthenticated,
     getOrCreateOrg,
+    requirePermission("canImportData"),
     uploadJobZip.single("file"),
+
     async (req, res) => {
       try {
         const org = req.organization!;
@@ -263,7 +269,7 @@ export function registerImportExportRoutes(app: Express): void {
   //   - rows > 500 and ≤ MAX_IMPORT_ROWS (50,000): queue an import_jobs row
   //     and return { jobId, status, totalRows } (HTTP 202).
   //   - rows > 50,000: 400 with a clear error.
-  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, uploadJobCsv.single("file"), validateCSV, async (req, res, next) => {
+  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), uploadJobCsv.single("file"), validateCSV, async (req, res, next) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes" | "communications" | "documents";
@@ -378,7 +384,7 @@ export function registerImportExportRoutes(app: Express): void {
    * envelope ("backup_*.json") which is harder for other CRMs to consume.
    * Sunset: 2026-07-02. Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
+  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const backup = await createBackupZip(org.id);
@@ -432,7 +438,7 @@ export function registerImportExportRoutes(app: Express): void {
    *
    * Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
+  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
@@ -855,6 +861,12 @@ export function registerImportExportRoutes(app: Express): void {
     "/api/export/jobs/:id/download",
     isAuthenticated,
     getOrCreateOrg,
+    // Found by the source-derived coverage test, not by hand: this route is
+    // registered across several lines, so the single-line grep that located the
+    // other eight walked straight past it. It DOWNLOADS a completed export —
+    // the file itself — so it is the last step of an exfiltration, not a status
+    // read.
+    requirePermission("canExportData"),
     async (req, res) => {
       try {
         const org = req.organization!;

@@ -14,6 +14,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { priceOptimizerService } from "./services/priceOptimizer";
 import { Errors } from "./utils/errors";
+import { getOrganizationId } from "./types/request";
 
 const router = Router();
 
@@ -105,7 +106,7 @@ router.post("/outcome/:id", async (req: Request, res: Response) => {
       return Errors.badRequest(res, "actualPrice and accepted are required");
     }
 
-    await priceOptimizerService.recordPriceOutcome(id, Number(actualPrice), Boolean(accepted));
+    await priceOptimizerService.recordPriceOutcome(id, getOrganizationId(req), Number(actualPrice), Boolean(accepted));
     res.json({ success: true });
   } catch (err: any) {
     Errors.internal(res, err);

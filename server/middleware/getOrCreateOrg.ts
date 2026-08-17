@@ -6,11 +6,13 @@ import { organizations, teamMembers } from "@shared/schema";
 import { signupSignals } from "@shared/schema";
 import type { Organization } from "@shared/schema";
 import crypto from "crypto";
+import { isFounderEmail } from "../services/founder";
 import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
 import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
+import { viewerReadOnlyGate } from "./viewerReadOnlyGate";
 import { dunningAccessGate } from "./dunningAccessGate";
 import { getClerkAuth } from "../types/request";
 
@@ -32,20 +34,23 @@ export const ACTIVE_ORG_COOKIE_OPTS: CookieOptions = {
 
 /**
  * Founder email — gets enterprise tier and unlimited access.
- * Reads FOUNDER_EMAIL (single) and/or FOUNDER_EMAILS (comma-separated),
- * matching the same logic as server/services/founder.ts.
+ *
+ * This used to be a LOCAL copy whose own comment said it was "matching the same
+ * logic as server/services/founder.ts". It was not, in the way copies never are:
+ * it read FOUNDER_EMAIL and FOUNDER_EMAILS and knew nothing of FOUNDER_USER_IDS,
+ * so a founder identified by Clerk id — the identity-stable one, per that
+ * service's header — did not get founder treatment on the middleware that runs
+ * ahead of nearly every org-scoped request.
+ *
+ * The same omission, from the same kind of copy, was in routes-beta.ts's local
+ * founder shim. Imported now; `services/founder.ts` has no imports of its own,
+ * so there is no cycle and nothing to pay on the hot path.
+ *
+ * Note it stays EMAIL-only here on purpose: this middleware resolves an
+ * organization from a user record and has no Clerk id in hand. `isAuthenticated`
+ * already sets `req.isFounder` via the full `isFounderIdentity` check, which is
+ * what authorization uses; this flag drives tier/limit treatment for the org.
  */
-const _founderPrimary = (process.env.FOUNDER_EMAIL || "").trim().toLowerCase();
-const _founderAdditional = (process.env.FOUNDER_EMAILS || "")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-const FOUNDER_EMAILS = [...new Set([_founderPrimary, ..._founderAdditional].filter(Boolean))];
-
-function isFounderEmail(email: string | undefined): boolean {
-  if (!email) return false;
-  return FOUNDER_EMAILS.includes(email.toLowerCase());
-}
 
 /**
  * Middleware to get or create an organization for the authenticated user.
@@ -350,7 +355,16 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // un-paused orgs; otherwise it 402s. It either calls next() or responds.
   // W4.4: the dunning read-only gate chains the same way — pause gate
   // first, then dunning; both either respond or call through.
-  return subscriptionPauseGate(req, res, () => dunningAccessGate(req, res, next));
+  // W4.4: the dunning read-only gate chains the same way. The VIEWER read-only
+  // gate chains third, for the same stated reason — `viewer` is documented in
+  // roleGuard.ts as "read-only across the CRM" and nothing enforced it, and a
+  // role-level rule belongs at the one chokepoint rather than on sixty handlers
+  // where the sixty-first would be open by default.
+  return subscriptionPauseGate(req, res, () =>
+    dunningAccessGate(req, res, () => {
+      void viewerReadOnlyGate(req, res, next);
+    }),
+  );
 }
 
 /**

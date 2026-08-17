@@ -14,6 +14,23 @@
  *
  * Storage is injectable so tests can prove state survives service
  * re-instantiation without a database; the default storage is Drizzle.
+ *
+ * TENANT-SCOPED (2026-08-12). The DB-backing wave above added
+ * `organizationId NOT NULL` to the table, an org-leading index, and
+ * `listRequestsByOrg` — and then wired NONE of it into a route. Every
+ * route-reachable path resolved rows by primary key or by investor-profile id
+ * alone, so any authenticated member of any organization could read another
+ * org's KYC status and audit trail, attach documents to its request, advance
+ * its state machine, and (as an admin of their OWN org) approve it — which
+ * writes `isVerified` onto the other org's investor profile. The tenant key
+ * existed, was indexed, and was consulted by one method nothing called.
+ *
+ * Every storage method now takes `orgId` and filters on it, and every service
+ * method takes it and passes it down. `investor_profiles.organizationId` is
+ * `NOT NULL UNIQUE` — one profile per org — so `assertProfileInOrg` is what
+ * keeps a request from being created against someone else's profile in the
+ * first place; scoping the reads alone would only have moved the leak to the
+ * write.
  */
 
 import { db } from "../db";
@@ -59,10 +76,16 @@ export interface VerificationRequestRecord {
 /**
  * Persistence seam. The DB is the source of truth — no request state may
  * live only in process memory.
+ *
+ * Every method takes `orgId` and MUST filter on it. A method that resolves a
+ * row by id alone is a cross-tenant read waiting for a caller, which is
+ * precisely how this subsystem shipped: the org column was present and unused.
  */
 export interface InvestorVerificationStorage {
+  /** Whether the investor profile belongs to this org (profiles are 1:1 with orgs). */
+  profileBelongsToOrg(investorProfileId: number, orgId: number): Promise<boolean>;
   /** Latest request in an active (pending | reviewing) status for a profile. */
-  findActiveRequest(investorProfileId: number): Promise<VerificationRequestRecord | undefined>;
+  findActiveRequest(investorProfileId: number, orgId: number): Promise<VerificationRequestRecord | undefined>;
   insertRequest(values: {
     investorProfileId: number;
     orgId: number;
@@ -70,19 +93,32 @@ export interface InvestorVerificationStorage {
     documents: VerificationDocument[];
     history: VerificationHistoryEntry[];
   }): Promise<VerificationRequestRecord>;
-  getRequest(id: number): Promise<VerificationRequestRecord | undefined>;
+  getRequest(id: number, orgId: number): Promise<VerificationRequestRecord | undefined>;
   updateRequest(
     id: number,
+    orgId: number,
     updates: Partial<Omit<VerificationRequestRecord, "id" | "investorProfileId" | "orgId" | "createdAt">>,
   ): Promise<VerificationRequestRecord | undefined>;
-  /** All requests for a profile, newest first. */
-  listRequestsByProfile(investorProfileId: number): Promise<VerificationRequestRecord[]>;
+  /** All requests for a profile within this org, newest first. */
+  listRequestsByProfile(investorProfileId: number, orgId: number): Promise<VerificationRequestRecord[]>;
   /** Requests for an org in the given statuses, newest first. */
   listRequestsByOrg(orgId: number, statuses: VerificationStatus[]): Promise<VerificationRequestRecord[]>;
   /** Whether the investor profile carries the verified flag. */
-  isProfileVerified(investorProfileId: number): Promise<boolean>;
+  isProfileVerified(investorProfileId: number, orgId: number): Promise<boolean>;
   /** Set the verified flag on the investor profile. */
-  markProfileVerified(investorProfileId: number): Promise<void>;
+  markProfileVerified(investorProfileId: number, orgId: number): Promise<void>;
+}
+
+/**
+ * Thrown when a caller names a profile or request that is not theirs. The
+ * routes render it as a 404 rather than a 403: a cross-tenant probe should not
+ * be able to distinguish "exists, not yours" from "does not exist".
+ */
+export class VerificationNotInOrgError extends Error {
+  constructor(what: string) {
+    super(`${what} not found in this organization`);
+    this.name = "VerificationNotInOrgError";
+  }
 }
 
 // ─── Default Drizzle-backed storage ───────────────────────────────────────────
@@ -126,13 +162,28 @@ function isoHistory(history: VerificationHistoryEntry[]): Array<{ status: string
 }
 
 export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
-  async findActiveRequest(investorProfileId) {
+  async profileBelongsToOrg(investorProfileId, orgId) {
+    const [row] = await db
+      .select({ id: investorProfiles.id })
+      .from(investorProfiles)
+      .where(
+        and(
+          eq(investorProfiles.id, investorProfileId),
+          eq(investorProfiles.organizationId, orgId),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  },
+
+  async findActiveRequest(investorProfileId, orgId) {
     const [row] = await db
       .select()
       .from(investorVerificationRequests)
       .where(
         and(
           eq(investorVerificationRequests.investorProfileId, investorProfileId),
+          eq(investorVerificationRequests.organizationId, orgId),
           inArray(investorVerificationRequests.status, ["pending", "reviewing"]),
         ),
       )
@@ -155,16 +206,21 @@ export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
     return rowToRecord(row);
   },
 
-  async getRequest(id) {
+  async getRequest(id, orgId) {
     const [row] = await db
       .select()
       .from(investorVerificationRequests)
-      .where(eq(investorVerificationRequests.id, id))
+      .where(
+        and(
+          eq(investorVerificationRequests.id, id),
+          eq(investorVerificationRequests.organizationId, orgId),
+        ),
+      )
       .limit(1);
     return row ? rowToRecord(row) : undefined;
   },
 
-  async updateRequest(id, updates) {
+  async updateRequest(id, orgId, updates) {
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (updates.status !== undefined) set.status = updates.status;
     if (updates.documents !== undefined) set.documents = isoDocuments(updates.documents);
@@ -178,16 +234,26 @@ export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
     const [row] = await db
       .update(investorVerificationRequests)
       .set(set)
-      .where(eq(investorVerificationRequests.id, id))
+      .where(
+        and(
+          eq(investorVerificationRequests.id, id),
+          eq(investorVerificationRequests.organizationId, orgId),
+        ),
+      )
       .returning();
     return row ? rowToRecord(row) : undefined;
   },
 
-  async listRequestsByProfile(investorProfileId) {
+  async listRequestsByProfile(investorProfileId, orgId) {
     const rows = await db
       .select()
       .from(investorVerificationRequests)
-      .where(eq(investorVerificationRequests.investorProfileId, investorProfileId))
+      .where(
+        and(
+          eq(investorVerificationRequests.investorProfileId, investorProfileId),
+          eq(investorVerificationRequests.organizationId, orgId),
+        ),
+      )
       .orderBy(desc(investorVerificationRequests.createdAt));
     return rows.map(rowToRecord);
   },
@@ -206,20 +272,33 @@ export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
     return rows.map(rowToRecord);
   },
 
-  async isProfileVerified(investorProfileId) {
+  async isProfileVerified(investorProfileId, orgId) {
     const [profile] = await db
       .select({ isVerified: investorProfiles.isVerified })
       .from(investorProfiles)
-      .where(eq(investorProfiles.id, investorProfileId))
+      .where(
+        and(
+          eq(investorProfiles.id, investorProfileId),
+          eq(investorProfiles.organizationId, orgId),
+        ),
+      )
       .limit(1);
     return profile?.isVerified === true;
   },
 
-  async markProfileVerified(investorProfileId) {
+  async markProfileVerified(investorProfileId, orgId) {
+    // The most consequential write in the file: approval flips `isVerified` on
+    // the profile, which is what every downstream gate reads. Unscoped, an
+    // admin of one org could mark another org's investor verified.
     await db
       .update(investorProfiles)
       .set({ isVerified: true, verifiedAt: new Date() })
-      .where(eq(investorProfiles.id, investorProfileId));
+      .where(
+        and(
+          eq(investorProfiles.id, investorProfileId),
+          eq(investorProfiles.organizationId, orgId),
+        ),
+      );
   },
 };
 
@@ -233,11 +312,35 @@ export class InvestorVerificationService {
   }
 
   /**
+   * The check every other method depends on. Profiles are 1:1 with orgs
+   * (`investor_profiles.organizationId` is NOT NULL UNIQUE), so this is an
+   * exact ownership test, not a heuristic.
+   */
+  private async assertProfileInOrg(investorProfileId: number, orgId: number) {
+    if (!(await this.storage.profileBelongsToOrg(investorProfileId, orgId))) {
+      throw new VerificationNotInOrgError("Investor profile");
+    }
+  }
+
+  /** Load a request, refusing anything outside the caller's org. */
+  private async requireRequest(verificationId: number, orgId: number) {
+    const request = await this.storage.getRequest(verificationId, orgId);
+    if (!request) throw new VerificationNotInOrgError("Verification");
+    return request;
+  }
+
+  /**
    * Create a new KYC verification request for an investor profile.
    * Idempotent while an active (pending/reviewing) request exists.
    */
   async createVerificationRequest(investorProfileId: number, orgId: number) {
-    const existing = await this.storage.findActiveRequest(investorProfileId);
+    // Before anything is written. Without this, an org could open a request
+    // against someone else's profile — and approving it would later write
+    // `isVerified` to that profile. Scoping the reads alone would have moved
+    // the leak here rather than closing it.
+    await this.assertProfileInOrg(investorProfileId, orgId);
+
+    const existing = await this.storage.findActiveRequest(investorProfileId, orgId);
     if (existing) {
       return existing;
     }
@@ -260,15 +363,14 @@ export class InvestorVerificationService {
   /**
    * Upload a document to the verification request
    */
-  async uploadDocument(verificationId: number, docType: string, fileData: any) {
-    const request = await this.storage.getRequest(verificationId);
-    if (!request) throw new Error(`Verification ${verificationId} not found`);
+  async uploadDocument(verificationId: number, orgId: number, docType: string, fileData: any) {
+    const request = await this.requireRequest(verificationId, orgId);
     if (!["pending", "more_info_needed"].includes(request.status)) {
       throw new Error(`Cannot upload documents in status: ${request.status}`);
     }
 
     const uploadedAt = new Date();
-    await this.storage.updateRequest(verificationId, {
+    await this.storage.updateRequest(verificationId, orgId, {
       documents: [...request.documents, { docType, fileData, uploadedAt }],
     });
     return { verificationId, docType, uploadedAt };
@@ -277,9 +379,8 @@ export class InvestorVerificationService {
   /**
    * Submit verification for review — moves to 'reviewing'
    */
-  async submitForReview(verificationId: number) {
-    const request = await this.storage.getRequest(verificationId);
-    if (!request) throw new Error(`Verification ${verificationId} not found`);
+  async submitForReview(verificationId: number, orgId: number) {
+    const request = await this.requireRequest(verificationId, orgId);
     if (request.documents.length === 0) {
       throw new Error("At least one document required before submission");
     }
@@ -288,7 +389,7 @@ export class InvestorVerificationService {
     }
 
     const submittedAt = new Date();
-    await this.storage.updateRequest(verificationId, {
+    await this.storage.updateRequest(verificationId, orgId, {
       status: "reviewing",
       submittedAt,
       history: [
@@ -305,18 +406,22 @@ export class InvestorVerificationService {
    */
   async reviewVerification(
     verificationId: number,
+    orgId: number,
     adminId: number,
     decision: "approved" | "rejected" | "more_info_needed",
     reason?: string
   ) {
-    const request = await this.storage.getRequest(verificationId);
-    if (!request) throw new Error(`Verification ${verificationId} not found`);
+    // The route checks that the caller is an admin. It checks admin OF THEIR
+    // OWN ORG — which, unscoped, let an admin of any org approve any other
+    // org's investor. Role and tenancy are two questions; passing one is not
+    // passing the other.
+    const request = await this.requireRequest(verificationId, orgId);
     if (request.status !== "reviewing") {
       throw new Error(`Cannot review verification in status: ${request.status}`);
     }
 
     const reviewedAt = new Date();
-    await this.storage.updateRequest(verificationId, {
+    await this.storage.updateRequest(verificationId, orgId, {
       status: decision,
       reviewedAt,
       reviewedBy: adminId,
@@ -330,7 +435,7 @@ export class InvestorVerificationService {
 
     // If approved, update the investor profile
     if (decision === "approved") {
-      await this.storage.markProfileVerified(request.investorProfileId);
+      await this.storage.markProfileVerified(request.investorProfileId, orgId);
     }
 
     logger.info("[InvestorVerification] Verification reviewed", {
@@ -342,8 +447,8 @@ export class InvestorVerificationService {
   /**
    * Get the current verification status for an investor profile
    */
-  async getVerificationStatus(investorProfileId: number) {
-    const [request] = await this.storage.listRequestsByProfile(investorProfileId);
+  async getVerificationStatus(investorProfileId: number, orgId: number) {
+    const [request] = await this.storage.listRequestsByProfile(investorProfileId, orgId);
 
     if (!request) {
       return { investorProfileId, status: "not_started", verificationId: null };
@@ -363,12 +468,12 @@ export class InvestorVerificationService {
   /**
    * Check if the investor has passed verification (gate check)
    */
-  async checkVerificationGate(investorProfileId: number): Promise<boolean> {
+  async checkVerificationGate(investorProfileId: number, orgId: number): Promise<boolean> {
     // Check the profile's verified flag first
-    if (await this.storage.isProfileVerified(investorProfileId)) return true;
+    if (await this.storage.isProfileVerified(investorProfileId, orgId)) return true;
 
     // Fall back to an approved request that hasn't been reflected on the profile
-    const requests = await this.storage.listRequestsByProfile(investorProfileId);
+    const requests = await this.storage.listRequestsByProfile(investorProfileId, orgId);
     return requests.some((r) => r.status === "approved");
   }
 
@@ -377,8 +482,11 @@ export class InvestorVerificationService {
    */
   async accreditationCheck(
     investorProfileId: number,
+    orgId: number,
     data: { netWorth: number; annualIncome: number }
   ) {
+    await this.assertProfileInOrg(investorProfileId, orgId);
+
     // SEC accredited investor thresholds (2024)
     const NET_WORTH_THRESHOLD = 1_000_000; // $1M excluding primary residence
     const INCOME_THRESHOLD_SINGLE = 200_000;
@@ -390,9 +498,9 @@ export class InvestorVerificationService {
     const isAccredited = isAccreditedByNetWorth || isAccreditedByIncome;
 
     // Store the attestation on the profile's latest request, if any
-    const [request] = await this.storage.listRequestsByProfile(investorProfileId);
+    const [request] = await this.storage.listRequestsByProfile(investorProfileId, orgId);
     if (request) {
-      await this.storage.updateRequest(request.id, { accreditationData: data });
+      await this.storage.updateRequest(request.id, orgId, { accreditationData: data });
     }
 
     return {
@@ -413,8 +521,8 @@ export class InvestorVerificationService {
   /**
    * Get full verification history for an investor profile
    */
-  async getVerificationHistory(investorProfileId: number) {
-    const requests = await this.storage.listRequestsByProfile(investorProfileId);
+  async getVerificationHistory(investorProfileId: number, orgId: number) {
+    const requests = await this.storage.listRequestsByProfile(investorProfileId, orgId);
 
     return requests.map((r) => ({
       verificationId: r.id,

@@ -11,6 +11,8 @@
 //     "globs":         ["server/**/*.ts"],
 //     "exclude":       ["**/*.test.ts"],          // optional
 //     "baselineCount": 704,
+//     "minima":        { "files": 1100 },         // REQUIRED — see VACUITY GUARD
+//     "minimaNote":    "seeded from N files measured YYYY-MM-DD",
 //     "direction":     "down"
 //   }
 //
@@ -34,10 +36,48 @@
 //     documentation that MENTIONS a pattern doesn't move the number;
 //   - node_modules / dist / dotted dirs are never walked.
 //
+// ----------------------------------------------------------------------------
+// VACUITY GUARD — `minima.files`, REQUIRED on every non-external config.
+// ----------------------------------------------------------------------------
+// Every baseline here counts BAD THINGS FOUND, so a scan that stops seeing
+// files finds zero and reports that as PROGRESS. `walk()` returns an empty list
+// for a directory that does not exist (`if (!existsSync(dir)) return out`), so
+// one typo'd or stale glob silently empties a config's file set — and nothing
+// downstream looks at `files.length`. The two outcomes are both worse than a
+// crash:
+//
+//   · a ZERO-baseline ratchet (req-as-any) prints `PASS — 0 (baseline 0, 0
+//     files)` and the whole run stays green. The guarantee is gone and CI
+//     says everything is fine.
+//   · a NONZERO-baseline ratchet prints `Good news: 38 occurrence(s) were
+//     removed. Lock it in — set "baselineCount": 0`. A register that
+//     instructs the operator to lower a baseline to a number that was never
+//     true is the most dangerous output a gate can produce — this is exactly
+//     what check-tests-typecheck.mjs did on 2026-08-16 off a memory-starved
+//     tsc ("count is 1, baseline says 162"; the real count was 162).
+//
+// So `minima.files` floors the scan POPULATION, and it is checked BEFORE the
+// baseline comparison — a config whose population is untrustworthy prints no
+// verdict at all, neither PASS nor a "lock it in". Same shape and same
+// discipline as `minima` in scripts/ratchets/reachability.json.
+//
+// A MISSING floor fails exactly as loudly as a breached one. That half is not
+// decoration: without it the guard can be dropped later by deleting a line,
+// which is precisely how a gate quietly stops gating.
+//
+// Floors are MEASURED from the live repo and set comfortably below it (~75-80%)
+// so a broken walk trips them while ordinary deletion — the whole point of
+// these ratchets — does not. If a real deletion wave takes a population under
+// its floor, LOWER the floor in the same commit and name the wave in
+// `minimaNote`. Never raise a floor to silence something; never delete the key.
+// The linecount ratchets scan exactly one file, so their floor is 1 — that is
+// a real canary, not a formality: it catches the god-file being renamed or
+// deleted, which would otherwise read as its line count collapsing to zero.
+//
 // Adding a new ratchet = drop a JSON file in scripts/ratchets/ with the
-// CURRENT measured count (run `node scripts/ratchet.mjs --measure <file>` to
-// print counts without gating). Raising an existing baseline requires
-// Iris-CTO sign-off.
+// CURRENT measured count AND a measured `minima.files` (run
+// `node scripts/ratchet.mjs --measure` to print counts and populations without
+// gating). Raising an existing baseline requires Iris-CTO sign-off.
 // ============================================================================
 
 import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
@@ -129,6 +169,12 @@ function matchFiles(globs, exclude) {
   const excRes = (exclude ?? []).map(globToRegExp);
   const roots = [...new Set(globs.map(globRoot))];
   const candidates = new Set();
+  // walk() treats a nonexistent directory as "no files here", which is
+  // indistinguishable from a clean scan downstream. Name the missing roots so
+  // the vacuity guard can report the CAUSE and not just the symptom. (A root
+  // that exists is no proof of a live scan — a glob can point at a missing
+  // SUBdirectory and walk fine; that case is caught by the population floor.)
+  const missingRoots = [];
   for (const root of roots) {
     if (root === "") {
       console.error(
@@ -137,12 +183,14 @@ function matchFiles(globs, exclude) {
       );
       process.exit(1);
     }
+    if (!existsSync(join(REPO_ROOT, root))) missingRoots.push(root);
     for (const f of filesUnderRoot(root)) candidates.add(f);
   }
-  return [...candidates].filter(
+  const files = [...candidates].filter(
     (rel) =>
       incRes.some((re) => re.test(rel)) && !excRes.some((re) => re.test(rel)),
   );
+  return { files, missingRoots };
 }
 
 // ----------------------------------------------------------------------------
@@ -240,7 +288,7 @@ function loadConfigs() {
 function evaluate(cfg) {
   const lineCountMode = cfg.mode === "lineCount";
   const regex = lineCountMode ? null : new RegExp(cfg.pattern, cfg.flags ?? "g");
-  const files = matchFiles(cfg.globs, cfg.exclude);
+  const { files, missingRoots } = matchFiles(cfg.globs, cfg.exclude);
   let total = 0;
   let newExamples = [];
   for (const rel of files) {
@@ -252,7 +300,69 @@ function evaluate(cfg) {
       newExamples = newExamples.concat(examples).slice(0, 10);
     }
   }
-  return { total, fileCount: files.length, examples: newExamples };
+  return {
+    total,
+    fileCount: files.length,
+    examples: newExamples,
+    missingRoots,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// VACUITY GUARD (see the header). Returns the reasons this config's count is
+// NOT evidence of anything. Empty array = the scan is trustworthy and the
+// baseline comparison may proceed.
+// ----------------------------------------------------------------------------
+function vacuityFailures(cfg, fileCount, missingRoots) {
+  const rel = `scripts/ratchets/${cfg.__file}`;
+  const failures = [];
+
+  if (missingRoots.length > 0) {
+    failures.push(
+      `glob root(s) missing from the repo: ${missingRoots.join(", ")}. ` +
+        `walk() returns an empty list for a directory that does not exist, so ` +
+        `this config scanned nothing at all.\n` +
+        `      Fix the glob (or the move/rename that orphaned it) in ${rel}. ` +
+        `Do NOT touch "baselineCount" — the count below is an artefact of the ` +
+        `broken scan, not a measurement.`,
+    );
+  }
+
+  const floor = cfg.minima?.files;
+
+  if (floor === undefined) {
+    // A missing floor must be as loud as a breached one, otherwise the guard
+    // can be removed later by deleting one line and nothing notices.
+    failures.push(
+      `no "minima": { "files": <n> } in ${rel}. Every ratchet must floor its ` +
+        `scan population — an unfloored config lets a broken scan read as ` +
+        `clean:\n` +
+        `      a zero-baseline ratchet PASSes on 0 files, and a nonzero one ` +
+        `prints a stale-high "lock it in" for a number that was never true.\n` +
+        `      This run matched ${fileCount} file(s). Seed the floor ` +
+        `comfortably below that (~75-80%) ONLY after confirming this run is ` +
+        `not itself vacuous, and record the observed number and the date in ` +
+        `"minimaNote" so the next session re-measures instead of re-arguing.`,
+    );
+  } else if (!Number.isFinite(floor) || !Number.isInteger(floor) || floor < 1) {
+    failures.push(
+      `"minima.files" in ${rel} must be an integer >= 1 (got ` +
+        `${JSON.stringify(floor)}). A floor of 0 is not a floor — it admits ` +
+        `the empty scan this guard exists to catch.`,
+    );
+  } else if (fileCount < floor) {
+    failures.push(
+      `scanned ${fileCount} file(s), below the floor of ${floor}. This is NOT ` +
+        `a clean bill of health — the scan stopped seeing files.\n` +
+        `      Suspect the globs, a renamed/moved directory, or the walk ` +
+        `before you suspect progress. If a real deletion wave genuinely ` +
+        `shrank this population, lower "minima.files" in ${rel} in the SAME ` +
+        `commit and name the wave in "minimaNote". Never raise a floor to ` +
+        `silence something, and never delete the key.`,
+    );
+  }
+
+  return failures;
 }
 
 // ----------------------------------------------------------------------------
@@ -263,20 +373,41 @@ function main() {
   let failed = false;
 
   for (const cfg of configs) {
-    const { total, fileCount } = evaluate(cfg);
+    const { total, fileCount, missingRoots } = evaluate(cfg);
     const base = cfg.baselineCount;
+    const vacuity = vacuityFailures(cfg, fileCount, missingRoots);
 
     if (MEASURE_ONLY) {
+      // --measure is explicitly non-gating (it already exits 0 with counts off
+      // baseline) and must stay usable for SEEDING a floor on a new config, so
+      // vacuity is reported here as a note rather than a failure.
       console.log(
         `[ratchet:measure] ${cfg.name}: current=${total} baseline=${base} ` +
-          `(${fileCount} files)`,
+          `(${fileCount} files, floor ${cfg.minima?.files ?? "MISSING"})`,
       );
+      for (const f of vacuity) console.log(`  [ratchet:measure] vacuity — ${f}`);
+      continue;
+    }
+
+    // VACUITY GUARD, before the baseline comparison. A count taken over a file
+    // set that should not be trusted is not evidence, and the worst thing this
+    // script can do with it is turn it into a "lock it in" instruction. So a
+    // config that trips this prints NO verdict — not PASS, not a reduction.
+    if (vacuity.length > 0) {
+      failed = true;
+      console.error(
+        `[ratchet] ${cfg.name}: VACUITY GUARD — count ${total} over ` +
+          `${fileCount} file(s) is not trustworthy; baseline comparison ` +
+          `SKIPPED (baseline ${base} left untouched).`,
+      );
+      for (const f of vacuity) console.error(`    · ${f}`);
       continue;
     }
 
     if (total === base) {
       console.log(
-        `[ratchet] ${cfg.name}: PASS — ${total} (baseline ${base}, ${fileCount} files)`,
+        `[ratchet] ${cfg.name}: PASS — ${total} (baseline ${base}, ` +
+          `${fileCount} files, floor ${cfg.minima.files})`,
       );
     } else if (total > base) {
       failed = true;
@@ -303,6 +434,13 @@ function main() {
       console.error(
         `  Good news: ${base - total} occurrence(s) were removed. Lock it in — ` +
           `set "baselineCount": ${total} in scripts/ratchets/${cfg.__file}.`,
+      );
+      // Say WHY this reduction is believable. The identical sentence off a
+      // broken scan is how a baseline gets lowered to a number that was never
+      // true, so the population that backs it is stated alongside it.
+      console.error(
+        `  (Population checked first: ${fileCount} files scanned, floor ` +
+          `${cfg.minima.files} — this reduction is not a vacuous scan.)`,
       );
     }
   }

@@ -290,6 +290,7 @@ export function MobileLeadList() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
         <Input
+          aria-label="Search leads by name, phone or address"
           type="search"
           inputMode="search"
           placeholder="Search name, phone, address…"

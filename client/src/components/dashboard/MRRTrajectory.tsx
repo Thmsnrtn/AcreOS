@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+// The canonical compact money renderer. This file used to carry a private
+// `formatCents` that abbreviated the same way but compared the SIGNED value
+// where `dollarsCompact` compares the absolute one, and had no null branch —
+// so a negative below −$1,000 rendered as `$-25000` instead of `$-25.0K`, and
+// a null rendered as `$0` because `null / 100 === 0` in JS. Neither is
+// reachable today (every producer COALESCEs to 0 and clamps projections with
+// `Math.max(0, …)`), and both are the kind of definite answer that should never
+// stand in for a missing one.
+import { dollarsCompact } from "@/lib/format";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -21,12 +30,6 @@ interface MRRData {
   };
 }
 
-function formatCents(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(1)}K`;
-  return `$${dollars.toFixed(0)}`;
-}
 
 function parseMonthLabel(month: string): string {
   try {
@@ -44,7 +47,7 @@ function CustomTooltip({ active, payload, label }: any) {
       {payload.map((p: any) =>
         p.value != null ? (
           <p key={p.name} style={{ color: p.stroke }}>
-            {p.name}: {formatCents(p.value)}
+            {p.name}: {dollarsCompact(p.value)}
           </p>
         ) : null
       )}
@@ -104,10 +107,10 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
   if (nextMilestone) {
     const hitMonth = forecast.find(f => f.projectedRevenueCents >= nextMilestone);
     if (hitMonth) {
-      forecastStatement = `On track to hit ${formatCents(nextMilestone)}/mo by ${parseMonthLabel(hitMonth.month)}`;
+      forecastStatement = `On track to hit ${dollarsCompact(nextMilestone)}/mo by ${parseMonthLabel(hitMonth.month)}`;
     } else if (forecast.length > 0) {
       const last = forecast[forecast.length - 1];
-      forecastStatement = `Projected ${formatCents(last.projectedRevenueCents)}/mo in 3 months`;
+      forecastStatement = `Projected ${dollarsCompact(last.projectedRevenueCents)}/mo in 3 months`;
     }
   }
 
@@ -139,8 +142,8 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
               <MomIcon className="h-3 w-3 mr-1" aria-hidden="true" />
               {mom > 0 ? "+" : ""}{mom.toFixed(1)}% MoM
             </Badge>
-            <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Annual recurring revenue: ${formatCents(summary.arrCents)}`}>
-              ARR {formatCents(summary.arrCents)}
+            <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Annual recurring revenue: ${dollarsCompact(summary.arrCents)}`}>
+              ARR {dollarsCompact(summary.arrCents)}
             </Badge>
           </div>
         </div>
@@ -148,22 +151,22 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
         <dl className="flex items-center gap-4 pt-1 pb-0 m-0">
           <div>
             <dt className="text-xs text-muted-foreground">All-time revenue</dt>
-            <dd className="text-sm font-semibold tabular-nums m-0">{formatCents(summary.totalRevenueAllTimeCents)}</dd>
+            <dd className="text-sm font-semibold tabular-nums m-0">{dollarsCompact(summary.totalRevenueAllTimeCents)}</dd>
           </div>
           <div aria-hidden="true" className="h-8 border-l" />
           <div>
             <dt className="text-xs text-muted-foreground">Previous MRR</dt>
-            <dd className="text-sm font-semibold tabular-nums m-0">{formatCents(summary.prevMrrCents)}</dd>
+            <dd className="text-sm font-semibold tabular-nums m-0">{dollarsCompact(summary.prevMrrCents)}</dd>
           </div>
           <div aria-hidden="true" className="h-8 border-l" />
           <div>
             <dt className="text-xs text-muted-foreground">Current MRR</dt>
-            <dd className={`text-sm font-bold tabular-nums m-0 ${momColor}`}>{formatCents(summary.currentMrrCents)}</dd>
+            <dd className={`text-sm font-bold tabular-nums m-0 ${momColor}`}>{dollarsCompact(summary.currentMrrCents)}</dd>
           </div>
         </dl>
       </CardHeader>
       <CardContent className="pt-2">
-        <div role="img" aria-label={`Revenue trajectory chart: current MRR ${formatCents(summary.currentMrrCents)}, ${mom > 0 ? "up" : mom < 0 ? "down" : "flat"} ${Math.abs(mom).toFixed(1)}% month over month${forecastStatement ? `. ${forecastStatement}` : ""}`}>
+        <div role="img" aria-label={`Revenue trajectory chart: current MRR ${dollarsCompact(summary.currentMrrCents)}, ${mom > 0 ? "up" : mom < 0 ? "down" : "flat"} ${Math.abs(mom).toFixed(1)}% month over month${forecastStatement ? `. ${forecastStatement}` : ""}`}>
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
@@ -183,7 +186,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
               axisLine={false}
             />
             <YAxis
-              tickFormatter={formatCents}
+              tickFormatter={dollarsCompact}
               tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={false}
@@ -197,7 +200,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
                 stroke={chartColor(0)}
                 strokeDasharray="4 3"
                 strokeWidth={1.5}
-                label={{ value: `Goal ${formatCents(goalCents)}`, position: "insideTopRight", fontSize: 10, fill: "#f59e0b" }}
+                label={{ value: `Goal ${dollarsCompact(goalCents)}`, position: "insideTopRight", fontSize: 10, fill: "#f59e0b" }}
               />
             )}
             <Area

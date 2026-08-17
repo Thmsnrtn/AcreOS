@@ -37,6 +37,15 @@ import {
   UNREVIEWED_RULE_CAVEAT,
 } from "./taxRuleCoverage";
 import { numericToCents } from "./taxSaleCsvImport";
+// The canonical money renderer, replacing a private `toLocaleString("en-US")`
+// copy. The canonical one is locale-independent BY DESIGN, and its own comment
+// says why: `toLocaleString` renders differently per runtime ICU build, so a
+// figure frozen into a decision record would not read back identically. The
+// strings below are frozen into a tax-certificate document — the exact case that
+// rationale was written for. Identical output on every value this file can
+// produce (bid amounts, minimums, and a budget already clamped at zero); the two
+// renderers differ only on negatives, which none of these can be.
+import { formatCents } from "@shared/finance/cents";
 
 export interface WonLot {
   id: number;
@@ -248,9 +257,6 @@ export function buildCertificateFromWonLot(input: BuildCertificateInput): BuildC
   };
 }
 
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 // ============================================================================
 // Session budget

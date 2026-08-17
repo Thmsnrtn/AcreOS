@@ -1,0 +1,24 @@
+{
+  "name": "self-fallback",
+  "description": "An expression that falls back to ITSELF: `user?.id || user?.id`. It cannot differ from what it falls back from, so the operator is dead — and the shape is the visible SIGNATURE of a collapsed fallback. Every one of these was born as `user?.id || user?.claims?.sub` in the Replit-OIDC era; the Clerk migration removed the second source and left the operator behind. That collapse was correct, but nothing announced it, and the same codemod applied to a fallback that still mattered would have silently dropped a real alternative. This ratchet exists so the next one is loud. The residual population is behaviourally inert (`v || v === v` for every v) and is NOT worth churning 70 files to remove; what matters is that the count may only go DOWN.",
+  "pattern": "(?<![!\\w$.])((?:[A-Za-z_$][\\w$]*\\??\\.)?[A-Za-z_$][\\w$]*)\\??\\.([A-Za-z_$][\\w$]*)\\s*(?:\\|\\||\\?\\?)\\s*\\1\\??\\.\\2(?![\\w$.\\[(]|\\?\\.)",
+  "globs": [
+    "server/**/*.ts",
+    "server/**/*.tsx",
+    "client/src/**/*.ts",
+    "client/src/**/*.tsx",
+    "shared/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts"
+  ],
+  "baselineCount": 140,
+  "direction": "down",
+  "lastBumpNote": "Seeded at 140 on 2026-08-14, one below the 141 measured, because the seeding commit also removed one: `server/utils/permissions.ts` read `user?.id || user.id` on the line directly above `if (!userId) return null`. That is the only member of the population with a failure mode — when `user` is nullish the left side is falsy, so the UNGUARDED right side runs and throws a TypeError, defeating both the optional chain and the null-return that were written to tolerate an absent user. Latent, not live: both callers guard. The other 140 are inert and were left alone on purpose — a 70-file rewrite of `v || v` to `v` changes no behaviour, and the first attempt at exactly that codemod turned `if (!data.results || data.results.length === 0)` into `if (!data.results.length === 0)` across 70 files because the sweep that MEASURED the population and the sweep that REWROTE it were different regexes. Measured 141 / rewrote 194. This gate is the cheap half of that lesson: hold the shape flat, and let the next codemod that collapses a fallback which still matters show up as a count going the wrong way.",
+  "minima": {
+    "files": 1900
+  },
+  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 2402 file(s) (server/**, client/src/**, shared/** minus tests). Floor set to 1900, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here — never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
+}

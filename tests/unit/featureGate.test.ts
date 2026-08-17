@@ -85,7 +85,14 @@ describe("featureGate middleware", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ message: "Feature not available" });
+    // The body moved to the standard error envelope. This gate used to answer
+    // with an ad-hoc `{ message }` — the only shape in the API that did not
+    // conform to `{ error, message, statusCode }`. The INVARIANT this test
+    // protects is unchanged (404, and next() is not called); only the shape of
+    // the refusal is, so the assertion is rewritten rather than dropped.
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "FEATURE_NOT_AVAILABLE", statusCode: 404 }),
+    );
   });
 
   it("returns 404 when the flag does not exist", async () => {

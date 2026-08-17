@@ -436,9 +436,9 @@ function ClerkProfileEditor({
       <Separator />
       <p className="text-xs font-medium">Clerk contact</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <Input placeholder="Name" value={profile.clerkContact?.name ?? ""} onChange={(e) => setContact({ name: e.target.value })} className="h-8" />
-        <Input placeholder="Phone" value={profile.clerkContact?.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value })} className="h-8" />
-        <Input placeholder="Email" type="email" value={profile.clerkContact?.email ?? ""} onChange={(e) => setContact({ email: e.target.value })} className="h-8" />
+        <Input aria-label="Clerk contact name" placeholder="Name" value={profile.clerkContact?.name ?? ""} onChange={(e) => setContact({ name: e.target.value })} className="h-8" />
+        <Input aria-label="Clerk contact phone" placeholder="Phone" value={profile.clerkContact?.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value })} className="h-8" />
+        <Input aria-label="Clerk contact email" placeholder="Email" type="email" value={profile.clerkContact?.email ?? ""} onChange={(e) => setContact({ email: e.target.value })} className="h-8" />
       </div>
 
       <div className="space-y-1">

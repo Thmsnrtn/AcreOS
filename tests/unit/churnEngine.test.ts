@@ -22,7 +22,7 @@ let mockPropCount = 0;
 let mockCampaignCount = 0;
 let mockSupportCount = 0;
 
-vi.mock("../../../server/db", () => {
+vi.mock("../../server/db", () => {
   const makeSelectChain = () => {
     let callIndex = 0;
     const fromFn = vi.fn().mockImplementation((table: any) => {
@@ -68,17 +68,17 @@ vi.mock("../../../server/db", () => {
 });
 
 // ── Logging & email mocks ──────────────────────────────────────────────────────
-vi.mock("../../../server/services/systemActivityLogger", () => ({
+vi.mock("../../server/services/systemActivityLogger", () => ({
   logActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../../server/services/emailService", () => ({
+vi.mock("../../server/services/emailService", () => ({
   emailService: {
     sendTransactionalEmail: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
-vi.mock("../../../server/services/founder", () => ({
+vi.mock("../../server/services/founder", () => ({
   isFounderEmail: vi.fn().mockReturnValue(false),
 }));
 
@@ -86,7 +86,7 @@ vi.mock("../../../server/services/founder", () => ({
 // We test scoreOrg by replicating its arithmetic inline using the known formulas.
 // This avoids needing to fully instrument the DB mock for every sub-query.
 
-import { MILESTONES } from "../../../server/services/churnEngine";
+import { MILESTONES } from "../../server/services/churnEngine";
 
 // ── Pure score arithmetic (mirrors churnEngine.ts exactly) ───────────────────
 function calcScore(params: {

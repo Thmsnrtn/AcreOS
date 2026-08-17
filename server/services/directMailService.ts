@@ -2,7 +2,7 @@ import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
 import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
 
@@ -39,6 +39,22 @@ interface SendLetterOptions {
   doubleSided?: boolean;
   skipCredits?: boolean;
   useType?: 'marketing' | 'operational';
+  /**
+   * Stable key for THIS logical letter, derived from durable domain identity
+   * (a campaign piece id, a note-payment notice id) — never a random value,
+   * which would defeat the mechanism on the retry it exists to protect.
+   *
+   * When supplied, the credit deduction, the Lob call and the ledger posting
+   * all happen at most once per key: a job that dies after Lob accepted the
+   * letter cannot deduct credits again, post cost again, and print a SECOND
+   * physical letter to a real seller. See
+   * server/services/actions/outwardAction.ts.
+   *
+   * Optional so existing callers keep working unchanged. The count of send
+   * sites that DON'T pass one is ratcheted down by
+   * tests/unit/outwardActionCoverage.test.ts.
+   */
+  idempotencyKey?: string;
 }
 
 interface SendResult {
@@ -86,6 +102,16 @@ interface LobClientResult {
   isTestKey: boolean;
 }
 
+/**
+ * THE single Lob credential authority (founder-approved consolidation,
+ * 2026-08-16). Resolution order: BYOK vault → legacy organization_integrations
+ * row → platform key under the live-send interlock. Every Lob send path must
+ * resolve its client HERE — mailProvider.ts delegates to this function rather
+ * than running its own lookup, because two resolution orders is how a
+ * BYOK-vault org's letters ended up on AcreOS's own Lob account, against the
+ * BYO-rails ruling (2026-07-29). tests/unit/lobCredentialAuthority.test.ts
+ * pins both the order and the absence of a second resolver.
+ */
 export async function getLobClient(orgId: number): Promise<LobClientResult> {
   // Universal BYOK (2026-05-22) — preferred path. Falls back to the
   // legacy organization_integrations row, then platform env.
@@ -107,12 +133,12 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'lob');
 
-    if (integration && integration.isEnabled && integration.credentials?.encrypted) {
-      const decrypted = decryptJsonCredentials<{ apiKey: string }>(
-        integration.credentials.encrypted,
-        orgId
-      );
-
+    const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
+      integration,
+      orgId,
+      'lob (directMailService)',
+    );
+    if (integration && integration.isEnabled && decrypted) {
       if (decrypted.apiKey) {
         logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
         return {
@@ -279,7 +305,15 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
   if (!skipCredits) {
     const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
     if (!creditCheck.hasCredits) {
-      throw new Error(creditCheck.errorMessage);
+      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
+      // deducts nothing despite its name), and Lob has not been called. Typing
+      // this as ProviderNotContactedError records the claim `failed` rather than
+      // `ambiguous`, so topping up the balance and retrying under the SAME
+      // durable key works. An unclassified throw here would poison the key
+      // permanently and tell the operator to reconcile against a provider that
+      // never heard of the request.
+      const { ProviderNotContactedError } = await import('./actions/outwardAction');
+      throw new ProviderNotContactedError(creditCheck.errorMessage!);
     }
   }
   
@@ -319,7 +353,81 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
   }
 }
 
+/**
+ * Print and mail a physical letter.
+ *
+ * When `options.idempotencyKey` is present this runs through the outward-action
+ * boundary, so the whole consequential body — credit deduction, the Lob call
+ * and the ledger posting — happens at most once per key. On a replay it THROWS
+ * `LetterAlreadySentError` carrying the real Lob id rather than returning a
+ * fabricated SendResult: we do not know the original expected-delivery date at
+ * replay time, and inventing one would be exactly the fabrication
+ * scripts/check-no-fabrication.mjs exists to prevent.
+ */
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
+  if (!options.idempotencyKey) return performLetterSend(options);
+
+  const { withOutwardAction } = await import("./actions/outwardAction");
+  return withOutwardAction<SendResult>(
+    {
+      organizationId: options.organizationId,
+      actionKind: "physical_mail.letter",
+      idempotencyKey: options.idempotencyKey,
+      // Everything that materially defines the piece. Reusing the key with
+      // different content must be caught, not silently suppressed.
+      payload: {
+        recipientName: options.recipientName,
+        recipientAddress: options.recipientAddress,
+        senderIdentity: options.senderIdentity,
+        htmlContent: options.htmlContent,
+        color: options.color ?? false,
+        doubleSided: options.doubleSided ?? false,
+        useType: options.useType ?? 'marketing',
+      },
+    },
+    async () => {
+      try {
+        const result = await performLetterSend(options);
+        return { status: "succeeded", externalId: result.lobId, result };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        // performLetterSend throws from two materially different places, and the
+        // difference decides whether this key is retryable ever again.
+        //
+        //  · BEFORE Lob is contacted — a credit refusal. That path now throws
+        //    ProviderNotContactedError, which withOutwardAction records `failed`,
+        //    so a retry after topping up succeeds under the same durable key.
+        //  · FROM the Lob call itself — genuinely ambiguous. A network failure
+        //    there may or may not have printed a letter, so it stays
+        //    unclassified and is recorded AMBIGUOUS, refusing retry until
+        //    someone reconciles.
+        //
+        // Rethrowing unchanged is what preserves that distinction: the type
+        // carries it, so this handler must not flatten it into a plain Error.
+        throw error;
+      }
+    },
+    (externalId) => {
+      throw new LetterAlreadySentError(options.idempotencyKey!, externalId);
+    },
+  );
+}
+
+/**
+ * Raised when a letter for this idempotency key was already printed. Carries
+ * the real Lob id so the caller can record the send instead of repeating it.
+ */
+export class LetterAlreadySentError extends Error {
+  constructor(readonly idempotencyKey: string, readonly lobId: string | null) {
+    super(
+      `Letter for idempotency key "${idempotencyKey}" was already sent` +
+        (lobId ? ` (Lob id ${lobId})` : "") +
+        `. Not printing a second copy.`,
+    );
+  }
+}
+
+async function performLetterSend(options: SendLetterOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing' } = options;
 
   logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
@@ -354,7 +462,15 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
   if (!skipCredits) {
     const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
     if (!creditCheck.hasCredits) {
-      throw new Error(creditCheck.errorMessage);
+      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
+      // deducts nothing despite its name), and Lob has not been called. Typing
+      // this as ProviderNotContactedError records the claim `failed` rather than
+      // `ambiguous`, so topping up the balance and retrying under the SAME
+      // durable key works. An unclassified throw here would poison the key
+      // permanently and tell the operator to reconcile against a provider that
+      // never heard of the request.
+      const { ProviderNotContactedError } = await import('./actions/outwardAction');
+      throw new ProviderNotContactedError(creditCheck.errorMessage!);
     }
   }
   
@@ -397,6 +513,24 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
     logger.error('[DirectMailService] Letter send failed', error);
     throw new Error(`Failed to send letter: ${error.message || 'Unknown error'}`);
   }
+}
+
+/**
+ * Cheap pre-flight reject before a PAID Lob verification call. Ported from the
+ * deleted addressValidation.ts (unit 116) — it was that module's one capability
+ * the live rival lacked: obviously-bad input (no street line, neither city+state
+ * nor zip) fails here for free instead of costing a Lob API call.
+ *
+ * Lob rate limits, recorded here because the deleted module was the only place
+ * they were written down: 150 req/s live keys, 5 req/s test keys — batch callers
+ * should pace sequentially rather than fan out.
+ */
+export function isAddressMinimallyValid(address: { line1?: string; city?: string; state?: string; zip?: string }): boolean {
+  const { line1, city, state, zip } = address;
+  if (!line1 || line1.trim().length < 5) return false;
+  // Need at least city+state OR zip
+  if (!zip && (!city || !state)) return false;
+  return true;
 }
 
 export async function verifyAddress(address: RecipientAddress): Promise<VerifyAddressResult> {

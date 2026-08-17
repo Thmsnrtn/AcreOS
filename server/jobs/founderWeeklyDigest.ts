@@ -459,6 +459,37 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
     atRiskOrgs: churnCritical,
   };
 
+  /**
+   * Where an anomaly is actually looked at, by category.
+   *
+   * The digest is an EMAIL, so every one of these is a deep link into the app,
+   * and two of them pointed at routes that do not exist: `/admin/alerts` for
+   * every critical anomaly and `/founder/intelligence` for every high one. There
+   * is no `<Route>` for either — a founder woken by a critical revenue alert
+   * tapped through to NotFound.
+   *
+   * One link per SEVERITY was also the wrong shape. An AI-cost spike, a failing
+   * job and a churn cliff are looked at in three different places, and sending
+   * all three to the same page would be re-pointing a broken link at an
+   * approximation — which looks fixed and is not.
+   *
+   * Anything without a dedicated surface falls back to `/founder` — The Letter,
+   * the canonical founder home. That is honest for an email CTA ("open your
+   * founder surface") in a way that naming a specific page which does not show
+   * the anomaly would not be. It is also the only correct default under the
+   * four-doors rule: inventing a page for a category would be a new top-level
+   * founder route.
+   */
+  const ANOMALY_SURFACE: Record<string, string> = {
+    "AI Costs": "/founder/admin/costs",
+    "Churn Risk": "/founder/customers/health",
+    Automation: "/founder/telemetry",
+    System: "/founder/telemetry",
+    Revenue: "/founder/financials",
+    Support: "/founder/feedback",
+  };
+  const surfaceFor = (category: string) => ANOMALY_SURFACE[category] ?? "/founder";
+
   // ── Anomaly Detection ──────────────────────────────────────────────────────
   const anomalies: Anomaly[] = [];
 
@@ -543,7 +574,7 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       priority: "critical",
       title: a.description,
       detail: `${a.value} — ${a.recommendation}`,
-      link: "/admin/alerts",
+      link: surfaceFor(a.category),
     }));
 
   if (Number(inboxData.pending || 0) > 0) {
@@ -551,7 +582,10 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       priority: "high",
       title: `${inboxData.pending} decision(s) awaiting founder review`,
       detail: "These are escalated decisions the system couldn't handle autonomously",
-      link: "/founder/inbox",
+      // `/founder/inbox` has no route. Decisions is one of the four canonical
+      // founder doors and it renders exactly this: the escalated-decision inbox
+      // (`/api/founder/intelligence/decisions-inbox/defects` + `/api/founder/asks`).
+      link: "/founder/decisions",
     });
   }
 
@@ -561,7 +595,7 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       priority: "high",
       title: a.description,
       detail: `${a.value} — ${a.recommendation}`,
-      link: "/founder/intelligence",
+      link: surfaceFor(a.category),
     }));
 
   // ── Overall Vibe ──────────────────────────────────────────────────────────

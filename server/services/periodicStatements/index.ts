@@ -42,6 +42,7 @@ import { acquiredNotes, type AcquiredNote } from "@shared/schema/notes-vertical"
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "./predicate";
+import { parseCalendarDate } from "@shared/dates/calendar";
 
 // HUD-approved housing counsellor hotline — §1026.41(d)(8) mandates
 // disclosure when the borrower is 45+ days delinquent. The hotline
@@ -402,38 +403,13 @@ export async function generateStatementsForCycle(
 // than a statement that was not generated.
 // ============================================================================
 
-/**
- * Strict calendar-date coercion. Accepts a `date` column (ISO 'YYYY-MM-DD'),
- * a `timestamp` column (Date), or an ISO datetime string, and always returns
- * a UTC midnight Date — note due dates are calendar dates, not instants, so
- * local-time construction would shift the answer by a day for anyone west of
- * UTC. Returns null for anything unparseable or for a date JS would silently
- * roll over (2026-02-30 → March 2nd); bad stored data must surface as
- * "unknown", not as a date nobody agreed to.
+/*
+ * `parseCalendarDate` now lives in `@shared/dates/calendar` and is imported
+ * at the top of this file. This module WROTE the canonical body — it was the
+ * most capable of the three copies (Date, ISO datetime, and 'YYYY-MM-DD',
+ * all with the roll-over rejection) — so consolidation moved it out rather
+ * than replacing it with a weaker one.
  */
-function parseCalendarDate(value: string | Date | null | undefined): Date | null {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return null;
-    return new Date(
-      Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
-    );
-  }
-  if (typeof value !== "string") return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  if (
-    parsed.getUTCFullYear() !== year ||
-    parsed.getUTCMonth() !== month - 1 ||
-    parsed.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return parsed;
-}
 
 /**
  * §1026.41(b)(2): delivery no later than a reasonably prompt time before the
@@ -648,7 +624,19 @@ async function generateOneStatement(input: GenerateOneInput): Promise<boolean> {
   // the cron batch; we catch + log so the remaining loans keep generating.
   try {
     const { notifyStatementGenerated } = await import("./delivery");
-    await notifyStatementGenerated(persistedId);
+    const notifyResult = await notifyStatementGenerated(persistedId);
+    // A BYO-identity block is not an error and not a success — the row is
+    // generated and portal-readable, but the statutory email will never
+    // go out until the org connects email. It is TERMINAL (never retried),
+    // so if it is not logged here it is invisible in the cron's
+    // "generated=N errors=M" summary. The founder/org alert is raised
+    // inside the notifier; this is the operator-facing breadcrumb.
+    if (notifyResult.blockedNoOrgIdentity) {
+      logger.warn(
+        `[periodicStatements] statement ${persistedId} (loan ${loanId}, org ${organizationId}) generated but email BLOCKED — org has no connected email identity; not retried`,
+        { metadata: { statementId: persistedId, organizationId, loanId } },
+      );
+    }
   } catch (notifyErr) {
     logger.warn(
       `[periodicStatements] notify failed for statement ${persistedId} (loan ${loanId}) — generation succeeded, email did not`,
@@ -716,7 +704,14 @@ interface ComputedFields {
 async function computeStatementFields(
   input: ComputeFieldsInput,
 ): Promise<ComputedFields> {
-  const { loan, cycleStart, cycleEnd } = input;
+  // TENANCY (2026-08-16): `organizationId` was already on ComputeFieldsInput
+  // and was simply never destructured, so every Reg-Z dollar below —
+  // principal / interest / escrow / fees for the cycle, and the YTD sums that
+  // go onto a statutory disclosure — was resolved from `payment_applications`
+  // by a loanId FK with no tenant term. `payment_applications.organization_id`
+  // is NOT NULL; both predicates now carry it, so a loanId that collides
+  // across tenants sums nothing rather than another org's money.
+  const { loan, organizationId, cycleStart, cycleEnd } = input;
 
   // Numeric columns on the legacy notes table are decimal strings;
   // convert to integer cents for our snapshot.
@@ -745,6 +740,7 @@ async function computeStatementFields(
     .from(paymentApplications)
     .where(
       and(
+        eq(paymentApplications.organizationId, organizationId),
         eq(paymentApplications.loanId, String(loan.id)),
         gte(paymentApplications.appliedAt, cycleStart),
         lte(paymentApplications.appliedAt, cycleEnd),
@@ -799,6 +795,7 @@ async function computeStatementFields(
     .from(paymentApplications)
     .where(
       and(
+        eq(paymentApplications.organizationId, organizationId),
         eq(paymentApplications.loanId, String(loan.id)),
         gte(paymentApplications.appliedAt, ytdStart),
         lte(paymentApplications.appliedAt, cycleEnd),
@@ -1163,7 +1160,14 @@ async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Pr
   // accordingly.
   try {
     const { notifyStatementGenerated } = await import("./delivery");
-    await notifyStatementGenerated(persistedId);
+    const notifyResult = await notifyStatementGenerated(persistedId);
+    // Same breadcrumb as the originated path — see the comment there.
+    if (notifyResult.blockedNoOrgIdentity) {
+      logger.warn(
+        `[periodicStatements] acquired-note statement ${persistedId} (note ${loanId}, org ${organizationId}) generated but email BLOCKED — org has no connected email identity; not retried`,
+        { metadata: { statementId: persistedId, organizationId, loanId } },
+      );
+    }
   } catch (notifyErr) {
     logger.warn(
       `[periodicStatements] notify failed for acquired-note statement ${persistedId} (note ${loanId}) — generation succeeded, email did not`,

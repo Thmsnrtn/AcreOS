@@ -3,7 +3,9 @@ import { db } from "../db";
 import { dataSources, dataSourceCache } from "@shared/schema";
 import { eq, and, gte, desc, sql, or, ilike } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
+import { orderSourcesForLookup, TIER_PRIORITY } from "./dataSourceOrdering";
 import { enrichmentCircuitBreaker, countyApiCircuitBreaker, CircuitOpenError } from "../utils/circuitBreaker";
+import { getSetting } from "./settings";
 import { logger } from "../utils/logger";
 
 export type AccessTier = "free" | "cached" | "byok" | "paid";
@@ -102,8 +104,16 @@ interface UsageMetrics {
 }
 
 const CACHE_DURATION_DAYS = 30;
-const TIER_PRIORITY: AccessTier[] = ["free", "cached", "byok", "paid"];
+
 const DEFAULT_TIMEOUT_MS = 12000;
+
+/**
+ * The /founder/studio routing dial (seeded by settingsSeeder, written by
+ * routes-founder-studio-dials). The broker reads only `freeSourceFirst`;
+ * cacheTtlDays/fallbackOrder are consumed elsewhere.
+ */
+const DATA_ROUTING_SETTING_KEY = "routing.data";
+const FREE_SOURCE_FIRST_DEFAULT = true; // must match the seeded routing.data value
 
 /**
  * Categories whose fetch implementation is HARDCODED into `executeSourceLookup`
@@ -357,6 +367,15 @@ export function parseSdaColumnRows(payload: unknown): Array<Record<string, strin
     });
 }
 
+/**
+ * Pure ordering seam for source selection, driven by the founder's
+ * routing.data `freeSourceFirst` dial. When ON (the seeded default) free
+ * tiers are forced ahead of byok/paid per TIER_PRIORITY; when OFF the tier
+ * forcing is dropped and ordering falls back to the broker's natural
+ * priority-then-health order, so a cheaper-by-priority paid source may run
+ * before a free one. Verified-first always applies — that axis is data
+ * quality, not cost.
+ */
 export class DataSourceBroker {
   private healthCache: Map<number, SourceHealth> = new Map();
   private usageMetrics: Map<number, UsageMetrics> = new Map();
@@ -422,7 +441,32 @@ export class DataSourceBroker {
     }
 
     const uniqueSources = Array.from(new Map(allSources.map(s => [s.id, s])).values());
-    return this.sortByTierAndHealth(uniqueSources);
+    return this.sortByTierAndHealth(uniqueSources, await this.readFreeSourceFirstDial());
+  }
+
+  /**
+   * Read the founder's routing.data `freeSourceFirst` dial. getSetting()
+   * carries its own 30s in-process cache (hits and misses both), so this
+   * adds at most one DB read per TTL — not one per lookup. A missing or
+   * malformed value resolves to ON (the seeded default), so orgs that never
+   * touched the dial keep the historical free-first ordering; a settings
+   * read failure must degrade the same way, never fail the lookup.
+   */
+  private async readFreeSourceFirstDial(): Promise<boolean> {
+    try {
+      const routing = await getSetting<{ freeSourceFirst?: unknown }>(
+        DATA_ROUTING_SETTING_KEY,
+        { freeSourceFirst: FREE_SOURCE_FIRST_DEFAULT },
+      );
+      return typeof routing?.freeSourceFirst === "boolean"
+        ? routing.freeSourceFirst
+        : FREE_SOURCE_FIRST_DEFAULT;
+    } catch (error: unknown) {
+      logger.warn("[data-source-broker] routing.data read failed — defaulting freeSourceFirst ON", {
+        metadata: { error: error instanceof Error ? error.message : String(error) },
+      });
+      return FREE_SOURCE_FIRST_DEFAULT;
+    }
   }
 
   async getValidatedSourcesForCategory(category: LookupCategory): Promise<DataSource[]> {
@@ -431,23 +475,11 @@ export class DataSourceBroker {
     return validatedSources.length > 0 ? validatedSources : allSources.slice(0, 3);
   }
 
-  private sortByTierAndHealth(sources: DataSource[]): DataSource[] {
-    return sources.sort((a, b) => {
-      const verifiedA = a.isVerified ? 0 : 1;
-      const verifiedB = b.isVerified ? 0 : 1;
-      if (verifiedA !== verifiedB) return verifiedA - verifiedB;
-
-      const tierA = TIER_PRIORITY.indexOf(this.determineTier(a));
-      const tierB = TIER_PRIORITY.indexOf(this.determineTier(b));
-      if (tierA !== tierB) return tierA - tierB;
-
-      const priorityA = a.priority || 100;
-      const priorityB = b.priority || 100;
-      if (priorityA !== priorityB) return priorityA - priorityB;
-
-      const healthA = this.healthCache.get(a.id)?.successRate || 0.5;
-      const healthB = this.healthCache.get(b.id)?.successRate || 0.5;
-      return healthB - healthA;
+  private sortByTierAndHealth(sources: DataSource[], freeSourceFirst: boolean): DataSource[] {
+    return orderSourcesForLookup(sources, {
+      freeSourceFirst,
+      tierOf: (s) => this.determineTier(s),
+      successRateOf: (id) => this.healthCache.get(id)?.successRate || 0.5,
     });
   }
 

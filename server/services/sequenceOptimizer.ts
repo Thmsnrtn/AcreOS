@@ -12,6 +12,7 @@ import {
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export interface MessagePerformanceParams {
   sequenceId?: number;
   sequenceName: string;
@@ -363,7 +364,7 @@ ${analysis.messagePerformance
   .join("\n")}
 
 Subject Lines in Use:
-${performanceRecords.filter(r => r.subjectLine).map(r => `- Position ${r.messagePosition}: "${r.subjectLine}"`).join("\n") || "None tracked"}
+${performanceRecords.filter(r => r.subjectLine).map(r => `- Position ${r.messagePosition}: "${sanitizePromptInline(r.subjectLine ?? "")}"`).join("\n") || "None tracked"}
 
 Provide 3-5 specific optimization suggestions. For each suggestion:
 1. Type: one of "subject_line", "timing", "content", "segment", or "channel"

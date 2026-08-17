@@ -376,6 +376,22 @@ export interface RegisteredSendOptions {
   replyTo?: string;
   /** Override the suppression check — only honor for transactional sends. */
   bypassSuppression?: boolean;
+  /**
+   * Lane for the underlying send (founder decision, 2026-07-17), forwarded
+   * verbatim to emailService.sendEmail.
+   *
+   * Every kind in EMAIL_KINDS today is AcreOS talking to its OWN users, so no
+   * caller passes "counterparty" yet. The field exists so that the first one
+   * that isn't CAN say so: without it this registry is a one-way door onto the
+   * platform sender, and `kb_reply` — a template whose props are a question
+   * from an inbound sender and an answer back to them — is exactly the kind
+   * that would walk through it the moment it is wired to inbound seller mail.
+   *
+   * Deliberately left undefined by default rather than defaulted to "system":
+   * an absent lane is a readable "nobody decided", an explicit "system" reads
+   * as "somebody reviewed this" and would launder a future miswire.
+   */
+  purpose?: "system" | "counterparty";
 }
 
 export interface RegisteredSendResult extends EmailResult {
@@ -471,6 +487,8 @@ export async function sendRegisteredEmail<K extends EmailKind>(
     replyTo: options.replyTo,
     // Lifecycle sends carry the List-Unsubscribe header + CAN-SPAM footer.
     isCampaignEmail: category === "lifecycle",
+    // Lane passes straight through — see RegisteredSendOptions.purpose.
+    purpose: options.purpose,
   });
 
   await logSend({

@@ -1,11 +1,17 @@
 /**
  * T278 — Address Validation Tests
- * Tests minimal address validation, standardization helpers, and batch logic.
+ *
+ * Unit 116: the subject moved. addressValidation.ts was deleted as a superseded
+ * duplicate (directMailService.verifyAddress is the same Lob endpoint via the
+ * official SDK, with richer DPV output and four live callers). Its ONE unique
+ * capability — the cheap pre-flight reject that saves a paid Lob call on
+ * obviously-bad input — was ported to directMailService.isAddressMinimallyValid,
+ * and this file now imports THAT instead of testing a private inline copy that
+ * pinned nothing.
  */
 
 import { describe, it, expect } from "vitest";
-
-// ─── Inline pure logic ────────────────────────────────────────────────────────
+import { isAddressMinimallyValid } from "../../server/services/directMailService";
 
 interface AddressInput {
   line1: string;
@@ -15,13 +21,6 @@ interface AddressInput {
   zip?: string;
 }
 
-function isAddressMinimallyValid(address: AddressInput): boolean {
-  const { line1, city, state, zip } = address;
-  if (!line1 || line1.trim().length < 5) return false;
-  // Need at least city+state OR zip
-  if (!zip && (!city || !state)) return false;
-  return true;
-}
 
 function normalizeState(state: string): string {
   return state.trim().toUpperCase();

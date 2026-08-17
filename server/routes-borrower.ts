@@ -1242,7 +1242,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (!note) return Errors.notFound(res, "loan");
 
-      const mandate = await getAchMandateSummary(note.id);
+      const mandate = await getAchMandateSummary(note.organizationId, note.id);
       // Skip the availability probe when the mandate is already armed — the
       // instrument is confirmed, so a Stripe round-trip would tell us nothing
       // the borrower needs.
@@ -1362,7 +1362,7 @@ export function registerBorrowerRoutes(app: Express): void {
         if (!note) return Errors.notFound(res, "loan");
 
         // Already armed — do not mint a second authorization for the same note.
-        const existing = await getAchMandateSummary(note.id);
+        const existing = await getAchMandateSummary(note.organizationId, note.id);
         if (existing.armed) {
           return Errors.badRequest(
             res,
@@ -1513,7 +1513,7 @@ export function registerBorrowerRoutes(app: Express): void {
         // than making the client do it in a second call) means a client that
         // dies after Checkout cannot leave an authorized account with autopay
         // silently off.
-        const summary = await getAchMandateSummary(note.id);
+        const summary = await getAchMandateSummary(note.organizationId, note.id);
         if (summary.armed && note.autoPayEnabled !== true) {
           await storage.updateNote(note.id, { autoPayEnabled: true }, note.organizationId);
         }
@@ -1556,7 +1556,7 @@ export function registerBorrowerRoutes(app: Express): void {
       if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
-      const mandate = await getAchMandateSummary(note.id);
+      const mandate = await getAchMandateSummary(note.organizationId, note.id);
 
       if (wantEnabled && !mandate.armed) {
         const availability: AchAvailability = await resolveAchAvailability(note.organizationId);
@@ -1585,12 +1585,13 @@ export function registerBorrowerRoutes(app: Express): void {
       let revokedMandates = 0;
       if (!wantEnabled) {
         revokedMandates = await revokeAchMandatesForNote({
+          organizationId: note.organizationId,
           noteId: note.id,
           reason: "Borrower turned autopay off in the borrower portal.",
         });
       }
 
-      const after = await getAchMandateSummary(note.id);
+      const after = await getAchMandateSummary(note.organizationId, note.id);
       res.json({
         success: true,
         autopayEnabled: wantEnabled,
@@ -1642,7 +1643,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // can extend its window it must not be a back door to a flag that
       // promises a collection nothing performs.
       const wantEnabled = enabled === true;
-      const mandate = await getAchMandateSummary(note.id);
+      const mandate = await getAchMandateSummary(note.organizationId, note.id);
       if (wantEnabled && !mandate.armed) {
         return Errors.badRequest(
           res,
@@ -1658,6 +1659,7 @@ export function registerBorrowerRoutes(app: Express): void {
       let revokedMandates = 0;
       if (!wantEnabled) {
         revokedMandates = await revokeAchMandatesForNote({
+          organizationId: note.organizationId,
           noteId: note.id,
           reason: "Borrower turned autopay off (legacy token endpoint).",
         });

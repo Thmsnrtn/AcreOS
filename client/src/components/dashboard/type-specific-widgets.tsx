@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
+import { QueryErrorState } from "@/components/query-error-state";
 import { staggerContainer, fadeInUp } from "@/lib/animations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -749,10 +751,8 @@ function useNotes() {
   return useQuery<Note[]>({
     queryKey: ["/api/notes"],
     queryFn: async () => {
-      const res = await fetch("/api/notes", { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const res = await okOrThrow(await fetch("/api/notes", { credentials: "include" }));
+      return listFrom<Note>(await res.json());
     },
   });
 }
@@ -762,22 +762,32 @@ interface PropertyLite { id: number; status?: string | null; latitude?: unknown;
 
 /** Sourcing widget (land_investor) — the job is finding parcels + owners. */
 function LandSourcingWidgets() {
-  const { data: properties = [], isLoading: pLoading } = useQuery<PropertyLite[]>({
+  const {
+    data: properties = [],
+    isLoading: pLoading,
+    isError: pError,
+    error: pErr,
+    refetch: pRefetch,
+  } = useQuery<PropertyLite[]>({
     queryKey: ["/api/properties"],
     queryFn: async () => {
-      const res = await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const res = await okOrThrow(
+        await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" }),
+      );
+      return listFrom<PropertyLite>(await res.json());
     },
   });
-  const { data: leads = [], isLoading: lLoading } = useQuery<LeadLite[]>({
+  const {
+    data: leads = [],
+    isLoading: lLoading,
+    isError: lError,
+    error: lErr,
+    refetch: lRefetch,
+  } = useQuery<LeadLite[]>({
     queryKey: ["/api/leads"],
     queryFn: async () => {
-      const res = await fetch("/api/leads", { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const res = await okOrThrow(await fetch("/api/leads", { credentials: "include" }));
+      return listFrom<LeadLite>(await res.json());
     },
   });
 
@@ -786,6 +796,27 @@ function LandSourcingWidgets() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
       </div>
+    );
+  }
+
+  // BEFORE the empty state, and that order is the whole point of this unit.
+  // Both queries used to swallow failure into `[]`, so an API blip fell through
+  // to the EmptyState below and showed a customer with two hundred parcels the
+  // NEW-USER onboarding panel — "Add your first parcels" — on their own
+  // dashboard. "You have none" and "we could not look" are different sentences.
+  if (pError || lError) {
+    const err = (pErr ?? lErr) as Error | null;
+    return (
+      <QueryErrorState
+        error={err instanceof Error ? err : new Error(String(err))}
+        onRetry={() => {
+          void pRefetch();
+          void lRefetch();
+        }}
+        title="Couldn't load your sourcing pipeline"
+        description="Your parcels and owner targets could not be read. This is not the same as having none."
+        testId="land-widget-error"
+      />
     );
   }
 
@@ -824,7 +855,7 @@ function LandSourcingWidgets() {
 
 /** Portfolio-yield widget (note_investor) — the job is yield on owned paper. */
 function NoteInvestorWidgets() {
-  const { data: notes = [], isLoading } = useNotes();
+  const { data: notes = [], isLoading, isError, error, refetch } = useNotes();
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -832,6 +863,22 @@ function NoteInvestorWidgets() {
       </div>
     );
   }
+
+  // An error branch BEFORE the empty state. `useNotes` used to swallow failure
+  // into `[]`, so an outage fell through to the panel below and told someone
+  // with a full book to start from nothing.
+  if (isError) {
+    return (
+      <QueryErrorState
+        error={error instanceof Error ? error : new Error(String(error))}
+        onRetry={() => void refetch()}
+        title="Couldn't load your notes"
+        description="Your note book could not be read. This is not the same as holding no notes."
+        testId="note-invest-error"
+      />
+    );
+  }
+
 
   const active = notes.filter((n) => n.status === "active");
   if (active.length === 0) {
@@ -881,7 +928,7 @@ function NoteInvestorWidgets() {
 
 /** Origination widget (note_originator) — the job is CREATING paper. */
 function NoteOriginatorWidgets() {
-  const { data: notes = [], isLoading } = useNotes();
+  const { data: notes = [], isLoading, isError, error, refetch } = useNotes();
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -889,6 +936,22 @@ function NoteOriginatorWidgets() {
       </div>
     );
   }
+
+  // An error branch BEFORE the empty state. `useNotes` used to swallow failure
+  // into `[]`, so an outage fell through to the panel below and told someone
+  // with a full book to start from nothing.
+  if (isError) {
+    return (
+      <QueryErrorState
+        error={error instanceof Error ? error : new Error(String(error))}
+        onRetry={() => void refetch()}
+        title="Couldn't load your notes"
+        description="Your note book could not be read. This is not the same as having originated no notes."
+        testId="note-orig-error"
+      />
+    );
+  }
+
 
   const active = notes.filter((n) => n.status === "active");
   if (active.length === 0) {

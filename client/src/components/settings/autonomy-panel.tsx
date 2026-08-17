@@ -409,8 +409,9 @@ export function AutonomyPanel() {
           {config.timeGuards?.pauseStartHour != null && (
             <div className="grid grid-cols-2 gap-4 max-w-sm">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Pause from</Label>
+                <Label className="text-xs text-muted-foreground" htmlFor="autonomy-pause-from">Pause from</Label>
                 <Input
+                  id="autonomy-pause-from"
                   type="number"
                   min={0}
                   max={23}
@@ -421,8 +422,9 @@ export function AutonomyPanel() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Pause until</Label>
+                <Label className="text-xs text-muted-foreground" htmlFor="autonomy-pause-until">Pause until</Label>
                 <Input
+                  id="autonomy-pause-until"
                   type="number"
                   min={0}
                   max={23}
@@ -436,8 +438,9 @@ export function AutonomyPanel() {
           )}
 
           <div className="space-y-1.5 max-w-sm">
-            <Label className="text-xs text-muted-foreground">Daily action limit per agent</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="autonomy-daily-limit">Daily action limit per agent</Label>
             <Input
+              id="autonomy-daily-limit"
               type="number"
               min={0}
               max={10000}

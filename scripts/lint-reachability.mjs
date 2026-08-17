@@ -28,7 +28,11 @@
 // a CI check.
 //
 // ----------------------------------------------------------------------------
-// WHAT IT CHECKS — three families, independently counted
+// WHAT IT CHECKS — independently baselined counts, deliberately NOT tallied here
+// (the summary line at the bottom derives the number from FAMILIES.length rather
+// than restating it, because it said "four" for as long as there were four and
+// would have said it forever — and this header then said "five" through the
+// arrival of the sixth, proving the point twice)
 //
 //   1. unreached-exports   Every `export function|const|class` in
 //                          server/services/** and server/jobs/**, cross-
@@ -41,11 +45,27 @@
 //                          BOTH directions: a table nothing writes is dead
 //                          weight; a table nothing reads is a black hole that
 //                          silently accumulates rows forever.
-//   3. unregistered-routes Every server/routes-*.ts exporting a
-//                          `register*Routes` function or a default Router,
-//                          cross-referenced against server/routes.ts,
-//                          server/index.ts, ROUTE_MANIFEST, and any other
-//                          production server file.
+//   3. unregistered-routes Every non-test file ANYWHERE under server/ that
+//                          exports a route registrar (`register…(app: Express)`)
+//                          or an Express Router, cross-referenced against
+//                          ROUTE_MANIFEST and every other production server
+//                          file that IMPORTS it. Mountedness is computed as a
+//                          FIXED POINT: a referrer that is itself an unmounted
+//                          router confers nothing, so a sub-router reachable
+//                          only from an unmounted registrar is unmounted too.
+//                          (Widened 2026-08-16 — see the blind-spot note below.)
+//   4. opaque-exports      THE SIZE OF THIS GATE'S OWN BLIND SPOT. Exports that
+//                          families 1–3 cannot assert on, because their module
+//                          is dynamically imported in a way that hides WHICH
+//                          exports are touched (see the dynamic-import bullet
+//                          below). Nothing here is proven dead — that is the
+//                          point — but the number may only SHRINK, so the one
+//                          population this linter admits it cannot see is no
+//                          longer the one population free to grow without limit.
+//                          See FAMILY 5 near the FAMILIES array for the
+//                          measurement, and for the 2026-08-14 narrowing that
+//                          cut this family by 859 by exempting only the imports
+//                          that genuinely hide something.
 //
 // ----------------------------------------------------------------------------
 // WHY IT IS A RATCHET, NOT A HARD GATE
@@ -68,9 +88,16 @@
 // a live thing dead), because a false positive that deletes a working feature
 // is far worse than a miss. Concretely:
 //
-//   • Dynamic imports. `await import("./x")` / `import("./x")` / `require("./x")`
-//     make the module OPAQUE: every export of a dynamically-imported module is
-//     reported as "opaque (dynamic import)" and is NOT counted as unreached.
+//   • Dynamic imports, but only the ones that HIDE something. `const m = await
+//     import("./x")`, `(await import("./x")).default` and a bare side-effect
+//     `import("./x")` make the module OPAQUE: every export of it is reported as
+//     "opaque (dynamic import)" and is NOT counted as unreached, because the
+//     call site does not say which exports it touches. A DESTRUCTURING dynamic
+//     import — `const { runLazily } = await import("./x")` or
+//     `import("./x").then(({ runLazily }) => …)` — confers NO opacity: it binds
+//     a bare identifier the usage tokeniser below already sees, so exempting the
+//     module's OTHER exports on the strength of it was pure loss. (It is still
+//     recorded as an import, so the module-orphan family stays honest.)
 //   • String-keyed dispatch & reflection. String literals are NOT stripped
 //     before tokenizing, so `registry["calculateFlipAnalysis"]` and
 //     `handlers.foo` both count as uses. A registry keyed by a name built at
@@ -92,6 +119,24 @@
 //   • Table reads via a bare column reference (`eq(foo.id, …)` inside somebody
 //     else's delete) are NOT counted as a read. Counting them would make
 //     essentially every table "read" and destroy the signal.
+//   • Route mountedness is decided by MODULE PATH, not by symbol name. 97 of the
+//     277 route candidates export a Router named literally `router`, so a
+//     `t.includes("router")`/`\brouter\b` sweep marks essentially every server
+//     file a referrer and launders the whole family. Registrar FUNCTION names
+//     (`registerFooRoutes`) are distinctive enough to keep; Router variable
+//     names are not, and are matched by resolved import specifier only.
+//
+// ----------------------------------------------------------------------------
+// VACUITY GUARD — an empty scan must FAIL, not read as a clean bill of health
+//
+// Every count here is "how many bad things did I find", so a scan that stops
+// seeing FILES reports zero and passes. This repo has been bitten by exactly
+// that (a block-comment stripper that mispaired and blanked the lines a scan was
+// counting). `minima` in the ratchet file therefore floors the SCAN populations
+// — production files and route candidates — and the run fails if either drops
+// below. The floors sit well under the live numbers: they exist to catch a
+// broken walk/regex, not to forbid deletion. A `--root` fixture run must pass
+// its own `--ratchet` with fixture-sized minima.
 //
 // Therefore: a symbol reported here is a STRONG HINT, not a proof. Verify
 // before deleting. The linter never claims certainty it does not have.
@@ -179,19 +224,36 @@ function isTestFile(relPath) {
 const PRODUCTION_ROOTS = ["server", "client/src", "shared", "scripts", "script"];
 
 /**
+ * REGISTERS OF OFFENDING SYMBOLS — never counted as consumers.
+ *
  * This file DOCUMENTS the dead symbols it exists to find (lateFees,
  * calculateFlipAnalysis, achAutopayRun …) in its own header. Token-wise that
  * reads as a use, so the linter would resurrect exactly the corpses it names.
- * Exempt itself — same shape as lint-prefetch-authority.mjs exempting the one
- * file allowed to call the API it bans.
+ * Same shape as lint-prefetch-authority.mjs exempting the one file allowed to
+ * call the API it bans.
+ *
+ * It is not the only such file any more, and the second one was found the hard
+ * way. `check-org-scoped-fetch.mjs` froze 136 service-layer tenancy offenders
+ * as `"server/services/<file>.ts::<method>"` keys; this scanner tokenises file
+ * text, so `productEvolutionEngine` — a MODULE ORPHAN nothing imports, whose
+ * singleton happens to share its filename — read as referenced and the count
+ * silently fell 654 → 653. A register of things that are wrong must not make
+ * them look right.
+ *
+ * Add a file here only if enumerating symbols IS its purpose. A script that
+ * merely mentions one is a real consumer; this linter prefers a miss to a wrong
+ * accusation, and the same caution applies in reverse.
  */
-const SELF = "scripts/lint-reachability.mjs";
+const SYMBOL_REGISTERS = new Set([
+  "scripts/lint-reachability.mjs",
+  "scripts/check-org-scoped-fetch.mjs",
+]);
 
 const productionFiles = [];
 for (const r of PRODUCTION_ROOTS) {
   for (const abs of walk(join(ROOT, r))) {
     const p = rel(abs);
-    if (p === SELF) continue;
+    if (SYMBOL_REGISTERS.has(p)) continue;
     if (!isTestFile(p)) productionFiles.push(p);
   }
 }
@@ -397,6 +459,29 @@ for (const p of productionFiles) {
   let dm;
   while ((dm = DYNAMIC_IMPORT_RE.exec(raw)) !== null) {
     const spec = dm[1];
+    // A DESTRUCTURING dynamic import needs no opacity, and skipping it is the
+    // whole of this narrowing. `const { routeAITask } = await import("./x")`
+    // binds `routeAITask` as a bare identifier, which the usage tokeniser below
+    // already sees — so exempting the module's OTHER exports on the strength of
+    // it is pure loss. That over-exemption is what made `aiRouter.ts` shield ten
+    // exports occurring nowhere else in production because three siblings were
+    // destructured out of it.
+    //
+    // Everything else stays opaque, and the asymmetry is deliberate: a namespace
+    // binding (`const m = await import(…)`) or a bare side-effect import genuinely
+    // hides which exports are touched. This linter's stated bias is that a false
+    // OPAQUE is a miss while a false UNREACHED is an ACCUSATION, so anything not
+    // clearly destructured keeps its exemption.
+    const destructured = isDestructuredDynamicImport(raw, dm.index, dm.index + dm[0].length);
+    // A destructured dynamic import still IMPORTS the module — it just does not
+    // hide which exports are used. Recording it in `importedModules`/`importedTails`
+    // keeps `isModuleOrphan` honest; skipping the opaque sets is the narrowing.
+    // Conflating the two made 172 destructure-imported modules read as "nothing
+    // imports this file at all", which is a false accusation at scale.
+    if (destructured) {
+      recordImport(p, spec);
+      continue;
+    }
     if (spec.startsWith(".")) {
       // Resolve against the importing file's directory, then enumerate the
       // extension/index forms Node+TS would try.
@@ -439,6 +524,29 @@ for (const p of productionFiles) {
     if (!set) usage.set(tok, (set = new Set()));
     set.add(p);
   }
+}
+
+/**
+ * Is this dynamic import destructured at the binding site?
+ *
+ * Two shapes count, and both make every name the caller uses a bare identifier
+ * the tokeniser can see:
+ *
+ *     const { a, b } = await import("./x");
+ *     import("./x").then(({ a }) => …)
+ *
+ * Anything else — `const m = await import(…)`, `(await import(…)).default`, a
+ * bare side-effect import — does not, and keeps the module opaque.
+ */
+function isDestructuredDynamicImport(raw, startIdx, endIdx) {
+  // Backwards: `} = await import(` / `} = import(`, tolerating whitespace and
+  // newlines inside a multi-line destructuring list.
+  const before = raw.slice(Math.max(0, startIdx - 400), startIdx);
+  if (/\}\s*=\s*(?:await\s+)?$/.test(before)) return true;
+  // Forwards: `.then(({ a }) => …)` immediately after the specifier's `)`.
+  const after = raw.slice(endIdx, endIdx + 80);
+  if (/^\s*\)\s*\.\s*then\s*\(\s*(?:async\s*)?\(?\s*\{/.test(after)) return true;
+  return false;
 }
 
 /** Does any dynamic-import specifier resolve to this module? */
@@ -505,6 +613,59 @@ for (const p of schemaFiles) {
   }
 }
 
+/**
+ * TABLE ALIASES — `export const marketIndicators = marketIndicatorsDuplicate;`
+ *
+ * A pgTable can be exported under a SECOND name, and callers then query the
+ * alias. The reader/writer scan below matches identifiers textually, so it
+ * looks for the pgTable's own varName and never sees the alias — and the table
+ * is reported as having no reader AND no writer while being fully live.
+ *
+ * NOT HYPOTHETICAL, and the cost was nearly a dropped production table. The
+ * 2026-08-16 dead-table triage (founder ruling) had `market_indicators_temp` in
+ * its candidate set on the strength of this gate. shared/schema.ts:12435 exports
+ * `marketIndicators` as an alias of `marketIndicatorsDuplicate`, and
+ * server/services/marketPrediction.ts BOTH reads it (`.from(marketIndicators)`)
+ * and writes it (`.insert(marketIndicators)`). It survived only because the
+ * agent executing the ruling read the schema instead of trusting this gate.
+ *
+ * This linter's standing bias is that a MISS beats an ACCUSATION — an unreached
+ * export is a claim about someone's code. A false "no reader AND no writer" on a
+ * live table is the most expensive accusation it can make, because the action it
+ * invites is DROP TABLE.
+ *
+ * Resolution is transitive (`a = b; b = c;`) and bounded, and only RHS names
+ * that resolve to a known pgTable are accepted — so an unrelated re-export of a
+ * non-table const contributes nothing.
+ */
+const TABLE_ALIAS_RE = /export\s+const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*([A-Za-z_$][\w$]*)\s*;/g;
+/** tables varName → Set of every additional identifier that names it */
+const tableAliases = new Map();
+{
+  const rawAliases = new Map(); // alias → target identifier
+  for (const p of schemaFiles) {
+    const text = read(p);
+    TABLE_ALIAS_RE.lastIndex = 0;
+    let m;
+    while ((m = TABLE_ALIAS_RE.exec(text)) !== null) {
+      if (m[1] !== m[2]) rawAliases.set(m[1], m[2]);
+    }
+  }
+  for (const [alias, target0] of rawAliases) {
+    let target = target0;
+    // Bounded chase: `a = b; b = c;` resolves to c. The cap is the alias count,
+    // so a cycle terminates instead of hanging the gate.
+    for (let i = 0; i < rawAliases.size && !tables.has(target); i++) {
+      const next = rawAliases.get(target);
+      if (next === undefined) break;
+      target = next;
+    }
+    if (!tables.has(target)) continue; // not a table alias — ignore entirely
+    if (!tableAliases.has(target)) tableAliases.set(target, new Set());
+    tableAliases.get(target).add(alias);
+  }
+}
+
 // Drizzle query shapes. Optional `schema.` qualifier is tolerated.
 const WRITE_RES = [
   /\.(?:insert|update|delete)\s*\(\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)/g,
@@ -542,8 +703,11 @@ for (const p of productionFiles) {
 const tablesNoWriter = [];
 const tablesNoReader = [];
 for (const t of tables.values()) {
-  const written = writeNames.has(t.varName) || writeNames.has(t.tableName);
-  const read_ = readNames.has(t.varName) || readNames.has(t.tableName);
+  // Every identifier this table answers to: its own var, its SQL name, and any
+  // `export const alias = thisTable;` re-export. See TABLE_ALIAS_RE above.
+  const names = [t.varName, t.tableName, ...(tableAliases.get(t.varName) ?? [])];
+  const written = names.some((n) => writeNames.has(n));
+  const read_ = names.some((n) => readNames.has(n));
   if (!written) {
     consideredKeys.add(`table-writer:${t.tableName}`);
     if (!allowlisted("table-writer", t.tableName)) tablesNoWriter.push(t);
@@ -555,13 +719,116 @@ for (const t of tables.values()) {
 }
 
 // ============================================================================
-// FAMILY 3 — route files never registered
+// FAMILY 3 — routers never mounted
+// ----------------------------------------------------------------------------
+// WIDENED 2026-08-16. This family used to filter candidates with
+// `/^server\/routes-[\w.-]+\.ts$/` — a FILENAME shape. Everything about the
+// finding is about MOUNTING, and nothing about it is about the filename, so a
+// router that declined to be called `routes-*.ts` was invisible: put it at
+// `server/publicapi/routes.ts`, `server/anything/index.ts`, or a subdirectory
+// of your choosing and the gate had nothing to say. That is the exact defect
+// this family exists for ("built but unwired"), and it is also the shape the
+// expansion-ladder bypass took — a new public-API surface in a subdirectory.
+//
+// The predicate is now the PROPERTY, not the name: any non-test file under
+// server/ that exports a route registrar or an Express Router. Three shapes,
+// because all three are how this repo actually mounts things:
+//
+//   • `export function registerFooRoutes(app)` — the legacy name shape, kept so
+//     an unannotated registrar is still seen.
+//   • `export function registerAnything(app: Express)` — the SAME thing under a
+//     name the old regex refused. `server/api-v1/index.ts` exports
+//     `registerPublicApiV1(app: Express)`, mounts three sub-routers at
+//     `/api/v1/*`, and has zero callers; `Routes?` is why nothing saw it.
+//   • `export const fooRouter = Router()` / a default-exported Router.
+//
+// MOUNTEDNESS IS A FIXED POINT, not a one-hop reference check. The old rule
+// asked "does any other server file mention this?", which an unmounted parent
+// satisfies: `api-v1/index.ts` imports leads/properties/webhooks, so all three
+// looked mounted while `/api/v1/*` served 404. A referrer that is itself an
+// unmounted candidate therefore confers nothing, and the loop runs to a fixed
+// point. Non-candidate server files still confer mountedness on sight — this
+// linter's standing bias is that a miss beats an accusation.
+//
+// REFERENCES ARE RESOLVED, NOT SUBSTRING-MATCHED. The old check used
+// `t.includes("./" + basename)`, which is wrong in both directions once
+// subdirectories are in scope: `./routes` matches the import of a completely
+// different `server/routes.ts`, while a real `./routes/lob-webhooks` import
+// does NOT contain `./lob-webhooks`. Specifiers are now resolved against the
+// importing file's directory, exactly as family 1 does.
 // ============================================================================
 
-const routeFiles = productionFiles.filter((p) => /^server\/routes-[\w.-]+\.ts$/.test(p));
+const ROUTE_SCAN_ROOT = "server/";
 
+/** `export function registerFooRoutes(` — the historical shape. */
 const REGISTER_EXPORT_RE = /export\s+(?:async\s+)?function\s+(register[\w$]*Routes?)\s*\(/g;
+/** `export function registerAnything(app: Express)` — a registrar by SIGNATURE. */
+const REGISTER_APP_EXPORT_RE =
+  /export\s+(?:async\s+)?function\s+(register[A-Z][\w$]*)\s*\(\s*[A-Za-z_$][\w$]*\s*:\s*(?:express\.)?(?:Express|Application|Router)\b/g;
+/** `export const fooRouter = Router()` / `export const r: Router = express.Router()`. */
+const EXPORT_ROUTER_RE =
+  /export\s+const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*(?:express\.)?Router\s*(?:<[^>]*>)?\s*\(/g;
 const DEFAULT_EXPORT_RE = /export\s+default\s+([A-Za-z_$][\w$]*)/;
+const ROUTER_CTOR_RE = /\b(?:express\.)?Router\s*(?:<[^>]*>)?\s*\(/;
+
+/** relPath → {file, base, registrars[], routers[]} */
+const routeCandidates = new Map();
+for (const p of productionFiles) {
+  if (!p.startsWith(ROUTE_SCAN_ROOT) || !p.endsWith(".ts")) continue;
+  const text = read(p);
+  const registrars = new Set();
+  let m;
+  for (const re of [REGISTER_EXPORT_RE, REGISTER_APP_EXPORT_RE]) {
+    re.lastIndex = 0;
+    while ((m = re.exec(text)) !== null) registrars.add(m[1]);
+  }
+  const routers = new Set();
+  EXPORT_ROUTER_RE.lastIndex = 0;
+  while ((m = EXPORT_ROUTER_RE.exec(text)) !== null) routers.add(m[1]);
+  // A default export only counts when the file actually builds a Router —
+  // otherwise every `export default someService` under server/ becomes a
+  // "route", which is noise the narrow filename filter used to hide for free.
+  const dm = DEFAULT_EXPORT_RE.exec(text);
+  if (dm && ROUTER_CTOR_RE.test(text)) routers.add(dm[1]);
+
+  if (registrars.size === 0 && routers.size === 0) continue;
+  routeCandidates.set(p, {
+    file: p,
+    base: p.split("/").pop(),
+    registrars: [...registrars],
+    routers: [...routers],
+  });
+}
+
+/**
+ * Which production server files IMPORT a given module — importer identity is
+ * what the fixed point needs, so this is its own pass (family 1's
+ * `importedModules` is a flat set that has forgotten who imported what).
+ * Covers static, side-effect and dynamic (`await import(…)`) specifiers.
+ */
+const ROUTE_SPEC_RE =
+  /(?:\bfrom\s*|\bimport\s*|\brequire\s*)\(?\s*["'`]([^"'`\n]+)["'`]/g;
+/** module stem (no extension) → Set<importer relPath> */
+const serverImportersOf = new Map();
+for (const q of productionFiles) {
+  if (!q.startsWith(ROUTE_SCAN_ROOT)) continue;
+  const t = read(q);
+  ROUTE_SPEC_RE.lastIndex = 0;
+  let m;
+  while ((m = ROUTE_SPEC_RE.exec(t)) !== null) {
+    const spec = m[1];
+    if (!spec.startsWith(".")) continue; // package/alias — never a server module
+    const stem = resolve("/", dirname(q), spec)
+      .slice(1)
+      .split("\\")
+      .join("/")
+      .replace(/\.(ts|tsx|mts|cts|js|mjs)$/, "");
+    for (const form of [stem, `${stem}/index`]) {
+      if (!serverImportersOf.has(form)) serverImportersOf.set(form, new Set());
+      serverImportersOf.get(form).add(q);
+    }
+  }
+}
 
 /** ROUTE_MANIFEST body only — KNOWN_NON_MOUNTED deliberately does NOT count. */
 let manifestBody = "";
@@ -574,45 +841,71 @@ if (existsSync(join(ROOT, manifestPath))) {
   if (start >= 0 && open >= 0 && close > open) manifestBody = t.slice(open, close);
 }
 
-const unregisteredRoutes = [];
-for (const p of routeFiles) {
-  const text = read(p);
-  const base = p.split("/").pop();
-  const moduleSpec = `./${base.replace(/\.ts$/, "")}`;
-
-  const symbols = [];
-  REGISTER_EXPORT_RE.lastIndex = 0;
-  let m;
-  while ((m = REGISTER_EXPORT_RE.exec(text)) !== null) symbols.push(m[1]);
-  const hasDefault = DEFAULT_EXPORT_RE.test(text);
-  if (symbols.length === 0 && !hasDefault) continue; // nothing mountable to check
-
-  if (manifestBody.includes(`"${base}"`)) continue; // listed as mounted
-
-  // Referenced by any OTHER production server file (routes.ts, index.ts, or a
-  // sub-router that mounts it) — by register symbol or by module specifier.
-  let referenced = false;
-  for (const q of productionFiles) {
-    if (q === p || !q.startsWith("server/")) continue;
+/** candidate relPath → Set<referrer relPath | "__MANIFEST__"> */
+const routeReferrers = new Map();
+for (const [p, c] of routeCandidates) {
+  const refs = new Set();
+  // ROUTE_MANIFEST keys on BASENAME, so honour it only for top-level
+  // server/<file>.ts — otherwise `server/auth/routes.ts` could be excused by an
+  // entry describing a different file that merely shares a basename.
+  if (/^server\/[^/]+$/.test(p) && manifestBody.includes(`"${c.base}"`)) {
+    refs.add("__MANIFEST__");
+  }
+  for (const q of serverImportersOf.get(p.replace(/\.ts$/, "")) ?? []) {
     // routeManifest.ts is handled above via ROUTE_MANIFEST only — its
     // KNOWN_NON_MOUNTED prose NAMES the orphan symbols, which would otherwise
     // read as a reference and hide exactly the files it is documenting.
-    if (q === manifestPath) continue;
-    const t = read(q);
-    if (symbols.some((s) => t.includes(s)) || t.includes(moduleSpec)) {
-      referenced = true;
-      break;
+    if (q === p || q === manifestPath) continue;
+    refs.add(q);
+  }
+  // Registrar FUNCTION names are distinctive enough to match as bare text (a
+  // file may call `registerFooRoutes(app)` re-exported through a barrel this
+  // resolver does not follow). Router VARIABLE names are NOT: 97 candidates
+  // export one named literally `router`, and matching that marks every server
+  // file a referrer. So registrars only — see the blind-spot note in the header.
+  if (c.registrars.length > 0) {
+    for (const q of productionFiles) {
+      if (q === p || q === manifestPath || !q.startsWith(ROUTE_SCAN_ROOT)) continue;
+      const t = read(q);
+      if (c.registrars.some((s) => t.includes(s))) refs.add(q);
     }
   }
-  if (referenced) continue;
+  routeReferrers.set(p, refs);
+}
 
-  const id = base;
-  consideredKeys.add(`route:${id}`);
-  if (allowlisted("route", id)) continue;
+// Fixed point: start with every candidate presumed unmounted, then repeatedly
+// discharge any candidate referenced by the manifest or by a file that is not
+// itself still-unmounted. Converges in a handful of passes (the graph is
+// shallow); the bound only exists so a cycle cannot spin.
+const unmountedRouters = new Set(routeCandidates.keys());
+for (let pass = 0; pass < routeCandidates.size + 1; pass++) {
+  let changed = false;
+  for (const p of [...unmountedRouters]) {
+    for (const r of routeReferrers.get(p)) {
+      if (r === "__MANIFEST__" || !unmountedRouters.has(r)) {
+        unmountedRouters.delete(p);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (!changed) break;
+}
+
+const unregisteredRoutes = [];
+for (const p of [...unmountedRouters].sort()) {
+  const c = routeCandidates.get(p);
+  // id is the full path, not the basename: once subdirectories are in scope,
+  // `routes.ts` and `index.ts` are not unique names.
+  consideredKeys.add(`route:${p}`);
+  if (allowlisted("route", p)) continue;
   unregisteredRoutes.push({
     file: p,
-    id,
-    symbols: symbols.length ? symbols : ["default export (Router)"],
+    id: p,
+    symbols: [
+      ...c.registrars,
+      ...c.routers.map((r) => `Router ${r}`),
+    ],
   });
 }
 
@@ -663,19 +956,195 @@ const FAMILIES = [
     key: "unregisteredRoutes",
     label: "unregistered-routes",
     findings: unregisteredRoutes,
-    describe: (f) => `${f.file}  exports ${f.symbols.join(", ")} — never mounted`,
+    describe: (f) =>
+      `${f.file}  exports ${f.symbols.join(", ")} — never mounted` +
+      (routeReferrers.get(f.file)?.size
+        ? ` (its only referrer(s) — ${[...routeReferrers.get(f.file)].join(", ")} — are` +
+          ` themselves unmounted)`
+        : ""),
     remedy:
       "An unmounted router is a feature that 404s in production. MOUNT it in\n" +
       "  server/routes.ts (and add it to ROUTE_MANIFEST), or DELETE the file, or\n" +
-      "  ALLOWLIST it with a reason.",
+      "  ALLOWLIST it with a reason. Note the id is now the full path, not the\n" +
+      "  basename — this family scans ALL of server/, not just routes-*.ts.",
+  },
+  {
+    // FAMILY 6 — whole FILES nothing imports, counted as files.
+    //
+    // `unreachedExports` already contains these — 228 of its 653 carry the
+    // `[MODULE ORPHAN]` label — so this adds no new detection. What it adds is
+    // the unit a decision is actually made in. 653 unreached exports is a number
+    // you work down one symbol at a time; **62 files, 19,685 lines, that nothing
+    // imports** is a number someone can rule on in one sitting, and deleting one
+    // orphan removes several exports from 653 at once.
+    //
+    // It is NOT one decision, and the list makes that obvious. Three classes:
+    //
+    //   • REGULATED OBLIGATIONS BUILT AND NEVER WIRED. `breachNotificationTrigger.ts`
+    //     computes GLBA §314.4(j) / GDPR Art. 33 / state breach deadlines and its
+    //     own header names the five events that should call it — nothing does.
+    //     `paymentApplication/`, `landlordCompliance.ts`, `usuryCeiling.ts`,
+    //     `rental/leaseSigningPacket.ts` are the same shape. Deleting these
+    //     removes capability the product may be legally required to have; WIRING
+    //     is the fix, and where to hook it is a judgement call.
+    //   • SUPERSEDED DUPLICATES. `authLockout.ts` is dead because
+    //     `middleware/authPathLimits.ts#loginLimiter` is live — the control
+    //     exists, this copy of it does not run. Deletion is the answer.
+    //   • EXPERIMENTS. The `*V9.ts` set, `scp*`, `aiAdvisorTeamV15`,
+    //     `*Enhancements.ts` — the family the 2026-08-01 founder deletion wave
+    //     already ruled on once.
+    //
+    // Recorded as BLOCKERS B19 with the full list. This count exists so the
+    // population cannot quietly grow while that decision waits, and so that
+    // deleting a batch is locked in by the commit that earns it.
+    key: "moduleOrphans",
+    label: "module-orphans",
+    // ALLOWLISTABLE since unit 113, and the gap that forced it is worth recording:
+    // this family was the ONLY one with no escape valve. Every other family can
+    // exempt a legitimately-unreached thing with a written reason; this one could
+    // not, so a deliberately-staged module left exactly one option — RAISE THE
+    // BASELINE, which is the move the gate's own remedy text tells you not to
+    // make. A gate whose only available answer is the one it forbids trains
+    // people to make it.
+    //
+    // The case that surfaced it: the founder ruled (picker, 2026-08-15) to REMOVE
+    // the three mounted /developer/* endpoints and KEEP developerApiService.ts for
+    // when the expansion ladder's trigger fires. That is precisely "a
+    // deliberately-staged seam" — the reason the allowlist exists — and it had
+    // nowhere to go.
+    //
+    // NOTE the `consideredKeys.add` before the filter, and do not "simplify" it
+    // away. The staleness check asks whether an allowlist entry was ever a
+    // CANDIDATE, not whether it ended up in findings — so filtering without
+    // registering makes a live exemption read as stale, and the gate demands you
+    // delete the very entry that is doing its job. The first version of this
+    // block did exactly that. Same shape as unit 110's module-orphan trap:
+    // answering two questions ("is it a candidate?" / "is it reported?") with one
+    // expression.
+    findings: [...new Set(unreachedExports.filter((f) => f.moduleOrphan).map((f) => f.file))]
+      .filter((file) => {
+        consideredKeys.add(`module-orphan:${file}`);
+        return !allowlisted("module-orphan", file);
+      })
+      .map((file) => ({ file })),
+    describe: (f) => `${f.file} — nothing in production imports this file`,
+    remedy:
+      "Three different answers, and the file tells you which (see BLOCKERS B19):\n" +
+      "  a REGULATED obligation built and never wired must be WIRED, not deleted;\n" +
+      "  a SUPERSEDED duplicate should be deleted; an EXPERIMENT should be deleted.\n" +
+      "  Deleting one also removes its exports from unreached-exports — lower BOTH\n" +
+      "  baselines in the same commit.",
+  },
+  {
+    // FAMILY 5 — the gate's own blind spot, counted instead of narrated.
+    //
+    // These are exports the families above CANNOT assert on, because
+    // `isDynamicallyImported()` marks their whole MODULE opaque. They were once
+    // printed as an informational line with no gate, which meant the one
+    // population this linter admits it cannot see was also the one population
+    // free to grow without limit.
+    //
+    // WHY IT WAS SO LARGE — and the fix, which HAS now been taken. Opacity is
+    // applied per-MODULE while consumption is per-SYMBOL, and the rule used to
+    // exempt a module on the strength of ANY dynamic import of it. So
+    // `server/services/aiRouter.ts`, pulled in by
+    // `const { routeAITask, TaskComplexity } = await import("../services/aiRouter")`
+    // from destructured call sites across a dozen server files (17 at unit
+    // 117's recount; earlier editions said "five", which was never accurate — a
+    // number in prose decays), also shielded MODEL_PRESETS, isClaudeModel,
+    // routeVisionTask, routeExtendedThinkingTask, getDbModelConfigs,
+    // applyEvalQualityGate and the rest — exports appearing NOWHERE else in
+    // production, invisible purely because a SIBLING was destructured out of the
+    // module. One dynamic import laundered every export in it.
+    //
+    // A destructuring dynamic import needs no opacity at all: the destructured
+    // name is a bare identifier the usage tokeniser already sees. Only a
+    // namespace binding (`const m = await import(…)`), a `(await import(…)).x`
+    // and a bare side-effect import genuinely hide which exports are touched. Of
+    // 1,244 distinct dynamic-import specifiers, 838 were reached ONLY by
+    // destructuring and just 27 ever took a namespace binding — which is why
+    // `isDestructuredDynamicImport()` moved 859 exports in one step:
+    // opaque-exports 984 -> 125, unreached-exports 580 -> 1439.
+    //
+    // CORRECTED (unit 117, wave audit). Earlier editions of this comment claimed
+    // the reclaimed 859 included achMandateSetup/achAutopay symbols "that opacity
+    // had been hiding". FALSE: those modules are STATICALLY imported (jobs/
+    // achAutopayRun.ts, routes-borrower.ts), so opacity never applied to them —
+    // their unreached symbols were visible under the OLD rule too, and zero of
+    // the 859 are ach symbols. The narrowing's case never needed the flourish;
+    // the audit that caught the invented attribution is the wave rule working on
+    // this program's own output.
+    //
+    // That raise is the one this ratchet reserves to sign-off, and it has it:
+    // founder approval, 2026-08-14. What remains here is the residue the rule
+    // still cannot see through, and it is still strictly down-only. Comments are
+    // stripped when measuring, because a comment naming a symbol makes it look
+    // reached — the mechanism this ratchet's InvestorVerificationService
+    // allowlist entry records.
+    key: "opaqueExports",
+    label: "opaque-exports",
+    findings: opaqueExports,
+    describe: (f) =>
+      `${f.file}:${f.line}  ${f.kind} ${f.symbol} — unassertable: this module is ` +
+      `dynamically imported somewhere, so every export in it is exempt`,
+    remedy:
+      "This count is the SIZE OF THE BLIND SPOT, so lowering it is progress even\n" +
+      "  though nothing here is proven dead. Three ways down, cheapest first:\n" +
+      "  DELETE the export if nothing calls it (most of this family has no\n" +
+      "  occurrence in production outside its own file); or convert the dynamic\n" +
+      "  `await import()` to a STATIC import where it exists only to break a cycle\n" +
+      "  that no longer exists, which makes the whole module assertable; or\n" +
+      "  ALLOWLIST it with a reason. Do NOT raise the baseline.",
   },
 ];
 
 console.log(
   `${TAG} scanned ${productionFiles.length} production files · ` +
     `${candidates.size} exported symbols in ${exportFiles.length} service/job files · ` +
-    `${tables.size} pgTable definitions · ${routeFiles.length} route files`,
+    `${tables.size} pgTable definitions · ${routeCandidates.size} route candidates ` +
+    `(registrar or Router) under ${ROUTE_SCAN_ROOT}`,
 );
+
+// ----------------------------------------------------------------------------
+// VACUITY GUARD — see the header. A scan that stops seeing files reports zero
+// findings, which is indistinguishable from a clean bill of health unless the
+// POPULATIONS are floored too. Checked before the families so a broken walk
+// fails loudly instead of printing six reassuring PASS lines.
+// ----------------------------------------------------------------------------
+const minima = ratchet.minima ?? {};
+const POPULATIONS = [
+  ["productionFiles", productionFiles.length],
+  ["exportFiles", exportFiles.length],
+  ["pgTables", tables.size],
+  ["routeCandidateFiles", routeCandidates.size],
+];
+let vacuous = false;
+for (const [name, actual] of POPULATIONS) {
+  const floor = minima[name];
+  if (floor === undefined) {
+    vacuous = true;
+    console.error(
+      `${TAG} VACUITY GUARD: no "minima.${name}" in ${relative(ROOT, RATCHET_FILE)}. ` +
+        `Add "${name}": <a floor comfortably below ${actual}> — an unfloored ` +
+        `population lets a broken scan pass as clean.`,
+    );
+    continue;
+  }
+  if (actual < floor) {
+    vacuous = true;
+    console.error(
+      `${TAG} VACUITY GUARD: ${name} = ${actual}, below the floor of ${floor}. ` +
+        `This scan is NOT a clean bill of health — it stopped seeing files.\n` +
+        `  Suspect the walk, the extension filter, or a regex before you suspect ` +
+        `progress. If a deletion wave genuinely shrank this population, lower ` +
+        `"minima.${name}" in the same commit and say which wave.`,
+    );
+  }
+}
+if (vacuous && !MEASURE_ONLY) {
+  console.error(`${TAG} FAIL — vacuity guard tripped; counts below are not trustworthy.`);
+  process.exit(1);
+}
 
 if (skippedByAllowlist.length > 0) {
   console.log(`${TAG} allowlist — ${skippedByAllowlist.length} skipped, with reasons:`);
@@ -688,8 +1157,13 @@ if (opaqueExports.length > 0) {
     `${TAG} ${opaqueExports.length} export(s) live in dynamically-imported modules — ` +
       `NOT asserted dead (static analysis cannot see through \`await import(\`).`,
   );
-  for (const o of (REPORT_ALL ? opaqueExports : opaqueExports.slice(0, 5))) {
-    console.log(`  ? ${o.file}:${o.line}  ${o.symbol}`);
+  // Sample only when NOT reporting all — with --report the `opaque-exports`
+  // family below prints every one of these, and printing them twice buries the
+  // other families' findings between two copies of the same list.
+  if (!REPORT_ALL) {
+    for (const o of opaqueExports.slice(0, 5)) {
+      console.log(`  ? ${o.file}:${o.line}  ${o.symbol}`);
+    }
   }
 }
 
@@ -771,5 +1245,7 @@ if (failed) {
   );
   process.exit(1);
 }
-console.log(`${TAG} PASS — all four reachability counts at baseline`);
+console.log(
+  `${TAG} PASS — all ${FAMILIES.length} reachability counts at baseline`,
+);
 process.exit(0);

@@ -114,7 +114,12 @@ export async function notifyOnCall(
       const r = await sendPushToUser(orgId, userId, {
         title: `🔴 ${severity}: ${title}`,
         body,
-        url: "/founder/intelligence",
+        // `/founder/intelligence` has no <Route> — this woke a founder at 3am
+        // and landed them on NotFound. `/founder` is The Letter, the canonical
+        // founder home and the one destination guaranteed to exist. There is no
+        // dedicated on-call page and inventing one would be a new top-level
+        // founder route, which the four-doors rule forbids.
+        url: "/founder",
         tag: `oncall-${severity}-${result.notificationId ?? Date.now()}`,
         data: { severity, oncall: true, ...meta },
       });

@@ -123,6 +123,52 @@ export const Errors = {
     sendError(res, 400, "BAD_REQUEST", finalMessage, details, buildDocsUrl(opts));
   },
 
+  /**
+   * 404 for a surface that exists but is not switched on for this caller.
+   *
+   * A gated feature is not a missing entity, so `notFound` is the wrong copy —
+   * "we couldn't find that Feature, it may have been deleted or moved between
+   * organizations" is three false suggestions about a route that is simply off.
+   * 404 rather than 403 is deliberate and predates this helper: a feature the
+   * caller is not in the cohort for should not advertise its own existence.
+   */
+  featureUnavailable(res: Response, opts?: ErrorOptions): void {
+    sendError(
+      res,
+      404,
+      "FEATURE_NOT_AVAILABLE",
+      "That feature isn't available on this account.",
+      undefined,
+      buildDocsUrl(opts),
+    );
+  },
+
+  /**
+   * 501 for an endpoint that exists but does not do the thing it names.
+   *
+   * Reserved for a route whose backing implementation is genuinely absent — not
+   * for a temporary outage (`serviceUnavailable`) and not for bad input
+   * (`badRequest`). Returning 200 with a plausible object instead is the
+   * failure this exists to replace: a caller cannot tell a stored record from a
+   * fabricated one, and every downstream decision inherits the lie.
+   *
+   * The message must name WHAT is missing, so the response is actionable rather
+   * than merely honest.
+   */
+  notImplemented(res: Response, message: string, opts?: ErrorOptions): void {
+    sendError(res, 501, "NOT_IMPLEMENTED", message, undefined, buildDocsUrl(opts));
+  },
+
+  /**
+   * 422 for a request that is perfectly well-formed but cannot be carried out
+   * in the system's current state — as distinct from `badRequest` (the input is
+   * wrong) and `validationFailed` (named fields are wrong). The caller has
+   * nothing to correct in what they sent; something else has to change first.
+   */
+  unprocessable(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
+    sendError(res, 422, "UNPROCESSABLE", message, details, buildDocsUrl(opts));
+  },
+
   validationFailed(res: Response, details: unknown, opts?: ErrorOptions): void {
     sendError(
       res,

@@ -8966,6 +8966,367 @@ const STATEMENTS = [
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "dual_agency_side" text`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_acknowledged_at" timestamp`,
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "disclosure_doc_ref" text`,
+
+  // ── 0227 evidence_claims: the Evidence Fabric's atomic truth primitive ─────
+  // ONE new table — scripts/ratchets/table-count.json 756 -> 757. Mirrors
+  // migrations/0227_evidence_claims.sql + shared/schema/evidence.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: before this row type, provenance
+  // survived the FETCH and died at the WRITE. LookupResult already carried
+  // provider/source/confidence/classification/sourceAsOf, and
+  // propertyEnrichment.savePropertyEnrichment() collapsed all of it into one
+  // `properties.enrichment_data` JSONB blob that OVERWROTE the previous one —
+  // no per-field provenance, no observation history, no conflict, no as-of
+  // reconstruction. Three canonical laws (shared/architecture/canon.ts) were
+  // unsatisfiable as a result: evidence-known (2), unknown-is-valid (3),
+  // decisions-immutable (6). This is the single table those three laws need.
+  //
+  // It is ONE table and not five deliberately: the source registry already
+  // exists as CODE (server/services/providers/data-licenses.ts), the predicate
+  // vocabulary is a typed registry (shared/evidence/claim.ts), and resolution
+  // is a pure recomputable projection — so no evidence_sources,
+  // evidence_predicates or resolved_values table is needed (Law 11).
+  //
+  // APPEND-ONLY: no updated_at column. Re-observing a fact INSERTs; nothing
+  // UPDATEs. subject_id carries NO foreign key because subject_type may be
+  // 'parcel', which has no table yet — recording it now makes the eventual
+  // Parcel/Property split a backfill, not a rewrite of history.
+  `CREATE TABLE IF NOT EXISTS "evidence_claims" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "predicate" text NOT NULL,
+    "value_kind" text NOT NULL,
+    "value_text" text,
+    "value_number" double precision,
+    "value_bool" boolean,
+    "provider" text NOT NULL,
+    "source" text NOT NULL,
+    "authority" text NOT NULL,
+    "observed_at" timestamp,
+    "fetched_at" timestamp NOT NULL DEFAULT now(),
+    "provider_confidence" integer,
+    "license" text,
+    "cost_cents" integer NOT NULL DEFAULT 0,
+    "raw_fragment" jsonb
+  )`,
+  // Org-LEADING per the shard-readiness invariant (check-org-leading-index.mjs).
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "fetched_at")`,
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_subject_predicate_idx" ON "evidence_claims" ("organization_id", "subject_type", "subject_id", "predicate", "fetched_at")`,
+  `CREATE INDEX IF NOT EXISTS "evidence_claims_org_provider_idx" ON "evidence_claims" ("organization_id", "provider", "fetched_at")`,
+
+  // ── 0228 decision_snapshots: Decision Memory's durable boundary ────────────
+  // ONE new table — scripts/ratchets/table-count.json 757 -> 758. Mirrors
+  // migrations/0228_decision_snapshots.sql + shared/schema/decision-snapshots.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: without it every recorded decision reads
+  // against LIVE rows, so a decision silently changes meaning when the data
+  // behind it changes — BL3's "historical decision fidelity" fitness function,
+  // one of only two classified fully `unenforced` in shared/architecture/canon.ts.
+  //
+  // The repo already had FOURTEEN decision-shaped tables (board_decisions,
+  // ceo_decision_replays, decisions_inbox_items, decision_patterns,
+  // solene_decisions, solene_decision_traces, …). Every one is FOUNDER/autopilot
+  // control-plane state — queues and reasoning traces — and none records a
+  // CUSTOMER's investment decision or freezes its inputs. Reusing one would make
+  // Founder OS the owner of customer investment truth, which BI5 forbids.
+  //
+  // IMMUTABLE: no updated_at column and no UPDATE path in the store. subject_id
+  // carries NO foreign key because a snapshot must SURVIVE its subject — an
+  // investor who passed on a property and deleted it still needs the record of
+  // why, and a cascade would erase precisely the decisions worth keeping.
+  `CREATE TABLE IF NOT EXISTS "decision_snapshots" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "snapshot_version" integer NOT NULL DEFAULT 1,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "kind" text NOT NULL,
+    "choice" text NOT NULL,
+    "rationale" text NOT NULL,
+    "actor_type" text NOT NULL,
+    "actor_ref" text NOT NULL,
+    "authority" text NOT NULL,
+    "strategy_pack_id" text,
+    "strategy_pack_version" text,
+    "evidence_as_of" timestamp NOT NULL,
+    "resolution_policy_version" integer NOT NULL,
+    "evidence" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "assumptions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "alternatives" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "unknowns" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "decided_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING per the shard-readiness invariant (check-org-leading-index.mjs).
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_subject_idx" ON "decision_snapshots" ("organization_id", "subject_type", "subject_id", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_decided_idx" ON "decision_snapshots" ("organization_id", "decided_at")`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_kind_idx" ON "decision_snapshots" ("organization_id", "kind", "decided_at")`,
+
+  // ── 0232 decision_snapshots.review_due_at: the outcome PROMPT ──────────────
+  // No new table. Mirrors migrations/0232_decision_review_due.sql.
+  //
+  // The missing end of the canonical loop: every layer worked and nothing ever
+  // ASKED for an outcome, so the loop closed only when someone spontaneously
+  // chose to close it — which silently biases the calibration above it, because
+  // volunteered outcomes are the memorable ones and memorable means extreme.
+  //
+  // Nullable, and null is a real answer: many decisions have no natural review
+  // date and never prompt. The date is frozen at decision time by the person
+  // making the call, never guessed later by a heuristic that would nag about a
+  // long land hold and stay silent on a flip.
+  `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "review_due_at" timestamp`,
+  `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_review_due_idx" ON "decision_snapshots" ("organization_id", "review_due_at")`,
+
+  // ── 0233 offers.decision_snapshot_id: the offer → decision link ────────────
+  // No new table. Mirrors migrations/0233_offer_decision_link.sql.
+  //
+  // Closes the loop on the first adopted surface: the offer knows which
+  // DecisionSnapshot produced it, so accepting or rejecting it can record an
+  // OUTCOME against the right decision rather than guessing by property.
+  //
+  // Plain integer, NO foreign key: offers.organization_id does not cascade while
+  // decision_snapshots.organization_id does, so an FK would fail on tenant
+  // deletion. The read resolves through the org-scoped getDecision instead.
+  `ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "decision_snapshot_id" integer`,
+
+  // ── 0234 lot_pricing_rules.locked_decision_snapshot_id ─────────────────────
+  // No new table. Mirrors migrations/0234_lot_pricing_decision_link.sql.
+  // The lock writes each child lot's list_price — an act — while locked_grid
+  // preserves only the output. The rules and base source that produced it live
+  // in the same mutable row, so this is the link to the frozen reasoning.
+  `ALTER TABLE "lot_pricing_rules" ADD COLUMN IF NOT EXISTS "locked_decision_snapshot_id" integer`,
+
+  // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
+  // ONE new table — scripts/ratchets/table-count.json 758 -> 759. Mirrors
+  // migrations/0229_outward_actions.sql + shared/schema/outward-actions.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: canonical law 8 + BI74 place idempotency
+  // at the ACTION/PROVIDER boundary. server/middleware/idempotency.ts is
+  // HTTP-REQUEST-scoped and protects a client retrying a POST; it does nothing
+  // for the case that costs money — a background JOB retrying after a partial
+  // success, which never passes through an HTTP request.
+  // directMailService.sendLetter() deducts credits, posts the piece cost to the
+  // ledger, then calls Lob; a crash between Lob accepting and the result being
+  // recorded makes the retry deduct credits AGAIN, post cost AGAIN, and print a
+  // SECOND physical letter to a real seller. preMailDedupe.ts does not catch it
+  // (audience policy, not retry safety).
+  //
+  // The UNIQUE (organization_id, action_kind, idempotency_key) index IS the
+  // mechanism: INSERT ... ON CONFLICT DO NOTHING means exactly one caller wins.
+  // Unlike evidence_claims / decision_snapshots this table is MUTABLE, because
+  // it is operational state rather than history (BI76 — claims, receipts,
+  // decisions and outcomes are different things). The 'ambiguous' status is
+  // terminal and refuses retry (AU28): a timeout after the request left is
+  // neither success nor failure, and guessing is how a second letter gets
+  // printed.
+  `CREATE TABLE IF NOT EXISTS "outward_actions" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "action_kind" text NOT NULL,
+    "idempotency_key" text NOT NULL,
+    "request_hash" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'in_flight',
+    "external_id" text,
+    "attempts" integer NOT NULL DEFAULT 1,
+    "last_error" text,
+    "claimed_at" timestamp NOT NULL DEFAULT now(),
+    "completed_at" timestamp
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "outward_actions_org_kind_key_uk" ON "outward_actions" ("organization_id", "action_kind", "idempotency_key")`,
+  `CREATE INDEX IF NOT EXISTS "outward_actions_org_status_idx" ON "outward_actions" ("organization_id", "status", "claimed_at")`,
+
+  // ── 0230 scenarios: the economics layer's versioned hypothesis ─────────────
+  // ONE new table — scripts/ratchets/table-count.json 759 -> 760. Mirrors
+  // migrations/0230_scenarios.sql + shared/schema/scenarios.ts.
+  //
+  // WHY THE TABLE-COUNT BUMP IS EARNED: decision_snapshots freezes what was
+  // KNOWN and what was ASSUMED, but had nowhere to point for the ECONOMICS that
+  // justified the choice. A snapshot could record "offer $42,000" while the
+  // arithmetic behind the number lived nowhere — reconstructing what the
+  // investor believed about the PARCEL but not about the DEAL.
+  //
+  // engine_version is NOT NULL deliberately: canonical law 4 requires financial
+  // truth to be deterministic, tested AND versioned, and an unversioned number
+  // cannot be defended once the formula moves. `inputs` stores the verbatim
+  // values the engine consumed so the number can be recomputed years later —
+  // the same contract note_payoff_quotes already honours via engine_version +
+  // engine_input_json. IMMUTABLE: no updated_at, no UPDATE path; re-running the
+  // maths inserts a new row. No FK on subject_id because the economics of a deal
+  // you walked away from are exactly the ones worth still being able to read.
+  `CREATE TABLE IF NOT EXISTS "scenarios" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "shape_version" integer NOT NULL DEFAULT 1,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "label" text NOT NULL,
+    "engine_id" text NOT NULL,
+    "engine_version" text NOT NULL,
+    "strategy_pack_id" text,
+    "strategy_pack_version" text,
+    "inputs" jsonb NOT NULL,
+    "assumptions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "metrics" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "computed_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "scenarios_org_subject_idx" ON "scenarios" ("organization_id", "subject_type", "subject_id", "computed_at")`,
+  `CREATE INDEX IF NOT EXISTS "scenarios_org_engine_idx" ON "scenarios" ("organization_id", "engine_id", "engine_version")`,
+  // decision_snapshots gains the economics reference. Additive, defaulted, so
+  // every existing snapshot reads as "no scenario computed" — which is the
+  // truth for all of them.
+  `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "scenarios" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+
+  // ── 0231 outcomes: the learning layer, closing the canonical loop ──────────
+  // ONE new table — scripts/ratchets/table-count.json 760 -> 761. Mirrors
+  // migrations/0231_outcomes.sql + shared/schema/outcomes.ts.
+  //
+  // WHY THE BUMP IS EARNED: decision_snapshots froze what was known and
+  // predicted, scenarios froze the arithmetic, and NOTHING recorded what the
+  // world then did — an investor's own history was a pile of forecasts nobody
+  // ever graded. AA8 names the Decision->Outcome graph as a compounding moat.
+  //
+  // decision_snapshot_id IS a real FK, unlike the deliberately unconstrained
+  // subject_id on evidence_claims / decision_snapshots / scenarios: those must
+  // survive their subject, whereas an outcome WITHOUT its decision is
+  // meaningless. Variance is NOT a column — it is a pure projection over the
+  // scenario refs the decision already froze (law 9).
+  `CREATE TABLE IF NOT EXISTS "outcomes" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "shape_version" integer NOT NULL DEFAULT 1,
+    "decision_snapshot_id" integer NOT NULL REFERENCES "decision_snapshots"("id") ON DELETE CASCADE,
+    "subject_type" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "kind" text NOT NULL,
+    "summary" text NOT NULL,
+    "actuals" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "observed_at" timestamp NOT NULL,
+    "recorded_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "outcomes_org_decision_idx" ON "outcomes" ("organization_id", "decision_snapshot_id", "observed_at")`,
+  `CREATE INDEX IF NOT EXISTS "outcomes_org_subject_idx" ON "outcomes" ("organization_id", "subject_type", "subject_id", "observed_at")`,
+
+  // ── 0235 va_tasks + va_sops: the VA subsystem's persistence layer ──────────
+  // TWO new tables — scripts/ratchets/table-count.json 761 -> 763. Mirrors
+  // migrations/0235_va_tasks.sql + shared/schema/va-tasks.ts.
+  //
+  // WHY THE BUMP IS EARNED: services/vaManagement.ts declared its storage as two
+  // string constants (VA_TASKS_KEY / SOP_LIBRARY_KEY) and never read either.
+  // createTask was a pure function; POST /api/va/tasks answered 200 with an
+  // object it never stored; /api/va/metrics and /api/va/audit-trail computed
+  // over organizations.settings.va_tasks — an array with NO CREATOR anywhere in
+  // the repo — and returned zeros that read as measurements. BLOCKERS B9;
+  // founder ruling 2026-08-13 to build rather than delete.
+  //
+  // NOT the settings blob it was aimed at: that column is read on nearly every
+  // org-scoped request, so an unbounded task history there grows the hot path
+  // for every user forever, and concurrent writers clobber each other — the
+  // verify handler already carries a comment recording that bug being fixed
+  // once with jsonb_set.
+  //
+  // Context links are ON DELETE SET NULL, not cascade: a completed task is a
+  // record of work done and stays true after the lead it was about is deleted.
+  // note_id is deliberately unconstrained — two live note families exist and
+  // which is canonical is an open founder decision (B10).
+  `CREATE TABLE IF NOT EXISTS "va_tasks" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "assigned_to_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "assigned_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "title" text NOT NULL,
+    "description" text NOT NULL DEFAULT '',
+    "category" text NOT NULL DEFAULT 'other',
+    "priority" text NOT NULL DEFAULT 'medium',
+    "status" text NOT NULL DEFAULT 'pending',
+    "lead_id" integer REFERENCES "leads"("id") ON DELETE SET NULL,
+    "property_id" integer REFERENCES "properties"("id") ON DELETE SET NULL,
+    "deal_id" integer REFERENCES "deals"("id") ON DELETE SET NULL,
+    "note_id" integer,
+    "sop_id" text,
+    "due_date" timestamp,
+    "estimated_minutes" integer,
+    "actual_minutes" integer,
+    "started_at" timestamp,
+    "completed_at" timestamp,
+    "completion_notes" text,
+    "attachment_urls" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "loom_url" text,
+    "verified" boolean,
+    "verified_at" timestamp,
+    "verified_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "verification_notes" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "va_tasks_org_assignee_idx" ON "va_tasks" ("organization_id", "assigned_to_user_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "va_tasks_org_status_idx" ON "va_tasks" ("organization_id", "status", "updated_at")`,
+
+  `CREATE TABLE IF NOT EXISTS "va_sops" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "title" text NOT NULL,
+    "category" text NOT NULL DEFAULT 'other',
+    "description" text NOT NULL DEFAULT '',
+    "steps" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "estimated_minutes" integer NOT NULL DEFAULT 0,
+    "derived_from_default_title" text,
+    "created_by_user_id" varchar REFERENCES "users"("id") ON DELETE SET NULL,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "va_sops_org_category_idx" ON "va_sops" ("organization_id", "category", "title")`,
+
+  // ── 2026-08-13: founder-authorized deletion of dead feature-flag ROWS ──────
+  // Explicit picker ruling, BLOCKERS B16. Platform config, not customer data.
+  //
+  // `platform_feature_flags` is seeded by migration and outlives the features it
+  // names. These three name subsystems whose CODE IS DELETED under
+  // deletion-ledger KILL verdicts:
+  //
+  //   feature_vision_ai            KILL executed 2026-08-01 — routers, service,
+  //                                page and both satellite tables gone.
+  //   feature_voice_ai             KILL executed 2026-08-01 — pipeline and both
+  //                                tables gone.
+  //   feature_negotiation_copilot  KILL executed 2026-08-13 — router, service,
+  //                                page, 7 satellites and 3 further endpoints.
+  //
+  // Nothing in server/ or client/src references any of the three, and the paths
+  // they control (/vision-ai, /voice, /negotiation) have no route in App.tsx.
+  //
+  // The rows were ALREADY INERT before this ran: RETIRED_FLAG_KEYS in
+  // services/featureFlags.ts hides them from getAll, makes getByKey answer
+  // ABSENT, and makes setFlag throw. This deletion removes the rows; the
+  // register stays, because it is what catches the NEXT kill's leftover switch.
+  //
+  // Idempotent — a second run deletes nothing.
+  `DELETE FROM "platform_feature_flags" WHERE "key" IN ('feature_vision_ai', 'feature_voice_ai', 'feature_negotiation_copilot')`,
+
+  // ── 0236: founder-authorized drop of EXPERIMENT RESIDUE tables ─────────────
+  // DELIBERATELY NOT REGISTERED. Founder decision 2026-08-17: merge everything,
+  // HOLD THE DROP.
+  //
+  // migrations/0236_drop_experiment_residue_tables.sql exists, is complete, and
+  // carries the full per-table provenance; the 48-table triage behind it is in
+  // docs/company/deletion-ledger.md. What is absent HERE is its 13 statements,
+  // and that absence is the point: this file is Fly's `release_command`, so a
+  // statement listed here RUNS AGAINST PRODUCTION on the next deploy. The
+  // ruling that authorised the migration said "written, NOT applied", and no
+  // session that produced it had DATABASE_URL to look inside those 13 tables
+  // first. Registering it would have made a DROP TABLE the side effect of a
+  // merge rather than a decision someone made.
+  //
+  // TO APPLY IT: copy the 13 `DROP TABLE IF EXISTS` statements from
+  // migrations/0236_drop_experiment_residue_tables.sql into this array in the
+  // order they appear there (children before parents, no CASCADE anywhere), and
+  // deploy. Inspect the tables first — that is the entire reason this is a
+  // separate, deliberate act.
+  //
+  // The 13 pgTable definitions are ALREADY removed from shared/schema.ts, so
+  // nothing reads or writes these tables today. Leaving the rows in place is
+  // exactly the state the deletion ledger describes: dead storage, costing
+  // nothing but a line in three registers, waiting on a decision only the
+  // founder can make.
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

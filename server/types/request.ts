@@ -28,7 +28,25 @@ export function getOrganization(req: AuthenticatedRequest): Organization {
 }
 
 /**
- * Extract the user ID from the request, handling both direct id and claims patterns.
+ * Extract the user ID from the request.
+ *
+ * There is ONE source: `req.user.id`. This comment used to promise "both direct
+ * id and claims patterns", which was true under Replit OIDC, where the id also
+ * arrived as `user.claims.sub`. The Clerk migration removed that second source —
+ * correctly, and `authSurfaceIsClerk.test.ts` pins that Clerk is the only auth
+ * surface — but the sentence survived it, so the single source of truth for
+ * identity extraction advertised a shape no request carries. A reader writing
+ * `req.user.claims.sub` handling on the strength of it would be coding against
+ * a subsystem that is gone.
+ *
+ * The same migration left a population of expressions of the form
+ * `user?.id || user?.id` across the repo: the operator that once separated the
+ * two sources, still there with nothing on its right. They are inert
+ * (`v || v === v` for every v) and are NOT worth churning. The `self-fallback`
+ * ratchet owns the count — deliberately not restated here, since a number in
+ * prose drifting away from the code is the very defect this comment records —
+ * so the shape can only shrink, and the NEXT collapse of a fallback that still
+ * matters shows up as a number going the wrong way.
  */
 export function getUserId(req: AuthenticatedRequest): string {
   const user = req.user;

@@ -43,6 +43,7 @@ import {
 } from "@sovereign/immutables";
 import { sendSolenePage } from "./pagerService";
 
+import { redactCredentials } from "../../utils/redactCredentials";
 // ============================================================================
 // THE 12 IMMUTABLES — denormalized snapshot form (shorter wording for DB
 // columns). Canonical source: sovereign-protocol/immutables.json. The
@@ -329,28 +330,11 @@ function immutableTextFor(n: number): string {
  * cost of including it in an audit row dwarfs the cost of redacting a false
  * positive (everything else).
  */
-const CREDENTIAL_PATTERNS: { name: string; rx: RegExp }[] = [
-  { name: "stripe-secret-or-pub", rx: /\b(?:sk|pk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g },
-  { name: "stripe-webhook", rx: /\bphc_[A-Za-z0-9]{8,}\b/g },
-  { name: "posthog", rx: /\bphx_[A-Za-z0-9]{8,}\b/g },
-  { name: "github-pat", rx: /\bghp_[A-Za-z0-9]{8,}\b/g },
-  { name: "bearer", rx: /\bBearer\s+[A-Za-z0-9._\-+/=]{8,}/g },
-  { name: "aws-access-key", rx: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g },
-  { name: "slack-token", rx: /\bxox[abpsr]-[A-Za-z0-9-]{10,}\b/g },
-  { name: "jwt-like", rx: /\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b/g },
-];
-
 const EVIDENCE_MAX_LEN = 500;
 
+/** Delegates to THE credential redactor (unit 120) — one pattern list, everywhere. */
 export function sanitizeEvidence(s: string): string {
-  let out = String(s ?? "");
-  for (const { rx } of CREDENTIAL_PATTERNS) {
-    out = out.replace(rx, "[REDACTED]");
-  }
-  if (out.length > EVIDENCE_MAX_LEN) {
-    out = `${out.slice(0, EVIDENCE_MAX_LEN)}... [truncated]`;
-  }
-  return out;
+  return redactCredentials(s, EVIDENCE_MAX_LEN);
 }
 
 function hashToolInput(input: Record<string, unknown>): string {

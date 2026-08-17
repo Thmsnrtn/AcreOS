@@ -464,14 +464,23 @@ class AutonomousExecutionEngine {
     // 2. Find and execute the action
     const executor = actionRegistry[ctx.action];
     if (!executor) {
-      // Fallback: log unrecognized action but don't fail silently
+      // No-fabrication hard-stop: an action with no executor MUST be refused,
+      // never reported as done. Callers distinguish this via the
+      // "no_executor_registered" error code; the audit trail records the
+      // attempt AND that nothing ran.
       const result: ExecutionResult = {
-        success: true,
-        output: { action: ctx.action, input: ctx.input, note: "Action logged (no specific executor)" },
-        sideEffects: [`Logged ${ctx.action}`],
+        success: false,
+        output: { action: ctx.action, input: ctx.input, error: "no_executor_registered" },
+        sideEffects: [`NOTHING executed: no executor registered for action "${ctx.action}"`],
         durationMs: Date.now() - startTime,
+        error: "no_executor_registered",
       };
-      await logAgentAction(ctx, ctx.action, ctx.input);
+      await logAgentAction(ctx, "action_refused_no_executor", {
+        action: ctx.action,
+        input: ctx.input,
+        executed: false,
+        error: "no_executor_registered",
+      });
       await this.recordOutcome(ctx, result);
       return result;
     }

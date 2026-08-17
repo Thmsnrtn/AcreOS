@@ -367,6 +367,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
           <Card className="p-3 space-y-3">
             <div className="relative">
               <Textarea
+                aria-label="New note about this lead"
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 placeholder="What did they say?"

@@ -41,13 +41,75 @@
 // Arbitrary z-[…] are counted with a flat baseline of 0 (none survive), so any
 // occurrence in any file is a new offender.
 //
+// ----------------------------------------------------------------------------
+// VACUITY FLOORS — READ BEFORE TOUCHING. DO NOT REMOVE.
+// ----------------------------------------------------------------------------
+// THE BASELINE IS EMPTY (`new Map([])`, emptied 2026-07-02), AND THAT REMOVED
+// THIS GATE'S ONLY ACCIDENTAL VACUITY PROTECTION. Its siblings in this family
+// (lint-page-hex, check-org-scoped-fetch, lint-css-hover) get partial cover for
+// free from the STALE-ENTRY direction of the ratchet: a scan that goes blind
+// leaves every baselined file unseen, so those gates fail "stale baseline
+// entries" instead of printing PASS. With an EMPTY map, `[...BASELINE.keys()]`
+// is `[]`, `staleEntries` is `[]` and `numericImprovements` is `[]` NO MATTER
+// WHAT THE SCAN DID — the stale-entry check can never fire, by construction.
+// Every other term is a count of BAD THINGS FOUND, so an empty walk drives all
+// of them to 0 and this gate prints, at exit 0:
+//
+//     [lint-zindex] scanned 0 tsx files; raw numeric z-N: 0, arbitrary z-[…]: 0,
+//     arbitrary offenders: 0 file(s), numeric over baseline: 0 file(s),
+//     stale baseline entries: 0
+//     [lint-zindex] PASS
+//
+// SO THE FLOORS BELOW ARE THE ONLY THING STANDING BETWEEN A BLIND SCAN AND A
+// GREEN BUILD. They are not decoration and they must not be removed, loosened
+// or "temporarily" bypassed — deleting one silently returns this gate to the
+// state above. A MISSING floor therefore fails exactly as loudly as a breached
+// one. (References for this shape: `minima.files` in scripts/ratchet.mjs, which
+// also rejects a floor of 0 as "not a floor", and `minima` in
+// scripts/ratchets/reachability.json.) If the baseline is ever repopulated,
+// these floors STILL stay — a stale-entry check is a weaker guard than a
+// measured population floor, not a substitute for one.
+//
+// TWO populations are floored, because the file walk is not the only thing that
+// can break:
+//   · tsxFiles      — the walk itself. Measured 2026-08-16: 718 .tsx files
+//                     under client/src → floor 540 (~75% of live).
+//   · semanticTokens — a CANARY POPULATION, and the reason it exists is
+//                     specific: with the baseline emptied, both offender
+//                     predicates (ARBITRARY_RE, NUMERIC_RE) legitimately match
+//                     ZERO in a healthy tree, so neither can prove the line
+//                     scan or maskComments() still work. The semantic tokens
+//                     they were migrated TO (z-modal/z-floating/z-docked/…) are
+//                     the live z-index vocabulary in the same files, counted
+//                     through the SAME mask and the SAME per-line loop. If
+//                     maskComments() mispairs and blanks the source (this repo
+//                     has already been bitten by exactly that — a comment
+//                     stripper that blanked the lines a scan was counting), or
+//                     the per-line regex loop rots, this count collapses and
+//                     the gate fails instead of congratulating itself.
+//                     Measured 2026-08-16 (`--measure`, POST-mask, which is the
+//                     number the gate compares): 136 occurrences across 75
+//                     files → floor 100 (~74% of live). Note the pre-mask raw
+//                     grep is 161; the 25-occurrence gap is doc comments, and
+//                     counting the masked figure is deliberate — the mask is
+//                     part of what this canary is proving still works.
+// Floors are checked BEFORE any verdict prints, and only on a FULL-SCOPE run —
+// an explicit-target run is a fixture (see Usage), where a tiny population is
+// the point, exactly as the stale-baseline check is already skipped there.
+//
+// If a real migration wave takes a population under its floor, LOWER the floor
+// in the same commit and record the new measurement here. Never raise a floor
+// to silence something, and never delete one.
+//
 // Usage:
 //   node scripts/lint-zindex.mjs              # full client/src .tsx scope (CI)
 //   node scripts/lint-zindex.mjs <dir|file> … # explicit targets (fixture tests;
-//                                             #  stale-baseline check skipped)
+//                                             #  stale-baseline + floor checks
+//                                             #  skipped)
 //   node scripts/lint-zindex.mjs --measure    # print counts, never fail
 //
-// Exit codes: 0 — clean; 1 — new offender or stale baseline entry.
+// Exit codes: 0 — clean; 1 — new offender, stale baseline entry, or a scan
+// population below its floor (a broken scan is a failure, not good news).
 // ============================================================================
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -75,6 +137,19 @@ const DEFAULT_SCOPE = join(REPO_ROOT, "client", "src");
 // tokens (z-docked/dropdown/sticky/overlay/floating — value-identical, so
 // rendering is unchanged). Any new raw z-N fails this lint outright.
 const BASELINE = new Map([]);
+
+// ----------------------------------------------------------------------------
+// VACUITY FLOORS — the ONLY vacuity protection this gate has, because BASELINE
+// is empty and the stale-entry check therefore cannot fire. See the header.
+// Every key is REQUIRED; a missing/zero/non-integer floor fails as loudly as a
+// breached one, so the guard cannot be removed by deleting a line.
+// Measured 2026-08-16 (node scripts/lint-zindex.mjs --measure).
+// ----------------------------------------------------------------------------
+const FLOORS = {
+  tsxFiles: 540, //       live 718 .tsx files under client/src
+  semanticTokens: 100, // live 136 semantic z-* occurrences (post-mask) / 75 files
+};
+const REQUIRED_FLOORS = ["tsxFiles", "semanticTokens"];
 
 const args = process.argv.slice(2);
 const MEASURE_ONLY = args.includes("--measure");
@@ -153,12 +228,19 @@ const ARBITRARY_RE = /(^|[^\w-])z-\[[^\]]*\]/g;
 // Raw numeric z-index in the semantic scale. Variant-prefixed forms count too.
 // \b after the number prevents z-1 matching z-10 / z-100, etc.
 const NUMERIC_RE = /(^|[^\w-])z-(0|1|10|20|30|40|50|60)\b/g;
+// CANARY population: the SEMANTIC tokens the raw values were migrated to in F1.
+// Both offender predicates above legitimately measure ZERO in a healthy tree,
+// so neither can prove the scan still works; these run through the same mask
+// and the same per-line loop and are expected to stay plentiful. See header.
+const SEMANTIC_RE =
+  /(^|[^\w-])z-(base|raised|docked|dropdown|sticky|overlay|slot-help|slot-tray|floating|modal|toast|offline|tour|island|spotlight|max)\b/g;
 
-/** Scan one masked .tsx source; return { arbitrary:[…], numeric:[…] }. */
+/** Scan one masked .tsx source; return { arbitrary:[…], numeric:[…], semantic:n }. */
 function findOffenders(source) {
   const masked = maskComments(source);
   const arbitrary = [];
   const numeric = [];
+  let semantic = 0;
   const lines = masked.split("\n");
   for (let li = 0; li < lines.length; li++) {
     ARBITRARY_RE.lastIndex = 0;
@@ -170,8 +252,10 @@ function findOffenders(source) {
     while ((m = NUMERIC_RE.exec(lines[li])) !== null) {
       numeric.push({ line: li + 1, snippet: `z-${m[2]}` });
     }
+    SEMANTIC_RE.lastIndex = 0;
+    while (SEMANTIC_RE.exec(lines[li]) !== null) semantic += 1;
   }
-  return { arbitrary, numeric };
+  return { arbitrary, numeric, semantic };
 }
 
 // ----------------------------------------------------------------------------
@@ -185,20 +269,70 @@ function main() {
 
   const files = roots.flatMap((r) => walkTsx(r));
   const perFile = new Map(); // rel → { arbitrary, numeric }
+  let semanticTokens = 0; // canary population — see header
+  let semanticFiles = 0;
 
   for (const file of files) {
     const rel = file.startsWith(REPO_ROOT + "/") ? relative(REPO_ROOT, file) : file;
     const res = findOffenders(readFileSync(file, "utf8"));
+    if (res.semantic > 0) {
+      semanticTokens += res.semantic;
+      semanticFiles += 1;
+    }
     if (res.arbitrary.length > 0 || res.numeric.length > 0) perFile.set(rel, res);
   }
 
   if (MEASURE_ONLY) {
-    console.log(`[lint-zindex] measured ${files.length} tsx files`);
+    console.log(
+      `[lint-zindex] measured ${files.length} tsx files; ` +
+        `semantic z-* tokens: ${semanticTokens} across ${semanticFiles} file(s)`,
+    );
     for (const [rel, { arbitrary, numeric }] of perFile) {
       console.log(`  ${rel}: ${numeric.length} numeric, ${arbitrary.length} arbitrary`);
       for (const o of [...arbitrary, ...numeric]) console.log(`    L${o.line}  ${o.snippet}`);
     }
     process.exit(0);
+  }
+
+  // ── Vacuity guard, BEFORE any verdict. With BASELINE empty this is the only
+  // ── thing that can distinguish "0 offenders" from "0 files read". Skipped on
+  // ── explicit-target (fixture) runs, exactly as the stale-baseline check is.
+  const vacuity = [];
+  if (fullScope) {
+    const populations = [
+      ["tsxFiles", ".tsx files walked under client/src", files.length],
+      ["semanticTokens", "semantic z-* token occurrences (scan canary)", semanticTokens],
+    ];
+    for (const key of REQUIRED_FLOORS) {
+      if (!(key in FLOORS)) {
+        vacuity.push(
+          `FLOORS.${key} is MISSING. BASELINE is empty, so the stale-entry check can never ` +
+            `fire and these floors are this gate's ONLY vacuity protection. Restore the key; ` +
+            `do not delete it.`,
+        );
+      }
+    }
+    for (const [key, label, observed] of populations) {
+      const floor = FLOORS[key];
+      if (floor === undefined) continue; // reported as MISSING above
+      if (!Number.isInteger(floor) || floor < 1) {
+        vacuity.push(
+          `FLOORS.${key} must be an integer >= 1 (got ${JSON.stringify(floor)}). A floor of 0 ` +
+            `is not a floor — it admits the empty scan this guard exists to catch.`,
+        );
+      } else if (observed < floor) {
+        vacuity.push(
+          `VACUOUS SCAN — ${label}: ${observed}, below the floor of ${floor}. Every count this ` +
+            `gate prints is a count of BAD THINGS FOUND, so a scan that stopped seeing things ` +
+            `reports zero and reads as PASS.\n` +
+            `      Suspect walkTsx(), a moved client/src, maskComments() blanking the source, or ` +
+            `the per-line regex loop before you suspect progress. If a real migration wave ` +
+            `genuinely shrank this population, lower FLOORS.${key} in scripts/lint-zindex.mjs in ` +
+            `the SAME commit and record the new measurement in the header. Never raise a floor ` +
+            `to silence something, and never delete one.`,
+        );
+      }
+    }
   }
 
   const arbitraryOffenders = []; // any arbitrary z-[…] at all
@@ -220,12 +354,22 @@ function main() {
   const totalNumeric = [...perFile.values()].reduce((n, o) => n + o.numeric.length, 0);
   const totalArbitrary = [...perFile.values()].reduce((n, o) => n + o.arbitrary.length, 0);
   console.log(
-    `[lint-zindex] scanned ${files.length} tsx files; ` +
-      `raw numeric z-N: ${totalNumeric}, arbitrary z-[…]: ${totalArbitrary}, ` +
+    `[lint-zindex] scanned ${files.length} tsx files (floor ${fullScope ? FLOORS.tsxFiles : "n/a — fixture run"}); ` +
+      `semantic z-* canary: ${semanticTokens}` +
+      (fullScope ? ` (floor ${FLOORS.semanticTokens})` : "") +
+      `; raw numeric z-N: ${totalNumeric}, arbitrary z-[…]: ${totalArbitrary}, ` +
       `arbitrary offenders: ${arbitraryOffenders.length} file(s), ` +
       `numeric over baseline: ${numericOver.length} file(s), ` +
       `stale baseline entries: ${staleEntries.length + (fullScope ? numericImprovements.length : 0)}`,
   );
+
+  if (vacuity.length > 0) {
+    console.error("");
+    console.error("[lint-zindex] FAIL — the gate itself is not trustworthy right now:");
+    for (const v of vacuity) console.error(`  ✗ ${v}`);
+    console.error("");
+    process.exit(1);
+  }
 
   const clean =
     arbitraryOffenders.length === 0 &&

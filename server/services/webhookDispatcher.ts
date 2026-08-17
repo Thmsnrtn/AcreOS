@@ -22,53 +22,20 @@ import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
 import { logger } from "../utils/logger";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
+import { encrypt, decrypt, isEncrypted } from "./fieldEncryption";
+import {
+  type WebhookEventId,
+  normalizeSubscribedEvents,
+} from "@shared/webhooks/catalogue";
 
-export type WebhookEventType =
-  // Lead lifecycle
-  | 'lead.created'
-  | 'lead.updated'
-  | 'lead.deleted'
-  | 'lead.responded'
-  | 'lead.status_changed'
-  | 'lead.score_changed'
-  // Deal lifecycle
-  | 'deal.created'
-  | 'deal.stage_changed'
-  | 'deal.closed_won'
-  | 'deal.closed_lost'
-  | 'deal.closed'
-  | 'deal.offer_sent'
-  | 'deal.offer_accepted'
-  // Property
-  | 'property.created'
-  | 'property.enriched'
-  | 'property.lcs_updated'
-  // Note lifecycle
-  | 'note.created'
-  | 'note.payment_received'
-  | 'note.payment_overdue'
-  | 'note.paid_off'
-  | 'note.delinquent'
-  // Payment
-  | 'payment.received'
-  | 'payment.overdue'
-  | 'payment.failed'
-  // Campaign
-  | 'campaign.sent'
-  | 'campaign.response_received'
-  | 'campaign.response'
-  // Marketplace
-  | 'listing.created'
-  | 'listing.offer_received'
-  | 'listing.sold'
-  // System
-  | 'deal_feed.generated'
-  | 'compliance.alert'
-  | 'agent.action_taken'
-  // Legacy
-  | 'sms.reply'
-  | 'sequence.completed'
-  | 'task.completed';
+/**
+ * The event vocabulary now lives in `@shared/webhooks/catalogue`, so the
+ * settings panel offers exactly what the dispatcher understands. It used to be
+ * declared here and hand-copied into the client, and the two had drifted: six
+ * of the fifteen events a customer could subscribe to did not exist on the
+ * wire at all.
+ */
+export type WebhookEventType = WebhookEventId;
 
 export interface WebhookEndpoint {
   url: string;
@@ -76,6 +43,42 @@ export interface WebhookEndpoint {
   events: WebhookEventType[] | 'all';
   isActive: boolean;
   label?: string;
+  /**
+   * DERIVED, never persisted. Set when the endpoint HAS a stored signing secret
+   * that could not be decrypted — a different state from "no secret configured",
+   * and the reason the two are distinguished is that they demand opposite
+   * behaviour: no secret means deliver unsigned, unreadable secret means do not
+   * deliver at all. See `dispatchWebhook`.
+   */
+  secretUnavailable?: boolean;
+}
+
+/**
+ * The endpoint AS IT SITS IN THE COLUMN. Structurally the same, except `secret`
+ * holds CIPHERTEXT for anything written since webhook secrets were encrypted at
+ * rest — and plaintext for rows written before that, which are upgraded on their
+ * next save. `secretUnavailable` is derived at read time and never stored.
+ */
+type StoredWebhookEndpoint = Omit<WebhookEndpoint, "secretUnavailable"> & {
+  /**
+   * LEGACY. The webhooks page wrote `enabled` and rendered its Active/Paused
+   * badge from it, while the dispatcher has always filtered on `isActive` — so
+   * every endpoint added through the UI was stored active-looking and was
+   * structurally incapable of receiving anything. Normalised on read (so
+   * existing rows start working without being re-saved) and dropped on write.
+   */
+  enabled?: boolean;
+};
+
+/**
+ * Whether an endpoint is on. Reads `isActive`, falls back to the legacy
+ * `enabled`, and defaults to OFF — an endpoint carrying neither was never
+ * expressed as active by anyone, and silence is the safe reading of silence.
+ */
+function isEndpointActive(e: { isActive?: unknown; enabled?: unknown }): boolean {
+  if (typeof e.isActive === "boolean") return e.isActive;
+  if (typeof e.enabled === "boolean") return e.enabled;
+  return false;
 }
 
 export interface WebhookPayload {
@@ -95,11 +98,12 @@ export function signPayload(payload: string, secret: string): string {
 }
 
 /**
- * Get all registered webhook endpoints for an org from organizationIntegrations.
- * Webhooks are stored as a JSON array in the credentials.webhooks field
- * of a special 'webhooks' integration record.
+ * The stored rows, verbatim — secrets still encrypted.
+ *
+ * Webhooks are stored as a JSON array in the credentials.endpoints field of a
+ * special 'webhooks' integration record.
  */
-export async function getWebhookEndpoints(organizationId: number): Promise<WebhookEndpoint[]> {
+async function readStoredEndpoints(organizationId: number): Promise<StoredWebhookEndpoint[]> {
   const [integration] = await db
     .select()
     .from(organizationIntegrations)
@@ -118,12 +122,219 @@ export async function getWebhookEndpoints(organizationId: number): Promise<Webho
 }
 
 /**
+ * Open one stored endpoint's signing secret.
+ *
+ * Three outcomes, deliberately distinct:
+ *   - no secret stored     → no `secret`, no flag. The endpoint is unsigned by
+ *                            configuration, and delivering unsigned is correct.
+ *   - ciphertext, readable → the plaintext key.
+ *   - ciphertext, UNREADABLE → no `secret`, `secretUnavailable: true`. Signing
+ *                            is configured and we cannot do it.
+ *
+ * A row written before secrets were encrypted holds plaintext. `isEncrypted`
+ * distinguishes the envelope by its `enc:v1:` marker rather than asking
+ * `decrypt()` to guess, because `decrypt()` treats an unrecognised string as
+ * plaintext and passes it through — which would silently turn a corrupted
+ * envelope into a signing key.
+ */
+function openSecret(stored: StoredWebhookEndpoint): WebhookEndpoint {
+  const { secret, enabled, ...withoutSecret } = stored;
+  const rest = {
+    ...withoutSecret,
+    isActive: isEndpointActive(stored),
+    // Subscriptions stored under names the old picker offered but the wire
+    // never carried — `offer.accepted` for `deal.offer_accepted`, and three
+    // more. Normalised here so an existing customer's subscription starts
+    // matching without them having to re-tick a box. See the catalogue.
+    events: Array.isArray(stored.events)
+      ? (normalizeSubscribedEvents(stored.events) as WebhookEventId[])
+      : stored.events,
+  };
+  if (!secret) return { ...rest };
+  if (!isEncrypted(secret)) return { ...rest, secret };
+  try {
+    return { ...rest, secret: decrypt(secret) };
+  } catch (err) {
+    logger.error(
+      `[Webhook] signing secret for ${stored.url} could not be decrypted: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return { ...rest, secretUnavailable: true };
+  }
+}
+
+/**
+ * Every registered endpoint for an org, with signing secrets decrypted.
+ *
+ * This is the DISPATCHER's reader and holds real key material. The API reads
+ * `getWebhookEndpointsForDisplay` below, which never decrypts anything.
+ */
+export async function getWebhookEndpoints(organizationId: number): Promise<WebhookEndpoint[]> {
+  return (await readStoredEndpoints(organizationId)).map(openSecret);
+}
+
+/**
+ * The endpoints as an API RESPONSE — with the signing secret removed.
+ *
+ * `WebhookEndpoint.secret` is the HMAC key every outbound delivery is signed
+ * with. `GET /api/webhooks` returned the stored objects verbatim, so any
+ * authenticated member of the org — including a `viewer` — could read it, while
+ * the PUT that sets it is admin-only.
+ *
+ * A leaked signing secret is worse than leaked data: it grants the ability to
+ * FORGE deliveries, so someone holding it can inject fabricated deal and lead
+ * events into the customer's own downstream systems while the signature
+ * verifies. That is capability, not information.
+ *
+ * The fix is redaction rather than a gate. Everyone in the org may legitimately
+ * need to see WHICH webhooks are configured and whether they are active; nobody
+ * needs to read the secret back — not even an owner, who had it when they set
+ * it. A write-only secret is the standard shape and it keeps the read useful.
+ *
+ * `hasSecret` is reported so the UI can still say "signing is configured"
+ * without carrying the value.
+ *
+ * NOT used by the dispatcher — `getWebhookEndpoints` above stays unredacted
+ * because signing genuinely needs the key.
+ */
+export type RedactedWebhookEndpoint = Omit<
+  WebhookEndpoint,
+  "secret" | "secretUnavailable"
+> & { hasSecret: boolean };
+
+/**
+ * Reads the STORED shape and never decrypts. The redacted path has no use for
+ * key material, so it never holds any: whether a secret exists is answerable
+ * from the ciphertext's presence alone. It follows that this path cannot leak a
+ * secret even if the redaction below were later broken, and cannot fail when the
+ * encryption key is unavailable — the webhook list stays viewable either way.
+ *
+ * It also means `secretUnavailable` is NOT reported here. Determining it
+ * requires attempting decryption, so claiming it without decrypting would be a
+ * guess. This surface reports what it knows.
+ */
+export async function getWebhookEndpointsForDisplay(
+  organizationId: number,
+): Promise<RedactedWebhookEndpoint[]> {
+  const stored = await readStoredEndpoints(organizationId);
+  return stored.map((e) => {
+    const { secret, enabled, ...rest } = e;
+    return {
+      ...rest,
+      isActive: isEndpointActive(e),
+      // Same normalisation as the dispatcher's read: the panel must show the
+      // subscription that will actually be matched, not the one on disk.
+      events: Array.isArray(e.events)
+        ? (normalizeSubscribedEvents(e.events) as WebhookEventId[])
+        : e.events,
+      hasSecret: typeof secret === "string" && secret.length > 0,
+    };
+  });
+}
+
+/**
+ * How a TEST event to `url` should be signed.
+ *
+ * The test button exists to answer "will my endpoint accept what AcreOS
+ * actually sends?", and it could not: the client sends only a url — it cannot
+ * send the secret, because the read is redacted — so every test went out
+ * unsigned while every real delivery went out signed. A receiver that verifies
+ * signatures rejected the one message sent to prove the endpoint works, and the
+ * panel reported a correctly-configured endpoint as broken.
+ *
+ * So a test to a CONFIGURED endpoint is signed with that endpoint's own stored
+ * secret, and an unreadable secret refuses rather than downgrading — the same
+ * rule `dispatchWebhook` follows, and the test is the surface where finding out
+ * is most useful. A url the org has not configured is an ad-hoc probe: it may
+ * carry a caller-supplied secret, or go unsigned.
+ */
+export type TestSigning =
+  | { kind: "signed"; secret: string }
+  | { kind: "unsigned" }
+  | { kind: "refused"; reason: string };
+
+export async function resolveTestSigning(
+  organizationId: number,
+  url: string,
+  fallbackSecret?: unknown,
+): Promise<TestSigning> {
+  const configured = (await getWebhookEndpoints(organizationId)).find((e) => e.url === url);
+
+  if (configured?.secretUnavailable) {
+    return {
+      kind: "refused",
+      reason:
+        "This endpoint has a signing secret that could not be decrypted, so a test " +
+        "event cannot be signed the way real deliveries are. Save a new secret for " +
+        "it, or restore the encryption key it was written under.",
+    };
+  }
+
+  if (configured?.secret) return { kind: "signed", secret: configured.secret };
+  // Only for a url that is not a configured endpoint — a configured one is
+  // tested as it is configured, not as the caller asks.
+  if (!configured && typeof fallbackSecret === "string" && fallbackSecret.length > 0) {
+    return { kind: "signed", secret: fallbackSecret };
+  }
+  return { kind: "unsigned" };
+}
+
+/**
  * Save webhook endpoints for an org.
+ *
+ * Does three things beyond writing the array, each of which the shape demands:
+ *
+ * 1. ENCRYPTS the signing secret at rest. It is an HMAC key — a credential, and
+ *    the only one in `organization_integrations.credentials` that used to sit in
+ *    the column as plaintext while every other provider stored an envelope.
+ *    Rows written before this are upgraded on their next save; nothing needs a
+ *    data migration, and no row is unreadable in the meantime.
+ *
+ * 2. PRESERVES an existing secret when the incoming endpoint does not carry one.
+ *    This is load-bearing, not a nicety: the client GETs the endpoint list and
+ *    PUTs it back, so once the read is redacted a naive save would write
+ *    `secret: undefined` over every configured key — silently disabling
+ *    signature verification on every downstream integration, with no error
+ *    anywhere. Matching is by `url`, which is the endpoint's identity here.
+ *    Preservation carries the CIPHERTEXT across unchanged, so it keeps working
+ *    when the key is unavailable; a save must never destroy a key it cannot
+ *    read.
+ *
+ * 3. STRIPS the derived fields. `hasSecret` and `secretUnavailable` are answers
+ *    this module computes, and the round-trip means they arrive back as input.
+ *    Persisting them would let a client assert them.
  */
 export async function saveWebhookEndpoints(
   organizationId: number,
   endpoints: WebhookEndpoint[]
 ): Promise<void> {
+  const stored = await readStoredEndpoints(organizationId);
+  const secretByUrl = new Map(
+    stored.filter((e) => e.secret).map((e) => [e.url, e.secret as string]),
+  );
+
+  const toPersist: StoredWebhookEndpoint[] = endpoints.map((e) => {
+    const { secret, secretUnavailable, hasSecret, enabled, ...withoutDerived } =
+      e as WebhookEndpoint & { hasSecret?: boolean; enabled?: boolean };
+    // One name for one fact. `enabled` is accepted (an older client build may
+    // still send it) and normalised away, never stored alongside `isActive` —
+    // two fields for one state is how they came to disagree.
+    const rest = {
+      ...withoutDerived,
+      isActive: isEndpointActive(e),
+      events: Array.isArray(e.events)
+        ? (normalizeSubscribedEvents(e.events) as WebhookEventId[])
+        : e.events,
+    };
+    // `||` not `??`, deliberately: an empty-string secret is far more likely to
+    // be a blank form field than an intent to turn signing off, and this
+    // function exists to stop a key being destroyed by accident. Clearing a
+    // secret is a rotation, not a save with a hole in it.
+    const carried = secret || secretByUrl.get(e.url);
+    if (!carried) return rest;
+    return { ...rest, secret: isEncrypted(carried) ? carried : encrypt(carried) };
+  });
+
   const [existing] = await db
     .select()
     .from(organizationIntegrations)
@@ -139,7 +350,7 @@ export async function saveWebhookEndpoints(
   // typed jsonb shape; webhook endpoints are persisted here by reusing the column.
   // Typed against the column's credentials type so the write is structurally checked.
   type IntegrationCredentials = typeof organizationIntegrations.$inferInsert["credentials"];
-  const credentials = { endpoints } as IntegrationCredentials;
+  const credentials = { endpoints: toPersist } as IntegrationCredentials;
 
   if (existing) {
     await db
@@ -207,6 +418,23 @@ export async function dispatchWebhook(
 
   await Promise.allSettled(
     activeEndpoints.map(async (endpoint) => {
+      // A configured signing secret we cannot read is a REFUSAL, not a
+      // downgrade. Delivering unsigned would hand the receiver a payload that
+      // clears an "is it signed?" check by carrying no signature at all, and
+      // signing with the ciphertext would produce a signature that can never
+      // verify. Neither is honest about the state we are actually in, so the
+      // delivery does not happen and the reason is logged.
+      if (endpoint.secretUnavailable) {
+        failed++;
+        logger.error(
+          `[Webhook] ${event} → ${endpoint.url} NOT delivered: its signing secret ` +
+            `could not be decrypted, and an endpoint configured for signing is ` +
+            `never delivered to unsigned. Re-save the endpoint with a new secret, ` +
+            `or restore the encryption key it was written under.`,
+        );
+        return;
+      }
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-AcreOS-Event': event,

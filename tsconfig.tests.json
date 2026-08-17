@@ -1,0 +1,57 @@
+{
+  // ==========================================================================
+  // Type-checking for the TEST suite, which the main project excludes.
+  // --------------------------------------------------------------------------
+  // `tsconfig.json` lists `client/src`, `shared`, `server` (and friends) in
+  // `include` and puts `**/*.test.ts` in `exclude`, so 700+ test files and
+  // ~9,200 tests were never type-checked at all. That is a real hole, because a
+  // test is the one place where a type error is INVISIBLE at runtime too:
+  //
+  //   expect(result.nonExistentField).toBeUndefined();   // passes, forever
+  //
+  // …and an import of a symbol that no longer exists only fails if the line
+  // executes. Unit 101 hit exactly that: removing a re-export nothing consumed
+  // left a test importing through the dead path, and `tsc` said nothing because
+  // the file was outside the project.
+  //
+  // THE MEASUREMENT, and the correction it needed. A first pass run from a
+  // scratchpad config reported TWELVE errors and I nearly recorded "the suite
+  // type-checks clean". It does not: that config sat outside the repo, could not
+  // resolve `node` / `vite/client` / `vitest/globals`, and tsc gave up early.
+  // Re-run IN PLACE the real number is **170 errors across 64 of 704 files** —
+  // mostly mocks that cannot represent what they are asserted against
+  // (`TS2493` on empty-tuple fixtures, `TS2352`/`TS2322` on hand-built rows),
+  // plus a handful of genuine drifts.
+  //
+  // The twelve were not nothing, though: all of them were SYNTAX errors in
+  // `tests/simulation/sim-scaling-operator.spec.ts`, which used regex literals as
+  // object keys. That file never parsed, so `npm run test:scale` had never run
+  // once. Fixed in the same unit.
+  //
+  // 170 is therefore a RATCHET population, not a fix-now one — `check:tests`
+  // holds it and drives it down, the same discipline as `as-any`.
+  //
+  // It is a SEPARATE config rather than a change to `tsconfig.json` because the
+  // main one is also what the build reads; tests must be type-checked without
+  // being compiled into the product.
+  // ==========================================================================
+  "extends": "./tsconfig.json",
+  "include": [
+    "client/src/**/*",
+    "shared/**/*",
+    "server/**/*",
+    "tests/**/*",
+    "scripts/**/*.test.mjs"
+  ],
+  "exclude": ["node_modules", "build", "dist"],
+  "compilerOptions": {
+    // Not incremental: this config and the main one would otherwise fight over
+    // the same tsbuildinfo file and each would invalidate the other's cache.
+    "incremental": false,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.tests",
+    // `vitest/globals` is what makes the suite's ambient `describe`/`it`/`expect`
+    // resolve — vitest.config.ts sets `globals: true`, so the tests do not import
+    // them and would otherwise be a wall of TS2304.
+    "types": ["node", "vite/client", "vitest/globals"]
+  }
+}

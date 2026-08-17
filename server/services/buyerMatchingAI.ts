@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 // re-fires) — see services/buyerEvents.ts.
 import { emitBuyerMatchCreated } from "./buyerEvents";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
 
@@ -787,7 +788,7 @@ Property Details:
 - Price: ${property.listPrice ?? property.marketValue ?? "Contact for pricing"}
 - Zoning: ${property.zoning ?? "Check with county"}
 - Road Access: ${property.roadAccess ?? "TBD"}
-- Description: ${property.description ?? "Beautiful land opportunity"}
+- Description: ${sanitizePromptInline(property.description ?? "Beautiful land opportunity", { source: "property.description" })}
 
 Buyer Profile:
 - Type: ${buyerProfile.profileType}

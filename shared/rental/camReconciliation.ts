@@ -29,6 +29,10 @@
 
 import type { PropertyExpenseCategory } from "./propertyExpense";
 import type { MeasurableExpenseRow } from "./noi";
+// The money renderer, from its canonical home. This file used to carry a
+// byte-identical private copy; a tenant's CAM true-up and the finance surfaces
+// must not be able to disagree about how a dollar reads.
+import { formatCents } from "../finance/cents";
 
 /** The pool definition inputs the reconciliation needs. */
 export interface CamPoolInput {
@@ -227,15 +231,6 @@ export function computeCamReconciliation(args: {
     coverageComplete,
     refusedReason: null,
   };
-}
-
-/** cents → "$1,234.56" (a minus sign for negatives), locale-independent. */
-export function formatCents(cents: number): string {
-  const neg = cents < 0;
-  const s = (Math.abs(cents) / 100).toFixed(2);
-  const [int, frac] = s.split(".");
-  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${neg ? "−" : ""}$${withCommas}.${frac}`;
 }
 
 /**

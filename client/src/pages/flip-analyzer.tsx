@@ -338,6 +338,21 @@ const RULE_FIELDS: Array<{
   { key: "targetProfitPct", label: "Target profit (% of ARV)", hint: "The minimum net you will accept.", kind: "percent" },
 ];
 
+/**
+ * The review-date choices, deliberately few and fixed.
+ *
+ * Mirrors the founder plane's `checkInDays: 30 | 90` shape rather than a
+ * free-form date picker: a picker is friction at the exact moment friction
+ * makes someone skip the question, and the honest answers here are coarse
+ * anyway. "No set date" carries equal weight — it is an answer, not a skip.
+ */
+const REVIEW_CHOICES: ReadonlyArray<{ label: string; days: number | null }> = [
+  { label: "In 2 weeks", days: 14 },
+  { label: "In 30 days", days: 30 },
+  { label: "In 90 days", days: 90 },
+  { label: "No set date", days: null },
+];
+
 export default function FlipAnalyzerPage() {
   useDocumentTitle("Flip analyzer — MAO");
   const { toast } = useToast();
@@ -352,6 +367,17 @@ export default function FlipAnalyzerPage() {
   const [arvField, setArvField] = useState("");
   const [rehabField, setRehabField] = useState("");
   const [priceField, setPriceField] = useState("");
+  /**
+   * When the operator expects to know how the offer went.
+   *
+   * Starts UNSELECTED, and that is the whole point: the server refuses to
+   * invent a review date, so a chip selected by default would manufacture one
+   * on its behalf and every offer would start nagging. `null` is a real answer
+   * ("no set date"), reachable by choosing it.
+   */
+  const [reviewInDays, setReviewInDays] = useState<number | null | undefined>(
+    undefined,
+  );
   const [feeField, setFeeField] = useState("");
   /** Set only when the operator opts into a derived ARV; carries its basis. */
   const [arvBasisNote, setArvBasisNote] = useState<string | null>(null);
@@ -509,13 +535,25 @@ export default function FlipAnalyzerPage() {
   });
 
   const createDraftOffer = useMutation({
-    mutationFn: async (input: { propertyId: number; offerCents: number; mao: MaoResponse }) => {
+    mutationFn: async (input: {
+      propertyId: number;
+      offerCents: number;
+      mao: MaoResponse;
+      reviewInDays: number | null | undefined;
+    }) => {
       const res = await apiRequest("POST", "/api/flip-analyzer/offer", {
         propertyId: input.propertyId,
         arvCents: input.mao.arvCents,
         rehabEstimateCents: input.mao.rehabEstimateCents,
         feeCents: input.mao.feeCents,
         offerCents: input.offerCents,
+        // When the operator expects to KNOW. Null when they said there is no
+        // natural review date — an answer, not an omission. The server never
+        // defaults this, so a decision with no date simply never prompts.
+        reviewDueAt:
+          input.reviewInDays === null || input.reviewInDays === undefined
+            ? null
+            : new Date(Date.now() + input.reviewInDays * 86_400_000).toISOString(),
       });
       return res.json() as Promise<OfferResponse>;
     },
@@ -1286,6 +1324,40 @@ export default function FlipAnalyzerPage() {
                   sends nothing, and no money moves through AcreOS — payment
                   happens between you and the seller at closing.
                 </p>
+                {/* WHEN WILL YOU KNOW?
+                    Asked here because this is the moment the operator actually
+                    knows the answer — they are looking at the offer and have a
+                    view on how long a seller takes. Nothing is pre-selected:
+                    the server refuses to invent a review date, and a chip
+                    selected by default would manufacture one on its behalf.
+                    "No set date" is a real, equally-weighted answer, not a
+                    skip — a decision with no date never prompts, which is
+                    correct for the many that have no natural one. */}
+                <fieldset className="mt-4">
+                  <legend className="text-sm font-medium">
+                    When will you know how this went?
+                  </legend>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    We'll ask you once, on Today, so what actually happened gets
+                    recorded while you still remember it.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {REVIEW_CHOICES.map((c) => (
+                      <Button
+                        key={c.label}
+                        type="button"
+                        size="sm"
+                        variant={reviewInDays === c.days ? "secondary" : "outline"}
+                        aria-pressed={reviewInDays === c.days}
+                        onClick={() => setReviewInDays(c.days)}
+                        data-testid={`review-in-${c.days ?? "none"}`}
+                      >
+                        {c.label}
+                      </Button>
+                    ))}
+                  </div>
+                </fieldset>
+
                 <Button
                   className="mt-3"
                   disabled={
@@ -1303,6 +1375,7 @@ export default function FlipAnalyzerPage() {
                           ? maoQuery.data.priceUsedCents
                           : maoQuery.data.maoCents,
                       mao: maoQuery.data,
+                      reviewInDays,
                     });
                   }}
                   data-testid="button-draft-offer"

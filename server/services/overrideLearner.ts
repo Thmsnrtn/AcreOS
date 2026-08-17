@@ -15,6 +15,7 @@ import { agentOverrideLearnings, agentMemory } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 interface OverrideContext {
   agentCodename: string;
   actionName: string;
@@ -63,7 +64,7 @@ Categories:
 Action: ${context.actionName}
 Agent's recommendation: ${context.originalRecommendation}
 CEO's override action: ${context.ceoOverrideAction || "Rejected without specific action"}
-CEO's notes: ${context.ceoOverrideNotes || "No notes provided"}
+CEO's notes: ${sanitizePromptInline(context.ceoOverrideNotes || "No notes provided")}
 
 What should the agent learn from this rejection?`,
         },

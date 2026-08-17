@@ -598,6 +598,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               ref={inputRef}
+              aria-label="Ask about this property"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Ask about this property…"

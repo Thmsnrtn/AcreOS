@@ -77,6 +77,7 @@ export default function CountyTimelinesPage() {
 
       <div className="mb-4 max-w-sm">
         <Input
+          aria-label="Filter by state or county"
           placeholder="Filter by state or county…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}

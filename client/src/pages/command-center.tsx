@@ -632,6 +632,7 @@ function TeamTabContent() {
                       <div>
                         <p className="text-sm font-medium mb-2">Custom Instructions</p>
                         <Textarea
+                          aria-label="Custom instructions for this agent"
                           placeholder="Add custom instructions for this agent…"
                           value={customInstructions || selectedAgent.customInstructions || ""}
                           onChange={(e) => setCustomInstructions(e.target.value)}
@@ -673,6 +674,7 @@ function TeamTabContent() {
                           </DialogDescription>
                         </DialogHeader>
                         <Textarea
+                          aria-label="Describe the task for this agent"
                           placeholder="E.g., Send follow-up emails to all leads who haven't responded in 7 days…"
                           value={taskInput}
                           onChange={(e) => setTaskInput(e.target.value)}
@@ -1058,6 +1060,7 @@ function TasksTabContent() {
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4">
               <Textarea 
+                aria-label="Message to the assistant"
                 placeholder={currentAgentType.placeholder}
                 className="flex-1 resize-none p-4 text-base"
                 value={input}
@@ -1176,7 +1179,6 @@ const aiServices: AIService[] = [
   { id: "seller-intent", name: "Seller Intent", description: "Predict seller motivation and timing", phase: 3, icon: Target, endpoint: "/api/ai/intent/predict" },
   { id: "price-optimizer", name: "Price Optimizer", description: "Automated pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
   { id: "deal-patterns", name: "Deal Patterns", description: "Clone successful deal strategies", phase: 3, icon: GitBranch, endpoint: "/api/ai/patterns/analyze" },
-  { id: "negotiation", name: "Negotiation", description: "Real-time negotiation assistance", phase: 4, icon: Handshake, endpoint: "/api/ai/negotiation/session" },
   { id: "sequences", name: "Sequences", description: "AI-optimized outreach sequences", phase: 4, icon: Mail, endpoint: "/api/ai/sequences/performance" },
   { id: "voice-calls", name: "Voice Calls", description: "Call transcription and analysis", phase: 4, icon: Phone, endpoint: "/api/ai/voice/record" },
   { id: "portfolio", name: "Portfolio", description: "Monitor portfolio health and alerts", phase: 5, icon: Eye, endpoint: "/api/ai/portfolio/monitor" },
@@ -1344,6 +1346,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
+                        aria-label="Property ID for due-diligence analysis"
                         placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
@@ -1379,6 +1382,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
+                        aria-label="Property ID for pricing analysis"
                         placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
@@ -2374,6 +2378,7 @@ export default function CommandCenterPage() {
                       </div>
                       <Textarea
                         ref={textareaRef}
+                        aria-label="Message"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}

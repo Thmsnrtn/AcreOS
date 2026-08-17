@@ -32,34 +32,36 @@ import { Verbs } from "@/lib/labels";
 import { SkeletonList } from "@/components/ui/skeleton-list";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import {
+  WEBHOOK_EVENT_CHOICES,
+  WEBHOOK_EVENT_GROUPS,
+  isLiveWebhookEvent,
+} from "@shared/webhooks/catalogue";
 
 interface WebhookEndpoint {
   url: string;
   events: string[];
-  enabled: boolean;
+  /**
+   * The server's name for this, and the field the dispatcher actually filters
+   * on. This page used to call it `enabled` — so every endpoint added here was
+   * saved with a field nothing read, rendered its badge from the same field,
+   * and reported "Active" for an endpoint that was structurally incapable of
+   * receiving anything. One name for one fact.
+   */
+  isActive: boolean;
   secret?: string;
   description?: string;
 }
 
-const ALL_EVENTS = [
-  { id: "lead.created", label: "Lead created", group: "Leads" },
-  { id: "lead.updated", label: "Lead updated", group: "Leads" },
-  { id: "lead.status_changed", label: "Lead status changed", group: "Leads" },
-  { id: "property.created", label: "Property created", group: "Properties" },
-  { id: "property.updated", label: "Property updated", group: "Properties" },
-  { id: "deal.created", label: "Deal created", group: "Deals" },
-  { id: "deal.closed", label: "Deal closed", group: "Deals" },
-  { id: "deal.status_changed", label: "Deal status changed", group: "Deals" },
-  { id: "payment.received", label: "Payment received", group: "Finance" },
-  { id: "payment.late", label: "Payment late", group: "Finance" },
-  { id: "campaign.sent", label: "Campaign sent", group: "Marketing" },
-  { id: "offer.sent", label: "Offer sent", group: "Marketing" },
-  { id: "offer.accepted", label: "Offer accepted", group: "Marketing" },
-  { id: "task.created", label: "Task created", group: "Tasks" },
-  { id: "task.completed", label: "Task completed", group: "Tasks" },
-];
-
-const EVENT_GROUPS = Array.from(new Set(ALL_EVENTS.map(e => e.group)));
+// The event picker is DERIVED from the shared catalogue, not hand-written.
+// It used to be a local list, and it had drifted: six of its fifteen events —
+// offer.sent, offer.accepted, deal.status_changed, payment.late,
+// property.updated, task.created — did not exist in the server's vocabulary at
+// all. Ticking one stored a string nothing would ever match, and this panel
+// showed it ticked. Four were near-miss renames of real events, which is what
+// made it survive: the list looked right, and nothing compared the two.
+const ALL_EVENTS = WEBHOOK_EVENT_CHOICES;
+const EVENT_GROUPS = WEBHOOK_EVENT_GROUPS;
 
 export default function WebhooksPage() {
   useDocumentTitle("Webhooks");
@@ -73,7 +75,7 @@ export default function WebhooksPage() {
   const [newEndpoint, setNewEndpoint] = useState<WebhookEndpoint>({
     url: "",
     events: ["lead.created", "deal.closed"],
-    enabled: true,
+    isActive: true,
     description: "",
   });
 
@@ -103,9 +105,21 @@ export default function WebhooksPage() {
 
   // allow-no-invalidation: sends a test event to the customer's endpoint — nothing cached changes
   const testMutation = useMutation({
-    mutationFn: (url: string) =>
-      apiRequest("POST", "/api/webhooks/test", { url }),
-    onSuccess: () => toast({ title: "Test event sent", description: "Check your endpoint for the test payload." }),
+    mutationFn: async (url: string) => {
+      const res = await apiRequest("POST", "/api/webhooks/test", { url });
+      return (await res.json()) as { status: number; ok: boolean; signed: boolean };
+    },
+    // Says WHICH of the two things was tested. A test event is now signed with
+    // the endpoint's own stored secret, so it exercises signature verification
+    // the way a real delivery does; saying so is the difference between "we sent
+    // something" and "we sent what we will actually send".
+    onSuccess: (result) =>
+      toast({
+        title: "Test event sent",
+        description: result.signed
+          ? "Signed with this endpoint's secret, exactly as a real delivery is. Check your endpoint for the test payload."
+          : "Sent unsigned — this endpoint has no signing secret configured. Check your endpoint for the test payload.",
+      }),
     onError: (err: any) =>
       toast({
         title: "Test event didn't reach the endpoint",
@@ -127,7 +141,7 @@ export default function WebhooksPage() {
     const updated = [...endpoints, newEndpoint];
     saveMutation.mutate(updated);
     setAddOpen(false);
-    setNewEndpoint({ url: "", events: ["lead.created", "deal.closed"], enabled: true, description: "" });
+    setNewEndpoint({ url: "", events: ["lead.created", "deal.closed"], isActive: true, description: "" });
   }
 
   function removeEndpoint(url: string) {
@@ -136,7 +150,7 @@ export default function WebhooksPage() {
   }
 
   function toggleEndpoint(url: string) {
-    const updated = endpoints.map(e => e.url === url ? { ...e, enabled: !e.enabled } : e);
+    const updated = endpoints.map(e => e.url === url ? { ...e, isActive: !e.isActive } : e);
     saveMutation.mutate(updated);
   }
 
@@ -212,10 +226,10 @@ export default function WebhooksPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <Switch
-                          checked={ep.enabled}
+                          checked={ep.isActive}
                           onCheckedChange={() => toggleEndpoint(ep.url)}
                           className="scale-75"
-                          aria-label={`${ep.url}: ${ep.enabled ? "active" : "paused"}`}
+                          aria-label={`${ep.url}: ${ep.isActive ? "active" : "paused"}`}
                         />
                         <code className="text-sm font-mono truncate block">{ep.url}</code>
                       </div>
@@ -232,8 +246,8 @@ export default function WebhooksPage() {
                       </ul>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant={ep.enabled ? "default" : "secondary"}>
-                        {ep.enabled ? "Active" : "Paused"}
+                      <Badge variant={ep.isActive ? "default" : "secondary"}>
+                        {ep.isActive ? "Active" : "Paused"}
                       </Badge>
                       <Button
                         variant="outline"
@@ -339,6 +353,22 @@ export default function WebhooksPage() {
                             onCheckedChange={v => toggleEvent(v as boolean, ev.id)}
                           />
                           <Label htmlFor={ev.id} className="text-xs cursor-pointer">{ev.label}</Label>
+                          {/*
+                            Says which subscriptions can actually arrive. Only
+                            events with a real dispatch call site fire today;
+                            offering the rest unmarked presents a subscription
+                            that cannot deliver as if it worked. Same discipline
+                            as the workflow builder's "Not yet live" badge.
+                          */}
+                          {!isLiveWebhookEvent(ev.id) && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] py-0 px-1 font-normal text-muted-foreground"
+                              title="Nothing emits this event yet. You can subscribe now — it will start delivering when the event ships."
+                            >
+                              Not yet live
+                            </Badge>
+                          )}
                         </div>
                       ))}
                     </div>

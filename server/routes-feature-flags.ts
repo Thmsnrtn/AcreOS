@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   featureFlagService,
   buildFlagContext,
+  RetiredFeatureFlagError,
 } from "./services/featureFlags";
 import { FEATURE_FLAG_STATES, type FeatureFlagState } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
@@ -101,6 +102,12 @@ router.patch("/admin/:key", async (req: AuthenticatedRequest, res: Response) => 
     });
     res.json(updated);
   } catch (error) {
+    // A flag whose subsystem is deleted answers 404, not 500 and not 200. 404
+    // is the same answer `getByKey` gives for it, and it is the truth: as far
+    // as this system is concerned the flag is not there.
+    if (error instanceof RetiredFeatureFlagError) {
+      return Errors.notFound(res, "Feature flag");
+    }
     Errors.internal(res, error);
   }
 });

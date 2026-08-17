@@ -189,10 +189,58 @@ export const KNOBS: KnobDefinition[] = [
 const cache = new Map<string, { value: string; fetchedAt: number }>();
 const CACHE_TTL_MS = 30_000;
 
+/**
+ * Keys declared in BOTH this module's KNOBS and settingsSeeder's
+ * SETTINGS_CATALOG. Unit 121 found the overlap is exactly two, and that both
+ * were live on opposite sides of a broken wire:
+ *
+ *   PATCH /api/founder/studio/dial  →  settings.setSetting  →  platform_settings
+ *   server/jobs/archival.ts         →  getSetting (here)    →  founder_settings
+ *
+ * So the founder flipped `archival.enabled` in the studio, the route wrote a row,
+ * WROTE A FOUNDER_AUDIT ROW, and returned success — and the job that reads the
+ * toggle never saw it. A control that reports success while reaching nothing is
+ * worse than a missing control, because the audit trail says it was set.
+ *
+ * Founder ruling (picker, 2026-08-15): bridge the READS. For an overlapping key
+ * this consults platform_settings FIRST, then falls through to this module's own
+ * table → env → default chain unchanged, so a key the founder has never touched
+ * behaves exactly as before. `settingsOverlap.test.ts` pins that the overlap is
+ * exactly this set — a third overlapping key must be a decision, not a surprise.
+ */
+const PLATFORM_OWNED_KEYS = new Set(["archival.enabled", "archival.horizon_days"]);
+
+/** Read an overlapping key from platform_settings; null if absent or unreadable. */
+async function readPlatformOwned(key: string): Promise<string | null> {
+  try {
+    const { getSettingRow } = await import("./settings");
+    const row = await getSettingRow(key);
+    if (row && row.value !== null && row.value !== undefined) {
+      // platform_settings.value is JSONB — a boolean/number arrives typed, and
+      // this module's contract is string. String() keeps `true`/`90` readable by
+      // the existing callers (archival compares against the literal "true").
+      return typeof row.value === "string" ? row.value : String(row.value);
+    }
+  } catch (err) {
+    logger.warn("[founderSettings] platform_settings bridge read failed", {
+      metadata: { key, error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+  return null;
+}
+
 export async function getSetting(key: string): Promise<string | null> {
   const now = Date.now();
   const hit = cache.get(key);
   if (hit && now - hit.fetchedAt < CACHE_TTL_MS) return hit.value;
+
+  if (PLATFORM_OWNED_KEYS.has(key)) {
+    const bridged = await readPlatformOwned(key);
+    if (bridged !== null) {
+      cache.set(key, { value: bridged, fetchedAt: now });
+      return bridged;
+    }
+  }
 
   try {
     const [row] = await db

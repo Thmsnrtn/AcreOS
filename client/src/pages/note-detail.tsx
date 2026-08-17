@@ -38,6 +38,7 @@ import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
 export interface AcquiredNote {
   id: string;
@@ -156,22 +157,18 @@ const FALLBACK_CHIP = {
   tone: "bg-muted text-muted-foreground border-transparent",
 };
 
-/**
- * True when the note's aging can be determined at all — i.e. the server stated
- * a due date to measure from. Mirrors `delinquencyIsDeterminable` in
- * `server/services/notes/acquiredNoteSchedule.ts` (the client cannot import
- * server code) and the identical helper in client/src/pages/notes.tsx.
+/*
+ * `delinquencyIsDeterminable` is imported from `@shared/notes/delinquency` at the
+ * top of this file. It used to be restated here AND in client/src/pages/notes.tsx
+ * under a comment reading "the client cannot import server code" — true of
+ * `server/`, and it skipped `shared/`.
  *
  * `daysDelinquent === 0` does NOT answer this question: the server writes a
  * neutral 0 / "current" for a note whose due date it could not derive, because
  * the band union has no "unknown" member and the columns are NOT NULL. Branch
  * on the DATE, never on the number.
  */
-function delinquencyIsDeterminable(
-  nextPaymentDate: string | null | undefined,
-): boolean {
-  return typeof nextPaymentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate);
-}
+
 
 /** The action that turns an undeterminable note into a readable one. */
 const AGING_UNKNOWN_ACTION =

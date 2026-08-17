@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
 import { api, buildUrl, type InsertProperty } from "@shared/routes";
+import type { Property } from "@shared/schema";
 import { z } from "zod";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -46,11 +48,16 @@ export function useProperties() {
   return useQuery({
     queryKey: [api.properties.list.path],
     queryFn: async () => {
-      const res = await fetch(`${api.properties.list.path}?page=1&pageSize=100`, { credentials: "include" });
-      if (!res.ok) return [];
-      const json = await res.json();
-      // Return the data array for backward compatibility
-      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      // THROWS on failure. It used to `return []`, which made every consumer —
+      // finance.tsx twice, the document generator — read an outage as "this
+      // customer owns no properties". A property list is the customer's own
+      // core data; there is no honest empty value for a read that did not
+      // happen. Consumers that render a zero-state must branch on `isError`
+      // first (see emptyIsNotFailed.test.ts).
+      const res = await okOrThrow(
+        await fetch(`${api.properties.list.path}?page=1&pageSize=100`, { credentials: "include" }),
+      );
+      return listFrom<Property>(await res.json());
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,

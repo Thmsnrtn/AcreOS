@@ -362,7 +362,11 @@ class PermanentSovereigntyEngine {
       }
       case "security": {
         findings.push(
-          { area: "Authentication", status: "secure", details: "Passport.js with bcrypt, 2FA available", severity: "info" },
+          // Was "Passport.js with bcrypt, 2FA available" — an auth stack this
+          // app does not use. A security report that names the wrong mechanism
+          // is worse than one that says nothing: it is the sentence someone
+          // quotes in a questionnaire.
+          { area: "Authentication", status: "secure", details: "Clerk-managed identity; AcreOS never receives a credential", severity: "info" },
           { area: "Data Encryption", status: "active", details: "TLS in transit, encryption at rest", severity: "info" },
           { area: "API Security", status: "monitored", details: "Rate limiting and auth middleware active", severity: "info" },
         );

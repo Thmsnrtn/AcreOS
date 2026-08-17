@@ -31,7 +31,7 @@ import { db } from "./db";
 import { properties, rentalLeases, rentPayments, propertyExpenses } from "@shared/schema";
 import { rentalUnits } from "@shared/schema/rental";
 import type { PropertyExpenseCategory } from "@shared/rental/propertyExpense";
-import { summarizeMeasuredOpEx, isMeasuredCoverageComplete, decideOperatingExpense } from "@shared/rental/noi";
+import { summarizeMeasuredOpEx, isMeasuredCoverageComplete, decideOperatingExpense, computeNoi } from "@shared/rental/noi";
 import { buildT12Grid, summarizeT12, T12_MONTHS, type T12IncomeRow, type T12MonthRow, type T12Totals } from "@shared/rental/t12";
 import { computeOccupancySnapshot, type OccupancySnapshot } from "./routes-rentals";
 import type { AuthenticatedRequest } from "./types/request";
@@ -250,8 +250,13 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
   const opExBasis = opExDecision.opExBasis;
   const opExSource = opExDecision.opExSource;
 
-  const noiMonthly = opExMonthly !== null ? monthlyRentCollected - opExMonthly : null;
-  const noiAnnual = noiMonthly !== null ? noiMonthly * 12 : null;
+  // The subtraction lives in shared/rental/noi.ts alongside the op-ex decision
+  // it depends on, because the `multifamily_noi` scenario engine needs exactly
+  // this arithmetic and two copies of a definition drift.
+  const { noiMonthlyCents: noiMonthly, noiAnnualCents: noiAnnual } = computeNoi({
+    monthlyRentCollectedCents: monthlyRentCollected,
+    opExMonthlyCents: opExMonthly,
+  });
 
   const marketValue = prop.marketValue ? Math.round(parseFloat(prop.marketValue) * 100)
     : prop.assessedValue ? Math.round(parseFloat(prop.assessedValue) * 100)

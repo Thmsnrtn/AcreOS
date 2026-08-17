@@ -11,6 +11,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
+import { getOrganizationId } from "./types/request";
+import * as vaManagement from "./services/vaManagement";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -292,6 +294,64 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         return Errors.notFound(res, "Offer");
       }
       const offer = await storage.updateOffer(org.id, id, omitProtectedFields(req.body));
+
+      // ── Close the loop: an offer resolving IS an outcome ──────────────────
+      //
+      // `offer_accepted` and `offer_rejected` have been in OUTCOME_KINDS since
+      // the outcome layer shipped and were used by nothing. This is the moment
+      // they describe, and recording it here is what makes the decision that
+      // drafted the offer gradeable at all.
+      //
+      // ONLY ON A TRANSITION. Re-patching an already-accepted offer must not
+      // record a second outcome — the outcomes table is append-only, so a
+      // duplicate is permanent and would double-count in every calibration
+      // built above it.
+      //
+      // NO ACTUALS, and that is the honest part. An accepted offer resolves the
+      // OFFER; it measures none of what the decision forecast. Profit, ROI and
+      // total cost are unknown until the deal closes and resells, so the outcome
+      // records the fact with an empty `actuals` list and the variance layer
+      // reports those metrics as `unmeasured` — which is true — rather than
+      // being handed the offer amount dressed up as a realised number.
+      //
+      // Best-effort: an offer status update must never fail because its
+      // bookkeeping did.
+      const nextStatus = typeof req.body?.status === "string" ? req.body.status : null;
+      const resolvedKind =
+        nextStatus === "accepted"
+          ? "offer_accepted"
+          : nextStatus === "rejected"
+            ? "offer_rejected"
+            : null;
+      if (
+        resolvedKind &&
+        existing.status !== nextStatus &&
+        existing.decisionSnapshotId != null
+      ) {
+        try {
+          const { recordOutcome } = await import("./services/outcomes/outcomeStore");
+          await recordOutcome(org.id, {
+            decisionSnapshotId: existing.decisionSnapshotId,
+            kind: resolvedKind,
+            summary:
+              resolvedKind === "offer_accepted"
+                ? "The seller accepted the offer. Nothing about the forecast is measured yet — profit and ROI are known only after close and resale."
+                : "The seller rejected the offer.",
+            actuals: [],
+            // The moment it was OBSERVED. `respondedAt` is the seller's own
+            // response time when the caller supplied one; otherwise now. It is
+            // never back-dated to the offer's creation, which would make every
+            // response look instant.
+            observedAt: offer?.respondedAt ? new Date(offer.respondedAt) : new Date(),
+          });
+        } catch (err) {
+          logger.warn(
+            "[offers] status resolved but the outcome was not recorded",
+            err instanceof Error ? err : undefined,
+          );
+        }
+      }
+
       res.json(offer);
     } catch (error: any) {
       logger.error("Update offer error", error);
@@ -1722,7 +1782,13 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/writing-styles/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await writingStyleService.deleteStyleProfile(id);
+      // The org id is passed INTO the delete (it lands in the WHERE clause) —
+      // not compared after the fact. A profile belonging to another tenant
+      // matches nothing and reports "not found" rather than being destroyed.
+      const deleted = await writingStyleService.deleteStyleProfile(getOrganizationId(req), id);
+      if (!deleted) {
+        return Errors.notFound(res, "Writing style profile");
+      }
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Delete writing style error", error);
@@ -1734,31 +1800,31 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // VA ENGINE — PERFORMANCE METRICS, AUDIT TRAIL, TASKS & WORKFLOWS
   // ============================================
 
-  // GET /api/va/metrics — VA performance metrics
+  // GET /api/va/metrics — VA performance metrics.
+  //
+  // Read from `va_tasks` since 2026-08-13. It used to compute over
+  // `organizations.settings.va_tasks`, an array with NO CREATOR anywhere in the
+  // repository, so it always returned zeros — and zeros READ as measurements.
+  // "0 tasks completed" and "no task tracking exists" are different facts, and
+  // this endpoint stated the first while meaning the second. BLOCKERS B9.
   api.get("/api/va/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
       const { period = "week" } = req.query;
-
-      // Build metrics from tasks stored in org settings
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), { limit: 500 });
 
       const now = new Date();
       const periodStart =
         period === "today"
-          ? new Date(now.setHours(0, 0, 0, 0))
+          ? new Date(new Date().setHours(0, 0, 0, 0))
           : period === "month"
           ? new Date(now.getFullYear(), now.getMonth(), 1)
           : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-      const periodTasks = tasks.filter(
-        (t: any) => new Date(t.createdAt) >= periodStart
-      );
-      const completed = periodTasks.filter((t: any) => t.status === "completed");
+      const periodTasks = tasks.filter((t) => new Date(t.createdAt) >= periodStart);
+      const completed = periodTasks.filter((t) => t.status === "completed");
       const totalMinutes = completed.reduce(
-        (sum: number, t: any) => sum + (t.actualMinutes || t.estimatedMinutes || 0),
-        0
+        (sum, t) => sum + (t.actualMinutes ?? t.estimatedMinutes ?? 0),
+        0,
       );
 
       const byType: Record<string, number> = {};
@@ -1783,24 +1849,20 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  // GET /api/va/audit-trail — full audit log of VA actions
+  // GET /api/va/audit-trail — full audit log of VA actions. Same story as the
+  // metrics above: it read an array nothing could populate, and an empty trail
+  // is indistinguishable from "no work was done".
   api.get("/api/va/audit-trail", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const { limit = "50", offset = "0" } = req.query;
+      const limit = Math.min(parseInt((req.query.limit as string) || "50", 10) || 50, 200);
+      const offset = Math.max(parseInt((req.query.offset as string) || "0", 10) || 0, 0);
 
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), { limit: 500 });
+      const touched = tasks
+        .filter((t) => t.completedAt || t.status !== "pending")
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-      const completed = tasks
-        .filter((t: any) => t.completedAt || t.status !== "pending")
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        )
-        .slice(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string));
-
-      const auditEntries = completed.map((t: any) => ({
+      const auditTrail = touched.slice(offset, offset + limit).map((t) => ({
         taskId: t.id,
         title: t.title,
         category: t.category,
@@ -1811,64 +1873,52 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         updatedAt: t.updatedAt,
         completionNotes: t.completionNotes,
         actualMinutes: t.actualMinutes,
-        reasoning: t.completionNotes || "Task completed as assigned",
+        // The old shape carried `reasoning: t.completionNotes || "Task completed
+        // as assigned"` — a default sentence presented as the VA's own account
+        // of what they did. An absent note is an absent note.
         result: t.status,
       }));
 
-      res.json({ auditTrail: auditEntries, total: tasks.length });
+      res.json({ auditTrail, total: touched.length });
     } catch (error: any) {
       logger.error("VA audit trail error", error);
       Errors.internal(res, error);
     }
   });
 
-  // POST /api/va/tasks/:id/verify — verify task completion
+  // POST /api/va/tasks/:id/verify — record a supervisor's review.
+  //
+  // This was the ONLY write to `settings.va_tasks` in the entire repository: a
+  // read-modify-write of an array nothing ever populated, so it could never find
+  // a task and always answered 404. It now updates the row, scoped to the
+  // caller's organization, and `verified` is nullable in the table so "not
+  // reviewed" and "reviewed and rejected" stay distinguishable.
   api.post("/api/va/tasks/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const taskId = req.params.id;
-      const { verified, notes } = req.body;
-
-      const orgRecord = await storage.getOrganization(org.id);
-      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
-      const taskIndex = tasks.findIndex((t: any) => t.id === taskId);
-
-      if (taskIndex === -1) {
+      const taskId = Number(req.params.id);
+      if (!Number.isInteger(taskId)) {
+        return Errors.badRequest(res, "task id must be an integer");
+      }
+      const { verified, notes } = req.body ?? {};
+      const task = await vaManagement.verifyTask(getOrganizationId(req), taskId, {
+        verified: verified !== false,
+        notes: typeof notes === "string" ? notes : undefined,
+        verifiedByUserId: req.user?.id,
+      });
+      res.json({ success: true, task });
+    } catch (error: any) {
+      if (error instanceof vaManagement.VaTaskNotInOrgError) {
         return Errors.notFound(res, "Task");
       }
-
-      tasks[taskIndex] = {
-        ...tasks[taskIndex],
-        verified: verified !== false,
-        verifiedAt: new Date().toISOString(),
-        verificationNotes: notes,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // 2026-07 audit: atomic jsonb_set on the va_tasks key only — the old
-      // whole-object spread clobbered concurrently-written sibling settings
-      // keys (mailMode, aiSettings, …) with this handler's stale copy.
-      {
-        const { db } = await import("./db");
-        const { organizations } = await import("@shared/schema");
-        const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
-        await db
-          .update(organizations)
-          .set({
-            settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{va_tasks}', ${JSON.stringify(tasks)}::jsonb)` as any,
-            updatedAt: new Date(),
-          })
-          .where(eqOp(organizations.id, org.id));
-      }
-
-      res.json({ success: true, task: tasks[taskIndex] });
-    } catch (error: any) {
       logger.error("Verify task error", error);
       Errors.internal(res, error);
     }
   });
 
   // POST /api/va/escalate — escalate task to human supervisor
+  /** Retention bound on a log that rides on every org-scoped request. */
+  const MAX_VA_ESCALATIONS = 200;
+
   api.post("/api/va/escalate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -1879,76 +1929,128 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         return Errors.badRequest(res, "taskId and reason are required");
       }
 
+      // AN ESCALATION WITH NO RECIPIENT IS NOT AN ESCALATION.
+      //
+      // This route is named "escalate task to human supervisor" and takes a
+      // supervisorUserId, and it did nothing with it: the escalation went into
+      // `settings.va_escalations`, a key NOTHING in this repo ever read, no
+      // notification was raised, and it returned `{ success: true }`. A VA
+      // asking for help got a success response and the supervisor was never
+      // told. Requiring the recipient is the same class of check as the taskId
+      // and reason above — without one there is nobody to reach.
+      if (!supervisorUserId) {
+        return Errors.badRequest(
+          res,
+          "supervisorUserId is required — an escalation with no recipient reaches nobody.",
+        );
+      }
+
+      // Cross-tenant guard. The recipient comes from the request body and is
+      // about to have a notification row written for them; an unchecked id
+      // would write into another organization's user's inbox.
+      const { assertUserIsOrgMember } = await import("./utils/orgScope");
+      if (!(await assertUserIsOrgMember(String(supervisorUserId), org.id))) {
+        return Errors.badRequest(res, "supervisorUserId must be a member of this organization");
+      }
+
+      const escalatedAt = new Date();
       const escalation = {
         id: `esc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        taskId,
-        reason,
-        urgency,
+        taskId: String(taskId),
+        reason: String(reason),
+        urgency: String(urgency),
         escalatedByUserId: user.id,
-        supervisorUserId: supervisorUserId || null,
-        escalatedAt: new Date().toISOString(),
+        supervisorUserId: String(supervisorUserId),
+        escalatedAt: escalatedAt.toISOString(),
         status: "open",
+        notifiedAt: null as string | null,
       };
 
+      // THE DELIVERY. `system_alert` from the closed NOTIFICATION_TYPES set —
+      // `task_assigned` would read to the supervisor as "a task was assigned to
+      // you", which is not what happened, and widening a closed vocabulary for
+      // one caller is what makes such a set stop meaning anything.
+      //
+      // Raised BEFORE the log is written, so the record can state whether it
+      // actually went out rather than assuming. An in-app notification only:
+      // no email, no SMS, nothing leaves the building.
+      try {
+        await storage.createNotification({
+          organizationId: org.id,
+          userId: String(supervisorUserId),
+          type: "system_alert",
+          title: `Task escalated (${escalation.urgency})`,
+          message: `${user.id} escalated task ${escalation.taskId}: ${escalation.reason}`,
+          entityType: "task",
+          metadata: { escalationId: escalation.id, taskId: escalation.taskId },
+        });
+        escalation.notifiedAt = escalatedAt.toISOString();
+      } catch (err) {
+        // Recorded as undelivered rather than dressed up as sent — the same
+        // rule the borrower reminder ladder follows, where `sent` is written
+        // only alongside the rail that accepted it.
+        logger.error(
+          "[VA] escalation recorded but the supervisor was NOT notified",
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       const orgRecord = await storage.getOrganization(org.id);
-      const escalations: any[] = (orgRecord as any)?.settings?.va_escalations || [];
-      escalations.push(escalation);
+      const existing = orgRecord?.settings?.va_escalations ?? [];
+
+      // Bounded: `organizations` is SELECTed in full on every org-scoped
+      // request, and this log had no cap. Trimming the OLDEST is safe only
+      // because the escalation itself is delivered as a notification — before
+      // that, dropping an entry would have dropped the escalation.
+      const kept = [...existing, escalation].slice(-MAX_VA_ESCALATIONS);
 
       await storage.updateOrganization(org.id, {
         settings: {
-          ...(orgRecord as any)?.settings,
-          va_escalations: escalations,
+          ...(orgRecord?.settings ?? {}),
+          va_escalations: kept,
         },
-      } as any);
+      });
 
-      res.status(201).json({ success: true, escalation });
+      // Says what actually happened. `success: true` alone claimed a delivery
+      // that never occurred.
+      res.status(201).json({
+        success: true,
+        notified: escalation.notifiedAt !== null,
+        escalation,
+      });
     } catch (error: any) {
       logger.error("Escalate task error", error);
       Errors.internal(res, error);
     }
   });
 
-  // GET /api/va/scheduled — list scheduled tasks with next run times
-  api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-
-      const orgRecord = await storage.getOrganization(org.id);
-      const scheduled: any[] = (orgRecord as any)?.settings?.va_scheduled_tasks || [];
-
-      // Compute next run time for each scheduled task
-      const enriched = scheduled.map((task: any) => {
-        const now = new Date();
-        let nextRunAt: string | null = null;
-
-        if (task.cronExpression === "daily") {
-          const next = new Date(now);
-          next.setDate(next.getDate() + 1);
-          next.setHours(task.runAtHour || 9, 0, 0, 0);
-          nextRunAt = next.toISOString();
-        } else if (task.cronExpression === "weekly") {
-          const next = new Date(now);
-          next.setDate(next.getDate() + 7);
-          nextRunAt = next.toISOString();
-        } else if (task.cronExpression === "monthly") {
-          const next = new Date(now);
-          next.setMonth(next.getMonth() + 1, 1);
-          nextRunAt = next.toISOString();
-        } else if (task.nextRunAt) {
-          nextRunAt = task.nextRunAt;
-        }
-
-        return { ...task, nextRunAt };
-      });
-
-      res.json({ scheduledTasks: enriched });
-    } catch (error: any) {
-      logger.error("Get scheduled tasks error", error);
-      Errors.internal(res, error);
-    }
+  // GET /api/va/scheduled — REFUSED, because there is nothing to schedule from.
+  //
+  // It read `organizations.settings.va_scheduled_tasks` and computed a next-run
+  // time for each entry. That key had exactly ONE reference in the entire
+  // repository: this read. Nothing has ever written it, so the endpoint returned
+  // `[]` — and `[]` from a store with no writer says "you have no recurring
+  // tasks" when the truth is "recurring tasks do not exist here".
+  //
+  // NOT built alongside `va_tasks` (BLOCKERS B9, founder ruling 2026-08-13),
+  // deliberately. Recurring work needs a template table AND a runner that fires
+  // it; a schedule table with no runner would be a list of promises nothing
+  // keeps, which is the "built but unwired" defect this repo keeps finding. One
+  // refusal is cheaper to remove later than a half-built scheduler is to trust.
+  api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (_req, res) => {
+    return Errors.notImplemented(
+      res,
+      "Recurring VA tasks are not implemented. One-off tasks are stored in the " +
+        "va_tasks table (POST/GET /api/va/tasks); a recurring schedule needs a " +
+        "template table and a job to fire it, and neither exists — so this " +
+        "endpoint would only ever return an empty list. See BLOCKERS B9.",
+    );
   });
 
   // POST /api/va/workflows — create multi-step workflow
+  /** Bounded because this array lives in a blob read on every request. */
+  const MAX_VA_WORKFLOWS = 50;
+
   api.post("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -1982,15 +2084,28 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       };
 
       const orgRecord = await storage.getOrganization(org.id);
-      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
-      workflows.push(workflow);
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
+
+      // BOUNDED, because of where these live. `organizations.settings` is
+      // SELECTed in full on every org-scoped request (getOrCreateOrg →
+      // getOrganizationByOwner), so this array rides along on every read the
+      // product does — and this route had no cap and no delete path, only
+      // create and list, so it grew forever. The webhook endpoint list in the
+      // neighbouring blob has capped at 10 since it was written.
+      if (workflows.length >= MAX_VA_WORKFLOWS) {
+        return Errors.badRequest(
+          res,
+          `Maximum ${MAX_VA_WORKFLOWS} VA workflows per organization. ` +
+            `Delete one you no longer use first.`,
+        );
+      }
 
       await storage.updateOrganization(org.id, {
         settings: {
-          ...(orgRecord as any)?.settings,
-          va_workflows: workflows,
+          ...(orgRecord?.settings ?? {}),
+          va_workflows: [...workflows, workflow],
         },
-      } as any);
+      });
 
       res.status(201).json({ success: true, workflow });
     } catch (error: any) {
@@ -2004,10 +2119,41 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const orgRecord = await storage.getOrganization(org.id);
-      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
       res.json({ workflows });
     } catch (error: any) {
       logger.error("Get workflows error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // DELETE /api/va/workflows/:id — remove one.
+  //
+  // Added WITH the cap, not after it. A cap on a collection that cannot be
+  // pruned is a wall: the org reaches it once and can never create another
+  // workflow, which is a worse outcome than the unbounded growth it replaces.
+  api.delete("/api/va/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const orgRecord = await storage.getOrganization(org.id);
+      const workflows = orgRecord?.settings?.va_workflows ?? [];
+      const remaining = workflows.filter((w) => w.id !== req.params.id);
+
+      // Say so rather than reporting a no-op as a deletion.
+      if (remaining.length === workflows.length) {
+        return Errors.notFound(res, "Workflow");
+      }
+
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord?.settings ?? {}),
+          va_workflows: remaining,
+        },
+      });
+
+      res.json({ success: true, deleted: req.params.id, remaining: remaining.length });
+    } catch (error: any) {
+      logger.error("Delete workflow error", error);
       Errors.internal(res, error);
     }
   });

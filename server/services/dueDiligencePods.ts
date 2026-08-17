@@ -14,6 +14,18 @@ import { logger } from "../utils/logger";
 
 const dataSourceBroker = new DataSourceBroker();
 
+/**
+ * Thrown when a dossier or property id does not belong to the calling
+ * organization. Rendered as 404 by the routes, not 403 — a cross-tenant probe
+ * must not learn that the record exists.
+ */
+export class DueDiligenceNotInOrgError extends Error {
+  constructor(what: string, id: number) {
+    super(`${what} ${id} not found in this organization`);
+    this.name = "DueDiligenceNotInOrgError";
+  }
+}
+
 function parseNumeric(value: string | number | null | undefined): number | undefined {
   if (value === null || value === undefined) return undefined;
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -145,21 +157,22 @@ class DueDiligencePodService {
     return dossier;
   }
 
-  async runDossierPod(dossierId: number): Promise<DueDiligenceDossier> {
+  async runDossierPod(dossierId: number, organizationId: number): Promise<DueDiligenceDossier> {
     const [dossier] = await db
       .select()
       .from(dueDiligenceDossiers)
-      .where(eq(dueDiligenceDossiers.id, dossierId))
+      .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
       .limit(1);
 
     if (!dossier) {
-      throw new Error(`Dossier ${dossierId} not found`);
+      // Not "missing" — not YOURS, and the two are deliberately the same answer.
+      throw new DueDiligenceNotInOrgError("Dossier", dossierId);
     }
 
     await db
       .update(dueDiligenceDossiers)
       .set({ status: "running", startedAt: new Date() })
-      .where(eq(dueDiligenceDossiers.id, dossierId));
+      .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
 
     await this.logAgentEvent(dossier.organizationId, "dossier_pod_started", {
       dossierId,
@@ -171,13 +184,13 @@ class DueDiligencePodService {
 
     try {
       const researchTasks = [
-        { key: "titleSearch" as AgentType, method: () => this.researchTitle(dossier.propertyId, dossierId), findingKey: "titleStatus" },
-        { key: "taxAnalysis" as AgentType, method: () => this.researchTax(dossier.propertyId, dossierId), findingKey: "taxStatus" },
-        { key: "environmentalCheck" as AgentType, method: () => this.researchEnvironmental(dossier.propertyId, dossierId), findingKey: "environmental" },
-        { key: "zoningReview" as AgentType, method: () => this.researchZoning(dossier.propertyId, dossierId), findingKey: "zoning" },
-        { key: "accessAnalysis" as AgentType, method: () => this.researchAccess(dossier.propertyId, dossierId), findingKey: "access" },
-        { key: "marketComps" as AgentType, method: () => this.researchComps(dossier.propertyId, dossierId), findingKey: "comps" },
-        { key: "ownerResearch" as AgentType, method: () => this.researchOwner(dossier.propertyId, dossierId), findingKey: "owner" },
+        { key: "titleSearch" as AgentType, method: () => this.researchTitle(dossier.propertyId, organizationId, dossierId), findingKey: "titleStatus" },
+        { key: "taxAnalysis" as AgentType, method: () => this.researchTax(dossier.propertyId, organizationId, dossierId), findingKey: "taxStatus" },
+        { key: "environmentalCheck" as AgentType, method: () => this.researchEnvironmental(dossier.propertyId, organizationId, dossierId), findingKey: "environmental" },
+        { key: "zoningReview" as AgentType, method: () => this.researchZoning(dossier.propertyId, organizationId, dossierId), findingKey: "zoning" },
+        { key: "accessAnalysis" as AgentType, method: () => this.researchAccess(dossier.propertyId, organizationId, dossierId), findingKey: "access" },
+        { key: "marketComps" as AgentType, method: () => this.researchComps(dossier.propertyId, organizationId, dossierId), findingKey: "comps" },
+        { key: "ownerResearch" as AgentType, method: () => this.researchOwner(dossier.propertyId, organizationId, dossierId), findingKey: "owner" },
       ];
 
       const results = await Promise.allSettled(
@@ -187,7 +200,7 @@ class DueDiligencePodService {
             status: "running",
             startedAt: new Date().toISOString(),
           };
-          await this.updateAgentStatus(dossierId, agentsAssigned);
+          await this.updateAgentStatus(dossierId, organizationId, agentsAssigned);
 
           try {
             const result = await task.method();
@@ -214,7 +227,7 @@ class DueDiligencePodService {
         }
       }
 
-      await this.updateAgentStatus(dossierId, agentsAssigned);
+      await this.updateAgentStatus(dossierId, organizationId, agentsAssigned);
 
       const scores = this.calculateScores(findings);
       const recommendation = await this.generateRecommendation(scores, findings);
@@ -235,7 +248,7 @@ class DueDiligencePodService {
           completedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(dueDiligenceDossiers.id, dossierId))
+        .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
         .returning();
 
       const executiveSummary = await this.aggregateToExecutiveSummary(updatedDossier);
@@ -246,7 +259,7 @@ class DueDiligencePodService {
           executiveSummary,
           updatedAt: new Date(),
         })
-        .where(eq(dueDiligenceDossiers.id, dossierId))
+        .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
         .returning();
 
       await this.logAgentEvent(dossier.organizationId, "dossier_pod_completed", {
@@ -267,7 +280,7 @@ class DueDiligencePodService {
           agentsAssigned,
           updatedAt: new Date(),
         })
-        .where(eq(dueDiligenceDossiers.id, dossierId));
+        .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
 
       await this.logAgentEvent(dossier.organizationId, "dossier_pod_failed", {
         dossierId,
@@ -279,24 +292,36 @@ class DueDiligencePodService {
     }
   }
 
-  private async updateAgentStatus(dossierId: number, agentsAssigned: Record<AgentType, AgentAssignment>): Promise<void> {
+  private async updateAgentStatus(dossierId: number, organizationId: number, agentsAssigned: Record<AgentType, AgentAssignment>): Promise<void> {
     await db
       .update(dueDiligenceDossiers)
       .set({ agentsAssigned, updatedAt: new Date() })
-      .where(eq(dueDiligenceDossiers.id, dossierId));
+      .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
   }
 
-  private async getPropertyData(propertyId: number) {
+  /**
+   * A property, WITHIN an organization. Every research method starts here, and
+   * every one of them then calls a paid provider through `dataSourceBroker`, so
+   * an unscoped lookup here was not only a read of another org's parcel — it
+   * spent money researching it.
+   *
+   * `properties.organizationId` is NOT NULL with two org-leading indexes; the
+   * predicate was simply never written. Note how careful the code downstream
+   * is: `researchOwner` scopes its lead join by `property.organizationId` — the
+   * org of the row fetched here. Deriving the tenant from an unscoped fetch
+   * reads as correct and inherits whatever the first query got wrong.
+   */
+  private async getPropertyData(propertyId: number, organizationId: number) {
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, propertyId))
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)))
       .limit(1);
     return property;
   }
 
-  async researchTitle(propertyId: number, dossierId?: number): Promise<TitleFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchTitle(propertyId: number, organizationId: number, dossierId?: number): Promise<TitleFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { clear: false, issues: ["Property not found"] };
     }
@@ -337,8 +362,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchTax(propertyId: number, dossierId?: number): Promise<TaxFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchTax(propertyId: number, organizationId: number, dossierId?: number): Promise<TaxFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { current: false, yearsDelinquent: 0 };
     }
@@ -380,8 +405,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchEnvironmental(propertyId: number, dossierId?: number): Promise<EnvironmentalFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchEnvironmental(propertyId: number, organizationId: number, dossierId?: number): Promise<EnvironmentalFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { clean: false, concerns: ["Property not found"] };
     }
@@ -441,8 +466,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchZoning(propertyId: number, dossierId?: number): Promise<ZoningFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchZoning(propertyId: number, organizationId: number, dossierId?: number): Promise<ZoningFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { current: "Unknown" };
     }
@@ -483,8 +508,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchAccess(propertyId: number, dossierId?: number): Promise<AccessFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchAccess(propertyId: number, organizationId: number, dossierId?: number): Promise<AccessFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { type: "Unknown", legal: false };
     }
@@ -526,8 +551,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchComps(propertyId: number, dossierId?: number): Promise<CompsFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchComps(propertyId: number, organizationId: number, dossierId?: number): Promise<CompsFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return {};
     }
@@ -568,8 +593,8 @@ class DueDiligencePodService {
     }
   }
 
-  async researchOwner(propertyId: number, dossierId?: number): Promise<OwnerFindings> {
-    const property = await this.getPropertyData(propertyId);
+  async researchOwner(propertyId: number, organizationId: number, dossierId?: number): Promise<OwnerFindings> {
+    const property = await this.getPropertyData(propertyId, organizationId);
     if (!property) {
       return { name: "Unknown", type: "Unknown" };
     }
@@ -825,7 +850,10 @@ REASONING: [reasoning]`;
   }
 
   async aggregateToExecutiveSummary(dossier: DueDiligenceDossier): Promise<string> {
-    const property = await this.getPropertyData(dossier.propertyId);
+    // The org comes off the dossier row rather than a parameter: this method
+    // takes the whole record, and its caller fetched that record org-scoped, so
+    // adding an argument would let a caller pass an org the dossier is not in.
+    const property = await this.getPropertyData(dossier.propertyId, dossier.organizationId);
     const openai = getOpenAIClient();
 
     const findings = dossier.findings as DossierFindings;
@@ -886,11 +914,11 @@ Write a professional executive summary suitable for an investor.`;
     return `${propertyInfo} received a ${recommendation} recommendation with an investability score of ${investability}/100 and risk score of ${risk}/100. The analysis identified ${greenFlags} positive indicators and ${redFlags} areas of concern. ${dossier.recommendationReasoning || "Further review may be warranted based on investor criteria."}`;
   }
 
-  async getDossier(dossierId: number): Promise<DueDiligenceDossier | null> {
+  async getDossier(dossierId: number, organizationId: number): Promise<DueDiligenceDossier | null> {
     const [dossier] = await db
       .select()
       .from(dueDiligenceDossiers)
-      .where(eq(dueDiligenceDossiers.id, dossierId))
+      .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
       .limit(1);
 
     return dossier || null;

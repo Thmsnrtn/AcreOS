@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ────────────────────────────────────────────────────────────────────
-vi.mock("../../../server/db", () => ({
+vi.mock("../../server/db", () => ({
   db: {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -41,11 +41,11 @@ vi.mock("../../../server/db", () => ({
 }));
 
 // ── OpenAI mock ────────────────────────────────────────────────────────────────
-vi.mock("../../../server/utils/openaiClient", () => ({
+vi.mock("../../server/utils/openaiClient", () => ({
   getOpenAIClient: vi.fn().mockReturnValue(null),
 }));
 
-import { BuyerMatchingAIService } from "../../../server/services/buyerMatchingAI";
+import { BuyerMatchingAIService } from "../../server/services/buyerMatchingAI";
 
 // ── Test helpers ───────────────────────────────────────────────────────────────
 const makeProperty = (overrides = {}): any => ({

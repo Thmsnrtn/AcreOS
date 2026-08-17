@@ -401,6 +401,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
             </span>
           </div>
           <Textarea
+            aria-label="Research notes"
             placeholder="Add your research notes, analysis, and offer reasoning here…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

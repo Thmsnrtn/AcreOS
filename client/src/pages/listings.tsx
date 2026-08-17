@@ -397,9 +397,9 @@ export default function ListingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Asking price</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            <FormControl>
                               <Input
                                 data-testid="input-asking-price"
                                 type="number"
@@ -408,8 +408,8 @@ export default function ListingsPage() {
                                 placeholder="25000"
                                 {...field}
                               />
-                            </div>
-                          </FormControl>
+                            </FormControl>
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -421,9 +421,9 @@ export default function ListingsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Minimum price (optional)</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            <FormControl>
                               <Input
                                 data-testid="input-minimum-price"
                                 type="number"
@@ -432,8 +432,8 @@ export default function ListingsPage() {
                                 placeholder="20000"
                                 {...field}
                               />
-                            </div>
-                          </FormControl>
+                            </FormControl>
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -544,9 +544,9 @@ export default function ListingsPage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Min monthly payment</FormLabel>
-                              <FormControl>
-                                <div className="relative">
-                                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <FormControl>
                                   <Input
                                     data-testid="input-monthly-payment"
                                     type="number"
@@ -555,8 +555,8 @@ export default function ListingsPage() {
                                     placeholder="250"
                                     {...field}
                                   />
-                                </div>
-                              </FormControl>
+                                </FormControl>
+                              </div>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -571,9 +571,9 @@ export default function ListingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Photo URL (optional)</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <div className="relative">
+                          <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <FormControl>
                             <Input
                               data-testid="input-photo-url"
                               type="url"
@@ -585,8 +585,8 @@ export default function ListingsPage() {
                               placeholder="https://example.com/photo.jpg"
                               {...field}
                             />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

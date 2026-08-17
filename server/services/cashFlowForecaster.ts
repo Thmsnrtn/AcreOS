@@ -15,6 +15,19 @@ import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { addMonths } from "../utils/dateUtils";
 
+/**
+ * Thrown when a note, property or forecast id does not belong to the calling
+ * organization. Rendered as 404 by the routes — never 403, which would confirm
+ * the record exists.
+ */
+export class CashFlowNotInOrgError extends Error {
+  constructor(what: string, id: number) {
+    super(`${what} ${id} not found in this organization`);
+    this.name = "CashFlowNotInOrgError";
+  }
+}
+
+
 type IncomeSource = "note_payment" | "interest" | "sale_proceeds" | "rent" | "lease";
 type ExpenseCategory = "taxes" | "insurance" | "maintenance" | "legal" | "marketing";
 type PaymentPattern = "consistent" | "declining" | "improving" | "erratic";
@@ -106,17 +119,17 @@ class CashFlowForecasterService {
     let paymentHealth: PaymentHealthAnalysis | undefined;
 
     if (noteId) {
-      projectedIncome = await this.projectNoteIncome(noteId, periodMonths);
-      paymentHealth = await this.analyzePaymentHealth(noteId);
-      paymentRiskScore = await this.calculatePaymentRiskScore(noteId);
-      riskFactors = await this.identifyRiskFactors(noteId);
-      projectedExpenses = await this.projectExpenses("note", noteId, periodMonths);
+      projectedIncome = await this.projectNoteIncome(noteId, organizationId, periodMonths);
+      paymentHealth = await this.analyzePaymentHealth(noteId, organizationId);
+      paymentRiskScore = await this.calculatePaymentRiskScore(noteId, organizationId);
+      riskFactors = await this.identifyRiskFactors(noteId, organizationId);
+      projectedExpenses = await this.projectExpenses("note", noteId, organizationId, periodMonths);
     }
 
     if (propertyId) {
-      const propertyIncome = await this.projectPropertyIncome(propertyId, periodMonths);
+      const propertyIncome = await this.projectPropertyIncome(propertyId, organizationId, periodMonths);
       projectedIncome = [...projectedIncome, ...propertyIncome];
-      const propertyExpenses = await this.projectExpenses("property", propertyId, periodMonths);
+      const propertyExpenses = await this.projectExpenses("property", propertyId, organizationId, periodMonths);
       projectedExpenses = [...projectedExpenses, ...propertyExpenses];
     }
 
@@ -139,14 +152,14 @@ class CashFlowForecasterService {
 
       const noteRiskScores: number[] = [];
       for (const note of activeNotes) {
-        projectedIncome.push(...await this.projectNoteIncome(note.id, periodMonths));
-        projectedExpenses.push(...await this.projectExpenses("note", note.id, periodMonths));
-        riskFactors.push(...await this.identifyRiskFactors(note.id));
-        noteRiskScores.push(await this.calculatePaymentRiskScore(note.id));
+        projectedIncome.push(...await this.projectNoteIncome(note.id, organizationId, periodMonths));
+        projectedExpenses.push(...await this.projectExpenses("note", note.id, organizationId, periodMonths));
+        riskFactors.push(...await this.identifyRiskFactors(note.id, organizationId));
+        noteRiskScores.push(await this.calculatePaymentRiskScore(note.id, organizationId));
       }
       for (const property of ownedProperties) {
-        projectedIncome.push(...await this.projectPropertyIncome(property.id, periodMonths));
-        projectedExpenses.push(...await this.projectExpenses("property", property.id, periodMonths));
+        projectedIncome.push(...await this.projectPropertyIncome(property.id, organizationId, periodMonths));
+        projectedExpenses.push(...await this.projectExpenses("property", property.id, organizationId, periodMonths));
       }
 
       // Portfolio payment risk = mean of per-note risk scores (properties carry no
@@ -196,12 +209,17 @@ class CashFlowForecasterService {
       .values(forecastData)
       .returning();
 
-    const insights = await this.generateInsights(forecast.id);
+    const insights = await this.generateInsights(forecast.id, organizationId);
     if (insights.length > 0) {
       await db
         .update(cashFlowForecasts)
         .set({ insights })
-        .where(eq(cashFlowForecasts.id, forecast.id));
+        .where(
+          and(
+            eq(cashFlowForecasts.id, forecast.id),
+            eq(cashFlowForecasts.organizationId, organizationId),
+          ),
+        );
       forecast.insights = insights;
     }
 
@@ -218,17 +236,17 @@ class CashFlowForecasterService {
     return forecast;
   }
 
-  async projectNoteIncome(noteId: number, months: number): Promise<IncomeProjection[]> {
+  async projectNoteIncome(noteId: number, organizationId: number, months: number): Promise<IncomeProjection[]> {
     const [note] = await db
       .select()
       .from(notes)
-      .where(eq(notes.id, noteId));
+      .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
 
     if (!note) {
-      throw new Error(`Note ${noteId} not found`);
+      throw new CashFlowNotInOrgError("Note", noteId);
     }
 
-    const paymentHealth = await this.analyzePaymentHealth(noteId);
+    const paymentHealth = await this.analyzePaymentHealth(noteId, organizationId);
     const baseProbability = 1 - paymentHealth.defaultProbability;
 
     const projections: IncomeProjection[] = [];
@@ -275,14 +293,14 @@ class CashFlowForecasterService {
     return projections;
   }
 
-  async projectPropertyIncome(propertyId: number, months: number): Promise<IncomeProjection[]> {
+  async projectPropertyIncome(propertyId: number, organizationId: number, months: number): Promise<IncomeProjection[]> {
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
-      throw new Error(`Property ${propertyId} not found`);
+      throw new CashFlowNotInOrgError("Property", propertyId);
     }
 
     const projections: IncomeProjection[] = [];
@@ -327,6 +345,7 @@ class CashFlowForecasterService {
   async projectExpenses(
     entityType: "note" | "property",
     entityId: number,
+    organizationId: number,
     months: number
   ): Promise<ExpenseProjection[]> {
     const projections: ExpenseProjection[] = [];
@@ -336,7 +355,7 @@ class CashFlowForecasterService {
       const [property] = await db
         .select()
         .from(properties)
-        .where(eq(properties.id, entityId));
+        .where(and(eq(properties.id, entityId), eq(properties.organizationId, organizationId)));
 
       if (property) {
         const assessedValue = property.assessedValue ? parseFloat(property.assessedValue) : 0;
@@ -394,7 +413,7 @@ class CashFlowForecasterService {
       const [note] = await db
         .select()
         .from(notes)
-        .where(eq(notes.id, entityId));
+        .where(and(eq(notes.id, entityId), eq(notes.organizationId, organizationId)));
 
       if (note) {
         const serviceFee = note.serviceFee ? parseFloat(note.serviceFee) : 0;
@@ -413,7 +432,7 @@ class CashFlowForecasterService {
           }
         }
 
-        const paymentHealth = await this.analyzePaymentHealth(entityId);
+        const paymentHealth = await this.analyzePaymentHealth(entityId, organizationId);
         if (paymentHealth.defaultProbability > 0.3) {
           projections.push({
             month: today.toISOString().slice(0, 7),
@@ -428,14 +447,14 @@ class CashFlowForecasterService {
     return projections;
   }
 
-  async analyzePaymentHealth(noteId: number): Promise<PaymentHealthAnalysis> {
+  async analyzePaymentHealth(noteId: number, organizationId: number): Promise<PaymentHealthAnalysis> {
     const [note] = await db
       .select()
       .from(notes)
-      .where(eq(notes.id, noteId));
+      .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
 
     if (!note) {
-      throw new Error(`Note ${noteId} not found`);
+      throw new CashFlowNotInOrgError("Note", noteId);
     }
 
     const paymentHistory = await db
@@ -604,25 +623,25 @@ class CashFlowForecasterService {
     return Math.max(0, Math.min(1, probability));
   }
 
-  async calculatePaymentRiskScore(noteId: number): Promise<number> {
-    const health = await this.analyzePaymentHealth(noteId);
+  async calculatePaymentRiskScore(noteId: number, organizationId: number): Promise<number> {
+    const health = await this.analyzePaymentHealth(noteId, organizationId);
     
     const riskScore = Math.round(health.defaultProbability * 100);
     
     return Math.max(0, Math.min(100, riskScore));
   }
 
-  async identifyRiskFactors(noteId: number): Promise<RiskFactor[]> {
+  async identifyRiskFactors(noteId: number, organizationId: number): Promise<RiskFactor[]> {
     const [note] = await db
       .select()
       .from(notes)
-      .where(eq(notes.id, noteId));
+      .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
 
     if (!note) {
-      throw new Error(`Note ${noteId} not found`);
+      throw new CashFlowNotInOrgError("Note", noteId);
     }
 
-    const health = await this.analyzePaymentHealth(noteId);
+    const health = await this.analyzePaymentHealth(noteId, organizationId);
     const factors: RiskFactor[] = [];
 
     if (health.missedPayments > 0) {
@@ -687,14 +706,14 @@ class CashFlowForecasterService {
     return null;
   }
 
-  async generateInsights(forecastId: number): Promise<ForecastInsight[]> {
+  async generateInsights(forecastId: number, organizationId: number): Promise<ForecastInsight[]> {
     const [forecast] = await db
       .select()
       .from(cashFlowForecasts)
-      .where(eq(cashFlowForecasts.id, forecastId));
+      .where(and(eq(cashFlowForecasts.id, forecastId), eq(cashFlowForecasts.organizationId, organizationId)));
 
     if (!forecast) {
-      throw new Error(`Forecast ${forecastId} not found`);
+      throw new CashFlowNotInOrgError("Forecast", forecastId);
     }
 
     const insights: ForecastInsight[] = [];
@@ -821,9 +840,9 @@ Return valid JSON array with objects containing: type (string), message (string)
     const highRiskNotes: Array<{ note: Note; riskScore: number; riskFactors: RiskFactor[] }> = [];
 
     for (const note of allNotes) {
-      const riskScore = await this.calculatePaymentRiskScore(note.id);
+      const riskScore = await this.calculatePaymentRiskScore(note.id, organizationId);
       if (riskScore >= 50) {
-        const riskFactors = await this.identifyRiskFactors(note.id);
+        const riskFactors = await this.identifyRiskFactors(note.id, organizationId);
         highRiskNotes.push({ note, riskScore, riskFactors });
       }
     }
@@ -855,9 +874,9 @@ Return valid JSON array with objects containing: type (string), message (string)
     let highRiskCount = 0;
 
     for (const note of activeNotes) {
-      const income = await this.projectNoteIncome(note.id, 12);
-      const expenses = await this.projectExpenses("note", note.id, 12);
-      const riskScore = await this.calculatePaymentRiskScore(note.id);
+      const income = await this.projectNoteIncome(note.id, organizationId, 12);
+      const expenses = await this.projectExpenses("note", note.id, organizationId, 12);
+      const riskScore = await this.calculatePaymentRiskScore(note.id, organizationId);
 
       totalRiskScore += riskScore;
       riskScoreCount++;
@@ -886,8 +905,8 @@ Return valid JSON array with objects containing: type (string), message (string)
     }
 
     for (const property of ownedProperties) {
-      const income = await this.projectPropertyIncome(property.id, 12);
-      const expenses = await this.projectExpenses("property", property.id, 12);
+      const income = await this.projectPropertyIncome(property.id, organizationId, 12);
+      const expenses = await this.projectExpenses("property", property.id, organizationId, 12);
 
       for (const item of income) {
         const weightedAmount = item.expectedAmount * item.probability;
@@ -1044,7 +1063,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     };
 
     for (const note of activeNotes) {
-      const projections = await this.projectNoteIncome(note.id, months);
+      const projections = await this.projectNoteIncome(note.id, organizationId, months);
       const maturityDate = note.maturityDate ? new Date(note.maturityDate) : null;
 
       for (const p of projections) {
@@ -1056,7 +1075,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     }
 
     for (const property of ownedProperties) {
-      const projections = await this.projectPropertyIncome(property.id, months);
+      const projections = await this.projectPropertyIncome(property.id, organizationId, months);
       for (const p of projections) {
         addToMonth(p.month, p.expectedAmount, p.probability);
       }

@@ -161,6 +161,29 @@ export function decideOperatingExpense(args: {
   };
 }
 
+/**
+ * NOI itself: collections less the decided operating expense, monthly and
+ * annual.
+ *
+ * One line of arithmetic, and it lives here for the same reason
+ * `decideOperatingExpense` does — it had TWO homes the moment a second caller
+ * needed it (the investor-analytics snapshot and the `multifamily_noi` scenario
+ * engine), and two copies of a definition drift. A NULL op-ex propagates to a
+ * null NOI rather than collapsing to "collections": an unmeasured commercial
+ * building has an UNKNOWN net operating income, not one equal to its rent.
+ */
+export function computeNoi(args: {
+  monthlyRentCollectedCents: number;
+  opExMonthlyCents: number | null;
+}): { noiMonthlyCents: number | null; noiAnnualCents: number | null } {
+  const { monthlyRentCollectedCents, opExMonthlyCents } = args;
+  if (opExMonthlyCents === null) {
+    return { noiMonthlyCents: null, noiAnnualCents: null };
+  }
+  const noiMonthlyCents = monthlyRentCollectedCents - opExMonthlyCents;
+  return { noiMonthlyCents, noiAnnualCents: noiMonthlyCents * 12 };
+}
+
 export function summarizeMeasuredOpEx(rows: MeasurableExpenseRow[]): MeasuredOpExSummary {
   const operating = rows.filter((r) => r.isOperating);
   const byCategoryCents: Partial<Record<PropertyExpenseCategory, number>> = {};

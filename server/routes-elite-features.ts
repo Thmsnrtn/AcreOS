@@ -16,6 +16,9 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { getOrganizationId } from "./types/request";
+import { requireFounder } from "./auth/clerkAuth";
+import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
 
 // Services
@@ -34,6 +37,88 @@ import { Errors } from "./utils/errors";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
+/**
+ * Daily ceiling on the PLATFORM ad account, in cents. $500/day — the same
+ * figure as the constitution's founder-only spend hard-stop, deliberately.
+ * Raising it is a code change someone has to justify, not a request field.
+ */
+const MAX_DAILY_AD_BUDGET_CENTS = 50_000;
+
+// ── VA task + SOP request shapes (BLOCKERS B9, founder ruling 2026-08-13) ────
+//
+// Validated rather than spread: these endpoints now WRITE, and the previous
+// versions took whole objects from the request body — the update endpoint took
+// the record it was "updating" from the caller. `organizationId` is absent from
+// every shape below on purpose; it comes from the authenticated request, never
+// from the body.
+const VA_TASK_CATEGORY = z.enum([
+  "research", "outreach", "data_entry", "document_prep",
+  "follow_up", "marketing", "admin", "other",
+]);
+const VA_TASK_PRIORITY = z.enum(["low", "medium", "high", "urgent"]);
+const VA_TASK_STATUS = z.enum([
+  "pending", "in_progress", "completed", "blocked", "cancelled",
+]);
+
+const createVaTaskSchema = z.object({
+  title: z.string().min(1).max(300),
+  description: z.string().max(5000).optional(),
+  category: VA_TASK_CATEGORY.optional(),
+  priority: VA_TASK_PRIORITY.optional(),
+  status: VA_TASK_STATUS.optional(),
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  leadId: z.number().int().positive().optional(),
+  propertyId: z.number().int().positive().optional(),
+  dealId: z.number().int().positive().optional(),
+  noteId: z.number().int().positive().optional(),
+  sopId: z.string().max(100).optional(),
+  dueDate: z.string().datetime().optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+});
+
+const updateVaTaskSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(5000).optional(),
+  category: VA_TASK_CATEGORY.optional(),
+  priority: VA_TASK_PRIORITY.optional(),
+  status: VA_TASK_STATUS.optional(),
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  dueDate: z.string().datetime().optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  actualMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  completionNotes: z.string().max(5000).optional(),
+  attachmentUrls: z.array(z.string().url()).max(20).optional(),
+  loomUrl: z.string().url().optional(),
+  // completedAt / startedAt are DERIVED from the status transition, never
+  // accepted: a caller-supplied completion time is how "tasks completed this
+  // week" becomes a number someone typed.
+});
+
+const listVaTasksSchema = z.object({
+  assignedToUserId: z.string().min(1).max(255).optional(),
+  status: VA_TASK_STATUS.optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+});
+
+const createVaSopSchema = z.object({
+  title: z.string().min(1).max(300),
+  category: VA_TASK_CATEGORY.optional(),
+  description: z.string().max(5000).optional(),
+  steps: z
+    .array(
+      z.object({
+        stepNumber: z.number().int().positive(),
+        instruction: z.string().min(1).max(2000),
+        videoUrl: z.string().url().optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
+  estimatedMinutes: z.number().int().nonnegative().max(10_000).optional(),
+  derivedFromDefaultTitle: z.string().max(300).optional(),
+});
+
 export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   // ============================================
@@ -42,96 +127,39 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // Unscheduled: early/extra payment, no date change, no service fee trigger
   // ============================================
 
-  app.post("/api/notes/:id/record-payment", ...auth, async (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const noteId = parseInt(req.params.id);
-      const {
-        amount,
-        paymentDate,
-        paymentType = "scheduled", // "scheduled" | "unscheduled"
-        paymentMethod,
-        transactionId,
-        notes: paymentNotes,
-      } = req.body;
-
-      if (!amount || !paymentDate) {
-        return Errors.badRequest(res, "amount and paymentDate are required");
-      }
-
-      const [note] = await db.select().from(notes)
-        .where(and(eq(notes.id, noteId), eq(notes.organizationId, org.id)));
-
-      if (!note) return Errors.notFound(res, "Note");
-
-      const currentBalance = parseFloat(note.currentBalance || "0");
-      const interestRate = parseFloat(note.interestRate || "0");
-      const monthlyRate = interestRate / 100 / 12;
-      const paidAmount = parseFloat(amount);
-
-      // Calculate principal/interest split
-      const interestDue = currentBalance * monthlyRate;
-      const principalPaid = Math.max(0, paidAmount - interestDue);
-      const newBalance = Math.max(0, currentBalance - principalPaid);
-
-      // Service fee only applies to SCHEDULED payments (standard parity)
-      const serviceFeeAmount = paymentType === "scheduled"
-        ? parseFloat(note.serviceFee || "0")
-        : 0;
-
-      // Tax escrow credit only on SCHEDULED payments
-      if (paymentType === "scheduled" && note.taxEscrowEnabled) {
-        await propertyTaxService.creditMonthlyTaxEscrow(noteId, org.id);
-      }
-
-      // Insert payment record
-      await db.insert((await import("@shared/schema")).payments).values({
-        organizationId: org.id,
-        noteId,
-        amount: String(paidAmount),
-        principalAmount: String(principalPaid),
-        interestAmount: String(Math.min(paidAmount, interestDue)),
-        feeAmount: String(serviceFeeAmount),
-        lateFeeAmount: "0",
-        paymentDate: new Date(paymentDate),
-        dueDate: note.nextPaymentDate || new Date(paymentDate),
-        paymentMethod: paymentMethod || note.paymentMethod || "manual",
-        transactionId,
-        status: "completed",
-        processedAt: new Date(),
-      });
-
-      // Update note balance
-      const updateData: any = { currentBalance: String(newBalance) };
-
-      // Only advance next payment date for SCHEDULED payments
-      if (paymentType === "scheduled" && note.nextPaymentDate) {
-        const nextDate = addMonths(new Date(note.nextPaymentDate), 1);
-        updateData.nextPaymentDate = nextDate;
-      }
-
-      // Check if paid off
-      if (newBalance <= 0) {
-        updateData.status = "paid_off";
-        updateData.autoPayEnabled = false;
-      }
-
-      await db.update(notes).set(updateData).where(eq(notes.id, noteId));
-
-      res.json({
-        success: true,
-        paymentType,
-        principalPaid: Math.round(principalPaid * 100) / 100,
-        interestPaid: Math.round(Math.min(paidAmount, interestDue) * 100) / 100,
-        serviceFeeTrigger: serviceFeeAmount > 0,
-        newBalance: Math.round(newBalance * 100) / 100,
-        paidOff: newBalance <= 0,
-        nextPaymentDateAdvanced: paymentType === "scheduled",
-      });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // POST /api/notes/:id/record-payment — DELETED 2026-08-13 (founder ruling on
+  // BLOCKERS B10: `acquired_notes` / `note_payments` is the successor to
+  // `notes` / `payments`, so the legacy writers are a migration list and this
+  // route was the named deletion candidate).
+  //
+  // It had NO caller. The record-payment modal posts to
+  // `/api/notes/:id/payments` in routes-notes.ts — the cents-family route,
+  // which validates with zod, takes an Idempotency-Key, holds the note row
+  // inside a transaction and returns a schedule and delinquency outcome. No
+  // client, no OpenAPI entry, no test referenced this one.
+  //
+  // Five things were wrong with it, and the ruling makes fixing them wasted
+  // work rather than four separate units:
+  //
+  //   1. It reimplemented the principal/interest split IN FLOATS —
+  //      `interestDue = currentBalance * monthlyRate` — while
+  //      `splitPaymentCents` exists and three of the four payment recorders use
+  //      it. `shared/finance/cents.ts` states the house rule: money is summed
+  //      and compared in integer cents, never in JS floats.
+  //   2. NOT TRANSACTIONAL. A bare payment insert followed by a separate note
+  //      update: a failure between them left a recorded payment against an
+  //      unreduced balance. `storage.createPayment`, which this bypassed, wraps
+  //      both in `withTransaction` with `SELECT FOR UPDATE` and a version check.
+  //   3. It credited TAX ESCROW BEFORE the payment insert, so a later failure
+  //      left an escrow credit with no payment behind it.
+  //   4. The note UPDATE carried NO ORGANIZATION PREDICATE — `where(eq(notes.id,
+  //      noteId))` alone, on money. The org-scoped SELECT above it gated the
+  //      path in practice, which is why it was never exploitable, but it is
+  //      exactly the shape check-org-scoped-fetch's rule 2 exists to catch.
+  //   5. `const updateData: any` erased the type of the row being written.
+  //
+  // The legacy model's remaining writers are pinned by
+  // tests/unit/legacyNoteModelIsTerminal.test.ts and may only shrink.
 
   // ============================================
   // PROPERTY TAX ESCROW
@@ -265,22 +293,15 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     res.status(403).send("Forbidden");
   });
 
-  // Lead Ad submission webhook — verify X-Hub-Signature-256 (DEFECT-0008)
-  app.post("/api/webhooks/meta-lead-ads", async (req: Request, res: Response) => {
+  // Lead Ad submission webhook. The signature check used to live inline here and
+  // was fail-open twice: no `META_APP_SECRET` meant no verification at all, and
+  // a caller who simply OMITTED the header skipped it even when the secret was
+  // set. This endpoint creates leads, so an unsigned POST wrote rows into a real
+  // pipeline. `verifyMetaWebhookSignature` fails closed on both, hashes the raw
+  // body rather than a re-serialisation of it, and compares in constant time —
+  // the same shape as the Twilio and inbound-email verifiers.
+  app.post("/api/webhooks/meta-lead-ads", verifyMetaWebhookSignature, async (req: Request, res: Response) => {
     try {
-      // Verify Meta webhook signature
-      const signature = req.headers["x-hub-signature-256"] as string;
-      const appSecret = process.env.META_APP_SECRET;
-      if (appSecret && signature) {
-        const crypto = await import("crypto");
-        const body = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-        const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(body).digest("hex");
-        if (signature !== expected) {
-          logger.warn("[meta-leads] Webhook signature mismatch — rejecting");
-          return Errors.unauthorized(res);
-        }
-      }
-
       const entries = req.body?.entry || [];
       for (const entry of entries) {
         for (const change of entry.changes || []) {
@@ -301,7 +322,36 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/meta-ads/campaigns", ...auth, async (req: Request, res: Response) => {
+  // ── META ADS: A FOUNDER INSTRUMENT, PERMANENTLY (founder ruling 2026-08-13) ──
+  //
+  // B11 asked whether paid advertising is a platform activity or a customer
+  // feature. The founder answered: *"this was meant for me as the founder to run
+  // ads for this AcreOS only. Never for a customer to be able to run their own
+  // ads."* So the gate unit 50 added as an interim measure is the PERMANENT
+  // answer, and these routes moved into the `/api/founder/*` instrument
+  // namespace, where the URL itself states who they are for.
+  //
+  // WHY THE PLATFORM AD ACCOUNT IS CORRECT HERE AND FATAL FOR PAYMENTS.
+  // `metaAdsService` posts to graph.facebook.com against META_AD_ACCOUNT_ID with
+  // META_ACCESS_TOKEN — ONE PLATFORM AD ACCOUNT. Under "be the rail, not the
+  // provider" (2026-07-29, which deleted the ACTUM ACH endpoints forty lines
+  // below) that shape is fatal for CUSTOMER money: one platform
+  // ACTUM_MERCHANT_ID for all orgs meant borrower money moving on AcreOS's own
+  // merchant account. Advertising is the mirror image — AcreOS's own money, on
+  // AcreOS's own account, spent by the only person authorised to spend it. No
+  // customer money moves and no customer is a party to it. The ruling that
+  // forbids the first is the ruling that permits this, and the only thing
+  // keeping them apart is that there is NO CUSTOMER PATH IN. That is what the
+  // gates below and the test are for.
+  //
+  // The $500/day ceiling stays even though the caller is the founder: the
+  // hard-stop is "spends >$500 are founder-only", not "spends are unbounded once
+  // a founder is on the call", and a typo in a cents field is three orders of
+  // magnitude from its intent.
+  //
+  // Registered in shared/governance/constitution.ts as `ads.founder-only-rail`;
+  // pinned by tests/unit/metaAdsFounderOnly.test.ts.
+  app.post("/api/founder/meta-ads/campaigns", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const {
         propertyId, campaignName, dailyBudgetCents, targetStates, targetZipCodes,
@@ -309,6 +359,23 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         primaryText, callToAction
       } = req.body;
       const org = req.organization;
+
+      // A ceiling on a number that goes straight into `daily_budget`. The
+      // founder gate makes this the founder's own spend, which is exactly why
+      // a typo is still worth catching: the constitution's hard-stop is
+      // "spends >$500 are founder-only", not "spends are unbounded once a
+      // founder is on the call".
+      const budget = Number(dailyBudgetCents);
+      if (!Number.isInteger(budget) || budget <= 0) {
+        return Errors.badRequest(res, "dailyBudgetCents must be a positive integer number of cents");
+      }
+      if (budget > MAX_DAILY_AD_BUDGET_CENTS) {
+        return Errors.badRequest(
+          res,
+          `dailyBudgetCents ${budget} exceeds the ${MAX_DAILY_AD_BUDGET_CENTS}-cent daily ceiling ` +
+            `on the platform ad account. Raise the ceiling deliberately, in code, rather than per request.`,
+        );
+      }
       const result = await metaAdsService.createLandListingCampaign({
         propertyId, orgId: org.id, campaignName, dailyBudgetCents,
         targetStates, targetZipCodes, targetRadiusMiles, targetLat, targetLng,
@@ -320,7 +387,13 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/meta-ads/campaigns/:campaignId/stats", ...auth, async (req: Request, res: Response) => {
+  // This one carried NO founder gate until 2026-08-13 — `...auth` alone. Spend is
+  // not the only thing worth withholding: `getAdPerformance` reads spend,
+  // impressions, clicks and cost-per-lead for ANY campaign id on the platform ad
+  // account, so any authenticated member of any org could read AcreOS's own
+  // marketing performance by iterating ids. Gating creation and leaving the reads
+  // open is the half-applied rule this whole block is about.
+  app.get("/api/founder/meta-ads/campaigns/:campaignId/stats", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
       res.json(stats);
@@ -329,7 +402,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/meta-ads/sync-catalog", ...auth, async (req: Request, res: Response) => {
+  // Founder-only for the same reason: it writes into the PLATFORM catalog on
+  // the platform's ad account, using the platform token.
+  app.post("/api/founder/meta-ads/sync-catalog", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
       const { catalogId } = req.body;
@@ -587,24 +662,101 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Create a task
-  app.post("/api/va/tasks", ...auth, (req: Request, res: Response) => {
+  // Create a task. This used to refuse with 501, and the refusal was right at
+  // the time: `createTask` was a PURE FUNCTION that stamped an id onto its input
+  // and returned it, so a 200 here described a record that existed only in that
+  // response body. `VA_TASKS_KEY` was declared and never used; nothing in the
+  // repo wrote `organizations.settings.va_tasks`.
+  //
+  // BLOCKERS B9 held the decision — build the layer or delete the subsystem —
+  // and the founder ruled on 2026-08-13 to build it. `va_tasks` is a real table
+  // with a migration (0235), and this endpoint now stores what it returns.
+  app.post("/api/va/tasks", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = req.organization;
-      const task = vaManagement.createTask({ ...req.body, organizationId: org.id });
+      const parsed = createVaTaskSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const task = await vaManagement.createTask(getOrganizationId(req), {
+        ...parsed.data,
+        // Who assigned it is the caller, not a request field — a body-supplied
+        // assigner is an audit trail anyone can write their own name out of.
+        assignedByUserId: req.user?.id,
+      });
+      // 200, not 201: the `res-status-raw` ratchet counts every `res.status(`
+      // because that is how error responses bypass the Errors helpers, and a
+      // status code no caller reads is not worth a line of that budget. The
+      // created task, id and all, is in the body either way.
       res.json(task);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Errors.internal(res, err);
     }
   });
 
-  // Update a task
-  app.put("/api/va/tasks/:id", ...auth, (req: Request, res: Response) => {
+  // List tasks. NEW, and the reason the create endpoint is worth having: a
+  // subsystem that can store a task but never show it back is the same dead end
+  // in a different place.
+  app.get("/api/va/tasks", ...auth, async (req: Request, res: Response) => {
     try {
-      const { task, updates } = req.body;
-      const updated = vaManagement.updateTask(task, updates);
-      res.json(updated);
-    } catch (err: any) {
+      const parsed = listVaTasksSchema.safeParse(req.query);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const tasks = await vaManagement.listTasks(getOrganizationId(req), parsed.data);
+      res.json({ tasks });
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // One task, or a 404 that does not confirm the row exists elsewhere.
+  app.get("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
+      res.json(await vaManagement.getTask(getOrganizationId(req), id));
+    } catch (err: unknown) {
+      if (err instanceof vaManagement.VaTaskNotInOrgError) return Errors.notFound(res, "Task");
+      Errors.internal(res, err);
+    }
+  });
+
+  // Update a task. This also used to refuse, for one more reason than the
+  // create did: it took `{ task, updates }` FROM THE REQUEST BODY, merged them
+  // in memory, returned the result, and IGNORED `:id` entirely — a merge
+  // function with a URL. It now reads the stored row within the caller's
+  // organization, applies the patch, and derives the lifecycle stamps itself.
+  app.put("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
+      const parsed = updateVaTaskSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      res.json(await vaManagement.updateTask(getOrganizationId(req), id, parsed.data));
+    } catch (err: unknown) {
+      if (err instanceof vaManagement.VaTaskNotInOrgError) return Errors.notFound(res, "Task");
+      Errors.internal(res, err);
+    }
+  });
+
+  // The org's own SOP library, which `SOP_LIBRARY_KEY` was declared for and
+  // never written to. Distinct from GET /api/va/sops/defaults above: that
+  // serves DEFAULT_SOPS, AcreOS's own procedure catalogue, versioned with the
+  // code. This serves what the ORG wrote.
+  app.get("/api/va/sops", ...auth, async (req: Request, res: Response) => {
+    try {
+      res.json({ sops: await vaManagement.listSops(getOrganizationId(req)) });
+    } catch (err: unknown) {
+      Errors.internal(res, err);
+    }
+  });
+
+  app.post("/api/va/sops", ...auth, async (req: Request, res: Response) => {
+    try {
+      const parsed = createVaSopSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const sop = await vaManagement.createSop(getOrganizationId(req), {
+        ...parsed.data,
+        createdByUserId: req.user?.id,
+      });
+      res.json(sop);
+    } catch (err: unknown) {
       Errors.internal(res, err);
     }
   });

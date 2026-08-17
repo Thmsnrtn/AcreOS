@@ -1285,7 +1285,10 @@ export function PaxCopilotRail() {
                           localStorage.setItem("pax_model_override", v);
                         }}
                       >
-                        <SelectTrigger className="h-6 w-auto text-micro border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-0">
+                        {/* `focus:ring-1`, not `ring-0`: the global *:focus-visible rule swaps the
+    outline for a ring, so zeroing the ring on a borderless trigger leaves a
+    keyboard user with no focus indicator at all. */}
+                        <SelectTrigger className="h-6 w-auto text-micro border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-1 focus:ring-ring">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent align="end" className="text-xs min-w-[110px]">
@@ -1358,6 +1361,7 @@ export function PaxCopilotRail() {
                   <div className="px-3 py-2 border-b space-y-1.5">
                     <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
                     <Input
+                      aria-label="Search recent conversations"
                       placeholder="Search…"
                       value={convSearch}
                       onChange={(e) => setConvSearch(e.target.value)}
@@ -1855,6 +1859,7 @@ export function PaxCopilotRail() {
                   )}
                   <Textarea
                     ref={inputRef}
+                    aria-label="Message to Pax"
                     value={inputValue}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}

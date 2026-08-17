@@ -244,7 +244,7 @@ export default function LeasesPage() {
             <CardDescription>Tie to an existing property. Add tenants to the lease after it's created.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div><Label className="text-xs">Property ID *</Label><Input value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="lease-property-id">Property ID *</Label><Input id="lease-property-id" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
             <div>
               <Label className="text-xs" htmlFor="lease-unit-label">Unit label</Label>
               <Input
@@ -300,10 +300,10 @@ export default function LeasesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label className="text-xs">Start date *</Label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">End date</Label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Monthly rent ($) *</Label><Input type="number" value={rent} onChange={(e) => setRent(e.target.value)} className="h-9" placeholder="1400" /></div>
-            <div><Label className="text-xs">Security deposit ($)</Label><Input type="number" value={securityDeposit} onChange={(e) => setSecurityDeposit(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="lease-start-date">Start date *</Label><Input id="lease-start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="lease-end-date">End date</Label><Input id="lease-end-date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9" /></div>
+            <div><Label className="text-xs" htmlFor="lease-rent">Monthly rent ($) *</Label><Input id="lease-rent" type="number" value={rent} onChange={(e) => setRent(e.target.value)} className="h-9" placeholder="1400" /></div>
+            <div><Label className="text-xs" htmlFor="lease-security-deposit">Security deposit ($)</Label><Input id="lease-security-deposit" type="number" value={securityDeposit} onChange={(e) => setSecurityDeposit(e.target.value)} className="h-9" /></div>
             <div className="col-span-2 flex items-end">
               <label className="text-xs flex items-center gap-2">
                 <input type="checkbox" checked={isSection8} onChange={(e) => setIsSection8(e.target.checked)} />
@@ -312,8 +312,8 @@ export default function LeasesPage() {
             </div>
             {isSection8 && (
               <>
-                <div><Label className="text-xs">HAP portion ($)</Label><Input type="number" value={hapPortion} onChange={(e) => setHapPortion(e.target.value)} className="h-9" placeholder="1100" /></div>
-                <div><Label className="text-xs">Tenant portion ($)</Label><Input type="number" value={tenantPortion} onChange={(e) => setTenantPortion(e.target.value)} className="h-9" placeholder="300" /></div>
+                <div><Label className="text-xs" htmlFor="lease-hap-portion">HAP portion ($)</Label><Input id="lease-hap-portion" type="number" value={hapPortion} onChange={(e) => setHapPortion(e.target.value)} className="h-9" placeholder="1100" /></div>
+                <div><Label className="text-xs" htmlFor="lease-tenant-portion">Tenant portion ($)</Label><Input id="lease-tenant-portion" type="number" value={tenantPortion} onChange={(e) => setTenantPortion(e.target.value)} className="h-9" placeholder="300" /></div>
               </>
             )}
             <div className="col-span-full">

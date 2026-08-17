@@ -168,6 +168,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               <div className="flex gap-1.5 mb-2">
                 <Input
                   autoFocus
+                  aria-label="New project name"
                   placeholder="Project name…"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}

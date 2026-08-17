@@ -141,18 +141,37 @@ async function resolveAccounts(orgId: number): Promise<AccountLookup> {
 }
 
 /**
- * Idempotency check — has any ledger entry already been posted under this
+ * Idempotency check — has THIS ORG already posted a ledger entry under this
  * (referenceType, referenceId)? If yes, the caller short-circuits. We
  * check existence rather than counting because `account_ledger_entries`
  * always inserts a balanced n-tuple under one reference, so any hit means
  * the whole tuple is already present.
+ *
+ * TENANCY (2026-08-16). `referenceType` + `referenceId` is a POLYMORPHIC
+ * foreign key — a pair of free-text columns, unique by convention rather than
+ * by constraint. Matching on it alone meant one org's ledger row could answer
+ * "already posted?" for another org, and this check fails CLOSED: a false
+ * positive does not leak a row, it SILENTLY SKIPS a real posting and leaves
+ * the books short a balanced tuple with no error anywhere.
+ *
+ * Today the reference ids are Stripe object ids, which are globally unique, so
+ * a collision needs a bug rather than an attack. But the idempotency question
+ * is per-org by definition — these are per-org books, resolved through
+ * `resolveAccounts(organizationId)` — and the org term costs nothing while
+ * removing the whole class. `account_ledger_entries.organization_id` is NOT
+ * NULL, so no row is excluded by adding it.
  */
-async function isAlreadyPosted(referenceType: string, referenceId: string): Promise<boolean> {
+async function isAlreadyPosted(
+  organizationId: number,
+  referenceType: string,
+  referenceId: string,
+): Promise<boolean> {
   const [row] = await db
     .select({ id: accountLedgerEntries.id })
     .from(accountLedgerEntries)
     .where(
       and(
+        eq(accountLedgerEntries.organizationId, organizationId),
         eq(accountLedgerEntries.referenceType, referenceType),
         eq(accountLedgerEntries.referenceId, referenceId),
       ),
@@ -191,12 +210,22 @@ async function postBalancedTuple(args: {
 
   // tx wraps the existence check + insert so concurrent webhook redelivery
   // can't sneak two tuples in. We re-check inside the tx to plug TOCTOU.
+  //
+  // This re-check carries `organization_id` for the same reason
+  // `isAlreadyPosted` does, and it matters MORE here: this is the
+  // authoritative guard — the one inside the transaction, the one that
+  // actually decides whether the insert happens. Scoping only the cheap
+  // pre-check upstream would have left the deciding predicate cross-tenant,
+  // which is the "fixed the symptom, missed the mechanism" half-fix. The
+  // rows inserted immediately below are stamped with this same
+  // `args.organizationId`, so the check and the write agree by construction.
   return await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: accountLedgerEntries.id })
       .from(accountLedgerEntries)
       .where(
         and(
+          eq(accountLedgerEntries.organizationId, args.organizationId),
           eq(accountLedgerEntries.referenceType, args.referenceType),
           eq(accountLedgerEntries.referenceId, args.referenceId),
         ),
@@ -237,7 +266,7 @@ export async function recordStripeInvoicePaid(
   const referenceType = "stripe_event";
   const referenceId = `invoice.paid:${invoice.id}`;
 
-  if (await isAlreadyPosted(referenceType, referenceId)) {
+  if (await isAlreadyPosted(invoice.organizationId, referenceType, referenceId)) {
     return { posted: false, legs: 0, deferred: false };
   }
 
@@ -313,7 +342,7 @@ export async function recordStripeChargeRefunded(
   const referenceType = "stripe_event";
   const referenceId = `charge.refunded:${refund.chargeId}`;
 
-  if (await isAlreadyPosted(referenceType, referenceId)) {
+  if (await isAlreadyPosted(refund.organizationId, referenceType, referenceId)) {
     return { posted: false, legs: 0 };
   }
 

@@ -1,86 +1,43 @@
 /**
- * F-A04-1: Prompt Injection Guard
+ * F-A04-1: Prompt Injection Guard — the EXPRESS MIDDLEWARE.
  *
- * Detects and strips known prompt injection patterns from user-supplied
- * text before it is forwarded to an LLM (OpenAI, etc.).
+ * This file used to carry its own deny-list and its own exported
+ * `sanitizePrompt`, which was a DIFFERENT function with the SAME NAME as
+ * `server/utils/sanitizePrompt.ts`'s. Which defence a surface got therefore
+ * depended on which import line it happened to use — and `server/ai/executive.ts`
+ * had picked this one, whose list missed 14 of a 30-attack corpus that the
+ * canonical list caught 20 of (unit 111).
  *
- * Strategy: deny-list of common injection patterns (case-insensitive).
- * Matching content is replaced with a safe placeholder so the LLM never
- * sees the adversarial instruction while the request can still proceed.
+ * The deny-list is GONE from here. Its unique patterns — bracketed `[SYSTEM]`
+ * tags, `--- new instructions:`, fenced ```system blocks, markdown-image
+ * exfiltration, tool-abuse and base64 evasion — were merged into
+ * `server/utils/sanitizePrompt.ts`, which is now the single owner. Nothing is
+ * caught less than before; several things are caught that were not.
  *
- * Exports:
- *   sanitizePrompt(text)      — pure function, returns sanitized copy
- *   promptInjectionMiddleware — Express middleware; sanitizes req.body.message,
- *                               req.body.prompt, and req.body.content
+ * What remains here is the part that is genuinely about Express: sanitizing the
+ * well-known body fields on the way in. It delegates.
+ *
+ * DO NOT REINTRODUCE A PATTERN LIST IN THIS FILE. Add patterns to
+ * server/utils/sanitizePrompt.ts; `singleInjectionSanitizer.test.ts` fails if a
+ * second deny-list appears anywhere.
  */
 
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
-// ─── Injection patterns ───────────────────────────────────────────────────────
+// ─── Sanitizer: delegated, not duplicated ────────────────────────────────────
 
-const INJECTION_PATTERNS: RegExp[] = [
-  // Classic role overrides
-  /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|context|directions?)/gi,
-  /disregard\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|context)/gi,
-  /forget\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|context)/gi,
-
-  // Role / persona injections
-  /you\s+are\s+now\s+(a\s+)?(?:dan|jailbreak|evil|uncensored|unlimited)/gi,
-  /pretend\s+(you\s+are|to\s+be)\s+(?:a\s+)?(?:dan|jailbreak|evil|uncensored)/gi,
-  /act\s+as\s+(if\s+you\s+are\s+)?(?:a\s+)?(?:dan|jailbreak|evil|uncensored|an?\s+ai\s+with\s+no)/gi,
-
-  // System prompt exfiltration attempts
-  /repeat\s+(your\s+)?(system|hidden|secret)\s+(prompt|instructions?|context)/gi,
-  /print\s+(your\s+)?(system|hidden|secret)\s+(prompt|instructions?)/gi,
-  /reveal\s+(your\s+)?(system|hidden|secret)\s+(prompt|instructions?)/gi,
-  /what\s+(is|are)\s+(your\s+)?(system|hidden|secret)\s+(prompt|instructions?)/gi,
-  /output\s+(your\s+)?(system|hidden|initial)\s+(prompt|instructions?)/gi,
-  /show\s+(me\s+)?(your\s+)?(system|hidden)\s+(prompt|instructions?)/gi,
-
-  // Instruction boundary bypasses
-  /---\s*(new|override|system)\s*(instructions?|prompt|:)/gi,
-  /---\s*system\s*:/gi,
-  /\[\s*(system|override|new\s+instruction)\s*\]/gi,
-  /<\s*system\s*>/gi,
-  /\/\*.*system.*instructions.*\*\//gi,
-
-  // Classic jailbreak phrases
-  /do\s+anything\s+now/gi,
-  /developer\s+mode\s+(enabled|on|activated)/gi,
-  /token\s+budget\s+exceeded/gi,
-  /hypothetically\s+speaking,?\s+if\s+you\s+had\s+no\s+(restrictions|rules|guidelines)/gi,
-
-  // Markdown/XML injection for hidden instructions
-  /<!--.*(?:system|instruction|ignore|override).*-->/gis,
-  /```\s*(?:system|override|instruction)/gi,
-
-  // Indirect injection via data exfiltration
-  /(?:send|post|fetch|curl|wget|http)\s+(?:to|this|data|the\s+(?:above|conversation|context))/gi,
-  /!\[.*\]\(https?:\/\/[^)]*\?(?:.*=.*(?:prompt|instruction|context|conversation))/gi,
-
-  // Base64/encoding evasion
-  /(?:base64|atob|decode)\s*\(\s*['"](?:[A-Za-z0-9+/=]{20,})['"]\s*\)/gi,
-
-  // Continuation / multi-turn jailbreaks
-  /(?:from\s+now\s+on|going\s+forward|for\s+the\s+rest\s+of),?\s+(?:you\s+(?:are|will|must|should)|ignore|forget)/gi,
-  /new\s+session\s*[,:]\s*(?:you\s+are|ignore|forget|disregard)/gi,
-
-  // Tool/function abuse
-  /(?:call|execute|run|invoke)\s+(?:the\s+)?(?:function|tool|api)\s+(?:to\s+)?(?:delete|drop|remove|reset)/gi,
-];
-
-const REDACTION_PLACEHOLDER = "[content removed by safety filter]";
-
-// ─── Pure sanitizer ───────────────────────────────────────────────────────────
-
+/**
+ * Sanitize a request-body field. Thin re-export of the canonical sanitizer in
+ * its inline (unwrapped) form: body fields are edited in place and handed on to
+ * a route, so they must not acquire <<USER_DATA>> markers here — the envelope is
+ * applied where the text is interpolated into a prompt, by the caller that knows
+ * it is doing so (server/ai/untrustedEnvelope.ts).
+ */
 export function sanitizePrompt(text: string): string {
   if (typeof text !== "string") return text;
-  let sanitized = text;
-  for (const pattern of INJECTION_PATTERNS) {
-    sanitized = sanitized.replace(pattern, REDACTION_PLACEHOLDER);
-  }
-  return sanitized;
+  return sanitizePromptInline(text, { source: "request-body" });
 }
 
 // ─── Express middleware ───────────────────────────────────────────────────────

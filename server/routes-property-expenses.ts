@@ -51,16 +51,30 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { isCalendarDate } from "@shared/dates/calendar";
 
 // ----------------------------------------------------------------------------
 // Validation
 // ----------------------------------------------------------------------------
 
-/** A calendar day the operator asserts — YYYY-MM-DD, and a real date. */
+/**
+ * A calendar day the operator asserts — YYYY-MM-DD, and a real date.
+ *
+ * THE `.refine` USED TO SAY THAT AND NOT DO IT. It read
+ * `!Number.isNaN(new Date(`${s}T00:00:00Z`).getTime())` under the message "Not a
+ * real date" — and `new Date("2026-02-30T00:00:00Z")` is March 2nd with a
+ * perfectly finite `getTime()`, so Feb 30 passed the check named after
+ * rejecting it. The author reached for a validity test and reached for the one
+ * that cannot work; `isCalendarDate` round-trips the parse instead.
+ *
+ * It matters here because `incurredOn` buckets the expense BY MONTH downstream:
+ * an expense dated 2026-02-30 lands in March, so a CAM reconciliation recovers
+ * it in the wrong period — and a CAM true-up is a bill a tenant pays.
+ */
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD")
-  .refine((s) => !Number.isNaN(new Date(`${s}T00:00:00Z`).getTime()), "Not a real date");
+  .refine((s) => isCalendarDate(s), "Not a real date");
 
 // `isOperating` is DELIBERATELY absent from this schema. It is derived from the
 // category server-side; accepting it from the client would let a caller post a

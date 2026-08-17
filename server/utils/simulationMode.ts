@@ -40,7 +40,12 @@ export type SimulatedCategory =
   // Listing syndication side-effects (LANDCOM, LANDFLIP, Meta Marketplace,
   // etc.). When simulated, /api/listings/:id/publish writes a recordSimulated
   // entry instead of posting to partner APIs.
-  | "listings";
+  | "listings"
+  // Paid advertising (Meta ad campaigns). The most literally-spending rail in
+  // the repo: `createLandListingCampaign` POSTs a `daily_budget` to
+  // graph.facebook.com against the PLATFORM ad account. It had no category and
+  // therefore no kill-switch, so a dev, CI or staging boot could buy ads.
+  | "ads";
 
 /**
  * Bare process-env read of the global kill-switch. Tests should set
@@ -71,6 +76,9 @@ const GLOBAL_SIM_CATEGORIES: ReadonlySet<SimulatedCategory> = new Set([
   "webhook_outbound",
   "billing_mutation",
   "listings",
+  // Spend rails default to simulated. Ads is the one category where the
+  // absence of a default would be paid for in real money per hour.
+  "ads",
 ]);
 
 /**

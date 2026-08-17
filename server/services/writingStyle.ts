@@ -4,6 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 
+import { wrapUntrusted } from "../ai/untrustedEnvelope";
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // All calls flow through aiRouter for cost tracking, semantic caching,
 // rate limiting, and provider failover.
@@ -227,7 +228,7 @@ Only output valid JSON, no other text.`
       },
       {
         role: "user",
-        content: `Analyze these ${samples.length} sample messages:\n\n${sampleTexts}`
+        content: `Analyze these ${samples.length} sample messages:\n\n${wrapUntrusted(sampleTexts, "writing-style-samples")}`
       }
     ],
     responseFormat: "json",
@@ -339,10 +340,21 @@ Respond with a JSON object:
 }`
       },
       {
+        // `propertyDetails.address` arrives raw from the request body
+        // (`POST /api/writing-styles/:id/generate` destructures it out of
+        // `req.body` and passes it straight through), so it is exactly P0-14's
+        // "property descriptions / customer-typed" category reaching a model.
+        // Wrapped in the same idiom this file already uses for the sample
+        // messages above. lint-prompt-envelope.mjs cannot see this site — its
+        // inline `content:` reader is one regex that stops at the first inner
+        // backtick, and the `recipientName` ternary on the line above opens one
+        // — so the count does NOT move when this is wrapped or unwrapped. It was
+        // found and fixed by hand; do not read a green gate as cover for
+        // unwrapping it.
         role: "user",
         content: `Write a ${messageContext.intent.replace("_", " ")} message about: ${messageContext.topic}
 ${messageContext.recipientName ? `Recipient: ${messageContext.recipientName}` : ""}
-${messageContext.propertyDetails ? `Property: ${messageContext.propertyDetails.address || "Property"}, ${messageContext.propertyDetails.acres} acres, $${messageContext.propertyDetails.price}` : ""}
+${messageContext.propertyDetails ? `Property: ${messageContext.propertyDetails.address ? wrapUntrusted(messageContext.propertyDetails.address, "property-address") : "Property"}, ${messageContext.propertyDetails.acres} acres, $${messageContext.propertyDetails.price}` : ""}
 ${messageContext.previousMessages?.length ? `Previous messages in conversation:\n${messageContext.previousMessages.join("\n")}` : ""}`
       }
     ],
@@ -416,8 +428,35 @@ export async function getAllStyleProfiles(
   return profiles as WritingStyleProfile[];
 }
 
-export async function deleteStyleProfile(profileId: number): Promise<void> {
-  await db
+/**
+ * Delete one writing-style profile, PINNED TO THE OWNING ORG.
+ *
+ * The org predicate is the whole point of this function's signature. Until
+ * 2026-08-16 this took a bare `profileId` and emitted
+ * `DELETE … WHERE id = $1`, while `DELETE /api/writing-styles/:id`
+ * (server/routes-va-engine.ts) handed it `parseInt(req.params.id)` with NO
+ * organization comparison anywhere in the handler — so any authenticated
+ * member of any org could destroy another org's profile by guessing an
+ * integer. `writing_style_profiles.organization_id` is NOT NULL, so there was
+ * never a row this predicate could not be applied to.
+ *
+ * Returns TRUE iff a row in THIS org was deleted. A cross-tenant id deletes
+ * nothing and returns false — the caller turns that into a 404, which is also
+ * why the route no longer leaks whether the id exists in some other tenant.
+ */
+export async function deleteStyleProfile(
+  organizationId: number,
+  profileId: number,
+): Promise<boolean> {
+  const deleted = await db
     .delete(writingStyleProfiles)
-    .where(eq(writingStyleProfiles.id, profileId));
+    .where(
+      and(
+        eq(writingStyleProfiles.id, profileId),
+        eq(writingStyleProfiles.organizationId, organizationId)
+      )
+    )
+    .returning({ id: writingStyleProfiles.id });
+
+  return deleted.length > 0;
 }

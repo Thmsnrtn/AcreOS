@@ -423,22 +423,21 @@ export function registerDashboardRoutes(app: Express): void {
   // TELEMETRY
   // ============================================
   
-  api.post("/api/telemetry", isAuthenticated, async (req, res) => {
-    const { events } = req.body;
-    const user = req.user;
-    const org = req.organization;
-    
-    // Log events for now (can be sent to analytics service later)
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('[Telemetry]', { metadata: { detail: { userId: user?.id, orgId: org?.id, events } } });
-    }
-    
-    // In production, you could send to:
-    // - PostHog
-    // - Mixpanel
-    // - Your own analytics database
-    
-    res.json({ success: true });
+  // Unit 121: this endpoint stored nothing and, in production, logged nothing
+  // either — it answered `{ success: true }` to every batch. Its only caller
+  // (client/src/lib/telemetry.ts) now routes to the live PostHog sink instead,
+  // so nothing should reach here at all.
+  //
+  // It is kept as an HONEST 410 rather than deleted: an old bundle cached in a
+  // browser will keep POSTing for a while, and a 404 would read as a routing
+  // bug to whoever sees it in the logs. Refuse-not-fabricate — a receipt for
+  // work not done is the defect; a clear refusal is not.
+  api.post("/api/telemetry", isAuthenticated, async (_req, res) => {
+    logger.info("[telemetry] retired endpoint called — client should use the analytics sink");
+    return Errors.gone(
+      res,
+      "Client telemetry is captured directly by the analytics sink; this endpoint stored nothing and no longer accepts events.",
+    );
   });
   
   // ============================================
@@ -518,8 +517,12 @@ export function registerDashboardRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      // Return empty goals array so the page still renders
-      res.json([]);
+      // The old comment said the quiet part out loud — *"Return empty goals
+      // array so the page still renders"* — and that is the trade: the page
+      // renders, and it tells a customer with four active goals that they have
+      // none. A rendered lie is worse than an error state the client already
+      // knows how to draw.
+      Errors.internal(res, err);
     }
   });
 
@@ -670,7 +673,9 @@ export function registerDashboardRoutes(app: Express): void {
           title: "Check your primary county intelligence snapshot",
           description: "Review USDA land values, migration signals, and opportunity score for your target county.",
           actionLabel: "View County Data",
-          actionUrl: "/data-intelligence",
+          // `/data-intelligence` has no route. County intelligence lives at
+      // `/counties` (and `/counties/:id`), which is exactly this content.
+      actionUrl: "/counties",
         });
       }
 
@@ -686,17 +691,18 @@ export function registerDashboardRoutes(app: Express): void {
         });
       }
 
-      if (priorities.length < 3) {
-        priorities.push({
-          id: "evening-review",
-          type: "review",
-          priority: "low",
-          title: "Review your passive income progress tonight",
-          description: "Open the Evening Review dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.",
-          actionLabel: "Open Evening Review",
-          actionUrl: "/evening-review",
-        });
-      }
+      // The "Open Evening Review" card is gone. `/evening-review` and
+      // `/night-cap` both rendered EveningReviewPage, and both were removed in
+      // the Lens-4 sweep with the page file deleted — "neither was linked from
+      // any nav surface". This card was the link nobody found, still pointing at
+      // it from the customer's FIRST screen, and it is a FALLBACK card: it fires
+      // when the customer has nothing else going on, so the quietest accounts
+      // got the broken button.
+      //
+      // Deleted rather than re-pointed. The content it advertised — today's note
+      // payments, freedom-meter progress, tomorrow's one thing — is on Today
+      // already, which is where this card renders, so any replacement link would
+      // point at the page the customer is standing on.
 
       res.json({
         priorities: priorities.slice(0, 3),

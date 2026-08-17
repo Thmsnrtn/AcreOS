@@ -44,6 +44,7 @@ import {
   executeSupportTool,
   PAX_SYSTEM_PROMPT,
 } from "./supportAgent";
+import { serializeToolResultForModel } from "./untrustedEnvelope";
 import { recordSupportResolveDecision } from "../services/andrei/supportResolverCalibration";
 
 const MAX_RESOLVE_ITERATIONS = 8;
@@ -295,7 +296,9 @@ export async function resolveTicketWithPax(
       toolResults.push({
         role: "tool",
         tool_call_id: toolCall.id,
-        content: JSON.stringify(result),
+        // Tier 1B: customer-content fields wrapped in the untrusted
+        // envelope before re-entering the model channel.
+        content: serializeToolResultForModel(name, result),
       });
     }
 

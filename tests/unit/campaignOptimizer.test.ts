@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ────────────────────────────────────────────────────────────────────
-vi.mock("../../../server/db", () => ({
+vi.mock("../../server/db", () => ({
   db: {
     update: vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
@@ -19,7 +19,7 @@ vi.mock("../../../server/db", () => ({
 }));
 
 // ── Storage mock ───────────────────────────────────────────────────────────────
-vi.mock("../../../server/storage", () => ({
+vi.mock("../../server/storage", () => ({
   storage: {
     createCampaignOptimization: vi.fn().mockResolvedValue({ id: 1 }),
     getCampaigns: vi.fn().mockResolvedValue([]),
@@ -28,13 +28,13 @@ vi.mock("../../../server/storage", () => ({
 }));
 
 // ── Credits mock ───────────────────────────────────────────────────────────────
-vi.mock("../../../server/services/credits", () => ({
+vi.mock("../../server/services/credits", () => ({
   usageMeteringService: {
     recordUsage: vi.fn().mockResolvedValue({ insufficientCredits: false }),
   },
 }));
 
-import { CampaignOptimizerService } from "../../../server/services/campaignOptimizer";
+import { CampaignOptimizerService } from "../../server/services/campaignOptimizer";
 
 // ── Test helpers ───────────────────────────────────────────────────────────────
 const makeCampaign = (overrides = {}): any => ({

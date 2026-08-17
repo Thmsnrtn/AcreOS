@@ -189,6 +189,7 @@ import { emailService } from "./emailService";
 import { format } from "date-fns";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
+import { AUTONOMOUS_SPEND_CEILING_CENTS } from "./financialAuthorityGate";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -569,7 +570,15 @@ async function executeFeatureRequestApproval(
 // Hard guardrails — code-level blocks checked BEFORE AI is consulted
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HARD_GUARDRAIL_AMOUNT_LIMIT = 50_000; // cents ($500)
+// The >$500 founder hard stop, imported rather than retyped.
+//
+// This was its own `50_000` literal, making it the THIRD independent copy of
+// one constitutional boundary — alongside financialAuthorityGate's Tier 1
+// ceiling and Tier 2 floor. The constitution's own note calls these "two
+// independent enforcements", which is the argument FOR sharing the number: two
+// enforcements of one rule are a safety property, two spellings of one number
+// are a drift waiting to happen. financialAuthorityGate.ts is the owner.
+const HARD_GUARDRAIL_AMOUNT_LIMIT = AUTONOMOUS_SPEND_CEILING_CENTS; // cents ($500)
 const HARD_GUARDRAIL_RECIPIENT_LIMIT = 100;
 
 const BILLING_SUBSCRIPTION_ACTIONS = [
@@ -600,6 +609,111 @@ const LEGAL_SIGNING_ACTIONS = [
   "envelope_send",
   "agreement_execute",
 ];
+
+// ─── Hard-stop intent classifier (unit 118) ─────────────────────────────────
+//
+// The lists above used to be the WHOLE enforcement, matched with
+// `actionType.includes(t)` — a substring deny-list guarding a rule the
+// constitution states as "NEVER autonomous, forever". An enforcement audit
+// bypassed all four hard-stops with trivially varied strings: `execute_agreement`
+// (word order), `countersign`, `gdpr_erasure`, `discount_apply`, `promo_code_create`,
+// `credit_grant`, `trial_extend`, `comp_account`, `waive_fee`, `set_price` — every
+// one returned blocked:false while the constitution's registry cited this very
+// function as the enforcement for pricing, legal-signing, data-deletion and
+// money-custody hard-stops.
+//
+// A deny-list of exact strings can never enforce a "never" — the attacker (or
+// merely the next well-meaning agent) picks the string. This classifier matches
+// INTENT TOKENS instead: the action/category/item strings are split on
+// underscores, dashes and camelCase, and a category blocks on either a
+// single-token trigger (`countersign`, `gdpr`, `purge`) or a noun+verb pair
+// (`agreement` + `execute`, in either order). The exact-string lists above are
+// kept as fast paths with better messages.
+//
+// DIRECTION OF ERROR, chosen deliberately: a false BLOCK routes an action to
+// founder review (status "deferred") — mild friction. A false PASS executes a
+// hard-stop-class action autonomously — the thing the constitution forbids
+// forever. So collisions err closed: `payment_reminder_send` defers to the
+// founder even though a reminder is benign, because "payment"+"send" is not a
+// pattern this executor should wave through on its own authority. (The
+// legitimate dunning path runs as itemType "dunning_recovery", which carries
+// none of these tokens.)
+//
+// STATED LIMIT: a purely novel euphemism ("tidy_documents" meaning erasure) can
+// still pass — token classification is not semantics. The payload bulk-scope
+// rule below narrows that (destructive verb + "all_leads"-shaped scope blocks
+// regardless of noun), and the execution switch no longer fabricates success
+// for unknown item types, so a euphemism that slips through executes nothing
+// and is recorded as unexecuted.
+
+function intentTokens(...parts: Array<string | null | undefined>): Set<string> {
+  const out = new Set<string>();
+  for (const p of parts) {
+    if (!p) continue;
+    for (const t of String(p)
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)) {
+      if (t) out.add(t);
+    }
+  }
+  return out;
+}
+
+interface HardStopIntent {
+  name: string;
+  /** Any single token blocks on its own. */
+  singles: string[];
+  /** One noun AND one verb, in any order, block together. */
+  nouns: string[];
+  verbs: string[];
+  reason: string;
+}
+
+const HARD_STOP_INTENTS: HardStopIntent[] = [
+  {
+    name: "billing/pricing",
+    singles: ["pricing", "reprice", "repricing", "discount", "discounts", "promo", "promos", "coupon", "coupons", "chargeback", "refund", "refunds", "waive", "waiver"],
+    nouns: ["price", "prices", "tier", "tiers", "plan", "plans", "subscription", "subscriptions", "billing", "invoice", "invoices", "allowance", "allowances", "quota", "quotas", "seat", "seats", "trial", "trials", "fee", "fees", "credit", "credits", "rate", "rates", "account"],
+    verbs: ["change", "modify", "update", "set", "adjust", "apply", "create", "grant", "upgrade", "downgrade", "cancel", "extend", "bump", "raise", "increase", "decrease", "lower", "override", "waive", "comp", "issue", "revoke"],
+    reason: "billing/pricing change — pricing is a founder-only hard stop",
+  },
+  {
+    name: "data deletion",
+    singles: ["delete", "deletes", "deletion", "deletions", "erase", "erasure", "purge", "purges", "wipe", "wipes", "truncate", "destroy", "expunge", "shred", "forgotten", "anonymize", "anonymise", "gdpr", "ccpa"],
+    nouns: ["record", "records", "data", "account", "accounts", "org", "orgs", "organization", "organizations", "lead", "leads", "customer", "customers", "table", "tables", "row", "rows"],
+    verbs: ["remove", "drop", "clear", "prune", "scrub", "clean", "cleanup"],
+    reason: "customer-data deletion — a founder-only hard stop",
+  },
+  {
+    name: "legal signing",
+    singles: ["sign", "signing", "signed", "signature", "signatures", "esign", "countersign", "notarize", "notarization", "loi", "docusign"],
+    nouns: ["contract", "contracts", "agreement", "agreements", "envelope", "envelopes", "document", "documents", "terms", "addendum", "lease", "deed"],
+    verbs: ["execute", "send", "accept", "bind", "countersign", "finalize", "ratify", "deliver"],
+    reason: "legally binding act — legal signing is founder-only forever",
+  },
+  {
+    name: "money movement",
+    singles: ["payout", "payouts", "disburse", "disbursement", "disbursements", "wire", "ach", "remit", "remittance"],
+    nouns: ["payment", "payments", "funds", "money", "balance", "escrow"],
+    verbs: ["transfer", "send", "move", "initiate", "execute", "release", "capture", "charge"],
+    reason: "money movement — customer money never moves autonomously",
+  },
+];
+
+function classifyHardStopIntent(tokens: Set<string>): HardStopIntent | null {
+  for (const intent of HARD_STOP_INTENTS) {
+    if (intent.singles.some((t) => tokens.has(t))) return intent;
+    const noun = intent.nouns.some((t) => tokens.has(t));
+    const verb = intent.verbs.some((t) => tokens.has(t));
+    if (noun && verb) return intent;
+  }
+  return null;
+}
+
+/** Destructive verb + an "all X"-shaped scope anywhere in the payload. */
+const BULK_SCOPE_RE = /"(?:all|entire|every)[_ ]?(?:leads|customers|records|orgs|organizations|accounts|data|notes|deals|properties)"/;
+const DESTRUCTIVE_VERB_TOKENS = ["remove", "archive", "clear", "prune", "clean", "cleanup", "scrub", "drop", "delete", "purge", "wipe"];
 
 export function checkHardGuardrails(action: {
   itemType?: string;
@@ -661,6 +775,37 @@ export function checkHardGuardrails(action: {
     return {
       blocked: true,
       reason: `Hard block: legal signing/contract execution detected (payload flag sign/execute_contract). All legally binding acts require the founder.`,
+    };
+  }
+
+  // 6. Token-level intent classification — the fail-closed layer (unit 118).
+  // The exact-string checks above are fast paths; this is the enforcement.
+  const tokens = intentTokens(
+    payload.actionType,
+    action.itemType,
+    payload.category,
+    payload.action,
+    payload.operation,
+  );
+  const intent = classifyHardStopIntent(tokens);
+  if (intent) {
+    return {
+      blocked: true,
+      reason: `Hard block: ${intent.reason} (matched intent "${intent.name}" in "${payload.actionType ?? action.itemType ?? ""}"). Requires founder approval.`,
+    };
+  }
+
+  // 7. Bulk destructive scope: a destructive verb anywhere in the action tokens
+  // plus an "all_<entities>"-shaped scope anywhere in the payload. Catches
+  // `archive_and_remove` + scope:"all_leads", which names no protected noun in
+  // its action type.
+  if (
+    DESTRUCTIVE_VERB_TOKENS.some((t) => tokens.has(t)) &&
+    BULK_SCOPE_RE.test(JSON.stringify(payload).toLowerCase())
+  ) {
+    return {
+      blocked: true,
+      reason: `Hard block: destructive action with an all-records scope. Bulk destructive operations against customer data are a founder-only hard stop.`,
     };
   }
 
@@ -1242,7 +1387,16 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
           execResult = await executeFeatureRequestApproval(item, aiDecision);
           break;
         default:
-          execResult = { success: true, detail: `Generic approval — action payload: ${JSON.stringify(item.actionPayload)}` };
+          // Refuse-not-fabricate (unit 118). This used to return success:true
+          // with a generic-approval detail string — a "committed" preview record and an audit
+          // row for an action NOTHING executed. An unknown item type reaching
+          // an approved state must be recorded as NOT run, or the audit trail
+          // manufactures activity — the defect class the no-fabrication
+          // hard-stop exists for.
+          execResult = {
+            success: false,
+            detail: `No executor is registered for item type "${item.itemType}" — nothing was executed. The approval is recorded, the action is not.`,
+          };
       }
     } catch (err: any) {
       execResult = { success: false, detail: err.message };

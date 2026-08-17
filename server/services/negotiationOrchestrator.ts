@@ -10,6 +10,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import OpenAI from "openai";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { wrapUntrustedFields } from "../ai/untrustedEnvelope";
 
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
@@ -429,10 +430,16 @@ Respond in JSON format.`;
       });
 
       // Roll up performance for the strategy that drove this thread (if linked).
+      // Scoped: the threadId arrives from the caller alongside the org, and
+      // nothing above verified the two belong together — so an outcome could be
+      // filed against another org's thread and its strategyId read back out.
       const [thread] = await db
         .select({ strategyId: negotiationThreads.strategyId })
         .from(negotiationThreads)
-        .where(eq(negotiationThreads.id, Number(threadId)))
+        .where(and(
+          eq(negotiationThreads.id, Number(threadId)),
+          eq(negotiationThreads.organizationId, Number(organizationId)),
+        ))
         .limit(1);
       if (thread?.strategyId != null) {
         await this.updateStrategyPerformance(organizationId, String(thread.strategyId));
@@ -901,10 +908,15 @@ build_negotiation_plan as your final tool to produce the structured output.`,
           if (toolCall.type !== "function") continue;
           const result = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
           toolsInvoked.push(`${toolCall.function.name}:${result}`);
+          // Tier 1B: executeTool pre-stringifies its payload, so parse it back
+          // and wrap counterparty free-text fields (thread/move rows) in the
+          // untrusted envelope before the result re-enters the model channel.
+          let payload: unknown = result;
+          try { payload = JSON.parse(result); } catch { /* non-JSON result stays a plain string */ }
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: result,
+            content: JSON.stringify(wrapUntrustedFields(payload, `tool:${toolCall.function.name}`)),
           });
         }
       }

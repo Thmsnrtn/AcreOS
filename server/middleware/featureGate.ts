@@ -19,6 +19,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { featureFlagService, buildFlagContext } from "../services/featureFlags";
 import { isFounderEmail } from "../services/founder";
+import { Errors } from "../utils/errors";
 
 export function requireFlag(flagKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -38,12 +39,55 @@ export function requireFlag(flagKey: string) {
       if (!ctx.isFounder && isFounderEmail(ctx.email)) ctx.isFounder = true;
       const enabled = await featureFlagService.isEnabled(flagKey, ctx);
       if (enabled) return next();
-      return res.status(404).json({ message: "Feature not available" });
+      return Errors.featureUnavailable(res);
     } catch {
       // DB unavailable — fail open to avoid breaking the app during initial
       // setup (mirrors the original behavior). Production should not hit
       // this path.
       return next();
+    }
+  };
+}
+
+/**
+ * The strict variant, for gates that implement a FOUNDER DECISION rather than
+ * a product feature flag.
+ *
+ * `requireFlag` above has two escape hatches that are reasonable for an
+ * ordinary flag and wrong for a governance gate:
+ *
+ *   1. **The enterprise-tier bypass.** Its own comment calls it back-compat for
+ *      legacy reseller / white-label routes. Applied to the marketplace it
+ *      means a subscription tier silently overrides the approved expansion
+ *      ladder ("no marketplace before ~25 customers") — a paid plan buying its
+ *      way past a founder decision.
+ *   2. **Failing OPEN when the flag store errors.** For a feature flag,
+ *      staying usable through a blip is the kinder default. For an expansion
+ *      gate it means a transient database error opens the marketplace.
+ *
+ * The founder bypass is deliberately KEPT: the founder must be able to look at
+ * the surface they are deciding about.
+ *
+ * Enforced by `tests/unit/expansionLadder.test.ts`, which is also what turned
+ * `expansion.marketplace-25-api-50` in the constitution registry from
+ * `prose-only` into a real backstop.
+ */
+export function requireLadderFlag(flagKey: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const email = req.user?.email || req.user?.email;
+    if (isFounderEmail(email)) return next();
+
+    // NO enterprise-tier bypass here, on purpose. See the note above.
+
+    try {
+      const ctx = buildFlagContext(req);
+      if (!ctx.isFounder && isFounderEmail(ctx.email)) ctx.isFounder = true;
+      const enabled = await featureFlagService.isEnabled(flagKey, ctx);
+      if (enabled) return next();
+      return Errors.featureUnavailable(res);
+    } catch {
+      // FAIL CLOSED. An expansion gate that opens on an error is not a gate.
+      return Errors.featureUnavailable(res);
     }
   };
 }

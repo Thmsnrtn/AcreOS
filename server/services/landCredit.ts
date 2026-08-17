@@ -1042,12 +1042,23 @@ class LandCreditScoring {
     const propId = Number(propertyId);
     if (!Number.isFinite(propId)) return [];
     try {
+      // The org is in the WHERE, not in a comparison afterwards. The previous
+      // shape fetched the row first and compared `prop.orgId` to the caller's —
+      // correct, and it still read another org's row to reach that conclusion.
+      // Putting the predicate in the query means the foreign row is never
+      // returned, and the check cannot be separated from the fetch by a later
+      // edit.
+      const orgIdNum = Number(organizationId);
+      if (!Number.isFinite(orgIdNum)) return [];
       const [prop] = await db
-        .select({ id: properties.id, orgId: properties.organizationId })
+        .select({ id: properties.id })
         .from(properties)
-        .where(eq(properties.id, propId))
+        .where(and(
+          eq(properties.id, propId),
+          eq(properties.organizationId, orgIdNum),
+        ))
         .limit(1);
-      if (!prop || String(prop.orgId) !== String(organizationId)) return [];
+      if (!prop) return [];
 
       return await db.query.landCreditScores.findMany({
         where: eq(landCreditScores.propertyId, propId),

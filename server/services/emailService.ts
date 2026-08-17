@@ -1,12 +1,19 @@
 import { SESClient, SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './fieldEncryption';
+import { readIntegrationCredentials } from './integrationCredentials';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
 import { filterSuppressed } from "./emailSuppressions";
 import { issueToken, buildUnsubscribeUrl } from "./unsubscribeTokens";
 import { reserveSend } from "./emailWarmup";
+
 import { getIdentityForSend } from "./orgEmailIdentity";
+// Type-only: erased at runtime, so the resolver module is NOT loaded at import
+// time. The value is pulled in dynamically inside the undeclared-lane guard so
+// only the undeclared path pays for it. See that block for why this file — core
+// mail — reaches into an autopilot-owned module rather than owning a second
+// copy of the rule.
+import type { CounterpartyHit } from "./autopilot/hands/counterpartyMatch";
 
 /**
  * Eleonora deliverability — Phase 1 §10 / Week 7-8.
@@ -211,17 +218,20 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
     
-    if (!integration || !integration.isEnabled || !integration.credentials?.encrypted) {
+    if (!integration || !integration.isEnabled) {
       return null;
     }
-    
-    const decrypted = decryptJsonCredentials<{
-      accessKeyId: string;
-      secretAccessKey: string;
+
+    const decrypted = readIntegrationCredentials<{
+      accessKeyId?: string;
+      secretAccessKey?: string;
       region?: string;
       fromEmail?: string;
       fromName?: string;
-    }>(integration.credentials.encrypted, orgId);
+    }>(integration, orgId, 'aws_ses');
+    if (!decrypted) {
+      return null;
+    }
     
     if (!decrypted.accessKeyId || !decrypted.secretAccessKey) {
       return null;
@@ -315,6 +325,24 @@ export interface EmailOptions {
    * Every NEW lead/buyer/borrower-facing call site MUST set "counterparty".
    */
   purpose?: 'system' | 'counterparty';
+  /**
+   * Stable key for THIS logical email, derived from durable domain identity
+   * (a dunning-attempt id, a lifecycle-step id, a note-payment notice id) —
+   * never a random value, which would defeat the mechanism on the retry it
+   * exists to protect.
+   *
+   * When supplied ALONGSIDE `organizationId`, the send runs through the
+   * outward-action boundary (server/services/actions/outwardAction.ts) and
+   * happens at most once per key: a job that dies after SES accepted the
+   * message cannot send it again. Requires `organizationId` because the claim
+   * is tenant-scoped — a platform-scoped system mail has no org to scope to and
+   * is left unprotected rather than silently claimed under a shared key.
+   *
+   * Optional so every existing call site keeps working unchanged. The count of
+   * send sites that DON'T pass one is ratcheted down by
+   * tests/unit/outwardActionCoverage.test.ts.
+   */
+  idempotencyKey?: string;
 }
 
 export interface EmailResult {
@@ -421,7 +449,67 @@ export class EmailService {
     }
   }
 
+  /**
+   * Send one email.
+   *
+   * When `options.idempotencyKey` and `options.organizationId` are both present
+   * this runs through the outward-action boundary, so a retried job cannot send
+   * the same message twice. On a REPLAY it returns success carrying the
+   * original provider message id rather than throwing — unlike physical mail,
+   * an email caller almost always just wants to know the message went out, and
+   * the id is the honest answer to that. Nothing is fabricated: the returned
+   * messageId is the one SES issued the first time.
+   */
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
+    if (options.idempotencyKey && options.organizationId) {
+      const { withOutwardAction } = await import("./actions/outwardAction");
+      return withOutwardAction<EmailResult>(
+        {
+          organizationId: options.organizationId,
+          actionKind: `email.${options.purpose ?? 'system'}`,
+          idempotencyKey: options.idempotencyKey,
+          // Everything that materially defines the message. Reusing the key
+          // with different content must be caught, not silently suppressed.
+          payload: {
+            to: options.to,
+            subject: options.subject,
+            html: options.html,
+            text: options.text,
+            from: options.from,
+            replyTo: options.replyTo,
+            purpose: options.purpose ?? 'system',
+          },
+        },
+        async () => {
+          const result = await this.performSend(options);
+          if (result.success && result.messageId) {
+            return { status: 'succeeded', externalId: result.messageId, result };
+          }
+          // A structured failure from the transport ran BEFORE anything left,
+          // or the provider rejected it outright — safe to retry. A THROWN
+          // error is different and withOutwardAction records it as ambiguous.
+          return {
+            status: 'failed',
+            error: new Error(result.error ?? 'email send failed'),
+          };
+        },
+        (externalId) => ({ success: true, messageId: externalId ?? undefined }),
+      ).catch((err) => {
+        // The boundary refuses (in-flight / ambiguous / key reused) by
+        // throwing. Surface that as a structured non-retryable failure rather
+        // than an exception, because every existing caller of sendEmail expects
+        // an EmailResult and would otherwise crash on a safety refusal.
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          retryable: false,
+        } satisfies EmailResult;
+      });
+    }
+    return this.performSend(options);
+  }
+
+  private async performSend(options: EmailOptions): Promise<EmailResult> {
     const startTime = Date.now();
     const config: RetryConfig = {
       ...DEFAULT_RETRY_CONFIG,
@@ -556,6 +644,196 @@ export class EmailService {
           attempts: 0,
           retryable: false,
         };
+      }
+    }
+
+    // ── Undeclared-lane guard — "invert the default to refuse" ────────────
+    //    (founder ruling, 2026-08-16; enforces the 2026-07-17 decision)
+    //
+    // `purpose` is OPTIONAL and this file reads it as `options.purpose ?? 'system'`,
+    // so OMITTING the field silently selected the PLATFORM lane — exactly what
+    // the 2026-07-17 decision forbids. At the time of the ruling 62 of 70 send
+    // sites declared nothing.
+    //
+    // The founder REJECTED making `purpose` required. 62 call sites answering
+    // the compiler in one pass would have stamped `system` across the codebase,
+    // converting accidental violations into DECLARED ones that look reviewed
+    // and are never re-examined. So the field stays optional and the DEFAULT is
+    // inverted instead: an UNDECLARED send whose recipient resolves to a
+    // counterparty record refuses, loudly, instead of quietly riding @acreos.io.
+    //
+    // WHEN `purpose` IS SET — either lane — this block does nothing. An explicit
+    // declaration is a decision of record and the guard does not second-guess
+    // it; `purpose: 'counterparty'` is already enforced immediately above.
+    //
+    // COST, and it is the gradient we want: the lookup runs ONLY on the
+    // undeclared path. Every labelled site skips it entirely, so declaring the
+    // lane is the CHEAP path and leaving it blank is the one that pays for a
+    // database round-trip.
+    if (options.purpose === undefined) {
+      // SAME-ORG ONLY. `counterpartyMatch` is deliberately cross-org for its
+      // other consumer (the autopilot hand, where the question is "is this
+      // anybody's counterparty anywhere"). Here the opposite scoping is
+      // correct, and the difference is not an oversight: one person can
+      // legitimately be an AcreOS user AND appear in a DIFFERENT org's leads
+      // table. A cross-org hit is not THIS send's counterparty, and refusing on
+      // it would block mail to a real paying customer. The autopilot hand can
+      // afford that false positive — it guards one founder-tapped action; this
+      // sits on every send in the system and cannot.
+      //
+      // No `organizationId` on the send means a hit could never be attributed
+      // to this send's tenant, so it could never produce a refusal. That is
+      // TREATED AS NO MATCH, and the lookup is skipped rather than paid for and
+      // discarded. It is a real hole in the guard — an undeclared, org-less
+      // send to a counterparty still goes out — written down rather than
+      // implied away. The rule remains separately enforced by the explicit
+      // `purpose: 'counterparty'` labels at the known deal-mail sites.
+      if (options.organizationId !== undefined) {
+        let sameOrgHits: Array<{ address: string; hit: CounterpartyHit }> = [];
+        try {
+          // Dynamic import so the undeclared path pays for loading the resolver
+          // and the labelled path does not. ONE resolver, shared with the
+          // autopilot hand — a second implementation of this rule is how the
+          // two copies drift apart.
+          const { counterpartyMatch } = await import('./autopilot/hands/counterpartyMatch');
+          // allSettled, NOT all: on a multi-recipient send one address's lookup
+          // rejecting must not discard a GENUINE match on another address. With
+          // Promise.all a single rejection aborts the batch, the catch below
+          // fires, and the whole send fails open — which quietly widens
+          // "infrastructure error" from one recipient to all of them.
+          const settled = await Promise.allSettled(
+            toAddresses.map(async (address) => ({ address, hit: await counterpartyMatch(address) })),
+          );
+          const resolved = settled
+            .filter((s): s is PromiseFulfilledResult<{ address: string; hit: CounterpartyHit | null }> =>
+              s.status === 'fulfilled')
+            .map((s) => s.value);
+          if (settled.length !== resolved.length) {
+            // EVERY lookup failing is the total-failure case the outer catch
+            // used to own before allSettled was introduced, so it keeps that
+            // marker — the invariant "the guard went blind and the send
+            // proceeded" is unchanged and stays greppable under one name.
+            // A PARTIAL failure is a genuinely new state and gets its own
+            // marker: some addresses were checked and some were not, which is
+            // strictly more informative than pretending the whole batch failed.
+            const total = resolved.length === 0;
+            // Carry the ORIGINAL error, don't drop it. allSettled moves the
+            // rejection out of the catch block, and the reason a fail-open is
+            // acceptable at all is that it is loud — a marker with no cause
+            // attached is half a signal.
+            const firstReason = settled.find(
+              (x): x is PromiseRejectedResult => x.status === 'rejected',
+            )?.reason;
+            logger.error(
+              total
+                ? '[EmailService] undeclared_lane_guard_fail_open — every recipient lookup failed, so the lane could not be checked. FAILING OPEN: the send proceeds on the platform identity. If this is sustained, undeclared counterparty mail is going out unchecked.'
+                : '[EmailService] undeclared_lane_guard_partial — a recipient lookup failed and that address was not checked. FAILING OPEN for it; the checked addresses were still enforced.',
+              firstReason instanceof Error ? firstReason : undefined,
+              {
+                metadata: {
+                  // Structured marker, not a substring of the message: a
+                  // greppable field survives message rewording, and the test
+                  // pins THIS rather than the prose.
+                  marker: total
+                    ? 'undeclared_lane_guard_fail_open'
+                    : 'undeclared_lane_guard_partial',
+                  organizationId: options.organizationId,
+                  checked: resolved.length,
+                  total: settled.length,
+                },
+              },
+            );
+          }
+          const candidates = resolved.filter(
+            (r): r is { address: string; hit: CounterpartyHit } =>
+              r.hit !== null && r.hit.organizationId === options.organizationId,
+          );
+
+          // ── AN ORG'S OWN PEOPLE ARE THE `system` LANE, BY DEFINITION ──────
+          // The founder rule defines `system` as "AcreOS talking to its own
+          // users". BEING A LEAD AND BEING A USER ARE NOT MUTUALLY EXCLUSIVE,
+          // and the first cut of this guard treated them as if they were —
+          // refusing on a same-org counterparty hit with no membership check at
+          // all. That is a live false positive, not a theoretical one:
+          //   * growthAutomation's six sends all target getOwnerEmail(org.id),
+          //     which reads teamMembers.email WHERE role='owner';
+          //   * routes-campaigns' TEST-SEND mails the logged-in user, and
+          //     adding yourself as a lead is the ORDINARY way to test campaign
+          //     rendering — so the guard would break the one feature whose
+          //     entire job is "email this to me".
+          // Refusing a customer's own mail to protect them from their own mail
+          // is a worse outcome than the violation this guard exists to catch.
+          if (candidates.length > 0) {
+            const { orgMemberAddresses } = await import('./orgMemberAddresses');
+            const members = await orgMemberAddresses(options.organizationId, candidates.map((c) => c.address));
+            sameOrgHits = candidates.filter((c) => !members.has(c.address.toLowerCase()));
+          }
+        } catch (error) {
+          // ── FAIL OPEN. DO NOT "FIX" THIS CLOSED. ──────────────────────────
+          // This is deliberately the OPPOSITE of the autopilot hand's guard
+          // (server/services/autopilot/hands/send-email.ts), which fails CLOSED
+          // on the same lookup. The asymmetry is the point.
+          //
+          // The autopilot guard sits on ONE founder-tapped action: a false
+          // block there defers a single send to founder review. THIS guard sits
+          // on EVERY send in the product, including password resets, email
+          // verification, payment receipts and dunning. Failing closed here
+          // means a database blip stops all system mail — a large, certain,
+          // self-inflicted outage.
+          //
+          // Failing open leaves us in exactly the state that shipped for
+          // months: the pre-guard behaviour. That is a smaller, already-accepted
+          // risk, and the rule stays separately enforced by the explicit
+          // `purpose: 'counterparty'` labels at the known sites. A guard is a
+          // net, not the floor.
+          //
+          // Only an INFRASTRUCTURE ERROR fails open. A positive match below
+          // still fails CLOSED.
+          logger.error(
+            '[EmailService] undeclared-lane-guard lookup failed — FAILING OPEN, send proceeds on the platform lane',
+            error,
+            {
+              source: 'email-lane-guard',
+              metadata: {
+                marker: 'undeclared_lane_guard_fail_open',
+                organizationId: options.organizationId,
+                recipients: toAddresses.length,
+              },
+            },
+          );
+        }
+
+        const refusal = sameOrgHits[0];
+        if (refusal) {
+          logger.warn('[EmailService] undeclared send refused — recipient is this org\'s counterparty', {
+            source: 'email-lane-guard',
+            metadata: {
+              marker: 'undeclared_lane_guard_refusal',
+              organizationId: options.organizationId,
+              matchedKind: refusal.hit.kind,
+              matchedRecordId: refusal.hit.recordId,
+              counterpartyOrganizationId: refusal.hit.organizationId,
+            },
+          });
+          // Developer-facing on purpose: nobody but the author of the call site
+          // can decide which lane this send belongs to, and this string is what
+          // they will read in the failure.
+          return {
+            success: false,
+            error:
+              `Undeclared send lane. The recipient (${refusal.address}) resolves to a counterparty record of ` +
+              `THIS org — ${refusal.hit.kind} #${refusal.hit.recordId} in org ${refusal.hit.organizationId}. ` +
+              `Omitting \`purpose\` silently selects the platform @acreos.io sender, which is reserved for system ` +
+              `mail (founder decision, 2026-07-17), so an undeclared counterparty send refuses instead of ` +
+              `defaulting (founder ruling, 2026-08-16). Fix the CALL SITE: set \`purpose: 'counterparty'\` if this ` +
+              `is deal mail — and connect the org's own email identity (Settings → Connections) so it can go out ` +
+              `on their sender — or set \`purpose: 'system'\` if the match is wrong and this really is AcreOS ` +
+              `talking to its own user. Nothing was sent.`,
+            errorType: 'configuration_error',
+            attempts: 0,
+            retryable: false,
+          };
+        }
       }
     }
 
@@ -760,6 +1038,16 @@ export class EmailService {
       subject?: string;
       templateData: Record<string, any>;
       organizationId?: number;
+      /**
+       * Lane for the underlying send (founder decision, 2026-07-17). Forwarded
+       * verbatim to sendEmail — this wrapper does NOT decide the lane, because
+       * only the call site knows whether the recipient is one of AcreOS's own
+       * users or one of the customer's counterparties. Omitted here means
+       * omitted there, so the sendEmail default ("system") still applies and a
+       * miswired lane stays visible as an absent field rather than an
+       * unreviewable explicit "system".
+       */
+      purpose?: 'system' | 'counterparty';
     }
   ): Promise<EmailResult> {
     const templates: Record<string, { subject: string; html: string }> = {
@@ -816,6 +1104,7 @@ export class EmailService {
       html: template.html,
       organizationId: options.organizationId,
       transactional,
+      purpose: options.purpose,
     });
   }
 

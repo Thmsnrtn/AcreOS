@@ -228,8 +228,8 @@ export default function LotPricingPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3 max-w-xl">
             <div>
-              <Label className="text-xs">Ruleset name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
+              <Label className="text-xs" htmlFor="lot-ruleset-name">Ruleset name</Label>
+              <Input id="lot-ruleset-name" value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
             </div>
             <div>
               <Label className="text-xs">Base price source</Label>
@@ -243,8 +243,9 @@ export default function LotPricingPage() {
             </div>
             {basePriceSource === "fixed_per_acre" && (
               <div className="col-span-2">
-                <Label className="text-xs">Fixed $ per acre (cents)</Label>
+                <Label className="text-xs" htmlFor="lot-fixed-per-acre">Fixed $ per acre (cents)</Label>
                 <Input
+                  id="lot-fixed-per-acre"
                   type="number"
                   value={fixedPerAcreCents}
                   onChange={(e) => setFixedPerAcreCents(e.target.value)}
@@ -289,8 +290,9 @@ export default function LotPricingPage() {
                   </Select>
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Threshold</Label>
+                  <Label className="text-xs" htmlFor={`lot-rule-${idx}-threshold`}>Threshold</Label>
                   <Input
+                    id={`lot-rule-${idx}-threshold`}
                     value={String(r.threshold ?? "")}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -301,8 +303,9 @@ export default function LotPricingPage() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Premium %</Label>
+                  <Label className="text-xs" htmlFor={`lot-rule-${idx}-premium`}>Premium %</Label>
                   <Input
+                    id={`lot-rule-${idx}-premium`}
                     type="number"
                     step="0.01"
                     value={(r.premiumPct * 100).toFixed(2)}
@@ -313,8 +316,9 @@ export default function LotPricingPage() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Label</Label>
+                  <Label className="text-xs" htmlFor={`lot-rule-${idx}-label`}>Label</Label>
                   <Input
+                    id={`lot-rule-${idx}-label`}
                     value={r.label ?? ""}
                     onChange={(e) => {
                       const next = [...rules]; next[idx] = { ...next[idx], label: e.target.value }; setRules(next);

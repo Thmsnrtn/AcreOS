@@ -100,6 +100,7 @@ import {
 import { logger } from "../../utils/logger";
 import { enqueueDispatch } from "../solene/dispatchQueue";
 
+import { redactCredentials } from "../../utils/redactCredentials";
 // ============================================================================
 // CONSTANTS — externalized so tests can introspect + so the citations are
 // reviewable in a single place (Beatrice's "every finding cites the rule" rule)
@@ -427,37 +428,15 @@ export async function runPaxAudit(
 
 // Token-prefix sanitizer. Matches the prefix list specified in the
 // phase-c contract: sk_, pk_, phc_, phx_, ghp_, gho_, AKIA, ASIA + "Bearer ".
-// Each match is replaced with "[REDACTED]" — we never log the value, never
-// echo the length, never preserve a digest in-line. The prefix-followed-by-
-// alnum-or-underscore-or-hyphen pattern is intentionally tight so we don't
-// over-redact a free-form sentence that happens to start with the letters.
-const CREDENTIAL_PATTERNS: RegExp[] = [
-  /\bsk_[A-Za-z0-9_-]{4,}\b/g,
-  /\bpk_[A-Za-z0-9_-]{4,}\b/g,
-  /\bphc_[A-Za-z0-9_-]{4,}\b/g,
-  /\bphx_[A-Za-z0-9_-]{4,}\b/g,
-  /\bghp_[A-Za-z0-9_-]{4,}\b/g,
-  /\bgho_[A-Za-z0-9_-]{4,}\b/g,
-  /\bAKIA[A-Z0-9]{4,}\b/g,
-  /\bASIA[A-Z0-9]{4,}\b/g,
-  /Bearer\s+[A-Za-z0-9._~+/=-]{4,}/g,
-];
-
 /**
- * Inline credential redactor. Replaces every known secret-prefixed token
- * with the literal string "[REDACTED]". Exported for the test suite.
- *
- * NOTE: this does NOT import constitutionalGuard.sanitizeEvidence — that
- * file is frozen under the phase-C dispatch-lock policy. The patterns
- * below are an independent copy of the prefix list specified in the
- * phase-C contract.
+ * Delegates to THE credential redactor (unit 120 — one pattern list,
+ * everywhere; six independent copies used to disagree about Slack tokens,
+ * JWTs and gho_). The phase-C dispatch-lock policy freezing
+ * constitutionalGuard is untouched: the shared util is not that surface.
+ * Exported for the test suite.
  */
 export function sanitizeCredentials(input: string): string {
-  let out = input;
-  for (const re of CREDENTIAL_PATTERNS) {
-    out = out.replace(re, "[REDACTED]");
-  }
-  return out;
+  return redactCredentials(input);
 }
 
 export interface BuildPaxAuditReviewPromptArgs {

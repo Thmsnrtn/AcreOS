@@ -7,7 +7,7 @@
 // refactor. Methods are merged into DatabaseStorage.prototype at
 // construction time; `this` refers to the full DatabaseStorage instance.
 
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   playbookInstances,
@@ -98,14 +98,37 @@ export const growthConfigRepo = {
     return await db.select().from(platformFeatureFlags).orderBy(platformFeatureFlags.label);
   },
 
+  /**
+   * Reads the CANONICAL column. This filtered on `enabled` alone, which is the
+   * back-compat mirror — a flag set to a targeted state (`beta`, `tier:pro`)
+   * through featureFlagService has `enabled: false` and is genuinely on for
+   * somebody, and this read called it off.
+   *
+   * `state <> 'off'` rather than `state = 'on'` deliberately: this method
+   * answers "which flags are not fully off", and a targeted flag belongs in that
+   * answer. Its only caller is the founder growth console.
+   */
   async getEnabledFeatureFlags(this: DatabaseStorage): Promise<PlatformFeatureFlag[]> {
     return await db.select().from(platformFeatureFlags)
-      .where(eq(platformFeatureFlags.enabled, true));
+      .where(ne(platformFeatureFlags.state, "off"));
   },
 
+  /**
+   * WRITES BOTH COLUMNS. `enabled` is back-compat; `state` is canonical —
+   * `featureFlags.rowToFlag` reads `state` and falls back to `enabled` only when
+   * `state` is NULL, which no row written since the migration is. Setting
+   * `enabled` alone therefore changed nothing any consumer reads, while
+   * returning a row that said otherwise.
+   *
+   * The direction that mattered: `enabled: false` on a flag whose `state` is
+   * "on" left the feature ON for every customer while the console reported it
+   * off. `feature_marketplace` and `feature_capital_markets` sit behind
+   * `requireLadderFlag`, so that is a founder believing they closed an expansion
+   * gate that is still open.
+   */
   async updateFeatureFlag(this: DatabaseStorage, key: string, enabled: boolean): Promise<PlatformFeatureFlag | undefined> {
     const [updated] = await db.update(platformFeatureFlags)
-      .set({ enabled, updatedAt: new Date() })
+      .set({ enabled, state: enabled ? "on" : "off", updatedAt: new Date() })
       .where(eq(platformFeatureFlags.key, key))
       .returning();
     return updated;
