@@ -23,7 +23,25 @@ import {
   type InsertDataSource,
   type InsertDiscoveredEndpoint,
 } from "@shared/schema";
+import { normalizeParcelRef } from "@shared/parcel/parcelRef";
+import { logger } from "../utils/logger";
 import type { DatabaseStorage } from "../storage";
+
+/**
+ * Match a stored county against a parcelRef-normalised county name.
+ *
+ * TOLERANT ON READ, CANONICAL ON WRITE. `upsertParcelSnapshot` used to store
+ * `...data` verbatim, so existing rows carry whatever the caller passed —
+ * "Travis", "travis" or "Travis County". Matching only the canonical form would
+ * turn every one of those into a permanent cache miss.
+ *
+ * The old SQL tried to do this with `REPLACE(county, ' County', '')`, which is
+ * CASE-SENSITIVE in Postgres and therefore could not strip the suffix from a
+ * row this same file had lower-cased on the way in. Comparing against both
+ * accepted spellings is exact, needs no regex, and cannot silently half-work.
+ */
+const countyMatches = (normalizedCounty: string) =>
+  sql`LOWER(${parcelSnapshots.county}) IN (${normalizedCounty}, ${`${normalizedCounty} county`})`;
 
 export const gisRepo = {
   // County GIS Endpoints
@@ -305,57 +323,107 @@ export const gisRepo = {
   },
 
   // Parcel Snapshots (Cache)
+  //
+  // ONE definition of "the same parcel" — shared/parcel/parcelRef.ts. Both
+  // functions below used to carry a FOURTH competing normalisation (APN
+  // stripped of "-" and whitespace then lower-cased), and `parcel_snapshots` is
+  // the SAME TABLE `services/dueDiligence.ts` reads with the STRICT rule. The
+  // two disagreed about live rows:
+  //
+  //   · APN punctuation — this file collapsed "12-345" and "12345" into one
+  //     parcel; dueDiligence keeps them distinct. In a county where the
+  //     separator is significant that is a WRONG MERGE, and a wrong merge in a
+  //     data cache serves one parcel's acreage, zoning and owner for another.
+  //   · The county suffix — this file stripped " County", dueDiligence did not,
+  //     so a row written by one was invisible to the other.
+  //   · This file disagreed WITH ITSELF: the JS normalisation used
+  //     `/ county$/i` (case-insensitive) while the SQL used a case-SENSITIVE
+  //     `REPLACE(county, ' County', '')`, so a row whose county was stored
+  //     lower-case could not be found by the query that wrote it.
+  //
+  // The suffix rule now lives in parcelRef (it was open-coded at four sites),
+  // so this reads exactly what dueDiligence reads.
+  //
+  // THE SQL STAYS SUFFIX-TOLERANT on purpose. Rows already in the table were
+  // written un-normalised — the upsert below used to store `...data` verbatim,
+  // so a county may be "Travis", "travis" or "Travis County". Matching only the
+  // canonical form would orphan them into permanent cache misses. New writes
+  // are normalised, so this tolerance is transitional, not the rule.
   async getParcelSnapshot(this: DatabaseStorage, apn: string, state: string, county: string, maxAgeDays: number = 30): Promise<ParcelSnapshot | undefined> {
-    const normalizedApn = apn.replace(/[-\s]/g, "").toLowerCase();
-    const normalizedState = state.toUpperCase();
-    const normalizedCounty = county.toLowerCase().replace(/ county$/i, "").trim();
-    
+    const ref = normalizeParcelRef({ state, county, apn });
+    if (!ref.ok) {
+      // A cache MISS, not an error: the caller re-fetches upstream and the
+      // refusal costs one lookup. Guessing an identity would cost the wrong
+      // parcel's data being served as this one's.
+      logger.warn("[gisRepo] parcel snapshot lookup refused — unusable natural key", {
+        metadata: { problems: ref.problems, __pii_safe: true },
+      });
+      return undefined;
+    }
+
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
-    
+
     const [snapshot] = await db
       .select()
       .from(parcelSnapshots)
       .where(
         and(
-          sql`LOWER(REPLACE(REPLACE(${parcelSnapshots.apn}, '-', ''), ' ', '')) = ${normalizedApn}`,
-          eq(parcelSnapshots.state, normalizedState),
-          sql`LOWER(REPLACE(${parcelSnapshots.county}, ' County', '')) = ${normalizedCounty}`,
+          // UPPER, punctuation PRESERVED — identical to dueDiligence.ts.
+          sql`UPPER(${parcelSnapshots.apn}) = ${ref.ref.apn}`,
+          eq(parcelSnapshots.state, ref.ref.state),
+          countyMatches(ref.ref.county),
           gte(parcelSnapshots.fetchedAt, cutoffDate)
         )
       )
       .orderBy(desc(parcelSnapshots.fetchedAt))
       .limit(1);
-    
+
     return snapshot;
   },
 
   async upsertParcelSnapshot(this: DatabaseStorage, data: InsertParcelSnapshot): Promise<ParcelSnapshot> {
-    const normalizedApn = data.apn.replace(/[-\s]/g, "");
-    const normalizedState = data.state.toUpperCase();
-    const normalizedCounty = data.county.toLowerCase().replace(/ county$/i, "").trim();
-    
+    const ref = normalizeParcelRef({ state: data.state, county: data.county, apn: data.apn });
+    if (!ref.ok) {
+      // REFUSES rather than storing a row under a key nothing can find again.
+      // The old code normalised for the LOOKUP but wrote `...data` verbatim, so
+      // the stored key and the search key were different strings — which is how
+      // one parcel accumulated several snapshots and each read saw a different
+      // freshness.
+      throw new Error(
+        `upsertParcelSnapshot: unusable parcel natural key (${ref.problems.join(", ")})`,
+      );
+    }
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
-    
+
     const [existing] = await db
       .select()
       .from(parcelSnapshots)
       .where(
         and(
-          sql`LOWER(REPLACE(REPLACE(${parcelSnapshots.apn}, '-', ''), ' ', '')) = ${normalizedApn.toLowerCase()}`,
-          eq(parcelSnapshots.state, normalizedState),
-          sql`LOWER(REPLACE(${parcelSnapshots.county}, ' County', '')) = ${normalizedCounty}`
+          sql`UPPER(${parcelSnapshots.apn}) = ${ref.ref.apn}`,
+          eq(parcelSnapshots.state, ref.ref.state),
+          countyMatches(ref.ref.county)
         )
       )
       .limit(1);
-    
+
+    // The NORMALISED triple is what gets stored, so the next lookup searches for
+    // the string that is actually there. Spread first so these win over `data`.
+    const normalized = {
+      state: ref.ref.state,
+      county: ref.ref.county,
+      apn: ref.ref.apn,
+    };
+
     if (existing) {
       const [updated] = await db
         .update(parcelSnapshots)
         .set({
           ...data,
-          state: normalizedState,
+          ...normalized,
           fetchedAt: new Date(),
           expiresAt,
           updatedAt: new Date(),
@@ -368,7 +436,7 @@ export const gisRepo = {
         .insert(parcelSnapshots)
         .values({
           ...data,
-          state: normalizedState,
+          ...normalized,
           fetchedAt: new Date(),
           expiresAt,
         })

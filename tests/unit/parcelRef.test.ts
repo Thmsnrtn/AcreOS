@@ -79,6 +79,30 @@ describe("normalizeParcelRef", () => {
     });
   });
 
+  it('treats "Travis County" and "Travis" as one county', () => {
+    // Callers genuinely supply both spellings — county GIS endpoints return the
+    // long form, CSV imports usually the short one. Two identities for one
+    // place silently splits every downstream comparison.
+    expect(sameParcel(ref("TX", "Travis County", "12-345"), ref("TX", "Travis", "12-345"))).toBe(
+      true,
+    );
+    expect(ref("TX", "TRAVIS COUNTY", "12-345").county).toBe("travis");
+  });
+
+  it("strips the suffix only when something is left of the name", () => {
+    // A county whose whole name is "County" must not normalise to the empty
+    // string and then be refused as county-missing: that turns a merely odd
+    // input into an unusable one.
+    expect(ref("TX", "County", "12-345").county).toBe("county");
+    expect(ref("TX", "  County  ", "12-345").county).toBe("county");
+  });
+
+  it("does not strip a county whose name merely ENDS in those letters", () => {
+    // The rule is a trailing WORD, not a substring — otherwise a real place
+    // name is quietly truncated into a different one.
+    expect(ref("TX", "Montcounty", "12-345").county).toBe("montcounty");
+  });
+
   it("REFUSES with reasons instead of guessing", () => {
     // A fabricated identity attaches evidence, decisions and money to the wrong
     // piece of land. Refusing is the only safe answer.

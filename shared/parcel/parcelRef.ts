@@ -41,7 +41,10 @@ export interface RawParcelRef {
 export interface ParcelRef {
   /** Two-letter state code, upper-case. */
   readonly state: string;
-  /** County name, lower-case, internal whitespace collapsed. */
+  /**
+   * County name, lower-case, internal whitespace collapsed, with a trailing
+   * "county" word removed — "Travis County" and "Travis" are one place.
+   */
   readonly county: string;
   /** APN, upper-case, trimmed, whitespace collapsed. Punctuation KEPT. */
   readonly apn: string;
@@ -60,6 +63,29 @@ export type ParcelRefResult =
   | { ok: false; problems: ParcelRefProblem[] };
 
 const collapse = (s: string): string => s.trim().replace(/\s+/g, " ");
+
+/**
+ * Strip a trailing "county" word from a county name.
+ *
+ * "Travis" and "Travis County" are the same county, and callers genuinely
+ * supply both — county GIS endpoints return the long form, CSV imports usually
+ * the short one. Without this, they are two identities for one place, and every
+ * downstream comparison silently splits.
+ *
+ * This is not a new convention; it is the one already in force, previously
+ * open-coded at four sites with four spellings (`gisRepo.ts` twice, once in JS
+ * with `/ county$/i` and once in SQL with a CASE-SENSITIVE `REPLACE(…,' County','')`
+ * that could not strip its own JS-normalised writes; `parcel.ts:290`;
+ * `publicParcelReport.ts`'s slug). Putting it here is what makes them agree.
+ *
+ * ONLY STRIPS WHEN SOMETHING REMAINS. A county whose entire name is "County"
+ * would otherwise normalise to the empty string and then be refused as
+ * `county-missing` — turning a merely odd input into an unusable one.
+ */
+const stripCountySuffix = (s: string): string => {
+  const stripped = s.replace(/\s+county$/i, "").trim();
+  return stripped === "" ? s : stripped;
+};
 
 /**
  * Normalise a raw natural key, or REFUSE with reasons.
@@ -82,7 +108,7 @@ export function normalizeParcelRef(raw: RawParcelRef): ParcelRefResult {
   if (!stateRaw) problems.push("state-missing");
   else if (!/^[A-Za-z]{2}$/.test(stateRaw)) problems.push("state-malformed");
 
-  const countyRaw = collapse(raw.county ?? "");
+  const countyRaw = stripCountySuffix(collapse(raw.county ?? ""));
   if (!countyRaw) problems.push("county-missing");
 
   const apnRaw = collapse(raw.apn ?? "");

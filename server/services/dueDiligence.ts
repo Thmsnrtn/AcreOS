@@ -293,7 +293,13 @@ async function getOrCreateParcelSnapshot(
     .where(
       and(
         eq(parcelSnapshots.state, normalizedState),
-        sql`LOWER(${parcelSnapshots.county}) = ${normalizedCounty}`,
+        // Suffix-tolerant for the same reason gisRepo.ts is: rows already in
+        // this table were written before either writer normalised, so a county
+        // may be stored as "Travis", "travis" or "Travis County". parcelRef now
+        // strips the suffix, so the canonical form alone would orphan the long
+        // spellings into permanent cache misses. New writes are canonical, so
+        // this tolerance is transitional.
+        sql`LOWER(${parcelSnapshots.county}) IN (${normalizedCounty}, ${`${normalizedCounty} county`})`,
         // UPPER(), like the LOWER() on county above: the stored case is whatever
         // some earlier caller happened to pass, so a case-sensitive eq() here is
         // what created duplicate rows in the shared cache.

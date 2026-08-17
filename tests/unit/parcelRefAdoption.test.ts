@@ -364,6 +364,71 @@ describe("taxDelinquentPipeline: the re-key MERGES and never SPLITS", () => {
   });
 });
 
+describe("the two readers of `parcel_snapshots` agree about which row is which", () => {
+  // The defect this ends: `gisRepo.ts` and `dueDiligence.ts` both read and write
+  // ONE table with DIFFERENT identity rules, so each could miss rows the other
+  // had written and write duplicates the other could not find. Two writers
+  // disagreeing about identity is not untidiness — in a data cache it serves
+  // one parcel's acreage, zoning and owner under another parcel's name.
+  const gis = readFileSync(
+    path.resolve(__dirname, "../../server/storage/gisRepo.ts"),
+    "utf8",
+  );
+  const dd = readFileSync(
+    path.resolve(__dirname, "../../server/services/dueDiligence.ts"),
+    "utf8",
+  );
+
+  it("both match the APN with UPPER() and punctuation PRESERVED", () => {
+    const apnPredicate = "UPPER(${parcelSnapshots.apn}) = ";
+    expect(gis, "gisRepo no longer matches the APN the way dueDiligence does").toContain(
+      apnPredicate,
+    );
+    expect(dd, "dueDiligence no longer matches the APN the way gisRepo does").toContain(
+      apnPredicate,
+    );
+  });
+
+  it("NEITHER strips APN punctuation in SQL any more", () => {
+    // `REPLACE(REPLACE(apn,'-',''),' ','')` is the wrong-merge rule: it makes
+    // "12-345" and "12345" one row in counties where the separator is
+    // significant, and a wrong merge cannot be undone from the merged data.
+    for (const [name, src] of [["gisRepo", gis], ["dueDiligence", dd]] as const) {
+      expect(
+        /REPLACE\s*\(\s*REPLACE\s*\(/i.test(src),
+        `${name} strips APN punctuation in SQL again — that merges distinct parcels`,
+      ).toBe(false);
+    }
+  });
+
+  it("both tolerate the stored county suffix, and identically", () => {
+    // Rows predate normalisation, so "Travis", "travis" and "Travis County" all
+    // exist. Matching only the canonical form orphans the long spellings.
+    const tolerant = "IN (${normalizedCounty}, ${`${normalizedCounty} county`})";
+    expect(dd).toContain(tolerant);
+    expect(gis).toContain("IN (${normalizedCounty}, ${`${normalizedCounty} county`})");
+  });
+
+  it("no case-SENSITIVE county REPLACE survives (it could not strip its own writes)", () => {
+    // The original bug inside gisRepo: JS lower-cased the county on the way in,
+    // while the SQL looked for a capital-C ' County' — so the query could not
+    // find rows the same function had written.
+    expect(
+      /REPLACE\s*\(\s*\$\{parcelSnapshots\.county\}\s*,\s*' County'/.test(gis),
+      "the case-sensitive county REPLACE is back",
+    ).toBe(false);
+  });
+
+  it("both WRITE the normalised triple, so the stored key is the searched key", () => {
+    // The deeper half of the old defect: gisRepo normalised for the LOOKUP but
+    // stored `...data` verbatim, so the string it searched for was never the
+    // string it had written.
+    expect(gis, "gisRepo writes un-normalised parcel columns again").toContain("...normalized,");
+    expect(dd).toContain("apn: normalizedApn,");
+    expect(dd).toContain("county: normalizedCounty,");
+  });
+});
+
 // ── The adoption ratchet ────────────────────────────────────────────────────
 //
 // The two adoptions above are worth little on their own: the reason parcelRef
@@ -446,20 +511,32 @@ function scanOpenCodedSites(): { files: string[]; sites: OpenCodedSite[] } {
  * taxDelinquentPipeline.ts:262). DOWN-ONLY — when you retire one, lower this in
  * the same commit.
  *
- * What the remaining 8 are, so the next session need not re-derive them:
- *   server/storage/gisRepo.ts ×4 — a FOURTH rule (APN stripped of "-" and
- *     spaces, then lower-cased, once in JS and again in SQL) reading and
- *     writing `parcel_snapshots` — the same table dueDiligence.ts now matches
- *     with the STRICT rule. Those two disagree about that table's rows today.
+ * 8 -> 4 on 2026-08-17: `server/storage/gisRepo.ts` adopted parcelRef, retiring
+ * all four of its sites at once. Not a tidy-up — it was a FOURTH LIVE RULE
+ * (APN stripped of "-" and spaces then lower-cased, once in JS and again in
+ * SQL) reading and writing `parcel_snapshots`, the SAME table dueDiligence.ts
+ * matches with the strict rule, and the two disagreed about real rows:
+ *   · gisRepo merged "12-345" with "12345"; dueDiligence keeps them apart. A
+ *     wrong merge in a data cache serves one parcel's acreage, zoning and owner
+ *     as another parcel's.
+ *   · gisRepo stripped a " County" suffix; dueDiligence did not — so a row
+ *     written by either was invisible to the other.
+ *   · gisRepo disagreed WITH ITSELF: its JS used `/ county$/i` while its SQL
+ *     used a case-SENSITIVE `REPLACE(county,' County','')`, so it could not
+ *     find rows its own writes had lower-cased.
+ * The suffix rule moved into parcelRef (it was open-coded at four sites with
+ * four spellings), and both readers are now suffix-TOLERANT against rows
+ * written before either writer normalised.
+ *
+ * What the remaining 4 are, so the next session need not re-derive them:
  *   server/services/taxSaleCsvImport.ts ×2 — worksheet dedup on
  *     `apn.toUpperCase()` with neither state nor county in the key at all: the
  *     "APNs are not unique across counties" defect in its purest form.
  *   server/services/parcel.ts ×2 — upstream query fan-out (stripped / trimmed /
  *     leading-zero-stripped APN variants). The most defensible of the three,
  *     but `parcelMatchKey` is precisely what it is reinventing.
- * None of those files were in this unit's file set.
  */
-const PARCEL_KEY_OPEN_CODED_BASELINE = 8;
+const PARCEL_KEY_OPEN_CODED_BASELINE = 4;
 
 describe("adoption ratchet: open-coded parcel natural keys", () => {
   const { files, sites } = scanOpenCodedSites();
@@ -514,6 +591,7 @@ describe("adoption ratchet: open-coded parcel natural keys", () => {
       "server/services/taxDelinquentPipeline.ts",
       "server/services/publicParcelReport.ts",
       "server/services/dueDiligence.ts",
+      "server/storage/gisRepo.ts",
     ]) {
       expect(
         sites.filter((s) => s.file === file),
