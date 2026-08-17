@@ -104,13 +104,29 @@ CREATE INDEX IF NOT EXISTS "cam_expense_pools_org_property_period_idx"
 CREATE UNIQUE INDEX IF NOT EXISTS "cam_expense_pools_org_property_kind_period_uk"
   ON "cam_expense_pools" ("organization_id", "property_id", "pool_kind", "period_start", "period_end");
 
+-- ── `lease_id` corrected varchar → uuid, 2026-08-17 ─────────────────────────
+-- The three tables below referenced "rental_leases"("id") with a varchar
+-- column. `rental_leases.id` is created as uuid (scripts/migrate.mjs, the only
+-- place that table is created anywhere in this repository), and Postgres
+-- cannot implement a varchar → uuid foreign key. All three CREATE TABLEs
+-- therefore failed with "foreign key constraint cannot be implemented".
+--
+-- Editing a numbered migration is normally wrong. It is correct here because
+-- these three statements have never successfully executed on any database:
+-- migrate.mjs does not run migrations/*.sql at all, and on a clean rebuild
+-- this file aborts earlier still (rental_leases does not exist yet, since
+-- nothing in migrations/ creates it). There is no applied history to preserve.
+-- Verified against a real Postgres 16 rebuild before and after.
+--
+-- Pinned by tests/unit/migrateForeignKeyTypes.test.ts.
+
 -- ── 2. cam_reconciliations — the frozen year-end CAM true-up statement ──────
 -- FK to cam_expense_pools (above) — created after it so the reference resolves.
 CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
-  "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+  "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
   "period_start" date,
   "period_end" date,
   -- Frozen snapshot (all written once at generation, never recomputed on read).
@@ -144,7 +160,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cam_reconciliations_pool_lease_uk"
 CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
-  "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+  "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
   "period_start" date NOT NULL,
   "period_end" date NOT NULL,
   "gross_sales_cents" bigint NOT NULL,
@@ -167,7 +183,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "commercial_sales_reports_lease_period_uk"
 CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
-  "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+  "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
   "effective_month" date NOT NULL,
   -- 'fixed_amount' | 'fixed_pct' | 'cpi'
   "step_type" text NOT NULL,

@@ -8720,13 +8720,40 @@ const STATEMENTS = [
   // One pool of a given kind per property per period.
   `CREATE UNIQUE INDEX IF NOT EXISTS "cam_expense_pools_org_property_kind_period_uk" ON "cam_expense_pools" ("organization_id", "property_id", "pool_kind", "period_start", "period_end")`,
 
+  // ── `lease_id` is uuid, not varchar (fixed 2026-08-17) ────────────────────
+  // All three tables below declared `"lease_id" varchar REFERENCES
+  // "rental_leases"("id")`, and rental_leases.id is created as `uuid` at the
+  // top of this file. Postgres cannot implement a varchar → uuid foreign key,
+  // so ALL THREE CREATE TABLEs failed with "foreign key constraint cannot be
+  // implemented" — on any database, every time. They were not slow or
+  // partially broken; they could never exist.
+  //
+  // Measured against a real Postgres 16 rebuild: 3 unexpected failures, and
+  // because they are unexpected (not dependency-missing) they set exit 1 and
+  // ABORT THE DEPLOY. Meanwhile 54 server call sites reference the three
+  // tables. `lease_tenants` and `lease_addendums` above already use
+  // `lease_id uuid`; these three simply disagreed with them.
+  //
+  // The schema-migrate mirror gate did not catch it because it checks that a
+  // CREATE TABLE for the name EXISTS as text — not that it can execute. So all
+  // three counted as covered and none was allowlisted.
+  //
+  // Prod-safe: CREATE TABLE IF NOT EXISTS no-ops on a table that already
+  // exists, so this changes nothing for a live database either way.
+  //
+  // STILL UNRESOLVED, and it needs one query nobody has been able to run:
+  // shared/schema/rental.ts declares this whole family `varchar`, while this
+  // file creates it as `uuid` — deliberately, per the acquired_notes note
+  // above ("Drizzle's varchar+gen_random_uuid() default created the column as
+  // uuid"). Both cannot be right about production. See OWNER_DECISIONS_PENDING.
+
   // 2. cam_reconciliations — the frozen year-end CAM true-up statement. FK to
   // cam_expense_pools above (created first so the reference resolves).
   `CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
-    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
     "period_start" date,
     "period_end" date,
     "pro_rata_bps_used" integer,
@@ -8756,7 +8783,7 @@ const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
-    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
     "period_start" date NOT NULL,
     "period_end" date NOT NULL,
     "gross_sales_cents" bigint NOT NULL,
@@ -8775,7 +8802,7 @@ const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
-    "lease_id" varchar NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
+    "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
     "effective_month" date NOT NULL,
     "step_type" text NOT NULL,
     "amount_cents" bigint,
@@ -9424,6 +9451,52 @@ const EXPECTED_FAILURE_PATTERNS = [
   /type "vector" does not exist/i,
   /access method "hnsw" does not exist/i,
 ];
+
+// ── Preflight: is this an AcreOS database at all? ───────────────────────────
+// The skip-tolerance directly above is the right call for a DRIFTED PRODUCTION
+// database, but it has an emergent property nobody chose: on an EMPTY database
+// every statement's dependency is missing, so every failure classifies as
+// "expected", nothing aborts, and this script EXITS 0.
+//
+// MEASURED 2026-08-17 against a real Postgres 16 instance, empty database:
+// exit 0, 870 statements skipped, 193 of 747 tables created, and no
+// `organizations` table — the tenancy root every scoped query needs. The
+// release_command reported a clean deploy over a database missing 74% of the
+// schema.
+//
+// That also silently disarmed the disaster-recovery check. Step 5 of
+// docs/reliability/dr-runbook-postgres-restore.md verifies a restore by running
+// `migrate.mjs --dry-run` against it — and a catastrophically partial restore
+// is precisely the case that passed. The verification step could not fail.
+//
+// So: tolerate missing dependencies, but only on a database that is
+// fundamentally the right database. Below that line, skipping is not graceful
+// degradation, it is a false all-clear. This changes nothing for production,
+// where these tables have existed since migrations/0000.
+const FOUNDATIONAL_TABLES = ["organizations", "users"];
+
+{
+  const { rows } = await pool.query(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [FOUNDATIONAL_TABLES],
+  );
+  const present = new Set(rows.map((r) => r.table_name));
+  const missing = FOUNDATIONAL_TABLES.filter((t) => !present.has(t));
+  if (missing.length > 0) {
+    console.error(
+      `[migrate] REFUSING TO RUN — foundational table(s) absent: ${missing.join(", ")}.\n` +
+        "  This is not a drifted AcreOS database; it is an empty or wrong one.\n" +
+        "  Everything here would 'succeed' by skipping, which is how a 74%-empty\n" +
+        "  database once reported a clean deploy.\n" +
+        "  If you are rebuilding or verifying a restore: apply migrations/*.sql in\n" +
+        "  order starting at 0000, THEN re-run this script.\n" +
+        "  If you are pointed at production and see this, STOP — check DATABASE_URL.",
+    );
+    await pool.end().catch(() => {});
+    process.exit(1);
+  }
+}
 
 let exitCode = 0;
 const failures = [];
