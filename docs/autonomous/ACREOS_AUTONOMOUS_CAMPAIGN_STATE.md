@@ -127,11 +127,32 @@ report — the `parcel` and `plan` entries were both WRONG when checked):
    APN alone, so a state-level list rejected the second county's identically
    numbered parcel as "already on this worksheet"; the lead CSV import did the
    same across STATES. Both fixed with tests in both directions.
-4. **§55 reconciliation started.** First material survivor: "no new persona
-   verticals" — a DO-NOT-DO founder decision that had never reached
-   `shared/governance/constitution.ts` at all. Registered, and the structural
-   hole closed (the DO-NOT-DO bullet count is now pinned, so a new standing
-   decision cannot be added to CLAUDE.md without being mirrored).
+4. **§55 reconciliation started — two material survivors so far.**
+   (a) "No new persona verticals" — a DO-NOT-DO founder decision that had never
+   reached `shared/governance/constitution.ts` at all. Registered, and the
+   structural hole closed: the DO-NOT-DO bullet count is now pinned, so a new
+   standing decision cannot be added to CLAUDE.md without being mirrored.
+   (b) "The knowledge graph must never become a path around tenancy" — NOT
+   satisfied. `getAgentKnowledge` filtered on `agent_type` alone over a NOT NULL
+   tenant column, feeding every org's agent memory into what its docstring calls
+   "the agent's context for AI calls"; and three writers had never persisted a
+   row at all, each writing a `content` column that does not exist and omitting
+   NOT NULLs behind an `as any` and an empty `catch {}`. Fixed, plus the prompt
+   boundary that fix opened (customer-controlled `org.name` reaching another
+   agent's prompt — now sanitized).
+
+   **Both were found by READING an invariant and checking it by hand. No gate
+   caught either.** The knowledge-graph functions sit inside the 335-function
+   tenancy blind spot, which is the strongest argument for approving OD-3.
+
+**HOW TO CONTINUE §55.** The corpus is at
+`/tmp/.../scratchpad/prompt/ACREOS_CLAUDE_CODE_ONE_THING_AUTONOMOUS_FINAL_STATE.md`
+(re-upload if the container was recycled). It is 20,976 lines; §55 is at 1507
+and the Master Handoff begins ~1569. Do NOT read it in order — grep it for
+absolute invariants (`must never`, `never (moves|holds|touch)`, `should never`)
+and check each against code, which is what produced both survivors above.
+Dispositioned so far: idempotency keys (line 11992 — VERIFIED HOLDING: the
+unique index is org-leading and a changed `requestHash` refuses).
 
 **Do not build a new `parcels` table as the first move.** Parcel identity still
 has TWO owners: `properties` and `parcel_snapshots`. A third makes it worse.
