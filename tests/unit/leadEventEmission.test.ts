@@ -381,6 +381,54 @@ describe("lead.created fires exactly once on every creation path", () => {
     expect(new Set(created().map((e) => e.leadId)).size).toBe(2);
   });
 
+  it("POST /api/leads/csv-import — the same APN in a different STATE is not a duplicate", async () => {
+    // An APN is unique within a county, not globally. Keyed on the number
+    // alone, parcel 12345 in Texas and parcel 12345 in Oklahoma were one lead
+    // and the second import was silently counted as skippedExisting — the
+    // caller was told a real, different parcel already existed.
+    seedLead({ apn: "12345", state: "TX" });
+
+    const res = await request(app)
+      .post("/api/leads/csv-import")
+      .send({
+        rows: [
+          { firstName: "Same", lastName: "State", apn: "12345", state: "TX" },
+          { firstName: "Other", lastName: "State", apn: "12345", state: "OK" },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(
+      res.body.skippedExisting,
+      "the TX row should still be recognised as already present",
+    ).toBe(1);
+    expect(
+      res.body.imported,
+      "the OK parcel was rejected as a duplicate of the TX one",
+    ).toBe(1);
+    expect(created()).toHaveLength(1);
+    expect(created()[0].data.state).toBe("OK");
+  });
+
+  it("POST /api/leads/csv-import — the same parcel twice in one file still dedupes", () => {
+    // The other direction, so the fix cannot be "stop deduping".
+    return request(app)
+      .post("/api/leads/csv-import")
+      .send({
+        rows: [
+          { firstName: "First", lastName: "Row", apn: "777", state: "TX" },
+          { firstName: "Second", lastName: "Row", apn: "777", state: "TX" },
+          // Case and spacing must not defeat it either.
+          { firstName: "Third", lastName: "Row", apn: " 777 ", state: "tx" },
+        ],
+      })
+      .then((res) => {
+        expect(res.status).toBe(200);
+        expect(res.body.imported).toBe(1);
+        expect(res.body.skippedDuplicateInFile).toBe(2);
+      });
+  });
+
   it("POST /api/leads/import/tax-delinquent — once per batched lead", async () => {
     const res = await request(app)
       .post("/api/leads/import/tax-delinquent")

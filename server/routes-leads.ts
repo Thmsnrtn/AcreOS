@@ -1511,12 +1511,30 @@ export function registerLeadRoutes(app: Express): void {
           ),
         );
 
-        // 2) Existing-APN lookup. Org-scoped — different orgs may
+        // 2) Existing-lead lookup. Org-scoped — different orgs may
         //    legitimately have the same APN as a lead.
+        //
+        //    KEYED ON (state, apn), NOT ON THE APN ALONE. An APN is unique
+        //    within a COUNTY; keyed on the number by itself, parcel 12345 in
+        //    Texas and parcel 12345 in Oklahoma are one lead and the second
+        //    import is silently skipped as an existing duplicate. The APN list
+        //    is still what narrows the query — that is a pre-filter, not the
+        //    identity.
+        //
+        //    THIS IS STILL NOT A PARCEL IDENTITY, and saying so is the point:
+        //    this import path does not collect a county at all (it is absent
+        //    from `csvImportRowSchema` and never written, though `leads.county`
+        //    exists), so two counties in ONE state still collide. Adding county
+        //    to the import schema and mapping is what would let this use
+        //    `parcelKey` from shared/parcel/parcelRef.ts, the way
+        //    taxSaleCsvImport.ts now does. Recorded rather than implied away.
+        const leadDedupKey = (state: string | null | undefined, apn: string): string =>
+          `${(state ?? "").trim().toUpperCase()}|${apn.trim().toUpperCase()}`;
+
         let existingApns = new Set<string>();
         if (incomingApns.length > 0) {
           const existing = await db
-            .select({ apn: leads.apn })
+            .select({ apn: leads.apn, state: leads.state })
             .from(leads)
             .where(
               and(
@@ -1526,8 +1544,8 @@ export function registerLeadRoutes(app: Express): void {
             );
           existingApns = new Set(
             existing
-              .map((r) => (r.apn ?? "").trim())
-              .filter((a) => a.length > 0),
+              .filter((r) => (r.apn ?? "").trim().length > 0)
+              .map((r) => leadDedupKey(r.state, r.apn ?? "")),
           );
         }
 
@@ -1564,15 +1582,19 @@ export function registerLeadRoutes(app: Express): void {
           }
 
           if (apn) {
-            if (existingApns.has(apn)) {
+            // Both sides of both comparisons go through the same key builder,
+            // so a case or spacing difference cannot make one row two — and,
+            // more importantly, the same APN in two STATES is no longer one.
+            const dedupKey = leadDedupKey(row.state, apn);
+            if (existingApns.has(dedupKey)) {
               skippedExisting++;
               continue;
             }
-            if (seenApnInFile.has(apn)) {
+            if (seenApnInFile.has(dedupKey)) {
               skippedDuplicateInFile++;
               continue;
             }
-            seenApnInFile.add(apn);
+            seenApnInFile.add(dedupKey);
           }
 
           try {
