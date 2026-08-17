@@ -8,6 +8,7 @@
 import { db } from "../db";
 import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
 import { eq, and, ilike, inArray } from "drizzle-orm";
+import { apnQueryVariants } from "@shared/parcel/parcelRef";
 import {
   STATEWIDE_COUNTY,
   STATEWIDE_PARCEL_ENDPOINTS,
@@ -409,13 +410,11 @@ async function queryArcGISEndpoint(
 ): Promise<ParcelLookupResult | null> {
   try {
     const apnField = endpoint.apnField || "APN";
-    const cleanApn = apn.replace(/[-\s]/g, "");
-    
-    const apnVariants = [
-      cleanApn,
-      apn.trim(),
-      cleanApn.replace(/^0+/, ""),
-    ].filter((v, i, arr) => arr.indexOf(v) === i);
+    // ONE answer for "what counts as punctuation in an APN" —
+    // shared/parcel/parcelRef.ts. This was open-coded here and in the other
+    // lookup below, both stripping only /[-\s]/, so counties whose APNs
+    // separate with dots or slashes got a fan-out that was really one spelling.
+    const apnVariants = apnQueryVariants(apn);
     
     for (const apnVariant of apnVariants) {
       const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
@@ -944,13 +943,11 @@ async function lookupFromRegrid(
   }
   
   try {
-    const cleanApn = apn.replace(/[-\s]/g, "");
-    
-    const apnVariants = [
-      cleanApn,
-      apn.trim(),
-      cleanApn.replace(/^0+/, ""),
-    ].filter((v, i, arr) => arr.indexOf(v) === i);
+    // ONE answer for "what counts as punctuation in an APN" —
+    // shared/parcel/parcelRef.ts. This was open-coded here and in the other
+    // lookup below, both stripping only /[-\s]/, so counties whose APNs
+    // separate with dots or slashes got a fan-out that was really one spelling.
+    const apnVariants = apnQueryVariants(apn);
     
     let data: RegridResponse | null = null;
     

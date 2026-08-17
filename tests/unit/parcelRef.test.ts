@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  apnQueryVariants,
   normalizeParcelRef,
   parcelKey,
   parcelMatchKey,
@@ -164,6 +165,42 @@ describe("parcelKey is an identity", () => {
 
   it("the same APN in different states is a different parcel", () => {
     expect(sameParcel(ref("CA", "fresno", "1-1"), ref("TX", "fresno", "1-1"))).toBe(false);
+  });
+});
+
+describe("apnQueryVariants is a fan-out, not a key", () => {
+  it("keeps the historical order: stripped, as-given, zero-stripped", () => {
+    // Order decides which variant wins when more than one matches on the far
+    // side. Preserved from the two open-coded sites rather than improved,
+    // because reordering is a behaviour decision about live vendor data.
+    expect(apnQueryVariants("0012-345")).toEqual(["0012345", "0012-345", "12345"]);
+  });
+
+  it("strips EVERY separator, not just hyphens and spaces", () => {
+    // The defect in the code this replaced: it stripped `/[-\s]/` only, so a
+    // county whose APNs use dots or slashes got three identical-ish variants
+    // and missed parcels that were certainly there.
+    expect(apnQueryVariants("12.345.678")).toContain("12345678");
+    expect(apnQueryVariants("12/345/678")).toContain("12345678");
+  });
+
+  it("deduplicates, so an already-clean APN is one query and not three", () => {
+    expect(apnQueryVariants("12345")).toEqual(["12345"]);
+  });
+
+  it("returns NOTHING for an empty APN rather than an empty query string", () => {
+    // An empty string sent as an exact-match filter returns whatever the far
+    // side considers "unfiltered" — potentially another parcel entirely.
+    expect(apnQueryVariants("")).toEqual([]);
+    expect(apnQueryVariants("   ")).toEqual([]);
+    expect(apnQueryVariants(null)).toEqual([]);
+    expect(apnQueryVariants(undefined)).toEqual([]);
+  });
+
+  it("does not emit an empty variant when the APN is all zeros", () => {
+    // "0000" strips to "" once leading zeros go. Querying for "" is the bug
+    // above by another route.
+    expect(apnQueryVariants("0000")).not.toContain("");
   });
 });
 

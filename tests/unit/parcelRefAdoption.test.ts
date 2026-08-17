@@ -536,15 +536,22 @@ function scanOpenCodedSites(): { files: string[]; sites: OpenCodedSite[] } {
  * "already on this worksheet", and the row never imported. `county` and `state`
  * are REQUIRED import fields, so the whole key was on the row the entire time.
  *
- * What the remaining 2 are, so the next session need not re-derive them:
- *   server/services/parcel.ts ×2 — upstream query fan-out (stripped / trimmed /
- *     leading-zero-stripped APN variants). The most defensible of the set — it
- *     is deliberately trying several spellings against a vendor API rather than
- *     deciding an identity — but `parcelMatchKey` is precisely what it is
- *     reinventing, and a fan-out that disagrees with the repo's candidate rule
- *     will find rows the rest of the system then cannot match.
+ * 2 -> 0 on 2026-08-17: `server/services/parcel.ts`'s two upstream query
+ * fan-outs moved to `apnQueryVariants` in parcelRef. Those two were never
+ * deciding an identity — they generate spellings to TRY against ArcGIS and
+ * Regrid — but both stripped `/[-\s]/`, hyphens and whitespace only, so a
+ * county whose APNs separate with dots or slashes ("12.345.678") received a
+ * three-way fan-out that was really one spelling and missed parcels that were
+ * certainly there. On parcelMatchKey's alphabet the fan-out actually fans out.
+ *
+ * ZERO IS THE FLOOR, NOT A FINISH LINE. This register counts places that
+ * open-code an APN normalisation; at 0 the ratchet's only remaining job is to
+ * fail when the next one appears. That is the whole point — parcelRef exists
+ * because this rule kept being re-invented, and nothing stopped the next one.
+ * If this ever reads above 0, route the new site through
+ * shared/parcel/parcelRef.ts rather than raising the number.
  */
-const PARCEL_KEY_OPEN_CODED_BASELINE = 2;
+const PARCEL_KEY_OPEN_CODED_BASELINE = 0;
 
 describe("adoption ratchet: open-coded parcel natural keys", () => {
   const { files, sites } = scanOpenCodedSites();
@@ -601,6 +608,7 @@ describe("adoption ratchet: open-coded parcel natural keys", () => {
       "server/services/dueDiligence.ts",
       "server/storage/gisRepo.ts",
       "server/services/taxSaleCsvImport.ts",
+      "server/services/parcel.ts",
     ]) {
       expect(
         sites.filter((s) => s.file === file),

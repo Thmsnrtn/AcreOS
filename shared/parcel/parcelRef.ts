@@ -159,3 +159,36 @@ export function parcelMatchKey(ref: ParcelRef): string {
 export function sameParcel(a: ParcelRef, b: ParcelRef): boolean {
   return parcelKey(a) === parcelKey(b);
 }
+
+/**
+ * Spellings of an APN to TRY AGAINST AN EXTERNAL SOURCE, most specific first.
+ *
+ * NOT an identity and not a match key — a list of query strings. Counties and
+ * vendors disagree about punctuation and leading zeros, so a lookup that sends
+ * one spelling silently fails to find parcels that are certainly there. Each
+ * variant is used as an exact-match query on the far side; a variant that
+ * matches nothing simply costs one round trip.
+ *
+ * WHY IT LIVES HERE. It was open-coded identically at two sites in
+ * `server/services/parcel.ts` (the ArcGIS and Regrid lookups), each stripping
+ * `/[-\s]/` — hyphens and whitespace only. Real APNs also separate with dots
+ * and slashes ("12.345.678", "12/345/678"), so those counties got a fan-out
+ * that was really one spelling. Using `parcelMatchKey`'s alphabet — every
+ * non-alphanumeric — is what makes the fan-out actually fan out, and keeps the
+ * repo to ONE answer for "what counts as punctuation in an APN".
+ *
+ * ORDER IS PRESERVED FROM THE ORIGINAL (stripped, then as-given, then
+ * zero-stripped) rather than improved. Reordering changes which variant wins
+ * when more than one matches, and that is a behaviour decision about live
+ * vendor data, not a refactor.
+ *
+ * Returns [] for an APN with nothing in it — an empty query string would match
+ * whatever the far side returns for "no filter".
+ */
+export function apnQueryVariants(rawApn: string | null | undefined): string[] {
+  const given = collapse(rawApn ?? "");
+  if (!given) return [];
+  const stripped = given.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const variants = [stripped, given, stripped.replace(/^0+/, "")];
+  return variants.filter((v, i, arr) => v !== "" && arr.indexOf(v) === i);
+}
