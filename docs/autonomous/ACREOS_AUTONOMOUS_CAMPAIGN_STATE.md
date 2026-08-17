@@ -166,8 +166,35 @@ found them.
    --dry-run` now has a preflight; a restore drill (runbook step 5) would be the
    first end-to-end proof of the DR path itself.
 3. Continue the forensic priority order — **inert sovereign architecture
-   (delete), `vaService` (0 Pax guards, customer-reachable from 4 handlers),
-   email idempotency (0 of 67 call sites)** are the next-largest.
+   (delete)** and **email idempotency (0 of 67 call sites)** are the
+   next-largest.
+
+**CORRECTION — the `vaService` finding was WRONG, do not act on it.** The
+audit recorded "`vaService` = 0 Pax guards vs `executive.ts` = 20,
+customer-reachable from 4 handlers." That counted REFERENCES and read them as
+COVERAGE. Checked site by site:
+
+| file | tool-result sites | guarded |
+|---|---|---|
+| `executive.ts` | 4 | 4 |
+| `vaService.ts` | 1 | 1 |
+| `supportAgent.ts` | 1 | 1 |
+| `paxSupportResolver.ts` | 3 | 1 + 2 constant literals (`{success:true}`) |
+| `routes-founder-chat.ts` | 2 | 2 (via `wrapUntrustedFields`) |
+
+`vaService` has fewer references because it has ONE tool-call site, and that
+site is enveloped; it also carries `USER_DATA_SYSTEM_CLAUSE`. Its second prompt
+path builds from aggregate counts, not free text. There was no gap there.
+
+The gap the correct measurement found is one line, and it was in
+`routes-founder-chat.ts`: the success path wrapped customer content while the
+error path directly below fed a raw tool-error string into the model channel. A
+tool error is not automatically ours — it can be a provider echoing the record
+it choked on, or a validation error quoting the offending value. Fixed.
+
+Two lessons for whoever picks this up: a metric that counts helper references
+will misrank files by size rather than risk, and the failure path of a guarded
+function is where the guard usually goes missing.
 
 Then read `shared/architecture/canon.ts` — the `parcel`, `plan` and
 `opportunity` entries were all CORRECTED or landed on 2026-08-17.

@@ -71,7 +71,7 @@ import {
 // untrusted envelope — the <untrusted_data> doctrine in atlas-persona.ts is
 // now mechanically enforced by wrapping customer-content fields in tool
 // artifacts before they re-enter the model channel.
-import { wrapUntrustedFields } from "./ai/untrustedEnvelope";
+import { wrapUntrusted, wrapUntrustedFields } from "./ai/untrustedEnvelope";
 
 // Ensure tool side-effect registration on module import.
 import "./services/founder-chat/tools";
@@ -507,10 +507,17 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
           const errMsg = String(err?.message ?? err);
           sse(res, "tool_call_complete", { toolCallId: tc.id, ok: false, error: errMsg });
           turnState.recordToolRun({ toolName, success: false, errorClass: classifyError(errMsg) });
+          // The success path above wraps customer content before it re-enters
+          // the model channel; this path did not, and a tool error message is
+          // not automatically ours. It is whatever the failing layer produced —
+          // a provider API echoing the record it choked on, a validation error
+          // quoting the offending value, a database error naming a row. Any of
+          // those can carry text an outsider wrote, and it was arriving as
+          // trusted model input purely because the call happened to throw.
           chatMessages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify({ error: errMsg }),
+            content: JSON.stringify({ error: wrapUntrusted(errMsg, `tool-error:${toolName}`) }),
           } as ChatMsg);
         }
       }
