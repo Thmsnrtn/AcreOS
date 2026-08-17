@@ -101,13 +101,13 @@
     },
     {
       "file": "server/services/emailService.ts",
-      "line": 189,
+      "line": 190,
       "category": "jitter",
       "note": "Exponential-backoff jitter — randomness avoids thundering herd, not a fact."
     },
     {
       "file": "server/services/emailService.ts",
-      "line": 387,
+      "line": 388,
       "category": "id",
       "note": "MIME multipart boundary string — entropy for uniqueness."
     },

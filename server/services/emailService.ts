@@ -8,6 +8,7 @@ import { issueToken, buildUnsubscribeUrl } from "./unsubscribeTokens";
 import { reserveSend } from "./emailWarmup";
 
 import { getIdentityForSend } from "./orgEmailIdentity";
+import { raiseAlert } from "./alertSpine";
 // Type-only: erased at runtime, so the resolver module is NOT loaded at import
 // time. The value is pulled in dynamically inside the undeclared-lane guard so
 // only the undeclared path pays for it. See that block for why this file — core
@@ -635,6 +636,61 @@ export class EmailService {
       if (!orgCreds && !orgIdentity) {
         logger.info('[EmailService] Counterparty send refused — no connected email identity', {
           metadata: { organizationId: options.organizationId },
+        });
+        // FOUNDER ALERT, per-org (founder decision 2026-08-17, OD-2).
+        //
+        // The refusal itself is correct and is NOT weakened — the 2026-07-17
+        // ruling stands. What was missing is that it was INVISIBLE: a
+        // `logger.info` and an error string returned to a caller that, on the
+        // job paths, has nobody reading it. Two of the five lanes behind this
+        // guard are regulated correspondence (Reg Z §1026.41 periodic
+        // statements, statutory disclosures), so an org that never connects an
+        // identity silently stops sending mail it is legally obliged to send.
+        // Nothing measured how many orgs that is, because no session has had a
+        // DATABASE_URL — so the alert IS the measurement, arriving one org at a
+        // time as each is actually affected.
+        //
+        // dedupeKey is per-ORG, not per-send: the condition is "this
+        // organization cannot send counterparty mail at all", which is true
+        // once no matter how many sends hit it. Keyed per send this would page
+        // the founder once per dunning email.
+        //
+        // warning, not critical: a customer who has not finished onboarding is
+        // a configuration gap, not an outage of ours, and paging at 3am for it
+        // teaches the founder to ignore the pager. The detail names the
+        // regulated exposure so the severity is not mistaken for triviality.
+        //
+        // FIRE-AND-FORGET, AND BOTH HALVES MATTER: `void` so the refusal is not
+        // delayed by the alert spine, and `.catch` so a failing alert can never
+        // propagate into this path. The refusal below is already decided —
+        // observability must not become the thing that changes the decision.
+        void raiseAlert({
+          severity: 'warning',
+          source: 'email_byo_identity',
+          title: 'Organization cannot send counterparty mail — no connected email identity',
+          detail:
+            `Organization ${options.organizationId} attempted a counterparty send with neither ` +
+            `BYO SES credentials nor a verified sending domain, so the send was refused ` +
+            `(founder decision 2026-07-17: counterparty mail carries the customer's own identity, ` +
+            `never the platform sender). Two of the lanes behind this guard are REGULATED ` +
+            `correspondence — Reg Z §1026.41 periodic statements and statutory disclosures — so ` +
+            `while this org has no identity connected, that mail is not going out. Resolve by ` +
+            `having them connect an email account or verify a sending domain ` +
+            `(Settings → Connections).`,
+          dedupeKey: `byo-identity-missing:org:${options.organizationId}`,
+          domain: 'compliance',
+          citedReason:
+            'Founder decision 2026-07-17 (BYO send rails) + Reg Z §1026.41 periodic statement delivery',
+          subjectRef: `organization:${options.organizationId}`,
+          metadata: { organizationId: options.organizationId, __pii_safe: true },
+        }).catch((err: unknown) => {
+          logger.warn('[EmailService] BYO-identity founder alert failed to raise', {
+            metadata: {
+              organizationId: options.organizationId,
+              error: err instanceof Error ? err.message : String(err),
+              __pii_safe: true,
+            },
+          });
         });
         return {
           success: false,

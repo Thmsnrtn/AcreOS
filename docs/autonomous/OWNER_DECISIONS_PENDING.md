@@ -41,7 +41,7 @@ the deletion ledger already recorded as killed. But no session has had
 
 ---
 
-## OD-2 — DECIDED 2026-08-17: KEEP REFUSING, ADD A PER-ORG FOUNDER ALERT
+## OD-2 — DECIDED AND IMPLEMENTED 2026-08-17: KEEP REFUSING, ALERT PER ORG
 
 **Decision:** accept the current refusal behaviour, or soften it.
 
@@ -62,7 +62,28 @@ credentials nor a verified sending identity — before the next deploy that
 carries this. If the number is non-trivial, add a founder alert per affected
 org rather than softening the rule.
 
-**Blocked:** nothing in code. This is an operational verification.
+**DONE.** `emailService.ts` raises a founder alert on the refusal:
+`source: email_byo_identity`, `domain: compliance`, severity **warning** (a
+customer mid-onboarding is a configuration gap, not an outage of ours — paging
+at 3am teaches the founder to ignore the pager), deduped on
+`byo-identity-missing:org:<id>` so it fires once per ORG rather than once per
+dunning email. The detail names the Reg Z §1026.41 exposure explicitly so the
+warning is not triaged as onboarding noise.
+
+Fire-and-forget, and both halves matter: `void` so the refusal is not delayed by
+the alert spine, `.catch` so a failing alert can never propagate into the send
+path. Observability must not become the thing that changes the decision.
+
+**THE ALERT IS THE MEASUREMENT.** The blocking question was "how many orgs are
+affected", which needed a `DATABASE_URL` nobody has had. This answers it one org
+at a time, as each is actually hit — no query required, and no org discovered
+too late.
+
+9 tests, mutation-checked: a non-per-org dedupeKey fails two of them.
+
+**Blocked:** nothing. The optional query (orgs with neither `aws_ses` credentials
+nor a verified identity) would now only tell you EARLIER what the alerts will
+tell you anyway.
 
 ---
 
