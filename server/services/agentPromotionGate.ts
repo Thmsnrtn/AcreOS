@@ -19,7 +19,7 @@ import { customAutonomyRules, agentTasks } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
-const SYSTEM_ORG_ID = 1;
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 const SIMULATION_RULE_TYPE = "simulation_required";
 const MIN_SIMULATION_DAYS = 14;
 const MIN_SIMULATED_DECISIONS = 20;

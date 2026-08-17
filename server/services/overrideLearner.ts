@@ -12,6 +12,7 @@
 
 import { db } from "../db";
 import { agentOverrideLearnings, agentMemory } from "@shared/schema";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 
@@ -118,13 +119,20 @@ What should the agent learn from this rejection?`,
   // Also store as an agent memory for prompt injection
   try {
     await db.insert(agentMemory).values({
+      // NOT NULL with a foreign key. This omitted it and passed `as any` to
+      // silence the type error, so every write violated the constraint, threw,
+      // and was swallowed by the catch below — the override learner had never
+      // learned anything.
+      organizationId: SYSTEM_ORG_ID,
       agentType: context.agentCodename,
       memoryType: "warning",
       key: `override:${context.actionName}`,
-      content: learnedPattern,
+      // `value` (jsonb) is the payload column and is NOT NULL. This wrote
+      // `content`, which is not a column on `agent_memory` at all.
+      value: { pattern: learnedPattern, actionName: context.actionName },
       confidence: "0.8",
       usageCount: 0,
-    } as any);
+    });
   } catch {
     // Memory might already exist — that's fine
   }

@@ -20,7 +20,10 @@
  * This is the agent registry: seed, query, update trust, generate reports.
  */
 
+import { createHash } from "node:crypto";
 import { db } from "../db";
+import { logger } from "../utils/logger";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { companyAgents, agentMemory, type InsertCompanyAgent, type CompanyAgent } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
@@ -561,14 +564,29 @@ Respond in JSON format:
   async storeMemory(codename: string, type: string, content: string, confidence: number): Promise<void> {
     try {
       await db.insert(agentMemory).values({
+        // Three NOT NULL columns were missing and one was invented. This wrote
+        // `content`, which is NOT a column on `agent_memory`, while omitting
+        // `organization_id`, `key` and `value` — all four hidden by the `as any`
+        // and the empty catch, so `storeMemory` had never stored a memory.
+        organizationId: SYSTEM_ORG_ID,
         agentType: codename,
         memoryType: type,
-        content,
+        // Deterministic, so repeated learnings collapse instead of accumulating
+        // a row per call. There is no unique constraint on this table to lean
+        // on, so the key is what makes a repeat recognisable at all.
+        key: `${type}:${createHash("sha256").update(content).digest("hex").slice(0, 16)}`,
+        value: { content },
         confidence: confidence.toString(),
         usageCount: 0,
-      } as any);
+      });
       await this.recordActivity(codename);
-    } catch {}
+    } catch (err) {
+      logger.warn(
+        `[CompanyAgents] storeMemory(${codename}) failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**

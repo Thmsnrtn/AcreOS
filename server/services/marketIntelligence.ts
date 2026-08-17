@@ -4,6 +4,7 @@
  */
 
 import { db } from "../db";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { 
   marketMetrics, 
   marketPredictions,
@@ -1092,7 +1093,7 @@ class MarketIntelligenceService {
     
     if (significantChange || statusChange) {
       await db.insert(agentEvents).values({
-        organizationId: 1, // System-wide event
+        organizationId: SYSTEM_ORG_ID,
         eventType: "market_shift_predicted",
         eventSource: "market_intelligence",
         payload: {

@@ -38,7 +38,7 @@ const CHEAP_MODEL = MODELS.DEEPSEEK_CHAT;
 
 // System org ID used for platform-wide agent tasks that are not tied to a
 // specific customer organisation. org 1 is the founder / system org.
-const SYSTEM_ORG_ID = 1;
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 
 const log = (msg: string, meta?: Record<string, unknown>) =>
   logger.info(JSON.stringify({

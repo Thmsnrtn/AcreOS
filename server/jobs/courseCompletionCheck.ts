@@ -13,6 +13,7 @@
  */
 
 import { Worker, Queue, Job } from "bullmq";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { createHash } from "crypto";
 import { db } from "../db";
 import {
@@ -136,7 +137,7 @@ async function processEnrollment(enrollment: any): Promise<{
 
     // Upsert certificateVerification record
     await db.insert(certificateVerification).values({
-      organizationId: 1, // Academy certs may not be org-specific; use platform org
+      organizationId: SYSTEM_ORG_ID,
       certificationId: null,
       recipientName: enrollment.userId, // userId as name placeholder; enrich if user lookup available
       recipientEmail: null, // Would be resolved via user service in production

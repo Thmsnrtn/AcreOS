@@ -105,3 +105,38 @@ function-shape widening (0 → 122) and the prompt-envelope re-seed (0 → 15).
 
 **Blocked:** honest measurement of tenancy coverage. The gate's current number
 understates the debt by up to 335 function bodies.
+
+**A defect was found INSIDE this blind spot on 2026-08-17, which is the
+strongest argument for approving (a).** `agentKnowledgeGraph.ts:52/94` were both
+in the `--blind-spot` sample, and both were wrong: `getAgentKnowledge` filtered
+on `agent_type` alone over a table whose `organization_id` is NOT NULL,
+returning every tenant's agent memory into what its own docstring calls "the
+agent's context for AI calls". It was found by reading the corpus invariant
+"the knowledge graph must never become a path around tenancy" and checking it by
+hand — not by any gate. That is what 335 unread function bodies costs.
+
+---
+
+## OD-4 — `indexAnalyzer` says the platform org is 0; everything else says 1
+
+**Decision:** which organization row the index-analyzer job should act on.
+
+**State:** `shared/tenancy/systemOrg.ts` now owns `SYSTEM_ORG_ID = 1`, and seven
+call sites import it. `server/jobs/indexAnalyzer.ts:22` still declares its own
+`const PLATFORM_ORG_ID = 0` and uses it for three reads of
+`organization_integrations`.
+
+`organizations.id` is a `serial`, which starts at 1, so a row with id 0 does not
+exist unless someone inserted it deliberately. The job most likely reads nothing
+at all — and because it READS rather than writes, it fails as an empty result
+rather than an error, which is exactly how it went unnoticed.
+
+**Options:** (a) repoint it at `SYSTEM_ORG_ID`; (b) leave it, if org 0 really
+does exist and holds its integrations; (c) delete the job if the reads are dead.
+
+**Recommendation:** (a), after one query — `SELECT id FROM organizations WHERE
+id IN (0, 1)`. Deliberately NOT done blind: repointing a live job changes which
+tenant's rows it touches, and no session has had `DATABASE_URL`.
+
+**Blocked:** nothing. `agentMemoryTenancy.test.ts` pins the disagreement so it
+cannot quietly disappear while it remains true.

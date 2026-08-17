@@ -14,6 +14,7 @@
  */
 
 import { db } from "../db";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { eq, and, isNull, count, sql } from "drizzle-orm";
 import { marketMetrics, agentMemory, properties, deals, organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
@@ -85,7 +86,7 @@ async function setStagingEntries(
     );
 
   await db.insert(agentMemory).values({
-    organizationId: 1, // Sentinel org — staging rows belong to no real org; 1 = system placeholder
+    organizationId: SYSTEM_ORG_ID,
     agentType: "market_network",
     memoryType: "fact",
     key,

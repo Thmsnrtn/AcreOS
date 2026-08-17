@@ -247,7 +247,7 @@ Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "impro
         recordedAt: new Date().toISOString(),
       },
       confidence: String(Math.min(1, score / 10)),
-    } as any);
+    });
 
     // Stamp the REAL model confidence into pax_observations so the calibration
     // surface has model-derived points (not only detector heuristics). Only
