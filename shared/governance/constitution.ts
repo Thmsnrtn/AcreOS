@@ -347,6 +347,47 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     },
   },
 
+  {
+    id: "expansion.no-new-persona-verticals",
+    title: "No new persona verticals",
+    statement:
+      "The persona vertical set is closed: no new business type / persona vertical ships.",
+    category: "expansion-gate",
+    source: "CLAUDE.md DO-NOT-DO list",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/personaMapping.test.ts",
+        "shared/business-types.ts",
+        "shared/models/persona-mapping.ts",
+      ],
+      note:
+        "ADDED 2026-08-17 by the §55 raw-corpus reconciliation — this decision " +
+        "was MISSING FROM THIS REGISTRY ENTIRELY. CLAUDE.md's DO-NOT-DO list " +
+        "states it as one sentence with two halves: 'No new persona verticals, " +
+        "and no new top-level nav entries EVER'. The nav half is mirrored here " +
+        "three times (nav.customer-five-doors, nav.customer-doors-never-hidden, " +
+        "nav.founder-four-doors); the persona half was mirrored zero times. " +
+        "CLAUDE.md says the registry is 'the checkable form of what's written " +
+        "here', so a decision that never got in is invisible to anyone reading " +
+        "the checkable form — and constitution.test.ts could not notice, " +
+        "because it verifies the entries that EXIST (their pointers resolve, " +
+        "their unenforced count stays at 0) and has no way to know one is " +
+        "absent. That is the same shape as every other defect this campaign " +
+        "found: a green gate over an incomplete population. " +
+        "THE ENFORCEMENT IS REAL BUT INCIDENTAL, and is labelled ratchet-test " +
+        "rather than code-invariant for that reason: personaMapping.test.ts " +
+        "asserts `expect(BUSINESS_TYPES).toHaveLength(15)`, so a sixteenth " +
+        "vertical fails the build — but it does so inside a test about MAPPING " +
+        "COMPLETENESS ('every businessType maps to a persona and an " +
+        "investorType'), where the count reads as a fixture detail rather than " +
+        "a founder decision. Someone adding a vertical sees a number to update, " +
+        "not a standing ruling to seek permission for. Naming it here is what " +
+        "makes the number legible as the ruling it is; the honest next step is " +
+        "a message on that assertion pointing at this entry.",
+    },
+  },
+
   // ── Rails ──────────────────────────────────────────────────────────────
   {
     id: "rails.no-double-print",

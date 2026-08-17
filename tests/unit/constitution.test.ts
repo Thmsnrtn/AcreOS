@@ -354,6 +354,95 @@ describe("constitution registry — enforcement CLAIMS are backed, not just poin
   });
 });
 
+/**
+ * The hole the §55 reconciliation walked through on 2026-08-17.
+ *
+ * Everything else in this file verifies the entries that EXIST — their pointers
+ * resolve, their refs are not skipped, their unenforced count is 0. None of it
+ * can notice a standing decision that NEVER GOT INTO the registry at all, and
+ * one hadn't: CLAUDE.md's DO-NOT-DO list states "No new persona verticals, and
+ * no new top-level nav entries EVER" as one bullet with two halves. The nav half
+ * was mirrored three times. The persona half was mirrored zero times, for as
+ * long as the registry has existed.
+ *
+ * A green gate over an incomplete population is this repo's most repeated
+ * defect, and the registry was one. CLAUDE.md calls the registry "the checkable
+ * form of what's written here" — so what is written there has to be counted.
+ */
+describe("every standing decision in CLAUDE.md reached the registry", () => {
+  const claudeMd = fs.readFileSync(path.join(ROOT, "CLAUDE.md"), "utf8");
+
+  /** The bolded bullets under the DO-NOT-DO heading. */
+  const doNotDoBullets = (): string[] => {
+    const start = claudeMd.indexOf("## The DO-NOT-DO list");
+    expect(start, "the DO-NOT-DO heading is gone from CLAUDE.md").toBeGreaterThan(-1);
+    const rest = claudeMd.slice(start + 10);
+    const end = rest.indexOf("\n## ");
+    const block = end === -1 ? rest : rest.slice(0, end);
+    return block.split("\n").filter((l) => l.startsWith("- **"));
+  };
+
+  /**
+   * Pinned deliberately, and NOT derived from the registry — deriving it would
+   * make the two agree by construction and prove nothing. When the founder adds
+   * a standing decision to CLAUDE.md, mirror it in constitution.ts and raise
+   * this number in the SAME commit; that is the whole mechanism.
+   */
+  const DO_NOT_DO_BULLETS = 9;
+
+  it(`the list still has ${DO_NOT_DO_BULLETS} bullets`, () => {
+    const bullets = doNotDoBullets();
+    expect(
+      bullets.length,
+      "The DO-NOT-DO list changed size. A NEW standing decision must also be " +
+        "added to shared/governance/constitution.ts — the registry is the " +
+        "checkable form of that list, and nothing else in this file can see a " +
+        "decision that was never registered. Add the entry, then update this " +
+        "count in the same commit.\n" +
+        bullets.map((b) => `  ${b.slice(0, 100)}`).join("\n"),
+    ).toBe(DO_NOT_DO_BULLETS);
+  });
+
+  it("the registry covers each of the list's distinct subjects", () => {
+    // Keyword-per-bullet rather than a fuzzy text match: the registry states
+    // decisions in its own words, so comparing prose to prose would fail on
+    // wording. Each entry below is a subject the list names and the registry
+    // must speak to somewhere.
+    //
+    // SCANNED OVER id + title + statement ONLY — deliberately NOT the notes.
+    // The first version of this searched the whole serialized registry, and a
+    // mutation deleting the persona entry's title AND statement still passed,
+    // because another entry's NOTE happened to contain the phrase. Notes are
+    // commentary; the decision is the id, the title and the statement. A
+    // register that is satisfied by something merely MENTIONING a subject is
+    // the exact failure this test was written to stop.
+    const registryText = CONSTITUTION.map(
+      (i) => `${i.id} ${i.title} ${i.statement}`,
+    )
+      .join(" ")
+      .toLowerCase();
+    const subjects: Array<[string, string]> = [
+      ["marketplace / public API ladder", "marketplace"],
+      ["persona verticals", "persona vertical"],
+      ["top-level nav entries", "five doors"],
+      ["platform send rails", "byo"],
+      ["money custody", "custody"],
+      ["paid advertising", "ad account"],
+      ["residential comps plane", "residential-comps"],
+      ["AI destinations", "ambient"],
+      ["fabrication", "fabricat"],
+      ["founder-only hard stops", "founder-only"],
+    ];
+    const missing = subjects.filter(([, needle]) => !registryText.includes(needle));
+    expect(
+      missing.map(([label]) => label),
+      "a subject named in CLAUDE.md's DO-NOT-DO list has no voice in the " +
+        "registry. That is how `expansion.no-new-persona-verticals` was missing " +
+        "for the registry's whole life.",
+    ).toEqual([]);
+  });
+});
+
 describe("constitution ratchet — hard stops must become machine-enforced", () => {
   it("registers the six hard stops", () => {
     // The permanent hard stops from CLAUDE.md's DO-NOT-DO list: four

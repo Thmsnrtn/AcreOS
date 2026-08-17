@@ -32,7 +32,17 @@ const ALL_PERSONAS: Persona[] = [
 
 describe("persona-mapping (shared source of truth)", () => {
   it("every businessType maps to a persona and an investorType", () => {
-    expect(BUSINESS_TYPES).toHaveLength(15);
+    // THIS COUNT IS A FOUNDER DECISION, not a fixture detail. "No new persona
+    // verticals" is on CLAUDE.md's DO-NOT-DO list and is registered as
+    // `expansion.no-new-persona-verticals` in shared/governance/constitution.ts.
+    // A sixteenth business type fails here — do NOT update the number to get
+    // green; only the founder can rescind the ruling, explicitly.
+    expect(
+      BUSINESS_TYPES,
+      "The persona vertical set is CLOSED (CLAUDE.md DO-NOT-DO list; " +
+        "constitution id `expansion.no-new-persona-verticals`). Adding or " +
+        "removing a business type is a founder decision, not a test edit.",
+    ).toHaveLength(15);
     for (const bt of BUSINESS_TYPES) {
       expect(BUSINESS_TYPE_TO_PERSONA[bt], `persona for ${bt}`).toBeDefined();
       expect(BUSINESS_TYPE_TO_INVESTOR_TYPE[bt], `investorType for ${bt}`).toBeDefined();
