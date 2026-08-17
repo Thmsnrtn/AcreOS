@@ -103,7 +103,73 @@ See `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`.
 
 ## NEXT SESSION START HERE
 
-Read this file, then `shared/architecture/canon.ts` — the `parcel`, `plan` and
+**A local PostgreSQL is the single highest-leverage tool available here, and it
+is not in the container by default.** Every material finding below came from
+standing one up and RUNNING the release command, not from reading it. Do this
+first:
+
+```bash
+apt-get install -y postgresql-16-pgvector
+useradd -m pgtest
+su pgtest -c "initdb -D /home/pgtest/pgdata -U postgres --auth=trust"
+su pgtest -c "pg_ctl -D /home/pgtest/pgdata -o '-p 55432 -k /tmp' -l /tmp/pg.log start"
+# rebuild procedure: docs/reliability/dr-runbook-postgres-restore.md
+```
+
+The static gates were green over all four defects below. Executing was what
+found them.
+
+### LANDED 2026-08-17 (later session)
+
+1. **The database can be rebuilt from this repository.** Mirror-gate gaps
+   **83 → 0**, and `schemaMigrationDrift.test.ts`'s independent baseline
+   **83 → 0** as well. Proved by rebuilding a real PostgreSQL 16 and diffing the
+   live table list against the schema: 746 of 746. The 83 existed in prod only
+   via a hand-run `drizzle-kit push`; their DDL was GENERATED from the Drizzle
+   definitions (`scripts/generate-schema-ddl.ts`), never transcribed.
+   **Two passes are required** — the dependency graph is genuinely circular.
+2. **The deploy could not tell an empty database from a healthy one.**
+   `migrate.mjs` exited **0** having created 193 of 747 tables with no
+   `organizations`. Every statement's dependency was missing, so every failure
+   classified as "expected". It now refuses when foundational tables are absent
+   — which also gives the DR runbook's restore check (step 5, `--dry-run`) teeth
+   it never had.
+3. **Seven unimplementable foreign keys** (varchar → uuid), making seven tables
+   uncreatable on any database while 54+ server call sites referenced them.
+   `migrateForeignKeyTypes.test.ts` now proves every FK is implementable.
+4. **No organization could be deleted, ever.** `earnest_money_events` was made
+   append-only with rewrite RULES; a rule rewrites Postgres's OWN foreign-key
+   check queries, so `DELETE FROM organizations` aborted **for an org with zero
+   escrow rows**. That statement is the GDPR erasure path
+   (`orgDeletion.ts:122`). Replaced with a trigger; verified working.
+5. **`evidence_claims` had zero constraints** behind an "APPEND-ONLY BY
+   CONTRACT" docstring (0238), and **three source files were binary to
+   ripgrep** — including `shared/evidence/claim.ts`, so the file defining the
+   Evidence Fabric's laws was invisible to every repo-wide search.
+6. **Vertical maturity is now a projection of evidence** (`readiness.ts`).
+   13 of 15 overclaim, frozen and down-only. The shape is the finding: every
+   vertical HAS a surface; thirteen stop before a recorded decision. **The gap
+   is the loop, not the surface.**
+7. **`FOUNDRY_ACREOS_CROSS_POLLINATION.md`** — 3 dispositioned, 5 open.
+
+**Open owner decisions: OD-4** (one query), **OD-5** (vertical claims),
+**OD-6** (escrow retention vs erasure). OD-1/2/3 decided.
+
+### WHAT TO DO NEXT
+
+1. **43 migration files still fail on a clean first pass** (17 on the second).
+   Most are ordering: `migrations/*.sql` ALTERs tables that only `migrate.mjs`
+   creates. The rebuild SUCCEEDS regardless because every statement is
+   idempotent, but the two-pass requirement is a workaround, not a fix. Making
+   one pass sufficient is the real close-out.
+2. **Run the two remaining static gates against a live DB.** `migrate.mjs
+   --dry-run` now has a preflight; a restore drill (runbook step 5) would be the
+   first end-to-end proof of the DR path itself.
+3. Continue the forensic priority order — **inert sovereign architecture
+   (delete), `vaService` (0 Pax guards, customer-reachable from 4 handlers),
+   email idempotency (0 of 67 call sites)** are the next-largest.
+
+Then read `shared/architecture/canon.ts` — the `parcel`, `plan` and
 `opportunity` entries were all CORRECTED or landed on 2026-08-17.
 
 **DONE so far in this campaign** (each verified against code, not against a
