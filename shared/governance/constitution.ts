@@ -349,6 +349,38 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
 
   // ── Rails ──────────────────────────────────────────────────────────────
   {
+    id: "rails.no-double-print",
+    title: "An ambiguous provider outcome never retries physical mail",
+    statement:
+      "A direct-mail send whose outcome cannot be proven un-contacted is recorded ambiguous and is never automatically retried; a duplicate letter is worse than a dropped one.",
+    category: "rails",
+    source: "Founder decision 2026-08-16 (picker: 'never double-print wins'); BLOCKERS B5",
+    enforcement: {
+      kind: "code-invariant",
+      refs: [
+        "server/services/communications.ts",
+        "server/services/actions/outwardAction.ts",
+        "tests/unit/directMailIdempotency.test.ts",
+      ],
+      note:
+        "sendDirectMailWithRetry mints ONE chain key and threads it through its recursion, " +
+        "claiming before the Lob call and settling after. lobService swallows the transport error " +
+        "and returns a classified string, so nothing on this path can prove the provider was not " +
+        "contacted — every non-success settles `ambiguous`, which classifyExisting maps to `refuse`. " +
+        "The retry decision therefore consults the CLAIM, not isRetryableError: that function answers " +
+        "'was this transient?', never 'did the letter already print?', and conflating the two WAS the " +
+        "defect (a network failure after Lob accepted re-printed the letter). " +
+        "THE TRADE WAS PUT TO THE FOUNDER EXPLICITLY AND CHOSEN: direct mail now makes at most one Lob " +
+        "call per chain, so a transient 429 is not retried. The asymmetry that decided it — a duplicate " +
+        "letter costs money, reaches a real person, and is invisible unless they complain; a dropped " +
+        "transient failure surfaces in handleDirectMailFailure's alert and can be re-sent deliberately. " +
+        "SCOPE, stated honestly: this is an IN-PROCESS chain guard, not a durable boundary. It dies with " +
+        "the process and does not coordinate across workers. The durable withOutwardAction boundary was " +
+        "deliberately NOT used, because its key semantics (lead:{id} vs lead:{id}+contentHash) and its " +
+        "own fail-open/closed posture are open founder questions recorded in B5.",
+    },
+  },
+  {
     id: "rails.byo-not-refront",
     title: "No re-fronting platform send rails",
     statement:

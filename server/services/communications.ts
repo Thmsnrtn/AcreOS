@@ -549,6 +549,28 @@ export class CommunicationsService {
     // record, and it is the same polarity the durable boundary uses: only code
     // that PROVES it never contacted the provider may claim `failed`
     // (`ProviderNotContactedError`), and nothing on this path can prove that.
+    //
+    // ── FOUNDER DECISION, 2026-08-16: "never double-print wins" ────────────
+    // This line is why direct mail now makes AT MOST ONE Lob call per chain.
+    // `ambiguous` classifies to `refuse`, so the retry below is unreachable and
+    // MAX_RETRIES / RETRY_DELAYS bound a loop that no longer runs. That is a
+    // DELIBERATE TRADE, put to the founder explicitly and chosen: a transient
+    // 429 is no longer retried automatically.
+    //
+    // The asymmetry that decided it: a duplicate letter costs money, arrives in
+    // a real person's mailbox, and is invisible to us unless they complain — we
+    // would never learn we did it. A dropped transient failure surfaces in the
+    // alert `handleDirectMailFailure` writes, and can be re-sent deliberately.
+    // One failure mode is silent and irreversible; the other is loud and
+    // recoverable.
+    //
+    // TO RESTORE RETRIES you must first classify which Lob error types PROVE no
+    // contact (connection refused, DNS failure) and settle only those `failed`.
+    // That is new policy about a provider's semantics, and getting one wrong is
+    // wrong in the money-losing direction — which is why it was not guessed at
+    // here. Do not simply widen `isRetryableError`: that function answers "was
+    // this transient?", never "did the letter already print?", and conflating
+    // those two IS the defect this chain exists to close.
     settleDirectMailChainClaim(chainKey, 'ambiguous', null);
 
     logger.error(`[Communications] Direct mail failed for lead ${leadId}`, undefined, { metadata: { detail: {
