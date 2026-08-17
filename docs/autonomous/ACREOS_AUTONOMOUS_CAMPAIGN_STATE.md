@@ -27,8 +27,8 @@ in canon.ts. Do not re-derive them; extend that registry.
 
 ## CURRENT FRONTIER
 
-**The Reality Graph is the unfinished layer.** 8 of 18 canonical objects are
-canonical; the 10 that are not are almost all layer 2:
+**The Reality Graph is the unfinished layer.** 9 of 18 canonical objects are
+canonical; the 9 that are not are almost all layer 2:
 
 | status | objects |
 |---|---|
@@ -47,28 +47,29 @@ disclaiming being a receipt. So the CUSTOMER side of both objects is unbuilt,
 not merely blurred. `canonicalArchitecture.test.ts` pins the tenancy claim in
 both directions so the gap text cannot rot.
 
-**Parcel is the blocking dependency.** Cadastral identity (APN, legal
-description) is welded to economic state (purchase price, market value) and to
-pipeline status on one table, with direct `sellerId`/`buyerId` FKs into `leads`.
-Until identity separates from economics:
+**Parcel identity is now addressed at the KEY level, not the table level.**
+`shared/parcel/parcelRef.ts` is the one definition of "the same parcel" and
+every call site routes through it (adoption ratchet at 0). What remains is that
+cadastral identity is still welded to economic state on `properties`, with
+direct `sellerId`/`buyerId` FKs into `leads`. Until identity separates from
+economics:
 
 - one Property spanning many Parcels is inexpressible (assemblage);
-- `opportunity` has nothing to attach to;
 - `relationship` cannot be modelled without duplicating the FK mess;
-- multi-strategy evaluation of the same physical asset is not representable,
-  which is the whole premise of composable Strategy Packs.
+- multi-strategy evaluation of the same physical asset is not representable at
+  the PROPERTY level — though `opportunities` now expresses it at the parcel
+  level, which is what BI93 actually asked for.
 
 ---
 
 ## READY WORK (unblocked, dependency-ordered)
 
-1. **Parcel as a canonical object** — separate cadastral identity from
-   `properties`. Blocks opportunity, relationship, assemblage, Strategy Packs.
-2. **Opportunity** — needs Parcel.
-3. **Relationship** — needs Parcel + Party.
-4. **Party / holding / instrument** — role-table → canonical.
-5. **Plan / action-receipt** (layer 6) — independent of the reality graph; can
-   proceed in parallel when layer 2 is blocked.
+See "NEXT SESSION START HERE" below for the current package and what is already
+done. In short: `parcel_snapshots`-as-evidence, then `relationship` (needs a real
+first consumer), then party/holding/instrument, then — only if still needed — a
+thin parcel identity table. Layer 6 (`plan`, `action-receipt`) is independent and
+can proceed in parallel; note both are FOUNDER-PLANE ONLY today, so that work is
+a build, not a refactor.
 
 ## BLOCKED — OWNER
 See `OWNER_DECISIONS_PENDING.md`.
@@ -112,18 +113,38 @@ report — the `parcel` and `plan` entries were both WRONG when checked):
    Two live defects fixed: dueDiligence wrote duplicate snapshots into the
    null-org SHARED cache, and gisRepo merged "12-345" with "12345" while
    dueDiligence kept them apart — two writers to one table disagreeing about
-   which row is which. Adoption ratchet in `parcelRefAdoption.test.ts`: **4**,
-   down-only. The remaining four are `taxSaleCsvImport.ts` ×2 (dedup on
-   `apn.toUpperCase()` with NEITHER state nor county in the key) and
-   `parcel.ts` ×2 (upstream query fan-out reinventing `parcelMatchKey`).
+   which row is which. Adoption ratchet in `parcelRefAdoption.test.ts`: **0**,
+   down-only, from 10.
 2. **`opportunity` is canonical** — `opportunities`, migration 0237 REGISTERED,
    exported, read by `decisionStore` and written by `routes-opportunities.ts`.
    It fixed a real cross-entity defect: `decisionStore` resolved an
    `opportunity` subjectId AS a `properties.id`, so a decision against
    opportunity #5 froze PROPERTY #5's evidence into an immutable record.
 
+3. **Every open-coded parcel key is retired** — the adoption ratchet reached 0
+   from 10, across five files and four mutually-inconsistent rules. Two of those
+   were DROPPING REAL ROWS, not just untidy: the tax-sale import deduped on the
+   APN alone, so a state-level list rejected the second county's identically
+   numbered parcel as "already on this worksheet"; the lead CSV import did the
+   same across STATES. Both fixed with tests in both directions.
+4. **§55 reconciliation started.** First material survivor: "no new persona
+   verticals" — a DO-NOT-DO founder decision that had never reached
+   `shared/governance/constitution.ts` at all. Registered, and the structural
+   hole closed (the DO-NOT-DO bullet count is now pinned, so a new standing
+   decision cannot be added to CLAUDE.md without being mirrored).
+
 **Do not build a new `parcels` table as the first move.** Parcel identity still
 has TWO owners: `properties` and `parcel_snapshots`. A third makes it worse.
+
+**`relationship` is now the ONLY `absent` object, and its premise is verified:**
+`properties.sellerId` and `properties.buyerId` BOTH reference `leads.id`
+(shared/schema.ts:1228-1229), so one real person in two roles needs two rows,
+and 13 role-specific person tables exist (`borrower_*`, `buyer_*`, `seller_*`,
+`investor_profiles`). It was deliberately NOT built in this campaign: a
+`relationships` table with no first consumer is the built-but-unwired defect
+this repo keeps finding, and its only honest first consumer is the
+`properties` dual-FK migration — a large, risky refactor of a live god table
+that deserves its own wave rather than a tail-end addition.
 
 The work package, in dependency order:
 
@@ -133,12 +154,10 @@ The work package, in dependency order:
    time, and the Evidence Fabric (`evidence_claims`) already exists to hold it.
    Until then two tables assert cadastral facts with no conflict resolution
    between them — the thing `resolveClaims` was built to do.
-2. **Retire the last four open-coded parcel keys** (above). `taxSaleCsvImport`
-   is the sharp one: a key with no county cannot be right.
-3. **`relationship`** — the last `absent` object, and the one BI184 says the
-   role-table sprawl is waiting on.
-4. **Party / holding / instrument** — role-table → canonical. Needs 3.
-5. **Only then** consider a thin parcel identity table, if 1–2 leave a real need.
+2. **`relationship`** — the last `absent` object, and the one BI184 says the
+   role-table sprawl is waiting on. Needs a real first consumer; see above.
+3. **Party / holding / instrument** — role-table → canonical. Needs 2.
+4. **Only then** consider a thin parcel identity table, if 1 leaves a real need.
 
 Layer 6 (`plan`, `action-receipt`) is independent of the reality graph and can
 proceed whenever layer 2 is blocked — but note the correction above: on the
