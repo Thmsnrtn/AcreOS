@@ -133,17 +133,50 @@ async function verifyCustomerLogin(config: Record<string, any>): Promise<Verific
   }
 }
 
-async function verifyPaymentStatus(config: Record<string, any>): Promise<VerificationResult> {
+/**
+ * `orgId` is the CONTRACT's org (`outcome_verification_contracts.org_id`),
+ * threaded in by `verify()` — never taken from `config`.
+ *
+ * That distinction is the whole fix. `config` is the stored
+ * `verificationConfig` blob, which arrives unvalidated from the request body
+ * of `POST /api/founder/v12/verification/contracts`; a `dealId` written into
+ * it used to reach `where(eq(deals.id, …))` with no tenant predicate, so a
+ * stored config could read ANY org's deal status. Trusting an org id from the
+ * same untrusted blob would fix nothing, so the org comes from the contract
+ * row instead. A contract with no org does not get to read a deal at all —
+ * see the refusal below.
+ */
+async function verifyPaymentStatus(
+  config: Record<string, any>,
+  orgId: number | null,
+): Promise<VerificationResult> {
   const paymentId = config.paymentId ?? config.dealId ?? "unknown";
   const expectedStatus = config.expectedStatus ?? "completed";
 
   try {
     // Check deals table for payment/deal status
     const { deals } = await import("@shared/schema");
+    if (config.dealId && orgId == null) {
+      // Refuse rather than read unscoped. `deals.organization_id` is NOT NULL,
+      // so an unscoped read here is always SOME tenant's deal — just not one
+      // this contract can prove it owns.
+      logger.warn(
+        `[outcome-verify] payment_status contract references deal ${config.dealId} but carries no orgId — ` +
+          `refusing to resolve the deal across tenants`,
+      );
+      return {
+        verified: false,
+        outcome: `Payment ${paymentId} status unconfirmed — verification contract has no organization`,
+        details: `Deal ${config.dealId} was not read: an org-scoped lookup requires the contract's org_id, which is null.`,
+      };
+    }
     if (config.dealId) {
       const [deal] = await db.select({ status: deals.status })
         .from(deals)
-        .where(eq(deals.id, parseInt(String(config.dealId), 10)))
+        .where(and(
+          eq(deals.id, parseInt(String(config.dealId), 10)),
+          eq(deals.organizationId, orgId as number),
+        ))
         .limit(1);
 
       if (deal) {
@@ -256,7 +289,17 @@ async function verifyApiResponse(config: Record<string, any>): Promise<Verificat
   }
 }
 
-const VERIFICATION_HANDLERS: Record<VerificationMethod, (config: Record<string, any>) => Promise<VerificationResult>> = {
+/**
+ * Handlers receive the contract's own `orgId` as a second argument so a
+ * handler that touches an org-scoped table can pin its query to the tenant
+ * that owns the contract. Handlers with no org-scoped read simply declare one
+ * parameter and ignore it (a 1-arg function is assignable to this 2-arg
+ * type) — only `payment_status` needs it today.
+ */
+const VERIFICATION_HANDLERS: Record<
+  VerificationMethod,
+  (config: Record<string, any>, orgId: number | null) => Promise<VerificationResult>
+> = {
   email_delivery: verifyEmailDelivery,
   customer_login: verifyCustomerLogin,
   payment_status: verifyPaymentStatus,
@@ -369,7 +412,9 @@ class OutcomeVerificationService {
       throw new Error(`Unknown verification method: ${method}`);
     }
 
-    const result = await handler(contract.verificationConfig);
+    // The contract row is the ONLY trusted source of tenancy here — never
+    // `verificationConfig`, which is caller-supplied and unvalidated.
+    const result = await handler(contract.verificationConfig, contract.orgId ?? null);
     return this.recordVerification(contractId, result.outcome, result.verified);
   }
 

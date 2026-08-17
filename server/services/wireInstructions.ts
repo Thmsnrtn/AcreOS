@@ -36,7 +36,7 @@
 import crypto from "crypto";
 import { db } from "../db";
 import { titleOrders, titlePartners } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { decrypt } from "./fieldEncryption";
 import { logger } from "../utils/logger";
 
@@ -143,7 +143,7 @@ function passwordHint(destinationPhone: string): string {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Issue wire instructions for a title order.
+ * Issue wire instructions for a title order, PINNED TO THE OWNING ORG.
  *
  * Side-effects:
  *   - Writes wire_instructions_pdf_s3_key, wire_instructions_password_hint,
@@ -155,8 +155,24 @@ function passwordHint(destinationPhone: string): string {
  * out-of-band; the password is never persisted.
  *
  * Fails closed if the routing partner has no hmac_secret_encrypted.
+ *
+ * TENANCY (2026-08-16). Until now this resolved the order by bare primary key,
+ * decrypted the routing partner's HMAC secret, and wrote the S3 key, signature
+ * and out-of-band confirmation PHONE back by bare primary key. On the wire
+ * rail, a wrong-tenant write of `wire_confirmation_phone` is the exact control
+ * ALTA Pillar 2 exists to protect — it is the number the customer is told to
+ * call before sending funds. `title_orders.organization_id` is NOT NULL and
+ * leads the table's index, so both the read and the write now carry it and a
+ * cross-tenant orderId resolves to "not found" by construction.
+ *
+ * `title_partners.organization_id` is NULLABLE by design — NULL means the
+ * platform-default partner any org may route to — so the partner predicate is
+ * "this org's own partner OR the platform default", not a flat equality. A
+ * partner privately owned by another tenant is refused rather than having its
+ * HMAC secret decrypted.
  */
 export async function issueWireInstructions(
+  organizationId: number,
   orderId: number,
   instructions: WireInstructionsPayload,
   destinationPhoneForPasswordSms: string
@@ -164,7 +180,12 @@ export async function issueWireInstructions(
   const [order] = await db
     .select()
     .from(titleOrders)
-    .where(eq(titleOrders.id, orderId))
+    .where(
+      and(
+        eq(titleOrders.id, orderId),
+        eq(titleOrders.organizationId, organizationId)
+      )
+    )
     .limit(1);
 
   if (!order) {
@@ -180,7 +201,15 @@ export async function issueWireInstructions(
   const [partner] = await db
     .select()
     .from(titlePartners)
-    .where(eq(titlePartners.id, order.titlePartnerId))
+    .where(
+      and(
+        eq(titlePartners.id, order.titlePartnerId),
+        or(
+          isNull(titlePartners.organizationId),
+          eq(titlePartners.organizationId, organizationId)
+        )
+      )
+    )
     .limit(1);
 
   if (!partner) {
@@ -232,7 +261,12 @@ export async function issueWireInstructions(
       status: "wire_instructions_issued",
       updatedAt: new Date(),
     })
-    .where(eq(titleOrders.id, order.id));
+    .where(
+      and(
+        eq(titleOrders.id, order.id),
+        eq(titleOrders.organizationId, organizationId)
+      )
+    );
 
   logger.info(
     `[wireInstructions] issued for order=${order.id} partner=${partner.id} s3Key=${encryptedPdfS3Key}`
@@ -246,16 +280,39 @@ export async function issueWireInstructions(
 }
 
 /**
- * Mark a wire-instruction surface as out-of-band confirmed by the customer.
- * Recorded for the audit log surface.
+ * Mark a wire-instruction surface as out-of-band confirmed by the customer,
+ * PINNED TO THE OWNING ORG.
+ *
+ * TENANCY (2026-08-16). This had NO CALLER anywhere in the repo — it was a
+ * loaded gun with no trigger, not a live leak, and it is fixed on those terms:
+ * the danger is the first caller, who would have wired a URL segment straight
+ * into a bare-PK UPDATE on the wire rail. `wire_confirmed_at` is the flag that
+ * says a human called the number back and heard the account details read
+ * aloud; setting it on ANOTHER tenant's order is a forged attestation on the
+ * one control standing between a title order and a misdirected wire.
+ *
+ * Giving it the org parameter NOW means the first caller cannot compile
+ * without deciding whose order it is, rather than discovering the question
+ * after the funds have moved. `title_orders.organization_id` is NOT NULL, so
+ * a cross-tenant orderId matches no row and the UPDATE is a no-op.
  */
-export async function recordWireConfirmation(orderId: number): Promise<void> {
+export async function recordWireConfirmation(
+  organizationId: number,
+  orderId: number
+): Promise<void> {
   await db
     .update(titleOrders)
     .set({
       wireConfirmedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(titleOrders.id, orderId));
-  logger.info(`[wireInstructions] confirmation recorded for order=${orderId}`);
+    .where(
+      and(
+        eq(titleOrders.id, orderId),
+        eq(titleOrders.organizationId, organizationId)
+      )
+    );
+  logger.info(
+    `[wireInstructions] confirmation recorded for order=${orderId} org=${organizationId}`
+  );
 }

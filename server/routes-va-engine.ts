@@ -1782,7 +1782,13 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/writing-styles/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await writingStyleService.deleteStyleProfile(id);
+      // The org id is passed INTO the delete (it lands in the WHERE clause) —
+      // not compared after the fact. A profile belonging to another tenant
+      // matches nothing and reports "not found" rather than being destroyed.
+      const deleted = await writingStyleService.deleteStyleProfile(getOrganizationId(req), id);
+      if (!deleted) {
+        return Errors.notFound(res, "Writing style profile");
+      }
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Delete writing style error", error);

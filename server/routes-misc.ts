@@ -45,10 +45,15 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/alerts/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const user = req.user;
       const id = parseInt(req.params.id);
       const { actionTaken } = req.body;
-      await leadQualificationService.acknowledgeAlert(id, user.id, actionTaken);
+      // `id` is a raw URL segment. The org comes from getOrCreateOrg, exactly
+      // as the GET /api/alerts sibling above already does — before 2026-08-16
+      // this handler resolved the org and then never used it, so the write
+      // crossed tenants on a guessed integer.
+      await leadQualificationService.acknowledgeAlert(org.id, id, user.id, actionTaken);
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Acknowledge alert error", error);
@@ -58,8 +63,12 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
-      await leadQualificationService.dismissAlert(id);
+      // Same raw URL segment, same org source, same reason as the acknowledge
+      // sibling above — see dismissAlert's own header for why this one needed a
+      // second pass.
+      await leadQualificationService.dismissAlert(org.id, id);
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Dismiss alert error", error);

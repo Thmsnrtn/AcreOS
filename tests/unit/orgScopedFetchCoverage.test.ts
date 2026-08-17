@@ -100,7 +100,7 @@ const RULE_2_BASELINE = 59;
  * reduction (fix the unit, delete the register line — the lint's stale check
  * forces the second half); never raise them.
  */
-const FUNCTION_RULE_1_BASELINE = 126;
+const FUNCTION_RULE_1_BASELINE = 114;
 const FUNCTION_RULE_2_BASELINE = 67;
 
 /**

@@ -163,12 +163,30 @@ export class ApiQueueService {
         }
         throw new Error(`Unknown OpenAI operation: ${job.operation}`);
 
-      case 'lob':
+      case 'lob': {
         const { directMailService } = await import('./directMail');
         if (job.operation === 'sendPostcard') {
           return directMailService.sendPostcard(payload as any);
         }
-        throw new Error(`Unknown Lob operation: ${job.operation}`);
+        // B6 (BLOCKERS): `sendPostcard` is the ONLY implemented Lob operation.
+        // Anything else is not "unknown" — it is not implemented, and the fault
+        // is at the ENQUEUE site, not here: a job this switch cannot run will
+        // burn its retries and settle in `failed` forever while the enqueue
+        // implies a recovery that never happens. `sendLetter` was exactly that
+        // for direct mail; see the comment at the removed enqueue in
+        // server/services/communications.ts for the order in which it may be
+        // reinstated. Say so plainly, so a future re-introduction fails loudly
+        // and points at the caller instead of looking like a queue glitch.
+        throw new Error(
+          `Lob operation "${job.operation}" is NOT IMPLEMENTED in apiQueue.executeJob ` +
+            `(job ${job.id}). Nothing here can ever run it, so enqueuing it is a bug at ` +
+            `the enqueue site — fix the caller rather than retrying this job. ` +
+            `Implemented Lob operations: sendPostcard. Implementing a physical-mail ` +
+            `operation must not be done blind: it would make dormant queued jobs print ` +
+            `real mail on the next deploy, and it needs the outward-action boundary ` +
+            `keyed on job.id.`,
+        );
+      }
 
       default:
         throw new Error(`Unknown job type: ${job.type}`);

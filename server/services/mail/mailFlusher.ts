@@ -189,7 +189,21 @@ async function bookFreeSendAcquisitionCogs(ship: FlushShipment): Promise<void> {
   }
 }
 
-/** Send one claimed shipment through the router; writeback or fail+refund. */
+/**
+ * Send one claimed shipment through the router; writeback or fail+refund.
+ *
+ * TENANCY. Every query below is pinned with `eq(<table>.organizationId,
+ * ship.organizationId)` alongside the id. The claim query in
+ * `flushDueMailShipments` already RETURNS `organization_id`, so the org is
+ * carried in the `ship` row this function is handed — it was simply never put
+ * in a WHERE clause. That made the safety of a send, a piece-status
+ * writeback, a refund and a COGS booking depend on the ONE caller having
+ * claimed the rows itself; a second caller passing a hand-built
+ * `FlushShipment` would have mailed, and refunded against, another tenant's
+ * shipment. `mail_shipments.organization_id` and
+ * `mail_shipment_pieces.organization_id` are both NOT NULL, so the predicate
+ * always applies and an org-mismatched `ship` now writes nothing.
+ */
 async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
   const pieces = await db
     .select({
@@ -204,12 +218,21 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       qrCode: mailShipmentPieces.qrCode,
     })
     .from(mailShipmentPieces)
-    .where(and(eq(mailShipmentPieces.shipmentId, ship.id), eq(mailShipmentPieces.status, "pending")))
+    .where(
+      and(
+        eq(mailShipmentPieces.shipmentId, ship.id),
+        eq(mailShipmentPieces.organizationId, ship.organizationId),
+        eq(mailShipmentPieces.status, "pending"),
+      ),
+    )
     .orderBy(asc(mailShipmentPieces.id));
 
   if (pieces.length === 0) {
     // Nothing to send (already flushed / empty) — mark sent, no charge change.
-    await db.update(mailShipments).set({ status: "sent", sentAt: new Date() }).where(eq(mailShipments.id, ship.id));
+    await db
+      .update(mailShipments)
+      .set({ status: "sent", sentAt: new Date() })
+      .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
     return "sent";
   }
 
@@ -222,12 +245,17 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       await db
         .update(mailShipmentPieces)
         .set({ status: "sent", providerPieceId })
-        .where(eq(mailShipmentPieces.id, pieces[i].id));
+        .where(
+          and(
+            eq(mailShipmentPieces.id, pieces[i].id),
+            eq(mailShipmentPieces.organizationId, ship.organizationId),
+          ),
+        );
     }
     await db
       .update(mailShipments)
       .set({ status: "sent", sentAt: new Date(), provider: route.chosenProvider })
-      .where(eq(mailShipments.id, ship.id));
+      .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
     await bookFreeSendAcquisitionCogs(ship);
     logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
     // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after a REAL send,
@@ -250,11 +278,16 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     await db
       .update(mailShipmentPieces)
       .set({ status: "failed" })
-      .where(eq(mailShipmentPieces.shipmentId, ship.id));
+      .where(
+        and(
+          eq(mailShipmentPieces.shipmentId, ship.id),
+          eq(mailShipmentPieces.organizationId, ship.organizationId),
+        ),
+      );
     await db
       .update(mailShipments)
       .set({ status: "failed", cancellationReason: reason.slice(0, 500) })
-      .where(eq(mailShipments.id, ship.id));
+      .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
     await refundShipment(ship, `mail send failed — refunded (never charge-without-send): ${reason.slice(0, 120)}`);
     logger.warn(`[mailFlusher] shipment ${ship.id} FAILED + refunded: ${reason}`);
     return "failed";

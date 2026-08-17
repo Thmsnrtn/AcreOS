@@ -379,11 +379,14 @@ router.get("/1099-batch/:jobId", async (req: AuthenticatedRequest, res: Response
   try {
     const org = getOrganization(req);
     const jobId = req.params.jobId;
-    const row = await getForm1099BatchStatus(jobId);
+    // The org id goes INTO the lookup's WHERE clause. It used to be compared
+    // after the fetch here, which meant the tenancy guard lived in this
+    // handler rather than in the query — a second caller could forget it. A
+    // batch belonging to another org now simply does not resolve, so the
+    // "not found" below is the cross-tenant answer too (and stops the jobId
+    // space from being probed as an existence oracle).
+    const row = await getForm1099BatchStatus(org.id, jobId);
     if (!row) return Errors.notFound(res, "Batch");
-    if (row.organizationId !== org.id) {
-      return Errors.forbidden(res, "Batch belongs to a different organization");
-    }
     res.json({
       jobId: row.id,
       status: row.status,

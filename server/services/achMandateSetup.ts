@@ -560,12 +560,25 @@ export async function confirmAchMandateSetup(input: {
 }
 
 /**
- * Revoke every active/pending mandate on a note. Called when the borrower
- * turns autopay off — NACHA requires we stop on request, and leaving a live
- * authorization behind an "off" toggle is exactly the kind of gap that
- * produces an unauthorized debit later.
+ * Revoke every active/pending mandate on a note, PINNED TO THE OWNING ORG.
+ * Called when the borrower turns autopay off — NACHA requires we stop on
+ * request, and leaving a live authorization behind an "off" toggle is exactly
+ * the kind of gap that produces an unauthorized debit later.
+ *
+ * `organizationId` is not decoration. Until 2026-08-16 the predicate was
+ * `noteId` + two status guards and nothing else, so this WRITE — which
+ * withdraws the authority to debit a human being's bank account — was
+ * correct only by luck of note resolution upstream. A noteId belonging to
+ * another tenant would have revoked THAT tenant's live authorization.
+ * `ach_mandates.organization_id` is NOT NULL and leads the table's index, so
+ * there is no row this predicate cannot be applied to; it matches the same
+ * org-leading shape `confirmAchMandateSetup` already uses when it supersedes.
+ *
+ * Returns the number of mandates revoked IN THIS ORG. A cross-tenant noteId
+ * revokes nothing and returns 0.
  */
 export async function revokeAchMandatesForNote(input: {
+  organizationId: number;
   noteId: number;
   reason: string;
   at?: Date;
@@ -576,6 +589,7 @@ export async function revokeAchMandatesForNote(input: {
     .set({ status: "revoked", revokedAt: at, revokedReason: input.reason, updatedAt: at })
     .where(
       and(
+        eq(achMandates.organizationId, input.organizationId),
         eq(achMandates.noteId, input.noteId),
         ne(achMandates.status, "revoked"),
         ne(achMandates.status, "superseded"),
@@ -585,6 +599,7 @@ export async function revokeAchMandatesForNote(input: {
   if (revoked.length > 0) {
     logger.info("[achMandateSetup] mandates revoked", {
       noteId: input.noteId,
+      organizationId: input.organizationId,
       count: revoked.length,
       reason: input.reason,
     });
@@ -604,12 +619,35 @@ export interface AchMandateSummary {
   authorizationTextVersion: string | null;
 }
 
-/** What the portal needs to tell the borrower the truth about autopay. */
-export async function getAchMandateSummary(noteId: number): Promise<AchMandateSummary> {
+/**
+ * What the portal needs to tell the borrower the truth about autopay,
+ * PINNED TO THE OWNING ORG.
+ *
+ * TENANCY (2026-08-16). This read returns `bankName`, `accountLast4`, the
+ * authorized ceiling and the authorization's state — the borrower's bank
+ * INSTRUMENT. Until now its only predicate was `noteId`, so it disclosed
+ * whatever note id it was handed. Its six callers all derive `note.id` from a
+ * validated borrower session, which made it correct by caller discipline
+ * rather than by construction; the seventh caller would have been the leak.
+ *
+ * `ach_mandates.organization_id` is NOT NULL and leads the table's index, so
+ * the predicate now carries it and a cross-tenant noteId returns the same
+ * `status: "none"` shape as a note with no mandate — indistinguishable from
+ * absence, which is the correct answer to give a stranger.
+ */
+export async function getAchMandateSummary(
+  organizationId: number,
+  noteId: number,
+): Promise<AchMandateSummary> {
   const rows = await db
     .select()
     .from(achMandates)
-    .where(eq(achMandates.noteId, noteId))
+    .where(
+      and(
+        eq(achMandates.organizationId, organizationId),
+        eq(achMandates.noteId, noteId),
+      ),
+    )
     .orderBy(achMandates.id);
 
   // Newest meaningful record wins: an active mandate beats a pending one,

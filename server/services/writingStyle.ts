@@ -428,8 +428,35 @@ export async function getAllStyleProfiles(
   return profiles as WritingStyleProfile[];
 }
 
-export async function deleteStyleProfile(profileId: number): Promise<void> {
-  await db
+/**
+ * Delete one writing-style profile, PINNED TO THE OWNING ORG.
+ *
+ * The org predicate is the whole point of this function's signature. Until
+ * 2026-08-16 this took a bare `profileId` and emitted
+ * `DELETE … WHERE id = $1`, while `DELETE /api/writing-styles/:id`
+ * (server/routes-va-engine.ts) handed it `parseInt(req.params.id)` with NO
+ * organization comparison anywhere in the handler — so any authenticated
+ * member of any org could destroy another org's profile by guessing an
+ * integer. `writing_style_profiles.organization_id` is NOT NULL, so there was
+ * never a row this predicate could not be applied to.
+ *
+ * Returns TRUE iff a row in THIS org was deleted. A cross-tenant id deletes
+ * nothing and returns false — the caller turns that into a 404, which is also
+ * why the route no longer leaks whether the id exists in some other tenant.
+ */
+export async function deleteStyleProfile(
+  organizationId: number,
+  profileId: number,
+): Promise<boolean> {
+  const deleted = await db
     .delete(writingStyleProfiles)
-    .where(eq(writingStyleProfiles.id, profileId));
+    .where(
+      and(
+        eq(writingStyleProfiles.id, profileId),
+        eq(writingStyleProfiles.organizationId, organizationId)
+      )
+    )
+    .returning({ id: writingStyleProfiles.id });
+
+  return deleted.length > 0;
 }

@@ -704,7 +704,14 @@ interface ComputedFields {
 async function computeStatementFields(
   input: ComputeFieldsInput,
 ): Promise<ComputedFields> {
-  const { loan, cycleStart, cycleEnd } = input;
+  // TENANCY (2026-08-16): `organizationId` was already on ComputeFieldsInput
+  // and was simply never destructured, so every Reg-Z dollar below —
+  // principal / interest / escrow / fees for the cycle, and the YTD sums that
+  // go onto a statutory disclosure — was resolved from `payment_applications`
+  // by a loanId FK with no tenant term. `payment_applications.organization_id`
+  // is NOT NULL; both predicates now carry it, so a loanId that collides
+  // across tenants sums nothing rather than another org's money.
+  const { loan, organizationId, cycleStart, cycleEnd } = input;
 
   // Numeric columns on the legacy notes table are decimal strings;
   // convert to integer cents for our snapshot.
@@ -733,6 +740,7 @@ async function computeStatementFields(
     .from(paymentApplications)
     .where(
       and(
+        eq(paymentApplications.organizationId, organizationId),
         eq(paymentApplications.loanId, String(loan.id)),
         gte(paymentApplications.appliedAt, cycleStart),
         lte(paymentApplications.appliedAt, cycleEnd),
@@ -787,6 +795,7 @@ async function computeStatementFields(
     .from(paymentApplications)
     .where(
       and(
+        eq(paymentApplications.organizationId, organizationId),
         eq(paymentApplications.loanId, String(loan.id)),
         gte(paymentApplications.appliedAt, ytdStart),
         lte(paymentApplications.appliedAt, cycleEnd),

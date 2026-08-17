@@ -250,7 +250,24 @@ export async function getPendingAlerts(
   return alerts;
 }
 
+/**
+ * Acknowledge an escalation alert, PINNED TO THE OWNING ORG.
+ *
+ * TENANCY (2026-08-16). This one was LIVE and UNGUARDED, not theoretical:
+ * `POST /api/alerts/:id/acknowledge` (routes-misc.ts) took `:id` straight off
+ * the URL and handed it here, while the handler's own `getOrCreateOrg` org was
+ * used for nothing. Any authenticated member of any org could acknowledge any
+ * other tenant's alert by guessing an integer — and this is a WRITE that
+ * stamps the caller's `acknowledgedBy` user id and free-text `actionTaken`
+ * onto the victim's row, so it both suppresses their escalation and forges a
+ * name against it. The sibling `getPendingAlerts` on the same route file
+ * already took `org.id`; only the write had been left open.
+ *
+ * `escalation_alerts.organization_id` is NOT NULL, so the predicate applies to
+ * every row and a cross-tenant alertId now updates nothing.
+ */
 export async function acknowledgeAlert(
+  organizationId: number,
   alertId: number,
   userId: string,
   actionTaken?: string
@@ -263,16 +280,40 @@ export async function acknowledgeAlert(
       acknowledgedBy: userId,
       actionTaken,
     })
-    .where(eq(escalationAlerts.id, alertId));
+    .where(
+      and(
+        eq(escalationAlerts.organizationId, organizationId),
+        eq(escalationAlerts.id, alertId)
+      )
+    );
 }
 
-export async function dismissAlert(alertId: number): Promise<void> {
+/**
+ * Dismiss an escalation alert.
+ *
+ * Org-scoped for the same reason `acknowledgeAlert` above is, and it is worth
+ * saying why this one needed a second pass: the 2026-08-16 tenancy sweep fixed
+ * `acknowledgeAlert` because that was the name in the register, and left this
+ * function — the same table, the same bare-PK UPDATE, reached from the very
+ * next route in the same block behind the same middleware, eleven lines away.
+ * The register lists what a scan happened to name, not what is wrong; fixing an
+ * entry without looking at its siblings closes a line item rather than a hole.
+ *
+ * `escalation_alerts.organization_id` is NOT NULL, so the predicate applies to
+ * every row and a cross-tenant alertId now updates nothing.
+ */
+export async function dismissAlert(organizationId: number, alertId: number): Promise<void> {
   await db
     .update(escalationAlerts)
     .set({
       status: "dismissed",
     })
-    .where(eq(escalationAlerts.id, alertId));
+    .where(
+      and(
+        eq(escalationAlerts.organizationId, organizationId),
+        eq(escalationAlerts.id, alertId)
+      )
+    );
 }
 
 export async function checkForHotLeads(organizationId: number): Promise<number[]> {

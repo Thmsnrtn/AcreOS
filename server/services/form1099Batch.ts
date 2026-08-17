@@ -22,7 +22,7 @@
 
 import { db } from "../db";
 import { form1099Batches, organizations } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import {
   generate1099IntForms,
@@ -123,11 +123,25 @@ export async function generate1099Batch(
 }
 
 /**
- * Look up an existing batch by jobId. Used by the GET endpoint so the
- * UI can poll and download artefacts.
+ * Look up an existing batch by jobId, PINNED TO THE OWNING ORG. Used by the
+ * GET endpoint so the UI can poll and download artefacts.
+ *
+ * `organizationId` is not decoration: the jobId is a UUID that arrives
+ * straight off a URL segment (`GET /api/accounting/1099-batch/:jobId`), and
+ * the row it resolves carries a whole tax batch — recipient names, TINs,
+ * per-note interest and the FIRE file. This used to be a bare-PK fetch whose
+ * only tenancy guard was a hand-written `row.organizationId !== org.id`
+ * compare in the one route that called it; the leak was closed at the caller
+ * rather than by construction, so a second caller that forgot the compare
+ * reopened it. Now a cross-tenant jobId resolves to null and there is nothing
+ * left to remember.
  */
-export async function getForm1099BatchStatus(jobId: string) {
-  const [row] = await db.select().from(form1099Batches).where(eq(form1099Batches.id, jobId)).limit(1);
+export async function getForm1099BatchStatus(organizationId: number, jobId: string) {
+  const [row] = await db
+    .select()
+    .from(form1099Batches)
+    .where(and(eq(form1099Batches.id, jobId), eq(form1099Batches.organizationId, organizationId)))
+    .limit(1);
   return row ?? null;
 }
 
