@@ -37,14 +37,24 @@ CREATE INDEX IF NOT EXISTS emd_events_hold_idx
 CREATE INDEX IF NOT EXISTS emd_events_org_idx
   ON earnest_money_events (organization_id, occurred_at);
 
--- Append-only enforcement. Block UPDATE / DELETE at the rule level so
--- application code (and a compromised app user) cannot rewrite history.
--- Owner / superuser can still drop the table outright; that's an
--- intentional escape hatch for migrations. The integrity guarantee is
--- against in-flight tampering, not against root.
-
-CREATE OR REPLACE RULE emd_events_no_update AS
-  ON UPDATE TO earnest_money_events DO INSTEAD NOTHING;
-
-CREATE OR REPLACE RULE emd_events_no_delete AS
-  ON DELETE TO earnest_money_events DO INSTEAD NOTHING;
+-- Append-only enforcement. The intent below is unchanged and still right:
+-- application code (or a compromised app user) must not be able to rewrite
+-- escrow history in flight.
+--
+-- The two rewrite RULES that used to live here were REMOVED on 2026-08-17 and
+-- replaced by a BEFORE UPDATE trigger in
+-- migrations/0239_emd_events_append_only_via_trigger.sql. They are not
+-- reinstated here, so a database rebuilt from this repository never creates
+-- them in the first place; 0239 also DROPs them for any database that already
+-- has them.
+--
+-- They were removed because a rewrite rule rewrites PostgreSQL's OWN
+-- foreign-key check queries, not just the caller's. Measured against
+-- PostgreSQL 16: `DELETE FROM organizations WHERE id = 9` aborted with
+-- "referential integrity query ... gave unexpected result" for an organization
+-- with ZERO earnest_money_events rows. That is server/services/orgDeletion.ts,
+-- the GDPR erasure path — so no organization could be deleted, ever. The rules
+-- also made UPDATE a SILENT no-op, which reports success to a tamperer.
+--
+-- See tests/unit/evidenceClaimsIntegrity.test.ts, which fails if any migration
+-- brings `DO INSTEAD NOTHING` back.

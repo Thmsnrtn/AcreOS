@@ -10680,6 +10680,68 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "wrm_room_idx" ON "war_room_messages" ("war_room_id")`,
   `CREATE INDEX IF NOT EXISTS "wrm_from_idx" ON "war_room_messages" ("from_agent")`,
+
+  // ── 0238 evidence_claims: closed vocabularies + value coherence + append-only ──
+  // Full reasoning lives in migrations/0238_evidence_claims_integrity.sql; only the executable
+  // statements are mirrored here, which is the path that runs on deploy.
+  `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'evidence_claims_subject_type_chk') THEN
+    ALTER TABLE "evidence_claims" ADD CONSTRAINT "evidence_claims_subject_type_chk"
+      CHECK ("subject_type" IN ('property', 'parcel', 'party')) NOT VALID;
+  END IF;
+END $$;`,
+  `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'evidence_claims_authority_chk') THEN
+    ALTER TABLE "evidence_claims" ADD CONSTRAINT "evidence_claims_authority_chk"
+      CHECK ("authority" IN ('authoritative', 'estimate', 'modeled', 'unknown')) NOT VALID;
+  END IF;
+END $$;`,
+  `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'evidence_claims_value_kind_chk') THEN
+    ALTER TABLE "evidence_claims" ADD CONSTRAINT "evidence_claims_value_kind_chk"
+      CHECK ("value_kind" IN ('string', 'number', 'boolean', 'enum')) NOT VALID;
+  END IF;
+END $$;`,
+  `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'evidence_claims_value_coherence_chk') THEN
+    ALTER TABLE "evidence_claims" ADD CONSTRAINT "evidence_claims_value_coherence_chk"
+      CHECK (
+        ("value_text" IS NULL AND "value_number" IS NULL AND "value_bool" IS NULL)
+        OR ("value_kind" = 'number'  AND "value_number" IS NOT NULL)
+        OR ("value_kind" = 'boolean' AND "value_bool"   IS NOT NULL)
+        OR ("value_kind" IN ('string', 'enum') AND "value_text" IS NOT NULL)
+      ) NOT VALID;
+  END IF;
+END $$;`,
+  `CREATE OR REPLACE FUNCTION "evidence_claims_refuse_update"() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION
+    'evidence_claims is append-only: UPDATE refused on claim id=%. Record a NEW claim; the resolution policy in shared/evidence/claim.ts ranks it above the older one. (Law 6: a decision already made must keep the evidence it was made on.)',
+    OLD."id";
+END;
+$$ LANGUAGE plpgsql;`,
+  `DROP TRIGGER IF EXISTS "evidence_claims_no_update" ON "evidence_claims"`,
+  `CREATE TRIGGER "evidence_claims_no_update"
+  BEFORE UPDATE ON "evidence_claims"
+  FOR EACH ROW EXECUTE FUNCTION "evidence_claims_refuse_update"()`,
+
+  // ── 0239 earnest_money_events: append-only by TRIGGER, not RULE ──
+  // Full reasoning lives in migrations/0239_emd_events_append_only_via_trigger.sql; only the executable
+  // statements are mirrored here, which is the path that runs on deploy.
+  `DROP RULE IF EXISTS "emd_events_no_update" ON "earnest_money_events"`,
+  `DROP RULE IF EXISTS "emd_events_no_delete" ON "earnest_money_events"`,
+  `CREATE OR REPLACE FUNCTION "emd_events_refuse_update"() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION
+    'earnest_money_events is append-only: UPDATE refused on event id=%. Escrow history is corrected by recording a NEW event, never by rewriting an old one.',
+    OLD."id";
+END;
+$$ LANGUAGE plpgsql;`,
+  `DROP TRIGGER IF EXISTS "emd_events_no_update_trg" ON "earnest_money_events"`,
+  `CREATE TRIGGER "emd_events_no_update_trg"
+  BEFORE UPDATE ON "earnest_money_events"
+  FOR EACH ROW EXECUTE FUNCTION "emd_events_refuse_update"()`,
+
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

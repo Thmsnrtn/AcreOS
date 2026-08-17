@@ -262,3 +262,55 @@ verticals are what AcreOS is for, discovers two, and correctly concludes the
 rest of the product is oversold too. Reputational, not recoverable by a patch.
 
 **Blocked:** nothing. The gap is counted and down-only whichever way you go.
+
+---
+
+## OD-6 — OPEN: how long escrow events survive a customer's erasure
+
+**Decision:** what happens to `earnest_money_events` when an organization is
+deleted. Legal, therefore yours.
+
+**Context, and it is not the same as the decision.** Until 2026-08-17,
+`earnest_money_events` was made append-only by two rewrite RULES
+(`ON UPDATE/DELETE … DO INSTEAD NOTHING`, migrations/0086). A rewrite rule
+rewrites PostgreSQL's OWN foreign-key check queries, so
+`DELETE FROM organizations` aborted with *"referential integrity query …
+gave unexpected result"* — **measured for an organization with zero
+earnest_money_events rows.** The rule did not need matching data; it broke the
+check itself.
+
+That statement is `server/services/orgDeletion.ts:122`, the GDPR erasure path.
+**No organization could be deleted, ever.** The rules also made UPDATE a silent
+no-op, so a tamperer got the same answer as a legitimate write.
+
+**Already fixed, as engineering, because none of it was a choice anyone made:**
+migration 0239 replaces the rules with a BEFORE UPDATE trigger. UPDATE is still
+refused and now refuses loudly; DELETE cascades normally; org deletion works.
+Verified against PostgreSQL 16 — UPDATE refused with the value unchanged, org
+deletion cascading a real escrow event returning `DELETE 1`.
+
+**What is left for you.** With DELETE unblocked, erasing a customer now also
+erases their escrow event trail. Options:
+
+- **(a) Accept it.** Erasure removes the rows. Retention, if required, lives in
+  exported records outside the live database.
+- **(b) Export before erase.** `deleteOrganization` writes escrow events to
+  cold storage first, then deletes. More moving parts, and the export becomes
+  the thing that must not be lost.
+- **(c) Anonymise instead of delete** for this table — sever the org link, keep
+  the financial record. Depends on whether the events are personal data once
+  detached, which is a question for counsel.
+
+**RECOMMENDATION: (a) for now, revisit at Customer #1.** Nothing has run through
+this table in production yet, so there is no trail to lose today, and (b) and
+(c) both add machinery to protect data that does not exist. What matters is that
+the decision is made deliberately before the first real escrow event, rather
+than discovered afterwards.
+
+**Consequence of getting it wrong:** either an unerasable store of counterparty
+personal data (the state we were in, unintentionally), or a financial audit
+trail that vanishes with the customer who left.
+
+**Blocked:** nothing. `evidenceClaimsIntegrity.test.ts` fails if any migration
+reintroduces `DO INSTEAD NOTHING`, so the broken mechanism cannot return while
+this is open.
