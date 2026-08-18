@@ -437,3 +437,99 @@ on the ones that feel risky.
 - **`routes-admin.ts:3031`'s duplicate `/api/config/features`.** Shadowed by the
   earlier registration in `routes.ts`, so dead — but it would serve a response
   with no deny-lists and none of the new fields if the order ever changed.
+
+
+---
+
+## PHASE 3 — CONSEQUENCE-RANKED TENANCY DEBT (2026-08-18)
+
+Phase 2's Foundry ledger closed with all 22 candidates dispositioned. This phase
+is §23's "consequence-ranked tenancy debt" item, and it was not planned — it
+opened because a Phase-2 fix tripped a gate.
+
+### How it started
+
+Scoping `parcel_snapshots` reads for the property-report PDF gave
+`ltvMonitor.estimatePropertyValue` org context for the first time. That promoted
+it out of `check-org-scoped-fetch`'s rule-1 baseline (no org anywhere) into
+rule 2 (has an org, resolves by primary key anyway) — and rule 2 reported the
+primary-key read that rule 1 had been holding quietly.
+
+**A completely unscoped function is LESS visible to that lint than a partly
+scoped one.** That is a property of the tool, and it is why 163 baselined
+rule-1 entries were worth re-reading rather than trusting.
+
+### The method
+
+Scan route handlers for "a URL id reaches a service method, and NO call in that
+handler ever pairs that id with an org." Naive, that returns 143. Three
+discriminators cut it to 28, and each exclusion is a real pattern worth naming:
+
+- **GUARD-THEN-USE** — `getNote(org.id, noteId)` first, then an unscoped child
+  read. Ownership was just proved. The dominant pattern.
+- **FETCH-THEN-VERIFY** — read unscoped, then `if (row.organizationId !==
+  org.id) return 404`. Correct, and invisible to a scanner watching call
+  arguments. `buyer-prequalifications` and the VA action executor both do this,
+  each with a dated comment.
+- **DELIBERATELY PLATFORM-WIDE** — `requireFounder` routers such as dunning,
+  which is AcreOS billing its OWN customers. Identity ≠ tenant ≠ authority; an
+  org predicate there would be wrong.
+
+### What was real
+
+| Surface | Kind | Data |
+|---|---|---|
+| `GET /api/finance/ltv/:noteId` | READ | balance, property value, LTV, risk alerts |
+| `GET /api/leads/:id/score-history` | READ | lead scores + recommendations |
+| `PATCH /alerts/:id/{ack,resolve,dismiss}` ×2 routers | **WRITE** | portfolio alerts, incl. caller-supplied resolution text |
+| `POST /api/pax/observations/:id/{acknowledge,dismiss}` | **WRITE** | Pax observations |
+| `GET/POST /:leadId/{urgency,financial,engagement,offer-range}` | READ | lead signals, conversations, activities, valuations |
+| `POST /api/writing-styles/:id/{samples,analyze,generate}` | **WRITE** | a tenant's voice profile |
+| `PATCH /alerts/:id/resolve` (compliance) | **WRITE** | compliance alert, + a false audit entry |
+
+`BASELINE_OFFENDERS` 166 → 149; rule-1 function baseline 126 → 124, rule-2
+80 → 78. Every entry deleted in the commit that fixed it.
+
+### Two bugs the tenancy work exposed that were not tenancy bugs
+
+Threading an organization through forces every argument list to be re-read, and
+two of them were wrong:
+
+1. `suggestOfferRange(leadId, propertyId)` against a `(propertyId, signals)`
+   signature. `req.body` is `any`, so it type-checked and the endpoint derived
+   an offer range from whatever property shared an id with the lead.
+2. `resolveAlert(alertId, resolution)` against `(organizationId, alertId)` — the
+   query became `WHERE id = parseInt("<free text>")`, i.e. NaN. **The compliance
+   alert was never resolved, and the route wrote an audit entry saying it was.**
+
+A third instance is recorded in the code at `routes-seller-intent.ts`. Three of
+one kind is a class, so the enabling condition got a gate:
+`argumentOrderHazard.test.ts` fails on any two same-named functions whose shared
+parameters are in opposite orders. Three real pairs found and aligned to the
+house organization-first convention; two annotated exemptions (a storage/service
+layering, and an arity difference) with the gate asserting each still matches.
+
+### Founder rulings executed (picker, 2026-08-18)
+
+- **KILL `GET /api/enhancements/campaign-roi/:id` + `calculateCampaignROI`** —
+  no consumer, cross-tenant, and fabricating (`revenue = leads × $500`,
+  `dealsCreated = leads × 0.1`). `attributionService.getAttributionReport`
+  already computes the real thing, org-scoped and wired.
+- **KILL the shadowed second `/api/config/features`** in `routes-admin.ts`.
+- **Leave the Meta lead-ads webhook non-functional** — enabling ingestion is a
+  product decision on a founder-only surface.
+- **Leave USFS WHP `authoritative`** — nothing in the repo contradicts it.
+
+Both KILLs are in `docs/company/deletion-ledger.md` with date and rationale. The
+five remaining exports in `campaignEnhancements.ts` — including
+`getCampaignBenchmarks`, which returns hardcoded 31% / 4.2% / 1.8% as
+`avgOpenRate` / `avgResponseRate` / `avgConversionRate`, a second fabrication —
+are recorded there for a ruling of their own rather than deleted alongside.
+
+### Standing lesson
+
+Every one of these was found by a gate reacting to an unrelated fix, or by
+reading an argument list while changing something else. None was found by
+looking for it. The gates that pay are the ones that get MORE sensitive as the
+code gets more correct — which is exactly what rule 2 does, and exactly what the
+argument-order gate is built to do.
