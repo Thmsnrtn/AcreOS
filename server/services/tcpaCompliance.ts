@@ -18,6 +18,15 @@ import { logger } from "../utils/logger";
 // blocking (we use the wider envelope, treating ambiguity as "do not
 // send").
 //
+// THAT SENTENCE WAS ASPIRATIONAL UNTIL 2026-08-18. The code took the
+// Eastern default and applied ONE 8–21 window to it, so an unmapped area
+// code was cleared at 08:30 Eastern while the recipient might be at
+// 05:30 Pacific — the opposite of a wider envelope, on the exact path
+// §64.1200(c)(1) governs. It is implemented now: an INFERRED zone must
+// satisfy the window in every continental extreme, and `resolveZoneForPhone`
+// reports whether the zone was known so the guess is never mistaken for a
+// fact. 907 and 808 were also unmapped and are now known zones.
+//
 // TODO: add `timezone` column to `leads` (IANA, e.g. "America/Chicago")
 // and call `isWithinQuietHoursForLead(lead, now)` from every send site.
 // Area-code inference is preserved only as a last-resort fallback.
@@ -144,20 +153,47 @@ const AREA_CODE_TZ: Record<string, string> = {
   '779': 'America/Chicago',  '781': 'America/New_York', '785': 'America/Chicago',
   '786': 'America/New_York',
   '787': 'America/Puerto_Rico', // PR — Atlantic, no DST
+  // Added 2026-08-18. Both are single-zone and unambiguous, and both were
+  // falling through to the Eastern guess — which puts 8 AM Eastern at 4 AM in
+  // Anchorage and 2 AM in Honolulu.
+  '907': 'America/Anchorage', // AK
+  '808': 'Pacific/Honolulu', // HI — no DST
 };
 
 /**
- * Resolve an IANA timezone string from a phone number's area code, using
- * Intl-friendly zone names so DST is handled correctly. Defaults to
- * "America/New_York" if the area code is unknown (intentionally pessimistic
- * for North America — see file header).
+ * The continental extremes. When the recipient's zone is INFERRED rather than
+ * known, the send must be inside the calling window in BOTH — that is the
+ * "wider envelope, treat ambiguity as do-not-send" this file's header promises.
+ *
+ * Deliberately continental: 907 and 808 are mapped above, so an Alaska or
+ * Hawaii number resolves to a KNOWN zone and is never guessed. Widening the
+ * envelope to Honolulu for every unknown number would collapse the permitted
+ * window to a few hours for recipients who are almost certainly continental.
  */
-export function getZoneForPhone(phoneNumber: string): string {
+const GUESS_ENVELOPE_ZONES = ['America/New_York', 'America/Los_Angeles'] as const;
+
+/**
+ * Resolve a zone AND say whether it is known or guessed.
+ *
+ * `getZoneForPhone` returned `AREA_CODE_TZ[areaCode] ?? 'America/New_York'`, so
+ * its answer meant BOTH "this recipient's zone" and "we had no idea and picked
+ * the easternmost continental zone" — and every caller read the second as the
+ * first. On a TCPA path that is not a cosmetic ambiguity: measured, at 12:30
+ * UTC New York is 08:30 (permitted) while Los Angeles is 05:30, so an unknown
+ * area code was cleared to send to someone who may be asleep, in violation of
+ * §64.1200(c)(1).
+ */
+export function resolveZoneForPhone(
+  phoneNumber: string,
+): { zone: string; inferred: boolean } {
   const digits = phoneNumber.replace(/\D/g, '');
   // Strip country code if present
   const local = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
   const areaCode = local.slice(0, 3);
-  return AREA_CODE_TZ[areaCode] ?? 'America/New_York';
+  const known = AREA_CODE_TZ[areaCode];
+  return known
+    ? { zone: known, inferred: false }
+    : { zone: 'America/New_York', inferred: true };
 }
 
 /**
@@ -197,7 +233,38 @@ export function isWithinQuietHours(
   phoneNumber: string,
   recipientZone?: string | null,
 ): { blocked: boolean; reason?: string; zone: string } {
-  const zone = recipientZone || getZoneForPhone(phoneNumber);
+  // An explicit lead zone is KNOWN; anything else may be a guess.
+  const resolved = recipientZone
+    ? { zone: recipientZone, inferred: false }
+    : resolveZoneForPhone(phoneNumber);
+  const zone = resolved.zone;
+
+  // WHEN THE ZONE IS A GUESS, USE THE WIDER ENVELOPE.
+  //
+  // This file's header promises exactly that — "when in doubt, it skews toward
+  // blocking (we use the wider envelope, treating ambiguity as 'do not
+  // send')" — and the code did not do it: it took the Eastern default and
+  // applied a single 8–21 window, clearing 08:30 Eastern while the recipient
+  // might be at 05:30 Pacific. The stated safety property was not implemented.
+  if (resolved.inferred) {
+    for (const envelopeZone of GUESS_ENVELOPE_ZONES) {
+      const t = getLocalHourInZone(envelopeZone);
+      const local = t.hour + t.minute / 60;
+      if (local < 8 || local >= 21) {
+        return {
+          blocked: true,
+          zone,
+          reason:
+            `TCPA quiet hours: the recipient's timezone is UNKNOWN (area code not ` +
+            `mapped), so the send must be inside 8 AM–9 PM in every continental ` +
+            `zone. It is ${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')} ` +
+            `in ${envelopeZone}. Set leads.timezone to send on the recipient's own clock.`,
+        };
+      }
+    }
+    return { blocked: false, zone };
+  }
+
   const { hour, minute } = getLocalHourInZone(zone);
   const localTime = hour + minute / 60;
 

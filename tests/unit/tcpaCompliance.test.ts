@@ -18,7 +18,7 @@ import {
   checkTcpaConsentFromLead,
   canSendViaChannel,
   detectOptKeyword,
-  getZoneForPhone,
+  resolveZoneForPhone,
   isWithinQuietHours,
   isWithinQuietHoursForLead,
   requiresTcpaConsent,
@@ -33,22 +33,30 @@ const at = (iso: string) => {
   vi.setSystemTime(new Date(iso));
 };
 
-describe("getZoneForPhone — area-code inference", () => {
+/**
+ * `getZoneForPhone` was DELETED 2026-08-18. It returned a bare zone string, so
+ * its answer meant both "the recipient's zone" and "we defaulted" — the exact
+ * collapse that let an unknown area code be cleared to send at 05:30 Pacific.
+ * `resolveZoneForPhone` returns the same zone plus whether it was inferred, so
+ * these assertions carry strictly more than they did; the wrapper had no
+ * production caller and survived only for this suite.
+ */
+describe("resolveZoneForPhone — area-code inference", () => {
   it("maps area codes to IANA zones (formatted, bare, and 11-digit forms)", () => {
-    expect(getZoneForPhone("+1 (503) 555-0100")).toBe("America/Los_Angeles");
-    expect(getZoneForPhone("2125550100")).toBe("America/New_York");
-    expect(getZoneForPhone("13125550100")).toBe("America/Chicago");
+    expect(resolveZoneForPhone("+1 (503) 555-0100").zone).toBe("America/Los_Angeles");
+    expect(resolveZoneForPhone("2125550100").zone).toBe("America/New_York");
+    expect(resolveZoneForPhone("13125550100").zone).toBe("America/Chicago");
   });
 
   it("handles the no-DST corrections (Phoenix, Guam, Puerto Rico)", () => {
-    expect(getZoneForPhone("4805550100")).toBe("America/Phoenix");
-    expect(getZoneForPhone("6715550100")).toBe("Pacific/Guam");
-    expect(getZoneForPhone("7875550100")).toBe("America/Puerto_Rico");
+    expect(resolveZoneForPhone("4805550100").zone).toBe("America/Phoenix");
+    expect(resolveZoneForPhone("6715550100").zone).toBe("Pacific/Guam");
+    expect(resolveZoneForPhone("7875550100").zone).toBe("America/Puerto_Rico");
   });
 
   it("defaults unknown area codes to America/New_York (pessimistic for quiet hours)", () => {
-    expect(getZoneForPhone("9995550100")).toBe("America/New_York");
-    expect(getZoneForPhone("")).toBe("America/New_York");
+    expect(resolveZoneForPhone("9995550100").zone).toBe("America/New_York");
+    expect(resolveZoneForPhone("").zone).toBe("America/New_York");
   });
 });
 
