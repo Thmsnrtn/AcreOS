@@ -58,6 +58,27 @@ export interface ActionExecution {
   relatedDecisionId?: number;
 }
 
+
+/**
+ * Actions no grant may ever raise — the founder-only hard stops.
+ *
+ * MODULE SCOPE ON PURPOSE. This list lived INSIDE `checkAuthority`, below the
+ * temporary-delegation block, so the delegation path returned before it existed
+ * and conveyed every one of these. A ceiling that only one branch can see is not
+ * a ceiling. Every path that raises authority consults this one function.
+ */
+const NEVER_PROMOTE_ACTIONS = [
+  "refund_customer", "suspend_account", "process_refund_over_500",
+  "modify_pricing_plans", "infrastructure_scaling", "database_migration",
+  "infrastructure_downgrade", "data_center_migration", "rollback_deployment",
+  "legal_document_change", "regulatory_filing", "major_feature_removal",
+  "pricing_tier_restructure", "change_payment_processor", "disable_feature_in_production",
+] as const;
+
+function isNeverPromote(action: string): boolean {
+  return (NEVER_PROMOTE_ACTIONS as readonly string[]).includes(action);
+}
+
 // ─── Core Functions ─────────────────────────────────────────────────────────
 
 /**
@@ -114,15 +135,49 @@ export async function checkAuthority(codename: string, action: string): Promise<
   else if (config.level1Actions?.includes(action)) requestedLevel = 1;
   else if (config.level2Actions?.includes(action)) requestedLevel = 2;
   else if (config.level3Actions?.includes(action)) requestedLevel = 3;
-  else {
-    // Action not in any level — default to level 2 (recommend + wait)
+  let unclassified = false;
+  if (
+    !config.level0Actions?.includes(action) &&
+    !config.level1Actions?.includes(action) &&
+    !config.level2Actions?.includes(action) &&
+    !config.level3Actions?.includes(action)
+  ) {
+    // Action not in any level — default to level 2 (recommend + wait), and
+    // remember that this was a DEFAULT rather than the founder's placement.
     requestedLevel = 2;
+    unclassified = true;
   }
 
   // v5: Check for temporary CEO delegation before applying static authority
   try {
     const { checkTemporaryDelegation } = await import("./temporaryDelegation");
     const delegation = await checkTemporaryDelegation(codename, action);
+    // A DELEGATION MAY NOT CONVEY A HARD STOP.
+    //
+    // This block sat ABOVE the NEVER_PROMOTE list and returned `allowed: true`
+    // at the delegated level for ANY action — so a temporary "I'm away, act for
+    // me" grant (founder route: routes-founder-intelligence.ts:3982) silently
+    // conveyed modify_pricing_plans, legal_document_change,
+    // process_refund_over_500 and regulatory_filing. Those are the founder-only
+    // hard stops in CLAUDE.md's DO-NOT-DO list, and this path is live: both
+    // agentProactiveEngine and agentReactionEngine execute through it.
+    //
+    // A ceiling is a property of the ACTION CLASS, not of whoever issues the
+    // grant. A blanket elevation cannot raise it.
+    if (delegation.hasDelegation && isNeverPromote(action)) {
+      return {
+        allowed: false,
+        effectiveLevel: 3,
+        requestedLevel,
+        action,
+        trustRequired: 0,
+        currentTrust: agent.trustScore,
+        reason:
+          `Temporary delegation does not convey "${action}" — it is a founder-only ` +
+          `action and no standing or temporary grant may raise it.`,
+        downgraded: true,
+      };
+    }
     if (delegation.hasDelegation) {
       return {
         allowed: true,
@@ -137,22 +192,23 @@ export async function checkAuthority(codename: string, action: string): Promise<
     }
   } catch {}
 
-  // v4: Dynamic trust-based promotion
-  // If an agent's trust score exceeds a higher level's threshold,
-  // promote the action's level (except safety-critical actions in NEVER_PROMOTE)
-  const NEVER_PROMOTE = [
-    "refund_customer", "suspend_account", "process_refund_over_500",
-    "modify_pricing_plans", "infrastructure_scaling", "database_migration",
-    "infrastructure_downgrade", "data_center_migration", "rollback_deployment",
-    "legal_document_change", "regulatory_filing", "major_feature_removal",
-    "pricing_tier_restructure", "change_payment_processor", "disable_feature_in_production",
-  ];
-
-  if (!NEVER_PROMOTE.includes(action) && requestedLevel > 0) {
+  // v4: Dynamic trust-based promotion.
+  //
+  // ONE STEP PER CALL. These were two back-to-back `if`s, so a level-2 action
+  // could be promoted 2 → 1 and then 1 → 0 in the SAME call: an action the
+  // founder placed in "recommend and wait" reached FULL AUTONOMY on a learned
+  // trust score alone, in one hop. The comments describe two separate single
+  // promotions, which is what `else if` gives.
+  //
+  // An UNCLASSIFIED action is never promoted. Falling to level 2 is the right
+  // safe default for something the founder never placed, but level 2 is exactly
+  // the promotable band — so omission meant both "the founder allowed this at
+  // level 2" and "nobody has classified this yet", and the second was being
+  // read as the first.
+  if (!isNeverPromote(action) && !unclassified && requestedLevel > 0) {
     if (requestedLevel === 2 && agent.trustScore >= TRUST_THRESHOLDS[1]) {
       requestedLevel = 1; // Promote: recommend+wait → autonomous+notify
-    }
-    if (requestedLevel === 1 && agent.trustScore >= TRUST_THRESHOLDS[0]) {
+    } else if (requestedLevel === 1 && agent.trustScore >= TRUST_THRESHOLDS[0]) {
       requestedLevel = 0; // Promote: autonomous+notify → full autonomy
     }
   }
