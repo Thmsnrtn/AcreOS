@@ -1792,13 +1792,30 @@
   background: var(--acr-surface, #FFFCF6);
 }
 
-/* The "Beta" label inside a beta chip — small, brand-adjacent, uppercase. */
+/* The "Beta" label inside a beta chip — small, brand-adjacent, uppercase.
+ *
+ * CONTRAST FIXED 2026-08-17. The text was `var(--acr-brand, #C2531C)` on a 10%
+ * brand tint, which composites to #F9EBE0 over the chip surface: MEASURED
+ * 3.96:1. At font-size 10px / weight 600 this is small text, so WCAG AA needs
+ * 4.5:1 — it failed, in the only theme this page has (the landing carries no
+ * prefers-color-scheme or [data-theme] block at all).
+ *
+ * It had gone unnoticed because until the OD-5 demotions NO chip rendered in
+ * the beta tier, so the badge appeared zero times. Demoting twelve verticals
+ * put a failing 10px label on the public landing twelve times over — an
+ * existing defect amplified from invisible to prominent, which is exactly the
+ * kind of thing a "copy-only" change is assumed not to do.
+ *
+ * #A54718 is the brand darkened 15%: MEASURED 5.12:1 on the same tint, still
+ * unmistakably the brand hue. The token fallback is kept in the same shape as
+ * every other rule here, so a themed --acr-brand-strong overrides it cleanly.
+ */
 .lp-positioning-chip-badge {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--acr-brand, #C2531C);
+  color: var(--acr-brand-strong, #A54718);
   background: var(--acr-brand-soft, rgba(194, 83, 28, 0.10));
   padding: 2px 5px;
   border-radius: 4px;

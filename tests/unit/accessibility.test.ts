@@ -538,4 +538,62 @@ describe("every interactive element keeps a visible focus state", () => {
         "element that opts out of the outline should say what replaces it.",
     ).toBe("");
   });
+
+  /**
+   * The landing's "Beta" micro-label must clear WCAG AA.
+   *
+   * It read `var(--acr-brand, #C2531C)` on a 10% brand tint — MEASURED 3.96:1,
+   * against the 4.5:1 that 10px/600 text requires. The landing carries no
+   * prefers-color-scheme or [data-theme] block, so that is the only theme it
+   * has; there was no dark mode to blame it on.
+   *
+   * It survived because the beta tier was EMPTY until the OD-5 demotions, so
+   * the badge rendered zero times. Demoting twelve verticals put a failing
+   * label on the public landing twelve times over — the reason this is pinned
+   * rather than just fixed. Contrast is computed here, not asserted as a
+   * hardcoded number, so changing either colour re-derives the verdict.
+   */
+  it("the landing Beta badge meets WCAG AA on its own background", () => {
+    const css = readFileSync(
+      resolve(CLIENT_SRC, "pages/landing/landing.css"),
+      "utf-8",
+    );
+    const badge = css.slice(css.indexOf(".lp-positioning-chip-badge"));
+    const decl = badge.slice(0, badge.indexOf("}"));
+
+    const fgHex = decl.match(/color:\s*var\([^,]+,\s*(#[0-9A-Fa-f]{6})\)/)?.[1];
+    const bgRgba = decl.match(/background:\s*var\([^,]+,\s*rgba\(([^)]+)\)\)/)?.[1];
+    expect(fgHex, "could not parse the badge colour — the scan broke").toBeTruthy();
+    expect(bgRgba, "could not parse the badge background — the scan broke").toBeTruthy();
+
+    const hex = (h: string): [number, number, number] => [
+      parseInt(h.slice(1, 3), 16),
+      parseInt(h.slice(3, 5), 16),
+      parseInt(h.slice(5, 7), 16),
+    ];
+    const parts = bgRgba!.split(",").map((n) => Number(n.trim()));
+    const alpha = parts[3];
+    // The chip sits on --acr-surface; its fallback is the light ground.
+    const surface: [number, number, number] = [255, 252, 246];
+    const composite = parts
+      .slice(0, 3)
+      .map((c, i) => Math.round(c * alpha + surface[i] * (1 - alpha))) as [number, number, number];
+
+    const lin = (c: number) => {
+      const x = c / 255;
+      return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = ([r, g, b]: [number, number, number]) =>
+      0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    const a = lum(hex(fgHex!));
+    const b = lum(composite);
+    const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+    expect(
+      Number(contrast.toFixed(2)),
+      `Beta badge ${fgHex} on rgba(${bgRgba}) composites to ` +
+        `rgb(${composite.join(",")}) at ${contrast.toFixed(2)}:1. WCAG AA needs ` +
+        "4.5:1 for 10px text. Darken the foreground token.",
+    ).toBeGreaterThanOrEqual(4.5);
+  });
 });
