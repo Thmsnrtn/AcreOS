@@ -70,7 +70,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (`daa749b6`) |
 | 19 | A route's auth must not depend on its line number | **PARTIALLY ADAPTED — trap frozen, not removed** | `apiCatchAllOrdering.test.ts` (`226e071f`) |
 | 20 | Trust may only be granted by evidence the agent did not author | **ADAPTED** | `server/services/trustDelta.ts`, `trustFromEvidence.test.ts` (`f84c4f4a`) |
-| 21 | A frozen record cannot promise a distinction its input type forbids | **ADAPTED** | required-nullable `reviewDueAt`, `decisionSnapshotFidelity.test.ts` (this commit) |
+| 21 | A frozen record cannot promise a distinction its input type forbids | **ADAPTED** | required-nullable `reviewDueAt`, `decisionSnapshotFidelity.test.ts` (`0fd28602`) |
+| 22 | A measurement that failed is not a measurement of zero | **ADAPTED** | `getAdPerformance` refuses, `adPerformanceMeasurement.test.ts` (this commit) |
 
 ---
 
@@ -983,6 +984,51 @@ explicit `null` still travels as `null`.
 
 **Exit test.** `decisionSnapshotFidelity.test.ts`, mutation-tested 2/2 after the
 gates were added — and 0/2 before them, which is why they exist.
+
+
+---
+
+### 22 — "A measurement that failed is not a measurement of zero" → ADAPTED
+
+**Foundry source.** §16 once more, from the measurement side — and AcreOS's own
+standing rule: refuse, do not fabricate.
+
+**AcreOS defect.** `getAdPerformance` caught every Meta Insights API error and
+returned `{ impressions: 0, reach: 0, clicks: 0, leads: 0, spend: 0, cpl: 0,
+ctr: 0 }`. Its only caller is the founder-only stats route, which passes the
+object straight to `res.json()`. So an unreachable API rendered as "0
+impressions, 0 clicks, 0 leads, $0 spend" — indistinguishable from a campaign
+that genuinely delivered nothing, and on the field that matters most it asserted
+the OPPOSITE of the dangerous case: AcreOS's own ad account can be spending
+while this reports it spent nothing.
+
+Paid advertising is a founder instrument spending AcreOS's own money (founder
+ruling 2026-08-13), and this is the surface the founder reads it on.
+
+**Smallest implementation.** Throw instead of swallowing. The route already had
+`catch (err) { Errors.internal(res, err) }`; swallowing in the service is what
+made that catch dead code for this path. No new error type, no new status
+vocabulary, no client change.
+
+**The distinction that must survive.** A SUCCESSFUL call returning no rows still
+yields zeros, and should — `data.data?.[0] || {}` is a real "no delivery in the
+window". A mutation that throws on an empty result too fails the suite.
+
+**Complexity change.** None. **Liability change.** Down, on the founder's view
+of AcreOS's own ad spend.
+
+**Exit test.** `adPerformanceMeasurement.test.ts`, mutation-tested 3/3 —
+restoring the zero-fabricating catch, throwing without naming the campaign or
+the upstream reason, and over-correcting into throwing on a genuine empty
+result. The tests drive the real code path by answering its one outbound
+`fetch`, and a vacuity guard reads real figures back so an always-throwing
+implementation cannot pass.
+
+## Status
+
+**All 22 admitted candidates are now dispositioned** — implemented, adapted,
+retired as already-present, or checked and REJECTED with the evidence recorded.
+The three rejections are in entries 14, 16 and 18.
 
 
 ## Not yet dispositioned

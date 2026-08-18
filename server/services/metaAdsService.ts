@@ -449,8 +449,26 @@ export async function getAdPerformance(campaignId: string): Promise<AdPerformanc
       cpl: leads > 0 ? spend / leads : 0,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
     };
-  } catch {
-    return { campaignId, impressions: 0, reach: 0, clicks: 0, leads: 0, spend: 0, cpl: 0, ctr: 0 };
+  } catch (err) {
+    // A MEASUREMENT THAT FAILED IS NOT A MEASUREMENT OF ZERO.
+    //
+    // This used to return every field as 0, which the founder-only stats route
+    // passes straight to `res.json()`. So an unreachable Meta Insights API
+    // rendered as "0 impressions, 0 clicks, 0 leads, $0 spend" — indistinguishable
+    // from a campaign that genuinely delivered nothing, and on the one field that
+    // matters most it asserted the opposite of the dangerous case: AcreOS's ad
+    // account can be spending while this reports it spent nothing.
+    //
+    // The route already has a `catch` that answers `Errors.internal`. Swallowing
+    // the error here is what made that catch dead code for this path. Throwing
+    // wakes it up: the founder gets an error, not a fabricated zero.
+    //
+    // A SUCCESSFUL call that returns no rows still yields zeros, and should —
+    // `data.data?.[0] || {}` above. That is a real "no delivery in the window".
+    throw new Error(
+      `Meta ad performance for campaign ${campaignId} could not be measured: ` +
+      `${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
