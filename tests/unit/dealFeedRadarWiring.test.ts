@@ -2,11 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Proves the deal feed wires the REAL acquisition-radar scorer (not the old
-// hardcoded `{ score: 50 }` stub), and that a scorer error falls OPEN to the
-// neutral default rather than crashing the feed.
+// hardcoded `{ score: 50 }` stub), and that a scorer failure DEGRADES rather
+// than crashing the feed.
 //
-// We mock acquisitionRadar so the test needs no DB / no paid lookups, then
-// drive the real scoreParcelRadar wiring exported from dealFeedEngine.
+// 2026-08-18 — the three failure cases below used to assert `50`, the
+// "neutral default" the scorer fell open to. That default was itself the
+// defect: 50 entered the composite at FULL WEIGHT, so a parcel the radar could
+// not score was ranked as an average parcel on a surface whose whole claim is
+// "the ten best parcels we found". The pillar is now left unscored (null) and
+// `computeComposite` renormalises over the pillars that did answer.
+//
+// The assertions are REWRITTEN, not deleted, because the invariant they were
+// really protecting is not "the value is 50" — it is "a scorer failure does
+// not throw, and does not invent a high score". Both still hold, and the third
+// property (it does not invent an average one either) is new. The mock-call
+// assertions are unchanged: they are what proves the real scorer is wired.
 // ---------------------------------------------------------------------------
 
 const scoreParcelMock = vi.fn();
@@ -87,28 +97,47 @@ describe("dealFeedEngine — real radar wiring", () => {
     expect(passedConfig).toBe(fakeConfig);
   });
 
-  it("falls OPEN to neutral (50) when the scorer throws — feed does not crash", async () => {
+  it("leaves the pillar UNSCORED when the scorer throws — feed does not crash", async () => {
     scoreParcelMock.mockRejectedValue(new Error("data-source broker exploded"));
 
     const score = await scoreParcelRadar(knownParcel, fakeConfig);
 
-    expect(score).toBe(50);
+    // Original invariant: it does not throw, and it does not invent a high
+    // score. Both preserved. New: it does not invent an average one either.
+    expect(score).toBeNull();
+    expect(score).not.toBe(50);
     expect(scoreParcelMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls OPEN to neutral (50) when no radar config is available", async () => {
+  it("leaves the pillar UNSCORED when no radar config is available", async () => {
     const score = await scoreParcelRadar(knownParcel, null);
 
-    expect(score).toBe(50);
+    expect(score).toBeNull();
+    expect(score).not.toBe(50);
     // Scorer should not even be invoked without a config.
     expect(scoreParcelMock).not.toHaveBeenCalled();
   });
 
-  it("falls OPEN to neutral when the scorer returns a non-finite score", async () => {
+  it("leaves the pillar UNSCORED when the scorer returns a non-finite score", async () => {
     scoreParcelMock.mockResolvedValue({ score: NaN });
 
     const score = await scoreParcelRadar(knownParcel, fakeConfig);
 
+    // NaN is the sharpest case: it is neither a score nor an absence until
+    // something decides. Coercing it to 50 decided "average".
+    expect(score).toBeNull();
+    expect(score).not.toBe(50);
+  });
+
+  it("a real score of exactly 50 is still a SCORE, not an absence", async () => {
+    // The old contract could not distinguish "the radar scored this parcel 50"
+    // from "the radar could not score this parcel". This is the case that
+    // proves the new one can.
+    scoreParcelMock.mockResolvedValue({ score: 50 });
+
+    const score = await scoreParcelRadar(knownParcel, fakeConfig);
+
     expect(score).toBe(50);
+    expect(score).not.toBeNull();
   });
 });

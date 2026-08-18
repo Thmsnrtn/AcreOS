@@ -14625,17 +14625,30 @@ export interface DealOpportunity {
     address: string | null;
     county: string;
     state: string;
-    acreage: number;
+    /** null when the parcel record carries no usable acreage. */
+    acreage: number | null;
     lat: number;
     lng: number;
   };
   scores: {
-    landCredit: number; // 300-850
-    landCreditGrade: string;
-    radarScore: number; // 0-100
-    ownerMotivation: number; // 0-100
-    countyOpportunity: number; // 0-100
-    composite: number; // weighted blend — the sort key
+    // null = the scorer did not answer for this parcel. NOT a neutral
+    // midpoint: these were seeded 50 / 575 and a failed scorer left the seed
+    // in place, so an unscored parcel was indistinguishable from a genuinely
+    // average one — on a surface that RANKS parcels and prints dollar offers
+    // beside them. `countyOpportunity` had no scorer wired at all and was the
+    // constant 50 for 20% of every composite.
+    landCredit: number | null; // 300-850
+    landCreditGrade: string | null;
+    radarScore: number | null; // 0-100
+    ownerMotivation: number | null; // 0-100
+    countyOpportunity: number | null; // 0-100
+    composite: number | null; // weighted blend over the pillars that scored — the sort key
+    /** Which pillars backed `composite`, and how much of the model's weight. */
+    basis: {
+      scoredPillars: string[];
+      missingPillars: string[];
+      weightCoverage: number; // 0-1
+    };
   };
   signals: {
     motivation: string[]; // "tax delinquent", "out of state", "owned 20+ years"
@@ -14644,9 +14657,21 @@ export interface DealOpportunity {
     risks: string[]; // "wetlands adjacent", "no road access"
   };
   financials: {
-    estimatedValue: number;
-    suggestedOffer: { aggressive: number; market: number; generous: number };
-    cashFlipProfit: { aggressive: number; market: number; generous: number };
+    // null throughout when the inputs are not on file. `estimatedValue` used
+    // to fall back to `medianSalePerAcre * (acreage || 5)`, so a parcel of
+    // unknown size was valued as five acres and three dollar offer amounts
+    // were derived from that.
+    estimatedValue: number | null;
+    suggestedOffer: {
+      aggressive: number | null;
+      market: number | null;
+      generous: number | null;
+    };
+    cashFlipProfit: {
+      aggressive: number | null;
+      market: number | null;
+      generous: number | null;
+    };
     sellerFinanceYield: number | null;
   };
   enrichment: {

@@ -22,10 +22,13 @@ import { logger } from "../utils/logger";
 import { acquisitionRadar, type ParcelData } from "./acquisitionRadar";
 import type { RadarConfig } from "@shared/schema";
 
-// Neutral radar score used as a fall-open default when real scoring is
-// unavailable (no config, scorer error). Keeps the feed honest rather than
-// crashing or fabricating a high score.
-const NEUTRAL_RADAR_SCORE = 50;
+// NEUTRAL_RADAR_SCORE = 50 used to live here, described as keeping the feed
+// "honest rather than crashing or fabricating a high score". It did prevent a
+// HIGH score. It did not prevent a fabricated one: 50 entered the composite at
+// full weight, so a parcel nothing could score ranked as an average parcel,
+// and the comment's own framing — that the alternative to a default is a crash
+// — is what hid the third option. The third option is to leave the pillar
+// unscored and renormalise, which is what the scorers below now do.
 
 /**
  * Map a feed candidate (a `properties` row, loosely typed in this pipeline)
@@ -61,23 +64,32 @@ function toParcelData(parcel: any): ParcelData {
  * The radar scorer owns its own enrichment (fetchEnrichedData) — the feed does
  * not pre-fetch parcel/tax/market/flood data, so this adds no double-fetch.
  */
+/**
+ * Returns null when the radar could not score this parcel.
+ *
+ * This used to "fall open to the neutral default" (50) on a missing config,
+ * a non-numeric result, or any thrown error. That is not neutral: 50 is
+ * averaged into the composite at full weight, so an unscorable parcel was
+ * ranked as an average one. Null removes the pillar from the composite
+ * instead, and the weights renormalise over what did score.
+ */
 export async function scoreParcelRadar(
   parcel: any,
   config: RadarConfig | null,
-): Promise<number> {
-  if (!config) return NEUTRAL_RADAR_SCORE;
+): Promise<number | null> {
+  if (!config) return null;
   try {
     const result = await acquisitionRadar.scoreParcel(toParcelData(parcel), config);
     const score = result?.score;
-    return typeof score === "number" && Number.isFinite(score) ? score : NEUTRAL_RADAR_SCORE;
+    return typeof score === "number" && Number.isFinite(score) ? score : null;
   } catch (err) {
-    logger.warn("radar scoring failed for parcel; falling open to neutral", {
+    logger.warn("radar scoring failed for parcel; pillar left unscored", {
       apn: parcel?.apn || parcel?.parcelNumber || null,
       county: parcel?.county || null,
       state: parcel?.state || null,
       error: err instanceof Error ? err.message : String(err),
     });
-    return NEUTRAL_RADAR_SCORE;
+    return null;
   }
 }
 
@@ -88,22 +100,25 @@ export async function scoreParcelRadar(
  * (`intentScore`, plus motivation signals) needs no change downstream.
  *
  * Honesty gate: when the biography has no real longitudinal series the scorer
- * returns null and we fall OPEN to the neutral default (intentScore 50) — the
- * exact behavior the conversation predictor produced for cold parcels before,
- * so there is no regression for thin-history parcels. The win is concentrated on
- * parcels we DO have history for, which is where the moat lives.
+ * returns null — and this function now PROPAGATES that null rather than
+ * substituting `intentScore: 50`. Falling open to a neutral default meant the
+ * gate detected the absence of evidence and then discarded that finding, which
+ * is the failure the gate exists to prevent. An unscored pillar is dropped
+ * from the composite and its weight redistributed; it is not ranked as
+ * average.
  *
- * Read-only and fail-open: any error degrades to neutral, never breaks the feed.
+ * Read-only and non-throwing: any error leaves the pillar unscored, never
+ * breaks the feed.
  */
 export async function scoreColdParcelMotivation(
   parcel: any,
   orgId: number,
-): Promise<{ intentScore: number; drivers?: string[]; source: string }> {
-  const neutral = { intentScore: NEUTRAL_RADAR_SCORE, source: "cold_neutral_default" };
+): Promise<{ intentScore: number | null; drivers?: string[]; source: string }> {
+  const unscored = { intentScore: null, source: "cold_no_series" };
   try {
     const apn = parcel?.apn || parcel?.parcelNumber || "";
     const state = parcel?.state || "";
-    if (!apn || !state) return neutral;
+    if (!apn || !state) return unscored;
 
     const { getParcelBiography, scoreSellerLikelihood } = await import("./parcel-biography");
     const bio = await getParcelBiography({
@@ -114,7 +129,7 @@ export async function scoreColdParcelMotivation(
     });
 
     const likelihood = scoreSellerLikelihood(bio);
-    if (!likelihood) return neutral; // honesty gate → fall open, no regression
+    if (!likelihood) return unscored; // honesty gate → propagate the absence
 
     return {
       intentScore: likelihood.score,
@@ -122,12 +137,12 @@ export async function scoreColdParcelMotivation(
       source: "log_native_seller_likelihood",
     };
   } catch (err) {
-    logger.warn("cold-parcel log-native motivation scoring failed; falling open to neutral", {
+    logger.warn("cold-parcel log-native motivation scoring failed; pillar left unscored", {
       apn: parcel?.apn || parcel?.parcelNumber || null,
       state: parcel?.state || null,
       error: err instanceof Error ? err.message : String(err),
     });
-    return neutral;
+    return unscored;
   }
 }
 
@@ -147,23 +162,71 @@ function normalizeLandCredit(lcs: number): number {
   return Math.max(0, Math.min(100, ((lcs - 300) / 550) * 100));
 }
 
+/**
+ * Every pillar is nullable, and null means the scorer did not answer for this
+ * parcel — not a neutral 50.
+ *
+ * Why this changed
+ * ────────────────
+ * The four pillars used to be seeded `radar = 50`, `ownerMotivation = 50`,
+ * `countyOpp = 50`, `lcs = 575` ("middle of range"), and a scorer that failed
+ * left its seed in place. `countyOpportunity` was never assigned from anything
+ * at all — 20% of every composite score in the feed was the constant 50, on a
+ * surface that RANKS parcels for a customer and prints three dollar offer
+ * amounts beside them. A neutral midpoint is not neutral when it is averaged
+ * against real scores: it pulls every ranking toward the middle and makes an
+ * unscored parcel indistinguishable from a genuinely average one.
+ *
+ * Now a pillar that did not answer contributes neither score nor weight, and
+ * the weights renormalise over the pillars that did — the same treatment
+ * `countyOpportunityScore` received. `scoredPillars` travels with the result
+ * so the ranking can say what it rests on.
+ */
+export interface CompositeResult {
+  composite: number;
+  scoredPillars: Array<keyof typeof DEFAULT_WEIGHTS>;
+  missingPillars: Array<keyof typeof DEFAULT_WEIGHTS>;
+  /** 0-1 — the share of the model's weight backed by a real score. */
+  weightCoverage: number;
+}
+
 function computeComposite(
-  scores: { radar: number; ownerMotivation: number; countyOpportunity: number; landCredit: number },
+  scores: {
+    radar: number | null;
+    ownerMotivation: number | null;
+    countyOpportunity: number | null;
+    landCredit: number | null;
+  },
   weights = DEFAULT_WEIGHTS,
   patternSimilarity?: number,
-): number {
-  const raw =
-    scores.radar * weights.radar +
-    scores.ownerMotivation * weights.ownerMotivation +
-    scores.countyOpportunity * weights.countyOpportunity +
-    normalizeLandCredit(scores.landCredit) * weights.landCredit;
+): CompositeResult | null {
+  const pillars: Array<[keyof typeof DEFAULT_WEIGHTS, number | null]> = [
+    ["radar", scores.radar],
+    ["ownerMotivation", scores.ownerMotivation],
+    ["countyOpportunity", scores.countyOpportunity],
+    ["landCredit", scores.landCredit === null ? null : normalizeLandCredit(scores.landCredit)],
+  ];
+  const scored = pillars.filter((p): p is [keyof typeof DEFAULT_WEIGHTS, number] => p[1] !== null);
+  const missing = pillars.filter((p) => p[1] === null).map(([k]) => k);
+  const weightCoverage = scored.reduce((sum, [k]) => sum + weights[k], 0);
+
+  // No pillar answered. There is nothing to rank this parcel by, and a
+  // composite of 0 or 50 would both be claims.
+  if (weightCoverage === 0) return null;
+
+  const raw = scored.reduce((sum, [k, v]) => sum + v * weights[k], 0) / weightCoverage;
 
   let composite = raw;
   if (patternSimilarity != null) {
     if (patternSimilarity > 0.9) composite *= 1.25;
     else if (patternSimilarity > 0.7) composite *= 1.15;
   }
-  return Math.min(100, Math.round(composite * 100) / 100);
+  return {
+    composite: Math.min(100, Math.round(composite * 100) / 100),
+    scoredPillars: scored.map(([k]) => k),
+    missingPillars: missing,
+    weightCoverage: Number(weightCoverage.toFixed(2)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +358,11 @@ function extractRiskSignals(enrichment: any): string[] {
 // Grade helper
 // ---------------------------------------------------------------------------
 
-function lcsGrade(score: number): string {
+function lcsGrade(score: number | null): string | null {
+  // No score, no grade. A letter is the most confident-looking thing on the
+  // card; manufacturing one from a seeded 575 printed a "C" for a parcel
+  // nothing had scored.
+  if (score === null) return null;
   if (score >= 800) return "A+";
   if (score >= 750) return "A";
   if (score >= 700) return "B+";
@@ -331,11 +398,17 @@ async function buildOpportunity(
     const state = parcel.state || "";
     if (!apn && !county) return null;
 
-    // Default scores — each service can fail independently
-    let radarScore = 50;
-    let ownerMotivation = 50; // neutral default, not 0
-    let countyOpp = 50;
-    let lcs = 575; // middle of range
+    // null until a scorer answers. Each service can fail independently, and a
+    // failure must leave its pillar UNSCORED rather than seeded at a midpoint
+    // — see computeComposite for why a neutral 50 is not neutral.
+    let radarScore: number | null = null;
+    let ownerMotivation: number | null = null;
+    // countyOpportunity has no scorer wired on this path at all. It was
+    // seeded 50 and never assigned, so 20% of every composite was a constant.
+    // It stays null until something computes it; `computeCountyOpportunityScore`
+    // is the candidate, and it refuses without a county market row.
+    const countyOpp: number | null = null;
+    let lcs: number | null = null;
     let enrichment: any = {};
     let ownerData: any = {};
     let countyData: any = {};
@@ -364,54 +437,78 @@ async function buildOpportunity(
       (parcel.leadId
         ? import("./sellerIntentPredictor").then(m => {
             const svc = new m.SellerIntentPredictorService();
-            return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: 50 };
+            // `?? { intentScore: 50 }` used to manufacture a mid-range
+            // motivation whenever the method was absent. Absent means unscored.
+            return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: null };
           })
         : scoreColdParcelMotivation(parcel, _orgId)),
       import("./landCredit").then(m => {
         const svc = m.landCredit;
-        return svc.calculateCreditScore?.(String(_orgId), String(parcel.propertyId)) ?? { overall: 575 };
+        // `?? { overall: 575 }` invented a mid-range land-credit score — a
+        // number this feed then prints as a GRADE beside the parcel.
+        return svc.calculateCreditScore?.(String(_orgId), String(parcel.propertyId)) ?? { overall: null };
       }),
+      // `targetAcres: parcel.acreage || 5` — a parcel of unknown size was
+      // priced as five acres, and the result drove three dollar offer amounts
+      // shown to the customer. No acreage, no offer.
       import("./blindOfferCalculator").then(m => {
-        return m.calculateBlindOffer?.({
-          state,
-          county,
-          targetAcres: parcel.acreage || 5,
-        }) ?? null;
+        const acres = Number(parcel.acreage);
+        if (!Number.isFinite(acres) || acres <= 0) return null;
+        return m.calculateBlindOffer?.({ state, county, targetAcres: acres }) ?? null;
       }),
     ]);
 
+    // A rejected promise, or a fulfilled one carrying no score, both leave the
+    // pillar null. `?? 50` / `?? 575` on these lines were the second half of
+    // the same defect: even when a scorer answered "I have nothing", a number
+    // was substituted.
     if (radarResult.status === "fulfilled" && radarResult.value) {
-      radarScore = radarResult.value.score ?? 50;
+      radarScore = radarResult.value.score ?? null;
     }
     if (intentResult.status === "fulfilled" && intentResult.value) {
       // seller_intent_predictions exposes intentScore (0-100), not score.
-      ownerMotivation = intentResult.value.intentScore ?? 50;
+      ownerMotivation = intentResult.value.intentScore ?? null;
       ownerData = intentResult.value;
     }
     if (lcsResult.status === "fulfilled" && lcsResult.value) {
-      lcs = lcsResult.value.overall ?? 575;
+      lcs = lcsResult.value.overall ?? null;
     }
     if (offerResult.status === "fulfilled" && offerResult.value) {
       offerData = offerResult.value;
     }
 
-    // Clamp LCS to 300-850
-    lcs = Math.max(300, Math.min(850, lcs));
+    // Clamp LCS to 300-850 — only if there is one.
+    if (lcs !== null) lcs = Math.max(300, Math.min(850, lcs));
 
-    const composite = computeComposite({
+    const compositeResult = computeComposite({
       radar: radarScore,
       ownerMotivation,
       countyOpportunity: countyOpp,
       landCredit: lcs,
     });
 
-    const estimatedValue = offerData?.comps?.medianSalePerAcre
-      ? offerData.comps.medianSalePerAcre * (parcel.acreage || 5)
-      : (parcel.assessedValue || 0);
+    // A value needs a real per-acre figure AND a real acreage. `|| 5` supplied
+    // the second when it was missing, so `medianSalePerAcre * 5` became the
+    // parcel's "estimated value" and three offer tiers were derived from it.
+    const parcelAcres = Number(parcel.acreage);
+    const acresKnown = Number.isFinite(parcelAcres) && parcelAcres > 0;
+    const assessed = Number(parcel.assessedValue);
+    const estimatedValue: number | null =
+      offerData?.comps?.medianSalePerAcre && acresKnown
+        ? offerData.comps.medianSalePerAcre * parcelAcres
+        : Number.isFinite(assessed) && assessed > 0
+          ? assessed
+          : null;
 
-    const aggOffer = offerData?.tiers?.[0]?.offerTotal ?? Math.round(estimatedValue * 0.25);
-    const mktOffer = offerData?.tiers?.[1]?.offerTotal ?? Math.round(estimatedValue * 0.40);
-    const genOffer = offerData?.tiers?.[2]?.offerTotal ?? Math.round(estimatedValue * 0.55);
+    // Offer tiers come from the calculator when it ran. The percentage
+    // fallbacks apply only to a value that exists — no value, no offer, rather
+    // than 25% of nothing presented as a suggested offer.
+    const tierOrNull = (i: number, pct: number): number | null =>
+      offerData?.tiers?.[i]?.offerTotal ??
+      (estimatedValue === null ? null : Math.round(estimatedValue * pct));
+    const aggOffer = tierOrNull(0, 0.25);
+    const mktOffer = tierOrNull(1, 0.40);
+    const genOffer = tierOrNull(2, 0.55);
 
     return {
       id: opportunityId(apn, county, state),
@@ -420,7 +517,7 @@ async function buildOpportunity(
         address: parcel.address || parcel.propertyAddress || null,
         county,
         state,
-        acreage: parcel.acreage || 0,
+        acreage: acresKnown ? parcelAcres : null,
         lat: parcel.latitude || parcel.lat || 0,
         lng: parcel.longitude || parcel.lng || 0,
       },
@@ -430,7 +527,14 @@ async function buildOpportunity(
         radarScore,
         ownerMotivation,
         countyOpportunity: countyOpp,
-        composite,
+        composite: compositeResult?.composite ?? null,
+        basis: {
+          scoredPillars: compositeResult?.scoredPillars ?? [],
+          missingPillars: compositeResult?.missingPillars ?? [
+            "radar", "ownerMotivation", "countyOpportunity", "landCredit",
+          ],
+          weightCoverage: compositeResult?.weightCoverage ?? 0,
+        },
       },
       signals: {
         motivation: extractMotivationSignals(ownerData),
@@ -441,10 +545,12 @@ async function buildOpportunity(
       financials: {
         estimatedValue,
         suggestedOffer: { aggressive: aggOffer, market: mktOffer, generous: genOffer },
+        // Profit is a subtraction of two figures; if either is absent there is
+        // no profit to state.
         cashFlipProfit: {
-          aggressive: estimatedValue - aggOffer,
-          market: estimatedValue - mktOffer,
-          generous: estimatedValue - genOffer,
+          aggressive: estimatedValue !== null && aggOffer !== null ? estimatedValue - aggOffer : null,
+          market: estimatedValue !== null && mktOffer !== null ? estimatedValue - mktOffer : null,
+          generous: estimatedValue !== null && genOffer !== null ? estimatedValue - genOffer : null,
         },
         sellerFinanceYield: offerData?.ownerFinanceScenario?.annualYield ?? null,
       },
@@ -479,11 +585,22 @@ export async function generateDealFeed(orgId: number): Promise<DealOpportunity[]
   // Gather candidates from properties table matching target counties
   const candidates: any[] = [];
   for (const { state, county } of targetCounties) {
+    // TENANCY. This query filtered on state + county ONLY, so the daily feed
+    // built for one organization drew candidates from EVERY organization's
+    // parcels in those counties — and `buildOpportunity` returns the parcel's
+    // APN, address, coordinates, assessed value, tax-delinquency signals and
+    // owner-motivation analysis, then persists them into that org's
+    // `daily_deal_feed`. `properties.organization_id` is NOT NULL with a
+    // cascade FK; there is no shared or public parcel pool for this to have
+    // been reading. Every other query in this module is org-scoped
+    // (`getTargetCounties` above, `daily_deal_feed`, `deal_feed_interactions`),
+    // which is what marks this as an omission rather than a design.
     const parcels = await db
       .select()
       .from(properties)
       .where(
         and(
+          eq(properties.organizationId, orgId),
           sql`LOWER(${properties.state}) = LOWER(${state})`,
           sql`LOWER(${properties.county}) = LOWER(${county})`,
         ),
@@ -524,9 +641,24 @@ export async function generateDealFeed(orgId: number): Promise<DealOpportunity[]
     }
   }
 
+  // A parcel with no composite cannot be ranked, and must not be surfaced as
+  // a "today's deal" — the feed's whole claim is that these are the ten best
+  // parcels it found, and an unscored parcel is not evidence for that claim.
+  // It is dropped here rather than sorted to the bottom, so its absence is a
+  // consequence of having nothing to say about it, not a low rating.
+  const rankable = opportunities.filter(
+    (o): o is typeof o & { scores: { composite: number } } => o.scores.composite !== null,
+  );
+  const unrankable = opportunities.length - rankable.length;
+  if (unrankable > 0) {
+    logger.info("deal_feed_dropped_unscored", {
+      metadata: { orgId, dropped: unrankable, considered: opportunities.length },
+    });
+  }
+
   // Sort by composite descending, take top 10
-  opportunities.sort((a, b) => b.scores.composite - a.scores.composite);
-  const top10 = opportunities.slice(0, 10);
+  rankable.sort((a, b) => b.scores.composite - a.scores.composite);
+  const top10 = rankable.slice(0, 10);
 
   // Deduplicate against yesterday's feed — same parcel shouldn't appear unless saved
   const yesterday = subDays(new Date(), 1);

@@ -42,17 +42,26 @@ interface DealOpportunity {
     address: string | null;
     county: string;
     state: string;
-    acreage: number;
+    /** null when the parcel record carries no usable acreage. */
+    acreage: number | null;
     lat: number;
     lng: number;
   };
   scores: {
-    landCredit: number;
-    landCreditGrade: string;
-    radarScore: number;
-    ownerMotivation: number;
-    countyOpportunity: number;
-    composite: number;
+    // null = the scorer did not answer for this parcel. These were seeded
+    // 50 / 575 server-side, so an unscored parcel used to render as a
+    // confident mid-range grade. See dealFeedEngine's computeComposite.
+    landCredit: number | null;
+    landCreditGrade: string | null;
+    radarScore: number | null;
+    ownerMotivation: number | null;
+    countyOpportunity: number | null;
+    composite: number | null;
+    basis?: {
+      scoredPillars: string[];
+      missingPillars: string[];
+      weightCoverage: number;
+    };
   };
   signals: {
     motivation: string[];
@@ -67,9 +76,17 @@ interface DealOpportunity {
     redemptionMonths?: number;
   };
   financials: {
-    estimatedValue: number;
-    suggestedOffer: { aggressive: number; market: number; generous: number };
-    cashFlipProfit: { aggressive: number; market: number; generous: number };
+    estimatedValue: number | null;
+    suggestedOffer: {
+      aggressive: number | null;
+      market: number | null;
+      generous: number | null;
+    };
+    cashFlipProfit: {
+      aggressive: number | null;
+      market: number | null;
+      generous: number | null;
+    };
     sellerFinanceYield: number | null;
   };
   enrichment: {
@@ -95,7 +112,10 @@ const motivationColors: Record<string, string> = {
   "Inherited property": "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
 };
 
-function lcsColor(grade: string): string {
+function lcsColor(grade: string | null): string {
+  // No grade, no colour verdict. Falling through to the red "F" bucket would
+  // have painted an unscored parcel as the worst one on the page.
+  if (!grade) return "bg-muted";
   if (grade.startsWith("A")) return "bg-acr-pos";
   if (grade.startsWith("B")) return "bg-acr-accent";
   if (grade.startsWith("C")) return "bg-acr-warn";
@@ -110,7 +130,8 @@ function formatCurrency(val: number | null | undefined): string {
 }
 
 /** Determines an acreage bucket for pass-tracking (e.g. "8+" or "0-5") */
-function acreageBucket(acreage: number): string {
+function acreageBucket(acreage: number | null): string {
+  if (acreage == null) return "unknown";
   if (acreage <= 2) return "0-2";
   if (acreage <= 5) return "2-5";
   if (acreage <= 8) return "5-8";
@@ -132,7 +153,9 @@ function HeroDealCard({
       : `${parcel.county} County Parcel`;
 
   const acreageDisplay =
-    parcel.acreage > 0 ? `${parcel.acreage.toLocaleString()} acres` : "Acreage unknown";
+    parcel.acreage != null && parcel.acreage > 0
+      ? `${parcel.acreage.toLocaleString()} acres`
+      : "Acreage unknown";
 
   const enrichmentLine = [
     enrichment.floodZone !== "Unknown" ? `${enrichment.floodZone === "X" || enrichment.floodZone === "None" ? "No" : ""} flood risk` : null,
@@ -188,11 +211,11 @@ function HeroDealCard({
               <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${scores.composite}%` }}
+                  style={{ width: `${scores.composite ?? 0}%` }}
                 />
               </div>
               <span className="text-sm font-medium tabular-nums w-8 text-right">
-                {scores.composite}
+                {scores.composite ?? "—"}
               </span>
             </div>
 
@@ -280,9 +303,10 @@ function HeroDealCard({
           {/* AI Reasoning — why this deal was ranked #1 */}
           <AIReasoning
             feature="recommendation"
-            decision={`Ranked #1 with composite score ${scores.composite}`}
+            decision={`Ranked #1 with composite score ${scores.composite ?? "—"}`}
             reasoning={matchReason}
-            confidence={Math.min(95, Math.round(scores.composite * 1.2))}
+            // No composite, no confidence claim about the ranking.
+            confidence={scores.composite === null ? 0 : Math.min(95, Math.round(scores.composite * 1.2))}
             inputs={{
               landCredit: scores.landCredit,
               radarScore: scores.radarScore,
@@ -312,7 +336,9 @@ function DealCard({
       : `${parcel.county} County Parcel`;
 
   const acreageDisplay =
-    parcel.acreage > 0 ? `${parcel.acreage.toLocaleString()} acres` : "Acreage unknown";
+    parcel.acreage != null && parcel.acreage > 0
+      ? `${parcel.acreage.toLocaleString()} acres`
+      : "Acreage unknown";
 
   const enrichmentLine = [
     enrichment.floodZone !== "Unknown" ? `${enrichment.floodZone === "X" || enrichment.floodZone === "None" ? "No" : ""} flood risk` : null,
@@ -344,10 +370,10 @@ function DealCard({
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${lcsColor(scores.landCreditGrade)}`}
               >
-                {scores.landCredit}
+                {scores.landCredit ?? "—"}
               </div>
               <span className="text-micro text-muted-foreground mt-0.5">
-                {scores.landCreditGrade}
+                {scores.landCreditGrade ?? "not scored"}
               </span>
             </div>
           </div>
@@ -358,11 +384,11 @@ function DealCard({
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${scores.composite}%` }}
+                  style={{ width: `${scores.composite ?? 0}%` }}
                 />
               </div>
               <span className="text-xs font-medium tabular-nums w-8 text-right">
-                {scores.composite}
+                {scores.composite ?? "—"}
               </span>
             </div>
 
@@ -403,16 +429,21 @@ function DealCard({
             <p className="text-sm font-medium">
               {formatCurrency(financials.suggestedOffer.aggressive)} —{" "}
               {formatCurrency(financials.suggestedOffer.generous)}
-              {financials.estimatedValue > 0 && (
-                <span className="text-xs text-muted-foreground ml-1">
-                  {Math.round(
-                    ((financials.estimatedValue - financials.suggestedOffer.market) /
-                      financials.estimatedValue) *
-                      100,
-                  )}
-                  % below estimated market value
-                </span>
-              )}
+              {/* The discount is a ratio of two figures; without both there is
+                  no percentage to state, and printing one from a defaulted
+                  value is what this whole change removes. */}
+              {financials.estimatedValue != null &&
+                financials.estimatedValue > 0 &&
+                financials.suggestedOffer.market != null && (
+                  <span className="text-xs text-muted-foreground ml-1">
+                    {Math.round(
+                      ((financials.estimatedValue - financials.suggestedOffer.market) /
+                        financials.estimatedValue) *
+                        100,
+                    )}
+                    % below estimated market value
+                  </span>
+                )}
             </p>
 
             <div className="flex items-center gap-2">
@@ -449,9 +480,9 @@ function DealCard({
             {/* AI Reasoning — collapsed by default */}
             <AIReasoning
               feature="recommendation"
-              decision={`Composite score: ${scores.composite}`}
+              decision={`Composite score: ${scores.composite ?? "—"}`}
               reasoning={matchReason}
-              confidence={Math.min(95, Math.round(scores.composite * 1.2))}
+              confidence={scores.composite === null ? 0 : Math.min(95, Math.round(scores.composite * 1.2))}
               inputs={{
                 landCredit: scores.landCredit,
                 radarScore: scores.radarScore,
@@ -510,7 +541,7 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
       // Track passes for the acreage prompt
       if (action === "pass" && data?.opportunities) {
         const opp = data.opportunities.find((o) => o.id === id);
-        if (opp && opp.parcel.acreage > 0) {
+        if (opp && opp.parcel.acreage != null && opp.parcel.acreage > 0) {
           const bucket = acreageBucket(opp.parcel.acreage);
           passCountRef.current[bucket] = (passCountRef.current[bucket] || 0) + 1;
 

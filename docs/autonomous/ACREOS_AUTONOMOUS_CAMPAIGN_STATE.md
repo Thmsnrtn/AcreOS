@@ -705,3 +705,106 @@ The rule this makes concrete: **when a mutation does not fire, first establish
 whether the mutation was semantically null.** If it was, the gate is fine and
 the test's claim is what needs correcting — an overclaiming test name is its own
 kind of false green.
+
+## PHASE 5 — THE `|| <constant>` IDIOM (2026-08-18)
+
+### The scan that found the rest
+
+A throwaway scanner over `server/**/*.ts` for `<metric-shaped identifier> ||
+<non-zero literal>` (and `??`) returned **129 candidates**. Most are legitimate
+config defaults — `days ?? 30` for a query window, `gracePeriodDays ?? 10` read
+off a note's own terms, `expirationDays ?? 10`. The dangerous subset is narrow
+and specific: **a measurement of the world, defaulted to a plausible value, then
+presented to a customer as measured.**
+
+Ranked by consequence, the ones acted on:
+
+| site | the constant | what it reached |
+|---|---|---|
+| `acreOSValuation.ts:75` | `compsMedianPricePerAcre \|\| 1000` | the AVM — a billable valuation |
+| `dealFeedEngine.ts` | four pillars seeded 50 / 575, `acreage \|\| 5` | the daily deal feed's ranking and its dollar offers |
+| `countyAssessorIngest.ts:484` | `avgDaysOnMarket: 90` | persisted into `county_markets` |
+| `negotiationEnhancements.ts:49` | `25` / `2.3` | a live analytics endpoint |
+
+Still recorded and unfixed, with reasons in the deletion ledger or here:
+`acquisitionRadar.ts:340` (`medianDaysOnMarket || 90`),
+`dataIntelligenceEngine.ts` (`medianDomDays ?? 180`, `medianHouseholdIncome ??
+50000`), `marketPrediction.ts` (`avgDaysOnMarket || 60`),
+`leadIntelligenceEngine.ts:315` (`pasturePerAcre || 1000`),
+`parcelIntelligenceFusion.ts:831` (`opportunityScore || 50` — in the very file
+that documented the refusal), and the LLM-parse family (`parsed.confidence ||
+0.5`), which is a milder class: a model that returned no confidence gets one.
+
+### A fix that deleted the symbol and left the behaviour
+
+`generateValuation` carries a note from an earlier honesty pass: *"the old
+`= 1000` seed meant every parcel in America 'was worth' $1,000/acre the moment
+both real paths failed — branded as a proprietary model."* That fix removed the
+visible `= 1000`. One level down, inside the model's own feature vector, sat
+`pricePerAcreComps: compsMedianPricePerAcre || 1000` — and the only caller
+passed `0`, so it fired on **every call**.
+
+This is the clearest instance yet of the first law in `CLAUDE.md`, and it
+happened to a fix that had already been made once, by someone who had correctly
+identified the defect and written down why it mattered. Deleting the identifier
+is not deleting the behaviour.
+
+Second finding in the same function: `confidence = min(85, 50 + topImportance *
+200)`, where `topImportance` is a property of the **trained model**. Every
+parcel a given model ever scored reported the same confidence. A confidence
+that cannot vary with the input is not a confidence.
+
+### A tenancy leak found while fixing a fabrication
+
+`generateDealFeed` gathered candidates with `.from(properties).where(and(LOWER(state)
+= …, LOWER(county) = …))` — **no organization predicate**. `properties.organization_id`
+is NOT NULL with a cascade FK; there is no shared parcel pool. So the daily feed
+built for one org drew candidates from every org's parcels in its target
+counties, and `buildOpportunity` returns APN, address, coordinates, assessed
+value, tax-delinquency signals and owner-motivation analysis — then persists
+them into the reading org's `daily_deal_feed`.
+
+`check-org-scoped-fetch` was green over it before and after, and the reason is
+the property already recorded in phase 3: **rule 3 treats a function as
+org-scoped when the string `organizationId` appears anywhere in its body.**
+`generateDealFeed` is org-scoped in six other places, so a partly-scoped
+function HIDES an unscoped query inside it. The gate's blind spot is not
+"unscoped functions" — it is "unscoped queries in scoped functions", which is
+strictly harder to see and strictly more likely as a codebase gets more correct.
+
+### "Fall open to neutral" is fabrication with a reassuring name
+
+Three sites in `dealFeedEngine` were documented as deliberate:
+
+- `NEUTRAL_RADAR_SCORE = 50` — *"Keeps the feed honest rather than crashing or
+  fabricating a high score."* It did prevent a HIGH score. It did not prevent a
+  fabricated one, and the comment's own framing — that the alternative to a
+  default is a crash — is what hid the third option.
+- `scoreColdParcelMotivation`'s *"honesty gate → fall open, no regression"*: the
+  gate detects that the biography has no real series, returns null, and the
+  caller substitutes 50. The gate found the truth and the caller discarded it.
+- `countyOpportunity` was seeded 50 and **never assigned from anything**, so
+  20% of every composite score in the feed was a constant.
+
+All three now propagate null, and `computeComposite` renormalises over the
+pillars that scored. A parcel with no pillar at all is dropped from the feed
+rather than ranked, because "the ten best parcels we found" is a claim and an
+unscored parcel is not evidence for it.
+
+### The mutation-testing lesson, third instance
+
+M3 on the deal-feed gate did not fire, and the reason was neither the gate nor
+carelessness: `acreage || 5` appeared TWICE, and the caller-side guard returns
+before the calculator runs, so the second occurrence is **unreachable**.
+Mutating unreachable code is semantically null. Removing BOTH does fail.
+
+The first attempt at handling this added a `forceComps` knob to "isolate" the
+second guard — which could not work, because a mock cannot bypass a `return`
+that happens before the mock is called. That knob was removed rather than kept:
+a test fixture that pretends to isolate something it cannot is the same
+overclaiming failure as a test NAME that does, and both read as coverage.
+
+**The rule, now stated three times in three phases:** when a mutation does not
+fire, establish which of three things is true before changing anything —
+the gate is weak, the mutation was semantically null, or the mutated code is
+unreachable. Only the first calls for a stronger gate.
