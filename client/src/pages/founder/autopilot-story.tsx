@@ -48,7 +48,7 @@ interface ReasoningTrace {
   narrative?: string;
   memory?: string | null;
 }
-interface StoryEntry {
+export interface StoryEntry {
   id: number;
   at: string | null;
   moveKind: string;
@@ -56,6 +56,8 @@ interface StoryEntry {
   playId: string | null;
   outcome: string; // acted | escalated | suppressed
   vote: "success" | "failure" | "pending";
+  /** What DECIDED the vote — see outcomeBasis in server/services/autopilot/experienceLog.ts. */
+  basis: "human" | "support" | "consequence" | "eval" | "mechanical" | "none";
   reasoningTrace: ReasoningTrace | null;
 }
 
@@ -121,13 +123,42 @@ const OUTCOME_META: Record<string, { icon: typeof CheckCircle2; tone: string; la
   suppressed: { icon: PauseCircle, tone: "text-muted-foreground", label: "Held" },
 };
 
-function voteBadge(vote: StoryEntry["vote"]) {
-  if (vote === "success") return <Badge variant="outline" className="border-acr-success/40 text-acr-success text-xs">went well</Badge>;
-  if (vote === "failure") return <Badge variant="outline" className="border-destructive/40 text-destructive text-xs">didn't land</Badge>;
-  return null;
+/**
+ * What decided the verdict, in the founder's words. Shown as the badge's title
+ * so "went well" is never an unattributed claim.
+ */
+const BASIS_LABEL: Record<StoryEntry["basis"], string> = {
+  human: "You said so",
+  support: "The customer's issue was resolved",
+  consequence: "A real consequence landed (payment recovered, or the send bounced)",
+  eval: "The output failed its quality check",
+  mechanical: "It never sent",
+  none: "No outcome signal yet — it sent, and nothing has come back",
+};
+
+function voteBadge(entry: StoryEntry) {
+  const title = BASIS_LABEL[entry.basis] ?? BASIS_LABEL.none;
+  if (entry.vote === "success") {
+    return <Badge variant="outline" title={title} className="border-acr-success/40 text-acr-success text-xs">went well</Badge>;
+  }
+  if (entry.vote === "failure") {
+    return <Badge variant="outline" title={title} className="border-destructive/40 text-destructive text-xs">didn't land</Badge>;
+  }
+  // "Pending" is the COMMON case, not an edge case: a successful dispatch no
+  // longer counts as evidence the action worked, so most entries sit here until
+  // a founder verdict, a support resolution or a real consequence arrives.
+  // Rendering nothing would read as a missing badge rather than an honest "we
+  // don't know yet", which is the whole point of showing it.
+  return <Badge variant="outline" title={title} className="border-border text-muted-foreground text-xs">too soon to tell</Badge>;
 }
 
-function StoryRow({ entry }: { entry: StoryEntry }) {
+/**
+ * Exported for `outcomeObservationVote.test.tsx`, which renders this row and
+ * reads the DOM. The "too soon to tell" state became the COMMON case when a
+ * clean dispatch stopped voting, and a state that common is not proven by a
+ * source scan of the component that draws it.
+ */
+export function StoryRow({ entry }: { entry: StoryEntry }) {
   const [open, setOpen] = useState(false);
   const meta = OUTCOME_META[entry.outcome] ?? OUTCOME_META.suppressed;
   const Icon = meta.icon;
@@ -145,7 +176,7 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-foreground">{prettyKind(entry.moveKind)}</span>
             <Badge variant="secondary" className="text-xs capitalize">{entry.domain}</Badge>
-            {voteBadge(entry.vote)}
+            {voteBadge(entry)}
           </div>
           <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
             {t?.narrative ?? `${meta.label}.`}

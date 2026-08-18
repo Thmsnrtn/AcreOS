@@ -61,7 +61,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 9 | A carrier's acceptance is not a delivery, on a regulated record | **ADAPTED — second application of #5** | `"sent"` in `PERIODIC_STATEMENT_DELIVERY_STATUSES` (`21ecc76d`) |
 | 10 | An omitted risk flag is not a declaration of safety | **ADAPTED** | required `movesMoney` / `outwardClass` on `HandSpec`, `handRiskDeclaration.test.ts` (`835e0e9c`) |
 | 11 | A guess is not a known value, on the path the law governs | **ADAPTED** | `resolveZoneForPhone()` in `tcpaCompliance.ts`, `tcpaZoneGuess.test.ts` (`a6df3b60`) |
-| 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (this commit) |
+| 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (`c937eb2e`) |
+| 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (this commit) |
 
 ---
 
@@ -445,6 +446,69 @@ including restoring the ternary, fixing only the escalation half, averaging
 **NOT generalised.** No universal observation framework. The four typed
 verifiers already observed real world state and are unchanged apart from tenant
 scoping; only the branch that invented a verdict was replaced.
+
+
+---
+
+### 13 — "A dispatch receipt is not evidence the action worked" → ADAPTED, second layer of #12
+
+**Foundry source.** §16 again, and §18 (learning does not create authority).
+Entry 12 fixed a verifier that re-read the actor's log; this is the same
+invariant one layer down, where the actor's own dispatch result votes on its own
+efficacy.
+
+**AcreOS defect.** `outcomeOf` rule 4 — whose own docstring calls it "did it
+even run" — returned a full-weight `"success"` for `dispatchSuccess === true`,
+the same vote weight as a founder's explicit approval, and
+`statsFromExperiences` counts every non-pending vote once. Those votes become
+`PlayStats`, and `efficacy.ts` samples a Beta-Bernoulli posterior over them to
+PICK THE NEXT PLAY. A play that mailed two hundred people who all ignored it
+accrued two hundred successes and a posterior mean near 1.0, beating a play with
+one real founder approval at 0.67. The system learned to prefer whatever
+dispatches cleanly. The same vote reaches `domainAutonomy`, so the receipt also
+fed autonomy promotion.
+
+**The more instructive half.** `outcomeBasis()` already drew the correct
+distinction — "lets callers refine the causal model from real CONSEQUENCE only,
+never the execution proxy" — and had ZERO production callers. The repository had
+written the rule down in a function nothing called while breaking it in the
+function everything called. Third recorded instance of CLAUDE.md's second law,
+after `publicMaturityOf` and `isFounderUserId`.
+
+**AcreOS primitive reused.** The existing three-value `ExperienceVote` and the
+existing `outcomeBasis`. No weighting system was added to `PlayStats`: a
+weighted vote would have been a second learning architecture, and §5's warning
+against building one applies here as much as it did to push.
+
+**Smallest implementation.** One branch deleted. `dispatchSuccess === true`
+returns `pending`; `dispatchSuccess === false` still votes `failure`.
+
+**The asymmetry is the point, not an oversight.** A send that never left
+conclusively did not help; a send that left proves only that it left. The eval
+gate above rule 4 was ALREADY asymmetric in exactly this way — a failing score
+votes, a passing score never voted on its own — so rule 4 was the single rule
+that let a proxy vote in the positive direction. It now matches its neighbours.
+
+**Complexity change.** Down, one branch. **Liability change.** Down. Far fewer
+success votes, so most plays sit near the uniform `Beta(1,1)` prior for longer
+— which is this model's own documented cold-start behaviour and the honest
+description of a system that has dispatched a lot and confirmed little.
+
+**Adoption, not just semantics.** `getRecentStory` now returns `basis`, the
+founder's story renders it as the badge's attribution, and `unreached-exports`
+dropped 1400 → 1399. The rule is consulted by the product, not only by a test.
+
+**Downstream state proved (§8, §25).** Making a clean dispatch non-voting turns
+`pending` from an edge case into the majority state, and `voteBadge` returned
+`null` for it — a silently absent badge reads as a rendering fault, not as "we
+don't know yet". The row now says "too soon to tell", asserted against the
+rendered DOM rather than the component source.
+
+**Exit test.** `outcomeObservationVote.test.tsx`, mutation-tested 6/6 —
+restoring rule 4's success half; over-correcting into symmetry by silencing the
+failed-dispatch vote; reverting `outcomeBasis` to its presence check; dropping
+the basis from the story; re-hiding the pending badge; and a vacuity mutation
+that renders the pending badge for every vote.
 
 
 ## Not yet dispositioned

@@ -23,11 +23,27 @@ describe("autopilot experience log — honest signal → vote", () => {
 
   it("the eval gate fails a low-scored output even if the dispatch ran", () => {
     expect(outcomeOf({ dispatchSuccess: true, evalScore: EVAL_PASS_THRESHOLD - 0.01 })).toBe("failure");
-    expect(outcomeOf({ dispatchSuccess: true, evalScore: EVAL_PASS_THRESHOLD })).toBe("success");
   });
 
-  it("a clean dispatch with no eval scored still counts as success (mechanical floor)", () => {
-    expect(outcomeOf({ dispatchSuccess: true })).toBe("success");
+  it("THE EVAL GATE IS ASYMMETRIC — a passing score is not evidence it worked", () => {
+    // This was `.toBe("success")` until 2026-08-18, and only because rule 4 let
+    // a clean dispatch vote. The gate asks whether the OUTPUT was acceptable,
+    // not whether it helped anybody. Failing it is conclusive; passing it is
+    // permission to send, which is where the evidence stops.
+    expect(outcomeOf({ dispatchSuccess: true, evalScore: EVAL_PASS_THRESHOLD })).toBe("pending");
+    expect(outcomeOf({ evalScore: 0.99 })).toBe("pending");
+  });
+
+  it("THE MECHANICAL RESULT IS ASYMMETRIC — a clean dispatch does not vote", () => {
+    // Was "a clean dispatch with no eval scored still counts as success
+    // (mechanical floor)". The invariant that test was reaching for — a failed
+    // dispatch is a failure — survives verbatim below. What it also asserted,
+    // that a SUCCESSFUL dispatch is a success, is the defect: rule 4's own name
+    // for itself is "did it even run", and that vote carried the same weight as
+    // a founder approval into the Thompson sampler that picks the next play.
+    expect(outcomeOf({ dispatchSuccess: true })).toBe("pending");
+
+    // Unchanged, and deliberately so. A send that never left is conclusive.
     expect(outcomeOf({ dispatchSuccess: false })).toBe("failure");
   });
 
@@ -41,14 +57,17 @@ describe("autopilot experience log — honest signal → vote", () => {
       { playId: "county-guide", founderVerdict: "approved" },
       { playId: "county-guide", founderVerdict: "approved" },
       { playId: "county-guide", founderVerdict: "declined" },
-      { playId: "parcel-explainer", dispatchSuccess: true },
+      { playId: "parcel-explainer", dispatchSuccess: true }, // sent, nothing back — no vote
       { playId: "parcel-explainer", evalScore: 0.2, dispatchSuccess: true }, // eval fail
       { playId: "still-running", dispatchSuccess: null }, // pending — no vote
       { playId: null, founderVerdict: "approved" }, // no play — ignored
     ]);
     const byId = Object.fromEntries(stats.map((s) => [s.playId, s]));
     expect(byId["county-guide"]).toEqual({ playId: "county-guide", successes: 2, failures: 1 });
-    expect(byId["parcel-explainer"]).toEqual({ playId: "parcel-explainer", successes: 1, failures: 1 });
+    // Was `successes: 1` — and that one success was a dispatch receipt. A play
+    // whose only evidence is "it sent" now carries a track record of exactly
+    // what is known about it: one real failure, no confirmed wins.
+    expect(byId["parcel-explainer"]).toEqual({ playId: "parcel-explainer", successes: 0, failures: 1 });
     expect(byId["still-running"]).toBeUndefined();
     expect(stats.find((s) => s.playId === null)).toBeUndefined();
   });

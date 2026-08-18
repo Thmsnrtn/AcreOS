@@ -66,13 +66,31 @@ export function outcomeOf(s: ExperienceSignals): ExperienceVote {
   // 3. Eval gate (only if scored).
   if (s.evalScore != null && s.evalScore < EVAL_PASS_THRESHOLD) return "failure";
 
-  // 4. Mechanical result.
+  // 4. Mechanical result — DELIBERATELY ASYMMETRIC.
+  //
+  // A dispatch that FAILED is conclusive: the action did not happen, so it
+  // cannot have helped. It votes.
   if (s.dispatchSuccess === false) return "failure";
-  if (s.dispatchSuccess === true && (s.evalScore == null || s.evalScore >= EVAL_PASS_THRESHOLD)) {
-    return "success";
-  }
 
-  // No real signal yet — it does not vote.
+  // A dispatch that SUCCEEDED is not. It means the message left the building —
+  // rule 4's own name for itself, three lines up in the docstring, is "did it
+  // even run". Until 2026-08-18 it returned a full-weight "success", the same
+  // vote weight as a founder's explicit approval, and statsFromExperiences
+  // counts every non-pending vote as one observation. So a play that mailed two
+  // hundred people who all ignored it accrued two hundred successes and a
+  // posterior mean near 1.0, and the Thompson sampler in efficacy.ts preferred
+  // it over a play with one real founder approval. The system learned to favour
+  // whatever dispatches cleanly.
+  //
+  // Note what this does NOT change: the eval gate above is already asymmetric
+  // in exactly this way — a failing score votes "failure", a passing score has
+  // never voted "success" on its own. Rule 4 was the one rule that let a proxy
+  // vote in the positive direction. It now matches.
+  //
+  // The cost is real and is the point: far fewer success votes, so most plays
+  // sit near the uniform Beta(1,1) prior for longer. That is this model's
+  // documented cold-start behaviour, and it is the honest description of a
+  // system that has dispatched a lot and confirmed little.
   return "pending";
 }
 
@@ -186,6 +204,13 @@ export async function recordExperience(input: {
  * Recent actions with their reasoning trace + resolved outcome — the glass-box
  * "story" the founder reads. Each entry exposes the full WHY plus what's known
  * about how it turned out.
+ *
+ * `basis` says WHAT DECIDED the vote, and it ships to the founder rather than
+ * staying internal. `outcomeBasis` was written to draw exactly the distinction
+ * this file now enforces — "real CONSEQUENCE only, never the execution proxy" —
+ * and had ZERO production callers, so nothing in the product had ever asked the
+ * question it answers. A rule that only a test consults is not enforced
+ * anywhere (CLAUDE.md, second law). This is where it gets consulted.
  */
 export async function getRecentStory(limit = 30): Promise<
   Array<{
@@ -196,6 +221,7 @@ export async function getRecentStory(limit = 30): Promise<
     playId: string | null;
     outcome: string;
     vote: ExperienceVote;
+    basis: OutcomeBasis;
     reasoningTrace: unknown;
   }>
 > {
@@ -212,6 +238,7 @@ export async function getRecentStory(limit = 30): Promise<
     playId: r.playId,
     outcome: r.outcome,
     vote: outcomeOf(signalsOf(r)),
+    basis: outcomeBasis(signalsOf(r)),
     reasoningTrace: r.reasoningTrace,
   }));
 }
@@ -371,7 +398,10 @@ export function outcomeBasis(s: ExperienceSignals): OutcomeBasis {
   if (s.resolution === "reopened" || s.resolution === "resolved") return "support";
   if (s.deliveryBounced === true || s.paymentRecovered === true) return "consequence";
   if (s.evalScore != null && s.evalScore < EVAL_PASS_THRESHOLD) return "eval";
-  if (s.dispatchSuccess != null) return "mechanical";
+  // Mirrors outcomeOf's asymmetry: only a FAILED dispatch decides a vote, so
+  // only a failed dispatch is a basis. `dispatchSuccess === true` alone leaves
+  // the experience "pending", whose basis is "none" — nothing decided it yet.
+  if (s.dispatchSuccess === false) return "mechanical";
   return "none";
 }
 

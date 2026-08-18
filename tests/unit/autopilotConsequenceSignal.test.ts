@@ -61,7 +61,12 @@ describe("outcomeBasis — what signal decided the vote (T1.1 refine-from-conseq
     expect(outcomeBasis({ paymentRecovered: true })).toBe("consequence");
     expect(outcomeBasis({ deliveryBounced: true })).toBe("consequence");
     expect(outcomeBasis({ evalScore: 0.2 })).toBe("eval");
-    expect(outcomeBasis({ dispatchSuccess: true })).toBe("mechanical");
+    // The basis mirrors outcomeOf, so it mirrors its asymmetry too: only a
+    // FAILED dispatch decides a vote, so only a failed dispatch is a basis.
+    // Was `{ dispatchSuccess: true } → "mechanical"`, which claimed the
+    // execution proxy had decided something when the vote is still pending.
+    expect(outcomeBasis({ dispatchSuccess: false })).toBe("mechanical");
+    expect(outcomeBasis({ dispatchSuccess: true })).toBe("none");
     expect(outcomeBasis({})).toBe("none");
   });
 });
