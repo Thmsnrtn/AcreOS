@@ -42,6 +42,7 @@ import {
   assertDemotionsValid,
   publicMaturityOf,
 } from "../../shared/business-types/publicClaims";
+import { measureVerticalEvidence } from "../support/verticalEvidence";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -73,72 +74,14 @@ function walk(rel: string): string[] {
 
 // ── Measure the evidence ────────────────────────────────────────────────────
 
-/** Template ids the workflow engine really defines (`id: "tpl_…"`). */
-function definedTemplateIds(): Set<string> {
-  const src = read("server/services/workflow-engine.ts");
-  return new Set([...src.matchAll(/\bid:\s*"(tpl_[a-z0-9_]+)"/g)].map((m) => m[1]));
-}
-
 /**
- * Business types an economics engine writes a scenario for IN PRODUCTION.
+ * MEASURED FROM SOURCE, and shared with publicMaturityRendered.test.tsx.
  *
- * Measured from the `engineId` passed at real `recordScenario` call sites, then
- * mapped to the vertical whose surface owns that route. The mapping is
- * deliberately narrow and explicit: guessing a vertical from an engine name
- * would let a rename silently promote a vertical.
+ * It was defined here and had to move: the rendered test needed the SAME
+ * measurement as an anchor independent of the demotion map, and a second copy
+ * would have been two definitions of "what this repo can show" free to drift.
  */
-const ENGINE_ROUTE_OWNER: Record<string, BusinessTypeId> = {
-  // POST /api/flip-analyzer/offer — the flip module is businessTypeOnly
-  // ["fix_and_flip"] in layout-sidebar.tsx.
-  flip_mao: "fix_and_flip",
-};
-
-function underwrittenTypes(): Set<BusinessTypeId> {
-  const out = new Set<BusinessTypeId>();
-  for (const file of routeFiles()) {
-    const src = read(file);
-    if (!src.includes("recordScenario(")) continue;
-    for (const m of src.matchAll(/engineId:\s*"([a-z0-9_]+)"/g)) {
-      const owner = ENGINE_ROUTE_OWNER[m[1]];
-      if (owner) out.add(owner);
-    }
-  }
-  return out;
-}
-
-/**
- * Business types a production surface records a decision snapshot for.
- *
- * A route earns this only if it calls `recordDecision(` AND is owned by a
- * vertical. `routes-decisions.ts` is the generic API and owns no vertical, so
- * it deliberately promotes nothing — an API a customer surface never calls is
- * not evidence that a vertical decides.
- */
-const DECISION_ROUTE_OWNER: Record<string, BusinessTypeId> = {
-  "server/routes-flip-analyzer.ts": "fix_and_flip",
-  "server/routes-lot-pricing.ts": "subdivider",
-};
-
-function decidingTypes(): Set<BusinessTypeId> {
-  const out = new Set<BusinessTypeId>();
-  for (const [file, owner] of Object.entries(DECISION_ROUTE_OWNER)) {
-    if (read(file).includes("recordDecision(")) out.add(owner);
-  }
-  return out;
-}
-
-function routeFiles(): string[] {
-  return fs
-    .readdirSync(path.join(ROOT, "server"))
-    .filter((f) => f.startsWith("routes") && f.endsWith(".ts") && !f.includes(".test."))
-    .map((f) => `server/${f}`);
-}
-
-const evidence: VerticalEvidence = {
-  definedWorkflowTemplateIds: definedTemplateIds(),
-  underwrittenBusinessTypes: underwrittenTypes(),
-  decidingBusinessTypes: decidingTypes(),
-};
+const evidence: VerticalEvidence = measureVerticalEvidence();
 
 /**
  * MEASURED 2026-08-17: 13 of 15 verticals declare `core` on evidence that does

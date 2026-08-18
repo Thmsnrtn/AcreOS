@@ -130,3 +130,50 @@ So, for every wave:
    a hardcoded list, so it cannot go stale again).
 5. **Fix the occurrence, not the baseline.** Ratchets are load-bearing; when a
    count legitimately drops, lower it in the same commit.
+
+## The two laws that cost the most to learn
+
+These are not style. Each was discovered by an audit finding a green gate over
+a live defect, more than once.
+
+### A load-bearing gate must be falsified against the SEMANTIC defect
+
+Do not prove *"this symbol disappeared."* Prove *"the forbidden behaviour cannot
+be reintroduced through an equivalent representation."*
+
+Every one of these was green while the defect it guarded was reintroducible:
+
+- forbidding the identifier `PLATFORM_ORG_ID` while permitting a literal `0` in
+  the same query;
+- pinning a trigger by name, which survived renaming it `…_RENAMED` because the
+  old name is a substring of the new one;
+- an exemption register keyed on a substring of an expression;
+- the OD-5 public-claim gate mapping the registry through its own projection
+  while scanning no actual public surface;
+- a push test asserting `organizationId === 0` as the *expected contract*;
+- a nudger mock resolving `undefined`, so the suite agreed with any
+  implementation of a status it never read.
+
+So: when you write a gate for something consequential, **mutate the thing it
+governs, not the thing it mentions** — then watch it fail. If it stays green,
+the gate is decoration. Prioritise this for gates whose false green would
+certify security, tenant isolation, public truth, consequential action, data
+deletion, billing, or authority. Not every gate needs it.
+
+### A canonical function with zero production callers is not canonical
+
+Authoritative semantics are only one third of it. Canonical requires
+**authoritative semantics + real production adoption + drift prevention.**
+
+`publicMaturityOf()` was documented as the rule every public surface must
+render, was tested against its own registry, and had **zero production call
+sites** — the landing re-implemented its one-line body inline, so anything added
+to the function would silently never have reached the only surface it existed
+for. `isFounderUserId()` was the canonical founder check and enforced nothing
+anywhere until a push recipient needed authorizing.
+
+A function tested only against its own inputs does not establish product truth
+if the product computes the same rule independently. Where practical, make the
+real surface consume the canonical projection; otherwise pin behavioural
+equivalence against actual rendered or serialized output. Static source scanning
+is defence in depth, not proof.
