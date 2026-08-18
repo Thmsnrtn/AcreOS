@@ -5,7 +5,7 @@ import {
   properties,
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
-import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
+import { GradientBoostingRegressor, extractLandFeatures, LAND_FEATURE_NAMES, type LandFeatureInput } from './gradientBoosting';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
@@ -42,11 +42,16 @@ async function loadGBMModel(): Promise<GradientBoostingRegressor | null> {
 
 /**
  * Produce a fast GBM price-per-acre estimate from property characteristics.
- * Returns null if no trained model is available.
+ *
+ * Returns null when no trained model is available, OR when there is no
+ * comparable price signal to give it. Both are refusals, and the caller must
+ * treat them as such — this feeds a billable customer valuation.
  */
 async function gbmEstimatePricePerAcre(
   acres: number,
-  compsMedianPricePerAcre: number,
+  /** null when no comparable sales are on file. The model declines rather
+   *  than substituting a national baseline — see the refusal below. */
+  compsMedianPricePerAcre: number | null,
   characteristics: {
     zoning?: string;
     waterRights?: boolean;
@@ -57,7 +62,7 @@ async function gbmEstimatePricePerAcre(
     populationGrowth?: number;
     localUnemploymentRate?: number;
   }
-): Promise<{ pricePerAcre: number; confidence: number } | null> {
+): Promise<{ pricePerAcre: number; confidence: number; assumedFeatures: string[] } | null> {
   const model = await loadGBMModel();
   if (!model) return null;
 
@@ -70,30 +75,79 @@ async function gbmEstimatePricePerAcre(
     : characteristics.floodZone?.toLowerCase().includes('partial') ? 1
     : 0;
 
+  // REFUSE without a comparable price signal.
+  //
+  // This line was `pricePerAcreComps: compsMedianPricePerAcre || 1000,
+  // // National median vacant land baseline when no comps available` — and the
+  // only caller passes 0, so the `||` fired on EVERY call. W3.1 had already
+  // removed the outer `= 1000` seed from `generateValuation` with the note
+  // "every parcel in America 'was worth' $1,000/acre the moment both real
+  // paths failed — branded as a proprietary model". That fix deleted the
+  // visible constant and left this one, one level down, in the model's own
+  // feature vector: the same number, reached the same way, on the same
+  // billable surface.
+  //
+  // The feature is not incidental. It is price-per-acre — the model's target
+  // variable in input form. Handing it a national constant makes the
+  // prediction largely a function of that constant, and the result is returned
+  // to a paying customer as `gbm_model`.
+  if (compsMedianPricePerAcre === null || !Number.isFinite(compsMedianPricePerAcre) || compsMedianPricePerAcre <= 0) {
+    logger.info('[AcreOSValuation] GBM declined: no comparable price signal', {
+      metadata: { acres },
+    });
+    return null;
+  }
+
+  /**
+   * Features this call does NOT measure. They are still passed — a trained
+   * model needs a full vector — but they are counted, and the count discounts
+   * the confidence below. Silently defaulting six of thirteen features and
+   * then reporting the model's own headline confidence is how a mostly-assumed
+   * prediction came to look like a measured one.
+   */
+  const assumed = [
+    'days_on_market',
+    'distance_to_highway_miles',
+    'distance_to_city_miles',
+    'soil_quality_score',
+    'county_median_income_k',
+    ...(marketConditions.populationGrowth === undefined ? ['population_growth_pct', 'market_trend_score'] : []),
+  ];
+
   const input: LandFeatureInput = {
     acres,
-    pricePerAcreComps: compsMedianPricePerAcre || 1000, // National median vacant land baseline when no comps available
+    pricePerAcreComps: compsMedianPricePerAcre,
     daysOnMarket: 0,
-    distanceToHighwayMiles: 5,   // default — enriched post-GIS lookup
-    distanceToCityMiles: 20,
+    distanceToHighwayMiles: 5,   // assumed — enriched post-GIS lookup
+    distanceToCityMiles: 20,     // assumed
     hasWaterAccess: characteristics.waterRights ?? false,
     hasRoadFrontage: characteristics.roadAccess === 'paved' || characteristics.roadAccess === 'gravel',
     zoningScore,
-    soilQualityScore: 5,         // default; enriched by featureEngineeringJob
+    soilQualityScore: 5,         // assumed; enriched by featureEngineeringJob
     floodZoneRisk: floodRisk,
     marketTrendScore: (marketConditions.populationGrowth ?? 0) > 1 ? 1 : 0,
-    countyMedianIncomeK: 55,     // national median fallback
+    countyMedianIncomeK: 55,     // assumed — national median
     populationGrowthPct: marketConditions.populationGrowth ?? 0,
   };
 
   const features = extractLandFeatures(input);
   const predictedValue = model.predict(features);
   const importances = model.getFeatureImportances();
-  // Confidence: higher when model has many features with clear signal
-  const topImportance = Math.max(...importances);
-  const confidence = Math.min(85, Math.round(50 + topImportance * 200));
 
-  return { pricePerAcre: Math.max(100, Math.round(predictedValue)), confidence };
+  // Confidence must depend on THIS prediction's inputs, not only on the model.
+  // `topImportance` is a property of the trained model, so the old expression
+  // returned the SAME confidence for every parcel a given model ever scored —
+  // a confidence that cannot vary with the input is not a confidence.
+  const topImportance = Math.max(...importances);
+  const modelConfidence = Math.min(85, Math.round(50 + topImportance * 200));
+  const measuredShare = (LAND_FEATURE_NAMES.length - assumed.length) / LAND_FEATURE_NAMES.length;
+  const confidence = Math.round(modelConfidence * measuredShare);
+
+  return {
+    pricePerAcre: Math.max(100, Math.round(predictedValue)),
+    confidence,
+    assumedFeatures: assumed,
+  };
 }
 
 interface TransactionDataPoint {
@@ -544,18 +598,26 @@ class AcreOSValuationModel {
     let pricePerAcreEstimate: number | null = null;
     let estimateSource = 'baseline';
     let gbmConfidence = 0;
+    /** Features the model was NOT given for this parcel — see below. */
+    let gbmAssumedFeatures: string[] = [];
 
     // --- Path 1: TypeScript GBM (fast, deterministic, no API cost) ---
     try {
+      // `null`, not `0`: this path has no comparable sales on hand, and the
+      // model must decline rather than price the parcel off a national
+      // constant. Passing 0 previously tripped `|| 1000` inside the feature
+      // vector, which is how the $1,000/acre baseline W3.1 deleted from this
+      // function survived one level below it.
       const gbmResult = await gbmEstimatePricePerAcre(
         request.acres,
-        0, // no comps — will be improved when comps are available
+        null,
         request.characteristics,
         {}
       );
       if (gbmResult) {
         pricePerAcreEstimate = gbmResult.pricePerAcre;
         gbmConfidence = gbmResult.confidence;
+        gbmAssumedFeatures = gbmResult.assumedFeatures;
         estimateSource = 'gbm_model';
       }
     } catch {
@@ -688,9 +750,16 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       pricePerAcre: Math.round(pricePerAcreEstimate),
       confidenceInterval,
       confidence,
+      // A modeled value must disclose what the model was not told. Naming the
+      // assumed features is what separates "trained model estimate" from
+      // "trained model estimate computed largely from defaults" — the two read
+      // identically to a customer otherwise, and only one of them is worth
+      // what this endpoint charges for it.
       methodology: isAiEstimate
         ? 'AI estimate (no local comparables) — an educated guess by a language model, not a comps-based value'
-        : 'AcreOS trained model estimate (no local comparables)',
+        : gbmAssumedFeatures.length > 0
+          ? `AcreOS trained model estimate (no local comparables). ${gbmAssumedFeatures.length} of ${LAND_FEATURE_NAMES.length} model inputs were not measured for this parcel and used defaults: ${gbmAssumedFeatures.join(', ')}.`
+          : 'AcreOS trained model estimate (no local comparables)',
       comparables: [],
       marketAdjustments: [],
     };
