@@ -173,3 +173,50 @@ describe("Pax observation transitions are scoped", () => {
     });
   }
 });
+
+describe("seller-intent signal analysers are scoped", () => {
+  /**
+   * Four routes — `GET /:leadId/{urgency,financial,engagement}` and
+   * `POST /:leadId/offer-range` — reached six analysers that resolved `leads`,
+   * `properties` and `conversations` by primary key alone. The correct call was
+   * already three lines above the first offender in the same route module:
+   * `predictIntent(org.id, leadId)`.
+   */
+  const analysers = [
+    "analyzeUrgencySignals",
+    "analyzeEngagementSignals",
+    "analyzeEmotionalSignals",
+    "analyzePriceFlexibility",
+    "analyzeCompetitionSignals",
+  ] as const;
+
+  for (const name of analysers) {
+    it(`${name} binds the organization on every read`, async () => {
+      const { asks } = await withDb(async () => {
+        const { sellerIntentPredictorService } = await import(
+          "../../server/services/sellerIntentPredictor"
+        );
+        return (sellerIntentPredictorService as any)[name](OTHER, 321);
+      });
+      expect(asks.length, `${name} issued no query — the fixture stopped exercising it`).toBeGreaterThan(0);
+      for (const a of asks) {
+        expect(
+          bound(a.where, "organization_id"),
+          `${name} read ${a.table} without an organization predicate`,
+        ).toContain(OTHER);
+      }
+    });
+  }
+
+  it("analyzeFinancialSignals scopes its property lookup too", async () => {
+    const { asks } = await withDb(async () => {
+      const { sellerIntentPredictorService } = await import(
+        "../../server/services/sellerIntentPredictor"
+      );
+      return sellerIntentPredictorService.analyzeFinancialSignals(OTHER, 321, 654);
+    });
+    const props = asks.filter((a) => a.table === "properties");
+    expect(props.length, "the property lookup stopped being exercised").toBeGreaterThan(0);
+    for (const a of props) expect(bound(a.where, "organization_id")).toContain(OTHER);
+  });
+});

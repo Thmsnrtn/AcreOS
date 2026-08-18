@@ -67,9 +67,10 @@ router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res
 // Urgency signals
 router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const signals = await sellerIntentPredictorService.analyzeUrgencySignals(leadId);
+    const signals = await sellerIntentPredictorService.analyzeUrgencySignals(org.id, leadId);
     res.json({ signals });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -79,10 +80,11 @@ router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Requ
 // Financial distress signals
 router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
-    const signals = await sellerIntentPredictorService.analyzeFinancialSignals(leadId, propertyId);
+    const signals = await sellerIntentPredictorService.analyzeFinancialSignals(org.id, leadId, propertyId);
     res.json({ signals });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -92,9 +94,10 @@ router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Re
 // Engagement signals
 router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const signals = await sellerIntentPredictorService.analyzeEngagementSignals(leadId);
+    const signals = await sellerIntentPredictorService.analyzeEngagementSignals(org.id, leadId);
     res.json({ signals });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -104,9 +107,10 @@ router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: R
 // Price flexibility signals
 router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const signals = await sellerIntentPredictorService.analyzePriceFlexibility(leadId);
+    const signals = await sellerIntentPredictorService.analyzePriceFlexibility(org.id, leadId);
     res.json({ signals });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -136,11 +140,25 @@ router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Re
 // Suggested offer range
 router.post("/:leadId/offer-range", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { propertyId } = req.body;
-    const range = await sellerIntentPredictorService.suggestOfferRange(leadId, propertyId);
-    res.json({ range });
+    // Was `suggestOfferRange(leadId, propertyId)` against a
+    // `(propertyId, signals)` signature — `req.body` is `any`, so passing the
+    // LEAD id as the property id and the property id as the signals object
+    // type-checked. The range was therefore derived from whatever property
+    // happened to share an id with the lead, or from nothing.
+    //
+    // `predictIntent` is the canonical path: it scopes by organization, runs
+    // all six analysers, and computes `suggestedOfferRange` from the real
+    // signals. Deriving it a second way here is what produced the bug.
+    const prediction = await sellerIntentPredictorService.predictIntent(
+      org.id,
+      leadId,
+      propertyId ? Number(propertyId) : undefined,
+    );
+    res.json({ range: prediction.suggestedOfferRange });
   } catch (err: any) {
     Errors.badRequest(res, err.message ?? "Bad request");
   }

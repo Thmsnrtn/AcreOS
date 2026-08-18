@@ -137,12 +137,12 @@ export class SellerIntentPredictorService {
       priceFlexibilitySignals,
       competitionSignals
     ] = await Promise.all([
-      this.analyzeUrgencySignals(leadId),
-      this.analyzeFinancialSignals(leadId, propertyId),
-      this.analyzeEmotionalSignals(leadId),
-      this.analyzeEngagementSignals(leadId),
-      this.analyzePriceFlexibility(leadId),
-      this.analyzeCompetitionSignals(leadId)
+      this.analyzeUrgencySignals(organizationId, leadId),
+      this.analyzeFinancialSignals(organizationId, leadId, propertyId),
+      this.analyzeEmotionalSignals(organizationId, leadId),
+      this.analyzeEngagementSignals(organizationId, leadId),
+      this.analyzePriceFlexibility(organizationId, leadId),
+      this.analyzeCompetitionSignals(organizationId, leadId)
     ]);
 
     const signals: AllSignals = {
@@ -160,7 +160,7 @@ export class SellerIntentPredictorService {
 
     const [recommendedApproach, approachReasoning] = await this.generateApproachRecommendation(signals, intentLevel);
     const suggestedOfferRange = propertyId 
-      ? await this.suggestOfferRange(propertyId, signals)
+      ? await this.suggestOfferRange(organizationId, propertyId, signals)
       : undefined;
 
     const prediction: InsertSellerIntentPrediction = {
@@ -205,8 +205,22 @@ export class SellerIntentPredictorService {
     return inserted;
   }
 
-  async analyzeUrgencySignals(leadId: number): Promise<UrgencySignals> {
-    const messageContent = await this.getLeadMessageContent(leadId);
+  /**
+   * The four signal analysers and `getLeadMessageContent` take an
+   * `organizationId` and use it in the WHERE.
+   *
+   * Until 2026-08-18 each resolved `leads`, `properties` or `conversations` by
+   * primary key alone, and every one is reached from an authenticated route
+   * whose id is a URL parameter (`GET /:leadId/urgency`, `/financial`,
+   * `/engagement`, `POST /:leadId/offer-range`). All three tables carry a NOT
+   * NULL organization_id, so any authenticated user could read another tenant's
+   * lead signals, conversation content and property valuations.
+   *
+   * The correct call was already in the same file's route module three lines
+   * above the first offender: `predictIntent(org.id, leadId)`.
+   */
+  async analyzeUrgencySignals(organizationId: number, leadId: number): Promise<UrgencySignals> {
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const indicators: string[] = [];
     const mentions: string[] = [];
 
@@ -225,7 +239,10 @@ export class SellerIntentPredictorService {
     }
 
     const activities = await db.select().from(leadActivities)
-      .where(eq(leadActivities.leadId, leadId))
+      .where(and(
+        eq(leadActivities.leadId, leadId),
+        eq(leadActivities.organizationId, organizationId),
+      ))
       .orderBy(desc(leadActivities.createdAt))
       .limit(20);
 
@@ -245,7 +262,7 @@ export class SellerIntentPredictorService {
     return { score, indicators, mentions };
   }
 
-  async analyzeFinancialSignals(leadId: number, propertyId?: number): Promise<FinancialSignals> {
+  async analyzeFinancialSignals(organizationId: number, leadId: number, propertyId?: number): Promise<FinancialSignals> {
     const indicators: string[] = [];
     let score = 50;
     let taxDelinquent = false;
@@ -253,7 +270,7 @@ export class SellerIntentPredictorService {
 
     if (propertyId) {
       const [property] = await db.select().from(properties)
-        .where(eq(properties.id, propertyId));
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
       if (property) {
         const dueDiligence = property.dueDiligenceData as { taxDelinquent?: boolean; taxOwed?: number } | null;
@@ -282,7 +299,7 @@ export class SellerIntentPredictorService {
       }
     }
 
-    const messageContent = await this.getLeadMessageContent(leadId);
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const lowerContent = messageContent.toLowerCase();
 
     const financialKeywords = ["behind on taxes", "foreclosure", "debt", "can't afford", "need cash", "financial"];
@@ -299,8 +316,8 @@ export class SellerIntentPredictorService {
     return { score, indicators, taxDelinquent, estimatedEquity };
   }
 
-  async analyzeEmotionalSignals(leadId: number): Promise<EmotionalSignals> {
-    const messageContent = await this.getLeadMessageContent(leadId);
+  async analyzeEmotionalSignals(organizationId: number, leadId: number): Promise<EmotionalSignals> {
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const indicators: string[] = [];
     let score = 50;
     let lifeEvent: string | undefined;
@@ -337,20 +354,23 @@ export class SellerIntentPredictorService {
     return { score, indicators, lifeEvent };
   }
 
-  async analyzeEngagementSignals(leadId: number): Promise<EngagementSignals> {
+  async analyzeEngagementSignals(organizationId: number, leadId: number): Promise<EngagementSignals> {
     const indicators: string[] = [];
     let score = 50;
     const questionTypes: string[] = [];
 
     const [lead] = await db.select().from(leads)
-      .where(eq(leads.id, leadId));
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
     if (!lead) {
       return { score: 50, indicators: [], responseRate: 0, questionTypes: [] };
     }
 
     const activities = await db.select().from(leadActivities)
-      .where(eq(leadActivities.leadId, leadId))
+      .where(and(
+        eq(leadActivities.leadId, leadId),
+        eq(leadActivities.organizationId, organizationId),
+      ))
       .orderBy(desc(leadActivities.createdAt));
 
     const outboundCount = activities.filter(a => 
@@ -391,7 +411,7 @@ export class SellerIntentPredictorService {
       }
     }
 
-    const messageContent = await this.getLeadMessageContent(leadId);
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const lowerContent = messageContent.toLowerCase();
 
     for (const [qType, keywords] of Object.entries(QUESTION_TYPE_KEYWORDS)) {
@@ -417,14 +437,14 @@ export class SellerIntentPredictorService {
     return { score, indicators, responseRate, responseSpeed, questionTypes };
   }
 
-  async analyzePriceFlexibility(leadId: number): Promise<PriceFlexibilitySignals> {
+  async analyzePriceFlexibility(organizationId: number, leadId: number): Promise<PriceFlexibilitySignals> {
     const indicators: string[] = [];
     let score = 50;
     let hasCountered = false;
     let counterPattern: string | undefined;
     let anchorAcceptance: number | undefined;
 
-    const messageContent = await this.getLeadMessageContent(leadId);
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const lowerContent = messageContent.toLowerCase();
 
     const counterKeywords = ["counter", "what about", "could you do", "i was thinking", "my price"];
@@ -465,13 +485,13 @@ export class SellerIntentPredictorService {
     return { score, indicators, hasCountered, counterPattern, anchorAcceptance };
   }
 
-  async analyzeCompetitionSignals(leadId: number): Promise<CompetitionSignals> {
+  async analyzeCompetitionSignals(organizationId: number, leadId: number): Promise<CompetitionSignals> {
     const indicators: string[] = [];
     let score = 50;
     let otherOffersMentioned = false;
     let marketingProperty = false;
 
-    const messageContent = await this.getLeadMessageContent(leadId);
+    const messageContent = await this.getLeadMessageContent(organizationId, leadId);
     const lowerContent = messageContent.toLowerCase();
 
     const competitorKeywords = ["other offers", "another buyer", "someone else", "highest bidder", "multiple offers"];
@@ -673,11 +693,12 @@ What negotiation approach do you recommend?`
   }
 
   async suggestOfferRange(
+    organizationId: number,
     propertyId: number,
     signals: AllSignals
   ): Promise<{ min: number; optimal: number; max: number } | undefined> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) return undefined;
 
@@ -940,9 +961,12 @@ What negotiation approach do you recommend?`
     }
   }
 
-  private async getLeadMessageContent(leadId: number): Promise<string> {
+  private async getLeadMessageContent(organizationId: number, leadId: number): Promise<string> {
     const leadConversations = await db.select().from(conversations)
-      .where(eq(conversations.leadId, leadId));
+      .where(and(
+        eq(conversations.leadId, leadId),
+        eq(conversations.organizationId, organizationId),
+      ));
 
     if (leadConversations.length === 0) {
       return "";
