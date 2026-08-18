@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { properties, parcelSnapshots, organizations } from "@shared/schema";
 import { and, desc, eq } from "drizzle-orm";
+import { parcelSnapshotVisibleTo } from "../storage/gisRepo";
 
 const PRIMARY = "#9C4221"; // terracotta — matches the AcreOS brand
 const TEXT = "#1f2937";
@@ -58,7 +59,10 @@ export async function generatePropertyReport(input: PropertyReportInput) {
     .limit(1);
 
   // Pull the freshest parcel snapshot (county_gis, regrid, or loveland).
-  // Prefer the most-recent row, regardless of source.
+  // Prefer the most-recent row, regardless of source — but only among rows this
+  // org may see. `organizationId` is nullable on this table and means the shared
+  // cache when null; matching on apn+state+county alone would put another org's
+  // manually corrected row on this customer's report.
   const [snap] = await db
     .select()
     .from(parcelSnapshots)
@@ -67,6 +71,7 @@ export async function generatePropertyReport(input: PropertyReportInput) {
         eq(parcelSnapshots.apn, prop.apn),
         eq(parcelSnapshots.state, prop.state),
         eq(parcelSnapshots.county, prop.county),
+        parcelSnapshotVisibleTo(input.organizationId),
       ),
     )
     .orderBy(desc(parcelSnapshots.fetchedAt))

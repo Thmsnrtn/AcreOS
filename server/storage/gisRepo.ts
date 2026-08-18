@@ -6,7 +6,7 @@
 // DatabaseStorage.prototype at construction time; `this` refers to the full
 // DatabaseStorage instance.
 
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import {
   countyGisEndpoints,
@@ -447,3 +447,34 @@ export const gisRepo = {
 };
 
 export type GisRepo = typeof gisRepo;
+
+/**
+ * Which `parcel_snapshots` rows an organization may see.
+ *
+ * `organizationId` is nullable on this table and means "global/shared cache"
+ * when null — so a correct read is "MY org's row OR the shared one", never
+ * "whatever row matches this APN".
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT A CONVENTION ─────────────────────────────
+ * `dueDiligence.ts` already wrote that predicate by hand and got it right.
+ * `propertyReportPdf.ts` (a customer-facing PDF) and `ltvMonitor.ts` (which
+ * reads `assessedValue` to compute a loan's LTV) matched on
+ * `apn + state + county` alone and took the most recent row, whoever owned it.
+ *
+ * No writer sets a non-null `organizationId` today, so nothing leaks yet — but
+ * `dueDiligence`'s read is the codebase stating that tenant-owned rows are
+ * intended, and the first one written would have been visible to every other
+ * org through those two readers, silently. A hand-copied predicate that only
+ * two of three sites copied is the same defect the operating predicate fixed in
+ * `orgOperating.ts`.
+ *
+ * The tenancy linter cannot see this: `check-org-scoped-fetch` treats a
+ * function as org-scoped when the string `organizationId` appears ANYWHERE in
+ * its body, and both readers mention it for an unrelated query.
+ */
+export function parcelSnapshotVisibleTo(organizationId: number): SQL {
+  return or(
+    eq(parcelSnapshots.organizationId, organizationId),
+    isNull(parcelSnapshots.organizationId),
+  ) as SQL;
+}

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { notes, payments, properties, parcelSnapshots, systemAlerts } from "@shared/schema";
 import { eq, and, desc, gte, lt } from "drizzle-orm";
+import { parcelSnapshotVisibleTo } from "../storage/gisRepo";
 
 export interface LTVSnapshot {
   noteId: number;
@@ -16,14 +17,24 @@ export interface LTVSnapshot {
 export class LTVMonitorService {
 
   // Calculate current outstanding balance for a note
-  async calculateCurrentBalance(noteId: number): Promise<number> {
-    // Get note terms
-    const [note] = await db.select().from(notes).where(eq(notes.id, noteId));
+  async calculateCurrentBalance(noteId: number, organizationId: number): Promise<number> {
+    // Get note terms. Scoped: `noteId` arrives from a URL parameter, and
+    // `notes.organization_id` is NOT NULL, so a bare primary-key match reads
+    // whichever tenant owns the id the caller typed.
+    const [note] = await db.select().from(notes)
+      .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
     if (!note) return 0;
 
-    // Get all confirmed payments (status "completed" in this schema)
+    // Get all confirmed payments (status "completed" in this schema). Scoped
+    // too rather than relying on the note check above: `payments` carries its
+    // own NOT NULL organization_id, and a predicate that is right for a
+    // transitive reason stops being right the moment the caller changes.
     const confirmedPayments = await db.select().from(payments)
-      .where(and(eq(payments.noteId, noteId), eq(payments.status, "completed")));
+      .where(and(
+        eq(payments.noteId, noteId),
+        eq(payments.organizationId, organizationId),
+        eq(payments.status, "completed"),
+      ));
 
     // Simple balance calculation: original balance - total principal paid
     const originalBalance = Number(note.originalPrincipal || 0);
@@ -45,9 +56,12 @@ export class LTVMonitorService {
   }
 
   // Estimate property value using most recent parcel snapshot or purchase price
-  async estimatePropertyValue(propertyId: number): Promise<number> {
-    // Get the property record to look up its APN/state/county for snapshot matching
-    const [property] = await db.select().from(properties).where(eq(properties.id, propertyId));
+  async estimatePropertyValue(propertyId: number, organizationId: number): Promise<number> {
+    // Get the property record to look up its APN/state/county for snapshot
+    // matching. Scoped for the same reason as the note above: the id descends
+    // from a URL parameter.
+    const [property] = await db.select().from(properties)
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
     if (!property) return 0;
 
     // Try parcel snapshot via APN + state + county
@@ -57,7 +71,10 @@ export class LTVMonitorService {
           and(
             eq(parcelSnapshots.apn, property.apn),
             eq(parcelSnapshots.state, property.state),
-            eq(parcelSnapshots.county, property.county)
+            eq(parcelSnapshots.county, property.county),
+            // Without this, an LTV could be computed from another org's
+            // assessed value.
+            parcelSnapshotVisibleTo(organizationId)
           )
         )
         .orderBy(desc(parcelSnapshots.createdAt))
@@ -74,13 +91,16 @@ export class LTVMonitorService {
   }
 
   // Get LTV snapshot for a single note
-  async getLTVSnapshot(noteId: number): Promise<LTVSnapshot | null> {
-    const [note] = await db.select().from(notes).where(eq(notes.id, noteId));
+  async getLTVSnapshot(noteId: number, organizationId: number): Promise<LTVSnapshot | null> {
+    const [note] = await db.select().from(notes)
+      .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
     if (!note) return null;
 
-    const balance = await this.calculateCurrentBalance(noteId);
+    const balance = await this.calculateCurrentBalance(noteId, organizationId);
     const propertyId = note.propertyId || null;
-    const propertyValue = propertyId ? await this.estimatePropertyValue(propertyId) : 0;
+    const propertyValue = propertyId
+      ? await this.estimatePropertyValue(propertyId, organizationId)
+      : 0;
 
     const ltv = propertyValue > 0 ? (balance / propertyValue) * 100 : 0;
 
@@ -105,7 +125,7 @@ export class LTVMonitorService {
     const orgNotes = await db.select().from(notes).where(eq(notes.organizationId, orgId));
 
     const snapshots = await Promise.all(
-      orgNotes.map(n => this.getLTVSnapshot(n.id))
+      orgNotes.map(n => this.getLTVSnapshot(n.id, orgId))
     );
 
     const valid = snapshots.filter(Boolean) as LTVSnapshot[];

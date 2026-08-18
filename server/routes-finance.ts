@@ -1386,7 +1386,17 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/ltv/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { ltvMonitorService } = await import("./services/ltvMonitor");
-      const snapshot = await ltvMonitorService.getLTVSnapshot(parseInt(req.params.noteId));
+      // The org is REQUIRED, not decorative: `noteId` is a URL parameter, and
+      // until 2026-08-18 this route resolved it by primary key alone. Any
+      // authenticated user of any org could read another tenant's note balance,
+      // property value, LTV and risk alerts. A note outside the caller's org now
+      // returns null and answers 404, which is also the right disclosure
+      // posture — it does not reveal that the id exists elsewhere.
+      const organizationId = getOrganizationId(req as AuthenticatedRequest);
+      const snapshot = await ltvMonitorService.getLTVSnapshot(
+        parseInt(req.params.noteId),
+        organizationId,
+      );
       if (!snapshot) return Errors.notFound(res, "Note");
       res.json(snapshot);
     } catch (e: any) {

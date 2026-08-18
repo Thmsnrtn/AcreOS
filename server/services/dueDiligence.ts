@@ -13,6 +13,7 @@ import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { parcelSnapshotVisibleTo } from "../storage/gisRepo";
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -304,10 +305,9 @@ async function getOrCreateParcelSnapshot(
         // some earlier caller happened to pass, so a case-sensitive eq() here is
         // what created duplicate rows in the shared cache.
         sql`UPPER(${parcelSnapshots.apn}) = ${normalizedApn}`,
-        or(
-          eq(parcelSnapshots.organizationId, organizationId),
-          isNull(parcelSnapshots.organizationId)
-        )
+        // Was written out by hand here, correctly, and nowhere else. Now the
+        // one predicate every reader shares.
+        parcelSnapshotVisibleTo(organizationId)
       )
     )
     .limit(1);
