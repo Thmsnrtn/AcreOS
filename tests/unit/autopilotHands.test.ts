@@ -16,6 +16,12 @@ function makeHand(overrides: Partial<HandSpec> = {}): HandSpec {
     schema: { name: "test_hand", description: "a test hand", input_schema: { type: "object", properties: {} } },
     domain: "ops",
     isCustomerFacing: false,
+    // Both are REQUIRED on HandSpec as of 2026-08-18, so the fixture must state
+    // them like any real hand. That is the point: an omitted risk flag used to
+    // read as `no risk`, and a test fixture that could skip them was modelling
+    // a shape production can no longer produce.
+    movesMoney: false,
+    outwardClass: "none",
     requiresApproval: false,
     surface: "generic",
     handler: async () => ({ success: true, output: "ran", durationMs: 1 }),

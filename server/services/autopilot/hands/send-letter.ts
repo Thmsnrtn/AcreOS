@@ -100,6 +100,9 @@ registerHand({
   },
   domain: "growth",
   isCustomerFacing: true,
+  // Declared explicitly (required since 2026-08-18): One recipient. Lob postage is our cost, not customer money moving — contrast run-ad-campaign, where the spend IS the action.
+  movesMoney: false,
+  outwardClass: "none",
   requiresApproval: true,
   surface: "content",
   handler,

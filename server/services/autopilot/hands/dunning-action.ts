@@ -81,6 +81,7 @@ registerHand({
   // witnessed path (autopilot_sends), satisfying the "finance hand ⇒ witnessed"
   // invariant. (It can earn back autonomy later behind a real audit + daily
   // spend envelope; until then, money never moves without a tap.)
+  outwardClass: "none",
   requiresApproval: true,
   surface: "generic",
   handler,

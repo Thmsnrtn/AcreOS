@@ -67,6 +67,22 @@ class CEOAbsenceService {
 
     let perAgentBoosts: Record<string, number> = {};
 
+    // ⚠ BEFORE WIRING THIS: the grant is MATERIALISED INTO THE AUTHORITY FIELD.
+    //
+    // The boost is applied by mutating each agent's permanent `trustScore`
+    // (below), and `agentAuthorityGate` promotes an action's level from that
+    // same score. So a time-boxed grant is written into the field the gate
+    // reads, and the only thing that takes it back is `deactivate()` — which
+    // nothing calls. Two further consequences: two activations STACK, and a
+    // reversal subtracts a fixed delta from a score outcome-learning may have
+    // moved in between, so it does not restore the original.
+    //
+    // The correct shape is to leave the score alone and have the gate ADD the
+    // active grant at check time, so expiry needs no cleanup. That refactor is
+    // deliberately not done here: this path has no production caller, and
+    // rebuilding an unreachable authority mechanism is how speculative
+    // machinery gets built. `getCurrent()` now expires on `endsAt`, so a wired
+    // caller at least cannot leave absence mode on forever.
     if (useSmartBoost) {
       // Smart trust boosting — per-agent scoring based on recent performance
       perAgentBoosts = await this.calculateSmartTrustBoosts(trustBoost);
@@ -144,10 +160,25 @@ class CEOAbsenceService {
 
   /** Get current absence mode record */
   async getCurrent(): Promise<any | null> {
-    return db.query.ceoAbsenceMode.findFirst({
+    // A TIME-BOXED GRANT MUST EXPIRE BY CONSTRUCTION.
+    //
+    // This selected on `isActive` alone. `endsAt` was written at activation and
+    // then consulted by nobody: no job calls `deactivate()`, no route does, and
+    // this read ignored it — so absence mode, once switched on, was active
+    // forever and the elevated authority it conveys had no end. An expiry
+    // enforced only by somebody remembering to revoke it is not an expiry.
+    //
+    // NOT CURRENTLY LIVE, and that is why this is the whole fix rather than a
+    // refactor: `activate()` has no production caller (the only consumer,
+    // founderWellbeing, calls `getLatest()` to read history). See the warning
+    // on `activate` before wiring it.
+    const row = await db.query.ceoAbsenceMode.findFirst({
       where: eq(ceoAbsenceMode.isActive, true),
       orderBy: [desc(ceoAbsenceMode.createdAt)],
     });
+    if (!row) return null;
+    if (row.endsAt && new Date(row.endsAt).getTime() <= Date.now()) return null;
+    return row;
   }
 
   /** Get the most recent absence record (active or not) */

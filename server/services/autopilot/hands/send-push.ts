@@ -51,6 +51,9 @@ registerHand({
   },
   domain: "support",
   isCustomerFacing: true,
+  // Declared explicitly (required since 2026-08-18): One recipient's own devices.
+  movesMoney: false,
+  outwardClass: "none",
   requiresApproval: true,
   surface: "generic",
   handler,

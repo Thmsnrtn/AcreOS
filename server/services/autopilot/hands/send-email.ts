@@ -184,6 +184,9 @@ registerHand({
   },
   domain: "support",
   isCustomerFacing: true,
+  // Declared explicitly (required since 2026-08-18): One recipient. Not a money decision: the per-send cost is our infrastructure, not the customer's money moving.
+  movesMoney: false,
+  outwardClass: "none",
   requiresApproval: true,
   surface: "support",
   handler,

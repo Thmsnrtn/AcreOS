@@ -77,10 +77,18 @@ export interface HandSpec {
    * `domain==="finance"` because a GROWTH hand can spend (ad budget) without
    * being finance-domain. Any money hand is witnessed-send by invariant — money
    * never moves without a founder tap. (re-audit iteration 2)
+   *
+   * REQUIRED, as of 2026-08-18. It was optional while its siblings
+   * `isCustomerFacing` and `requiresApproval` were required, so a hand author
+   * who simply did not think about money got `undefined` — falsy — and
+   * `witnessGrant.ts` reads exactly that field to enforce the `denyMoney`
+   * bound. Omission meant both "this hand does not move money" and "nobody
+   * declared", and the second was being read as the first. Six of ten hand
+   * files never mentioned it.
    */
-  movesMoney?: boolean;
+  movesMoney: boolean;
   /** Public broadcast (brand-attached, crawler-indexed) → also needs a tap. */
-  outwardClass?: "none" | "broadcast";
+  outwardClass: "none" | "broadcast";
   /**
    * If true, the executor REFUSES to run this hand directly from a model
    * tool-call. The only legitimate path is planAndAct → witnessed-send founder
