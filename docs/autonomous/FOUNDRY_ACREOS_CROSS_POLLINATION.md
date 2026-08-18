@@ -68,7 +68,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (`893da34a`) |
 | 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (`bb6c4182`) |
 | 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (`daa749b6`) |
-| 19 | A route's auth must not depend on its line number | **PARTIALLY ADAPTED — trap frozen, not removed** | `apiCatchAllOrdering.test.ts` (this commit) |
+| 19 | A route's auth must not depend on its line number | **PARTIALLY ADAPTED — trap frozen, not removed** | `apiCatchAllOrdering.test.ts` (`226e071f`) |
+| 20 | Trust may only be granted by evidence the agent did not author | **ADAPTED** | `server/services/trustDelta.ts`, `trustFromEvidence.test.ts` (this commit) |
 
 ---
 
@@ -871,6 +872,73 @@ moving the e-sign registration below it, adding a third catch-all, and deleting
 the transparency registration outright. A fifth mutation changed only quoting
 and correctly stays green: the scan is quote-agnostic, so that is a control on
 the gate rather than a miss.
+
+
+---
+
+### 20 — "Trust may only be granted by evidence the agent did not author" → ADAPTED
+
+**Foundry source.** §18 — learning does not create authority. Third and most
+consequential instance in this phase, after the outcome verifier (entry 12) and
+the autopilot efficacy vote (entry 13). **This is the one that actually moves
+authority**: `agentAuthorityGate.checkAuthority` promotes a level-2 action
+("recommend and wait") to level 1, and level 1 to level 0 (full autonomy), on
+`trustScore` alone.
+
+**AcreOS defect, dimension 2.** `+1` trust when `agentActionLog.outcome =
+'success'` covered ≥80% of an agent's actions that day, then ×1.5 on a
+three-day streak. That column is the actor's OWN receipt — eight of the ten
+sites that write it write the literal `"success"` at ISSUE time
+(`predictiveAutoscaler` beside `output: { scheduled: true }, durationMs: 0`),
+and the tenth writes `result.success`, "the executor did not throw". An agent
+earned authority by asserting its own success.
+
+The file already carried the argument against itself: dimension 3 was added
+"NEW in v5" under the comment *"Real outcome verification: did the action
+actually HELP?"*, reading `outcomeVerificationQueue`, whose verifiers check
+actual database state. Dimension 2 was left granting the same +1.
+
+**Dimension 1.** Accuracy counted `status = 'approved' OR status =
+'auto_resolved'` over ALL items. `auto_resolved` means the autonomous executor
+closed it with no human involved, so an agent that never escalated scored 100%
+and gained trust — downward pressure on escalation, the same defect entry 12
+found pointing the other way. Auto-resolution is now excluded from the numerator
+AND the denominator: it is not evidence of correctness and not evidence of
+error, and averaging it in either direction invents a result. Excluding it from
+the denominator too is the point — the mirror-image error would punish an agent
+for working, and a mutation proves the test catches that.
+
+**AcreOS primitive reused.** Its own three dimensions and its own thresholds.
+Nothing new was scored; two sources stopped granting.
+
+**The asymmetry is deliberate, again.** A run of FAILED actions still costs
+trust: a failed action is conclusive, a succeeded one proves only that it ran.
+Same rule as entry 13, and a mutation that removes the penalty for symmetry's
+sake fails.
+
+**Smallest implementation.** `trustDeltaFrom` — pure, no DB, no clock — is now
+the only place the three dimensions are weighed. It lives in its own module
+because an exported symbol whose only non-local consumer is a test is what the
+reachability gate calls built-but-unwired; `trustEvolution.ts` imports it, so
+the rule has a real cross-module production caller.
+
+**Complexity change.** One pure function extracted; `trustEvolution.ts` 301 →
+279 lines. **Liability change.** Down, on the number that decides what the
+system may do without asking.
+
+**Exit test.** `trustFromEvidence.test.ts`, mutation-tested 5/5 — self-reported
+successes granting trust again, `auto_resolved` counted as approval,
+`auto_resolved` in the denominator only, the caller bypassing the rule, and
+dropping the failure penalty. Plus a vacuity guard that the rule can produce a
+positive delta at all, so a broken always-zero implementation cannot pass the
+first two groups.
+
+**A second gate of mine that a mutation survived.** The adoption check asserted
+`code.toContain("trustDeltaFrom(")`, which the function's own `export function
+trustDeltaFrom(` satisfies — replacing the call site with an inline lambda left
+it green. Same first-law failure as the `featureFlagControlScope` one, in the
+same phase: **an identifier's declaration is not its use.** Now scoped to the
+body of `runTrustEvolution`.
 
 
 ## Not yet dispositioned

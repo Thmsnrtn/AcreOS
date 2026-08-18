@@ -25,6 +25,7 @@ import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { getSetting } from "./settings";
 import { logger } from "../utils/logger";
+import { trustDeltaFrom, type TrustEvidence } from "./trustDelta";
 
 interface TierBreakpoints {
   observer: number;
@@ -70,7 +71,10 @@ export async function runTrustEvolution(): Promise<{
     // ── Dimension 1: Decision accuracy (same as v2, but daily) ──────────
     const decisionResults = await db.select({
       total: count(),
-      approved: sql<number>`count(*) filter (where status = 'approved' or status = 'auto_resolved')`,
+      // `auto_resolved` is counted SEPARATELY, not folded in with `approved`.
+      // The executor closing its own item is not a human verdict.
+      approved: sql<number>`count(*) filter (where status = 'approved')`,
+      autoResolved: sql<number>`count(*) filter (where status = 'auto_resolved')`,
       rejected: sql<number>`count(*) filter (where status = 'rejected')`,
       overridden: sql<number>`count(*) filter (where founder_override_action is not null)`,
     })
@@ -80,7 +84,7 @@ export async function runTrustEvolution(): Promise<{
         gte(decisionsInboxItems.createdAt, oneDayAgo),
       ));
 
-    const stats = decisionResults[0] || { total: 0, approved: 0, rejected: 0, overridden: 0 };
+    const stats = decisionResults[0] || { total: 0, approved: 0, autoResolved: 0, rejected: 0, overridden: 0 };
     const totalDecisions = Number(stats.total);
     const approvedDecisions = Number(stats.approved);
     const overriddenDecisions = Number(stats.overridden);
@@ -88,7 +92,8 @@ export async function runTrustEvolution(): Promise<{
     // ── Dimension 2: Action outcomes (NEW in v3) ────────────────────────
     const actionResults = await db.select({
       total: count(),
-      succeeded: sql<number>`count(*) filter (where outcome = 'success')`,
+      // No `succeeded` count: a self-reported success does not move trust, so
+      // reading it would only invite someone to score it again.
       failed: sql<number>`count(*) filter (where outcome = 'failure')`,
     })
       .from(agentActionLog)
@@ -98,55 +103,21 @@ export async function runTrustEvolution(): Promise<{
         sql`${agentActionLog.actionType} != 'outcome_check'`, // Exclude verification checks
       ));
 
-    const actionStats = actionResults[0] || { total: 0, succeeded: 0, failed: 0 };
+    const actionStats = actionResults[0] || { total: 0, failed: 0 };
     const totalActions = Number(actionStats.total);
-    const succeededActions = Number(actionStats.succeeded);
     const failedActions = Number(actionStats.failed);
 
     // Skip if no activity at all
     if (totalDecisions === 0 && totalActions === 0) continue;
 
     // ── Calculate combined trust delta ──────────────────────────────────
-    let delta = 0;
-    let reasons: string[] = [];
-
-    // Decision accuracy component. Thresholds read from settings:
-    //   trust.promotion_accuracy_gate (default 0.9) — at or above grants +1
-    //   below 60% is treated as a reliability concern → -1
-    // Hoisted so the metrics update / evolution-log writes below can reference it.
-    const accuracyRate = totalDecisions > 0 ? (approvedDecisions / totalDecisions) * 100 : 0;
-    if (totalDecisions > 0) {
-      if (accuracyRate >= accuracyPct) {
-        delta += 1;
-        reasons.push(`${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions`);
-      } else if (accuracyRate < 60) {
-        delta -= 1;
-        reasons.push(`${accuracyRate.toFixed(0)}% accuracy — needs improvement`);
-      }
-      if (overriddenDecisions > 0) {
-        delta -= overriddenDecisions;
-        reasons.push(`${overriddenDecisions} CEO override(s)`);
-      }
-    }
-
-    // Action outcome component. Threshold from settings:
-    //   trust.promotion_success_gate (default 0.8) — at or above with
-    //   2+ actions grants +1.
-    if (totalActions > 0) {
-      const successRate = (succeededActions / totalActions) * 100;
-      if (successRate >= successPct && totalActions >= 2) {
-        delta += 1;
-        reasons.push(`${succeededActions}/${totalActions} actions succeeded`);
-      } else if (failedActions > 2) {
-        delta -= 1;
-        reasons.push(`${failedActions} failed actions — reliability concern`);
-      } else if (totalActions > 0 && succeededActions > 0) {
-        reasons.push(`${succeededActions} successful action(s)`);
-      }
-    }
-
-    // ── Dimension 3: Verified outcomes (NEW in v5) ──────────────────────
-    // Real outcome verification: did the action actually HELP?
+    //
+    // The rule is `trustDeltaFrom` — pure, and the ONLY place the three
+    // dimensions are weighed. It used to be inline here, which is how
+    // dimension 2 came to grant +1 from the agent's own execution log while
+    // dimension 3 was added right below it to answer "did it actually HELP?".
+    let verifiedPositive = 0;
+    let verifiedNegative = 0;
     try {
       const { outcomeVerificationQueue } = await import("@shared/schema");
       const verifiedResults = await db.select({
@@ -159,20 +130,27 @@ export async function runTrustEvolution(): Promise<{
           eq(outcomeVerificationQueue.agentCodename, agent.codename),
           gte(outcomeVerificationQueue.verifiedAt, oneDayAgo),
         ));
-
       const vStats = verifiedResults[0] || { total: 0, verified: 0, failed: 0 };
-      const verifiedCount = Number(vStats.verified);
-      const failedVerified = Number(vStats.failed);
-
-      if (verifiedCount > 0) {
-        delta += Math.min(2, verifiedCount); // +1 per verified positive outcome, max +2
-        reasons.push(`${verifiedCount} action${verifiedCount > 1 ? "s" : ""} verified as successful`);
-      }
-      if (failedVerified > 0) {
-        delta -= failedVerified;
-        reasons.push(`${failedVerified} action${failedVerified > 1 ? "s" : ""} did not achieve desired outcome`);
-      }
+      verifiedPositive = Number(vStats.verified);
+      verifiedNegative = Number(vStats.failed);
     } catch {}
+
+    const evaluated = trustDeltaFrom(
+      {
+        humanApproved: approvedDecisions,
+        humanRejected: Number(stats.rejected),
+        autoResolved: Number((stats as { autoResolved?: unknown }).autoResolved ?? 0),
+        overridden: overriddenDecisions,
+        selfReportedActions: totalActions,
+        selfReportedFailures: failedActions,
+        verifiedPositive,
+        verifiedNegative,
+      },
+      accuracyPct,
+    );
+    const accuracyRate = evaluated.accuracyRate ?? 0;
+    const reasons = evaluated.reasons;
+    let delta = evaluated.delta;
 
     // v4: Increased cap from ±2 to ±5 per day so trust feels responsive.
     // Agents can now move from 50 to 90 in ~10 strong days instead of 25+.
