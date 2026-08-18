@@ -296,7 +296,23 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
       const climateRisk = assessClimateRisk(propertyState, property?.county ?? undefined);
       const isDroughtProne = climateRisk.droughtRisk.level === "high" || climateRisk.droughtRisk.level === "very_high";
       const isCoastal = climateRisk.hurricaneRisk.level === "high" || climateRisk.hurricaneRisk.level === "very_high";
-      if (isDroughtProne || isCoastal) {
+      if (climateRisk.overallRisk === "unknown") {
+        // This section only ever printed for a drought/coastal HIT. In a
+        // document called "due diligence", printing nothing is read as "we
+        // checked and found nothing" — so a state AcreOS has no climate data
+        // for silently produced a clean bill of health. State the absence.
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...DARK);
+        doc.text("Climate Risk: Not assessed", margin, y);
+        y += 0.15;
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          `${climateRisk.notes}. Absence of a climate risk flag below does not indicate absence of climate risk for ${propertyState}.`,
+          margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 },
+        );
+        y += 0.3;
+      } else if (isDroughtProne || isCoastal) {
         const riskColor = climateRisk.overallRisk === "very_high" || climateRisk.overallRisk === "high" ? RED : AMBER;
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");

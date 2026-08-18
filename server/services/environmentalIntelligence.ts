@@ -312,15 +312,27 @@ export function estimateCarbonCredits(
 // ── Climate Risk ────────────────────────────────────────────────────
 
 export interface RiskDetail {
-  level: "low" | "moderate" | "high" | "very_high";
-  score: number; // 0-100
+  /**
+   * `unknown` is a real answer and the honest one for most of the country.
+   *
+   * `CLIMATE_DATA` covers TEN states. Until 2026-08-18 the other forty got
+   * `level: "moderate", score: 50` with a `description` of "Insufficient data
+   * for this state" — and the card that renders this
+   * (`environmental-intelligence-card.tsx`) shows the BADGE and the SCORE and
+   * never the description. So a customer looking at a property in 40 of 50
+   * states was shown a moderate climate risk assessment that had been invented,
+   * on the same surface as the ten states where it is real.
+   */
+  level: "low" | "moderate" | "high" | "very_high" | "unknown";
+  /** 0-100, or null when the level is `unknown` — there is no score to give. */
+  score: number | null;
   description: string;
 }
 
 export interface ClimateRiskAssessment {
   state: string;
   county?: string;
-  overallRisk: "low" | "moderate" | "high" | "very_high";
+  overallRisk: "low" | "moderate" | "high" | "very_high" | "unknown";
   floodRisk: RiskDetail;
   fireRisk: RiskDetail;
   droughtRisk: RiskDetail;
@@ -415,14 +427,22 @@ export function assessClimateRisk(
 
   if (!data) {
     logger.warn("Climate risk lookup miss", { metadata: { state: st, county } });
+    // REFUSE, do not assert. Returning "moderate / 50" here was a measurement
+    // nobody made, rendered next to the ten states where the same fields are
+    // real and indistinguishable from them.
+    const unknown = (hazard: string): RiskDetail => ({
+      level: "unknown",
+      score: null,
+      description: `No ${hazard} data on file for ${st}`,
+    });
     return {
       state: st,
       county,
-      overallRisk: "moderate",
-      floodRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
-      fireRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
-      droughtRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
-      hurricaneRisk: { level: "low", score: 10, description: "Insufficient data for this state" },
+      overallRisk: "unknown",
+      floodRisk: unknown("flood"),
+      fireRisk: unknown("wildfire"),
+      droughtRisk: unknown("drought"),
+      hurricaneRisk: unknown("hurricane"),
       notes: "No state-level climate data on file; recommend FEMA flood map and local hazard review",
     };
   }
@@ -567,18 +587,23 @@ export function analyzeHighestBestUse(property: {
   }
 
   // ── Climate-adjusted ──
+  // A hazard with no score cannot cross a threshold. `score === null` means
+  // nobody measured it — that must produce NO adjustment and NO factor, rather
+  // than coercing to 0 and reading as "measured, and below the threshold".
+  const scoredAtLeast = (r: RiskDetail, threshold: number): boolean =>
+    r.score !== null && r.score >= threshold;
   const climate = CLIMATE_DATA[st];
   if (climate) {
-    if (climate.fireRisk.score >= 80) {
+    if (scoredAtLeast(climate.fireRisk, 80)) {
       scores.residential -= 10;
       scores.conservation += 5;
       factors.push({ name: "fire_risk", value: "high", impact: "negative" });
     }
-    if (climate.droughtRisk.score >= 80) {
+    if (scoredAtLeast(climate.droughtRisk, 80)) {
       scores.agricultural -= 15;
       factors.push({ name: "drought_risk", value: "high", impact: "negative" });
     }
-    if (climate.floodRisk.score >= 75) {
+    if (scoredAtLeast(climate.floodRisk, 75)) {
       scores.residential -= 10;
       scores.commercial -= 10;
       factors.push({ name: "flood_risk", value: "high", impact: "negative" });

@@ -49,8 +49,10 @@ interface CarbonCreditEstimate {
 }
 
 interface RiskDetail {
+  /** `low` | `moderate` | `high` | `very_high` | `unknown`. */
   level: string;
-  score: number;
+  /** null when `level` is `unknown` — the server has no data for this state. */
+  score: number | null;
   description: string;
 }
 
@@ -100,20 +102,33 @@ function riskBadgeVariant(level: string): "default" | "secondary" | "destructive
     case "high":
     case "very_high":
       return "destructive";
+    case "unknown":
+      // Not a finding. Must never read louder than the states that have data.
+      return "outline";
     default:
       return "default";
   }
 }
 
 function RiskRow({ label, risk }: { label: string; risk: RiskDetail }) {
+  // `unknown` is a real level: the server has no climate data on file for this
+  // state (40 of 50 states, as of 2026-08). It is NOT a low/moderate finding.
+  // This row used to print `{risk.score}/100` unconditionally and never render
+  // `description` at all — so a state with no data was shown as "moderate
+  // 50/100", indistinguishable from the ten states where those numbers are
+  // measured. Say what it actually is, and give the description the space the
+  // score would have used.
+  const noData = risk.level === "unknown" || risk.score === null;
   return (
-    <div className="flex items-center justify-between py-1">
+    <div className="flex items-center justify-between py-1 gap-2">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-2">
-        <Badge variant={riskBadgeVariant(risk.level)} className="text-xs">
-          {risk.level.replace(/_/g, " ")}
+      <div className="flex items-center gap-2 min-w-0">
+        <Badge variant={riskBadgeVariant(risk.level)} className="text-xs shrink-0">
+          {noData ? "no data" : risk.level.replace(/_/g, " ")}
         </Badge>
-        <span className="text-xs text-muted-foreground">{risk.score}/100</span>
+        <span className="text-xs text-muted-foreground truncate">
+          {noData ? risk.description : `${risk.score}/100`}
+        </span>
       </div>
     </div>
   );
@@ -305,7 +320,9 @@ export function EnvironmentalIntelligenceCard({
                 <CloudRain className="h-4 w-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium">Climate Risk Assessment</h4>
                 <Badge variant={riskBadgeVariant(climateData.overallRisk)} className="text-xs">
-                  {climateData.overallRisk.replace(/_/g, " ")} overall
+                  {climateData.overallRisk === "unknown"
+                    ? "not rated"
+                    : `${climateData.overallRisk.replace(/_/g, " ")} overall`}
                 </Badge>
               </div>
               <div className="space-y-0.5">
