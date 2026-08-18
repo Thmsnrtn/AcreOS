@@ -63,7 +63,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 11 | A guess is not a known value, on the path the law governs | **ADAPTED** | `resolveZoneForPhone()` in `tcpaCompliance.ts`, `tcpaZoneGuess.test.ts` (`a6df3b60`) |
 | 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (`c937eb2e`) |
 | 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (`1674e2f5`) |
-| 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (this commit) |
+| 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (`8b4740a5`) |
+| 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (this commit) |
 
 ---
 
@@ -570,6 +571,62 @@ there is no `asOf` to discard and `null` is the honest answer — the file's own
 header says resolution then ages the claim from `fetchedAt`, which is also
 conservative. Recorded here because a transfer ledger that lists only the
 findings that survived is a biased record of the reading.
+
+
+---
+
+### 15 — "Authority belongs to the source, not to the transport" → ADAPTED
+
+**Foundry source.** §17 again — an assertion is not canonical truth. In entry 14
+the assertion was where a value came from; here it is how far the source may be
+trusted.
+
+**AcreOS defect.** `enrichmentToClaims` is the anti-corruption boundary where a
+provider-shaped result becomes AcreOS evidence. It stamped every claim with one
+module constant, `BROKER_AUTHORITY = "authoritative"`, justified as "open
+government layers are systems of record for the facts they publish". True of
+most of them — and the constant named the PIPE rather than the publisher, so it
+could not express the case where it is not.
+
+One category is not. The FCC Broadband Data Collection is the federal system of
+record for availability FILINGS, but the coverage it publishes is
+ISP-SELF-REPORTED and known to overstate service. **The repository already knew
+this**: `landProfile.ts` scores it 75, below county GIS at 80, and says so in a
+comment. The evidence layer contradicted that assessment in the same repo.
+
+And this is not a display concern. `authorityRank` puts `authoritative` (3)
+above `estimate` (2) and resolution takes the higher, so a carrier's own filing
+about its own coverage WON against an honest estimate of the same fact.
+
+**AcreOS primitive reused.** The existing `EvidenceAuthority` domain, which
+already had `estimate` for exactly this. No new tier, no new column.
+
+**Smallest implementation.** A dated demotion register plus
+`authorityForSource()`. One entry. The default stays `authoritative`, because
+demoting the genuine systems of record (FEMA, SSURGO, NWI, 3DEP, PLSS, county
+assessor) would be the same error pointing the other way.
+
+**Kept private.** An earlier draft exported the helper and the register so the
+test could read them, and the reachability gate named that shape: a symbol whose
+only consumer is its own test. Both are module-private; the assertions run
+through `claimsFromEnrichment`, which is also the stronger surface — it catches
+an emission site that hardcodes an authority rather than deriving one.
+
+**Complexity change.** One register, one function. **Liability change.** Down,
+on the boundary that decides what AcreOS treats as fact.
+
+**Exit test.** `claimAuthoritySource.test.ts`, mutation-tested 5/5 — restoring
+the transport-wide constant; demoting only one of the two broadband claims; a
+register pattern that matches nothing the broker emits; an over-correction that
+demotes every source; and the broker silently renaming its own label, which
+would otherwise make the demotion stop applying with no test noticing.
+
+**Deliberately NOT decided here.** USFS Wildfire Hazard Potential is a MODELED
+raster, and `EvidenceAuthority` has a `modeled` tier it is not using. Unlike
+broadband, nothing in the repository contradicts its current `authoritative`
+label — `landProfile.ts` groups it with the system-of-record layers at 85. That is a
+domain judgement, not a defect this reading can evidence, so it is left alone
+and recorded rather than silently changed.
 
 
 ## Not yet dispositioned

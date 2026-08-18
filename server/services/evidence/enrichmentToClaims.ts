@@ -43,12 +43,65 @@ import type {
 } from "@shared/evidence/claim";
 
 /**
- * Open/government layers reached through the broker are systems of record for
- * the facts they publish, so their observations are `authoritative`. This is
- * the same judgement `DataClassification` already encodes for the registry
- * providers; the broker path had no equivalent, so it is stated here once.
+ * AUTHORITY BELONGS TO THE SOURCE, NOT TO THE TRANSPORT.
+ *
+ * This used to be a single module constant holding "authoritative" for every
+ * claim that arrived through the broker, justified as "open government layers
+ * are systems of record for the facts they publish". That is true of most of
+ * them, and the constant named the PIPE rather than the publisher, so it could
+ * not express the case where it is not.
+ *
+ * The broker is a pipe. A pipe has no authority. Which layer published the fact
+ * is what decides.
+ *
+ * Why this is not a style point: `authorityRank` in `@shared/evidence/claim`
+ * ranks `authoritative` (3) above `estimate` (2), and resolution takes the
+ * higher. So a self-reported figure recorded as `authoritative` does not merely
+ * read as overconfident — it WINS against an honest estimate of the same fact.
  */
-const BROKER_AUTHORITY: EvidenceAuthority = "authoritative";
+const SOURCE_AUTHORITY_DEMOTIONS: Array<{
+  match: RegExp;
+  authority: EvidenceAuthority;
+  why: string;
+}> = [
+  {
+    // Matches the broker's own label for the category — "FCC Broadband Data
+    // Collection" (SOURCE_LABELS in providers/open-data-provider.ts).
+    match: /\bfcc\b|broadband data collection/i,
+    authority: "estimate",
+    why:
+      "The FCC BDC is the federal system of record for availability FILINGS, " +
+      "but the coverage it publishes is ISP-SELF-REPORTED and known to " +
+      "overstate service. This is not a new judgement: landProfile.ts already " +
+      "scores it 75, below county GIS at 80, and says so in as many words. The " +
+      "evidence layer contradicted that assessment by recording the same data " +
+      "as `authoritative` — the top tier, alongside FEMA flood zones — so a " +
+      "carrier's own filing about its own coverage outranked any honest " +
+      "estimate of the same fact. Demoted 2026-08-18.",
+  },
+];
+
+/**
+ * The authority of a claim, taken from the layer that published it.
+ *
+ * Defaults to `authoritative`: the broker's other categories (FEMA NFHL, USDA
+ * SSURGO, USFWS NWI, USGS 3DEP, BLM PLSS, county assessor) are genuine systems
+ * of record for the facts they publish, and demoting them wholesale would be
+ * the same error pointing the other way.
+ */
+function authorityForSource(source: string | null | undefined): EvidenceAuthority {
+  if (!source) return "unknown";
+  for (const d of SOURCE_AUTHORITY_DEMOTIONS) {
+    if (d.match.test(source)) return d.authority;
+  }
+  return "authoritative";
+}
+
+// Neither the register nor `authorityForSource` is exported. An earlier draft
+// exported both so the test could read them directly, and the reachability gate
+// said what that shape is: a symbol whose only consumer is its own test. The
+// assertions run through `claimsFromEnrichment` instead, which is the surface
+// production uses and therefore the stronger place to assert.
 
 /** ISO date, bare year, or nothing. Never invents precision it does not have. */
 function parseAsOf(raw: string | null | undefined): Date | null {
@@ -101,7 +154,7 @@ function emit(
     value,
     provider: "open-data-broker",
     source: prov.source,
-    authority: BROKER_AUTHORITY,
+    authority: authorityForSource(prov.source),
     observedAt: parseAsOf(prov.asOf),
     fetchedAt: ctx.fetchedAt,
     providerConfidence: null,
@@ -213,7 +266,7 @@ export function claimsFromEnrichment(
       value: wildfire.whpLabel,
       provider: "open-data-broker",
       source: wildfire.source,
-      authority: BROKER_AUTHORITY,
+      authority: authorityForSource(wildfire.source),
       observedAt: null,
       fetchedAt: ctx.fetchedAt,
       providerConfidence: null,
@@ -235,7 +288,7 @@ export function claimsFromEnrichment(
         value: broadband.served,
         provider: "open-data-broker",
         source: broadband.source,
-        authority: BROKER_AUTHORITY,
+        authority: authorityForSource(broadband.source),
         observedAt: null,
         fetchedAt: ctx.fetchedAt,
         providerConfidence: null,
@@ -251,7 +304,7 @@ export function claimsFromEnrichment(
         value: broadband.maxDownMbps,
         provider: "open-data-broker",
         source: broadband.source,
-        authority: BROKER_AUTHORITY,
+        authority: authorityForSource(broadband.source),
         observedAt: null,
         fetchedAt: ctx.fetchedAt,
         providerConfidence: null,
