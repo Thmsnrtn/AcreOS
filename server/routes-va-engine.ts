@@ -1721,9 +1721,10 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/writing-styles/:id/samples", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const { context, content } = req.body;
-      await writingStyleService.addSampleMessage(id, context || "general", content);
+      await writingStyleService.addSampleMessage(org.id, id, context || "general", content);
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Add sample message error", error);
@@ -1733,8 +1734,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/writing-styles/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
-      const analysis = await writingStyleService.analyzeWritingStyle(id);
+      const analysis = await writingStyleService.analyzeWritingStyle(org.id, id);
       res.json(analysis);
     } catch (error: any) {
       logger.error("Analyze writing style error", error);
@@ -1744,9 +1746,10 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/writing-styles/:id/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const { recipientName, topic, intent, propertyDetails, previousMessages } = req.body;
-      const result = await writingStyleService.generateStyledResponse(id, {
+      const result = await writingStyleService.generateStyledResponse(org.id, id, {
         recipientName,
         topic,
         intent: intent || "general",

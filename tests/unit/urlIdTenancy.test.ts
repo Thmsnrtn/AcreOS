@@ -220,3 +220,59 @@ describe("seller-intent signal analysers are scoped", () => {
     for (const a of props) expect(bound(a.where, "organization_id")).toContain(OTHER);
   });
 });
+
+describe("writing-style profiles are scoped", () => {
+  /**
+   * `POST /api/writing-styles/:id/{samples,analyze,generate}` reached three
+   * functions that resolved `writing_style_profiles` by primary key alone,
+   * while `deleteStyleProfile` two functions down and the three list/create
+   * functions above all took the organization first. Same drift as
+   * portfolioSentinel: the correct shape was already in the file.
+   *
+   * The consequences are a tenant's VOICE: inject sample text into another
+   * org's profile, trigger an analysis that overwrites it, or generate replies
+   * in that org's writing style.
+   */
+  it("addSampleMessage refuses another organization's profile", async () => {
+    const { result } = await withDb(async () => {
+      const w = await import("../../server/services/writingStyle");
+      return w.addSampleMessage(OTHER, 77, "general", "hello").then(() => "wrote").catch((e) => String(e));
+    });
+    expect(String(result), "a sample was written into another tenant's voice profile").toMatch(/not found/i);
+  });
+
+  it("analyzeWritingStyle refuses another organization's profile", async () => {
+    const { result } = await withDb(async () => {
+      const w = await import("../../server/services/writingStyle");
+      return w.analyzeWritingStyle(OTHER, 77).then(() => "analysed").catch((e) => String(e));
+    });
+    expect(String(result)).toMatch(/not found/i);
+  });
+
+  it("EVERY profile-id function binds the organization on its read", async () => {
+    // The discriminating assertion. The behavioural checks above cannot tell an
+    // unscoped read from a scoped miss, because this fake answers [] to both —
+    // so a mutation that unscopes only ONE function still produces "not found".
+    // Asserting the predicate on each function is what actually separates them.
+    const cases: Array<[string, (w: any) => Promise<unknown>]> = [
+      ["addSampleMessage", (w) => w.addSampleMessage(OTHER, 77, "general", "hi")],
+      ["analyzeWritingStyle", (w) => w.analyzeWritingStyle(OTHER, 77)],
+      ["generateStyledResponse", (w) => w.generateStyledResponse(OTHER, 77, { recipientName: "x", topic: "y", intent: "z" })],
+    ];
+
+    for (const [name, run] of cases) {
+      const { asks } = await withDb(async () => {
+        const w = await import("../../server/services/writingStyle");
+        return run(w).catch(() => null);
+      });
+      const reads = asks.filter((a) => a.table === "writing_style_profiles");
+      expect(reads.length, `${name} issued no profile read — the fixture stopped exercising it`).toBeGreaterThan(0);
+      for (const a of reads) {
+        expect(
+          bound(a.where, "organization_id"),
+          `${name} resolved a writing style profile by primary key alone`,
+        ).toContain(OTHER);
+      }
+    }
+  });
+});

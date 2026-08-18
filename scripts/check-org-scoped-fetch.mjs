@@ -634,7 +634,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   "server/services/trendAnalyzer.ts::getWeeklyTrends",
   "server/services/unsubscribeTokens.ts::markTokenUsed",
   "server/services/vendorSecretRotation.ts::getLastRotationTimestamp",
-  "server/services/writingStyle.ts::addSampleMessage",
 ]);
 
 // RULE 2, FUNCTION SHAPE — frozen 2026-08-16, same re-seed as above.
@@ -683,8 +682,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/smsService.ts::handleIncomingSMS",
   "server/services/smsService.ts::saveTwilioCredentials",
   "server/services/smsService.ts::sendSMSToLead",
-  "server/services/writingStyle.ts::analyzeWritingStyle",
-  "server/services/writingStyle.ts::generateStyledResponse",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup",
   "server/services/actions/outwardAction.ts::withOutwardAction",
   "server/services/agentPromotionGate.ts::addSimulationRequirement",

@@ -96,7 +96,21 @@ export async function createWritingStyleProfile(
   return profile as WritingStyleProfile;
 }
 
+/**
+ * The three profile-id functions below take an `organizationId` and use it in
+ * the WHERE, matching `deleteStyleProfile` two functions down and
+ * `getAllStyleProfiles` / `getWritingStyleProfile` / `createWritingStyleProfile`
+ * above.
+ *
+ * Until 2026-08-18 they resolved `writing_style_profiles` by primary key alone,
+ * and all three are reached from authenticated routes whose id is a URL
+ * parameter (`POST /api/writing-styles/:id/{samples,analyze,generate}`). The
+ * table's organization_id is NOT NULL, so any authenticated user could inject
+ * sample text into another tenant's voice profile, trigger an analysis that
+ * overwrites it, and generate replies in that tenant's writing voice.
+ */
 export async function addSampleMessage(
+  organizationId: number,
   profileId: number,
   context: string,
   content: string
@@ -104,7 +118,10 @@ export async function addSampleMessage(
   const [profile] = await db
     .select()
     .from(writingStyleProfiles)
-    .where(eq(writingStyleProfiles.id, profileId))
+    .where(and(
+      eq(writingStyleProfiles.id, profileId),
+      eq(writingStyleProfiles.organizationId, organizationId),
+    ))
     .limit(1);
   
   if (!profile) {
@@ -131,7 +148,10 @@ export async function addSampleMessage(
       totalSamples: updatedSamples.length,
       updatedAt: new Date(),
     })
-    .where(eq(writingStyleProfiles.id, profileId));
+    .where(and(
+      eq(writingStyleProfiles.id, profileId),
+      eq(writingStyleProfiles.organizationId, organizationId),
+    ));
 }
 
 async function analyzeSentiment(content: string): Promise<"positive" | "neutral" | "negative"> {
@@ -165,7 +185,7 @@ async function analyzeSentiment(content: string): Promise<"positive" | "neutral"
   }
 }
 
-export async function analyzeWritingStyle(profileId: number): Promise<{
+export async function analyzeWritingStyle(organizationId: number, profileId: number): Promise<{
   toneAnalysis: ToneAnalysis;
   patterns: PatternAnalysis;
   preferences: StylePreferences;
@@ -174,7 +194,10 @@ export async function analyzeWritingStyle(profileId: number): Promise<{
   const [profile] = await db
     .select()
     .from(writingStyleProfiles)
-    .where(eq(writingStyleProfiles.id, profileId))
+    .where(and(
+      eq(writingStyleProfiles.id, profileId),
+      eq(writingStyleProfiles.organizationId, organizationId),
+    ))
     .limit(1);
   
   if (!profile) {
@@ -247,12 +270,16 @@ Only output valid JSON, no other text.`
       lastTrainedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(writingStyleProfiles.id, profileId));
+    .where(and(
+      eq(writingStyleProfiles.id, profileId),
+      eq(writingStyleProfiles.organizationId, organizationId),
+    ));
   
   return analysis;
 }
 
 export async function generateStyledResponse(
+  organizationId: number,
   profileId: number,
   messageContext: {
     recipientName?: string;
@@ -273,7 +300,10 @@ export async function generateStyledResponse(
   const [profile] = await db
     .select()
     .from(writingStyleProfiles)
-    .where(eq(writingStyleProfiles.id, profileId))
+    .where(and(
+      eq(writingStyleProfiles.id, profileId),
+      eq(writingStyleProfiles.organizationId, organizationId),
+    ))
     .limit(1);
   
   if (!profile) {
@@ -406,7 +436,7 @@ export async function importMessagesFromConversations(
   let addedCount = 0;
   for (const msg of outboundMessages) {
     try {
-      await addSampleMessage(profileId, "general", msg.content);
+      await addSampleMessage(organizationId, profileId, "general", msg.content);
       addedCount++;
     } catch (error) {
       logger.error("Error adding sample message", error);
