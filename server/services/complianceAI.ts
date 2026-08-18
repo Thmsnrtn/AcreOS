@@ -245,20 +245,45 @@ class ComplianceAI {
   /**
    * Resolve compliance alert
    */
-  async resolveAlert(
-    organizationId: number,
-    alertId: string
-  ): Promise<void> {
+  /**
+   * Resolve one compliance alert. Returns whether a row was actually resolved.
+   *
+   * ── WHY THE ARGUMENT IS AN OBJECT ───────────────────────────────────────
+   * This took `(organizationId: number, alertId: string)` positionally, and
+   * `routes-compliance.ts` called it as `resolveAlert(alertId, resolution)`.
+   * Both slots accepted what was passed — `alertId` is a `parseInt` number and
+   * fits `organizationId: number`; `resolution` comes off `req.body` as `any`
+   * and fits `alertId: string` — so it type-checked cleanly and did this:
+   *
+   *     WHERE id = parseInt(<the resolution text>)   -- NaN
+   *       AND organization_id = <the alert's id>
+   *
+   * The update matched nothing. The alert was never resolved, and the route
+   * wrote an audit entry saying `resolved: true` and answered `{success: true}`
+   * — a compliance record asserting an event that did not happen.
+   *
+   * Two numbers in a row can always be swapped again. A named object cannot.
+   *
+   * ── AND WHY IT RETURNS A BOOLEAN ────────────────────────────────────────
+   * An update that matched nothing is not a resolution. The caller has to be
+   * able to tell, or it will keep claiming outcomes it did not achieve.
+   */
+  async resolveAlert(args: {
+    organizationId: number;
+    alertId: number;
+  }): Promise<boolean> {
     try {
-      await db.update(complianceAlerts)
+      const rows = await db.update(complianceAlerts)
         .set({
           status: 'resolved',
           resolvedAt: new Date(),
         })
         .where(and(
-          eq(complianceAlerts.id, parseInt(alertId)),
-          eq(complianceAlerts.organizationId, organizationId)
-        ));
+          eq(complianceAlerts.id, args.alertId),
+          eq(complianceAlerts.organizationId, args.organizationId)
+        ))
+        .returning({ id: complianceAlerts.id });
+      return rows.length > 0;
     } catch (error) {
       logger.error('Failed to resolve alert', error);
       throw error;

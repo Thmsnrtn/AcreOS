@@ -89,7 +89,17 @@ router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
     const org = req.organization;
     const alertId = parseInt(req.params.id);
     const { resolution } = req.body;
-    await complianceAI.resolveAlert(alertId, resolution);
+    // Was `resolveAlert(alertId, resolution)` against a
+    // `(organizationId, alertId)` signature — see the note on the service. The
+    // update matched nothing and this route said it had.
+    const resolved = await complianceAI.resolveAlert({
+      organizationId: org.id,
+      alertId,
+    });
+    // Nothing was resolved: the alert does not exist, or belongs to another
+    // organization. 404 either way — the audit entry below must not record a
+    // resolution that did not happen, and the response must not claim one.
+    if (!resolved) return Errors.notFound(res, "Alert");
 
     try {
       const user = req.user;
@@ -99,6 +109,10 @@ router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
         action: "update",
         entityType: "compliance_alert",
         entityId: alertId,
+        // `compliance_alerts` has no `resolution` column, so this audit entry
+        // is the ONLY durable record of what the operator wrote. That is
+        // acceptable — an audit log is a reasonable home for an annotation —
+        // but it is written only now that the resolution provably happened.
         changes: { after: { resolved: true, resolution }, fields: ["resolved", "resolution"] },
         ipAddress: req.ip || null,
         userAgent: req.headers["user-agent"] || null,
