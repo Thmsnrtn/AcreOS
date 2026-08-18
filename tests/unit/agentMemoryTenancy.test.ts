@@ -39,6 +39,42 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "..", "..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
 
+/**
+ * Source with comment lines removed.
+ *
+ * Every name-based scan in this file needs it: the first version of the
+ * indexAnalyzer assertion matched the very comment in indexAnalyzer.ts that
+ * explains which constant was REMOVED, and failed on the fixed file. Prose
+ * about a defect is not the defect.
+ */
+const codeOf = (p: string): string =>
+  read(p)
+    .split("\n")
+    .filter((l) => {
+      const t = l.trim();
+      return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
+    })
+    .join("\n");
+
+/** Every TypeScript source file under server/ and shared/ (no tests). */
+function sourceFiles(): string[] {
+  const out: string[] = [];
+  const walk = (rel: string) => {
+    for (const e of fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true })) {
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === "dist") continue;
+        walk(child);
+      } else if (e.name.endsWith(".ts") && !e.name.includes(".test.")) {
+        out.push(child);
+      }
+    }
+  };
+  walk("server");
+  walk("shared");
+  return out;
+}
+
 /** Every module that inserts into `agent_memory`. */
 const WRITERS = [
   "server/services/agentKnowledgeGraph.ts",
@@ -226,18 +262,32 @@ describe("the system org has one definition", () => {
   it("no service declares its own copy of the constant", () => {
     // Two did (`selfAssessmentAgent`, `agentPromotionGate`), and three more used
     // a bare `1` with a comment. A private copy is exactly how the 0/1
-    // disagreement below came to exist.
-    const offenders = [
-      "server/services/selfAssessmentAgent.ts",
-      "server/services/agentPromotionGate.ts",
-      "server/services/marketNetworkContributor.ts",
-      "server/services/marketIntelligence.ts",
-      "server/jobs/courseCompletionCheck.ts",
-    ].filter((f) => /const\s+(SYSTEM|PLATFORM)_ORG_ID\s*=/.test(read(f)));
+    // disagreement came to exist.
+    //
+    // SCANS THE CORPUS, NOT A LIST. This was a hardcoded five-file allowlist,
+    // and an audit found it passing green over TWO surviving private copies —
+    // autonomyBootstrap.ts and rosyRiver.ts — simply because nobody had added
+    // them to the array. A gate that checks the files it already knows about
+    // confirms the past; it cannot catch the next one. Both were fixed and the
+    // scan now walks every server/ and shared/ source file.
+    const offenders = sourceFiles()
+      .filter((f) => f !== "shared/tenancy/systemOrg.ts")
+      .filter((f) => /^\s*(export\s+)?const\s+(SYSTEM|PLATFORM)_ORG_ID\s*=/m.test(codeOf(f)));
     expect(
       offenders,
-      "a service re-declared the system org locally instead of importing it.",
+      "a service re-declared the system org locally instead of importing it " +
+        "from @shared/tenancy/systemOrg. Six private spellings disagreeing " +
+        "about which row is the platform org is what this file exists to stop.",
     ).toEqual([]);
+  });
+
+  it("the private-constant scan covers a real corpus (vacuity guard)", () => {
+    // The scan above returns [] both when the corpus is clean and when the walk
+    // is broken. Only this distinguishes them.
+    expect(
+      sourceFiles().length,
+      "no source files walked — the offender list above proves nothing",
+    ).toBeGreaterThan(800);
   });
 
   it("indexAnalyzer is reconciled — the 0-vs-1 disagreement is gone", () => {
@@ -253,21 +303,39 @@ describe("the system org has one definition", () => {
     // PLATFORM_ORG_ID = 0` …") and failed on the fixed file. Prose about a
     // defect is not the defect — a rule that cannot tell them apart punishes
     // writing the reason down.
-    const src = read("server/jobs/indexAnalyzer.ts")
-      .split("\n")
-      .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
-      .join("\n");
+    const src = codeOf("server/jobs/indexAnalyzer.ts");
     expect(
       /const\s+PLATFORM_ORG_ID\s*=/.test(src),
       "indexAnalyzer re-declared a private platform-org constant. Import " +
-        "SYSTEM_ORG_ID from @shared/tenancy/systemOrg instead — six private " +
-        "spellings disagreeing about which row is the platform org is what " +
-        "this whole file exists to prevent.",
+        "SYSTEM_ORG_ID from @shared/tenancy/systemOrg instead.",
     ).toBe(false);
     expect(
       src,
       "indexAnalyzer no longer imports the shared system-org constant",
     ).toContain('from "@shared/tenancy/systemOrg"');
+
+    // THE ASSERTION THAT ACTUALLY MATTERS, and it was missing.
+    //
+    // The two checks above are keyed on a NAME and an IMPORT. An audit put the
+    // defect back WITHOUT re-declaring the constant — it wrote the literal 0
+    // straight into all four queries — and this test stayed green. That is the
+    // same mistake as pinning a trigger by a name that survives being renamed:
+    // the gate reported coverage it did not have.
+    //
+    // What is wrong is the VALUE reaching the tenant column, so that is what is
+    // checked now. `organizationId` in this file must never be a numeric
+    // literal.
+    const literalOrgIds = [
+      ...src.matchAll(/organizationId\s*[:,]\s*(\d+)/g),
+      ...src.matchAll(/organizationId\s*===?\s*(\d+)/g),
+    ].map((m) => m[0].trim());
+    expect(
+      literalOrgIds,
+      "indexAnalyzer passes a hardcoded organization id. It must use " +
+        "SYSTEM_ORG_ID — a literal here is precisely the OD-4 defect, and " +
+        "writing `0` inline evades a name-based check entirely.",
+    ).toEqual([]);
+    expect(src).toContain("SYSTEM_ORG_ID");
   });
 
   it("the shared constant still explains WHY 1 and not 0", () => {

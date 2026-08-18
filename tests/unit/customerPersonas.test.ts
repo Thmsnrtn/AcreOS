@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   CUSTOMER_PERSONAS,
   DOOR_ROUTES,
@@ -91,6 +93,56 @@ describe("customer persona catalog", () => {
       }
       if (p.displayName.includes("(beta)")) {
         expect(maturity, `${p.slug} is labeled (beta) but registry says ${maturity}`).toBe("beta");
+      }
+    }
+  });
+
+  /**
+   * THE SAME INVARIANT, OVER A POPULATION THAT IS NOT EMPTY.
+   *
+   * The test above is correct and has caught nothing, because no persona
+   * display name carries either tag: measured, 30 personas and 0 tagged. It
+   * iterates thirty rows and asserts zero times.
+   *
+   * Meanwhile the identical defect it was written for was sitting in the
+   * ONBOARDING WIZARD, which it does not read. `fix_and_flip` was labelled
+   * "Fix & Flip (waitlist)" with a description saying comps run on land data,
+   * three weeks after the registry recorded that fixed and promoted the
+   * vertical to `core` — while the public landing called it fully supported and
+   * /pricing sold its pack at $150/mo.
+   *
+   * So the guard is pointed at the source strings a customer actually reads.
+   * The tags are checked against the registry's own maturity, not a copy of it.
+   */
+  it("onboarding vertical labels never contradict the registry", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../../client/src/pages/onboarding-v2.tsx"),
+      "utf8",
+    );
+    // `{ value: "<id>", label: "<label>", …` — the choice rows a signup sees.
+    const choices = [...src.matchAll(/value:\s*"([a-z_]+)"\s*,\s*label:\s*"([^"]+)"/g)];
+
+    expect(
+      choices.length,
+      "no onboarding vertical choices parsed — the scan broke, so the tag " +
+        "checks below assert nothing (which is exactly how the sibling test " +
+        "above went quiet)",
+    ).toBeGreaterThan(8);
+
+    for (const [, id, label] of choices) {
+      const meta = BUSINESS_TYPES[id as keyof typeof BUSINESS_TYPES];
+      if (!meta) continue; // a non-registry choice (e.g. "other")
+      if (label.includes("(waitlist)")) {
+        expect(
+          meta.maturity,
+          `onboarding labels ${id} "(waitlist)" but the registry says "${meta.maturity}"`,
+        ).toBe("roadmap");
+      }
+      if (label.includes("(beta)")) {
+        expect(
+          meta.maturity,
+          `onboarding labels ${id} "(beta)" but the registry says "${meta.maturity}"`,
+        ).toBe("beta");
       }
     }
   });

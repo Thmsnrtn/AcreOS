@@ -31,11 +31,11 @@ import {
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { logAgentTrace, type LogTraceInput } from "./agentLlmTraces";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 
-// Mirrors selfAssessmentAgent.ts — platform-wide agent tasks live under
-// the system org. Codebase-monitor proposals and similar Rosy River outputs
-// are not org-scoped, so they use the same sentinel.
-const SYSTEM_ORG_ID = 1;
+// Platform-wide agent tasks live under the system org. Codebase-monitor
+// proposals and similar Rosy River outputs are not org-scoped, so they use the
+// shared constant — imported, never re-declared.
 
 // ---------------------------------------------------------------------------
 // Pillars + risk tiering

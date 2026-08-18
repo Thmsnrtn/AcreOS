@@ -46,6 +46,31 @@ import {
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
 
+/** Comment lines removed — prose about a defect is not the defect. */
+function codeOnly(src: string): string {
+  return src
+    .split("\n")
+    .filter((l) => {
+      const t = l.trim();
+      return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
+    })
+    .join("\n");
+}
+
+/** Every .ts/.tsx file under a directory, repo-relative. */
+function walk(rel: string): string[] {
+  const abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) return [];
+  const out: string[] = [];
+  for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+    const child = `${rel}/${e.name}`;
+    if (e.isDirectory()) out.push(...walk(child));
+    else if (/\.tsx?$/.test(e.name) && !e.name.includes(".test.")) out.push(child);
+  }
+  return out;
+}
+
+
 // ── Measure the evidence ────────────────────────────────────────────────────
 
 /** Template ids the workflow engine really defines (`id: "tpl_…"`). */
@@ -311,10 +336,94 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     ).toEqual([]);
   });
 
+  it("no public surface publishes raw `maturity`", () => {
+    // THE ASSERTION THIS BLOCK CLAIMED TO MAKE AND DID NOT.
+    //
+    // Everything else here maps over BUSINESS_TYPES and calls publicMaturityOf
+    // itself, so it proves the MAP is coherent — not that any surface consults
+    // it. An audit put the retired endpoint back, rendering `v.maturity`
+    // directly, and this file stayed green. Two comments (routes-public-trust.ts
+    // and OWNER_DECISIONS_PENDING.md) meanwhile promised the opposite. A gate
+    // that scans nothing plus prose asserting that it does is worse than
+    // silence, because it retires the suspicion that would have found it.
+    //
+    // Public = reachable without authentication: the landing/marketing pages,
+    // and any server route file registering a handler with no auth middleware.
+    const files = [
+      ...walk("client/src/pages/landing"),
+      ...walk("client/src/pages/marketing"),
+      "server/routes-public-trust.ts",
+      "server/routes-public.ts",
+      "server/routes-seo.ts",
+    ].filter((f) => fs.existsSync(path.join(ROOT, f)));
+
+    expect(
+      files.length,
+      "no public surface files found — the scan broke, so the [] below is meaningless",
+    ).toBeGreaterThan(3);
+
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = codeOnly(read(f));
+      // `.maturity` read off a registry entry, in code, not through the accessor.
+      for (const m of src.matchAll(/(\w+)\.maturity\b/g)) {
+        // publicClaims.ts is allowed to read it — it is the thing that maps it.
+        if (m[1] === "meta" && src.includes("publicMaturityOf(")) continue;
+        offenders.push(`${f}: ${m[0]}`);
+      }
+    }
+    expect(
+      offenders,
+      "a PUBLIC surface reads `.maturity` directly. Render " +
+        "publicMaturityOf() from shared/business-types/publicClaims.ts instead " +
+        "— raw maturity ignores the demotion map, which is how two public " +
+        "surfaces came to disagree in the first place.",
+    ).toEqual([]);
+  });
+
   it("the demotion map is well-formed (reason, date, direction)", () => {
     // Same validator the landing runs at module load, exercised here so a bad
     // entry fails a test rather than a page render.
     expect(() => assertDemotionsValid()).not.toThrow();
+  });
+
+  it("the validator rejects each malformed shape (positive controls)", () => {
+    // `not.toThrow()` above proves only that the CURRENT map is valid. It would
+    // pass just as happily against a validator whose branches never fire — and
+    // an audit found exactly that: the `decidedOn` ISO-date branch had no test
+    // reaching it. Each rule is exercised on constructed input, which cannot go
+    // vacuous the way a scan over the live map can.
+    const ok = { to: "beta" as const, reason: "r", decidedOn: "2026-08-17" };
+
+    expect(() =>
+      assertDemotionsValid({ commercial: { ...ok, reason: "   " } }),
+    ).toThrow(/non-empty reason/);
+
+    expect(() =>
+      assertDemotionsValid({ commercial: { ...ok, decidedOn: "soon" } }),
+    ).toThrow(/ISO date/);
+
+    expect(() =>
+      assertDemotionsValid({ commercial: { ...ok, decidedOn: "17-08-2026" } }),
+    ).toThrow(/ISO date/);
+
+    // A no-op / promote: `commercial` declares `core`, so demoting a synthetic
+    // registry where it is already `roadmap` up to `beta` must be refused.
+    const asRoadmap = {
+      ...BUSINESS_TYPES,
+      commercial: { ...BUSINESS_TYPES.commercial, maturity: "roadmap" as const },
+    };
+    expect(() => assertDemotionsValid({ commercial: ok }, asRoadmap)).toThrow(
+      /must move a vertical DOWN/,
+    );
+
+    // A vertical that is not in the registry at all.
+    expect(() =>
+      assertDemotionsValid({ not_a_vertical: ok } as never),
+    ).toThrow(/not in the registry/);
+
+    // And the happy path still passes, so the throws above are not universal.
+    expect(() => assertDemotionsValid({ commercial: ok })).not.toThrow();
   });
 
   it("no demotion is stale — a vertical that closed the loop must be released", () => {

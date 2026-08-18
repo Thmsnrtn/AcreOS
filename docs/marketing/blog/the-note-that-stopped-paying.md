@@ -15,7 +15,7 @@ truth-engine:
       - { name: "shared/business-types.ts (note_investor maturity: core; workflowTemplateIds: note_payment_missed, note_partial_payment, note_payoff)", ref: "/Users/user/AcreOS/AcreOS/shared/business-types.ts#L69" }
       - { name: "shared/business-types.ts (hybrid maturity: core; both land + note workflows in one workspace)", ref: "/Users/user/AcreOS/AcreOS/shared/business-types.ts#L78" }
       - { name: "client/src/pages/landing/copy.ts (Pax services notes; every action shown with data)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L108" }
-      - { name: "client/src/pages/landing/Positioning.tsx (Note Investors = core tier on public landing)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Positioning.tsx" }
+      - { name: "client/src/pages/landing/Positioning.tsx + shared/business-types/publicClaims.ts (Note Investors render as BETA on the public landing since OD-5, 2026-08-17; registry maturity is still core)", ref: "/Users/user/AcreOS/AcreOS/shared/business-types/publicClaims.ts" }
       - { name: "docs/company/CONSTITUTION.md §12 (no fiduciary advice; operator decides)", ref: "/Users/user/AcreOS/AcreOS/docs/company/CONSTITUTION.md" }
 ai-disclosure: "Drafted by Pax under Soren's direction. AcreOS Constitution §7."
 compliance-gate-notes: |
@@ -93,9 +93,20 @@ When the missed payment is finally received, a separate workflow — `tpl_note_p
 
 The next month's payment is now tracked against the regular schedule. The previous miss is recorded on the note's history and is visible to the operator and any seat the operator has chosen to share it with. If the same borrower misses two consecutive payments, the platform surfaces the pattern in the borrower-risk view — that is the kind of judgment the platform supports the operator in making, not the kind the platform makes for them.
 
-## H2: Why this lives in the core tier
+## H2: What "beta" means for this workflow
 
-The AcreOS public landing tiers note_investor as a core vertical. That means full workflow support, complete vocabulary in the product (a note is called a note, a borrower is called a borrower, a payment is a payment — not a generic "deal"), and named templates for the most common events. The hybrid persona — operators who run both land and note books in one workspace — is also core, sharing the same three note workflows alongside the land-investor templates.
+<!--
+  CORRECTED 2026-08-17 (OD-5). This section previously read "Why this lives in
+  the core tier" and asserted that the public landing tiers note_investor as
+  core, meaning "full workflow support". That became false the day the founder
+  decided to demote the PUBLIC claim: note_investor and hybrid now render as
+  Beta chips. The registry still says `core` — that describes the in-app
+  experience — but a marketing post cites what a stranger sees, and a stranger
+  now sees Beta. The workflow claims below are unchanged because they were
+  never the part that was wrong.
+-->
+
+The AcreOS public landing shows note_investor as a **beta** vertical, and that word is doing honest work. What is built is built: complete vocabulary in the product (a note is called a note, a borrower is called a borrower, a payment is a payment — not a generic "deal"), and named templates for the most common events, including the missed-payment sequence described above. What "beta" marks is that the vertical does not yet close AcreOS's full decision loop — the platform records what happened, but does not yet underwrite and grade its own recommendations for note investing the way it does for a fix-and-flip offer. The hybrid persona — operators who run both land and note books in one workspace — carries the same beta label and the same three note workflows alongside the land-investor templates.
 
 The reason this matters: every other note-investor template the platform ships — partial-payment receipting, payoff drafting, year-end interest summary — runs on the same event-driven pattern. Once the operator has confirmed the platform handles a missed payment honestly, the rest of the note workflow is the same shape. A partial-payment event produces a partial-payment task and a partial-payment receipt. A payoff request produces a payoff-quote calculation and a draft borrower response. The vocabulary is consistent because the work is consistent.
 

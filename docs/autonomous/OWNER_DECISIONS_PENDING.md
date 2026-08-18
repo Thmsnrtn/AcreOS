@@ -277,7 +277,8 @@ channel — `PUBLIC_CLAIM_DEMOTIONS`, 13 entries, each carrying a written reason
 and the date it was decided, each demoting to `beta` (not a hedge chosen by
 feel: `beta` demands evidenced `surfaced`, and all 13 evidence exactly that, so
 the public claim now equals the evidence). The landing renders 2 core chips and
-13 Beta chips instead of 14 solid core.
+12 Beta chips instead of 14 solid core — twelve, not thirteen, because
+`hybrid` carries a demotion entry but is excluded from the chip list.
 
 `GET /api/trust/verticals` is retired rather than wired. It had ZERO callers,
 and its own comment claimed it existed "so the landing page can filter" — the
@@ -286,7 +287,11 @@ second public claim surface alive to fix it would have preserved the drift risk
 for no consumer.
 
 **The enforcement is a HARD ZERO, not a ratchet**, and that distinction is the
-point. The registry ratchet stays at 13 because `maturity` still says `core` —
+point. (It also had to be made real: as first written this block only mapped
+over the registry and never read a public surface, so an independent audit
+reinstated the retired endpoint rendering raw `maturity` and the suite stayed
+green. It now scans the landing, marketing and public route files for a direct
+`.maturity` read, and both mutations fail it.) The registry ratchet stays at 13 because `maturity` still says `core` —
 your deliberate choice. But `verticalReadiness.test.ts` now also asserts that no
 PUBLIC tier outruns its evidence, with no tolerance, because after the
 demotions there is no gap left to budget for. It reuses the same `overclaims`

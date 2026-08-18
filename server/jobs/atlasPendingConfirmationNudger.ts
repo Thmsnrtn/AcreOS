@@ -20,7 +20,7 @@ import { and, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { chatPendingToolCalls } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { sendPushToUser } from "../services/pushNotificationService";
+import { sendPushToPerson } from "../services/pushNotificationService";
 
 /** How many seconds a confirmation must sit idle before we nudge. */
 const NUDGE_AFTER_SECONDS = 60;
@@ -57,8 +57,11 @@ export async function runNudgePass(now = new Date()): Promise<number> {
   let pushed = 0;
   for (const row of candidates) {
     try {
-      // Founder push is platform-scoped (org 0), matching founderChatBackgroundTaskRunner.
-      await sendPushToUser(0, row.founderUserId, {
+      // `sendPushToPerson`, not `sendPushToUser(0, …)`. This job has no org id
+      // and passed 0, which matched no subscription row on any call — the
+      // founder received none of these nudges, and the {sent:0,failed:0} result
+      // looked like success. See pushNotificationService.sendPushToPerson.
+      await sendPushToPerson(row.founderUserId, {
         title: "Atlas needs your approval",
         body: `Pending: ${row.toolName}`,
         url: `/founder?thread=${row.threadId}&confirm=${row.id}`,

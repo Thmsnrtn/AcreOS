@@ -17,10 +17,11 @@ import { db } from "../db";
 import { agentEvents } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 
-// Platform-level seeds belong to the system org (convention shared with
-// agentPromotionGate / rosyRiver).
-const SYSTEM_ORG_ID = 1;
+// Platform-level seeds belong to the system org. Imported, not re-declared:
+// a private copy is how the 0-vs-1 disagreement in indexAnalyzer came to exist,
+// and this file was one of two that a five-file allowlist never scanned.
 
 // ─── 1. Default Reaction Chains ──────────────────────────────────────────────
 

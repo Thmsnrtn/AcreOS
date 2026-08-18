@@ -35,8 +35,10 @@
  * is why. It said the map was empty because "the registry's maturity
  * declarations are the audited truth" — and `verticalReadiness.test.ts`
  * measured that they are not. All fifteen verticals declare `core`;
- * exactly two record a decision snapshot in production. Thirteen chips
- * therefore now render as Beta rather than solid core. The registry
+ * exactly two record a decision snapshot in production. Twelve chips
+ * therefore now render as Beta rather than solid core — twelve, not
+ * thirteen, because `hybrid` carries a demotion entry but is excluded
+ * from the chip list entirely (LANDING_EXCLUDED_IDS). The registry
  * still says `core`, deliberately: that describes the in-app experience
  * a paying customer gets, and this file governs what a stranger is told
  * before they can check. See shared/business-types/publicClaims.ts.
@@ -60,6 +62,7 @@ import {
 import {
   PUBLIC_CLAIM_DEMOTIONS,
   assertDemotionsValid,
+  publicMaturityOf,
   type PublicClaimDemotion,
 } from "@shared/business-types/publicClaims";
 import { LANDING_COPY } from "./copy";
@@ -127,7 +130,14 @@ export function deriveLandingTiers(
   const tiers: LandingVerticalTiers = { core: [], beta: [], roadmap: [] };
   for (const meta of Object.values(registry)) {
     if (LANDING_EXCLUDED_IDS.includes(meta.id)) continue;
-    tiers[demotions[meta.id]?.to ?? meta.maturity].push({
+    // `publicMaturityOf`, never `meta.maturity` — the rule publicClaims.ts
+    // states. This line was `demotions[meta.id]?.to ?? meta.maturity`, a
+    // byte-for-byte re-implementation of that function, which left the accessor
+    // with zero production call sites: anything added to it (a blanket public
+    // cap, a kill switch) would silently not have reached the one surface it
+    // exists to govern. Duplicating a one-line lookup is how a "single source
+    // of truth" quietly stops being one.
+    tiers[publicMaturityOf(meta, demotions)].push({
       id: meta.id,
       label: meta.label,
     });

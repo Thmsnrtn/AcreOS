@@ -117,7 +117,7 @@ export const LANDING_COPY = {
     // build time, using each registry entry's label — a maturity flip in
     // the registry flows to the landing automatically. `hybrid`
     // (land + notes) is deduped out of the chips: it is the combination
-    // of the two core verticals, not a distinct audience. Landing-side
+    // of the two wedge verticals, not a distinct audience. Landing-side
     // conservatism, if ever needed again, goes through the explicit
     // shared PUBLIC_CLAIM_DEMOTIONS map (reason + date required),
     // superseding the old hardcoded demotions (e.g. subdivider shown as

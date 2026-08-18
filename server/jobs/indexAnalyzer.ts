@@ -7,7 +7,15 @@
  *  3. Suggest CREATE INDEX CONCURRENTLY statements
  *  4. Optionally apply them automatically (OTEL_AUTO_INDEX=true)
  *
- * Scheduled: every Sunday at 2 AM UTC via BullMQ repeatable job.
+ * Scheduled: DAILY at ~02:00 UTC, by startIndexAnalyzerJob() in
+ * server/jobs/runScheduledJobs.ts (a trackInterval tick guarded by
+ * withJobLock('index_analyzer', 23h)).
+ *
+ * This header said "every Sunday at 2 AM UTC via BullMQ repeatable job" until
+ * 2026-08-17. There is no BullMQ registrar for it — the only wiring that runs
+ * it is the daily interval above. The OD-4 note below inherited "weekly" from
+ * this line before it was checked; both are corrected. A schedule claim nobody
+ * verifies is how you reason about a failure rate off by 7x.
  * Results stored in organizationIntegrations with provider='index_analysis'
  * and exposed via GET /api/admin/index-analysis.
  */
@@ -26,7 +34,7 @@ import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 // (OD-4, 2026-08-17).
 //
 // This was NOT a harmless no-op read. `saveReport` INSERTs with this id, so the
-// insert failed its foreign key on every run — and the catch below swallowed it
+// insert failed its foreign key on every DAILY run — and the catch below swallowed it
 // as an INFO line. `getLastReport` then found nothing, and
 // GET /api/admin/index-analysis (founder-only, routes-admin.ts:2771) has been
 // answering "No analysis run yet" ever since, while the weekly job computed a

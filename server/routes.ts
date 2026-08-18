@@ -677,10 +677,12 @@ export async function registerRoutes(
   app.use(whiteLabelDomainMiddleware);
   app.use(correlationIdMiddleware);
 
-  // ── PUBLIC TRUST SURFACE — Pillar D / D8 + H / H1 ──────────────────────
+  // ── PUBLIC TRUST SURFACE — Pillar D / D8 ──────────────────────────────
   // Mount /api/trust/* BEFORE Clerk middleware so prospective customers
-  // (no signed-in session) can view the sub-processor list + vertical
-  // maturity registry without hitting 401. Same pattern as /api/healthz
+  // (no signed-in session) can view the sub-processor list without hitting
+  // 401. The vertical maturity registry (Pillar H / H1) that this comment
+  // also advertised was RETIRED 2026-08-17 — zero callers, and it published
+  // raw maturity outside the demotion map. See routes-public-trust.ts. Same pattern as /api/healthz
   // above. The registerPublicTrustRoutes call later (after Clerk) becomes
   // a no-op since these handlers are already bound.
   registerPublicTrustRoutes(app);

@@ -178,6 +178,58 @@ export async function sendPushToUser(
 }
 
 /**
+ * Send a push to a specific PERSON, wherever their devices are registered.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * Two founder-plane jobs need to reach one human and genuinely do not have an
+ * organization id to hand: `atlasPendingConfirmationNudger` and
+ * `founderChatBackgroundTaskRunner` run off a chat thread, not a tenant. Both
+ * passed `0` — one of them as `0 as any` — with a comment saying the service
+ * "will skip delivery if it can't resolve a subscription for the user".
+ *
+ * It could never resolve one. Subscriptions are stored under the subscriber's
+ * REAL org (`routes-organization.ts` inserts `${org.id}`), and
+ * `organizations.id` is a serial that starts at 1, so
+ * `WHERE organization_id = 0` matched nothing on every call. Both jobs returned
+ * `{ sent: 0, failed: 0 }` — indistinguishable from success — and the founder
+ * never received a single one of these notifications. A comment describing a
+ * total failure as graceful degradation is how it survived.
+ *
+ * ── WHY DROPPING THE ORG FILTER IS SAFE HERE ────────────────────────────────
+ * This is not a tenant query. A push subscription belongs to a PERSON and a
+ * device; `user_id` already identifies exactly one human, and the endpoint is
+ * unique. Matching on user id alone reaches that human's own devices and
+ * nobody else's — there is no other tenant's data to leak, because the only
+ * thing returned is the subscriber's own browser endpoint.
+ *
+ * It is deliberately a SEPARATE function rather than making the org optional on
+ * `sendPushToUser`, so an ordinary customer-facing caller cannot reach it by
+ * omitting an argument. Org-scoped callers must stay org-scoped.
+ */
+export async function sendPushToPerson(
+  userId: string,
+  payload: PushPayload,
+): Promise<{ sent: number; failed: number }> {
+  let subscriptions: PushSubscription[] = [];
+  try {
+    const rows = await db.execute(
+      sql`SELECT * FROM push_subscriptions WHERE user_id = ${userId}`,
+    );
+    subscriptions = (rows as any).rows ?? [];
+  } catch {
+    subscriptions = [];
+  }
+
+  let sent = 0;
+  let failed = 0;
+  for (const sub of subscriptions) {
+    const ok = await sendToSubscription(sub, payload);
+    ok ? sent++ : failed++;
+  }
+  return { sent, failed };
+}
+
+/**
  * Send a push notification to all users in an org.
  */
 export async function sendPushToOrg(

@@ -388,12 +388,15 @@ async function maybeFirePushNotification(args: {
   status: "complete" | "failed";
 }): Promise<void> {
   try {
-    const { sendPushToUser } = await import("../services/pushNotificationService");
-    // Phase E: org id is unknown here (background task lives off the
-    // thread, not the org). Pass 0; pushNotificationService will skip
-    // delivery if it can't resolve a subscription for the user. When
-    // VAPID is unconfigured the function logs and no-ops.
-    await sendPushToUser(0 as any, args.founderUserId, {
+    const { sendPushToPerson } = await import("../services/pushNotificationService");
+    // The org id genuinely is unknown here — a background task lives off the
+    // thread, not the org. This used to pass `0 as any`, with a comment saying
+    // the service "will skip delivery if it can't resolve a subscription".
+    // It never could: subscriptions are stored under the subscriber's real org,
+    // so org 0 matched nothing and the founder got none of these. The cast was
+    // the tell — a tenant id you have to force past the type checker is not a
+    // tenant id. `sendPushToPerson` addresses the human directly.
+    await sendPushToPerson(args.founderUserId, {
       title: `Atlas — ${args.label} ${args.status}`,
       body: `Open chat for details.`,
       url: `/founder?thread=${args.threadId}`,

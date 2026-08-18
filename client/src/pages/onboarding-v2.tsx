@@ -137,11 +137,21 @@ const CORE_CHOICES = [
 // single source of truth for vertical metadata).
 const SECONDARY_CHOICES: { value: BusinessType; label: string; description: string; icon: typeof Map }[] = [
   { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
-  // Founder decision 2026-07-11: fix-and-flip waitlisted until a residential
-  // comps source exists — selectable (never silently remap a choice, per the
-  // 2026-06-05 audit), but the copy is honest that valuations run on land
-  // data today. Same pattern as subdivider (roadmap-maturity yet selectable).
-  { value: "fix_and_flip", label: "Fix & Flip (waitlist)", icon: Hammer, description: "Renovate-and-resell tools are waitlisted — comps and valuations currently use land data, not residential." },
+  // The "(waitlist)" tag and the "comps run on land data" description were
+  // STALE, and stale in the direction that matters. They described the
+  // 2026-07-11 demotion long after the registry recorded its root cause FIXED
+  // (residential comps route through the ATTOM provider seam, 2026-07-29) and
+  // promoted the vertical to `core` (2026-08). Corrected 2026-08-17.
+  //
+  // It was a live contradiction across three customer-facing surfaces at once:
+  // the public landing rendered fix_and_flip under "full workflow support",
+  // /pricing sold the Fix-and-flip pack at $150/mo, and onboarding told the
+  // customer who had just paid for it that it was waitlisted and running on
+  // land data — which had itself been false for three weeks.
+  //
+  // Pinned by tests/unit/customerPersonas.test.ts, which now scans this file
+  // for "(waitlist)"/"(beta)" tags and checks them against the registry.
+  { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Renovate-and-resell: rehab budgets and milestones, contractor tracking, and 70%-rule underwriting, on residential comps and valuations." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
   // STR is core (Wave 5): AcreOS models nightly stays end-to-end — reservations
   // ledger + channel-CSV import, occupancy/ADR/RevPAR, per-stay P&L, turnover

@@ -43,7 +43,7 @@ describe("atlasPendingConfirmationNudger", () => {
     }));
 
     vi.doMock("../../server/services/pushNotificationService", () => ({
-      sendPushToUser: sendPushSpy,
+      sendPushToPerson: sendPushSpy,
     }));
 
     runNudgePass = (await import("../../server/jobs/atlasPendingConfirmationNudger")).runNudgePass;
@@ -71,15 +71,29 @@ describe("atlasPendingConfirmationNudger", () => {
     expect(pushed).toBe(2);
     expect(sendPushSpy).toHaveBeenCalledTimes(2);
 
-    // sendPushToUser(organizationId, userId, payload) — the nudger passes the
-    // platform org (0) as organizationId; userId is the second arg, payload third.
+    // sendPushToPerson(userId, payload).
+    //
+    // THIS ASSERTION USED TO READ `expect(firstCall[0]).toBe(0)`, with a comment
+    // explaining that the nudger passes "the platform org (0) as
+    // organizationId". It pinned the defect as if it were the contract:
+    // subscriptions are stored under the subscriber's REAL org, and
+    // organizations.id is a serial starting at 1, so org 0 matched no row and
+    // the founder received none of these nudges — while {sent:0,failed:0} and
+    // this green test both read as success.
+    //
+    // Rewritten to the new truth rather than deleted. What it was really
+    // guarding — "each idle row produces exactly one push, addressed to the
+    // right founder, with a stable dedupe tag" — is unchanged and still here.
     const firstCall = sendPushSpy.mock.calls[0];
-    expect(firstCall[0]).toBe(0);
-    expect(firstCall[1]).toBe("u_test_1");
-    expect(firstCall[2].title).toMatch(/approval/i);
-    expect(firstCall[2].body).toContain("approve_trigger");
-    expect(firstCall[2].url).toContain("confirm=abc123");
-    expect(firstCall[2].tag).toBe("atlas-confirm-abc123");
+    expect(firstCall[0]).toBe("u_test_1");
+    expect(firstCall[1].title).toMatch(/approval/i);
+    expect(firstCall[1].body).toContain("approve_trigger");
+    expect(firstCall[1].url).toContain("confirm=abc123");
+    expect(firstCall[1].tag).toBe("atlas-confirm-abc123");
+
+    // No caller may pass an organization id here any more: a person-addressed
+    // push has no tenant argument to get wrong.
+    expect(firstCall).toHaveLength(2);
 
     // Should have stamped pushedAt — once per row.
     expect(dbUpdateSpy).toHaveBeenCalledTimes(2);
