@@ -50,6 +50,7 @@ import {
 import { users } from "@shared/models/auth";
 import { sendLifecycleMessage } from "../services/lifecycleProgram";
 import { logger } from "../utils/logger";
+import { orgMayActFilter } from "../services/orgOperating";
 
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -247,7 +248,7 @@ export async function runLifecycleDispatch(now: Date = new Date()): Promise<Swee
     .from(organizations)
     .where(
       and(
-        eq(organizations.subscriptionStatus, "active"),
+        orgMayActFilter(),
         gte(organizations.createdAt, d7Lo),
         lte(organizations.createdAt, d7Hi),
       ),

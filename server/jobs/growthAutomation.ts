@@ -54,6 +54,7 @@ import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
 import { emailService } from "../services/emailService";
 import { routeComplexTask } from "../services/aiRouter";
 import { logger } from "../utils/logger";
+import { orgMayActFilter } from "../services/orgOperating";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -148,7 +149,7 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
     status: organizations.subscriptionStatus,
   }).from(organizations)
     .where(and(
-      eq(organizations.subscriptionStatus, "active"),
+      orgMayActFilter(),
       sql`subscription_tier IN ('free', 'starter', 'pro')`,
     ))
     .limit(200);
@@ -350,7 +351,7 @@ async function runReferralActivation(): Promise<{ sent: number }> {
       gte(activityLog.createdAt, since),
     ))
     .where(and(
-      eq(organizations.subscriptionStatus, "active"),
+      orgMayActFilter(),
       sql`subscription_tier NOT IN ('free')`,
     ))
     .groupBy(organizations.id, organizations.name, organizations.subscriptionTier)
@@ -424,7 +425,7 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
     tier: organizations.subscriptionTier,
   }).from(organizations)
     .where(and(
-      eq(organizations.subscriptionStatus, "active"),
+      orgMayActFilter(),
       sql`subscription_tier NOT IN ('free')`,
     ))
     .limit(100);

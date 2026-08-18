@@ -9,6 +9,7 @@ import {
   type Organization,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { orgMayActFilter } from "./orgOperating";
 
 const MAX_NUDGES_PER_ORG = 5;
 // Interval before regenerating nudges for an org (6 hours)
@@ -271,7 +272,7 @@ export async function processPaxNudges(): Promise<void> {
   try {
     const allOrgs = await db.select({ id: organizations.id, name: organizations.name })
       .from(organizations)
-      .where(eq(organizations.subscriptionStatus, "active"))
+      .where(orgMayActFilter())
       .limit(100);
 
     for (const org of allOrgs) {

@@ -51,6 +51,7 @@ import { computeSellerMotivationScore, getOptimalOutreachTiming } from "../servi
 import { emailService } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
 import { logger } from "../utils/logger";
+import { orgMayActFilter } from "../services/orgOperating";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
 export const MORNING_BRIEFING_QUEUE = "morning-briefing-enhanced";
@@ -774,7 +775,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
     const activeOrgs = await db
       .select({ id: organizations.id })
       .from(organizations)
-      .where(eq(organizations.subscriptionStatus, "active"));
+      .where(orgMayActFilter());
 
     for (const { id: orgId } of activeOrgs) {
       try {
@@ -849,7 +850,7 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
   const allOrgs = await db
     .select({ id: organizations.id })
     .from(organizations)
-    .where(eq(organizations.subscriptionStatus, "active"));
+    .where(orgMayActFilter());
 
   for (const { id } of allOrgs) {
     try {

@@ -26,6 +26,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { orgActRefusal } from "../services/orgOperating";
 
 /**
  * Routes that remain reachable while paused. Reads (GET) are always
@@ -70,17 +71,16 @@ export function subscriptionPauseGate(
   const org = (req as AuthenticatedRequest).organization;
   if (!org) return next(); // pre-org request — auth handler will reject
 
-  if (!org.subscriptionPaused) return next();
-
-  // The pause window may have technically elapsed but the
-  // resumeExpiredPauses worker hasn't run yet. Treat as un-paused if
-  // we're past `subscriptionPauseEndsAt` — webhook/job will clean up.
-  if (
-    org.subscriptionPauseEndsAt &&
-    new Date(org.subscriptionPauseEndsAt).getTime() <= Date.now()
-  ) {
-    return next();
-  }
+  // ONE PREDICATE, shared with every background job that acts for a customer.
+  //
+  // This decision used to live only here, in the HTTP path — and the HTTP path
+  // is chained from the session chokepoint in getOrCreateOrg, which a cron by
+  // construction never traverses. So the gate promised "no new actions allowed
+  // (no new mail, no new comps, no Pax messages)" while fifteen background
+  // queries selected on `subscriptionStatus = 'active'` alone and kept acting.
+  // The elapsed-window allowance below moved into `orgActRefusal` with it, so
+  // the jobs read a closed pause the same way this gate always has.
+  if (orgActRefusal(org) !== "subscription_paused") return next();
 
   logger.info(
     `[pause-gate] org=${org.id} blocked ${req.method} ${path} (paused until ${

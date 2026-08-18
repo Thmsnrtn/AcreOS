@@ -3979,47 +3979,10 @@ function startResumeExpiredPausesJob() {
 
   trackInterval(() => {
     void withJobLock('resume_expired_pauses', TTL_SECONDS, async () => {
-      const now = new Date();
-      const expired = await db
-        .select({ id: organizations.id, stripeSubscriptionId: organizations.stripeSubscriptionId })
-        .from(organizations)
-        .where(sql`
-          ${organizations.subscriptionPaused} = true
-          AND ${organizations.subscriptionPauseEndsAt} IS NOT NULL
-          AND ${organizations.subscriptionPauseEndsAt} <= ${now}
-        `)
-        .limit(500);
-
-      let resumed = 0;
-      for (const org of expired) {
-        try {
-          if (org.stripeSubscriptionId) {
-            try {
-              const { stripeService } = await import('../stripeService');
-              await stripeService.resumeSubscription(org.stripeSubscriptionId);
-            } catch (stripeErr) {
-              // Stripe resume is best-effort; the DB clear below is what
-              // un-gates the customer. Stripe also auto-resumes on resumes_at.
-              log(`[pause-resume] org ${org.id} stripe resume failed: ${stripeErr}`, 'pause-resume');
-            }
-          }
-          await db.update(organizations)
-            .set({
-              subscriptionPaused: false,
-              subscriptionPausedAt: null,
-              subscriptionPauseEndsAt: null,
-              subscriptionPauseReason: null,
-            })
-            .where(eq(organizations.id, org.id));
-          resumed++;
-        } catch (rowErr) {
-          log(`[pause-resume] org ${org.id} resume failed: ${rowErr}`, 'pause-resume');
-        }
-      }
-
-      if (expired.length > 0) {
-        log(`[pause-resume] hourly run: expired=${expired.length} resumed=${resumed}`, 'pause-resume');
-      }
+      // Body extracted to ./resumeExpiredPauses so this monolith shrinks
+      // rather than grows (run-scheduled-jobs-linecount ratchet).
+      const { resumeExpiredPauses } = await import('./resumeExpiredPauses');
+      await resumeExpiredPauses({ logLine: log });
     }).catch((err) => {
       log(`[pause-resume] hourly run failed: ${err}`, 'pause-resume');
     });
