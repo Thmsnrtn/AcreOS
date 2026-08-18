@@ -29,6 +29,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated, requireFounder } from "./auth";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { secretEquals } from "./utils/secretEquals";
 
 /**
  * Authenticate either as a founder OR via the DEPLOY_BOT_TOKEN shared
@@ -38,7 +39,7 @@ import { logger } from "./utils/logger";
 function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFunction): void {
   const token = (req.header("x-deploy-bot-token") || "").trim();
   const expected = (process.env.DEPLOY_BOT_TOKEN || "").trim();
-  if (expected && token && token === expected) {
+  if (secretEquals(token, expected)) {
     (req as Request & { isDeployBot?: boolean }).isDeployBot = true;
     return next();
   }

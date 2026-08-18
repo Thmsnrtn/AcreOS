@@ -65,7 +65,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (`1674e2f5`) |
 | 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (`8b4740a5`) |
 | 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (`96b0b3ad`) |
-| 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (this commit) |
+| 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (`893da34a`) |
+| 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (this commit) |
 
 ---
 
@@ -678,6 +679,79 @@ the production entry point — summing every AI call again, failing closed on
 unreadable telemetry, dropping the deferral, and always deferring. Both the
 window constant and the sum are module-private: an earlier draft exported them
 for the test and the reachability gate named that shape.
+
+
+---
+
+### 17 — "A secret is never compared with `===`" → ADAPTED
+
+**Foundry source.** §11 (semantic mutation — falsify the shape, not the
+identifier) and §13 (absence of a claim is not a claim of absence — here, an
+unconfigured secret must not authenticate).
+
+**AcreOS defect, part one.** Secrets were compared in two shapes, treated
+differently for no reason anyone chose. HMAC digests — Twilio, Meta webhook
+signatures, inbound email, signing tokens, wire instructions, API keys — went
+through `crypto.timingSafeEqual` at eight sites, consistently. Plain header
+tokens — `DEPLOY_BOT_TOKEN`, `METRICS_TOKEN`, `PULSE_SHARED_SECRET`,
+`UPTIME_PROBE_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN` — used `===` at five,
+consistently. The distinction was how the secret is ENCODED, not whether it is a
+secret, and the naive half was the half compared directly against
+caller-supplied bytes.
+
+**Part two, which is the serious one.** `===` also accepts
+`undefined === undefined`. `verifyMetaWebhook` compared
+`token === process.env.META_WEBHOOK_VERIFY_TOKEN` with no truthiness guard, and
+its caller passes `req.query["hub.verify_token"] as string` — a cast, not a
+check. Env var unset plus query param absent means both sides are `undefined`,
+the comparison passes, and the handler echoes `req.query["hub.challenge"]`
+through `res.send()`, which Express serves as `text/html`. An unauthenticated
+reflected-content endpoint on the AcreOS origin. The other four sites guarded
+with `if (expected)` first; nothing made that guard mandatory, which is why one
+site did not have it.
+
+**What held it shut, and why that is not reassuring.**
+`registerEliteFeatureRoutes` runs at `routes.ts:2630`, after the
+`app.use('/api', isAuthenticated, …)` catch-all at `:1572`, so an
+unauthenticated GET is 401'd before the handler runs. Two consequences, both
+worse than they look:
+
+- **The Meta lead-ads webhook cannot work at all.** Meta's servers carry no
+  Clerk session, so the verification GET and the signed POST are both 401'd.
+- **The documented fix for that would open the bypass.** The comment block at
+  `routes.ts:1551-1568` tells developers to register exactly this kind of route
+  BEFORE the catch-all, and it has already been done three times (`/api/docs`,
+  e-sign, transparency).
+
+A latent vulnerability held shut by an unrelated bug, where fixing the bug the
+documented way opens the vulnerability. So the fix went into the comparison, not
+the routing.
+
+**Smallest implementation.** One `secretEquals()`: hash both sides to a fixed 32
+bytes, `timingSafeEqual`, and refuse non-string or empty input on either side.
+Hash-then-compare is the pattern `services/apiKeys.ts` already documents, and it
+avoids the length check that raw-byte comparison needs (`timingSafeEqual` throws
+on length mismatch). Failing closed on an unconfigured secret is structural
+rather than a convention every call site must remember — which fixes both parts
+with one property.
+
+**Complexity change.** One 12-line function; five call sites got shorter.
+**Liability change.** Down, on authentication.
+
+**Exit test.** `secretComparison.test.ts`, mutation-tested 5/5: the Meta webhook
+back to `===`; `secretEquals` treating undefined as a match; always-true;
+always-false (which breaks the integration and is caught by the vacuity guard);
+and a brand-new naive comparison appearing in an unrelated file. The scan
+targets the SHAPE — a variable bound from a secret-looking `process.env.*`,
+later compared with `===`/`!==` — not the five known identifiers, so renaming a
+token or adding a sixth fails it. Its own vacuity guard runs first, against a
+synthetic file.
+
+**Deliberately NOT changed.** The route ordering. Moving the Meta webhook above
+the `/api` catch-all would make lead-ads ingestion live — a functional change to
+an outward integration, on a surface the constitution makes founder-only. That
+is a product decision, not a defect fix. Recorded here instead, with the fact
+that the webhook is currently non-functional.
 
 
 ## Not yet dispositioned

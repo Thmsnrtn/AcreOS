@@ -328,6 +328,7 @@ import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 // `storage.releaseJobLock(name, instanceId)` could never release a lock
 // held by the jobRuntime path during graceful shutdown.
 import { withJobLock } from "./utils/jobRuntime";
+import { secretEquals } from "./utils/secretEquals";
 
 // P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
 // (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
@@ -532,7 +533,7 @@ export async function registerRoutes(
   app.post("/api/health/uptime-probe", async (req: Request, res: Response) => {
     const configured = process.env.UPTIME_PROBE_TOKEN;
     const provided = req.header("x-probe-token");
-    if (!configured || !provided || provided !== configured) {
+    if (!secretEquals(provided, configured)) {
       return Errors.unauthorized(res);
     }
     try {

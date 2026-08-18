@@ -35,6 +35,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { getMonthlyEnvelopeStatus, getSpendSummary } from "./services/solene/capitalTracker";
+import { secretEquals } from "./utils/secretEquals";
 
 const RECENT_RUNS_LIMIT = 30;
 const MAX_FINDINGS_PER_RUN = 500;
@@ -48,7 +49,7 @@ const RECENT_EVENTS_LIMIT = 500;
  */
 function envelopeAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const secret = process.env.PULSE_SHARED_SECRET;
-  if (secret && req.headers["x-pulse-secret"] === secret) {
+  if (secretEquals(req.headers["x-pulse-secret"], secret)) {
     return next();
   }
   return isAuthenticated(req as any, res, () =>

@@ -39,6 +39,7 @@ import client, {
 } from "prom-client";
 import { pool } from "./db";
 import { logger } from "./utils/logger";
+import { secretEquals } from "./utils/secretEquals";
 
 // ── Registry ────────────────────────────────────────────────────────────────
 // One private registry — we deliberately do NOT use the global default
@@ -330,7 +331,7 @@ export async function metricsHandler(req: Request, res: Response): Promise<void>
     const presented = typeof auth === "string" && auth.startsWith("Bearer ")
       ? auth.slice(7)
       : "";
-    if (presented !== expected) {
+    if (!secretEquals(presented, expected)) {
       res.set("WWW-Authenticate", 'Bearer realm="acreos-metrics"');
       res.status(401).end();
       return;

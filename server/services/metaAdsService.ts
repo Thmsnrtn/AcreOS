@@ -16,6 +16,7 @@ import { leads, properties, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emitLeadCreated } from "./leadEvents";
+import { secretEquals } from "../utils/secretEquals";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -463,8 +464,13 @@ export function verifyMetaWebhook(
   token: string,
   challenge: string
 ): string | null {
+  // `secretEquals` fails closed on an unset env var or an absent query
+  // param. The previous `token === verifyToken` did not: the caller passes
+  // `req.query["hub.verify_token"] as string`, a cast rather than a check, so
+  // with both sides undefined the comparison passed and the handler echoed
+  // `hub.challenge` back through res.send() as text/html.
   const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
-  if (mode === "subscribe" && token === verifyToken) {
+  if (mode === "subscribe" && secretEquals(token, verifyToken)) {
     return challenge;
   }
   return null;
