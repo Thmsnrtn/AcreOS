@@ -26,12 +26,48 @@ export const COUNTER_OFFER_TEMPLATES: Record<string, { name: string; tone: strin
   },
 };
 
-// Item 73: Negotiation analytics
+/**
+ * Item 73: Negotiation analytics.
+ *
+ * Every field is `number | null`, and null means the org has no data to
+ * compute it from — never 0, which here would read as a measured zero
+ * (a 0% win rate, no discount, no rounds) rather than an empty pipeline.
+ *
+ * What this used to return
+ * ────────────────────────
+ *   avgDiscountFromAsking: 25,  // Would be calculated from offer vs asking price
+ *   avgNegotiationRounds:  2.3, // Would be calculated from offer history
+ *
+ * — two literals in the same object as two genuinely computed figures,
+ * identically shaped, on a live authenticated endpoint
+ * (`GET /api/enhancements/negotiation-analytics`). That packaging is the
+ * dangerous kind: a caller cannot tell which half is real.
+ *
+ * Both are now derived from `offers`. One rename came with the derivation and
+ * is deliberate: AcreOS has no counterparty asking price on the acquisition
+ * side — `property_listings.asking_price` is the asking on AcreOS's OWN
+ * disposition listings, a different thing. What `offers` does carry is
+ * `offer_percentage`, the offer as a percentage of estimated market value. So
+ * the field is `avgDiscountFromMarketValuePct` and measures what the column
+ * actually holds, rather than keeping a name no data supports.
+ *
+ * `avgOffersToClose` was also not what its name said: it was
+ * `deals(status != 'new') / deals(status = 'closed_won')`, a deal-stage ratio
+ * that never touched the offers table. It now counts offers per closed-won
+ * deal.
+ */
 export async function getNegotiationAnalytics(orgId: number): Promise<{
-  avgOffersToClose: number;
-  avgDiscountFromAsking: number;
-  avgNegotiationRounds: number;
-  winRate: number;
+  avgOffersToClose: number | null;
+  avgDiscountFromMarketValuePct: number | null;
+  avgNegotiationRounds: number | null;
+  winRate: number | null;
+  basis: {
+    dealsConsidered: number;
+    dealsClosedWon: number;
+    offersRecorded: number;
+    offersWithMarketValuePct: number;
+    leadsWithOffers: number;
+  };
 }> {
   const [closedDeals] = await db.select({ count: count() })
     .from(deals)
@@ -41,14 +77,79 @@ export async function getNegotiationAnalytics(orgId: number): Promise<{
     .from(deals)
     .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'new'`));
 
-  const total = totalDeals?.count || 1;
-  const closed = closedDeals?.count || 0;
+  const total = totalDeals?.count ?? 0;
+  const closed = closedDeals?.count ?? 0;
+
+  // Offers as a percentage of estimated market value. Rows without the column
+  // populated are excluded from BOTH the numerator and the denominator — an
+  // offer with no recorded percentage is not a 0% offer.
+  const [pctAgg] = await db
+    .select({
+      avgPct: avg(offers.offerPercentage),
+      n: count(offers.offerPercentage),
+    })
+    .from(offers)
+    .where(and(eq(offers.organizationId, orgId), sql`${offers.offerPercentage} IS NOT NULL`));
+
+  const [offerTotals] = await db
+    .select({
+      offersRecorded: count(),
+      leadsWithOffers: sql<number>`count(distinct ${offers.leadId})`,
+    })
+    .from(offers)
+    .where(and(eq(offers.organizationId, orgId), sql`${offers.leadId} IS NOT NULL`));
+
+  const offersRecorded = Number(offerTotals?.offersRecorded ?? 0);
+  const leadsWithOffers = Number(offerTotals?.leadsWithOffers ?? 0);
+  const offersWithPct = Number(pctAgg?.n ?? 0);
+  const avgPct = pctAgg?.avgPct === null || pctAgg?.avgPct === undefined
+    ? null
+    : Number(pctAgg.avgPct);
+
+  // Offers written per deal that actually closed. Requires at least one
+  // closed-won deal AND at least one recorded offer; without a closed deal
+  // there is no "to close" to average over.
+  // Joined on PROPERTY, not lead: `deals` has no `lead_id` column (the same
+  // gap noted in routes-compliance.ts's evidence pack), while both tables
+  // carry `property_id` and `deals.property_id` is NOT NULL. Offers with no
+  // property recorded cannot be attributed to a deal and are excluded rather
+  // than spread across all of them.
+  const [offersOnClosedWon] = await db
+    .select({ n: count() })
+    .from(offers)
+    .innerJoin(deals, eq(deals.propertyId, offers.propertyId))
+    .where(and(
+      eq(offers.organizationId, orgId),
+      eq(deals.organizationId, orgId),
+      sql`${offers.propertyId} IS NOT NULL`,
+      sql`${deals.status} = 'closed_won'`,
+    ));
+  const offersToClose = Number(offersOnClosedWon?.n ?? 0);
 
   return {
-    avgOffersToClose: closed > 0 ? Math.round(total / closed * 10) / 10 : 0,
-    avgDiscountFromAsking: 25, // Would be calculated from offer vs asking price data
-    avgNegotiationRounds: 2.3, // Would be calculated from offer history
-    winRate: Math.round((closed / Math.max(total, 1)) * 100),
+    avgOffersToClose: closed > 0 && offersToClose > 0
+      ? Math.round((offersToClose / closed) * 10) / 10
+      : null,
+    // Discount = how far below estimated market value the offers sit.
+    avgDiscountFromMarketValuePct:
+      avgPct === null || !Number.isFinite(avgPct)
+        ? null
+        : Math.round((100 - avgPct) * 10) / 10,
+    // A "round" is one recorded offer on a lead. A lead with a single offer
+    // and no counter is one round, which is the honest reading of the data —
+    // `offers.counter_offer` records the counterparty's number, not a
+    // separate row, so rounds cannot be counted more finely than this.
+    avgNegotiationRounds: leadsWithOffers > 0
+      ? Math.round((offersRecorded / leadsWithOffers) * 10) / 10
+      : null,
+    winRate: total > 0 ? Math.round((closed / total) * 100) : null,
+    basis: {
+      dealsConsidered: total,
+      dealsClosedWon: closed,
+      offersRecorded,
+      offersWithMarketValuePct: offersWithPct,
+      leadsWithOffers,
+    },
   };
 }
 

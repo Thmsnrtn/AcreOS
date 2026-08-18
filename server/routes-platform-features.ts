@@ -672,12 +672,14 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     } catch (error) { Errors.internal(res, error); }
   });
 
-  app.post("/api/environmental/highest-best-use", isAuthenticated, async (req, res) => {
-    try {
-      const { analyzeHighestBestUse } = await import("./services/environmentalIntelligence");
-      res.json(analyzeHighestBestUse(req.body));
-    } catch (error) { Errors.internal(res, error); }
-  });
+  // POST /api/environmental/highest-best-use was removed 2026-08-18 (founder
+  // ruling, picker) with `EnvironmentalIntelligenceCard`, its only caller.
+  // The card had zero importers and built `…/climate-risk/[object Object]`
+  // for three of its five queries, so nothing ever reached this route.
+  // `analyzeHighestBestUse` went with it. The four remaining
+  // /api/environmental/* endpoints stay: water rights, mineral rights and
+  // carbon credits back the customer due-diligence PDF, and climate risk does
+  // too.
 
   // ─── Entity Portfolio ──────────────────────────────────────────────
 

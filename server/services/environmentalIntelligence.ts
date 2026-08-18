@@ -317,11 +317,12 @@ export interface RiskDetail {
    *
    * `CLIMATE_DATA` covers TEN states. Until 2026-08-18 the other forty got
    * `level: "moderate", score: 50` with a `description` of "Insufficient data
-   * for this state" — and the card that renders this
-   * (`environmental-intelligence-card.tsx`) shows the BADGE and the SCORE and
-   * never the description. So a customer looking at a property in 40 of 50
-   * states was shown a moderate climate risk assessment that had been invented,
-   * on the same surface as the ten states where it is real.
+   * for this state" — the same shape as the ten states where those fields are
+   * measured, and indistinguishable from them by any consumer. The live
+   * consumer is the customer's due-diligence PDF
+   * (`dueDiligenceReportGenerator.ts`), which prints an explicit
+   * "Climate Risk: Not assessed" block for an `unknown` state; omitting the
+   * section, as it used to, reads as "checked, nothing flagged".
    */
   level: "low" | "moderate" | "high" | "very_high" | "unknown";
   /** 0-100, or null when the level is `unknown` — there is no score to give. */
@@ -461,193 +462,18 @@ export function assessClimateRisk(
   };
 }
 
-// ── Highest and Best Use ────────────────────────────────────────────
-
-export interface LandUseOption {
-  use: "residential" | "agricultural" | "commercial" | "recreational" | "conservation";
-  score: number; // 0-100
-  rationale: string;
-  estimatedValueImpact: "positive" | "neutral" | "negative";
-}
-
-export interface UseFactor {
-  name: string;
-  value: string;
-  impact: "positive" | "neutral" | "negative";
-}
-
-export interface HighestBestUseAnalysis {
-  recommended: LandUseOption;
-  alternatives: LandUseOption[];
-  factors: UseFactor[];
-  notes: string;
-}
-
-export function analyzeHighestBestUse(property: {
-  state: string;
-  county?: string;
-  acres: number;
-  zoning?: string;
-  utilities?: any;
-  roadAccess?: string;
-}): HighestBestUseAnalysis {
-  const { state, county, acres, zoning, utilities, roadAccess } = property;
-  const st = state.toUpperCase().trim();
-
-  const factors: UseFactor[] = [];
-  const scores: Record<string, number> = {
-    residential: 50,
-    agricultural: 50,
-    commercial: 30,
-    recreational: 50,
-    conservation: 40,
-  };
-
-  // ── Acreage ──
-  if (acres < 5) {
-    scores.residential += 25;
-    scores.commercial += 15;
-    scores.agricultural -= 20;
-    scores.conservation -= 20;
-    factors.push({ name: "acreage", value: `${acres} acres (small)`, impact: "positive" });
-  } else if (acres < 40) {
-    scores.residential += 15;
-    scores.recreational += 15;
-    scores.agricultural += 10;
-    factors.push({ name: "acreage", value: `${acres} acres (medium)`, impact: "neutral" });
-  } else if (acres < 160) {
-    scores.agricultural += 25;
-    scores.recreational += 20;
-    scores.conservation += 15;
-    scores.residential -= 10;
-    factors.push({ name: "acreage", value: `${acres} acres (large)`, impact: "positive" });
-  } else {
-    scores.agricultural += 30;
-    scores.conservation += 30;
-    scores.recreational += 15;
-    scores.residential -= 25;
-    scores.commercial -= 20;
-    factors.push({ name: "acreage", value: `${acres} acres (very large)`, impact: "positive" });
-  }
-
-  // ── Zoning ──
-  if (zoning) {
-    const z = zoning.toUpperCase();
-    if (z.startsWith("R") || z.includes("RESID")) {
-      scores.residential += 20;
-      factors.push({ name: "zoning", value: zoning, impact: "positive" });
-    } else if (z.startsWith("A") || z.includes("AGRI") || z.includes("AG")) {
-      scores.agricultural += 20;
-      scores.conservation += 10;
-      factors.push({ name: "zoning", value: zoning, impact: "positive" });
-    } else if (z.startsWith("C") || z.includes("COMM")) {
-      scores.commercial += 25;
-      factors.push({ name: "zoning", value: zoning, impact: "positive" });
-    } else {
-      factors.push({ name: "zoning", value: zoning, impact: "neutral" });
-    }
-  } else {
-    factors.push({ name: "zoning", value: "unknown", impact: "neutral" });
-  }
-
-  // ── Utilities ──
-  const hasUtilities = utilities && (utilities.water || utilities.electric || utilities.sewer);
-  if (hasUtilities) {
-    scores.residential += 15;
-    scores.commercial += 15;
-    factors.push({ name: "utilities", value: "available", impact: "positive" });
-  } else {
-    scores.residential -= 10;
-    scores.commercial -= 15;
-    scores.conservation += 5;
-    scores.recreational += 5;
-    factors.push({ name: "utilities", value: "unavailable or unknown", impact: "negative" });
-  }
-
-  // ── Road access ──
-  if (roadAccess) {
-    const ra = roadAccess.toLowerCase();
-    if (ra.includes("paved") || ra.includes("highway")) {
-      scores.residential += 10;
-      scores.commercial += 15;
-      factors.push({ name: "road_access", value: roadAccess, impact: "positive" });
-    } else if (ra.includes("dirt") || ra.includes("gravel")) {
-      scores.recreational += 10;
-      scores.agricultural += 5;
-      scores.commercial -= 10;
-      factors.push({ name: "road_access", value: roadAccess, impact: "neutral" });
-    } else if (ra.includes("none") || ra.includes("landlocked")) {
-      scores.residential -= 20;
-      scores.commercial -= 25;
-      scores.conservation += 10;
-      factors.push({ name: "road_access", value: roadAccess, impact: "negative" });
-    } else {
-      factors.push({ name: "road_access", value: roadAccess, impact: "neutral" });
-    }
-  }
-
-  // ── Climate-adjusted ──
-  // A hazard with no score cannot cross a threshold. `score === null` means
-  // nobody measured it — that must produce NO adjustment and NO factor, rather
-  // than coercing to 0 and reading as "measured, and below the threshold".
-  const scoredAtLeast = (r: RiskDetail, threshold: number): boolean =>
-    r.score !== null && r.score >= threshold;
-  const climate = CLIMATE_DATA[st];
-  if (climate) {
-    if (scoredAtLeast(climate.fireRisk, 80)) {
-      scores.residential -= 10;
-      scores.conservation += 5;
-      factors.push({ name: "fire_risk", value: "high", impact: "negative" });
-    }
-    if (scoredAtLeast(climate.droughtRisk, 80)) {
-      scores.agricultural -= 15;
-      factors.push({ name: "drought_risk", value: "high", impact: "negative" });
-    }
-    if (scoredAtLeast(climate.floodRisk, 75)) {
-      scores.residential -= 10;
-      scores.commercial -= 10;
-      factors.push({ name: "flood_risk", value: "high", impact: "negative" });
-    }
-  }
-
-  // ── Clamp & rank ──
-  const USES = ["residential", "agricultural", "commercial", "recreational", "conservation"] as const;
-  for (const u of USES) {
-    scores[u] = Math.max(0, Math.min(100, scores[u]));
-  }
-
-  const sorted: LandUseOption[] = USES.map((use) => ({
-    use,
-    score: scores[use],
-    rationale: buildRationale(use, scores[use], factors),
-    estimatedValueImpact:
-      scores[use] >= 65 ? ("positive" as const) : scores[use] >= 40 ? ("neutral" as const) : ("negative" as const),
-  })).sort((a, b) => b.score - a.score);
-
-  const recommended = sorted[0];
-  const alternatives = sorted.slice(1);
-
-  logger.debug("Highest-best-use analysis", {
-    metadata: { state: st, county, acres, recommended: recommended.use, score: recommended.score },
-  });
-
-  return {
-    recommended,
-    alternatives,
-    factors,
-    notes: `Analysis based on ${factors.length} factors. Top use: ${recommended.use} (${recommended.score}/100). Zoning and local market conditions should be verified.`,
-  };
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function buildRationale(use: string, score: number, factors: UseFactor[]): string {
-  const strength = score >= 70 ? "Strong" : score >= 50 ? "Moderate" : "Weak";
-  const positives = factors.filter((f) => f.impact === "positive").map((f) => f.name);
-  const negatives = factors.filter((f) => f.impact === "negative").map((f) => f.name);
-
-  let r = `${strength} fit for ${use} use (score: ${score}).`;
-  if (positives.length > 0) r += ` Favorable: ${positives.join(", ")}.`;
-  if (negatives.length > 0) r += ` Concerns: ${negatives.join(", ")}.`;
-  return r;
-}
+// ── Highest and Best Use — REMOVED 2026-08-18 ────────────────────────
+//
+// `analyzeHighestBestUse`, `LandUseOption`, `UseFactor`,
+// `HighestBestUseAnalysis` and `buildRationale` were deleted with
+// `EnvironmentalIntelligenceCard` and `POST /api/environmental/highest-best-use`
+// (founder ruling, picker). The card was the route's only caller, had zero
+// importers of its own, and issued that query as a GET against a POST route —
+// so this analysis had never run for anyone.
+//
+// It is not preserved here because it was also a fabrication of the same class
+// the deletion wave was chasing: the scores began at a hardcoded base per use
+// and were adjusted by string matching on free-text zoning/utilities/road
+// fields, then returned as an "estimatedValueImpact". If a highest-and-best-use
+// analysis is ever wanted, it starts from parcel data and comparable sales,
+// not from a base of 50 nudged by keywords.

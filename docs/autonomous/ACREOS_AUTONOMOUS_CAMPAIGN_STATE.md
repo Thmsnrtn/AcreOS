@@ -669,3 +669,39 @@ is invisible to every gate currently running. `avgDaysOnMarket || 90`,
 produces a number a customer cannot distinguish from a measurement. The
 type-level fix that actually holds is the one applied here: make the field
 `| null`, so the absence has a representation and `||` has nothing to swallow.
+
+### Founder rulings executed (picker, 2026-08-18, phase 4)
+
+- **`GET /api/county-snapshot` keeps its score field, null with a reason.** The
+  endpoint's USDA/Census content is real; the score is not computable from it
+  and now says exactly which signals are missing. The absence is the spec for
+  the transaction feed that would fill it.
+- **KILL `EnvironmentalIntelligenceCard`** — executed: the component, `POST
+  /api/environmental/highest-best-use`, and the five HBU symbols the route
+  solely owned. `GET /api/environmental/climate-risk` survives, correcting the
+  ledger row's original listing: `assessClimateRisk` is live through the
+  due-diligence PDF and that endpoint is its HTTP face.
+- **`scoreCountyForTargeting` NOT killed** — stays in the ledger as a recorded
+  latent copy.
+- **`campaignEnhancements.ts` five exports NOT killed** — still awaiting their
+  own ruling.
+- **Negotiation analytics computed from real offer data**, not nulled: both
+  literals replaced with derivations off the `offers` table, plus a `basis`
+  block reporting the population behind each figure.
+
+### Two more of my own gates that a mutation exposed
+
+`negotiationAnalyticsHonesty` — M4 removed the `offer_percentage IS NOT NULL`
+predicate and the suite stayed green. On inspection the gate was RIGHT and the
+mutation was wrong: SQL's `avg()` already skips NULLs, so the predicate is
+semantically redundant and no behavioural assertion could distinguish it. But
+the test's NAME ("excluded, not zeroed") claimed something it did not prove.
+The load-bearing choice is `count(offer_percentage)` vs `count(*)` — the
+denominator reported as the basis for the average — and that is invisible in
+the returned numbers too, so it is now pinned on the generated drizzle
+expression. M5 (`count()` for `count(offers.offerPercentage)`) fails.
+
+The rule this makes concrete: **when a mutation does not fire, first establish
+whether the mutation was semantically null.** If it was, the gate is fine and
+the test's claim is what needs correcting — an overclaiming test name is its own
+kind of false green.
