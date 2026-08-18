@@ -669,9 +669,20 @@ export class LeadScoringService {
     return formatted;
   }
 
-  async getScoreHistory(leadId: number, limit: number = 10): Promise<LeadScoreHistory[]> {
+  /**
+   * Scoped: `leadId` descends from a URL parameter, and
+   * `lead_score_history.organization_id` is NOT NULL. Matching on the lead id
+   * alone returned any tenant's lead scores and recommendations to any
+   * authenticated caller — the route even bound `const org = req.organization`
+   * and never used it, which is precisely why the tenancy lint's textual
+   * org-context test was satisfied.
+   */
+  async getScoreHistory(organizationId: number, leadId: number, limit: number = 10): Promise<LeadScoreHistory[]> {
     return db.select().from(leadScoreHistory)
-      .where(eq(leadScoreHistory.leadId, leadId))
+      .where(and(
+        eq(leadScoreHistory.leadId, leadId),
+        eq(leadScoreHistory.organizationId, organizationId),
+      ))
       .orderBy(desc(leadScoreHistory.scoredAt))
       .limit(limit);
   }

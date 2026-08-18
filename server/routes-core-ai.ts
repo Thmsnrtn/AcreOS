@@ -6,7 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 
 export function registerCoreAIRoutes(app: Express): void {
   const api = app;
@@ -332,7 +332,7 @@ export function registerCoreAIRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid observation ID");
       }
       const { paxObserver } = await import('./services/paxObserver');
-      const ok = await paxObserver.acknowledgeObservation(observationId);
+      const ok = await paxObserver.acknowledgeObservation(getOrganizationId(req as AuthenticatedRequest), observationId);
       res.json({ success: ok });
     } catch (err: any) {
       logger.error("Acknowledge observation error", err);
@@ -377,7 +377,7 @@ export function registerCoreAIRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid observation ID");
       }
       const { paxObserver } = await import('./services/paxObserver');
-      const ok = await paxObserver.dismissObservation(observationId);
+      const ok = await paxObserver.dismissObservation(getOrganizationId(req as AuthenticatedRequest), observationId);
       res.json({ success: ok });
     } catch (err: any) {
       logger.error("Dismiss observation error", err);

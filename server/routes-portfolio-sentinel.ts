@@ -17,6 +17,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { portfolioSentinelService } from "./services/portfolioSentinel";
 import { Errors } from "./utils/errors";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 
 const router = Router();
 
@@ -97,7 +98,7 @@ router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Req
     // acknowledgeAlert writes to portfolio_alerts.acknowledged_by (integer).
     // TODO(tsc): user.id is a string user id; the column/service expect a
     // numeric id — needs a schema reconciliation.
-    const alert = await portfolioSentinelService.acknowledgeAlert(alertId, Number(user.id));
+    const alert = await portfolioSentinelService.acknowledgeAlert(getOrganizationId(req as AuthenticatedRequest), alertId, Number(user.id));
     if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
@@ -112,7 +113,7 @@ router.patch("/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req:
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const { resolution } = req.body;
     if (!resolution) return Errors.badRequest(res, "resolution is required");
-    const alert = await portfolioSentinelService.resolveAlert(alertId, resolution);
+    const alert = await portfolioSentinelService.resolveAlert(getOrganizationId(req as AuthenticatedRequest), alertId, resolution);
     if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
@@ -125,7 +126,7 @@ router.patch("/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req:
   try {
     const alertId = parseInt(req.params.id);
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
-    const alert = await portfolioSentinelService.dismissAlert(alertId);
+    const alert = await portfolioSentinelService.dismissAlert(getOrganizationId(req as AuthenticatedRequest), alertId);
     if (!alert) return Errors.notFound(res, "Alert");
     res.json({ alert });
   } catch (err: any) {
@@ -138,7 +139,7 @@ router.get("/alerts/:id/suggest", isAuthenticated, getOrCreateOrg, async (req: R
   try {
     const alertId = parseInt(req.params.id);
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
-    const suggestions = await portfolioSentinelService.suggestActions(alertId);
+    const suggestions = await portfolioSentinelService.suggestActions(getOrganizationId(req as AuthenticatedRequest), alertId);
     res.json({ suggestions });
   } catch (err: any) {
     Errors.internal(res, err);

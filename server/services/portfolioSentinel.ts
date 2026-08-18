@@ -465,7 +465,23 @@ class PortfolioSentinelService {
     return alert;
   }
 
-  async acknowledgeAlert(alertId: number, userId: number): Promise<PortfolioAlert | null> {
+  /**
+   * The three alert transitions below take an `organizationId` and use it in the
+   * WHERE, not merely in the signature.
+   *
+   * Until 2026-08-18 each matched `eq(portfolioAlerts.id, alertId)` alone, and
+   * `alertId` descends from a URL parameter on two authenticated routes
+   * (`PATCH /alerts/:id/*` and `PATCH /portfolio/alerts/:id`). Since
+   * `portfolio_alerts.organization_id` is NOT NULL, any authenticated user could
+   * resolve, acknowledge or dismiss ANOTHER tenant's alert — a cross-tenant
+   * WRITE, and `resolve` also stores caller-supplied `resolution` text into that
+   * tenant's record.
+   *
+   * Org-first matches the convention the repo already uses elsewhere for exactly
+   * this operation: `complianceAI.acknowledgeAlert(org.id, …)` and
+   * `leadQualificationService.acknowledgeAlert(org.id, …)`.
+   */
+  async acknowledgeAlert(organizationId: number, alertId: number, userId: number): Promise<PortfolioAlert | null> {
     const [updated] = await db
       .update(portfolioAlerts)
       .set({
@@ -474,13 +490,13 @@ class PortfolioSentinelService {
         acknowledgedBy: userId,
         updatedAt: new Date(),
       })
-      .where(eq(portfolioAlerts.id, alertId))
+      .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
 
     return updated || null;
   }
 
-  async resolveAlert(alertId: number, resolution: string): Promise<PortfolioAlert | null> {
+  async resolveAlert(organizationId: number, alertId: number, resolution: string): Promise<PortfolioAlert | null> {
     const [updated] = await db
       .update(portfolioAlerts)
       .set({
@@ -489,20 +505,20 @@ class PortfolioSentinelService {
         resolution,
         updatedAt: new Date(),
       })
-      .where(eq(portfolioAlerts.id, alertId))
+      .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
 
     return updated || null;
   }
 
-  async dismissAlert(alertId: number): Promise<PortfolioAlert | null> {
+  async dismissAlert(organizationId: number, alertId: number): Promise<PortfolioAlert | null> {
     const [updated] = await db
       .update(portfolioAlerts)
       .set({
         status: "dismissed",
         updatedAt: new Date(),
       })
-      .where(eq(portfolioAlerts.id, alertId))
+      .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
 
     return updated || null;
@@ -648,21 +664,28 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
     }
   }
 
-  async suggestActions(alertId: number): Promise<string[]> {
+  async suggestActions(organizationId: number, alertId: number): Promise<string[]> {
     const [alert] = await db
       .select()
       .from(portfolioAlerts)
-      .where(eq(portfolioAlerts.id, alertId))
+      .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .limit(1);
 
     if (!alert) {
       return ["Alert not found"];
     }
 
+    // Scoped even though `alert.propertyId` came from a row already proved to
+    // belong to this org: a predicate that is correct for a transitive reason
+    // stops being correct the moment either side changes, and `properties`
+    // carries its own NOT NULL organization_id.
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, alert.propertyId))
+      .where(and(
+        eq(properties.id, alert.propertyId),
+        eq(properties.organizationId, organizationId),
+      ))
       .limit(1);
 
     const openai = getOpenAIClient();

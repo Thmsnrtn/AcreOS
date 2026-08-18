@@ -484,11 +484,11 @@ export function registerAIOperationsRoutes(app: Express): void {
       const { portfolioSentinelService } = await import("./services/portfolioSentinel");
       let alert;
       if (action === "acknowledge") {
-        alert = await portfolioSentinelService.acknowledgeAlert(alertId, userId);
+        alert = await portfolioSentinelService.acknowledgeAlert(org.id, alertId, userId);
       } else if (action === "resolve") {
-        alert = await portfolioSentinelService.resolveAlert(alertId, resolution);
+        alert = await portfolioSentinelService.resolveAlert(org.id, alertId, resolution);
       } else if (action === "dismiss") {
-        alert = await portfolioSentinelService.dismissAlert(alertId);
+        alert = await portfolioSentinelService.dismissAlert(org.id, alertId);
       }
       
       if (!alert) {

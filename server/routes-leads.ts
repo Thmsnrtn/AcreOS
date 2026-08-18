@@ -1284,7 +1284,7 @@ export function registerLeadRoutes(app: Express): void {
     const limit = Math.min(Number(req.query.limit) || 10, 50);
     
     try {
-      const history = await leadScoringService.getScoreHistory(leadId, limit);
+      const history = await leadScoringService.getScoreHistory(org.id, leadId, limit);
       res.json(history);
     } catch (error: any) {
       Errors.internal(res, error);

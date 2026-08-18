@@ -489,7 +489,13 @@ class PaxObserverService {
   /**
    * Acknowledge an observation (user has seen it)
    */
-  async acknowledgeObservation(observationId: number): Promise<boolean> {
+  /**
+   * Scoped: `observationId` descends from a URL parameter on an authenticated
+   * route, and `pax_observations.organization_id` is NOT NULL. Matching on the
+   * id alone let any authenticated user acknowledge or dismiss ANOTHER tenant's
+   * Pax observation.
+   */
+  async acknowledgeObservation(organizationId: number, observationId: number): Promise<boolean> {
     try {
       await db
         .update(paxObservations)
@@ -498,7 +504,10 @@ class PaxObserverService {
           acknowledgedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(paxObservations.id, observationId));
+        .where(and(
+          eq(paxObservations.id, observationId),
+          eq(paxObservations.organizationId, organizationId),
+        ));
 
       return true;
     } catch (error) {
@@ -510,7 +519,7 @@ class PaxObserverService {
   /**
    * Dismiss an observation (user doesn't want to see it)
    */
-  async dismissObservation(observationId: number): Promise<boolean> {
+  async dismissObservation(organizationId: number, observationId: number): Promise<boolean> {
     try {
       await db
         .update(paxObservations)
@@ -519,7 +528,10 @@ class PaxObserverService {
           resolvedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(paxObservations.id, observationId));
+        .where(and(
+          eq(paxObservations.id, observationId),
+          eq(paxObservations.organizationId, organizationId),
+        ));
 
       return true;
     } catch (error) {
@@ -531,7 +543,7 @@ class PaxObserverService {
   /**
    * Escalate an observation (needs human attention)
    */
-  async escalateObservation(observationId: number): Promise<boolean> {
+  async escalateObservation(organizationId: number, observationId: number): Promise<boolean> {
     try {
       await db
         .update(paxObservations)
@@ -540,7 +552,10 @@ class PaxObserverService {
           escalatedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(paxObservations.id, observationId));
+        .where(and(
+          eq(paxObservations.id, observationId),
+          eq(paxObservations.organizationId, organizationId),
+        ));
 
       return true;
     } catch (error) {
@@ -553,6 +568,7 @@ class PaxObserverService {
    * Mark observation as auto-resolved
    */
   async autoResolveObservation(
+    organizationId: number,
     observationId: number, 
     success: boolean, 
     details: string
@@ -568,7 +584,10 @@ class PaxObserverService {
           resolvedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(paxObservations.id, observationId));
+        .where(and(
+          eq(paxObservations.id, observationId),
+          eq(paxObservations.organizationId, organizationId),
+        ));
 
       return true;
     } catch (error) {
@@ -799,7 +818,7 @@ class PaxObserverService {
       );
       
       if (fixResult.applied) {
-        await this.autoResolveObservation(observation.id, true, fixResult.result);
+        await this.autoResolveObservation(observation.organizationId, observation.id, true, fixResult.result);
         logger.info(`[paxObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
       } else {
         logger.info(`[paxObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
