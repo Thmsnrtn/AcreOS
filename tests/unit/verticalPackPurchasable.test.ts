@@ -114,16 +114,28 @@ describe("vertical pack purchasability", () => {
     expect(packVerticalIds).not.toContain("creative_finance");
   });
 
-  it("residential_wholesaler is core and no longer claims a Stripe integration (audit Wave 1)", () => {
+  it("residential_wholesaler is core and advertises no dishonest template", () => {
     // 2026-08 audit Wave 1: residential_wholesaler beta→core once three of its
     // four templates went live (deal.contract_signed + deal.assignment_pending
-    // via wholesaleEvents.ts; buyer.match_created via buyerEvents.ts). The
-    // registry's integrations were corrected ["stripe"]→[]: no wholesaler surface
-    // uses Stripe, and the money-custody hard-stop forbids EMD/assignment funds
-    // transiting AcreOS. Pinned so a silent re-introduction fails loudly.
+    // via wholesaleEvents.ts; buyer.match_created via buyerEvents.ts).
+    //
+    // THE STRIPE ASSERTION MOVED, 2026-08-18. This used to read
+    // `expect(wholesaler?.integrations ?? []).not.toContain("stripe")`, guarding
+    // the money-custody hard-stop (EMD and assignment funds must never transit
+    // AcreOS). The invariant is real; the thing it was asserted against was not.
+    // `BusinessTypeMeta.integrations` had ZERO production readers — no surface
+    // rendered it, no route filtered on it — so re-adding "stripe" to that array
+    // would have failed this test while changing nothing a customer could reach,
+    // and NOT re-adding it proved nothing about where money actually moves.
+    //
+    // The real invariant is enforced where money is: moneyCustodyHardStop.test.ts
+    // scans the whole corpus for a platform-take Stripe parameter outside the
+    // guard that forbids it, and for raw bank details in any route file. That is
+    // a semantic check against the behaviour; this was a name check against a
+    // decoration. The field is deleted; keeping it alive so one test could assert
+    // on it is the "exists only for its test" shape this repo has removed before.
     const wholesaler = getBusinessType("residential_wholesaler");
     expect(wholesaler?.maturity).toBe("core");
-    expect(wholesaler?.integrations ?? []).not.toContain("stripe");
     // The occupied cash-for-keys template is no longer advertised (no occupancy
     // schema — cannot be made honest).
     expect(wholesaler?.workflowTemplateIds).not.toContain(

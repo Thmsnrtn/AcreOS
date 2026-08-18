@@ -1,7 +1,14 @@
 # Foundry → AcreOS cross-pollination ledger
 
-**Started 2026-08-17.** One line per candidate invariant, with its disposition
-and the evidence behind it.
+**Started 2026-08-17. Foundry re-read 2026-08-18 at `b8ed2fa` on
+`claude/foundry-autonomous-continuation-0gents`, which is 538 commits and 291
+files AHEAD of the merged `master` (`abfe96c`) — the named continuation branch
+is still the truth, and assuming master was current would have missed every
+transfer below entry 3.**
+
+One line per candidate invariant, with its disposition and the evidence behind
+it. Read-only throughout: no commit, no branch, no test run, no migration on the
+Foundry side.
 
 ## The rule this ledger exists to enforce
 
@@ -46,6 +53,9 @@ A candidate is only imported if it passes all of these. Any failure means
 | 1 | A caller cannot declare its own safety | **ALREADY PRESENT — retired** | — |
 | 2 | Maturity is a projection of evidence | **ADAPTED** | `shared/business-types/readiness.ts`, `verticalReadiness.test.ts` (`73dc6924`) |
 | 3 | An epistemic vocabulary is real only when the store refuses violations | **ADAPTED, PARTLY INVERTED** | `migrations/0238`, `0239`, `evidenceClaimsIntegrity.test.ts` (`708542d2`) |
+| 4 | Company authority is not authority over any person's phone | **ADAPTED** | `sendPushToPerson` recipient check, `pushDispatchSemantics.test.ts` (`a37affc8`) |
+| 5 | A receipt must not claim more than the effect achieved | **ADAPTED** | `PushResult` status vocabulary, nudger retry (`a37affc8`) |
+| 6 | A gate must be falsified against the semantic defect, not the symbol | **ALREADY LEARNED HERE — recorded** | `CLAUDE.md` "The two laws that cost the most to learn" (`f8332db1`) |
 
 ---
 
@@ -145,6 +155,95 @@ aborted for an organization with zero escrow rows** — the GDPR erasure path
 (`orgDeletion.ts:122`) could not succeed for any customer, ever. Replaced with a
 trigger; org deletion verified working. The retention question that exposes is
 OD-6.
+
+---
+
+### 4 — "Company authority is not authority over any person's phone" → ADAPTED
+
+**Foundry source.** `962ee94` (2026-08-17), `src/services/notifications/push.ts`.
+Its gateway established the COMPANY, while `founder_id` arrived in the payload
+and was used unchecked — so a caller holding one company's authority could push
+to anybody's device. Fixed by requiring the recipient to be the product's owner
+or an active team member (`belongsToCompany`).
+
+**AcreOS defect.** `sendPushToPerson(userId)` deliberately ignores org scope,
+which made its single argument the entire security boundary: whoever it named
+got a notification on their phone. `team_members` is keyed
+`(organization_id, user_id)`, so a person id is a GLOBAL identity spanning orgs
+— reaching all of one human's devices is right for founder-plane content;
+letting a caller name that human is not.
+
+**AcreOS primitive reused.** `isFounderUserId()` from `server/services/founder.ts`.
+
+**Smallest implementation.** One guard returning `not_permitted`. No Foundry noun
+crossed — `belongsToCompany`, `products` and `team_members` stayed there.
+
+**Complexity change.** +1 branch. **Liability change.** Strictly down: an
+unauthenticated recipient argument on a channel that reaches a pocket.
+**Founder burden.** Unchanged.
+
+**Exit test.** `sendPushToPerson(<non-founder>)` returns `not_permitted`, not a
+quiet zero — `pushDispatchSemantics.test.ts`.
+
+**Cutover obligation.** Discharged: `isFounderUserId` had ZERO production callers
+before this. Reachability ratchet 1401 → 1400, lowered in the same commit, and
+not by a deletion — a governance primitive got its first consumer.
+
+---
+
+### 5 — "A receipt must not claim more than the effect achieved" → ADAPTED
+
+**Foundry source.** Same commit. Both platform senders returned quietly when
+credentials were unset, the caller counted that as delivery, and a `push_log` row
+said `sent`. "A receipt for something that never left the building is worse than
+no receipt, because it is the record anybody would check." Its senders now report
+whether they dispatched, and the log says `not_configured`.
+
+**AcreOS defect.** `{ sent: 0, failed: 0 }` meant four things and read as success
+in all of them. `atlasPendingConfirmationNudger` stamped `pushedAt` on any call
+that did not THROW — and none of the four throws — so the founder was never told
+AND the row was never retried. The failure consumed its own retry.
+
+**AcreOS primitive reused.** The existing `{ sent, failed }` return, extended
+additively so the four existing callers are untouched.
+
+**Smallest implementation.** A `status` discriminant with six values, each
+distinguishing a case some caller in this repository actually behaves differently
+about. AcreOS's `sendToSubscription` already returned `false` when VAPID was
+unset — better than Foundry's pre-fix state — so only the caller-visible half
+was missing.
+
+**Complexity change.** One type, one pure `classify()`. **Liability change.**
+Down: a founder-approval nudge that silently reached nobody now retries.
+
+**Exit test.** A push with no registered device returns `no_destination` and the
+nudger does not stamp `pushedAt` — `pushDispatchSemantics.test.ts` plus the four
+non-delivering statuses swept in `atlas-pending-confirmation-nudger.test.ts`.
+
+**NOT generalised.** §6 warns against a universal status vocabulary built for
+symmetry. Other effect families (email, SMS, mail, Stripe, ads) are under
+separate assessment and get their own distinctions only where a real consumer
+branches on them.
+
+---
+
+### 6 — "Prove the semantic defect, not the symbol" → ALREADY LEARNED HERE
+
+**Foundry source.** `6d7b3d3` "the discriminant decides, not the presence of a
+field"; `5eaf7da` "the deputy gate could not see through a generic cast".
+
+**Disposition: not imported — independently derived, and recorded as AcreOS's
+own law.** AcreOS's completeness audit found six instances in one session
+(name-keyed gates, a substring exemption, a projection compared against itself).
+Foundry reached the same law from the other direction. Written into `CLAUDE.md`
+rather than the constitution registry, because that registry holds FOUNDER
+product decisions and this is engineering method — putting method there would
+have been the same category error as importing a Foundry noun.
+
+**Exit test.** For a consequential gate, a representative adversarial mutation
+that changes REPRESENTATION while preserving the forbidden behaviour must fail
+it. Applied so far to: the tenancy literal-0 check, the append-only trigger
+shape, the public-claim scan, and the rendered landing proof.
 
 ---
 

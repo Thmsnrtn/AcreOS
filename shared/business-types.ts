@@ -55,23 +55,38 @@ export type VerticalMaturity = "core" | "beta" | "roadmap";
 export interface BusinessTypeMeta {
   id: BusinessTypeId;
   label: string;
-  shortDescription: string;
   maturity: VerticalMaturity;
   // Workflow template ids that ship with this vertical (only meaningful
   // for core + beta).
   workflowTemplateIds: string[];
   // Sidebar modules to highlight for this vertical. Empty array = all.
   spotlightModules: string[];
-  // Vertical-specific integrations. Used by /api/trust/sub-processors
-  // filtering + onboarding nudges.
-  integrations: string[];
+  // REMOVED 2026-08-18 (deletion ledger): `shortDescription` and
+  // `integrations`. Both had ZERO readers repo-wide, and `integrations`
+  // carried a comment naming two consumers that never existed — it claimed
+  // "/api/trust/sub-processors filtering + onboarding nudges" while
+  // sub-processors never filtered by it and onboarding has no such nudge. It
+  // was also a partially-populated duplicate of the provider registry
+  // (short_term_rental was `[]`), so anything that HAD read it would have got
+  // a wrong answer, not merely a stale one.
+  //
+  // `shortDescription`'s copy survives in a better-owned place: every one of
+  // the fifteen verticals carries a richer `description` in onboarding-v2's
+  // CORE_CHOICES / SECONDARY_CHOICES, and unlike this field, that one renders.
+  //
+  // MIGRATED FROM `integrations`, because it is the one thing in it that
+  // mattered: NO WHOLESALER SURFACE MAY USE STRIPE. Earnest money and
+  // assignment funds must never transit AcreOS's own account (money-custody
+  // hard stop, founder ruling 2026-07-29). That is enforced where money
+  // actually moves — moneyCustodyHardStop.test.ts scans the corpus for a
+  // platform-take Stripe parameter outside the guard that forbids it — not by
+  // an array in this file that nothing read.
 }
 
 export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   land_flipper: {
     id: "land_flipper",
     label: "Land flipper",
-    shortDescription: "Buy vacant parcels, mark them up, sell.",
     maturity: "core",
     // 2026-07-29 truth pass: the previously declared land_* ids never
     // existed in workflow-engine.ts. These are the real shipped templates
@@ -87,12 +102,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // "field-scout" removed 2026-07-29: FieldScoutPage is imported but no
     // route registers it — the registry must not name unreachable surfaces.
     spotlightModules: ["parcels", "leads", "deals", "letters"],
-    integrations: ["county_gis", "regrid", "usda_nass", "stripe", "lob"],
   },
   note_investor: {
     id: "note_investor",
     label: "Note investor",
-    shortDescription: "Buy seller-financed notes, service the payments.",
     maturity: "core",
     // 2026-07-29 truth pass: the previously declared note_* ids never
     // existed in workflow-engine.ts. Real shipped note templates: missed
@@ -105,12 +118,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_note_setup",
     ],
     spotlightModules: ["notes", "borrowers", "money", "letters"],
-    integrations: ["stripe", "tax_identity"],
   },
   hybrid: {
     id: "hybrid",
     label: "Land + notes (hybrid)",
-    shortDescription: "Operate both books in one workspace.",
     maturity: "core",
     // 2026-07-29 truth pass: real template ids (see land_flipper /
     // note_investor entries) — one from each book, plus the live-emitted
@@ -121,12 +132,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_parcel_owner_changed_followup",
     ],
     spotlightModules: ["parcels", "notes", "deals", "money"],
-    integrations: ["county_gis", "regrid", "stripe", "lob"],
   },
   fix_and_flip: {
     id: "fix_and_flip",
     label: "Fix-and-flip",
-    shortDescription: "Buy distressed houses, renovate, resell.",
     // Founder decision 2026-07-11 (roadmap Founder decision #4): demoted
     // beta → roadmap (waitlist) until a RESIDENTIAL comps/data source
     // exists — the investorType fork maps fix_and_flip to the LAND data
@@ -178,12 +187,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // ATTOM is the vertical-defining data integration (residential comps +
     // valuation, pay-per-call via the residentialComps seam / provider
     // registry) — named here honestly, not just Stripe (audit Wave 1).
-    integrations: ["stripe", "attom"],
   },
   residential_wholesaler: {
     id: "residential_wholesaler",
     label: "Residential wholesaler",
-    shortDescription: "Assign contracts to investor buyers.",
     // 2026-08 audit Wave 1: beta → core. Three of the four wholesaler templates
     // are now LIVE — deal.contract_signed + deal.assignment_pending fire from the
     // deal/assignment write-paths (wholesaleEvents.ts) and buyer.match_created
@@ -223,12 +230,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // assignment funds transiting AcreOS's own account, so there is no platform
     // payment rail here to name. Subscription payments TO AcreOS are billing, not
     // a vertical integration.
-    integrations: [],
   },
   buy_and_hold: {
     id: "buy_and_hold",
     label: "Buy-and-hold rentals",
-    shortDescription: "Long-term residential rental portfolios.",
     // 2026-07-29 (founder ruling #11, wave V1): roadmap → beta. The build
     // justifies it — verified against the tree, not hope:
     //   - 12 tables in shared/schema/rental.ts (tenants, tenant_screenings
@@ -270,12 +275,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // the provider registry. The rent-receipt / renewal / acknowledgment emails
     // ride the org's OWN connected identity (the BYO counterparty email lane),
     // not a provider-registry integration, so there is nothing to declare here.
-    integrations: [],
   },
   short_term_rental: {
     id: "short_term_rental",
     label: "Short-term rentals",
-    shortDescription: "Airbnb / VRBO operators.",
     // 2026-08 (Wave 5 / Wave B, beta → CORE): the three capabilities the beta
     // registry reserved for core now ship, each a pure tested engine that refuses
     // rather than fabricate:
@@ -309,12 +312,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // The real Rentals surfaces this businessType reaches (V1 gate; same
     // children as buy_and_hold in layout-sidebar.tsx).
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
-    integrations: [],
   },
   commercial: {
     id: "commercial",
     label: "Commercial real estate",
-    shortDescription: "Retail, office, industrial assets.",
     // 2026-08 (Wave 4, beta → CORE): the base-rent term-lease beta (real term
     // leases, base-rent charges/payments, maintenance dispatch, deposits, entity/
     // company tenants, and the residential-statute late-fee fabrication gated out)
@@ -371,12 +372,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     // Honest: like buy_and_hold, the rent ledger is manual-entry — no
     // dedicated commercial integration is wired.
-    integrations: [],
   },
   creative_finance: {
     id: "creative_finance",
     label: "Creative finance",
-    shortDescription: "Subject-to, wraps, lease-options.",
     // 2026-07-29 (founder ruling #11, wave V2): roadmap → beta. V1 demoted
     // this honestly (zero dedicated surface); V2 assembled the surface from
     // the seller-finance rails that already shipped — verified against the
@@ -435,12 +434,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     spotlightModules: ["deals", "finance", "dodd-frank", "regulatory-intel"],
     // Serviced notes ride the same Stripe rails as the note vertical
     // (payment links / Stripe Connect in the /finance note drawer).
-    integrations: ["stripe"],
   },
   developer: {
     id: "developer",
     label: "Developer / entitlements",
-    shortDescription: "Entitle land: permits, county timelines, lot pricing, plats.",
     // 2026-08 (Wave 5, beta → CORE): developer IS the subdivider entitlement
     // workspace (persona-mapping collapses developer → subdivider; the
     // Subdivision module gates businessTypeOnly ["subdivider","developer"]), and
@@ -479,12 +476,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // ["subdivider", "developer"] (persona-mapping collapses developer →
     // subdivider), so the lots/permits/plats model applies to them too.
     spotlightModules: ["permits", "county-timelines", "lot-pricing", "ccr-templates"],
-    integrations: ["county_gis"],
   },
   subdivider: {
     id: "subdivider",
     label: "Subdivider",
-    shortDescription: "Buy parent parcels, split into lots.",
     maturity: "core",
     // 2026-07-29 truth pass: all three subdivision templates exist in
     // workflow-engine.ts. "subdivision-editor" was a dangling name — there
@@ -507,12 +502,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_subdivision_phase_recorded",
     ],
     spotlightModules: ["parcels", "permits", "county-timelines", "lot-pricing", "ccr-templates"],
-    integrations: ["county_gis"],
   },
   tax_lien_deed: {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
-    shortDescription: "Acquire properties through tax auctions.",
     maturity: "core",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
@@ -538,12 +531,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_parcel_tax_delinquent_watchlist",
     ],
     spotlightModules: ["redemption-clock", "auction-worksheet", "state-rules", "quiet-title"],
-    integrations: ["county_gis"],
   },
   multifamily: {
     id: "multifamily",
     label: "Multifamily",
-    shortDescription: "Small + mid apartment buildings.",
     // 2026-08 (Wave 3, beta → CORE): the two gaps that held multifamily at beta
     // are CLOSED — and closed HONESTLY, measured from records rather than
     // fabricated. Leaving them asserted here would now make this registry the
@@ -610,12 +601,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_multifamily_unit_turn",
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
-    integrations: [],
   },
   mobile_home: {
     id: "mobile_home",
     label: "Mobile home / park",
-    shortDescription: "Mobile home park operators + flippers.",
     // 2026-07-31 (pad inventory): stays roadmap — but for TWO reasons now,
     // not three. What EXISTS today (V1 widened the landlord family): the
     // Rentals stack works for lot leases (a lot lease is a term lease with
@@ -674,12 +663,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_mobile_home_lot_rent_receipt",
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
-    integrations: [],
   },
   agent_investor: {
     id: "agent_investor",
     label: "Agent-investor",
-    shortDescription: "Licensed agents who also invest.",
     // 2026-08 (Wave 2 pass C, founder promote decision): roadmap → BETA on the
     // honest-partial bar. The land base is unchanged and DELIBERATE: the full
     // land_investor surface (persona-mapping.ts maps agent_investor →
@@ -726,7 +713,6 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     spotlightModules: ["maps", "parcels", "leads", "deals", "skip-tracing"],
     // The land data plane this surface runs on (parcel data on /maps and
     // parcel detail) — same providers the land_flipper surface uses.
-    integrations: ["county_gis", "regrid"],
   },
 };
 
