@@ -129,7 +129,25 @@ export function calculateContactCompleteness(lead: {
 /**
  * Enrich a single lead with available data
  */
-export async function enrichLead(leadId: number, organizationId: number): Promise<EnrichmentResult> {
+/**
+ * ORG FIRST — deliberately, and this argument order is load-bearing.
+ *
+ * `propertyEnrichment.ts` also exports an `enrichLead`, and it takes
+ * `(organizationId, leadId, …)`. Two identically-named functions in one
+ * codebase whose first two parameters are both `number` and in OPPOSITE order
+ * is a silent swap waiting for the first person who reaches for the wrong
+ * import — the compiler cannot object, because both slots take a number.
+ *
+ * This session found two live bugs of exactly that shape:
+ * `suggestOfferRange(leadId, propertyId)` against `(propertyId, signals)`, and
+ * `resolveAlert(alertId, resolution)` against `(organizationId, alertId)`.
+ * Neither was caught by tsc; both were found by reading argument lists.
+ *
+ * Org-first is the house convention (`storage.getLead`, `complianceAI`,
+ * `leadQualification`, `writingStyle`, `marketWatchlist`, `predictIntent`), so
+ * aligning to it removes the inversion rather than adding a third order.
+ */
+export async function enrichLead(organizationId: number, leadId: number): Promise<EnrichmentResult> {
   const [lead] = await db.select().from(leads)
     .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 

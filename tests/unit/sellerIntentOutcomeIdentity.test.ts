@@ -130,7 +130,20 @@ describe("the route's id and the service's parameter name the same entity", () =
   });
 
   it("the route passes the caller's org and renders the refusal as 404", () => {
-    expect(routes).toContain("recordOutcome(leadId, getOrganizationId(req), outcome)");
+    // 2026-08-18: the argument ORDER changed — `recordOutcome` is now
+    // organization-first, matching `negotiationOrchestrator.recordOutcome` and
+    // the house convention, because two same-named methods taking two numbers
+    // in opposite orders is a swap the compiler cannot see (see
+    // `argumentOrderHazard.test.ts`). The INVARIANT this test was written for
+    // is unchanged and still asserted: the route passes a LEAD id, the service
+    // parameter is named `leadId`, and the caller's org travels with it.
+    expect(routes).toContain("recordOutcome(getOrganizationId(req), leadId, outcome)");
+    // Pin the order itself, or a future swap re-creates the bug this file
+    // exists for — with the lead id landing in the organization slot.
+    expect(
+      routes,
+      "the organization is no longer the FIRST argument to recordOutcome",
+    ).toMatch(/recordOutcome\(\s*getOrganizationId\(req\)\s*,\s*leadId\s*,/);
     expect(routes).toContain("SellerIntentNotInOrgError");
     expect(routes).toContain('Errors.notFound(res, "Prediction")');
   });

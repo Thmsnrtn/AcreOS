@@ -737,9 +737,15 @@ What negotiation approach do you recommend?`
    * The previous signature could not be scoped without also deciding which of
    * the two entities the caller actually meant.
    */
+  /**
+   * ORG FIRST, matching `negotiationOrchestrator.recordOutcome(organizationId,
+   * threadId, …)` and the house convention. Two same-named methods whose first
+   * two parameters are both `number` in opposite orders is a swap the compiler
+   * cannot see.
+   */
   async recordOutcome(
-    leadId: number,
     organizationId: number,
+    leadId: number,
     outcome: PredictionOutcome
   ): Promise<void> {
     const [prediction] = await db.select().from(sellerIntentPredictions)

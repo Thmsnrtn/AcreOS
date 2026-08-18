@@ -23,7 +23,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
     const leadId = parseInt(req.params.id);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
-    const result = await enrichLead(leadId, org.id);
+    const result = await enrichLead(org.id, leadId);
     res.json(result);
   } catch (err) {
     Errors.internal(res, err);

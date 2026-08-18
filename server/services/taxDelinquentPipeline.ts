@@ -604,7 +604,10 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
   return { leads: trimmed, total: filtered.length };
 }
 
-async function getLead(id: number, orgId: number): Promise<DelinquentLeadRow | null> {
+// ORG FIRST, matching `storage.getLead(orgId, id)`. These two took the same
+// two numbers in opposite orders under the same name, which the compiler cannot
+// distinguish — reaching for the wrong one silently reads another tenant's row.
+async function getLead(orgId: number, id: number): Promise<DelinquentLeadRow | null> {
   const [row] = await db
     .select()
     .from(leads)

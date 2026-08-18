@@ -175,7 +175,7 @@ router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Req
     // line passed a leadId to it under a comment that said so — the outcome of
     // lead #42 landed on prediction #42. finalPrice/notes are still not
     // accepted by the service (they were silently dropped at runtime).
-    await sellerIntentPredictorService.recordOutcome(leadId, getOrganizationId(req), outcome);
+    await sellerIntentPredictorService.recordOutcome(getOrganizationId(req), leadId, outcome);
     res.json({ success: true });
   } catch (err: any) {
     if (err instanceof SellerIntentNotInOrgError) return Errors.notFound(res, "Prediction");
