@@ -62,6 +62,7 @@ function decision(over: Record<string, unknown> = {}) {
       strategyPackVersion: null,
       assumptions: [],
       alternatives: [],
+      reviewDueAt: null, // required-nullable: this fixture has no natural review date
       ...over,
     },
     [],

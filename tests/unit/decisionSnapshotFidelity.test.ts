@@ -85,6 +85,7 @@ function decisionInput(over: Partial<DecisionSnapshotInput> = {}): DecisionSnaps
       },
     ],
     alternatives: [{ choice: "Pass", reason: "Return still clears the 25% hurdle" }],
+    reviewDueAt: null, // required-nullable: this fixture has no natural review date
     ...over,
   };
 }
@@ -357,5 +358,69 @@ describe("immutability is structural, not conventional", () => {
 
     const barrel = fs.readFileSync(path.join(ROOT, "shared/schema.ts"), "utf8");
     expect(barrel).toContain('export * from "./schema/decision-snapshots"');
+  });
+});
+
+describe("a review date is DECIDED, never defaulted", () => {
+  /**
+   * `DecisionSnapshotBody.reviewDueAt` is documented as "recorded explicitly, so
+   * a decision that will never be reviewed is distinguishable from one whose
+   * review was forgotten". Until 2026-08-18 `DecisionSnapshotInput.reviewDueAt`
+   * was optional and `freezeDecision` collapsed a missing input to `null` — so
+   * the frozen record promised a distinction the input type made impossible to
+   * express, and the two were exactly the same value.
+   *
+   * The field is now required-nullable, like `strategyPackId` beside it.
+   */
+
+  it("THE INPUT TYPE REQUIRES A REVIEW DATE, EVEN IF IT IS NULL", () => {
+    // A type-level invariant needs a type-level assertion. If someone makes the
+    // field optional again, this @ts-expect-error becomes unused, tsc reports
+    // "Unused '@ts-expect-error' directive", and check-tests-typecheck fails.
+    // Without it the change has no gate at all: reverting to `?:` still
+    // compiles, because every call site now supplies the field anyway.
+    const { reviewDueAt: _omitted, ...withoutReviewDate } = decisionInput();
+    // @ts-expect-error reviewDueAt is required-nullable — omitting it must not compile
+    const bad: DecisionSnapshotInput = withoutReviewDate;
+    expect(bad).toBeDefined();
+  });
+
+  it("freezeDecision does not manufacture a null from a missing input", () => {
+    // The runtime half: the silent coalesce inside the writer is gone. Passing
+    // an object the type forbids proves the writer is no longer papering over
+    // it — a caller that skips the type check gets `undefined`, not a quiet
+    // "never to be reviewed".
+    const { reviewDueAt: _omitted, ...withoutReviewDate } = decisionInput();
+    const body = freezeDecision(
+      withoutReviewDate as DecisionSnapshotInput,
+      resolveAll([], new Date("2026-08-18T00:00:00Z")),
+      new Date("2026-08-18T00:00:00Z"),
+    );
+    expect(
+      body.reviewDueAt,
+      "freezeDecision coalesced a missing review date to null, which the frozen " +
+        "record's own docstring says must mean 'will never be reviewed'",
+    ).toBeUndefined();
+  });
+
+  it("an explicit null is carried through as null", () => {
+    // Vacuity guard: the assertion above is satisfied by a writer that drops the
+    // field entirely, which would break every consumer.
+    const body = freezeDecision(
+      decisionInput({ reviewDueAt: null }),
+      resolveAll([], new Date("2026-08-18T00:00:00Z")),
+      new Date("2026-08-18T00:00:00Z"),
+    );
+    expect(body.reviewDueAt).toBeNull();
+  });
+
+  it("an explicit date is carried through unchanged", () => {
+    const due = new Date("2026-11-01T00:00:00Z");
+    const body = freezeDecision(
+      decisionInput({ reviewDueAt: due }),
+      resolveAll([], new Date("2026-08-18T00:00:00Z")),
+      new Date("2026-08-18T00:00:00Z"),
+    );
+    expect(body.reviewDueAt).toEqual(due);
   });
 });

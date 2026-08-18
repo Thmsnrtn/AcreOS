@@ -110,9 +110,14 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
 
     const { scenarioIds, ...decision } = parsed.data;
+    // The wire field stays optional for back-compat; the snapshot type does
+    // not. Normalising HERE rather than inside `freeze()` is the point: the
+    // frozen record promises that "never to be reviewed" is distinguishable
+    // from "review forgotten", and a silent coalesce deep in the writer is what
+    // made those the same value.
     const recorded = await recordDecision(
       organizationId,
-      decision,
+      { ...decision, reviewDueAt: decision.reviewDueAt ?? null },
       new Date(),
       scenarioIds,
     );

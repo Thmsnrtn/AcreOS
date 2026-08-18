@@ -96,6 +96,7 @@ const partialDecision = freezeDecision(
     strategyPackVersion: null,
     assumptions: [],
     alternatives: [],
+    reviewDueAt: null, // required-nullable: this fixture has no natural review date
   },
   partialResolved,
   DECIDED_AT,
@@ -229,6 +230,7 @@ describe("failure 2 — two authoritative sources disagree", () => {
         strategyPackVersion: null,
         assumptions: [],
         alternatives: [],
+        reviewDueAt: null, // required-nullable: this fixture has no natural review date
       },
       [resolved],
       DECIDED_AT,

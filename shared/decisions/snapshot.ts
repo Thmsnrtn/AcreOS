@@ -182,8 +182,20 @@ export interface DecisionSnapshotInput {
    * is what later lets the loop ASK for an outcome, which nothing otherwise does
    * — so a decision with no review date simply never prompts, which is correct
    * for the many that have no natural one.
+   *
+   * REQUIRED-nullable, like `strategyPackId` above and for the same reason.
+   * It was `?:` until 2026-08-18, which quietly defeated the promise the frozen
+   * record makes about this very field: `DecisionSnapshotBody.reviewDueAt` is
+   * documented as "recorded explicitly, so a decision that will never be
+   * reviewed is distinguishable from one whose review was forgotten" — and
+   * `freeze()` collapsed an omitted input to `null`, making those two exactly
+   * indistinguishable. A caller must now say which one it means.
+   *
+   * The HTTP boundary in `routes-decisions.ts` keeps the field optional for
+   * back-compat and normalises there, so the decision is made in one visible
+   * place rather than inside `freeze()`.
    */
-  reviewDueAt?: Date | null;
+  reviewDueAt: Date | null;
 }
 
 /** The frozen record. Every field is immutable once written. */
@@ -318,7 +330,7 @@ export function freezeDecision(
       ...(input.additionalUnknowns ?? []),
     ],
     scenarios: [...scenarios],
-    reviewDueAt: input.reviewDueAt ?? null,
+    reviewDueAt: input.reviewDueAt,
   };
 }
 

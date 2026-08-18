@@ -162,6 +162,7 @@ const decision = freezeDecision(
     alternatives: [
       { choice: "Offer $38,500 (assessed)", reason: "Leaves no margin at the base case." },
     ],
+    reviewDueAt: null, // required-nullable: this fixture has no natural review date
   },
   resolved,
   DECIDED_AT,

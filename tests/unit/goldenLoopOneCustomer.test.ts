@@ -268,6 +268,7 @@ describe("the tenant key is never inferable from the data itself", () => {
         strategyPackVersion: null,
         assumptions: [],
         alternatives: [],
+        reviewDueAt: null, // required-nullable: this fixture has no natural review date
       },
       [],
       new Date("2026-03-01T00:00:00Z"),

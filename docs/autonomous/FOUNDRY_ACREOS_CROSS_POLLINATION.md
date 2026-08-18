@@ -69,7 +69,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (`bb6c4182`) |
 | 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (`daa749b6`) |
 | 19 | A route's auth must not depend on its line number | **PARTIALLY ADAPTED — trap frozen, not removed** | `apiCatchAllOrdering.test.ts` (`226e071f`) |
-| 20 | Trust may only be granted by evidence the agent did not author | **ADAPTED** | `server/services/trustDelta.ts`, `trustFromEvidence.test.ts` (this commit) |
+| 20 | Trust may only be granted by evidence the agent did not author | **ADAPTED** | `server/services/trustDelta.ts`, `trustFromEvidence.test.ts` (`f84c4f4a`) |
+| 21 | A frozen record cannot promise a distinction its input type forbids | **ADAPTED** | required-nullable `reviewDueAt`, `decisionSnapshotFidelity.test.ts` (this commit) |
 
 ---
 
@@ -939,6 +940,49 @@ trustDeltaFrom(` satisfies — replacing the call site with an inline lambda lef
 it green. Same first-law failure as the `featureFlagControlScope` one, in the
 same phase: **an identifier's declaration is not its use.** Now scoped to the
 body of `runTrustEvolution`.
+
+
+---
+
+### 21 — "A frozen record cannot promise a distinction its input type forbids" → ADAPTED
+
+**Foundry source.** §13 — absence of a claim is not a claim of absence. Third
+instance of that shape in this phase, after the hands' `movesMoney` (entry 10)
+and the feature-flag allow-list (entry 18).
+
+**AcreOS defect.** `DecisionSnapshotBody.reviewDueAt: Date | null` is documented
+as *"recorded explicitly, so a decision that will never be reviewed is
+distinguishable from one whose review was forgotten"*. But
+`DecisionSnapshotInput.reviewDueAt` was `?: Date | null` and `freezeDecision`
+wrote `input.reviewDueAt ?? null` — so an omitted input became `null`, and the
+two states the body promises to distinguish were the same value. The record's
+own docstring described a property the writer removed.
+
+Its sibling two fields up already had the answer: `strategyPackId: string | null`
+is required-nullable, "recorded as null rather than omitted, so 'no pack' is
+explicit".
+
+**Smallest implementation.** The input field is required-nullable, and
+`freezeDecision` no longer coalesces. The HTTP boundary in `routes-decisions.ts`
+keeps the wire field optional for back-compat and normalises there — one visible
+place, rather than silently inside the writer.
+
+**Complexity change.** One `?` removed, one explicit normalisation added.
+**Liability change.** Small and real: the compiler now asks at each site, and
+five test fixtures had to say which they meant.
+
+**The interesting part is that my first version had NO GATE.** Both mutations —
+reverting the field to `?:` and restoring the coalesce — passed, because every
+call site now supplies the field anyway, so an optional type compiles
+identically. A type-level invariant needs a type-level assertion: a
+`@ts-expect-error` on a call that omits the field. Revert the type and the
+directive becomes unused, tsc emits `TS2578`, and `check-tests-typecheck` fails.
+The runtime half asserts `freezeDecision` returns `undefined` rather than
+manufacturing `null` when the field is absent, with a vacuity guard that an
+explicit `null` still travels as `null`.
+
+**Exit test.** `decisionSnapshotFidelity.test.ts`, mutation-tested 2/2 after the
+gates were added — and 0/2 before them, which is why they exist.
 
 
 ## Not yet dispositioned
