@@ -396,18 +396,27 @@ async function maybeFirePushNotification(args: {
     // so org 0 matched nothing and the founder got none of these. The cast was
     // the tell — a tenant id you have to force past the type checker is not a
     // tenant id. `sendPushToPerson` addresses the human directly.
-    await sendPushToPerson(args.founderUserId, {
+    const pushResult = await sendPushToPerson(args.founderUserId, {
       title: `Atlas — ${args.label} ${args.status}`,
       body: `Open chat for details.`,
       url: `/founder?thread=${args.threadId}`,
       tag: `atlas-task-${args.threadId}`,
     } as any);
+
+    // Say which of the six things happened. This block used to log only on a
+    // THROW, with a TODO speculating that push was "not wired yet" — while the
+    // real reason nothing arrived was org 0 matching no subscription, silently,
+    // on every call. A notification channel that cannot report its own
+    // non-delivery will keep being described as unfinished instead of broken.
+    if (pushResult.status !== "delivered" && pushResult.status !== "partial") {
+      logger.warn("[background-runner] founder push did not land", {
+        metadata: { status: pushResult.status, founderUserId: args.founderUserId },
+      });
+    }
   } catch (err) {
-    logger.info("[background-runner] push notification skipped (would fire here)", {
+    logger.warn("[background-runner] founder push threw", {
       metadata: { err: String(err), founderUserId: args.founderUserId },
     });
-    // TODO(phase-F): wire push subscriptions for founder users + Web Push
-    // delivery when web-push package + VAPID keys are in place.
   }
 }
 

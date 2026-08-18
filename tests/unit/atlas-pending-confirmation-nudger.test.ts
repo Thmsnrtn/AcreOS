@@ -27,7 +27,12 @@ describe("atlasPendingConfirmationNudger", () => {
     dbUpdateSpy = vi.fn().mockReturnValue({
       set: () => ({ where: () => Promise.resolve(undefined) }),
     });
-    sendPushSpy = vi.fn().mockResolvedValue(undefined);
+    // A REAL PushResult, not `undefined`. The spy used to resolve undefined,
+    // which meant this suite never exercised the dispatch status at all — and
+    // when the nudger started reading it, a mutation that removed the status
+    // check entirely still passed here. A mock that is vaguer than the contract
+    // makes the test agree with any implementation.
+    sendPushSpy = vi.fn().mockResolvedValue({ status: "delivered", sent: 1, failed: 0 });
 
     vi.doMock("../../server/db", () => ({
       db: {
@@ -97,6 +102,30 @@ describe("atlasPendingConfirmationNudger", () => {
 
     // Should have stamped pushedAt — once per row.
     expect(dbUpdateSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("a push that reached nobody does not stamp pushedAt", async () => {
+    // THE DEFECT THIS SUITE MISSED. `sendPushToPerson` does not throw when the
+    // founder has no registered device, when VAPID is unset, or when the
+    // recipient is refused — it returns a status. The nudger used to stamp
+    // `pushedAt` on anything that did not throw, so a founder who was never
+    // reachable was recorded as nudged and never nudged again: the failure
+    // consumed its own retry.
+    for (const status of ["no_destination", "not_configured", "not_permitted", "failed"]) {
+      dbUpdateSpy.mockClear();
+      sendPushSpy.mockResolvedValueOnce({ status, sent: 0, failed: 0 });
+      dbSelectRows = [
+        { id: "n1", threadId: 7, founderUserId: "u_a", toolName: "fly_deploy", ctxSnapshot: null },
+      ];
+
+      const pushed = await runNudgePass();
+
+      expect(pushed, `status=${status} was counted as a nudge`).toBe(0);
+      expect(
+        dbUpdateSpy,
+        `status=${status} stamped pushedAt, so the row will never be retried`,
+      ).not.toHaveBeenCalled();
+    }
   });
 
   it("push failure does not stamp pushedAt — row retried next pass", async () => {

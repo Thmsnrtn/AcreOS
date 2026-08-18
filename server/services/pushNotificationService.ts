@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { isFounderUserId } from "./founder";
 
 interface PushSubscription {
   id: number;
@@ -154,6 +155,59 @@ async function sendToSubscription(
 }
 
 // ---------------------------------------------------------------------------
+// Dispatch outcome
+// ---------------------------------------------------------------------------
+
+/**
+ * What actually happened to a push.
+ *
+ * ── WHY THIS IS NOT JUST `{ sent, failed }` ─────────────────────────────────
+ * `{ sent: 0, failed: 0 }` meant four different things and read as success in
+ * all of them: nobody had a device registered, the platform had no VAPID keys,
+ * the recipient was not someone we may notify, or nothing was attempted. The
+ * atlas nudger consumed exactly that ambiguity — it stamped `pushedAt` on any
+ * call that did not THROW, so a founder who was never reachable was recorded as
+ * nudged and never nudged again. A zero-recipient send is not a delivery.
+ *
+ * The counts are kept alongside the status, so existing callers that destructure
+ * `{ sent, failed }` are unaffected. Nothing here is invented for symmetry —
+ * each status below distinguishes a case a real caller in this repository
+ * behaves differently about.
+ */
+export type PushDispatchStatus =
+  /** At least one endpoint accepted the notification, and none failed. */
+  | "delivered"
+  /** Some endpoints accepted, some failed — the person probably saw it. */
+  | "partial"
+  /** The recipient has no registered device. Nothing to retry against. */
+  | "no_destination"
+  /** Web push is unconfigured (no VAPID keys / package). OUR problem, not theirs. */
+  | "not_configured"
+  /** The recipient is not someone this channel is allowed to reach. */
+  | "not_permitted"
+  /** Destinations existed and every attempt failed. Worth retrying. */
+  | "failed";
+
+export interface PushResult {
+  status: PushDispatchStatus;
+  sent: number;
+  failed: number;
+}
+
+/** True when web push can actually leave the building. */
+async function pushConfigured(): Promise<boolean> {
+  const wp = await getWebPush();
+  return Boolean(wp) && vapidConfigured;
+}
+
+/** Classify a completed fan-out. Pure. */
+function classify(sent: number, failed: number): PushDispatchStatus {
+  if (sent === 0 && failed === 0) return "no_destination";
+  if (sent === 0) return "failed";
+  return failed === 0 ? "delivered" : "partial";
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -164,7 +218,9 @@ export async function sendPushToUser(
   organizationId: number,
   userId: string,
   payload: PushPayload
-): Promise<{ sent: number; failed: number }> {
+): Promise<PushResult> {
+  if (!(await pushConfigured())) return { status: "not_configured", sent: 0, failed: 0 };
+
   const subscriptions = await getSubscriptionsForUser(organizationId, userId);
   let sent = 0;
   let failed = 0;
@@ -174,7 +230,7 @@ export async function sendPushToUser(
     ok ? sent++ : failed++;
   }
 
-  return { sent, failed };
+  return { status: classify(sent, failed), sent, failed };
 }
 
 /**
@@ -209,15 +265,37 @@ export async function sendPushToUser(
 export async function sendPushToPerson(
   userId: string,
   payload: PushPayload,
-): Promise<{ sent: number; failed: number }> {
+): Promise<PushResult> {
+  // THE RECIPIENT IS NOT TAKEN ON TRUST.
+  //
+  // A person id is a GLOBAL identity — `team_members` is keyed
+  // (organization_id, user_id), so one human belongs to many orgs — and this
+  // function deliberately ignores org scope. That makes the recipient argument
+  // the whole security boundary: whoever this names gets a notification on
+  // their own phone. "A caller cannot declare its own safety" applies exactly
+  // here, and this channel exists only for the founder plane, so the founder
+  // registry is the check. An arbitrary user id gets `not_permitted`, not a
+  // silent zero.
+  if (!isFounderUserId(userId)) {
+    logger.warn("[PushNotifications] refused a person-global push to a non-founder", {
+      metadata: { userId },
+    });
+    return { status: "not_permitted", sent: 0, failed: 0 };
+  }
+
+  if (!(await pushConfigured())) return { status: "not_configured", sent: 0, failed: 0 };
+
   let subscriptions: PushSubscription[] = [];
   try {
     const rows = await db.execute(
       sql`SELECT * FROM push_subscriptions WHERE user_id = ${userId}`,
     );
     subscriptions = (rows as any).rows ?? [];
-  } catch {
-    subscriptions = [];
+  } catch (err) {
+    logger.warn("[PushNotifications] subscription lookup failed", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    return { status: "failed", sent: 0, failed: 0 };
   }
 
   let sent = 0;
@@ -226,7 +304,7 @@ export async function sendPushToPerson(
     const ok = await sendToSubscription(sub, payload);
     ok ? sent++ : failed++;
   }
-  return { sent, failed };
+  return { status: classify(sent, failed), sent, failed };
 }
 
 /**
