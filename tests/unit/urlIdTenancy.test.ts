@@ -276,3 +276,70 @@ describe("writing-style profiles are scoped", () => {
     }
   });
 });
+
+describe("buyer qualifications and deal-pattern matches are scoped", () => {
+  /**
+   * Two more found by the same scan, and both instructive about how partial the
+   * coverage was:
+   *
+   * `getQualificationById` is reached from TWO routers.
+   * `routes-buyer-qualification.ts` guards it with a `requireOwnedQualificationId`
+   * helper that fetches then compares `organizationId` — correct. But
+   * `routes-ai-operations.ts:682` calls the same service with no guard at all.
+   * One service, two doors, one of them open — the same shape as the portfolio
+   * alerts. The data is a named buyer's financial pre-qualification.
+   *
+   * `updateMatchOutcome` is a WRITE that feeds pattern learning: an outcome
+   * written onto another tenant's match teaches that tenant's model.
+   */
+  it("getQualificationById binds the organization", async () => {
+    const { asks } = await withDb(async () => {
+      const { buyerQualificationBotService } = await import(
+        "../../server/services/buyerQualificationBot"
+      );
+      return buyerQualificationBotService.getQualificationById(OTHER, 501);
+    });
+    const reads = asks.filter((a) => a.table === "buyer_qualifications");
+    expect(reads.length, "the qualification read stopped being exercised").toBeGreaterThan(0);
+    for (const a of reads) {
+      expect(
+        bound(a.where, "organization_id"),
+        "a buyer qualification was resolved by primary key alone",
+      ).toContain(OTHER);
+    }
+  });
+
+  it("updateMatchOutcome binds the organization on its WRITE", async () => {
+    const { asks } = await withDb(async () => {
+      const { dealPatternCloningService } = await import(
+        "../../server/services/dealPatternCloning"
+      );
+      return dealPatternCloningService.updateMatchOutcome(OTHER, 88, "closed", true);
+    });
+    const writes = asks.filter((a) => a.kind === "update" && a.table === "deal_pattern_matches");
+    expect(writes.length, "the match update stopped being exercised").toBeGreaterThan(0);
+    for (const a of writes) {
+      expect(
+        bound(a.where, "organization_id"),
+        "a pattern match outcome was written by primary key alone",
+      ).toContain(OTHER);
+    }
+  });
+
+  it("BOTH doors onto getQualificationById pass an organization", () => {
+    // The service being scoped is only half of it: a caller that omits the
+    // argument would not compile, but a caller that passes the WRONG thing
+    // would. Pin that each route hands over its own org.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const read = (f: string) =>
+      fs.readFileSync(path.resolve(__dirname, "../../server", f), "utf8");
+
+    expect(read("routes-ai-operations.ts")).toMatch(
+      /getQualificationById\(\s*org\.id\s*,\s*qualificationId/,
+    );
+    expect(read("routes-buyer-qualification.ts")).toMatch(
+      /getQualificationById\(org\.id, id\)/,
+    );
+  });
+});

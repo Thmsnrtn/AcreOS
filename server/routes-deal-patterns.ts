@@ -74,10 +74,19 @@ router.post("/insights/:matchId", isAuthenticated, getOrCreateOrg, async (req: R
 // Update match outcome (did this pattern help close the deal?)
 router.patch("/match/:matchId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
+    const org = req.organization;
     const matchId = parseInt(req.params.matchId);
     if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     const { outcome, helpedClose } = req.body;
-    await dealPatternCloningService.updateMatchOutcome(matchId, String(outcome), !!helpedClose);
+    const updated = await dealPatternCloningService.updateMatchOutcome(
+      org.id,
+      matchId,
+      String(outcome),
+      !!helpedClose,
+    );
+    // A match outside this org matches nothing. 404 rather than a bare success,
+    // which would report a write that did not happen.
+    if (!updated) return Errors.notFound(res, "Match");
     res.json({ success: true });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");

@@ -31,7 +31,11 @@ async function requireOwnedQualificationId(req: Request, res: Response): Promise
   const id = parseInt(req.params.id);
   if (isNaN(id)) { Errors.badRequest(res, "Invalid qualification ID"); return null; }
   const org = req.organization;
-  const qualification = await buyerQualificationBotService.getQualificationById(id);
+  // The service is org-scoped as of 2026-08-18, so a foreign qualification
+  // comes back as null. The explicit organizationId comparison that used to
+  // follow is kept — belt and braces on an IDOR guard is cheap, and it states
+  // the invariant at the site a reader checks.
+  const qualification = await buyerQualificationBotService.getQualificationById(org.id, id);
   if (!qualification || qualification.organizationId !== org.id) {
     Errors.notFound(res, "Qualification");
     return null;
@@ -66,7 +70,10 @@ router.get("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Re
   try {
     const id = await requireOwnedQualificationId(req, res);
     if (id === null) return;
-    const qualification = await buyerQualificationBotService.getQualificationById(id);
+    const qualification = await buyerQualificationBotService.getQualificationById(
+      req.organization.id,
+      id,
+    );
     if (!qualification) return Errors.notFound(res, "Qualification");
     res.json({ qualification });
   } catch (err: any) {

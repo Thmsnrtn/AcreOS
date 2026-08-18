@@ -681,10 +681,14 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/buyer-qualification/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
+      const org = req.organization;
       const qualificationId = parseInt(req.params.id);
-      
+
       const { buyerQualificationBotService } = await import("./services/buyerQualificationBot");
-      const qualification = await buyerQualificationBotService.getQualificationById(qualificationId);
+      const qualification = await buyerQualificationBotService.getQualificationById(
+        org.id,
+        qualificationId,
+      );
       
       if (!qualification) {
         return Errors.notFound(res, "Qualification");

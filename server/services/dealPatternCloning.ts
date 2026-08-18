@@ -625,7 +625,15 @@ class DealPatternCloningService {
     return insertedPattern;
   }
 
+  /**
+   * Org-first. Reached from `PATCH /match/:matchId`, an authenticated route
+   * whose id is a URL parameter, and `deal_pattern_matches.organization_id` is
+   * NOT NULL — so matching on the id alone let any authenticated user write an
+   * outcome onto another tenant's pattern match, which then feeds that tenant's
+   * pattern learning.
+   */
   async updateMatchOutcome(
+    organizationId: number,
     matchId: number,
     outcome: string,
     insightHelpful: boolean
@@ -637,14 +645,24 @@ class DealPatternCloningService {
         insightHelpful,
         insightsApplied: true,
       })
-      .where(eq(dealPatternMatches.id, matchId))
+      .where(and(
+        eq(dealPatternMatches.id, matchId),
+        eq(dealPatternMatches.organizationId, organizationId),
+      ))
       .returning();
 
     if (updated) {
       const pattern = await db
         .select()
         .from(dealPatterns)
-        .where(eq(dealPatterns.id, updated.patternId))
+        // Scoped even though `updated.patternId` came off a row already proved
+        // to be this org's: `deal_patterns` carries its own NOT NULL
+        // organization_id, and a predicate that holds for a transitive reason
+        // stops holding the moment either side changes.
+        .where(and(
+          eq(dealPatterns.id, updated.patternId),
+          eq(dealPatterns.organizationId, organizationId),
+        ))
         .limit(1);
 
       if (pattern[0]) {
@@ -664,7 +682,10 @@ class DealPatternCloningService {
             matchSuccessRate: newSuccessRate.toString(),
             updatedAt: new Date(),
           })
-          .where(eq(dealPatterns.id, updated.patternId));
+          .where(and(
+            eq(dealPatterns.id, updated.patternId),
+            eq(dealPatterns.organizationId, organizationId),
+          ));
       }
     }
 

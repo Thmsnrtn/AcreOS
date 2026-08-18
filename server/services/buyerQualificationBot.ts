@@ -635,9 +635,25 @@ Provide 1-2 additional recommendations to improve this buyer's closing probabili
     return updated;
   }
 
-  async getQualificationById(qualificationId: number): Promise<BuyerQualification | null> {
+  /**
+   * Org-first, matching `getQualificationsByOrganization` directly below.
+   *
+   * Until 2026-08-18 this resolved `buyer_qualifications` by primary key alone
+   * and is reached from `GET /buyer-qualification/:id`, an ordinary
+   * authenticated route whose id is a URL parameter. The table's
+   * organization_id is NOT NULL, so any authenticated user could read another
+   * tenant's buyer pre-qualification — the financial assessment of a specific
+   * named buyer.
+   */
+  async getQualificationById(
+    organizationId: number,
+    qualificationId: number,
+  ): Promise<BuyerQualification | null> {
     const [qualification] = await db.select().from(buyerQualifications)
-      .where(eq(buyerQualifications.id, qualificationId));
+      .where(and(
+        eq(buyerQualifications.id, qualificationId),
+        eq(buyerQualifications.organizationId, organizationId),
+      ));
 
     return qualification || null;
   }
