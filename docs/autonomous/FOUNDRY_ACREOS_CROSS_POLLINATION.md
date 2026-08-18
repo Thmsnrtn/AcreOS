@@ -62,7 +62,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 10 | An omitted risk flag is not a declaration of safety | **ADAPTED** | required `movesMoney` / `outwardClass` on `HandSpec`, `handRiskDeclaration.test.ts` (`835e0e9c`) |
 | 11 | A guess is not a known value, on the path the law governs | **ADAPTED** | `resolveZoneForPhone()` in `tcpaCompliance.ts`, `tcpaZoneGuess.test.ts` (`a6df3b60`) |
 | 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (`c937eb2e`) |
-| 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (this commit) |
+| 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (`1674e2f5`) |
+| 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (this commit) |
 
 ---
 
@@ -509,6 +510,66 @@ restoring rule 4's success half; over-correcting into symmetry by silencing the
 failed-dispatch vote; reverting `outcomeBasis` to its presence check; dropping
 the basis from the story; re-hiding the pending badge; and a vacuity mutation
 that renders the pending badge for every vote.
+
+
+---
+
+### 14 — "Provenance travels with the value, not with the lookup" → ADAPTED
+
+**Foundry source.** §17 — an assertion is not canonical truth. Here the
+assertion is the source label, and nothing checked it against the value it
+described.
+
+**AcreOS defect.** `landProfile.ts` opens with an honesty contract: "we NEVER
+fabricate a value. If a field cannot be honestly populated it is OMITTED." That
+covered the VALUE and said nothing about where it came from, which left the more
+dangerous half open — a REAL value wearing the wrong source label passes every
+"did we invent a number" check while telling the customer to trust it as county
+data.
+
+`LandField.source` is documented as "what the provenance chip shows the
+customer", `asOf` as "the date the AUTHORITATIVE source last updated this fact",
+and `confidence` is DERIVED from the source label (`/county|assessor|gis/i` →
+80). So a mislabel publishes a customer-typed value back to that customer as an
+authoritative county record, dated to the county's refresh, at 80% confidence.
+
+Two fields could take their value from the county parcel OR the customer's own
+property record:
+
+- `legalDescription` used `parcel.legalDescription ?? property.legalDescription`
+  under an unconditional "County GIS" / "authoritative".
+- `acreage` DID branch its label and classification on which value it got — the
+  author knew the rule — but still passed `prov["parcel_data"]`
+  unconditionally, and `field()` prefers `prov.source` over `fallbackSource`.
+  When a parcel lookup returned provenance but no acreage, the owner's own
+  number went out with the county's source, confidence and date. **The site that
+  looked correct was wrong in a narrower window than the one that looked wrong**,
+  which is why the fix is a helper rather than two edits.
+
+**Smallest implementation.** `eitherField()`: the enriched value and its
+provenance are passed together, the owned value is passed with no provenance at
+all. Passing value and provenance as independent arguments is what made both
+defects expressible.
+
+**Complexity change.** One helper, two call sites simplified. **Liability
+change.** Down, on a customer-facing data surface governed by the DO-NOT-DO
+list's fabrication hard-stop.
+
+**Exit test.** `landProfileProvenance.test.ts`, mutation-tested 4/4 — restoring
+either call site, leaking the enriched provenance onto the owned value, and an
+over-correction that labels everything "Owner-entered". The general rule is
+swept across the whole profile (no `authoritative` field may carry a
+customer-supplied value) rather than pinned to the two known sites, with a
+vacuity guard proving the fields are still present.
+
+**A claim I checked and did NOT act on.** The same read flagged
+`enrichmentToClaims.ts:217/239/255` for discarding provenance by writing
+`observedAt: null`. False positive: the `wildfireHazard` and `broadband`
+sub-objects carry only `source`, with no date field anywhere in their types, so
+there is no `asOf` to discard and `null` is the honest answer — the file's own
+header says resolution then ages the claim from `fetchedAt`, which is also
+conservative. Recorded here because a transfer ledger that lists only the
+findings that survived is a biased record of the reading.
 
 
 ## Not yet dispositioned

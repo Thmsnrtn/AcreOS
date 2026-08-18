@@ -9,6 +9,15 @@
  * Honesty contract (Maren/Quinn lens): we NEVER fabricate a value. If a field
  * cannot be honestly populated it is OMITTED from the profile and surfaced in
  * `gaps` with a reason. A real "Unknown" outperforms a fake number.
+ *
+ * AND WE NEVER FABRICATE A PROVENANCE. The contract above covered the value and
+ * said nothing about where it came from, which left the more dangerous half
+ * open: a REAL value wearing the wrong source label passes every "did we invent
+ * a number" check while telling the customer to trust it as county data. Two
+ * fields could take their value from the county parcel OR from the customer's
+ * own property record, and both attached the county's label — and therefore the
+ * county's confidence and the county's `asOf` — to whichever value arrived. See
+ * `eitherField`: provenance travels with the VALUE, never with the lookup.
  */
 
 import type {
@@ -97,6 +106,52 @@ function field<T>(
     confidence,
     classification: opts.classification,
   };
+}
+
+/**
+ * A field whose value may come from the ENRICHED source or from the customer's
+ * own property record — and which must be labelled for whichever one it
+ * actually came from.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * Written as `field(enriched ?? owned, prov, { fallbackSource: "County GIS" })`,
+ * one label covers two sources and the wrong one wins. Both mixed-source fields
+ * in this file were spelled that way until 2026-08-18:
+ *
+ *   - `legalDescription` took `parcel.legalDescription ?? property.legalDescription`
+ *     under an unconditional "County GIS" / "authoritative". A legal description
+ *     the customer typed was shown to them as an authoritative county record.
+ *   - `acreage` DID branch its label and classification on which value it got —
+ *     the author knew the rule — but still passed `prov["parcel_data"]`
+ *     unconditionally, and `field()` prefers `prov.source` over
+ *     `fallbackSource`. So when a parcel lookup returned provenance but no
+ *     acreage, the owner's own number was published with the county's source,
+ *     the county's 80% confidence and the county's `asOf` date. The site that
+ *     looked correct was wrong in a narrower window than the one that looked
+ *     wrong.
+ *
+ * Passing the provenance separately from the value is what made both possible,
+ * so this takes them together. The fallback branch passes `undefined` for
+ * provenance deliberately: a customer-entered value has no upstream freshness
+ * date, and inheriting the county's would be a false claim about when the fact
+ * was last verified.
+ */
+function eitherField<T>(
+  enriched: T | null | undefined,
+  enrichedProv: EnrichmentProvenance | undefined,
+  enrichedOpts: { source: string; classification: LandFieldClassification },
+  owned: T | null | undefined,
+  ownedOpts: { source: string; classification: LandFieldClassification },
+): LandField<T> | undefined {
+  const enrichedField = field<T>(enriched, enrichedProv, {
+    fallbackSource: enrichedOpts.source,
+    classification: enrichedOpts.classification,
+  });
+  if (enrichedField) return enrichedField;
+  return field<T>(owned, undefined, {
+    fallbackSource: ownedOpts.source,
+    classification: ownedOpts.classification,
+  });
 }
 
 /**
@@ -228,13 +283,12 @@ export function assembleLandProfile(
   // ── Acreage (county parcel > the property record's own size) ──
   const parcelAcreage = enrichment?.parcel?.acreage;
   const sizeAcres = property.sizeAcres ? parseFloat(String(property.sizeAcres)) : null;
-  fields.acreage = field<number>(
-    parcelAcreage ?? sizeAcres,
+  fields.acreage = eitherField<number>(
+    parcelAcreage,
     prov["parcel_data"],
-    {
-      fallbackSource: parcelAcreage ? "County GIS" : "Owner-entered",
-      classification: parcelAcreage ? "authoritative" : "estimate",
-    }
+    { source: "County GIS", classification: "authoritative" },
+    sizeAcres,
+    { source: "Owner-entered", classification: "estimate" },
   );
 
   // ── Owner / legal (county parcel) ─────────────────────────────
@@ -242,10 +296,12 @@ export function assembleLandProfile(
     fallbackSource: "County GIS",
     classification: "authoritative",
   });
-  fields.legalDescription = field<string>(
-    enrichment?.parcel?.legalDescription ?? property.legalDescription,
+  fields.legalDescription = eitherField<string>(
+    enrichment?.parcel?.legalDescription,
     prov["parcel_data"],
-    { fallbackSource: "County GIS", classification: "authoritative" }
+    { source: "County GIS", classification: "authoritative" },
+    property.legalDescription,
+    { source: "Owner-entered", classification: "estimate" },
   );
 
   // ── PLSS legal ────────────────────────────────────────────────
