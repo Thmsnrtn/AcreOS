@@ -34,6 +34,11 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 // buy_and_hold beta→core registration (audit Wave 1).
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
+import {
+  runDecisionExecutorTickBounded,
+  AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK,
+  AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK,
+} from "./decisionExecutorTick";
 
 // Auto-seed county GIS endpoints on startup
 async function seedCountyGisEndpointsOnStartup() {
@@ -962,79 +967,9 @@ function startFounderWeeklyDigestJob() {
 //   • POST-tick: re-measure spend incurred + decisions processed; if either
 //     ceiling was crossed, log a structured warn so the breach is greppable.
 // Both ceilings are env-tunable with sensible defaults.
-const AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK = (() => {
-  const raw = Number(process.env.AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK);
-  return Number.isFinite(raw) && raw > 0 ? raw : 1.0;
-})();
-const AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK = (() => {
-  const raw = Number(process.env.AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 10;
-})();
-const DECISION_EXECUTOR_TICK_WINDOW_MS = 30 * 60 * 1000;
-
-// Sum estimated AI spend (USD) recorded since `since`, across all orgs.
-// Reads the indexed ai_telemetry_events.created_at + estimated_cost_cents.
-// On any error we return null so the caller fails OPEN (never blocks the
-// executor purely because telemetry was momentarily unreadable).
-async function sumAiSpendUsdSince(since: Date): Promise<number | null> {
-  try {
-    const { aiTelemetryEvents } = await import("@shared/schema");
-    const { gte } = await import("drizzle-orm");
-    const [row] = await db
-      .select({
-        cents: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
-      })
-      .from(aiTelemetryEvents)
-      .where(gte(aiTelemetryEvents.createdAt, since));
-    return Number(row?.cents ?? 0) / 100;
-  } catch (err) {
-    log(`[decision-executor] AI spend read failed (failing open): ${err}`, "decision-executor");
-    return null;
-  }
-}
-
-// Runs one executor tick under the per-tick cost bound. Imported lazily by the
-// job so the cap lives at the scheduler layer, not in the executor service.
-async function runDecisionExecutorTickBounded(): Promise<void> {
-  const tickStart = new Date();
-  const windowStart = new Date(tickStart.getTime() - DECISION_EXECUTOR_TICK_WINDOW_MS);
-
-  // PRE-tick enforcing bound: if recent spend already blew the ceiling, defer.
-  const recentSpend = await sumAiSpendUsdSince(windowStart);
-  if (recentSpend !== null && recentSpend >= AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK) {
-    log(
-      `[decision-executor] per-tick spend cap hit — skipping tick. ` +
-        `trailing-${Math.round(DECISION_EXECUTOR_TICK_WINDOW_MS / 60000)}m spend=$${recentSpend.toFixed(2)} ` +
-        `>= cap=$${AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK.toFixed(2)} ` +
-        `(AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK)`,
-      "decision-executor",
-    );
-    return;
-  }
-
-  const { runAutonomousDecisionExecutor } = await import("../services/autonomousDecisionExecutor");
-  const result = await runAutonomousDecisionExecutor();
-
-  // POST-tick bound: surface a breach so a runaway tick is greppable even
-  // though we let the in-flight items finish (we never kill mid-tick).
-  const incurred = await sumAiSpendUsdSince(tickStart);
-  if (incurred !== null && incurred > AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK) {
-    log(
-      `[decision-executor] per-tick spend ceiling exceeded: this tick spent $${incurred.toFixed(2)} ` +
-        `> cap=$${AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK.toFixed(2)} ` +
-        `across ${result.itemsProcessed} items — next tick will defer until spend drains`,
-      "decision-executor",
-    );
-  }
-  if (result.itemsProcessed > AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK) {
-    log(
-      `[decision-executor] per-tick decision cap exceeded: processed ${result.itemsProcessed} ` +
-        `> cap=${AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK} ` +
-        `(AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK)`,
-      "decision-executor",
-    );
-  }
-}
+// The per-tick cost bound lives in server/jobs/decisionExecutorTick.ts. It was
+// module-private here, which is why nobody could assert on what it measured —
+// and it measured EVERY AI call on the platform, not the executor's own.
 
 function startAutonomousDecisionExecutorJob() {
   // 2026-06-05 cost-audit kill-switch. This job was identified as the
@@ -1062,7 +997,7 @@ function startAutonomousDecisionExecutorJob() {
 
   // Run once 2 minutes after startup (let other services initialize first)
   setTimeout(() => {
-    withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
+    withJobLock('autonomous_decision_executor', TTL_SECONDS, () => runDecisionExecutorTickBounded(log)).catch(err => {
       log(`Autonomous decision executor startup run failed: ${err}`, 'decision-executor');
     });
   }, 2 * 60 * 1000);
@@ -1075,7 +1010,7 @@ function startAutonomousDecisionExecutorJob() {
   trackInterval(async () => {
     const { shouldRunAtPace } = await import("./idlePace");
     if (!(await shouldRunAtPace('autonomous_decision_executor', THIRTY_MINUTES))) return;
-    withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
+    withJobLock('autonomous_decision_executor', TTL_SECONDS, () => runDecisionExecutorTickBounded(log)).catch(err => {
       log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
     });
   }, THIRTY_MINUTES);

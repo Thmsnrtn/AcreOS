@@ -62,6 +62,24 @@ const DEFAULT_TOTAL_CAP_CENTS = 1000; // $10/day pre-launch
  * Centralized so we can add taskTypes without rewriting the budget
  * gate everywhere — they just need to land in the right bucket.
  */
+/**
+ * The task types that ARE the autonomous decision executor.
+ *
+ * Declared rather than inlined into `categoryFor` because the scheduler's
+ * per-tick cost bound (`server/jobs/decisionExecutorTick.ts`) needs the same
+ * set in SQL, to sum the executor's OWN spend rather than every AI call the
+ * platform made in the window. `categoryFor` branches on this list, so the two
+ * consumers cannot disagree about what "executor" means — a hand-copied second
+ * list would go stale the first time a task type is added here.
+ */
+export const EXECUTOR_TASK_TYPES = [
+  "executor_inbox_decision",
+  "executive_decision",
+  "agent_initiative",
+  "agent_recommendation",
+  "decision_executor",
+] as const;
+
 export function categoryFor(taskType: string): BudgetCategory {
   const t = taskType.toLowerCase();
   // Founder-essential (high-priority, large per-call but rare)
@@ -69,13 +87,7 @@ export function categoryFor(taskType: string): BudgetCategory {
     return "founder_brief";
   }
   // Executor decision-making — the historical #1 cost
-  if (
-    t === "executor_inbox_decision" ||
-    t === "executive_decision" ||
-    t === "agent_initiative" ||
-    t === "agent_recommendation" ||
-    t === "decision_executor"
-  ) {
+  if ((EXECUTOR_TASK_TYPES as readonly string[]).includes(t)) {
     return "executor";
   }
   // Per-agent briefings (10 agents × daily)

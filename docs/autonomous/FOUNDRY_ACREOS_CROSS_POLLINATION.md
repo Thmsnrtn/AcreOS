@@ -64,7 +64,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (`c937eb2e`) |
 | 13 | A dispatch receipt is not evidence the action worked | **ADAPTED — second layer of #12** | `outcomeOf` rule 4 + `outcomeBasis` adoption, `outcomeObservationVote.test.tsx` (`1674e2f5`) |
 | 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (`8b4740a5`) |
-| 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (this commit) |
+| 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (`96b0b3ad`) |
+| 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (this commit) |
 
 ---
 
@@ -627,6 +628,56 @@ broadband, nothing in the repository contradicts its current `authoritative`
 label — `landProfile.ts` groups it with the system-of-record layers at 85. That is a
 domain judgement, not a defect this reading can evidence, so it is left alone
 and recorded rather than silently changed.
+
+
+---
+
+### 16 — "A cost bound must measure the thing it bounds" → ADAPTED
+
+**Foundry source.** §16 read from the cost side: a measurement attributed to an
+actor must be a measurement OF that actor.
+
+**AcreOS defect.** The autonomous decision executor runs under a per-tick spend
+ceiling added by a 2026-06-05 cost audit that named this job "the single
+most-likely $30/day burn source". The ceiling was enforced against
+`sumAiSpendUsdSince`, which summed EVERY row in `ai_telemetry_events` in the
+window — Pax chat, enrichment summarisation, the CMO pipeline, all of it.
+
+1. The executor deferred on spend it did not cause. On the $1.00 / 30-min
+   default, a busy Pax hour starves it — silently, one log line.
+2. The post-tick line read "this tick spent $X across N items" when $X was all
+   platform AI spend in the window. That is the number a human reads to decide
+   whether the executor is the burn source, so a misattributing measurement is
+   exactly what would confirm the wrong diagnosis.
+
+**AcreOS primitive reused.** `intelligence/budget.ts` already maps task types to
+budget categories and has an `executor` bucket, consulted inside `aiRouter`
+before every call. The scheduler was not using it. `EXECUTOR_TASK_TYPES` is now
+the list `categoryFor` itself branches on — not a copy, so the SQL filter and
+the category function cannot disagree about what "executor" means.
+
+**Not a fifth gate.** The stack documented in `aiCostCeiling.ts` (per-category
+soft budget, per-org soft quota, platform daily fail-closed ceiling) is
+untouched. This is the scheduler's own admission control, now measuring the
+subsystem it admits.
+
+**A claim I checked and REJECTED.** The reading flagged this site as "sums
+platform-wide with no org predicate", implying a tenancy defect. It is not one.
+This bounds AcreOS's OWN AI spend on its OWN autonomous work — not customer
+money — so platform-wide is the correct scope, and the test now PINS the absence
+of an org predicate so nobody adds one by analogy with the tenant-scoping work
+in entries 7 and 12.
+
+**Ratchet earned, locked in.** `run-scheduled-jobs-linecount` 5786 → 5721. The
+bound was module-private inside the monolith, which is precisely why nobody
+could assert on what it measured; adding a test seam in place would have pushed
+the count UP. Extraction is what the ratchet asks for.
+
+**Exit test.** `decisionExecutorSpendScope.test.ts`, mutation-tested 4/4 through
+the production entry point — summing every AI call again, failing closed on
+unreadable telemetry, dropping the deferral, and always deferring. Both the
+window constant and the sum are module-private: an earlier draft exported them
+for the test and the reachability gate named that shape.
 
 
 ## Not yet dispositioned
