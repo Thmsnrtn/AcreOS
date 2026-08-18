@@ -66,7 +66,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 14 | Provenance travels with the value, not with the lookup | **ADAPTED** | `eitherField()` in `landProfile.ts`, `landProfileProvenance.test.ts` (`8b4740a5`) |
 | 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (`96b0b3ad`) |
 | 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (`893da34a`) |
-| 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (this commit) |
+| 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (`bb6c4182`) |
+| 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (this commit) |
 
 ---
 
@@ -565,7 +566,16 @@ swept across the whole profile (no `authoritative` field may carry a
 customer-supplied value) rather than pinned to the two known sites, with a
 vacuity guard proving the fields are still present.
 
-**A claim I checked and did NOT act on.** The same read flagged
+**Claims I checked and did NOT act on.** `routes-properties.ts:428-443` was
+flagged for letting customer-typed values into evidence. It does — deliberately
+and correctly: `source: "customer_edit"` is explicit, the observation log stores
+it verbatim with no authority inference, both readers (`parcel-biography`,
+`parcelDeltaDetector`) carry `source` through rather than collapsing it, and the
+one consumer that could raise an alert is documented as READ-ONLY pending
+false-positive review. A customer correcting a wrong county record is the stated
+design intent, and the provenance says so.
+
+The same read flagged
 `enrichmentToClaims.ts:217/239/255` for discarding provenance by writing
 `observedAt: null`. False positive: the `wildfireHazard` and `broadband`
 sub-objects carry only `source`, with no date field anywhere in their types, so
@@ -752,6 +762,68 @@ the `/api` catch-all would make lead-ads ingestion live — a functional change 
 an outward integration, on a surface the constitution makes founder-only. That
 is a product decision, not a defect fix. Recorded here instead, with the fact
 that the webhook is currently non-functional.
+
+
+---
+
+### 18 — "A route no flag governs is not a route that is off" → ADAPTED
+
+**Foundry source.** §13 — absence of a claim is not a claim of absence. Same
+shape as the autopilot hands' optional `movesMoney` (entry 10): a missing value
+standing in for a decided one, here on the path that decides what a person sees.
+
+**AcreOS defect.** `/api/config/features` returns `enabledRoutes` — the union of
+routes controlled by flags whose state is `'on'`. The client read it as an
+app-wide ALLOW-LIST:
+
+```
+if (data.enabledRoutes.length === 0) return true;   // "flags unused"
+return data.enabledRoutes.includes(route);          // otherwise allow-list
+```
+
+So the moment ANY single flag was switched on, the list became non-empty and
+every route missing from it was denied — including every route no flag has ever
+governed. `layout-sidebar.tsx:939` drops such a module from the nav and
+`App.tsx:615` renders `<NotFound />`, so **turning on one feature flag would
+have hidden all five customer doors and 404'd them.**
+
+The empty-list heuristic is exactly true while nothing is enabled, which is the
+only state anyone had been in — so the defect was invisible and untested.
+
+**Smallest implementation.** The server sends `controlledKeys` /
+`controlledRoutes` — every key and route any flag governs, whatever its state —
+so the client can tell "no flag governs this" from "a flag governs it and it is
+off". No new table, no new flag state.
+
+**Deliberately unchanged.** Flags in `tier:X` / `beta` / `founder-only` are in
+neither the enabled nor the disabled list, because that endpoint has no user
+context to resolve them. They are therefore CONTROLLED and NOT ENABLED, so their
+routes stay hidden for everyone — the same conservative answer the nav gave
+before any flag was on, with audience resolution still server-side.
+
+**Complexity change.** Two derived arrays; the client rule got one line longer
+and one heuristic shorter. **Liability change.** Down, on total product
+availability.
+
+**Exit test.** `featureFlagControlScope.test.ts`, mutation-tested 7/7 —
+restoring the allow-list heuristic, over-correcting to show everything, the same
+defect on the key path, deriving `controlledRoutes` from enabled flags only,
+dropping the fields from the response, dropping them from the catch path only,
+and the legacy fallback falling shut instead of open. The five doors are derived
+from `MOBILE_DOORS` + `NAV_ITEM_MAP`, not typed into the test, and a vacuity
+guard proves that derivation still yields five.
+
+**One of those mutations initially survived, in my own gate.** The "server sends
+the field" check searched the whole handler body, so dropping the fields from
+`res.json()` while leaving their `const` declarations kept it green — the
+identifier was present, the behaviour was not. Rewritten to assert on every
+`res.json()` payload the handler can return. The first law, caught applying to
+the gate written to enforce it.
+
+**Noted, not fixed.** `routes-admin.ts:3031` declares a SECOND
+`/api/config/features` handler. `routes.ts:405` registers first and wins, so the
+admin one is dead code that would serve a response without the deny-lists or the
+new fields if the order ever changed.
 
 
 ## Not yet dispositioned

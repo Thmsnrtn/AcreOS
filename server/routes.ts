@@ -429,7 +429,21 @@ export async function registerRoutes(
           ...FROZEN_ROUTES,
         ]),
       ];
-      res.json({ enabledKeys, enabledRoutes, disabledKeys, disabledRoutes });
+      // EVERY key/route any flag governs, whatever its state. Without these the
+      // client had to read "not in the enabled list" as "denied", which is
+      // wrong for a route no flag governs at all — and that mattered the moment
+      // ANY flag was switched on, because a non-empty enabled list then hid
+      // every route missing from it, including all five customer doors.
+      const controlledKeys = flags.map((f) => f.key);
+      const controlledRoutes = [...new Set(flags.flatMap((f) => f.controlledRoutes))];
+      res.json({
+        enabledKeys,
+        enabledRoutes,
+        disabledKeys,
+        disabledRoutes,
+        controlledKeys,
+        controlledRoutes,
+      });
     } catch {
       // On error, return all routes enabled so the sidebar shows every REAL
       // feature — but frozen doors stay denied even on this path.
@@ -439,6 +453,10 @@ export async function registerRoutes(
         enabledRoutes: [],
         disabledKeys: [],
         disabledRoutes: [...FROZEN_ROUTES],
+        // Nothing is known to be governed, so nothing is hidden by rule 4.
+        // Frozen doors still are, by the deny-list above.
+        controlledKeys: [],
+        controlledRoutes: [],
       });
     }
   });
