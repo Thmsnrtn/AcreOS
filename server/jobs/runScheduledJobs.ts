@@ -5144,7 +5144,7 @@ export async function runScheduledJobs(): Promise<void> {
       const now = new Date();
       if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
         withJobLock("outcome_verification", 55 * 60, async () => {
-          return outcomeVerificationLoop.verify(1);
+          return outcomeVerificationLoop.verifyAllOrganizations();
         }).catch((err: any) => {
           log(`Outcome verification failed: ${err}`, "outcome-verify");
         });

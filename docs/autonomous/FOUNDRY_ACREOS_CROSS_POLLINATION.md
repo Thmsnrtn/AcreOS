@@ -56,6 +56,12 @@ A candidate is only imported if it passes all of these. Any failure means
 | 4 | Company authority is not authority over any person's phone | **ADAPTED** | `sendPushToPerson` recipient check, `pushDispatchSemantics.test.ts` (`a37affc8`) |
 | 5 | A receipt must not claim more than the effect achieved | **ADAPTED** | `PushResult` status vocabulary, nudger retry (`a37affc8`) |
 | 6 | A gate must be falsified against the semantic defect, not the symbol | **ALREADY LEARNED HERE — recorded** | `CLAUDE.md` "The two laws that cost the most to learn" (`f8332db1`) |
+| 7 | Operating state is one predicate, not a hand-copied fragment | **ADAPTED** | `server/services/orgOperating.ts`, `orgOperating.test.ts` (`7cf0cef8`) |
+| 8 | A ceiling belongs to the action class, not to whoever issues the grant | **ADAPTED** | `isNeverPromote()` in `agentAuthorityGate.ts`, `agentAuthorityCeiling.test.ts` (`740deb35`) |
+| 9 | A carrier's acceptance is not a delivery, on a regulated record | **ADAPTED — second application of #5** | `"sent"` in `PERIODIC_STATEMENT_DELIVERY_STATUSES` (`21ecc76d`) |
+| 10 | An omitted risk flag is not a declaration of safety | **ADAPTED** | required `movesMoney` / `outwardClass` on `HandSpec`, `handRiskDeclaration.test.ts` (`835e0e9c`) |
+| 11 | A guess is not a known value, on the path the law governs | **ADAPTED** | `resolveZoneForPhone()` in `tcpaCompliance.ts`, `tcpaZoneGuess.test.ts` (`a6df3b60`) |
+| 12 | A verifier may only report an outcome it observed | **ADAPTED** | `recordSelfReport()` in `outcomeVerificationLoop.ts`, `outcomeVerificationObservation.test.ts` (this commit) |
 
 ---
 
@@ -247,6 +253,200 @@ shape, the public-claim scan, and the rendered landing proof.
 
 ---
 
+---
+
+### 7 — "Operating state is one predicate" → ADAPTED
+
+**Foundry source.** `afbac4a` (2026-08-18): `companyMayIncurCost` read `status`
+and `scp_status` directly — "complete when written, stale the moment migration
+145 gave commercial entitlement its own field" — and the decision now comes from
+one `operatingProduct()` predicate.
+
+**AcreOS defect.** Three orthogonal columns decide whether AcreOS may act for an
+org, and nothing read all three. The two newer axes were enforced only in the
+HTTP path, chained from the session chokepoint a cron never traverses. Fifteen
+background queries used a fragment predating both. So `subscriptionPauseGate`
+promised "no new actions allowed (no new mail, no new comps, no Pax messages)"
+while `paxNudges`, `autonomousDealMachine`, `growthAutomation` and
+`lifecycleDispatch` kept sending — to exactly the customers told the product had
+gone read-only.
+
+**AcreOS primitive reused.** AcreOS's own three columns. No Foundry noun, and NO
+NEW COLUMN — a fourth "operating" column would be the parallel truth this
+removes.
+
+**Smallest implementation.** One `orgActRefusal()` returning the reason, one
+`orgMayActFilter()` Drizzle predicate. The HTTP gate now calls the same
+function; its twenty existing tests pass unchanged, which is the
+behavioural-equivalence check.
+
+**Complexity change.** One module, minus a monolith section (extraction earned
+`run-scheduled-jobs-linecount` 5823 → 5786). **Liability change.** Down.
+
+**Exit test.** `orgOperating.test.ts` — mutation-tested 4/4, including the
+symmetric half-resume bug the same reading found (an expired pause left a
+webhook-written `'paused'` status forever).
+
+**NOT generalised.** "May we ACT for this org" is deliberately NOT "is this org
+a live customer". Eight counting sites — analytics, revenue, the fair-lending
+audit — keep their own filter, and the test pins that split by name, so
+converting one fails it too.
+
+---
+
+### 8 — "A ceiling belongs to the action class" → ADAPTED
+
+**Foundry source.** §14/§15 — authority, expiry and re-grant; a grant may not
+widen its own reach.
+
+**AcreOS defect.** `checkAuthority`'s temporary-delegation block sat ABOVE the
+`NEVER_PROMOTE` list and returned `allowed: true` for ANY action, so an "I'm
+away, act for me" grant silently conveyed `modify_pricing_plans`,
+`legal_document_change`, `process_refund_over_500` and `change_payment_processor`
+— founder-only FOREVER in the DO-NOT-DO list. The list was a `const` declared
+inside the function BELOW that early return: a ceiling only one branch can see
+is not a ceiling.
+
+**Smallest implementation.** The list hoisted to module scope behind one
+`isNeverPromote()`, consulted by every path that raises authority. The guard
+NARROWS the delegation rather than disabling it — an ordinary action still gets
+the delegated level, or the fix would have removed a feature the founder uses.
+
+**Complexity change.** One predicate, one `else if`. **Liability change.** Down,
+sharply: this is the constitution's hard-stop list becoming enforceable rather
+than documented.
+
+**Exit test.** `agentAuthorityCeiling.test.ts` — a delegation must not convey a
+hard stop, and trust may promote at most one step per call.
+
+---
+
+### 9 — "A carrier's acceptance is not a delivery" → ADAPTED, second application of #5
+
+**Foundry source.** The same commit as #5: "a receipt for something that never
+left the building is worse than no receipt, because it is the record anybody
+would check."
+
+**AcreOS defect.** `periodicStatements.deliveryStatus` was written `"delivered"`
+on `result.success` — SES accepting a `SendRawEmailCommand`, custody and nothing
+more. A §1026.41 periodic statement is a REGULATED record asserting a borrower
+received their statement. `bounced` was in the vocabulary and nothing could ever
+write it. And `delivered` is TERMINAL, so a bounced statement was recorded
+delivered AND never re-attempted: the false record suppressed its own remedy.
+
+**AcreOS primitive reused.** The vocabulary's own documented extension path —
+`sent` added to `PERIODIC_STATEMENT_DELIVERY_STATUSES`, no migration needed
+because the column is plain text and the set is declared in one place.
+
+**Complexity change.** One value. **Liability change.** Down, on a regulated
+record.
+
+**NOT generalised.** One value in an existing enum, not a new status vocabulary
+built for symmetry — §6.
+
+---
+
+### 10 — "An omitted risk flag is not a declaration of safety" → ADAPTED
+
+**Foundry source.** §13 — maturity follows proof; absence of a claim is not a
+claim of absence.
+
+**AcreOS defect.** `HandSpec.movesMoney` and `outwardClass` were optional while
+their siblings `isCustomerFacing` and `requiresApproval` were required, and
+`witnessGrant.ts:112` reads exactly that field: `if (req.movesMoney &&
+grant.bounds.denyMoney) return DENY(...)`. Omission meant both "this hand does
+not move money" and "nobody declared", and the second was read as the first. Six
+of ten hand files never mentioned either flag.
+
+**Smallest implementation.** Both fields made required, so the compiler asks.
+All six filled in explicitly with the reason at each site.
+
+**Complexity change.** None — two `?` removed. **Liability change.** Down: the
+money-custody hard stop now sees a declared answer rather than a default.
+
+**Exit test.** `handRiskDeclaration.test.ts`.
+
+---
+
+### 11 — "A guess is not a known value, on the path the law governs" → ADAPTED
+
+**Foundry source.** §12 — reachability has dimensions; a value that arrives by
+inference is not the same value.
+
+**AcreOS defect.** `tcpaCompliance` inferred a recipient's timezone from area
+code and fell back to `America/New_York` for anything unmapped, then applied the
+8 AM–9 PM window to the GUESS as if it were known. Measured: at 12:30 UTC New
+York is 08:30 and Los Angeles is 05:30, so an unmapped area code cleared a send
+at 05:30 recipient-local — violating §64.1200(c)(1) and contradicting the file
+header's own promise that "when in doubt, it skews toward blocking". `907` and
+`808` were unmapped, so 8 AM Eastern was 2 AM in Honolulu.
+
+**Smallest implementation.** `resolveZoneForPhone()` returns `{ zone, inferred }`;
+a continental-extremes envelope check applies ONLY when `inferred`. Known zones
+are unaffected.
+
+**Complexity change.** One returned boolean. **Liability change.** Down, on a
+statutory path.
+
+**Exit test.** `tcpaZoneGuess.test.ts`, mutation-tested 3/3.
+
+---
+
+### 12 — "A verifier may only report an outcome it observed" → ADAPTED
+
+**Foundry source.** §16 — an effect receipt is not an outcome; and the
+"observer independence" theme listed below as untested
+(`119_development_observation_independence.sql`): a verification observation
+whose payload carries its own expectation is self-confirming. This closes that
+item.
+
+**AcreOS defect.** `outcomeVerificationLoop` decides whether an autonomous
+action HELPED, and `autonomyScoreV14` turns the answer into a 0.5–1.5 multiplier
+on the autonomy score — the trust metric. Its fall-through branch produced that
+verdict by re-reading `agentActionLog`, the ACTOR'S OWN record of its own
+execution: `logEntry.outcome === "success" ? "positive" : "negative"`. Three
+defects in one line.
+
+1. Eight of the ten sites that write that column write the literal `"success"`
+   at ISSUE time — `predictiveAutoscaler` writes it beside
+   `output: { scheduled: true }, durationMs: 0` — so a dispatch receipt scored
+   equal in weight to "the lead progressed to qualified after our follow-up".
+2. The column's domain is `success | failure | escalated | pending` and
+   `agentAuthorityGate` writes all four, so everything not exactly `"success"`
+   fell into the false branch: an action correctly ESCALATED to a human became a
+   NEGATIVE outcome that lowered the autonomy score. The loop put downward
+   pressure on the one behaviour the constitution most requires.
+3. `agent_action_log` has no `organization_id` at all; the driving query had no
+   organization predicate; entity lookups matched on primary key alone. Each
+   org's multiplier was computed from every other org's actions.
+
+**Corroboration.** `check-org-scoped-fetch` had ALREADY baselined
+`verifyFollowUp` and `verifyDealRiskFlag` under rule 2, "has an org, resolves by
+id anyway". The tenant half was a known, registered defect; both entries are
+deleted in this commit.
+
+**AcreOS primitive reused.** The existing `VerificationResult` shape. The
+never-produced `"pending"` member is replaced by `"unverified"`, a state that is
+actually produced.
+
+**Smallest implementation.** The fall-through branch returns `"unverified"` and
+records the self-report in the reason string, plainly labelled as testimony
+about EXECUTION. `unverified` is excluded from the quality denominator rather
+than averaged in — "we could not look" is not "it had no effect".
+
+**Complexity change.** One interface replacing four `any` parameter lists
+(`colon-any` 2950 → 2942). **Liability change.** Down. This LOWERS autonomy
+scores that self-report had inflated; that is the correction, not a regression.
+
+**Exit test.** `outcomeVerificationObservation.test.ts`, mutation-tested 7/7 —
+including restoring the ternary, fixing only the escalation half, averaging
+`unverified` back into the denominator, and dropping either tenant predicate.
+
+**NOT generalised.** No universal observation framework. The four typed
+verifiers already observed real world state and are unchanged apart from tenant
+scoping; only the branch that invented a verdict was replaced.
+
+
 ## Not yet dispositioned
 
 The 2026-08-17 read produced seven Foundry themes; the three above are closed.
@@ -256,9 +456,10 @@ that a report is a hypothesis.
 
 Themes noted but not yet tested against AcreOS HEAD:
 
-- **Observer independence** — a verification observation whose payload carries
-  its own expectation is self-confirming (`119_development_observation_independence.sql`).
-  Plausibly relevant to AcreOS's outcome-grading path, untested.
+- ~~**Observer independence**~~ — CLOSED as ledger entry 12. It was relevant to
+  the outcome-grading path, and worse than the Foundry shape: AcreOS's verifier
+  did not merely carry its own expectation, it re-read the actor's own execution
+  record and called that an outcome.
 - **Deny-dominant, bidirectional authority scoping** — a grant may not widen its
   own reach, checked in both directions (`120_development_authority.sql`).
 - **Refusing promotion into an unproven state at the write**

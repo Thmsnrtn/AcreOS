@@ -419,8 +419,6 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/services/dunning.ts::sendDunningSMS",
   "server/services/leadScoring.ts::scoreLead",
   "server/services/negotiationOrchestrator.ts::recordMove",
-  "server/services/outcomeVerificationLoop.ts::verifyDealRiskFlag",
-  "server/services/outcomeVerificationLoop.ts::verifyFollowUp",
   "server/services/paxObserver.ts::updateBatchedObservation",
   "server/services/portfolioSentinel.ts::checkCompetitorActivity",
   "server/services/portfolioSentinel.ts::checkMarketChanges",
