@@ -67,7 +67,8 @@ A candidate is only imported if it passes all of these. Any failure means
 | 15 | Authority belongs to the source, not to the transport | **ADAPTED** | `SOURCE_AUTHORITY_DEMOTIONS` in `enrichmentToClaims.ts`, `claimAuthoritySource.test.ts` (`96b0b3ad`) |
 | 16 | A cost bound must measure the thing it bounds | **ADAPTED** | `server/jobs/decisionExecutorTick.ts`, `decisionExecutorSpendScope.test.ts` (`893da34a`) |
 | 17 | A secret is never compared with `===` | **ADAPTED** | `server/utils/secretEquals.ts`, `secretComparison.test.ts` (`bb6c4182`) |
-| 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (this commit) |
+| 18 | A route no flag governs is not a route that is off | **ADAPTED** | `controlledRoutes` in `/api/config/features` + `resolveRouteEnabled`, `featureFlagControlScope.test.ts` (`daa749b6`) |
+| 19 | A route's auth must not depend on its line number | **PARTIALLY ADAPTED — trap frozen, not removed** | `apiCatchAllOrdering.test.ts` (this commit) |
 
 ---
 
@@ -824,6 +825,52 @@ the gate written to enforce it.
 `/api/config/features` handler. `routes.ts:405` registers first and wins, so the
 admin one is dead code that would serve a response without the deny-lists or the
 new fields if the order ever changed.
+
+
+---
+
+### 19 — "A route's auth must not depend on its line number" → PARTIALLY ADAPTED
+
+**Foundry source.** §12 — reachability has dimensions; a thing reachable by one
+path is not thereby reachable by another.
+
+**AcreOS defect.** `server/routes.ts` mounts two routers with
+`app.use('/api', isAuthenticated, getOrCreateOrg, <router>)`. Express runs
+`app.use(path, …)` middleware for EVERY request under that path, matching route
+or not — so both lines apply auth to every `/api/*` route registered after them.
+A route's real auth depends on where in a 5,000-line file it was registered,
+which is invisible at the route's own definition site.
+
+**It has already bitten three times.** `/api/docs`, the public e-sign endpoints
+and the transparency report were each registered after the catch-all, each 401'd
+anonymous callers, and each was fixed by moving the registration earlier. The
+file carries three comment blocks saying so. Comments are not a gate.
+
+**And it is currently shielding a bug.** It 401s
+`GET /api/webhooks/meta-lead-ads` before the handler runs, which hid the
+fail-open comparison fixed in entry 17 — and means the Meta lead-ads webhook
+cannot function at all, since Meta's servers carry no Clerk session.
+
+**Why this is PARTIAL.** The structural fix is to mount each router at the
+prefixes it actually owns. `epicServicesRouter` has six clean ones, but
+`fieldScoutRouter` spans `/properties`, `/leads`, `/voice` and `/field-scout`,
+and scoping the catch-all would strip accidental auth from every later route
+that never declared its own. Doing that safely means auditing all of them first
+— its own wave, not a tail-end addition to this one. Shipping the risky half of
+a fix because the safe half was easy is how a wave reports success for the part
+it built.
+
+**What landed.** `apiCatchAllOrdering.test.ts` freezes the trap: exactly two
+catch-alls (a third would extend the region silently), and the three
+anonymous-by-design registrations pinned ahead of them so the regression that
+has happened three times cannot happen a fourth. The file states plainly that it
+is a source-order check and not a request-level proof.
+
+**Exit test.** Mutation-tested 4/4 — moving `/api/docs` below the catch-all,
+moving the e-sign registration below it, adding a third catch-all, and deleting
+the transparency registration outright. A fifth mutation changed only quoting
+and correctly stays green: the scan is quote-agnostic, so that is a control on
+the gate rather than a miss.
 
 
 ## Not yet dispositioned

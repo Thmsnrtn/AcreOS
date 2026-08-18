@@ -337,3 +337,103 @@ Layer 6 (`plan`, `action-receipt`) is independent of the reality graph and can
 proceed whenever layer 2 is blocked — but note the correction above: on the
 CUSTOMER plane both are absent, not partial, so that work is a build and not a
 refactor of what Solene/autopilot already has.
+
+
+---
+
+## PHASE 2 — FOUNDRY → ACREOS CROSS-POLLINATION (2026-08-18)
+
+The full record is `docs/autonomous/FOUNDRY_ACREOS_CROSS_POLLINATION.md`, which
+is the canonical artifact for this phase — entries 1–19 with the ten-point
+admission test applied to each. This section is the campaign-level summary only.
+
+**Foundry is READ-ONLY in this phase.** Nothing was committed to it, no test,
+migration or doc there was touched. Invariants crossed; nouns did not.
+
+### What landed (each its own commit, each mutation-tested)
+
+| # | Commit | Invariant |
+|---|---|---|
+| 4, 5 | `a37affc8` | A person id is not a tenant scope; a push says what happened |
+| 6 | `f8332db1` | Public truth proven from the rendered DOM; the two laws written into CLAUDE.md |
+| — | `b920d94b` | `shortDescription` / `integrations` deleted through the ledger |
+| 7 | `7cf0cef8` | A pause must reach the work that runs on the customer's behalf |
+| 8 | `740deb35` | A ceiling belongs to the action class, not to whoever issues the grant |
+| 9 | `21ecc76d` | A carrier's acceptance is not a delivery, on a regulated record |
+| 10 | `835e0e9c` | An omitted risk flag is not a declaration of safety |
+| 11 | `a6df3b60` | A guess is not a known value, on the path the law governs |
+| 12 | `c937eb2e` | A verifier may only report an outcome it observed |
+| 13 | `1674e2f5` | A dispatch receipt is not evidence the action worked |
+| 14 | `8b4740a5` | Provenance travels with the value, not with the lookup |
+| 15 | `96b0b3ad` | Authority belongs to the source, not to the transport |
+| 16 | `893da34a` | A cost bound must measure the thing it bounds |
+| 17 | `bb6c4182` | A secret is never compared with `===` |
+| 18 | `daa749b6` | A route no flag governs is not a route that is off |
+
+### Ratchets earned and locked in, never raised
+
+`run-scheduled-jobs-linecount` 5823 → 5786 → 5721 (two extractions, each forced
+by a fix that could not be made or tested in place). `colon-any` 2950 → 2942
+(a typing improvement, not a deletion). `unreached-exports` 1400 → 1399
+(`outcomeBasis` gained its first production caller). `check-org-scoped-fetch`
+lost two `BASELINE_UNUSED_ORG` entries in the commit that fixed them.
+
+### The three patterns that produced most of the findings
+
+1. **The right rule already existed somewhere else and was not the one being
+   used.** `outcomeBasis` (documented the consequence-vs-proxy distinction, zero
+   production callers, while `outcomeOf` broke it); `intelligence/budget.ts`'s
+   `executor` category (the scheduler summed everything instead);
+   `landProfile.ts` scoring FCC broadband below county GIS as self-reported
+   while the evidence layer recorded it as `authoritative`; `timingSafeEqual` at
+   eight sites while five compared secrets with `===`.
+
+2. **A missing value standing in for a decided one.** `movesMoney` optional;
+   `reviewDueAt` optional; a route absent from `enabledRoutes` read as denied
+   rather than ungoverned; `undefined === undefined` authenticating a webhook.
+
+3. **A measurement attributed to an actor that was not a measurement OF that
+   actor.** The verifier re-reading the actor's own audit row; a dispatch
+   receipt voting on efficacy; the executor's cost ceiling summing the whole
+   platform's AI spend.
+
+### Claims checked and REJECTED
+
+Recorded because a ledger listing only what survived is a biased account of the
+reading. `enrichmentToClaims`'s `observedAt: null` (the sub-objects carry no
+date field, so nothing is discarded); `routes-properties.ts`'s customer-typed
+observations (deliberate, labelled `customer_edit`, carried through every
+reader); the executor cost bound's lack of an org predicate (correct — it bounds
+AcreOS's own spend, and the test now PINS the absence so nobody adds one by
+analogy).
+
+### A gate of mine that a mutation survived
+
+The `featureFlagControlScope` check for "the server sends `controlledRoutes`"
+searched the whole handler body, so dropping the fields from `res.json()` while
+leaving their `const` declarations kept it green. The identifier was present;
+the behaviour was not. Rewritten to assert on every `res.json()` payload. This
+is the first law in CLAUDE.md applying to the gate written to enforce it, and it
+is the reason mutation testing is done on every gate in this phase rather than
+on the ones that feel risky.
+
+### Known, recorded, deliberately NOT done
+
+- **The `/api` catch-all's structural fix.** `app.use('/api', isAuthenticated,
+  …)` applies auth to every later `/api` route by line number. It has caused
+  three regressions, it currently shields a fail-open webhook comparison, and it
+  makes the Meta lead-ads webhook non-functional. `apiCatchAllOrdering.test.ts`
+  freezes the trap (two catch-alls, three anonymous registrations pinned ahead
+  of them) but does not remove it: `fieldScoutRouter` spans `/properties`,
+  `/leads` and `/voice`, so scoping the mount would strip accidental auth from
+  every later route that never declared its own. Removing it safely requires
+  auditing all of them first, and that is its own wave.
+- **Meta lead-ads route ordering.** Moving it above the catch-all would make
+  ingestion live — a product decision on a founder-only surface, not a defect fix.
+- **USFS Wildfire Hazard Potential's authority.** It is a modeled raster and
+  `EvidenceAuthority` has a `modeled` tier it is not using, but unlike FCC
+  broadband nothing in the repository contradicts its current `authoritative`
+  label. A domain judgement, not a defect this reading can evidence.
+- **`routes-admin.ts:3031`'s duplicate `/api/config/features`.** Shadowed by the
+  earlier registration in `routes.ts`, so dead — but it would serve a response
+  with no deny-lists and none of the new fields if the order ever changed.
