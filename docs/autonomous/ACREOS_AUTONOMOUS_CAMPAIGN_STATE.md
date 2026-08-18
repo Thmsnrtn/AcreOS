@@ -173,6 +173,46 @@ What OD-4 and OD-5 turned out to be, since both were larger than the queue said:
   because `maturity` still says `core` deliberately, but nothing published to
   strangers may outrun the evidence, and it fails in both directions.
 
+### THE OD-4/5/6 WORK WAS AUDITED, AND THE AUDIT WAS RIGHT
+
+An independent adversarial pass over `833726a8` raised 31 findings; **24
+survived refutation**, and the worst were in the new work, not the old:
+
+* **The gate I wrote was keyed on a NAME.** It asserted indexAnalyzer no longer
+  declares `PLATFORM_ORG_ID`. The audit reintroduced the defect by writing the
+  literal `0` into all four queries and the test stayed green. It now asserts
+  the VALUE — `organizationId` in that file may not be a numeric literal.
+  **Third time this session I made this mistake** (trigger name, exemption
+  substring, this). If you write a gate, mutate the thing it guards, not the
+  thing it mentions.
+* **The OD-5 enforcement scanned no public surface.** It mapped over the
+  registry and called `publicMaturityOf` itself, proving the map coherent and
+  nothing about what any surface renders — while two comments I wrote promised
+  it would catch exactly that. It now scans landing/marketing/public routes for
+  a direct `.maturity` read. `publicMaturityOf()` also had **zero production
+  call sites**: the landing re-implemented its one-line body inline.
+* **Three more org-0 defects.** Two founder-push jobs called
+  `sendPushToUser(0, …)` (one as `0 as any`); subscriptions are stored under
+  the subscriber's real org, so the founder has never received one of those
+  notifications, and `{sent:0,failed:0}` read as success. Two services still
+  declared private `SYSTEM_ORG_ID = 1` that a five-file allowlist never scanned.
+* **A three-way customer-facing contradiction.** Onboarding called
+  `fix_and_flip` "(waitlist)" running on land data, three weeks after the
+  registry recorded that fixed and promoted it to `core`, while /pricing sold
+  its pack at $150/mo and the landing called it fully supported.
+* **The Beta badge failed WCAG AA** at 3.96:1 — in the only theme the landing
+  has. Invisible until OD-5, because the beta tier had been empty; the
+  demotions put a failing 10px label on the public landing twelve times.
+
+All fixed and mutation-tested. **Run an audit like this after any wave** — it
+cost ~3M subagent tokens and found defects that eight gates and 12,000 tests
+did not.
+
+**Left undone, deliberately:** `BusinessTypeMeta.shortDescription` and
+`.integrations` lost their last readers when `/api/trust/verticals` was retired.
+They are deletion candidates, but they are human-authored product copy rather
+than dead code, so the call belongs with the deletion ledger, not a tidy-up.
+
 ### WHAT TO DO NEXT
 
 1. **43 migration files still fail on a clean first pass** (17 on the second).
