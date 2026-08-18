@@ -302,17 +302,22 @@ async function getCountyPrediction(state: string, county: string) {
 }
 
 async function getCountyOpportunityScore(state: string, county: string) {
-  try {
-    const { computeCountyOpportunityScore } = await import("./countyOpportunityScore");
-    const result = computeCountyOpportunityScore({ state, county } as any);
-    return {
-      score: result?.overallScore ?? null,
-      delinquentVolume: null as number | null,
-      environmentalRisk: null as string | null,
-    };
-  } catch {
-    return null;
-  }
+  // This called `computeCountyOpportunityScore({ state, county } as any)` —
+  // every one of the model's twenty-one signals `undefined`. It emitted
+  // "Only undefined land sales in 12 months" into the red flags and then threw
+  // a TypeError on `input.monthsOfSupply.toFixed(1)`, which the catch below
+  // swallowed. So this has ALWAYS returned null, silently, since it was
+  // written; the `as any` is what let it compile.
+  //
+  // It now says so through the contract instead of through a swallowed crash.
+  // Wiring a real score here means passing measured signals — the model
+  // refuses without price velocity, price/acre, sales volume and DOM, and
+  // this generator has none of them on hand.
+  return {
+    score: null as number | null,
+    delinquentVolume: null as number | null,
+    environmentalRisk: null as string | null,
+  };
 }
 
 async function getCountyDemographics(state: string, county: string) {

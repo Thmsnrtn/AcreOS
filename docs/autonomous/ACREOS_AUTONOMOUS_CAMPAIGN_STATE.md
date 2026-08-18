@@ -533,3 +533,139 @@ reading an argument list while changing something else. None was found by
 looking for it. The gates that pay are the ones that get MORE sensitive as the
 code gets more correct — which is exactly what rule 2 does, and exactly what the
 argument-order gate is built to do.
+
+---
+
+## PHASE 4 — FABRICATED MEASUREMENTS (2026-08-18)
+
+### The gap this phase exists to close
+
+`lint:no-fabrication` scans for `Math.random`. The standing rule it enforces is
+broader — *"no invented numbers, no fake activity, no placeholder data presented
+as real"* — but the gate only proves **randomness is absent**. A hardcoded
+constant presented as a measurement passes it every time, and three of them were
+sitting on live customer surfaces. This is the same shape as the two laws in
+`CLAUDE.md`: the gate was falsified against the symbol (`Math.random`), never
+against the semantic defect (an invented number rendered as a measured one).
+
+### What landed
+
+**1. Climate risk — 40 of 50 states (`3be45090`)**
+
+`CLIMATE_DATA` covers ten states. `assessClimateRisk()` answered for the other
+forty with `overallRisk: "moderate"` and `{ level: "moderate", score: 50 }` — the
+same shape as the ten real ones, and indistinguishable from them. The live
+consumer is the customer's due-diligence PDF, where the lie took its second
+form: the climate section only printed on a drought/coastal HIT, so an
+uncovered state printed **nothing** — and in a document titled "due diligence",
+printing nothing reads as *checked, nothing flagged*.
+
+Fixed on both sides: `unknown`/`null` from the service, and an explicit
+"Climate Risk: Not assessed" block in the PDF carrying the sentence *"absence of
+a climate risk flag below does not indicate absence of climate risk"*. Four
+mutations, all caught — including M2, a **different** fabricated default
+(`"low"`/20), which proves the gate forbids the behaviour rather than the
+literal 50.
+
+**2. County opportunity score — a model fed its own defaults**
+
+`computeCountyOpportunityScore` takes 21 market signals. AcreOS measures four of
+them, sometimes. All three production callers closed the gap with literals:
+
+| caller | constants supplied |
+|---|---|
+| `routes-epic-services.ts` | 17 (`avgDaysOnMarket: 90`, `monthsOfSupply: 6`, `estimatedInvestorMailingCount: 10`, `distanceToNearestMetroMiles: 80`, four `has…: false`, …) |
+| `routes-data-intelligence.ts` | 12, the same values |
+| `marketReportGenerator.ts` | `{ state, county } as any` — all 21 `undefined` |
+
+So `GET /api/county-opportunity/:state/:county` returned, for **any county in
+the United States**, a full markdown *Market Intelligence Report*: "Average days
+on market: 90 days", "Sales volume (12 months): 20 transactions", a 0–100
+opportunity score, and a recommendation to **buy**. Built entirely out of
+constants.
+
+`parcelIntelligenceFusion.ts` (~line 207) already contained the correct ruling,
+written down and obeyed in exactly one place:
+
+> *we deliberately DO NOT call `computeCountyOpportunityScore` here … feeding it
+> hardcoded placeholder constants produced a fixed number dressed up as a
+> "proprietary model" output.*
+
+This is the recurring shape: **the right rule already existed somewhere else and
+was not the one being used.**
+
+Fixed by moving the refusal into the model, where no caller can route around it:
+every signal is `number | null` / `boolean | null`; four `REQUIRED_SIGNALS`
+without which it returns `null`; each dimension normalized over the signals it
+could actually see; weights renormalized across the dimensions that scored; and
+a `dataBasis` block ({measured, missing, dimensionsScored, weightCoverage}) that
+travels with every score. Booleans are nullable for the sharpest reason:
+`hasRecentInfrastructureAnnouncement: false` ASSERTS AcreOS checked and found
+none; `null` says it never looked.
+
+**3. A placeholder persisted into the database**
+
+`countyAssessorIngest.ts` wrote `avgDaysOnMarket: 90, // Placeholder until we
+track listing dates` into `county_markets` for every county it touched, and
+`routes-epic-services.ts` read it straight back out as a measured fact. A
+placeholder in a database is not a placeholder; it is data, and nothing
+downstream can tell it from a measurement. Now `null`. Same for
+`investorDemandScore: Math.min(100, Math.round(sales12.length * 2.5))` — a
+rescaled sales count labelled "investor demand".
+
+**4. A call that had never once succeeded**
+
+`marketReportGenerator.getCountyOpportunityScore` called the model with
+`{ state, county } as any`. It pushed *"Only undefined land sales in 12 months"*
+into the red flags and then threw `TypeError` on
+`input.monthsOfSupply.toFixed(1)`, which the surrounding `catch { return null }`
+swallowed. It has therefore always returned null, silently, since it was
+written — and the `as any` is what let it compile.
+
+### A gate of mine that a mutation survived (again)
+
+`"false and null score differently"` flipped **two** booleans at once. The
+mutation that removed the null-guard from only `hasRecentInfrastructureAnnouncement`
+stayed green, because the other field alone still made the two runs differ.
+Rewritten as `it.each` over one field per case; both mutations now fail.
+
+Second self-inflicted lesson, same commit: the source scanners initially matched
+**their own fix comments**, which quote the constants they removed — 24 "offenders",
+all prose. A gate that reads comments is matching text, not behaviour. They now
+strip comments first, with a vacuity guard that fails if the stripper eats the file.
+
+The caller scanner was also rewritten from a list of the old values to a
+predicate on the **kind** of expression: a signal may be `null` or an expression
+reading from data, never a bare numeric/boolean/string literal. So
+`avgDaysOnMarket: 75` and `hasLakeOrRiver: true` fail exactly as `90` and
+`false` did, and a signal added to the model is covered the day it is added
+(`SIGNAL_NAMES` is derived from the input object, not retyped).
+
+### Recorded, not fixed — with the reason
+
+- **`scoreCountyForTargeting` (`sellerMotivationEngine.ts:703`)** carries the
+  identical defect — `input.avgDaysOnMarket || 180`, `input.investorMailingCount
+  || 10`, `input.growthRate5Year || 0` — and emits a `recommendation` and an
+  `opportunityWindow` from them. It has **zero call sites**, so it is a latent
+  copy of the same bug rather than a live one. Deletion ledger material, not a
+  hotfix.
+- **`EnvironmentalIntelligenceCard`** — zero call sites, and three of its five
+  queries build `…/climate-risk/[object Object]` because they pass an options
+  object as the second `queryKey` element under `getQueryFn`'s
+  `queryKey.join("/")`. Two independent proofs it was never wired. In the
+  deletion ledger for a ruling; repaired in place so it is honest if anyone
+  wires it, which is not an argument for keeping it.
+- **`negotiationEnhancements.ts:49-50`** — `avgDiscountFromAsking: 25` and
+  `avgNegotiationRounds: 2.3` returned alongside genuinely computed
+  `avgOffersToClose` and `winRate`, which is the most dangerous packaging: real
+  and invented figures in one object, identically shaped.
+
+### The generalisable finding
+
+A `|| <constant>` on a metric is the fabrication idiom in this codebase, and it
+is invisible to every gate currently running. `avgDaysOnMarket || 90`,
+`investorMailingCount || 10`, `salesVolume12Months || 20`,
+`medianPricePerAcre || "1000"` — each reads as a harmless default and each
+produces a number a customer cannot distinguish from a measurement. The
+type-level fix that actually holds is the one applied here: make the field
+`| null`, so the absence has a representation and `||` has nothing to swallow.

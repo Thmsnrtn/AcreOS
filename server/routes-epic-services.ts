@@ -111,7 +111,7 @@ router.post("/seller-motivation/rescore-org", async (req: Request, res: Response
 
 router.get("/county-opportunity/:state/:county", async (req: Request, res: Response) => {
   try {
-    const { computeCountyOpportunityScore, detectLeadIndicatorAlerts, generateCountyIntelligenceReport } = await import("./services/countyOpportunityScore");
+    const { computeCountyOpportunityScore, detectLeadIndicatorAlerts, generateCountyIntelligenceReport, REQUIRED_SIGNALS } = await import("./services/countyOpportunityScore");
     const { db } = await import("./db");
     const { countyMarkets } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
@@ -131,31 +131,49 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
     const fips = getCountyFips(state, county);
     const permitTrend = fips ? await getPermitTrend(fips.stateFips, fips.countyFips) : null;
 
-    // Build input from available data + defaults
+    // Build input from what is ON FILE. Every absent signal is null.
+    //
+    // This block used to read `marketData?.avgDaysOnMarket || 90`,
+    // `monthsOfSupply: 6`, `estimatedInvestorMailingCount: 10`,
+    // `distanceToNearestMetroMiles: 80` and four `has…: false` — seventeen of
+    // the model's twenty-one signals were literals. For a county with no
+    // `county_markets` row that meant a complete "Market Intelligence Report"
+    // — "Average days on market: 90", "Sales volume (12 months): 20
+    // transactions", an opportunity score and a recommendation to BUY — built
+    // entirely out of constants. `parcelIntelligenceFusion.ts` already refused
+    // to feed this model placeholders for exactly that reason; this route did
+    // the opposite.
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = typeof v === "number" ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
     const input = {
       state: state.toUpperCase(),
       county,
-      priceVelocity3Mo: parseFloat((marketData as any)?.priceChange3Mo || "3"),
-      priceVelocity12Mo: parseFloat(marketData?.priceChangePercent || "5"),
-      avgPricePerAcre: parseFloat(marketData?.medianPricePerAcre || "1000"),
-      pricePerAcreVs2YrAvg: 0,
-      salesVolume90Days: Math.round((marketData?.recentSalesCount || 5) / 4),
-      salesVolume12Months: marketData?.recentSalesCount || 20,
-      avgDaysOnMarket: marketData?.avgDaysOnMarket || 90,
-      domTrend: -10, // Default: slightly improving
-      activeListings: 15,
-      monthsOfSupply: 6,
-      listingCountTrend: -5,
-      estimatedInvestorMailingCount: 10,
-      recentPriceIncreasePercent: 5,
-      populationGrowthRate: 3,
-      permitCountTrend: permitTrend?.trendPercent ?? 5,
-      distanceToNearestMetroMiles: 80,
-      hasRecentInfrastructureAnnouncement: false,
-      hasRecentEmployerAnnouncement: false,
-      hasLakeOrRiver: false,
-      hasNationalForest: false,
-      hasRecreationalAmenities: false,
+      priceVelocity3Mo: num((marketData as any)?.priceChange3Mo),
+      priceVelocity12Mo: num(marketData?.priceChangePercent),
+      avgPricePerAcre: num(marketData?.medianPricePerAcre),
+      pricePerAcreVs2YrAvg: null,
+      // NOT `recentSalesCount / 4`: a twelve-month count divided by four is
+      // not a ninety-day count, and nothing on file separates them.
+      salesVolume90Days: null,
+      salesVolume12Months: num(marketData?.recentSalesCount),
+      avgDaysOnMarket: num(marketData?.avgDaysOnMarket),
+      domTrend: null, // no prior-period DOM on file, so no trend
+      activeListings: null,
+      monthsOfSupply: null,
+      listingCountTrend: null,
+      estimatedInvestorMailingCount: null, // AcreOS has never measured this
+      recentPriceIncreasePercent: null,
+      populationGrowthRate: null,
+      permitCountTrend: permitTrend?.trendPercent ?? null, // real Census BPS or nothing
+      distanceToNearestMetroMiles: null,
+      hasRecentInfrastructureAnnouncement: null, // null = never checked, not "none"
+      hasRecentEmployerAnnouncement: null,
+      hasLakeOrRiver: null,
+      hasNationalForest: null,
+      hasRecreationalAmenities: null,
     };
 
     const score = computeCountyOpportunityScore(input);
@@ -163,12 +181,39 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
     // Background: check for lead indicator alerts
     const alertsPromise = detectLeadIndicatorAlerts(state.toUpperCase(), county);
 
+    // No score means the core market signals are not on file for this county.
+    // Say so; do not synthesise a report around the gap.
+    if (!score) {
+      const alerts = await alertsPromise;
+      return res.json({
+        county,
+        state: state.toUpperCase(),
+        score: null,
+        alerts,
+        report: null,
+        marketData: marketData || null,
+        unavailable: {
+          reason: "no_county_market_data",
+          message:
+            `AcreOS has no market data on file for ${county} County, ${state.toUpperCase()}, ` +
+            `so no opportunity score or market intelligence report can be produced for it. ` +
+            `This is an absence of data, not a finding about the county.`,
+          missingRequired: REQUIRED_SIGNALS.filter(
+            (k) => input[k] === null || input[k] === undefined,
+          ),
+        },
+      });
+    }
+
     const report = generateCountyIntelligenceReport(county, state.toUpperCase(), score, {
-      avgPricePerAcre12MoAgo: parseFloat(marketData?.medianPricePerAcre || "950") * 0.95,
-      avgPricePerAcreNow: parseFloat(marketData?.medianPricePerAcre || "1000"),
-      salesVolume12MoAgo: (marketData?.recentSalesCount || 20) - 3,
-      salesVolumeNow: marketData?.recentSalesCount || 20,
-      domNow: marketData?.avgDaysOnMarket || 90,
+      // Historical figures come from the row or not at all — the old defaults
+      // ("950" * 0.95, "1000", count - 3) manufactured a year-over-year trend
+      // for a county with no history on file.
+      avgPricePerAcre12MoAgo: null,
+      avgPricePerAcreNow: num(marketData?.medianPricePerAcre),
+      salesVolume12MoAgo: null,
+      salesVolumeNow: num(marketData?.recentSalesCount),
+      domNow: num(marketData?.avgDaysOnMarket),
     });
 
     const alerts = await alertsPromise;

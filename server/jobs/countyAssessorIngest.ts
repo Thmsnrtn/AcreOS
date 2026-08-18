@@ -481,9 +481,22 @@ async function updateCountyMarketStats(
         county,
         medianPricePerAcre: String(avgPricePerAcre.toFixed(2)),
         recentSalesCount: sales12.length,
-        avgDaysOnMarket: 90, // Placeholder until we track listing dates
+        // `avgDaysOnMarket: 90` used to be written here as a "placeholder
+        // until we track listing dates". It was persisted into
+        // `county_markets` for every county this job touched and read straight
+        // back out by `routes-epic-services.ts` as a measured market fact —
+        // "Moderate exit velocity: 90 average days on market" — and by
+        // `countyOpportunityScore`'s buyer-demand dimension. A placeholder in
+        // a database is not a placeholder; it is data, and nothing downstream
+        // could tell it apart from a measurement. The column is nullable:
+        // leave it null until listing dates are actually tracked.
+        avgDaysOnMarket: null,
         priceChangePercent: String(priceVelocity.toFixed(2)),
-        investorDemandScore: Math.min(100, Math.round(sales12.length * 2.5)), // Rough proxy
+        // Likewise `Math.min(100, Math.round(sales12.length * 2.5))` — a
+        // rescaled sales count labelled "investor demand". 20 sales became an
+        // investor-demand score of 50. It measures volume, which is already
+        // stored in `recentSalesCount`; as a demand index it is invented.
+        investorDemandScore: null,
         lastUpdated: now,
       })
       .onConflictDoUpdate({

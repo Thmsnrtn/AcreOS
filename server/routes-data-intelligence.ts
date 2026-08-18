@@ -91,31 +91,45 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
     const censusData = censusProfile.status === "fulfilled" ? censusProfile.value : null;
     const permitTrend = bpsPermitTrend.status === "fulfilled" ? bpsPermitTrend.value : null;
 
-    // County opportunity score
+    // County opportunity score, from measured signals only.
+    //
+    // This call previously supplied twelve literals — `salesVolume90Days: 5`,
+    // `salesVolume12Months: 20`, `avgDaysOnMarket: 90`, `domTrend: -10`,
+    // `activeListings: 15`, `monthsOfSupply: 6`, `listingCountTrend: -5`,
+    // `estimatedInvestorMailingCount: 10`, `distanceToNearestMetroMiles: 80`
+    // and four `has…: false` — plus `|| 1000` / `|| 3` fallbacks on the ones
+    // that could be real. The score it returned was mostly a constant.
+    //
+    // What this route actually has: USDA NASS land values, a cached USDA land
+    // trend, Census demographics, and Census BPS building permits. Sales
+    // volume and days-on-market are NOT among them, and both are required
+    // signals, so this endpoint now returns a null score for every county
+    // until a real transaction feed exists. That is the honest state, and it
+    // is visible rather than papered over with a plausible number.
     const countyScore = computeCountyOpportunityScore({
       state: state.toUpperCase(),
       county,
-      priceVelocity3Mo: trendData ? (trendData.oneYearChangePercent / 4) : 2,
-      priceVelocity12Mo: trendData?.oneYearChangePercent || 3,
-      avgPricePerAcre: nassData?.pasturePerAcre || 1000,
-      pricePerAcreVs2YrAvg: trendData?.oneYearChangePercent || 0,
-      salesVolume90Days: 5,
-      salesVolume12Months: 20,
-      avgDaysOnMarket: 90,
-      domTrend: -10,
-      activeListings: 15,
-      monthsOfSupply: 6,
-      listingCountTrend: -5,
-      estimatedInvestorMailingCount: 10,
-      recentPriceIncreasePercent: trendData?.oneYearChangePercent || 3,
-      populationGrowthRate: censusData?.demographics?.populationChangePercent || 1,
-      permitCountTrend: permitTrend?.trendPercent ?? (censusData?.permits ? 5 : 0),
-      distanceToNearestMetroMiles: 80,
-      hasRecentInfrastructureAnnouncement: false,
-      hasRecentEmployerAnnouncement: false,
-      hasLakeOrRiver: false,
-      hasNationalForest: false,
-      hasRecreationalAmenities: false,
+      priceVelocity3Mo: null, // a 12-month change divided by 4 is not a 3-month change
+      priceVelocity12Mo: trendData?.oneYearChangePercent ?? null,
+      avgPricePerAcre: nassData?.pasturePerAcre ?? null,
+      pricePerAcreVs2YrAvg: null, // the USDA trend is one-year, not two
+      salesVolume90Days: null,
+      salesVolume12Months: null,
+      avgDaysOnMarket: null,
+      domTrend: null,
+      activeListings: null,
+      monthsOfSupply: null,
+      listingCountTrend: null,
+      estimatedInvestorMailingCount: null,
+      recentPriceIncreasePercent: trendData?.oneYearChangePercent ?? null,
+      populationGrowthRate: censusData?.demographics?.populationChangePercent ?? null,
+      permitCountTrend: permitTrend?.trendPercent ?? null,
+      distanceToNearestMetroMiles: null,
+      hasRecentInfrastructureAnnouncement: null,
+      hasRecentEmployerAnnouncement: null,
+      hasLakeOrRiver: null,
+      hasNationalForest: null,
+      hasRecreationalAmenities: null,
     });
 
     res.json({
@@ -125,6 +139,11 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
       trend: trendData,
       census: censusData,
       countyOpportunityScore: countyScore,
+      // Explicit, so a null score is read as "not computable from what is on
+      // file" rather than as a failed request or a zero.
+      countyOpportunityScoreUnavailableReason: countyScore
+        ? null
+        : "No land transaction feed on file for this county — sales volume and days-on-market are required to score it, and neither is measured by the USDA/Census sources behind this endpoint.",
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
