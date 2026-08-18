@@ -71,6 +71,28 @@ import { organizations } from "../schema";
  */
 export const PERIODIC_STATEMENT_DELIVERY_STATUSES = [
   "pending",
+  /**
+   * Handed to the carrier and accepted by it. NOT observed at the borrower.
+   *
+   * Added 2026-08-18. `delivered` was being written on SES's acceptance of a
+   * SendRawEmailCommand — which is the carrier taking custody, nothing more —
+   * and nothing ever corrected it, because no bounce or delivery notification
+   * is wired. So a §1026.41 statement that BOUNCED was recorded `delivered`,
+   * and `delivered` is terminal, so it was never re-attempted either. That is
+   * a regulated compliance record asserting an event nobody observed, and it is
+   * the one record anybody would check.
+   *
+   * `sent` is terminal for the same reason `delivered` is: re-sending would
+   * double-mail the borrower. What changes is that the row now says what
+   * actually happened.
+   */
+  "sent",
+  /**
+   * OBSERVED at the recipient — a provider delivery notification, not an
+   * acceptance. Nothing writes this today, and that absence is honest: AcreOS
+   * does not yet consume SES delivery notifications. When it does, the observer
+   * flips `sent` to this, and `bounced` becomes reachable for the first time.
+   */
   "delivered",
   "bounced",
   "failed",
@@ -105,7 +127,7 @@ export const DELIVERY_STATUS_BLOCKED_NO_ORG_IDENTITY =
  * sanctioned way back out of a terminal state.
  */
 export const PERIODIC_STATEMENT_TERMINAL_DELIVERY_STATUSES: readonly PeriodicStatementDeliveryStatus[] =
-  ["delivered", DELIVERY_STATUS_BLOCKED_NO_ORG_IDENTITY];
+  ["sent", "delivered", DELIVERY_STATUS_BLOCKED_NO_ORG_IDENTITY];
 
 export const periodicStatements = pgTable(
   "periodic_statements",
@@ -207,6 +229,11 @@ export const periodicStatements = pgTable(
 
     // ── Generation + delivery state ─────────────────────────────────────
     generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+    // WHEN THE CARRIER ACCEPTED IT, not when the borrower received it — the
+    // column name predates the distinction. Renaming it is a migration and a
+    // schema-mirror change for no gain: `deliveryStatus` is the field the
+    // retry policy and the compliance read both consult, and that one now says
+    // `sent` rather than claiming an observation nobody made.
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     deliveryMethod: text("delivery_method"), // 'email' | 'portal_only' | 'mail' (future)
     // Plain `text`, NOT a pg enum and NOT CHECK-constrained (see the

@@ -437,7 +437,7 @@ export async function notifyStatementGenerated(
   ) {
     // Already delivered → the original idempotency guarantee: re-running
     // generation for a delivered statement does NOT re-send the email.
-    if (statement.deliveryStatus === "delivered") {
+    if (statement.deliveryStatus === "sent" || statement.deliveryStatus === "delivered") {
       return {
         attempted: false,
         delivered: true,
@@ -570,7 +570,14 @@ export async function notifyStatementGenerated(
     await db
       .update(periodicStatements)
       .set({
-        deliveryStatus: "delivered",
+        // "sent", NOT "delivered". `result.success` is SES accepting a
+        // SendRawEmailCommand — the carrier taking custody. Nothing in AcreOS
+        // consumes a bounce or delivery notification, so writing "delivered"
+        // here asserted an observation that never happened and could never be
+        // corrected. On a §1026.41 statement that is a regulated record
+        // claiming an event nobody saw; and because "delivered" is terminal, a
+        // bounced statement was also never re-attempted.
+        deliveryStatus: "sent",
         deliveredAt: now,
         deliveryMethod: "email",
         deliveryError: null,

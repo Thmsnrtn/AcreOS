@@ -239,20 +239,46 @@ describe("buildStatementEmail — pure body composition", () => {
 // ── notifyStatementGenerated (idempotency + persistence) ───────────────
 
 describe("notifyStatementGenerated — send + persist", () => {
-  it("sends an email and marks the row delivered on success", async () => {
+  it("marks the row SENT on success — the carrier accepted it, nobody observed delivery", async () => {
+    // WAS `expect(stored.deliveryStatus).toBe("delivered")`, which pinned the
+    // defect as the contract. `result.success` is SES accepting a
+    // SendRawEmailCommand — custody, not receipt — and nothing in AcreOS
+    // consumes a bounce or delivery notification, so "delivered" asserted an
+    // observation that never happened and could never be corrected. On a
+    // §1026.41 statement that is a regulated record claiming an unseen event,
+    // and since "delivered" is terminal, a bounced statement was never
+    // re-attempted either.
     seed();
     const result = await notifyStatementGenerated("stmt-1");
     expect(result.attempted).toBe(true);
     expect(result.delivered).toBe(true);
     expect(sendEmailSpy).toHaveBeenCalledTimes(1);
     const stored = STATEMENTS.get("stmt-1")!;
-    expect(stored.deliveryStatus).toBe("delivered");
+    expect(stored.deliveryStatus).toBe("sent");
     expect(stored.deliveredAt).toBeInstanceOf(Date);
     expect(stored.deliveryMethod).toBe("email");
   });
 
-  it("is idempotent — re-running for a delivered row is a no-op", async () => {
-    seed({ deliveryStatus: "delivered" });
+  it("nothing writes `delivered` — it is reserved for an observation we do not make", async () => {
+    // The honest absence. `delivered` stays in the vocabulary because a future
+    // SES delivery notification should write it; until that observer exists,
+    // no code path may claim it. If this starts failing, either the observer
+    // landed (good — update this) or somebody reinstated the false claim.
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs
+      .readFileSync(path.resolve(__dirname, "delivery.ts"), "utf8")
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
+      .join("\n");
+    expect(
+      /deliveryStatus:\s*"delivered"/.test(src),
+      "delivery.ts writes `delivered` again — that claims a delivery nobody observed",
+    ).toBe(false);
+  });
+
+  it("is idempotent — re-running for an already-sent row is a no-op", async () => {
+    seed({ deliveryStatus: "sent" });
     const result = await notifyStatementGenerated("stmt-1");
     expect(result.attempted).toBe(false);
     expect(result.delivered).toBe(true);
