@@ -177,3 +177,32 @@ describe("the server sends what the client now needs", () => {
     expect(body).toMatch(/controlledKeys = flags\.map/);
   });
 });
+
+describe("one response contract, one owner", () => {
+  it("EXACTLY ONE handler declares /api/config/features", () => {
+    // `routes-admin.ts:3031` declared a second one until 2026-08-18. It was
+    // shadowed by routes.ts:405 (which registers first and wins) and so was
+    // dead — but it returned only enabledKeys/enabledRoutes, with no deny-lists
+    // and none of the controlled* fields. Had registration order ever shifted,
+    // every uncontrolled route would have vanished from the nav.
+    //
+    // Deleted by founder ruling 2026-08-18. This pins the count rather than the
+    // file, so a third declaration anywhere fails the same way.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const dir = path.resolve(__dirname, "../../server");
+    const decls: string[] = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".ts") || f.endsWith(".test.ts")) continue;
+      const src = fs.readFileSync(path.join(dir, f), "utf8");
+      src.split("\n").forEach((line, i) => {
+        const code = line.split("//")[0];
+        if (/\.(get|post|use)\(\s*["'`]\/api\/config\/features["'`]/.test(code)) {
+          decls.push(`${f}:${i + 1}`);
+        }
+      });
+    }
+    expect(decls.length, `handlers found: ${decls.join(", ")}`).toBe(1);
+    expect(decls[0]).toMatch(/^routes\.ts:/);
+  });
+});

@@ -156,17 +156,6 @@ export async function registerEnhancementRoutes(app: Express) {
 
   // ── Campaign (Domain G) ──
 
-  // Item 106: Campaign ROI
-  app.get("/api/enhancements/campaign-roi/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const { calculateCampaignROI } = await import("./services/campaignEnhancements");
-      const roi = await calculateCampaignROI(parseInt(req.params.id));
-      res.json(roi);
-    } catch (err) {
-      Errors.internal(res, err);
-    }
-  });
-
   // ── Reporting (Domain I) ──
 
   // Item 155: Pipeline velocity

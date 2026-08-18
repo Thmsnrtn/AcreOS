@@ -8,30 +8,6 @@ import { campaigns, leads, deals } from "@shared/schema";
 import { eq, and, sql, count, gte, desc } from "drizzle-orm";
 
 // Item 106: Campaign ROI calculator
-export async function calculateCampaignROI(campaignId: number): Promise<{
-  cost: number;
-  revenue: number;
-  roi: number;
-  leadsGenerated: number;
-  dealsCreated: number;
-}> {
-  const campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.id, campaignId) });
-  if (!campaign) return { cost: 0, revenue: 0, roi: 0, leadsGenerated: 0, dealsCreated: 0 };
-
-  const cost = Number((campaign as any).totalCost || 0) || (Number((campaign as any).totalSent || 0) * 0.65); // avg mail cost
-  const [leadCount] = await db.select({ count: count() }).from(leads)
-    .where(sql`${leads.source} LIKE ${'%campaign_' + campaignId + '%'}`);
-  const revenue = (leadCount?.count || 0) * 500; // rough avg revenue per converted lead
-
-  return {
-    cost: Math.round(cost),
-    revenue: Math.round(revenue),
-    roi: cost > 0 ? Math.round(((revenue - cost) / cost) * 100) : 0,
-    leadsGenerated: leadCount?.count || 0,
-    dealsCreated: Math.floor((leadCount?.count || 0) * 0.1),
-  };
-}
-
 // Item 108: Campaign cloning
 export async function cloneCampaign(campaignId: number, newName: string): Promise<any> {
   const original = await db.query.campaigns.findFirst({ where: eq(campaigns.id, campaignId) });

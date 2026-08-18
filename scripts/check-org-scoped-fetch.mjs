@@ -514,7 +514,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   "server/services/autonomousDecisionExecutor.ts::executeSupportEscalationApproval",
   "server/services/autonomyFinalMile.ts::generateDailyAutonomousSummary",
   "server/services/autopilot/rootCause.ts::runIncidentTriage",
-  "server/services/campaignEnhancements.ts::calculateCampaignROI",
   "server/services/communityEnhancements.ts::getPublicRoadmap",
   "server/services/data-cache/lookup-cache.ts::getCacheHitRate",
   "server/services/dealFeedEnhancements.ts::compareCounties",

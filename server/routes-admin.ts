@@ -3023,17 +3023,14 @@ export function registerAdminRoutes(app: Express): void {
   // FEATURE FLAGS (Founder-controlled feature visibility)
   // ============================================
 
-  // Public endpoint – clients call this to know which features are enabled
-  api.get("/api/config/features", async (_req, res) => {
-    try {
-      const flags = await storage.getEnabledFeatureFlags();
-      const enabledKeys = flags.map(f => f.key);
-      const enabledRoutes = flags.flatMap(f => f.controlledRoutes as string[]);
-      res.json({ enabledKeys, enabledRoutes });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // NOTE: `/api/config/features` is NOT declared here. A second handler for it
+  // lived at this spot until 2026-08-18, shadowed by the one in routes.ts:405
+  // which registers first and wins. It was dead, and it was dead in a dangerous
+  // shape: it returned only `enabledKeys`/`enabledRoutes` — no deny-lists, and
+  // none of the `controlledKeys`/`controlledRoutes` the client needs to tell
+  // "no flag governs this route" from "a flag governs it and it is off". Had
+  // registration order ever shifted, every uncontrolled route would have
+  // vanished from the nav. One response contract, one owner.
 
   api.get("/api/founder/feature-flags", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {

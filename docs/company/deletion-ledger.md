@@ -111,6 +111,49 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-08-18 — **`GET /api/enhancements/campaign-roi/:id` + `calculateCampaignROI`
+  deleted** (founder picker ruling, this date). Found during the URL-id tenancy
+  sweep, and it failed on three counts at once:
+  - **No consumer.** No client caller anywhere in `client/`; the only reference
+    was its own route.
+  - **Cross-tenant.** It read `campaigns` by primary key with no organization
+    predicate, and counted `leads` with `source LIKE '%campaign_<id>%'` and no
+    organization predicate — so the lead count spanned every tenant even for
+    your own campaign.
+  - **Fabricated.** `revenue = leadCount × 500` ("rough avg revenue per
+    converted lead") and `dealsCreated = floor(leadCount × 0.1)`. Invented
+    numbers returned as `revenue`, `roi` and `dealsCreated` — the DO-NOT-DO
+    list's fabrication hard-stop, and the same shape as the
+    `routes-call-routing.ts` KILL above ("every handler returned a hardcoded
+    stub config presented as real").
+
+  **The canonical replacement already exists and is wired:**
+  `attributionService.getAttributionReport(orgId, from, to)` computes real
+  per-campaign `totalRevenue` from `leadConversions` and `deals`, scoped by
+  organization, exposed at `GET /api/analytics/attribution`. Deleting the
+  duplicate is what stops the two disagreeing.
+
+  **NOT deleted, recorded for a decision of its own:** the remaining five
+  exports in `server/services/campaignEnhancements.ts` — `cloneCampaign`
+  (unscoped read + insert), `categorizeResponse`, `getCampaignBenchmarks`
+  (returns hardcoded 31% / 4.2% / 1.8% as `avgOpenRate`/`avgResponseRate`/
+  `avgConversionRate` — a second fabrication), `isHoliday` (a hardcoded list
+  whose "Thanksgiving (approximate)" is wrong in most years), and
+  `getOptimalSendTime`. All five have ZERO consumers and were already unreached
+  before this deletion. They are adjacent dead code, not part of the ruling I
+  asked for, so they wait for their own adjudication rather than riding along.
+
+- 2026-08-18 — **The shadowed second `/api/config/features` handler in
+  `routes-admin.ts` deleted** (founder picker ruling, this date). `routes.ts:405`
+  registers first and wins, so the admin declaration was unreachable — but it
+  returned only `enabledKeys`/`enabledRoutes`, with no deny-lists and none of
+  the `controlledKeys`/`controlledRoutes` the client now needs to distinguish
+  "no flag governs this route" from "a flag governs it and it is off". Had
+  registration order ever shifted, every uncontrolled route would have vanished
+  from the nav and 404'd. `featureFlagControlScope.test.ts` now pins the COUNT
+  of declarations at one, and that it lives in `routes.ts`, so a third cannot
+  appear quietly.
+
 - 2026-08-01 — **Six dead `server/jobs/*` files deleted** (dead-job wave; code
   deletions only, no git operations in-session). An adversarial verification
   confirmed all six are module orphans: zero importers static or dynamic,
