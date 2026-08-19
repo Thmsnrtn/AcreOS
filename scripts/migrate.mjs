@@ -10883,8 +10883,60 @@ try {
       }
     }
   }
+  // ── RETRY PASS ───────────────────────────────────────────────────────────
+  //
+  // A statement can be skipped for two very different reasons:
+  //
+  //   (a) its prerequisite genuinely is not in this repository yet — the
+  //       operator has to apply something and re-deploy; or
+  //   (b) its prerequisite IS in this file, LATER. `ALTER TABLE
+  //       "cancellation_surveys" …` sits at line ~183 and the CREATE TABLE for
+  //       that table is at ~1949. Nothing is missing; the list is out of order.
+  //
+  // Measured 2026-08-18 against PostgreSQL 16: after one full pass of
+  // migrations/*.sql, 37 statements skipped and ALL 37 were case (b) — eight
+  // tables (agent_action_log, cancellation_surveys, evolution_history,
+  // lease_tenants, move_inspections, note_acquisitions, rental_leases,
+  // subdivision_plans) whose CREATE sits after its first dependent statement.
+  // A second invocation of this script resolved every one of them, which is
+  // the whole reason the DR runbook said to run it twice.
+  //
+  // Retrying the skipped statements once, at the end of the same run, collapses
+  // that into a single invocation. It is bounded (one extra attempt, only over
+  // what already skipped), it changes nothing about case (a) — those skip again
+  // and are reported exactly as before — and it needs no reordering of a
+  // 10,000-line hand-maintained list, which is the risky alternative: each
+  // CREATE TABLE carries its own foreign keys, so moving one earlier can break
+  // a dependency that currently holds.
   if (skipped.length > 0) {
-    console.warn(`[migrate] ${skipped.length} statement(s) skipped due to missing prerequisite. Apply the underlying migrations from migrations/*.sql, then re-deploy to add these.`);
+    const firstPass = skipped.splice(0, skipped.length);
+    console.log(
+      `[migrate] retrying ${firstPass.length} skipped statement(s) — a prerequisite ` +
+        `created later in this same run resolves most of them`,
+    );
+    for (const { stmt, message } of firstPass) {
+      try {
+        await pool.query(stmt);
+        console.log(`[migrate] OK (on retry): ${stmt}`);
+      } catch (err) {
+        const isExpected = EXPECTED_FAILURE_PATTERNS.some((rx) => rx.test(err.message));
+        if (isExpected) {
+          console.warn(`[migrate] SKIPPED (dependency missing — non-fatal): ${stmt}\n  ${err.message}`);
+          skipped.push({ stmt, message: err.message });
+        } else {
+          // A statement that skipped on the first pass and FAILED differently
+          // on the retry is a real error, not an ordering artefact. Surface it
+          // rather than letting the first pass's softer verdict stand.
+          console.error(`[migrate] FAILED on retry: ${stmt}\n  first pass: ${message}\n  retry: ${err.message}`);
+          failures.push({ stmt, message: err.message });
+          exitCode = 1;
+        }
+      }
+    }
+  }
+
+  if (skipped.length > 0) {
+    console.warn(`[migrate] ${skipped.length} statement(s) skipped due to missing prerequisite, even after the retry pass. Apply the underlying migrations from migrations/*.sql, then re-deploy to add these.`);
   }
   if (failures.length > 0) {
     console.error(`[migrate] ${failures.length} statement(s) failed unexpectedly. Aborting deploy.`);

@@ -1395,3 +1395,55 @@ somewhere harmless AND fails loudly with the reason.
 That is the difference between fixing a flake and hiding one: the second
 version cannot absorb the bug silently, because the bug now has its own
 assertion.
+
+## PHASE 13 — ONE COMMAND REBUILDS THE DATABASE (2026-08-18)
+
+Phase 12 ended by naming the last obstacle: *"37 of migrate.mjs's own
+statements depend on tables it creates later in the same file. That is an
+ordering problem inside migrate.mjs and the next close-out."* Closed.
+
+### All 37 were the same kind
+
+Measured: every one of the 37 was an `ALTER TABLE` or `CREATE INDEX` sitting
+EARLIER in the statement list than the `CREATE TABLE` it needs — eight tables
+in total (`agent_action_log`, `cancellation_surveys`, `evolution_history`,
+`lease_tenants`, `move_inspections`, `note_acquisitions`, `rental_leases`,
+`subdivision_plans`). `cancellation_surveys` is the clearest: dependants at
+line ~183, its CREATE at ~1949.
+
+Nothing was missing. The list was out of order, and the second invocation of
+the script existed to paper over it.
+
+### The fix is in the runner, not the list
+
+`migrate.mjs` now retries its skipped statements **once**, at the end of the
+same run. The alternative — reordering a 10,000-line hand-maintained list — is
+the riskier one: each `CREATE TABLE` carries its own foreign keys, so moving one
+earlier can break a dependency that currently holds. The retry needs no
+reordering at all.
+
+Three properties were built in deliberately, because each is a way the change
+could have been weakened while staying green:
+
+- **Bounded.** `splice` drains the list once and the retry iterates that
+  snapshot, so a statement that skips again cannot loop forever.
+- **Case (a) survives.** A genuinely absent prerequisite still skips and is
+  still reported — now with "even after the retry pass".
+- **A retry failure ESCALATES.** A statement the first pass classified as a
+  non-fatal skip, which then fails differently on retry, becomes a real failure
+  with a non-zero exit. The softer first-pass verdict must not stand.
+
+### Result
+
+**One SQL pass + one `migrate.mjs` run → 757 tables, 37 resolved on the retry,
+ZERO skipped, ZERO failures, exit 0.**
+
+Across phases 12 and 13 the documented rebuild went from *two passes of 243 SQL
+files plus two script runs* to **one of each** — and from "2 statements skipped,
+that's fine" to zero.
+
+`migrateRetryPass.test.ts` pins all three properties plus the runbook itself
+(it must document the measured procedure, and the old two-pass loop must be
+gone — an operator following a stale runbook is the failure this whole
+sequence started from). Mutations: removing the retry fails 3 assertions;
+swallowing a retry failure fails 1; making the retry unbounded fails 1.

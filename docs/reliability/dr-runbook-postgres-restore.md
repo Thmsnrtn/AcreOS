@@ -96,9 +96,8 @@ the dump itself is gone.
 createdb acreos_rebuild
 psql "$URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'   # pgvector, required
 
-# ONE pass of the SQL files. migrate.mjs runs TWICE.
+# ONE pass of the SQL files, ONE run of migrate.mjs.
 for f in migrations/*.sql; do psql "$URL" -f "$f"; done
-DATABASE_URL="$URL" node scripts/migrate.mjs
 DATABASE_URL="$URL" node scripts/migrate.mjs
 ```
 
@@ -132,10 +131,27 @@ it `notNull()`. `0004_field_scout_canonical_columns.sql` adds the missing
 columns with `ALTER … ADD COLUMN IF NOT EXISTS`, which converges from both
 starting points.
 
-**Measured after both fixes: one SQL pass + two migrate.mjs runs → 757 tables,
-ZERO statements skipped.** The second migrate.mjs run is still required: 37 of
-its own statements depend on tables it creates later in the same run, which is
-an ordering problem inside that file and a separate close-out.
+**Why migrate.mjs no longer needs a second run either.** 37 of its statements
+depend on tables it creates LATER in the same list — `ALTER TABLE
+"cancellation_surveys" …` sits around line 183, that table's CREATE at ~1949 —
+across eight tables (`agent_action_log`, `cancellation_surveys`,
+`evolution_history`, `lease_tenants`, `move_inspections`, `note_acquisitions`,
+`rental_leases`, `subdivision_plans`). Nothing was missing; the hand-maintained
+list was out of order, and the second invocation existed to paper over it.
+
+`migrate.mjs` now **retries its skipped statements once at the end of the same
+run**. Bounded (one extra attempt, only over what already skipped), and it
+changes nothing for a genuinely absent prerequisite — that skips again and is
+reported as before, now with "even after the retry pass". A statement that
+skipped first and then FAILS differently on retry is escalated to a real
+failure rather than keeping the softer verdict.
+
+Reordering the 10,000-line list was the alternative and is the riskier one:
+each `CREATE TABLE` carries its own foreign keys, so moving one earlier can
+break a dependency that currently holds.
+
+**Measured end state: one SQL pass + one migrate.mjs run → 757 tables, 37
+statements resolved on the retry, ZERO skipped, ZERO failures, exit 0.**
 
 Verify rather than trust the count — a table list is the only real answer:
 
