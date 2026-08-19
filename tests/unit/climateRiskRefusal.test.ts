@@ -36,7 +36,7 @@
  *    has no call site — see the deletion ledger).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { assessClimateRisk } from "../../server/services/environmentalIntelligence";
 
 const US_STATES = [
@@ -125,8 +125,19 @@ describe("assessClimateRisk — an unmeasured state must say so", () => {
 
 // ── The live surface: the due-diligence PDF ────────────────────────────────
 
-/** Every string the generator writes into the PDF, in order. */
-let printed: string[] = [];
+/**
+ * The buffer the PDF mock is currently writing into.
+ *
+ * A single shared `printed` array made this file flaky in the FULL SUITE while
+ * passing 6/6 in isolation — a late write from one render landing in the next
+ * render's buffer. Rather than clearing harder and hoping, each render now gets
+ * its OWN array and the pointer is moved to a quarantine buffer as soon as the
+ * render returns. A late write therefore lands somewhere harmless AND is
+ * detectable, which is the difference between fixing the flake and hiding it.
+ */
+let currentBuffer: string[] = [];
+/** Anything written after a render was supposed to be finished. */
+let lateWrites: string[] = [];
 
 vi.mock("../../server/db", () => ({
   db: {
@@ -150,7 +161,7 @@ vi.mock("../../server/db", () => ({
 vi.mock("jspdf", () => {
   class FakeDoc {
     text(str: string | string[]) {
-      printed.push(Array.isArray(str) ? str.join(" ") : String(str));
+      currentBuffer.push(Array.isArray(str) ? str.join(" ") : String(str));
       return this;
     }
     addPage() { return this; }
@@ -167,7 +178,19 @@ vi.mock("jspdf", () => {
 
 describe("due-diligence PDF — silence is not a clean bill of health", () => {
   beforeEach(() => {
-    printed = [];
+    lateWrites = [];
+    currentBuffer = lateWrites;
+  });
+
+  afterEach(() => {
+    // If this ever fires, the generator is still writing after its promise
+    // resolved — the actual cause of the earlier flake, made visible instead
+    // of being absorbed by a bigger buffer.
+    expect(
+      lateWrites,
+      "the PDF generator wrote text AFTER generateFullReport resolved; those " +
+        "writes used to land in the next test's buffer",
+    ).toEqual([]);
   });
 
   /**
@@ -190,12 +213,16 @@ describe("due-diligence PDF — silence is not a clean bill of health", () => {
   async function renderFor(state: string): Promise<string> {
     vi.resetModules();
     process.env.__TEST_DD_STATE = state;
-    printed = [];
+    const buffer: string[] = [];
+    currentBuffer = buffer;
     const { generateFullReport } = await import(
       "../../server/services/dueDiligenceReportGenerator"
     );
     await generateFullReport(1, 1);
-    const text = printed.join("\n");
+    // Anything the generator writes from here on is late, and must not be
+    // able to reach the NEXT render's assertions.
+    currentBuffer = lateWrites;
+    const text = buffer.join("\n");
     // Guard the isolation itself: a render that produced nothing would make
     // every `not.toMatch` below pass vacuously.
     if (text.length < 200) {

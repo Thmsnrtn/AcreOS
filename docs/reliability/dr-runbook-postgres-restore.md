@@ -96,22 +96,46 @@ the dump itself is gone.
 createdb acreos_rebuild
 psql "$URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'   # pgvector, required
 
-# TWO passes. Both are required, and the order is fixed.
-for pass in 1 2; do
-  for f in migrations/*.sql; do psql "$URL" -f "$f"; done
-  DATABASE_URL="$URL" node scripts/migrate.mjs
-done
+# ONE pass of the SQL files. migrate.mjs runs TWICE.
+for f in migrations/*.sql; do psql "$URL" -f "$f"; done
+DATABASE_URL="$URL" node scripts/migrate.mjs
+DATABASE_URL="$URL" node scripts/migrate.mjs
 ```
 
-**Why twice.** The dependency graph is genuinely circular: `migrations/*.sql`
-contains tables that `migrate.mjs` ALTERs, and `migrate.mjs` contains tables
-(`rehabs`, `acquired_notes`, `rental_leases`) that later migrations reference.
-Neither ordering satisfies both. Every statement is idempotent, so a second pass
-picks up whatever the first could not resolve. Measured: pass 1 leaves 39
-migration files failing on missing prerequisites, pass 2 drops that to 17, and
-after it **all 746 tables in shared/schema.ts exist**, with `migrate.mjs`
-exiting 0 and zero unexpected failures. The remaining 17 are re-runs of
-already-applied work, not gaps.
+**Why migrate.mjs twice, and why the SQL files only once (2026-08-18).** This
+used to be two passes of BOTH halves, on the reasoning that the dependency
+graph was circular. Measured against PostgreSQL 16, the cycle was exactly
+**three tables wide**, not general:
+
+| | tables | statements skipped |
+|---|---|---|
+| SQL pass 1 + migrate.mjs | 755 | 44 |
+| SQL pass 2 + migrate.mjs | 757 | 2 |
+
+The only two tables the second SQL pass created were `earnest_money_events` and
+`rehab_photos`, and each had a single unmet edge —
+`0086_earnest_money_events.sql` needs `earnest_money_holds`,
+`0089_rehab_photos.sql` needs `rehabs` **and** `rehab_line_items` — all three
+parents created by `migrate.mjs`, which runs after. `0085_rebuild_prereq_tables.sql`
+creates those three parents ahead of their dependants (definitions copied
+verbatim from migrate.mjs; both sides use `IF NOT EXISTS`, so whichever runs
+first wins).
+
+The last two skipped statements were a real schema drift, not an ordering
+artefact: `field_scout_visits` and `field_scout_photos` were created by
+`0003_robust_namora.sql` in a shape that file itself flags as
+"⚠ STALE — DO NOT TRUST", with the canonical shape in `migrate.mjs`. But 0003
+runs first, so migrate.mjs's `CREATE TABLE IF NOT EXISTS` was a no-op and the
+canonical columns never arrived — a rebuilt database had no
+`field_scout_visits.organization_id` at all, while `shared/schema.ts` declares
+it `notNull()`. `0004_field_scout_canonical_columns.sql` adds the missing
+columns with `ALTER … ADD COLUMN IF NOT EXISTS`, which converges from both
+starting points.
+
+**Measured after both fixes: one SQL pass + two migrate.mjs runs → 757 tables,
+ZERO statements skipped.** The second migrate.mjs run is still required: 37 of
+its own statements depend on tables it creates later in the same run, which is
+an ordering problem inside that file and a separate close-out.
 
 Verify rather than trust the count — a table list is the only real answer:
 

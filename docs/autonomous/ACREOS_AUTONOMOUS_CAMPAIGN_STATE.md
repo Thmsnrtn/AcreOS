@@ -1291,3 +1291,107 @@ session of the correct rule sitting adjacent to the broken one.** That
 frequency is itself the finding: this codebase usually knows the right answer
 somewhere within a few lines of where it gets it wrong, which is why reading
 the neighbours has been the highest-yield technique in the whole campaign.
+
+## PHASE 12 — THE REBUILD NEEDS ONE PASS, NOT TWO (2026-08-18)
+
+Top of the "WHAT TO DO NEXT" list: *"43 migration files still fail on a clean
+first pass … Making one pass sufficient is the real close-out."*
+
+That section also says the highest-leverage tool here is a local PostgreSQL,
+and it is right — every number below came from standing one up and running the
+rebuild, not from reading the files.
+
+### The cycle was three tables wide, not general
+
+The runbook attributed the two-pass requirement to a circular dependency
+between `migrations/*.sql` and `scripts/migrate.mjs`. Measured:
+
+| | tables | statements skipped |
+|---|---|---|
+| SQL pass 1 + migrate.mjs | 755 | 44 |
+| SQL pass 2 + migrate.mjs | 757 | 2 |
+
+**The only two tables the second SQL pass created were `earnest_money_events`
+and `rehab_photos`**, and each had a single unmet edge —
+`0086` needs `earnest_money_holds`, `0089` needs `rehabs` **and**
+`rehab_line_items`, all three created by migrate.mjs, which runs after.
+
+`0085_rebuild_prereq_tables.sql` creates those three ahead of their dependants.
+Definitions copied verbatim; both sides use `IF NOT EXISTS`, so whichever runs
+first wins.
+
+The `rehab_line_items` edge only became visible after the `rehabs` edge was
+closed — the first ERROR in a file masks the ones behind it. Worth stating
+because it is the general hazard of debugging migrations by reading logs:
+adding `rehabs` alone moved the count 755 → 756 and left `rehab_photos` still
+absent.
+
+### A measurement mistake of my own, corrected
+
+The first run used `psql -v ON_ERROR_STOP=1` and reported 40 failing files.
+That number was an artefact: `0003_robust_namora.sql` errors at line 1571, so
+ON_ERROR_STOP aborted the remaining ~1,000 statements of a file that creates
+much of the schema, and everything downstream then failed on columns that
+would otherwise exist. The runbook's loop uses plain `psql -f`, which continues
+past errors. Re-measured in runbook mode: 68 files with at least one error, 155
+errors — a different and much less alarming picture. **Measure the way the
+thing actually runs, not the way that produces the cleanest signal.**
+
+### The last two skips were a real drift, not an ordering artefact
+
+After the prerequisite fix, two statements still skipped every run:
+
+```
+SKIPPED: CREATE INDEX fsv_org_idx ON field_scout_visits(organization_id)
+SKIPPED: CREATE INDEX fsp_org_hash_idx ON field_scout_photos(organization_id, image_hash)
+```
+
+`0003_robust_namora.sql` creates both tables and carries an explicit
+**"⚠ STALE — DO NOT TRUST THIS SHAPE"** block over them, naming the canonical
+shape in `migrate.mjs` and instructing that 0003 must not be edited (Drizzle
+journal hash). Both true — and together they left a gap nothing could close:
+0003 runs first, so migrate.mjs's canonical `CREATE TABLE IF NOT EXISTS` is a
+no-op and the columns never arrive. **A database rebuilt from this repository
+had no `field_scout_visits.organization_id` at all**, while
+`shared/schema.ts:18052` declares it `notNull()`.
+
+`0004_field_scout_canonical_columns.sql` adds the missing columns with
+`ALTER … ADD COLUMN IF NOT EXISTS`, which converges from both starting points.
+`organization_id` is added NULLABLE and the reason is written into the file: a
+NOT NULL column with no default fails against a table that already holds rows,
+and a migration cannot see the row counts. The residual drift is stated rather
+than papered over.
+
+### Result
+
+**One SQL pass + two migrate.mjs runs → 757 tables, ZERO statements skipped.**
+The expensive half of the loop — a second pass over 243 SQL files — is gone.
+
+The second migrate.mjs run is still needed: 37 of its own statements depend on
+tables it creates later in the same file. That is an ordering problem *inside*
+migrate.mjs and the next close-out, and it is now the only thing standing
+between here and a single-command rebuild.
+
+`migrationDefinitionParity.test.ts` pins the duplicated definitions column-for-
+column and asserts both new migrations sort before what they unblock — an
+ordering fix that sorts after its dependants fixes nothing. Mutations: dropping
+a column from the copy fails; renumbering 0085 → 0095 fails; making
+`organization_id` NOT NULL fails.
+
+### The climate flake, properly fixed on the second attempt
+
+The first fix (per-render `vi.resetModules()` + clearing the shared buffer)
+was not enough — the suite failed again on a different case. Diagnosis was
+blocked by the file passing **6/6 in isolation**, which located the problem as
+cross-FILE rather than intra-file and ruled out the theory the first fix was
+built on.
+
+Rather than clear harder and hope, the shared `printed` array was replaced with
+a per-render buffer plus a **quarantine buffer**: the moment
+`generateFullReport` resolves, the mock's write pointer moves to `lateWrites`,
+and an `afterEach` asserts `lateWrites` is empty. A late write now lands
+somewhere harmless AND fails loudly with the reason.
+
+That is the difference between fixing a flake and hiding one: the second
+version cannot absorb the bug silently, because the bug now has its own
+assertion.
