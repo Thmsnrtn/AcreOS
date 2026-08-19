@@ -526,7 +526,26 @@ export async function generateOfferLetter(
 
   y = addSection(doc, "Offer Terms", y);
   
-  const offerAmount = offerDetails?.offerAmount || Number(property.assessedValue || 0) * 0.3;
+  // THE GENERATOR DOES NOT INVENT THE PRICE.
+  //
+  // This read `offerDetails?.offerAmount || Number(property.assessedValue || 0) * 0.3`,
+  // so a caller that supplied no amount got one of two fabrications printed on
+  // a document meant to reach a seller: 30% of assessed value — an invented
+  // pricing rule with no provenance and no operator override — or, when the
+  // county had published no assessed value, `formatCurrency(0)`, putting
+  // "$0.00" in the Offer Price field of a signed-looking instrument.
+  //
+  // The offer price is the single most important number on the page and the
+  // document generator has no standing to decide it. Refusing is the only
+  // honest option: there is no version of this page that is correct without it.
+  const offerAmount = offerDetails?.offerAmount;
+  if (typeof offerAmount !== "number" || !Number.isFinite(offerAmount) || offerAmount <= 0) {
+    throw new Error(
+      "Refusing to generate an offer letter without an offer amount: the price " +
+        "is the document's whole point, and deriving one from assessed value " +
+        "would put a number on it that nobody chose.",
+    );
+  }
   y = addField(doc, "Offer Price", formatCurrency(offerAmount), y);
   
   if (offerDetails?.earnestMoney) {

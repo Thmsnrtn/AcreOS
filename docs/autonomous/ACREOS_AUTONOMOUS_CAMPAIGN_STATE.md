@@ -127,7 +127,21 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
 
    13 of 15 verticals still stop before a recorded decision (`readiness.ts`,
    frozen and down-only). The gap is the LOOP, not the surface.
-7. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
+7. **Two more `measurement ? x : 0` sites on money, found and not yet fixed.**
+   Both real, both verified 2026-08-19, neither on a document that leaves the
+   building — which is why they were left out of the offer-pricing unit rather
+   than bundled into it:
+   - `cashFlowForecaster.ts:361` — `property.assessedValue ? parseFloat(...) : 0`,
+     so a property with no assessed value contributes a $0 basis to a cash-flow
+     forecast rather than being named as unknown.
+   - `dueDiligenceReportGenerator.ts:381` — `valuation?.estimatedValue ||
+     (property?.marketValue ? Number(...) : 0)`, in the same due-diligence PDF
+     whose climate section was corrected earlier in this campaign.
+
+   Clean in the same sweep and worth not re-checking: `ai/tools.ts:1723` maps a
+   missing assessed value to `undefined`, which is the right shape.
+
+8. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs `campaigns`
    by primary key alone with the org right there on the object).

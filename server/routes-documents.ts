@@ -146,6 +146,21 @@ export function registerDocumentRoutes(app: Express): void {
         return Errors.badRequest(res, "leadId and propertyId are required");
       }
 
+      // The offer amount is required, and checked BEFORE the credit is spent.
+      // It was optional, and the generator filled the gap with 30% of assessed
+      // value — or with zero when there was no assessed value, printing
+      // "$0.00" as the Offer Price. The generator now refuses; this turns that
+      // refusal into a clear 400 instead of a 500, and does it before the
+      // caller pays five cents for a document they cannot use.
+      const offerAmountNum = Number(offerAmount);
+      if (offerAmount === undefined || !Number.isFinite(offerAmountNum) || offerAmountNum <= 0) {
+        return Errors.badRequest(
+          res,
+          "offerAmount is required and must be a positive number — an offer " +
+            "letter without a price would carry an invented one.",
+        );
+      }
+
       // Aniyah §2 — block offer-letter auto-doc on Indian-Country parcels.
       const parcelForOffer = await storage.getProperty(org.id, Number(propertyId));
       assertFeeSimpleOrThrow(parcelForOffer ?? null, "offer-letter");
@@ -165,7 +180,7 @@ export function registerDocumentRoutes(app: Express): void {
         Number(leadId),
         Number(propertyId),
         org.id,
-        { offerAmount, earnestMoney, closingDate, contingencies, additionalTerms }
+        { offerAmount: offerAmountNum, earnestMoney, closingDate, contingencies, additionalTerms }
       );
 
       // Record usage after successful PDF generation

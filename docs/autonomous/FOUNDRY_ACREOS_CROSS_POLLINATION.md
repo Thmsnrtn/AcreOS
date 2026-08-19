@@ -1551,9 +1551,80 @@ closing the canonical loop. That is the next unit, and it is deliberately NOT
 this one: recording a scenario before fixing its inputs would have frozen
 invented numbers into decision memory.
 
+### 31 — "A measurement's absence is not zero" → ON A DOCUMENT THIS TIME
+
+The same rule as entries 24 and 29, found on the highest-consequence surface it
+has appeared on yet: a document meant to be sent to a property owner.
+
+**The defect.** `POST /api/offer-letters/batch` priced every selected lead as
+
+```ts
+const assessedValue = property?.assessedValue ? Number(property.assessedValue) : 0;
+const offerAmount = Math.round(assessedValue * (offerPercent / 100));
+```
+
+A lead with no linked property, or a property whose assessed value the county
+has not published, therefore produced `offerAmount: "0"` and
+`assessedValue: "0"` — and a real `offer_letters` row was created for it, in
+`draft`, in the same batch as the genuine ones.
+
+Zero is a PRICE here. It lands in the same column as every real offer, is
+indistinguishable from one downstream, and sits on an instrument whose whole
+purpose is to reach an owner. The discriminator this repository already uses
+applies cleanly: `offerPercent` is a caller-supplied knob and rightly has a
+value; `assessedValue` is a MEASUREMENT read from a property record, and its
+absence is the reason the lead cannot be priced.
+
+**The adaptation.** The batch partitions rather than defaults. A lead is
+unpriceable when there is no property, no assessed value, a non-finite one, or
+a non-positive one; those are skipped with a per-lead reason and returned as
+`skipped` rather than silently dropped, because the operator chose them and is
+owed an account. A batch where nothing can be priced is a 400 rather than a
+batch of zero-dollar letters.
+
+The client's success toast said letters "have been generated for selected
+leads" whatever happened. It now reports the real count and names why the rest
+were skipped — a count in front of the operator that disagrees with the count
+they chose is its own small lie.
+
+**And the same idiom, on the PDF.** Sweeping the sibling offer paths for the
+same shape found `generateOfferLetter` in `services/documents.ts` deriving
+
+```ts
+offerDetails?.offerAmount || Number(property.assessedValue || 0) * 0.3
+```
+
+so a caller supplying no amount got one of two fabrications printed on a
+document meant to reach a seller: **30% of assessed value** — an invented
+pricing rule with no provenance and no operator override — or, with no assessed
+value on file, `formatCurrency(0)`, putting **"$0.00" in the Offer Price field**
+of a signed-looking instrument. `POST /api/documents/offer-letter` did not
+require the field either, and charged a five-cent credit before finding out.
+
+The generator now refuses — the price is the document's whole point and a
+document generator has no standing to choose it — and the route requires a
+positive amount BEFORE the credit pre-check, so a caller never pays for a
+document that will be refused a few lines later.
+
+**Exit test.** `offerLetterPricingHonesty.test.ts` exercises the batch selection
+rule over null / missing / zero / garbage assessed values, asserts the opposite
+direction (an all-priceable batch loses nothing), and pins that both the batch
+route and the document generator still run their rules — comments stripped with
+a floor, so the explanation of a fix cannot satisfy the scan for the fix. Three
+mutations fire: restoring the `: 0` default in the batch, restoring the
+assessed-value derivation in the generator, and moving the route's guard after
+the credit charge — the last because ORDER is part of the fix, not decoration.
+
+**Checked and clean in the same sweep:** `ai/tools.ts:1723` maps a missing
+assessed value to `undefined` rather than 0, which is the correct shape.
+Two further instances are recorded on the frontier rather than fixed here
+(`cashFlowForecaster.ts:361`, `dueDiligenceReportGenerator.ts:381`) — both real,
+neither on a document that leaves the building, and bundling them would have
+made this unit about four files instead of one defect class.
+
 ## Status
 
-**All 30 admitted candidates are now dispositioned** — implemented, adapted,
+**All 31 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

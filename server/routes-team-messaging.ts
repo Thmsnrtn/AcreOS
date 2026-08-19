@@ -583,16 +583,60 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + expirationDays);
       
-      // Create offer letters for each lead
-      const lettersToCreate = selectedLeads.map(lead => {
+      // A LEAD WE CANNOT PRICE DOES NOT GET A PRICED LETTER.
+      //
+      // This read `property?.assessedValue ? Number(...) : 0`, so a lead with no
+      // linked property — or a property whose assessed value the county has not
+      // published — produced `offerAmount: "0"` and `assessedValue: "0"` and a
+      // real offer letter row was created for it. Zero is a PRICE here, stored
+      // in the same column as every genuine offer and indistinguishable from
+      // one, on a document whose whole purpose is to be sent to an owner.
+      //
+      // `offerPercent` is a caller-supplied knob and rightly has a value.
+      // `assessedValue` is a MEASUREMENT read from a property record, and its
+      // absence is not zero — it is the reason this lead cannot be priced yet.
+      const priceable: typeof selectedLeads = [];
+      const unpriceable: Array<{ leadId: number; reason: string }> = [];
+
+      for (const lead of selectedLeads) {
         const property = propertyMap.get(lead.id);
-        const assessedValue = property?.assessedValue ? Number(property.assessedValue) : 0;
+        if (!property) {
+          unpriceable.push({ leadId: lead.id, reason: "no property is linked to this lead" });
+          continue;
+        }
+        const raw = property.assessedValue === null || property.assessedValue === undefined
+          ? null
+          : Number(property.assessedValue);
+        if (raw === null || !Number.isFinite(raw) || raw <= 0) {
+          unpriceable.push({
+            leadId: lead.id,
+            reason: "no assessed value on file for the linked property",
+          });
+          continue;
+        }
+        priceable.push(lead);
+      }
+
+      if (priceable.length === 0) {
+        return Errors.badRequest(
+          res,
+          "None of the selected leads can be priced: every one is missing an " +
+            "assessed value, and an offer letter without a price is not a draft " +
+            "to fix later — it is a document with a wrong number in it.",
+          unpriceable,
+        );
+      }
+
+      // Create offer letters for each lead we can actually price
+      const lettersToCreate = priceable.map(lead => {
+        const property = propertyMap.get(lead.id)!;
+        const assessedValue = Number(property.assessedValue);
         const offerAmount = Math.round(assessedValue * (offerPercent / 100));
         
         return {
           organizationId: org.id,
           leadId: lead.id,
-          propertyId: property?.id || null,
+          propertyId: property.id,
           offerAmount: offerAmount.toString(),
           offerPercent: offerPercent.toString(),
           assessedValue: assessedValue.toString(),
@@ -607,10 +651,20 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const createdLetters = await storage.createOfferLettersBatch(lettersToCreate as any);
       
+      if (unpriceable.length > 0) {
+        logger.info(
+          `[offer-letters] batch ${batchId}: skipped ${unpriceable.length} of ` +
+            `${selectedLeads.length} lead(s) that could not be priced`,
+        );
+      }
+
       res.status(201).json({
         batchId,
         count: createdLetters.length,
         letters: createdLetters,
+        // Named, not silently dropped: the operator selected these leads and is
+        // owed an account of why they are not in the batch.
+        skipped: unpriceable,
       });
     } catch (error: any) {
       logger.error("Create batch offer letters error", error);

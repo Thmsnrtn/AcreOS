@@ -754,12 +754,32 @@ export default function OffersPage() {
   // Mutations
   const createBatchMutation = useMutation({
     mutationFn: async (data: { leadIds: number[]; offerPercent: number; expirationDays: number }) => {
-      return apiRequest('POST', '/api/offer-letters/batch', data);
+      const res = await apiRequest('POST', '/api/offer-letters/batch', data);
+      return (await res.json()) as {
+        count: number;
+        skipped?: Array<{ leadId: number; reason: string }>;
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-letters'] });
       setSelectedLeadIds([]);
-      toast({ title: "Batch created.", description: "Offer letters have been generated for selected leads." });
+      // The old copy said letters were generated "for selected leads" whatever
+      // happened. The server now refuses to price a lead with no assessed value
+      // rather than writing a $0 offer, so some selections legitimately do not
+      // become letters — and the operator has to be told which, or the count in
+      // front of them silently disagrees with the count they chose.
+      const skipped = result?.skipped ?? [];
+      toast({
+        title: skipped.length > 0 ? "Batch created, some leads skipped." : "Batch created.",
+        description:
+          skipped.length > 0
+            ? `${result.count} offer letter${result.count === 1 ? "" : "s"} generated. ` +
+              `${skipped.length} lead${skipped.length === 1 ? " was" : "s were"} skipped — ` +
+              `${skipped[0].reason}${skipped.length > 1 ? " (and similar)" : ""}. ` +
+              `A lead with no assessed value cannot be priced, and an unpriced letter ` +
+              `would carry a wrong number rather than no number.`
+            : `${result.count} offer letter${result.count === 1 ? "" : "s"} generated.`,
+      });
     },
     onError: (error: any) => {
       toast({
