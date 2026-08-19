@@ -24,16 +24,36 @@ import { logger } from "../utils/logger";
 
 // ─── Authority Tier Definitions ──────────────────────────────────────────────
 
+/**
+ * Actions every tier may take, whatever its trust score.
+ *
+ * `escalate_to_founder` is here because the safety gates RECOMMEND it — three
+ * separate suggestions in `executionEngine.validateSafetyGates` tell a refused
+ * caller to "use escalate_to_founder to request this action be performed" —
+ * while it appeared in no tier's list, so `isActionAllowed` refused it at every
+ * trust score including Director's. The remedy the system offers was the one
+ * thing it would not permit.
+ *
+ * The principle generalises: asking a human for permission is the opposite of
+ * acting, so it cannot itself require authority. An agent that may do nothing
+ * may still say it wants to.
+ *
+ * Spread into every tier rather than pasted into each, so it cannot end up in
+ * three lists out of four.
+ */
+const UNIVERSAL_ACTIONS = ["escalate_to_founder"] as const;
+
 const AUTHORITY_TIERS: Record<number, { level: number; label: string; allowedActions: string[] }> = {
   0: {
     level: 0,
     label: "Observer — Recommend Only",
-    allowedActions: ["generate_report", "store_learning"],
+    allowedActions: [...UNIVERSAL_ACTIONS, "generate_report", "store_learning"],
   },
   60: {
     level: 1,
     label: "Assistant — Low-Risk Autonomy",
     allowedActions: [
+      ...UNIVERSAL_ACTIONS,
       "generate_report", "store_learning", "send_alert", "send_follow_up",
       "create_task", "complete_task",
     ],
@@ -42,6 +62,7 @@ const AUTHORITY_TIERS: Record<number, { level: number; label: string; allowedAct
     level: 2,
     label: "Operator — Medium Autonomy",
     allowedActions: [
+      ...UNIVERSAL_ACTIONS,
       "generate_report", "store_learning", "send_alert", "send_follow_up",
       "create_task", "complete_task", "update_lead_status", "send_churn_intervention",
       "restart_failed_job",
@@ -51,6 +72,7 @@ const AUTHORITY_TIERS: Record<number, { level: number; label: string; allowedAct
     level: 3,
     label: "Director — Full Autonomy",
     allowedActions: [
+      ...UNIVERSAL_ACTIONS,
       "generate_report", "store_learning", "send_alert", "send_follow_up",
       "create_task", "complete_task", "update_lead_status", "send_churn_intervention",
       "restart_failed_job", "advance_deal_stage", "flag_deal_risk",

@@ -188,3 +188,52 @@ describe("a delegation does not convey an action nobody classified", () => {
     expect(res.downgraded).toBe(false);
   });
 });
+
+describe("the remedy the safety gates recommend is actually permitted", () => {
+  /**
+   * `executionEngine.validateSafetyGates` tells a refused caller, in three
+   * separate places, to "use escalate_to_founder". It is a registered executor.
+   * It appeared in no tier's allowedActions, so `isActionAllowed` refused it at
+   * every trust score including Director's — the system recommended the one
+   * action it would not permit.
+   *
+   * Asking a human for permission is the opposite of acting, so it cannot itself
+   * require authority.
+   */
+  it("every tier permits escalate_to_founder, including Observer", async () => {
+    const { trustAuthorityEscalation } = await import(
+      "../../server/services/trustAuthorityEscalation"
+    );
+    // Scores chosen to land in each of the four bands, plus the edges.
+    for (const score of [0, 50, 59, 60, 74, 75, 89, 90, 100]) {
+      expect(
+        trustAuthorityEscalation.isActionAllowed(score, "escalate_to_founder"),
+        `trust ${score} (${trustAuthorityEscalation.getTier(score).label}) cannot escalate`,
+      ).toBe(true);
+    }
+  });
+
+  it("vacuity: those scores really do span every tier", async () => {
+    const { trustAuthorityEscalation } = await import(
+      "../../server/services/trustAuthorityEscalation"
+    );
+    const labels = new Set(
+      [0, 60, 75, 90].map((s) => trustAuthorityEscalation.getTier(s).label),
+    );
+    expect(labels.size, "the tier table collapsed to fewer bands").toBe(4);
+  });
+
+  it("the escalation is not a back door — Observer still cannot act", async () => {
+    // The other direction. Making one action universal must not make the tier
+    // system permissive; the lowest tier still permits only what it did.
+    const { trustAuthorityEscalation } = await import(
+      "../../server/services/trustAuthorityEscalation"
+    );
+    for (const action of ["send_churn_intervention", "advance_deal_stage", "update_lead_status"]) {
+      expect(
+        trustAuthorityEscalation.isActionAllowed(0, action),
+        `Observer was granted ${action}`,
+      ).toBe(false);
+    }
+  });
+});

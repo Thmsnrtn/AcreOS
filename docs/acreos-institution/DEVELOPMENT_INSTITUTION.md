@@ -85,6 +85,52 @@ distrust first. It carries the date and commit it was verified at.
 
 ---
 
+---
+
+## Day one: five things that will mislead you
+
+Every one of these is a true-looking signal that means something other than what
+it appears to. They are listed here rather than buried because a fresh steward
+meets all five in the first hour.
+
+**1. "All tests pass" certifies no database behaviour.** `tests/setup.ts` sets
+`DATABASE_URL` unconditionally for all 924 test files, and CI provisions no
+database. The suite verifies source shape, pure functions and in-memory doubles.
+No trigger has ever fired; no constraint has ever been validated; no Drizzle
+query is checked by the gate that decides whether a change merges. See
+`PROOF_PROGRAM.md` — this is the boundary on every claim in this repository.
+
+**2. You cannot run the product here.** No `DATABASE_URL`, no `.env`, no Clerk
+secret. The README's Quick Start was written for the founder's laptop. Do not
+spend an hour booting it. All work here is source-level plus the 25 gates plus
+vitest; anything needing a query plan, an index, a migration ordering, or real
+provider behaviour must be handed over with a runbook rather than attempted and
+declared done.
+
+**3. The corpus is 962 markdown files and has no trust ordering.** 391 are
+already under `docs/archive/`. `docs/audit-2026-08/` holds 28 numbered files
+whose names read as a current, complete, authoritative audit. **Treat every
+numbered audit directory as evidence from a date, never as working memory**, and
+re-measure any count it quotes. The institution docs are the current claim; the
+corpus is what the claim was derived from.
+
+**4. `agentAuthorityGate.ts` reads as the autonomy ceiling and is not one.** Its
+15-name `NEVER_PROMOTE_ACTIONS` list mirrors the founder hard stops closely
+enough that you will assume agent autonomy is bounded by it. No action that
+reaches the gate can match any of the 15 — live callers emit `proactive:${id}`
+and `reaction:${id}`. Do not cite that file as enforcement of the DO-NOT-DO list.
+
+**5. Some branches and PRs here were not written by a human.** The evolution
+pipeline commits, pushes and opens PRs labelled `agent-proposed`, and it is **on
+by default** (`EVOLUTION_DEPLOY_VIA_PR !== "false"`). The stop is
+`SOLENE_PANIC_STOP`, a machine-unwritable secret. Do not assume founder
+authorship when reading git history.
+
+And one about these documents themselves: **file:line citations drift.** Several
+in the corpus already point a few dozen lines off. Anchor durable claims on
+symbol names and grep recipes, not line numbers — and when you find a drifted
+citation, fix it rather than working around it.
+
 ## Authority
 
 **Decide autonomously.** Architecture, schemas, refactors, module boundaries,
