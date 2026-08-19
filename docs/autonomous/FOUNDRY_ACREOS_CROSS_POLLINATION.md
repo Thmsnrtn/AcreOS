@@ -1622,9 +1622,62 @@ Two further instances are recorded on the frontier rather than fixed here
 neither on a document that leaves the building, and bundling them would have
 made this unit about four files instead of one defect class.
 
+### 32 — Land enters the canonical loop, and the ratchet is NOT gamed to say so
+
+Entry 30 gave `computeLandDeal` its first production caller. This is the loop
+entry it unblocked — and the more useful half of the entry is what was
+deliberately not claimed.
+
+**The gap.** `recordDecision` had exactly two non-generic production call sites,
+the flip analyzer and lot pricing, so of fifteen verticals only fix_and_flip and
+subdivider reached the `decided` evidence tier. Land recorded nothing: its Today
+outcome prompt (`/api/decisions/due`) was structurally empty and forecast
+calibration had nothing to grade.
+
+**Choosing the deliberate act.** Not `POST /api/data-intel/blind-offer` — that is
+a CALCULATION the wizard re-runs as the operator tunes inputs, and recording
+there would fill decision memory with keystrokes. `POST /api/offer-letters/batch`
+is where the number becomes a document addressed to an owner, which is the same
+moment and the same stated reason the flip analyzer records on.
+
+**Two departures from the flip precedent, both deliberate.** Flip records BEFORE
+its insert so the offer row can carry `decision_snapshot_id` in the same INSERT;
+`offer_letters` has no such column, so there is nothing to order against and the
+safer direction — after the letters exist, so a bookkeeping throw cannot turn a
+created batch into a 500 the operator reads as "nothing happened" — wins. And no
+scenario is frozen: the batch prices from assessed value and an operator-supplied
+percent and computes no exit model, so citing economics it never ran would be
+worse than citing none. `reviewDueAt` is the offer's own expiry, because that
+field is required-nullable precisely so "never reviewed" stays distinguishable
+from "review forgotten".
+
+**WHAT WAS NOT CLAIMED.** `tests/support/verticalEvidence.ts` derives the
+`decided` tier from `DECISION_ROUTE_OWNER`, a map of vertical-OWNED route files.
+Adding `routes-team-messaging.ts` to it would have promoted land_flipper to
+`decided` and dropped the overclaim count the ratchet pins at exactly 13 — a
+visible, satisfying number moving in the right direction.
+
+It would also have been false. `/offers/batches` and `/blind-offer-wizard` sit
+under Deals with no `businessTypeOnly`: they are SHARED surfaces every persona
+uses, not any vertical's own loop. Promoting land on the strength of a shared CRM
+surface is exactly the overclaim that map exists to prevent. The map now carries
+a note saying the file is deliberately absent and what would legitimately promote
+land — a land-owned surface that records a decision, the way flip-analyzer does
+for fix_and_flip.
+
+So: land OPERATORS now have decision memory for the offers they send, and the
+vertical readiness measure is unchanged. Both statements are true and the second
+one is the one a ratchet would have let me skip.
+
+**Exit test.** `landOfferClosesTheLoop.test.ts` pins the wiring and the four
+properties that make the record honest rather than merely present: once per
+letter, never against a null property, the real authority grant rather than a
+generic "system", and best-effort placement. Falsified by removing the recording
+and by making the catch rethrow.
+
 ## Status
 
-**All 31 admitted candidates are now dispositioned** — implemented, adapted,
+**All 32 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

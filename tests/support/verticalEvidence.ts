@@ -52,6 +52,18 @@ const ENGINE_ROUTE_OWNER: Record<string, BusinessTypeId> = {
  * `routes-decisions.ts` is the generic API and owns no vertical, so it promotes
  * nothing — an API no customer surface calls is not evidence that a vertical
  * decides.
+ *
+ * DELIBERATELY ABSENT: `server/routes-team-messaging.ts`. Its offer-letter batch
+ * DOES call `recordDecision` as of 2026-08-19, so land operators finally get
+ * decision memory for the offers they send — but `/offers/batches` and
+ * `/blind-offer-wizard` sit under Deals with no `businessTypeOnly`, which makes
+ * them SHARED surfaces rather than any vertical's own loop. Adding the file here
+ * would promote land_flipper to `decided` on the strength of a CRM surface every
+ * persona uses, which is the same overclaim this map exists to prevent — and it
+ * would drop the overclaim count the ratchet pins at exactly 13.
+ *
+ * What would legitimately promote land: a land-owned surface that records a
+ * decision, the way flip-analyzer does for fix_and_flip.
  */
 const DECISION_ROUTE_OWNER: Record<string, BusinessTypeId> = {
   "server/routes-flip-analyzer.ts": "fix_and_flip",

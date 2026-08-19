@@ -650,7 +650,82 @@ export function registerTeamMessagingRoutes(app: Express): void {
       });
       
       const createdLetters = await storage.createOfferLettersBatch(lettersToCreate as any);
-      
+
+      // ── The land vertical enters the canonical loop ────────────────────────
+      //
+      // Drafting an offer letter is the DELIBERATE ACT: the number stops being
+      // exploratory and becomes a document addressed to an owner. That is the
+      // same moment the flip analyzer records on, and for the same stated
+      // reason — recording on every recompute would fill decision memory with
+      // keystrokes.
+      //
+      // Until now land recorded nothing, so its Today outcome prompt
+      // (`/api/decisions/due`) was structurally empty and calibration had
+      // nothing to grade, while fix-and-flip and lot pricing were the only two
+      // surfaces closing the loop.
+      //
+      // BEST-EFFORT, IN ITS OWN TRY/CATCH, AFTER the letters are written. Every
+      // check that could refuse these offers has already passed and the letters
+      // exist; letting a bookkeeping failure throw here would turn a created
+      // batch into a 500 the operator reads as "nothing happened". This can
+      // only ever ADD a record. The flip analyzer records BEFORE its insert
+      // because its offer row carries the decision id in the same INSERT —
+      // `offer_letters` has no such column, so there is nothing to order
+      // against and the safer direction wins.
+      //
+      // No scenario is frozen with these. The batch prices from assessed value
+      // and an operator-supplied percent; it computes no exit model, so there
+      // is no economics to cite. `recordDecision` accepts an empty scenario
+      // list, and citing one the batch never ran would be worse than citing
+      // none.
+      try {
+        const { recordDecision } = await import("./services/decisions/decisionStore");
+        const actorRef = String((req.user as { id?: string | number } | undefined)?.id ?? "unknown");
+        for (const letter of createdLetters) {
+          if (!letter.propertyId) continue;
+          await recordDecision(org.id, {
+            subjectType: "property",
+            subjectId: letter.propertyId,
+            kind: "offer",
+            choice: `Offer $${Number(letter.offerAmount).toLocaleString()} (${offerPercent}% of assessed)`,
+            rationale:
+              `Drafted in an offer-letter batch: ${offerPercent}% of an assessed value of ` +
+              `$${Number(letter.assessedValue).toLocaleString()}, expiring in ${expirationDays} days, ` +
+              `delivered by ${deliveryMethod.replace("_", " ")}.`,
+            actorType: "user",
+            // The real authority: this route sits behind isAuthenticated +
+            // getOrCreateOrg and the operator selected these leads by hand.
+            // Naming a generic "autonomous" or "system" here would be false.
+            authority: "org_member:offer_letter_batch",
+            actorRef,
+            strategyPackId: null,
+            strategyPackVersion: null,
+            assumptions: [
+              {
+                key: "offerPercent",
+                value: `${offerPercent}% of assessed value`,
+                origin: "user" as const,
+                basis: "Chosen by the operator for this batch",
+              },
+            ],
+            alternatives: [],
+            // The offer's own expiry IS the review date: that is the day the
+            // operator learns whether it landed. `reviewDueAt` is
+            // required-nullable precisely so a decision nobody will revisit is
+            // distinguishable from one whose review was forgotten — an offer
+            // letter is squarely the first kind, so it says so rather than
+            // passing null.
+            reviewDueAt: expirationDate,
+          });
+        }
+      } catch (err) {
+        logger.warn(
+          `[offer-letters] batch ${batchId}: letters were created but the decision ` +
+            `record failed — the offers stand, the loop entry did not`,
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       if (unpriceable.length > 0) {
         logger.info(
           `[offer-letters] batch ${batchId}: skipped ${unpriceable.length} of ` +

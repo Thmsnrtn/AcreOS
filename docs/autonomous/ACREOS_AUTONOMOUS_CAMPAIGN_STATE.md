@@ -102,31 +102,29 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
    2026-08-17: the gate stayed at baseline with six new unadopted exports in the
    tree. Widening the roots will re-seed the count upward, which is why it has
    not been done casually.
-6. **Land can now record a scenario — so close the loop.** As of 2026-08-19 the
-   blind-offer exit model DELEGATES to `computeLandDeal` instead of computing
-   its own, so the canonical `land_deal` engine has a real production caller for
-   the first time. Its cost rules live on `underwritingDefaults.landDeal` with
-   per-field provenance, and the wizard badges each "Your rule" or "Our
-   default". The two customer-visible numbers that were optimistic — ROI on
-   purchase price rather than total cost in, and a fabricated `0` where there is
-   no cost basis — are corrected. Ledger entry 30.
+6. **Land's loop is OPEN at one end, and the open end is the interesting one.**
+   As of 2026-08-19 `POST /api/offer-letters/batch` records a canonical decision
+   per letter — land operators finally have decision memory for the offers they
+   send, `/api/decisions/due` has something to surface, and calibration has
+   something to grade. Ledger entries 30 and 32.
 
-   What remains is the loop itself. Land records no scenario and no decision, so
-   its Today outcome prompt is structurally empty and calibration has nothing to
-   grade. Follow the flip precedent exactly (`routes-flip-analyzer.ts:520-620`):
-   record on a DELIBERATE act, not every recompute; let `recordScenario` compute
-   from inputs rather than accept pre-computed numbers; best-effort in its own
-   try/catch so a bookkeeping failure cannot cost the operator their offer.
+   What is deliberately NOT claimed: the vertical readiness measure is
+   unchanged. `DECISION_ROUTE_OWNER` derives `decided` from vertical-OWNED
+   routes, and `/offers/batches` sits under Deals with no `businessTypeOnly` —
+   a shared CRM surface every persona uses, not land's own loop. Adding it
+   would have dropped the overclaim count from 13 and been false.
 
-   The open design question, and it is real: for flip the deliberate act is
-   submitting an offer. For land, `POST /api/data-intel/blind-offer` is a
-   CALCULATION the wizard re-runs as the user tunes inputs — recording there
-   would fill decision memory with keystrokes. The candidates are generating the
-   offer LETTER or adding to an offer batch. Confirm which against the wizard's
-   real flow before writing anything.
+   **So the real remaining work is a LAND-OWNED surface that decides.** The
+   blind-offer wizard is the candidate: it is land-flavoured, it now computes
+   real economics through `computeLandDeal`, and it has no commit point at all —
+   the operator calculates and the report evaporates. Giving it one (save this
+   offer / send this letter) would record a decision AND freeze the scenario
+   that justified it, which is the full flip-analyzer shape and the thing that
+   legitimately moves land to `decided`.
 
    13 of 15 verticals still stop before a recorded decision (`readiness.ts`,
    frozen and down-only). The gap is the LOOP, not the surface.
+
 7. **Two more `measurement ? x : 0` sites on money, found and not yet fixed.**
    Both real, both verified 2026-08-19, neither on a document that leaves the
    building — which is why they were left out of the offer-pricing unit rather
