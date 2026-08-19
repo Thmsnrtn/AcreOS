@@ -883,3 +883,89 @@ The two earlier tenancy phases fixed occurrences. This one changes what the
 repository can *see*: 127 previously invisible queries are now frozen and
 down-only, a new one has to be looked at, and the specific shape that shipped a
 live cross-tenant read cannot return silently.
+
+## PHASE 7 — `lint:measurement-defaults` (2026-08-18)
+
+### The same law, applied to the other blind gate
+
+Rule 3 closed the tenancy gate's blind spot. This closes the fabrication gate's.
+
+`lint:no-fabrication` enforces *"no invented numbers, no fake activity, no
+placeholder data presented as real"* by scanning for `Math.random`. It proves a
+**symbol** is absent. The shape that actually shipped, four times, to live
+customer surfaces is a **behaviour**:
+
+| expression | surface |
+|---|---|
+| `compsMedianPricePerAcre \|\| 1000` | a billable AVM |
+| `marketData?.avgDaysOnMarket \|\| 90` | a market intelligence report |
+| `parcel.acreage \|\| 5` | three dollar offer amounts in the deal feed |
+| `parcel.acreage ?? 1` | an offer batch (fixed in this commit) |
+
+### The discriminator
+
+Not every `?? N` is a lie, and a gate that says so is disabled within a week.
+The question is **where the value came from**:
+
+```
+opts.days ?? 30                     a caller-supplied knob. Normal.
+marketData?.avgDaysOnMarket || 90   a measurement. Fabrication.
+```
+
+A hit needs all four: a property access (not a bare local), a **non-zero**
+literal (0 is the honest empty and the standard divide-by-zero guard), a leaf
+name in the measurement vocabulary, and a root that is not an options bag.
+**2,031 expressions considered → 77 in the register.**
+
+### Two things this gate does that the old one does not
+
+**It self-tests its own predicate on every run.** Nine cases, both directions —
+four that must fire, five that must not. That caught two real defects before the
+register was ever frozen: the measurement vocabulary was `$`-anchored and
+therefore missed `avgDaysOnMarket` (ends in "Market"), the exact expression the
+gate was written for; and the bare-local case was silently uncovered.
+
+**It states what it cannot see.** A bare local (`compsMedianPricePerAcre ||
+1000` — the AVM defect verbatim) has no receiver to judge, and resolving a local
+back to the property it came from is dataflow, not regex. That limit is written
+into the header AND pinned as a self-test case asserting the gate does NOT fire,
+so the boundary is itself a tested contract rather than something a reader
+discovers from a false green. The AVM case is covered behaviourally instead, by
+`gbmValuationRefusal.test.ts`.
+
+### Falsified against the behaviour
+
+`measurementDefaultsGate.test.ts` writes probe files into `server/services/`
+(where the walk actually goes), runs the real lint, and asserts:
+
+- the deal-feed `parcel.acreage || 5` fires **and the lint exits non-zero**;
+- an **equivalent representation** — different metric, `??` instead of `||`, a
+  different number (`row.medianHouseholdIncome ?? 48250`) — also fires, proving
+  the gate governs the shape rather than the constants that happened to be
+  there;
+- `opts.days ?? 30` does **not** fire;
+- `row.salesVolume || 0` does **not** fire.
+
+Mutations, all caught: report-but-exit-zero (2 tests), drop the knob
+discriminator so it fires on everything (3 tests), and blind the expression
+walker (5 tests).
+
+### What is in the register, and what to fix next
+
+Ranked, so the next session does not have to re-derive it:
+
+1. **Market measurements** — `intel.medianHouseholdIncome ?? 50000`,
+   `medianDomDays ?? 180`, `nassData?.pasturePerAcre || 1000`,
+   `latestMetric.marketHealthScore || 50`,
+   `profileData?.opportunityScore || 50` (in the very file that documented the
+   refusal). Highest consequence; these are the AVM/deal-feed class.
+2. **Contract terms** — `note.gracePeriodDays ?? 10`, and `documents.ts:163`
+   PRINTS it into a customer PDF as "Grace Period: 10 days" for a note whose
+   record does not carry one. A legal document asserting a term nobody agreed
+   to is arguably sharper than any of the above.
+3. **Autopilot trust/urgency seeded at 50** — the same neutral-midpoint pattern
+   removed from the deal feed, still present in `executionEngine`,
+   `agentInitiativeEngine`, `scpGoldenSuite`, `autonomousDecisionExecutor`.
+4. **LLM-parse confidence** (`parsed.confidence || 50`) — the largest family and
+   the lowest individual consequence: a model that stated no confidence is given
+   one.

@@ -98,13 +98,19 @@ function computeOfferAmount(parcel: BatchParcel, config: BatchConfig): number | 
     const matchesTax = rule.taxDelinquent == null || rule.taxDelinquent === parcel.taxDelinquent;
 
     if (matchesAcres && matchesZoning && matchesState && matchesCounty && matchesTax) {
-      const acreage = parcel.acreage ?? 1;
       let offer: number;
 
       if (parcel.estimatedValue && rule.discountPct != null) {
+        // Value-based: acreage is not in this arithmetic at all.
         offer = parcel.estimatedValue * (1 - rule.discountPct / 100);
       } else {
-        offer = rule.pricePerAcre * acreage;
+        // Per-acre: acreage IS the arithmetic. `parcel.acreage ?? 1` priced a
+        // parcel of unknown size as ONE acre, and this function's return value
+        // is a dollar offer sent to a counterparty. The function already knows
+        // how to say "cannot price" — it does so on the last line — so it says
+        // it here too rather than inventing a size.
+        if (parcel.acreage == null || !(parcel.acreage > 0)) return null;
+        offer = rule.pricePerAcre * parcel.acreage;
       }
 
       if (rule.maxOffer != null) offer = Math.min(offer, rule.maxOffer);
@@ -115,13 +121,13 @@ function computeOfferAmount(parcel: BatchParcel, config: BatchConfig): number | 
   // Default fallback
   const defaultDiscount = config.defaultDiscountPct ?? 60;
   const defaultPpa = config.defaultPricePerAcre;
-  const acreage = parcel.acreage ?? 1;
 
   if (parcel.estimatedValue) {
     return Math.round((parcel.estimatedValue * (1 - defaultDiscount / 100)) / 100) * 100;
   }
-  if (defaultPpa) {
-    return Math.round((defaultPpa * acreage) / 100) * 100;
+  // Same rule as the per-acre branch above: no acreage, no per-acre price.
+  if (defaultPpa && parcel.acreage != null && parcel.acreage > 0) {
+    return Math.round((defaultPpa * parcel.acreage) / 100) * 100;
   }
 
   return null; // cannot price — skip
