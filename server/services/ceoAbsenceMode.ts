@@ -138,13 +138,19 @@ class CEOAbsenceService {
    */
   async activeTrustBoosts(): Promise<Record<string, number>> {
     try {
-      const current = await this.getCurrent();
+      // `getCurrent()` is typed `any` (it predates this method); narrow to the
+      // two fields actually read rather than casting at each use, so a rename
+      // on the row is a type error here instead of a silent `undefined`.
+      const current: {
+        perAgentBoosts?: Record<string, number> | null;
+        trustBoost?: number | null;
+      } | null = await this.getCurrent();
       if (!current) return {};
-      const per = (current as any).perAgentBoosts as Record<string, number> | undefined;
+      const per = current.perAgentBoosts;
       if (per && Object.keys(per).length > 0) return per;
-      const uniform = (current as any).trustBoost ?? 15;
-      const agents = await companyAgentService.getAll();
-      return Object.fromEntries(agents.map((a: any) => [a.codename, uniform]));
+      const uniform = current.trustBoost ?? 15;
+      const agents: Array<{ codename: string }> = await companyAgentService.getAll();
+      return Object.fromEntries(agents.map((a) => [a.codename, uniform]));
     } catch {
       return {};
     }

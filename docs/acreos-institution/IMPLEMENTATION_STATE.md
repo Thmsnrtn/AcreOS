@@ -18,7 +18,7 @@ the repository, the repository is right and this file is stale; edit it.
 | Scheduled jobs | **149** roster entries in `jobRegistry.ts` (47 job FILES — not the same number) |
 | Client pages | **154** |
 | Test files / tests | **924** / **12,447** (+1 skipped), all green |
-| Gates in `npm run check` | **25** steps (tsc + check:tests + 23 lint gates) |
+| Gates in `npm run check` | **25** steps (tsc + check:tests + 23 lint gates), **all green** |
 | Counted ratchets | **14** registers under `scripts/ratchets/` |
 
 `npm run check` takes roughly ten minutes; the full suite roughly five. Both
@@ -33,7 +33,7 @@ locked into the commit that earned it.
 
 | register | baseline |
 |---|---|
-| `as-any` | 1357 |
+| `as-any` | 1356 |
 | `colon-any` | 2940 |
 | `res-status-raw` | 500 |
 | `self-fallback` | 140 |
@@ -149,6 +149,11 @@ Not aspirations — these are enforced, and the enforcement is named.
 ---
 
 ## How to check this file is still true
+
+One caution learned the hard way: **`check:tests` runs second and short-circuits
+the remaining 23 gates.** While it is red, every ratchet below it is unevaluated
+— so "only one gate failing" can mean "twenty-three gates unmeasured". Drive
+`check:tests` green first, then read the rest.
 
 ```bash
 npm run check                      # 25 gates, ~10 min, background it

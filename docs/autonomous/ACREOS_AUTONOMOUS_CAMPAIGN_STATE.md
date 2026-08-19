@@ -8,7 +8,7 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `5fa8ed62`, 2026-08-19. Working tree clean, 924 test files /
+Verified at: `33dbd74f`, 2026-08-19. Working tree clean, 924 test files /
 12,444 tests green, 25 gates green.
 
 ---
@@ -81,9 +81,13 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
    governanceBrain policy check before `executeAction`, and every live path calls
    the bare function. Either wire it or retire it — built-but-unwired is this
    codebase's most common defect.
-3. **`escalate_to_founder` is unreachable.** It is a registered executor in
-   `executionEngine` but appears in no trust tier's `allowedActions`, so the
-   remedy `validateSafetyGates` itself suggests is refused at every trust level.
+3. **`FOUNDER_ROUTE_BASELINE` does not ratchet down.** It asserts only
+   `toBeLessThanOrEqual`, and the count equals the baseline at 82 — so a
+   consolidation to 78 passes silently and hands the next session four free
+   slots for new top-level founder routes, which is exactly the sprawl the
+   four-door doctrine exists to prevent. Measured: of the 18 baseline-carrying
+   test files, 7 assert stale-high and 11 do not. The registers driven by
+   `ratchet.mjs` are fine; several hand-written test baselines are one-way.
 4. **`NEVER_PROMOTE_ACTIONS` governs a namespace no live caller enters.** Live
    actions are `proactive:${id}` / `reaction:${id}`; the 15 hard-stop names have
    no executor anywhere, so nothing hard-stop-class currently executes. The
@@ -110,6 +114,9 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
 
 Most recent first. Each was falsified against the semantic defect before landing.
 
+- `33dbd74f` — the institution's five missing documents, written from measured
+  reality; `escalate_to_founder` permitted at every trust tier.
+- `10447296` — the campaign state becomes a frontier instead of a diary.
 - `5fa8ed62` — four places where omission was read as permission: the
   auto-approve ceiling, the absence grant that outlived its expiry, the
   delegation that conveyed unclassified actions, and the cascade check that

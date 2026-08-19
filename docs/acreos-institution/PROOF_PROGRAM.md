@@ -7,32 +7,51 @@ that bounds every claim in this repository. Verified at `10447296`, 2026-08-19.
 
 ## The boundary, first
 
-**No test in this repository ever executes SQL.**
+**No VITEST test executes SQL — and vitest is the merge gate.**
 
-`tests/setup.ts` sets `process.env.DATABASE_URL` unconditionally, for every one
-of the 924 test files, to a database that does not exist. `.github/workflows/ci.yml`
-— the gate that decides whether a change merges — provisions no database service.
+The wording matters, because the blunt version of this claim ("no test ever
+executes SQL") is false and was in this document until the bootstrap test caught
+it. There are two test layers here and they are easy to conflate:
 
-So the suite verifies **source shape, pure functions, and hand-rolled in-memory
-doubles.** Migration 0238's BEFORE-UPDATE trigger has never fired. Its four
-`NOT VALID` CHECK constraints have never been validated. Every Drizzle query in
-the repository is unverified by the merge gate.
+| layer | files | database |
+|---|---|---|
+| **vitest** — `*.test.ts` | 924 files, 12,447 tests | none, ever |
+| **Playwright** — `*.spec.ts` | 49 files | a real PostgreSQL 16 in CI |
 
-This makes *"all tests pass"* the most dangerous true statement in the codebase.
-It is true — 924 files, 12,444 passing, exit 0 — and it certifies zero database
-behaviour. A test named `parcelObservationsAppendOnly` parses migration TEXT; the
-trigger it describes is untested.
+`vitest.config.ts` includes only `**/*.test.{ts,tsx,mjs}`, so the 49 `.spec.ts`
+files are invisible to it. Six workflows provision `postgres:16` or
+`pgvector/pgvector:pg16`, and `tests/e2e-mobile/global-setup.ts` creates the
+`vector` extension, runs `drizzle-kit push --force` to build every table, and
+`INSERT`s real rows. That layer is real proof.
 
-Nor can a steward run the product here: `DATABASE_URL` is unset, there is no
-`.env`, and the README's Quick Start was written for the founder's laptop. Every
-conclusion reachable in this environment is static — source reading, the 25
-gates, and the mocked suite.
+What remains true, and is the load-bearing part:
 
-**Plan accordingly.** Anything needing a query plan, an index, a constraint
-validation, a migration ordering, or real provider behaviour under failure is
-EXTERNAL-EVIDENCE-GATED and must be handed over with a runbook, not attempted and
-declared done. The one real-database verification on record is the manual
-two-half DR rebuild on PostgreSQL 16, 2026-08-17.
+- **`tests/setup.ts` overwrites `DATABASE_URL` unconditionally**, for every
+  vitest file, with credentials CI does not provision. So the vitest half is
+  redirected to a database that cannot authenticate — and passes, because
+  everything is mocked. All 924 files pass with no PostgreSQL running at all.
+- The e2e layer builds the schema with **`drizzle-kit push` from
+  `shared/schema`, not from `migrations/*.sql`**. So migration 0238's
+  BEFORE-UPDATE trigger has still never fired and its four `NOT VALID` CHECK
+  constraints have still never been validated — the *migrations* are unproven
+  even though the *schema* is exercised.
+- Vitest is what gates a merge on most paths. A change can be green there and
+  have had no query, index, constraint or trigger tested at all.
+
+So: **"all vitest tests pass" certifies source shape, pure functions and
+in-memory doubles.** Say which layer you mean when you claim something is
+proven.
+
+Nor can a steward run the product in the dev container: `DATABASE_URL` is unset,
+there is no `.env`, and the README's Quick Start was written for the founder's
+laptop. Anything needing a query plan, an index, a migration ordering, or real
+provider behaviour is EXTERNAL-EVIDENCE-GATED *here* and must be handed over
+with a runbook — though the CI e2e layer can prove more than this container can,
+which is worth reaching for before declaring something unprovable.
+
+A staging deployment exists (`acreos-staging` on Fly) alongside production. That
+bears directly on the "blast radius is zero" framing: pre-customer is not the
+same as no deployed environment.
 
 ## Proof levels
 
@@ -42,8 +61,8 @@ IMPLEMENTED · TESTED · LOCALLY PROVEN · INTEGRATION PROVEN · GOLDEN-JOURNEY
 PROVEN · EXTERNAL-PROVIDER PROVEN · CUSTOMER VALIDATED · PRODUCTION PROVEN ·
 OUTCOME VALIDATED · ECONOMICALLY VALIDATED
 
-At HEAD, essentially everything is at **LOCALLY PROVEN** and nothing is past
-EXTERNAL-PROVIDER PROVEN. That is honest for a pre-customer product; stating it
+At HEAD, most things are at **LOCALLY PROVEN**; the surfaces the e2e specs cover
+reach INTEGRATION PROVEN; nothing is past EXTERNAL-PROVIDER PROVEN. That is honest for a pre-customer product; stating it
 is what keeps the next steward from inferring more.
 
 ## The surface
@@ -58,7 +77,7 @@ runs a full `tsc` and times out.
 
 ## Ratchet discipline
 
-Every register is **bidirectionally** enforced:
+The **intent** is bidirectional enforcement:
 
 - `count > baseline` → FAIL, a new offender.
 - `count < baseline` → FAIL, **stale-high**. The reduction must be locked into
@@ -66,6 +85,18 @@ Every register is **bidirectionally** enforced:
 
 The second direction is the one that does the work. Without it a register drifts
 upward invisibly whenever something else drifts down.
+
+**But bidirectionality is per-gate, not a property of the apparatus.** Measured:
+of the 18 baseline-carrying test files, **7 assert stale-high and 11 do not**.
+The `scripts/ratchets/*.json` registers driven by `ratchet.mjs` do; several
+hand-written test baselines assert only `toBeLessThanOrEqual`.
+
+`FOUNDER_ROUTE_BASELINE` is one of the one-directional ones, and it is the worst
+place for that: the count is 82 against a baseline of 82, so a consolidation to
+78 would pass silently and hand the next session four free slots for new
+top-level founder routes — exactly the sprawl the four-door doctrine exists to
+prevent. Do not assume a baseline you see is self-ratcheting; check the
+assertion.
 
 **Fix the occurrence, not the baseline.** Raising a baseline to make a gate green
 is the one move that turns the whole apparatus into decoration.
@@ -144,9 +175,13 @@ column, because no test pinned the call sites. Two thirds is not canonical.
 ## Standing proof debt
 
 - **The database boundary above** — the largest single item, and structural.
-- `lint-reachability` does not scan `shared/**`. A new shared module with no
-  production caller is invisible to the built-but-unwired gate. Measured: the
-  gate stayed at baseline with six new unadopted exports in the tree.
+- `lint-reachability` does not treat `shared/**` as a source of export
+  CANDIDATES. `shared` *is* in `PRODUCTION_ROOTS`, so shared files count as call
+  sites; it is `EXPORT_SOURCE_DIRS` — `server/services`, `server/jobs` — that
+  bounds what can be reported unreached. A new shared module with no production
+  caller is therefore invisible to the built-but-unwired gate, and widening
+  `PRODUCTION_ROOTS` would change nothing. Measured: the gate stayed at baseline
+  with six new unadopted exports in the tree.
 - The S3 fetch half of the DR RTO is unmeasured — no bucket access here.
 - `constitution.ts` still carries prose-only hard stops. The ratchet holds the
   count of unenforced ones at or below baseline; when you add real enforcement,

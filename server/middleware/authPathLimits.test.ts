@@ -39,7 +39,12 @@ function mockRes(): { res: Response; status?: number; body?: unknown; headers: R
     getHeader() {
       return undefined;
     },
-    status(code: number) {
+    // `this` is typed at the method rather than on the variable: in an
+    // un-annotated object literal `this` widens to the literal's own
+    // inferred type, which omits a property only assigned inside a method.
+    // Annotating the VARIABLE instead breaks the `as Response` assignment
+    // below, which is why this is a `this` parameter and not a type on `res`.
+    status(this: { statusCode: number }, code: number) {
       this.statusCode = code;
       captured.status = code;
       return this;

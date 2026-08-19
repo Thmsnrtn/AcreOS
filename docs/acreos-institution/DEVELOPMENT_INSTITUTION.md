@@ -93,12 +93,12 @@ Every one of these is a true-looking signal that means something other than what
 it appears to. They are listed here rather than buried because a fresh steward
 meets all five in the first hour.
 
-**1. "All tests pass" certifies no database behaviour.** `tests/setup.ts` sets
-`DATABASE_URL` unconditionally for all 924 test files, and CI provisions no
-database. The suite verifies source shape, pure functions and in-memory doubles.
-No trigger has ever fired; no constraint has ever been validated; no Drizzle
-query is checked by the gate that decides whether a change merges. See
-`PROOF_PROGRAM.md` — this is the boundary on every claim in this repository.
+**1. "All tests pass" means the VITEST layer passes, and that layer never touches
+a database.** `tests/setup.ts` overwrites `DATABASE_URL` unconditionally for all
+924 vitest files, so they pass with no PostgreSQL running at all. There IS a
+second layer — 49 Playwright `.spec.ts` files that run against a real
+PostgreSQL 16 in six CI workflows — and vitest cannot see it, because its
+`include` is `*.test.*`. Say which layer you mean. See `PROOF_PROGRAM.md`.
 
 **2. You cannot run the product here.** No `DATABASE_URL`, no `.env`, no Clerk
 secret. The README's Quick Start was written for the founder's laptop. Do not
@@ -121,10 +121,17 @@ reaches the gate can match any of the 15 — live callers emit `proactive:${id}`
 and `reaction:${id}`. Do not cite that file as enforcement of the DO-NOT-DO list.
 
 **5. Some branches and PRs here were not written by a human.** The evolution
-pipeline commits, pushes and opens PRs labelled `agent-proposed`, and it is **on
-by default** (`EVOLUTION_DEPLOY_VIA_PR !== "false"`). The stop is
-`SOLENE_PANIC_STOP`, a machine-unwritable secret. Do not assume founder
-authorship when reading git history.
+pipeline commits, pushes and opens PRs labelled `agent-proposed`. It runs
+unconditionally — and it is a DIFFERENT subsystem from the `autopilot/` plane,
+which is default-OFF. `EVOLUTION_DEPLOY_VIA_PR` picks the delivery mode, not
+whether anything runs. Do not assume founder authorship when reading git
+history, and do not read "autopilot is off" as "nothing is autonomous".
+
+**6. A ratchet baseline you see is not necessarily bidirectional.** Of the 18
+baseline-carrying test files, 7 assert stale-high and 11 assert only
+`toBeLessThanOrEqual`. Check the assertion before trusting a count to hold in
+both directions — `FOUNDER_ROUTE_BASELINE` is one-way, and it is sitting at
+zero headroom.
 
 And one about these documents themselves: **file:line citations drift.** Several
 in the corpus already point a few dozen lines off. Anchor durable claims on

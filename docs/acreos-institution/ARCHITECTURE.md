@@ -94,20 +94,39 @@ has never routed a real customer plan.
 Anyone wiring a third caller must first decide how a billing `scale` org maps
 onto the `ProviderTier` ladder. No mapping exists.
 
-## The founder autopilot plane
+## The founder plane: two subsystems, and only one is on
 
-Separate from the customer product, and larger than it looks: 99 modules under
-`server/services/autopilot/`.
+Separate from the customer product, and larger than it looks: **109** non-test
+modules under `server/services/autopilot/`. Two distinct things live near each
+other here, and conflating them gets the risk picture backwards.
 
-**The repository modifies itself.** `evolutionPrGenerator` commits to
+**The autopilot plane is default-OFF, by explicit design.** Each of its four
+master switches requires `process.env.X === "true"` —
+`SOLENE_DISPATCH_ENABLED`, `AUTOPILOT_PUBLISH_ENABLED`, `COGNITION_ENABLED`,
+`SELF_PATCH_ENABLED`. `fly.toml` sets none of them. The module header states the
+posture plainly: a null column falls back to the env default, the env default is
+off, and the system stays safe-off until a real row says otherwise.
+`SOLENE_PANIC_STOP` — a machine-unwritable Fly secret — overrides the database
+switches entirely.
+
+**The evolution pipeline is a different module and it IS running.**
+`server/services/evolutionPipeline.ts` is **not** under `autopilot/`, and
+`runScheduledJobs.ts` starts it with a plain unguarded call alongside the other
+job registrations; it processes pending proposals every six hours in a 3–5am
+window, gated only by a circuit breaker and the presence of self-assessment
+tasks — never by an autopilot switch.
+
+**The repository can therefore modify itself.** `evolutionPrGenerator` commits to
 `evolution/<id>-<timestamp>`, pushes, and opens a GitHub PR labelled
 `agent-proposed` with pre-mortem, rollback and gauntlet provenance in the body.
-It is **on by default** — `EVOLUTION_DEPLOY_VIA_PR !== "false"` — gated by a
-fails-closed LLM judge gauntlet, with `SOLENE_PANIC_STOP` (a machine-unwritable
-secret) overriding everything.
+Be precise about what the flag does: `EVOLUTION_DEPLOY_VIA_PR !== "false"`
+chooses the **delivery mode** — PR versus the legacy logical deploy — for a
+pipeline that has already produced a change. It is not the on switch, and there
+is no off switch for the pipeline itself short of the circuit breaker.
 
 Two consequences a steward must hold: some branches and PRs here were not written
-by a human, and the kill switch is an environment variable, not a code path.
+by a human, and "is the autopilot on?" and "can this repo open a PR at itself?"
+have different answers.
 
 ## Agent authority, and where it does not meet
 
