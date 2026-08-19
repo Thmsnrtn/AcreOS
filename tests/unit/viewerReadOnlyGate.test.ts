@@ -105,10 +105,29 @@ describe("it lets everything else through", () => {
   });
 
   it("allows the small set of person-scoped writes", async () => {
+    // Each entry must still reach something — an exemption nothing can match
+    // is a hole in the list rather than in the guarantee, and would make the
+    // "keep it small" rule below meaningless.
+    //
+    // The concatenation is segment-aware, and that is the point of the edit.
+    // This assertion used to read `${prefix}anything`, which for the two
+    // entries without a trailing slash meant it demanded that
+    // `/api/user/preferencesanything` and `/api/audit/exportz` be writable by
+    // a read-only account. It was pinning the `startsWith` defect as the
+    // contract. The invariant it was written for is preserved; only the false
+    // half of it is gone. See `gateExemptionBoundary.test.ts`.
     for (const prefix of VIEWER_WRITE_EXEMPT_PREFIXES) {
-      const d = drive({ method: "POST", path: `${prefix}anything`, role: { role: "viewer" } });
+      const inside = prefix.endsWith("/") ? `${prefix}anything` : `${prefix}/anything`;
+      const d = drive({ method: "POST", path: inside, role: { role: "viewer" } });
       await d.run();
-      expect(d.next, `${prefix} was blocked`).toHaveBeenCalled();
+      expect(d.next, `${inside} was blocked`).toHaveBeenCalled();
+
+      if (!prefix.endsWith("/")) {
+        // A bare entry names a real endpoint, so it must exempt itself exactly.
+        const exact = drive({ method: "POST", path: prefix, role: { role: "viewer" } });
+        await exact.run();
+        expect(exact.next, `${prefix} was blocked`).toHaveBeenCalled();
+      }
     }
   });
 

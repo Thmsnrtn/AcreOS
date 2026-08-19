@@ -1024,9 +1024,85 @@ result. The tests drive the real code path by answering its one outbound
 `fetch`, and a vacuity guard reads real figures back so an always-throwing
 implementation cannot pass.
 
+### 23 — "A grant may not widen its own reach" → ADAPTED
+
+**Foundry shape.** `120_development_authority.sql` refuses a development grant
+whose path prefixes touch the constitutional ring, and the containment test is
+written in both directions:
+
+```sql
+WHERE substr(g.value,1,length(r.value))=r.value
+   OR substr(r.value,1,length(g.value))=g.value
+```
+
+A prefix inside the ring is refused, and so is a broad prefix that would
+*contain* part of the ring. The point is not the SQL; it is that a scope entry
+is checked at an explicit boundary rather than by string prefix, so no entry can
+enlarge what it reaches by being written more loosely.
+
+**The AcreOS instance.** Not authority grants — *exemption* lists. Three posture
+gates each carried their own copy of the same loop:
+
+```ts
+for (const prefix of EXEMPT) if (path.startsWith(prefix)) return next();
+```
+
+- `server/middleware/subscriptionPauseGate.ts`
+- `server/middleware/dunningAccessGate.ts`
+- `server/middleware/viewerReadOnlyGate.ts`
+
+`startsWith` reads an entry as a TEXTUAL prefix, not a PATH prefix. So
+`"/api/health"` exempted `/api/healthz` and `/api/health-anything`;
+`"/api/audit/export"` exempted `/api/audit/export-everything`; and a future
+`"/api/deal"` — a plausible typo for `/api/deals/` — would have silently
+exempted every write behind the Deals door from the viewer read-only
+guarantee, which is a security guarantee: the org owner's own configuration of
+who may write.
+
+**Was it live?** No, and that was checked rather than assumed. The only mutating
+route whose path shares one of these prefixes is
+`POST /api/health/uptime-probe` (`server/routes.ts:551`), and it is
+token-gated via `secretEquals` and never traverses `getOrCreateOrg`, so these
+gates never ran on it. Recorded as a *foreclosure*, not an incident — under the
+standing rule that a mutation which does not fire must be classified before
+anything is changed, this is "the code is unreachable", not "the gate is weak".
+The class is still real and one line wide, and the guarantee it protects is
+consequential, which is why it was closed anyway.
+
+**What was built.** `server/middleware/gateExemptions.ts` — one containment
+predicate, consumed by all three gates (three production call sites, per the
+standing law that a canonical function with zero production callers is not
+canonical):
+
+```ts
+prefix.endsWith("/") ? path.startsWith(prefix)
+                     : path === prefix || path.startsWith(prefix + "/")
+```
+
+The rule is strictly NARROWER than `startsWith` for every possible entry and
+path — it can only ever remove an exemption, never add one. A predicate that
+could widen under a refactor is the defect; the fix is not permitted to widen
+either. No live route changed behaviour (verified: no mutating route sits at any
+bare exempt path).
+
+**How it is falsified.** `tests/unit/gateExemptionBoundary.test.ts` derives
+hostile sibling paths from each gate's REAL exemption list and drives the REAL
+middleware, so a gate that re-inlines `startsWith` tomorrow fails even though a
+test of the helper alone would still pass. Mutation-tested: reverting
+`dunningAccessGate` to the raw loop fails two assertions, naming all four leaked
+paths. The reverse direction is asserted too — a rule that refused everything
+would satisfy the boundary cases and brick billing, support and logout for
+exactly the customers who most need them reachable.
+
+**What it found on the way.** `viewerReadOnlyGate.test.ts` was pinning the
+defect as the contract: it asserted `POST /api/user/preferencesanything` must be
+allowed for a read-only account. Rewritten to the new truth rather than deleted,
+per the wave-discipline rule — the invariant it was written for (every entry
+reaches something) survives; only the false half is gone.
+
 ## Status
 
-**All 22 admitted candidates are now dispositioned** — implemented, adapted,
+**All 23 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 
@@ -1044,8 +1120,15 @@ Themes noted but not yet tested against AcreOS HEAD:
   the outcome-grading path, and worse than the Foundry shape: AcreOS's verifier
   did not merely carry its own expectation, it re-read the actor's own execution
   record and called that an outcome.
-- **Deny-dominant, bidirectional authority scoping** — a grant may not widen its
-  own reach, checked in both directions (`120_development_authority.sql`).
+- ~~**Deny-dominant, bidirectional authority scoping**~~ — CLOSED as ledger
+  entry 23. AcreOS has no path-scoped authority *grants*, but it had three
+  copies of the same containment mistake in its posture-gate *exemption* lists,
+  where the guarantee at stake (viewer read-only) is a security one. The
+  client-side analogue was checked and REJECTED: `resolveHiddenRoutes` matches
+  doors by exact string, not prefix, and `sidebarHiddenRoutes.test.ts` already
+  derives the protected door set from the parsed `NAV_MODULES` rather than
+  re-listing it, so a door cannot be hidden by a broader entry and the door set
+  cannot drift.
 - **Refusing promotion into an unproven state at the write**
   (`115_operating_promotion_freeze.sql`).
 - **Owner direction that is structurally non-authoritative** — a disposition

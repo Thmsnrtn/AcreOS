@@ -22,11 +22,12 @@ import type { AuthenticatedRequest } from "../types/request";
 import { DUNNING_STAGES } from "@shared/schema";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { pathIsExempt } from "./gateExemptions";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Non-GET endpoints that must stay reachable while restricted. */
-const DUNNING_GATE_EXEMPT_PREFIXES = [
+export const DUNNING_GATE_EXEMPT_PREFIXES = [
   "/api/subscription/", // fix the payment / change plan
   "/api/billing/",      // portal / update card / invoices
   "/api/credits/",      // billing-adjacent
@@ -48,9 +49,7 @@ export function dunningAccessGate(
   if (!MUTATING_METHODS.has(req.method)) return next();
 
   const path = req.path || req.url || "";
-  for (const prefix of DUNNING_GATE_EXEMPT_PREFIXES) {
-    if (path.startsWith(prefix)) return next();
-  }
+  if (pathIsExempt(path, DUNNING_GATE_EXEMPT_PREFIXES)) return next();
 
   const org = (req as AuthenticatedRequest).organization;
   if (!org) return next(); // pre-org request — auth handler will reject

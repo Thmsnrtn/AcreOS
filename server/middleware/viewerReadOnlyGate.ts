@@ -48,6 +48,7 @@ import type { AuthenticatedRequest } from "../types/request";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
 import { getUserPermissionContext } from "../utils/permissions";
+import { pathIsExempt } from "./gateExemptions";
 
 /** Methods that mutate. Mirrors subscriptionPauseGate deliberately. */
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -99,9 +100,7 @@ export async function viewerReadOnlyGate(
   if (!MUTATING_METHODS.has(req.method)) return next();
 
   const path = req.path || req.url || "";
-  for (const prefix of VIEWER_WRITE_EXEMPT_PREFIXES) {
-    if (path.startsWith(prefix)) return next();
-  }
+  if (pathIsExempt(path, VIEWER_WRITE_EXEMPT_PREFIXES)) return next();
 
   const authed = req as AuthenticatedRequest;
   const user = authed.user;

@@ -27,6 +27,7 @@ import type { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
 import { orgActRefusal } from "../services/orgOperating";
+import { pathIsExempt } from "./gateExemptions";
 
 /**
  * Routes that remain reachable while paused. Reads (GET) are always
@@ -34,7 +35,7 @@ import { orgActRefusal } from "../services/orgOperating";
  * (billing portal access, resume flow, support-contact, audit log
  * exports). The match is a startsWith — order matters only for clarity.
  */
-const PAUSE_GATE_EXEMPT_PREFIXES = [
+export const PAUSE_GATE_EXEMPT_PREFIXES = [
   "/api/subscription/",       // resume / cancel / reactivate / refund
   "/api/billing/",            // portal / invoices
   "/api/credits/",            // billing-adjacent reads + buys
@@ -64,9 +65,7 @@ export function subscriptionPauseGate(
   // Exempt the small allow-list of routes that must stay reachable
   // (resume, billing portal, support, etc.).
   const path = req.path || req.url || "";
-  for (const prefix of PAUSE_GATE_EXEMPT_PREFIXES) {
-    if (path.startsWith(prefix)) return next();
-  }
+  if (pathIsExempt(path, PAUSE_GATE_EXEMPT_PREFIXES)) return next();
 
   const org = (req as AuthenticatedRequest).organization;
   if (!org) return next(); // pre-org request — auth handler will reject
