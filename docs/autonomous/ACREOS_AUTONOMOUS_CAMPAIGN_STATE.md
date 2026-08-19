@@ -969,3 +969,78 @@ Ranked, so the next session does not have to re-derive it:
 4. **LLM-parse confidence** (`parsed.confidence || 50`) — the largest family and
    the lowest individual consequence: a model that stated no confidence is given
    one.
+
+## PHASE 8 — THE ENGINE AND THE SIGNED NOTE DISAGREED (2026-08-18)
+
+First item off the phase-7 register, and the sharpest one on it.
+
+Three call sites read `acquired_notes.grace_period_days`:
+
+```
+server/jobs/acquiredNoteAging.ts   note.gracePeriodDays ?? 0
+server/services/documents.ts       note.gracePeriodDays || 10
+server/routes-documents.ts         note.gracePeriodDays || 10
+```
+
+For a note whose record does not state a grace period, AcreOS measured
+delinquency against **zero** days while the promissory note it generated — the
+document with a SIGNATURES block — promised **ten**. A borrower could be marked
+late by the servicing engine inside a window the instrument grants them.
+
+And `||` fires on `0`. A note whose record explicitly grants **no** grace period
+produced a legal instrument asserting ten days. That is not a default filling a
+gap; it is a document contradicting the record it was generated from.
+
+`shared/notes/delinquency.ts` gained `noteGracePeriodDays()` — an explicit `0`
+is a real term, `null`/non-finite/negative means the record states none, and
+nothing is ever substituted. All three sites consume it, which is the second law
+applied deliberately: this function exists *because* three copies disagreed, so
+adoption is the whole point rather than an afterthought.
+
+The callers then diverge **on purpose**, and the divergence is documented at
+both ends: the aging sweep still measures an unstated term as zero (an internal
+signal can be re-derived) while the documents decline to state a term at all (a
+signed instrument cannot). The sweep surfaces `graceStated: false` so the
+assumption is visible.
+
+### Two self-corrections worth keeping
+
+**I broke a stated purity property.** `planNoteAging`'s docstring says "No db,
+no clock, no logger — so every rule above is directly testable", and my first
+version put a `logger.info` inside it. Reverted: the fact travels out on the
+return value as `graceStated`, and the impure caller logs it. A docstring that
+states an invariant is part of the contract.
+
+**A test of mine passed vacuously and one assertion caught it.** The aging
+fixture omitted `paymentDueDay` / `originationDate` / `maturityDate`, so
+`planNoteAging` returned "note is missing schedule facts" and two assertions
+compared `0` to `0` and agreed. Only the one test that demanded the values
+*differ* failed. The fixture is now complete and carries an explicit vacuity
+guard asserting `skipReason === null` and `daysDelinquent > 0`.
+
+Third correction, same file: that failing assertion was aimed at
+`daysDelinquent`, but `computeNoteDelinquency` documents that it accepts the
+grace parameter and **ignores it deliberately** — grace governs fees, not the
+day count. The test was wrong, not the code, and it now asserts on
+`lateFeeAdvisory`, the one output grace actually moves. Same discipline as the
+mutation lesson: establish which side is wrong before changing either.
+
+**A third self-correction, from a different gate.** The first version of the
+aging fixture ended `} as AgingNoteRow`, and `check-tests-typecheck` flagged it
+as a new offender (162 → 163). That gate's rationale is exactly the hazard: a
+cast lets a fixture omit or misspell a field, and the test then asserts on
+something that does not exist and passes forever. The cast was papering over a
+real mismatch — `AgingNoteRow.id` is a `string`, and the fixture had a number.
+Fixed by typing the fixture rather than by widening the baseline.
+
+Three gates caught three different mistakes of mine inside one change:
+`check-tests-typecheck` (the cast), the suite's own failing assertion (the
+vacuous fixture), and `lint:measurement-defaults` (the stale register entries).
+That is the ratchet system working as designed, on the author rather than on
+someone else.
+
+### The gate caught its own reduction
+
+`lint:measurement-defaults`, added hours earlier, reported both
+`note.gracePeriodDays || 10` entries **stale** the moment they were fixed —
+exactly what a down-only register is for. Baseline 77 → 75, locked in.

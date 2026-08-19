@@ -29,7 +29,13 @@ const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-measurement-defaults.mjs");
 
 /** Measured 2026-08-18. Down-only: a fix DELETES its baseline line. */
-const BASELINE_CEILING = 77;
+const BASELINE_CEILING = 75;
+// 77 -> 75 on 2026-08-18: both `note.gracePeriodDays || 10` sites. They printed
+// a ten-day grace period into a promissory note (SIGNATURES block included) for
+// a note whose record either states nothing or explicitly states ZERO — the
+// `||` fires on 0 — while `acquiredNoteAging` measured that same note against
+// zero days. The gate reported them stale the moment they were fixed, which is
+// the register working; locked in per its down-only rule.
 /** Expressions the walk must keep seeing; 2,031 measured 2026-08-18. */
 const EXPRESSION_FLOOR = 600;
 

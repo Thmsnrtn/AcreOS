@@ -70,6 +70,7 @@
  */
 
 import { and, asc, eq, inArray, not } from "drizzle-orm";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import { db } from "../db";
 import { acquiredNotes } from "@shared/schema/notes-vertical";
 import { logger } from "../utils/logger";
@@ -173,6 +174,16 @@ export interface AgingPlan {
   /** Set only on a REAL status change. */
   transition: { from: string; to: AgeableNoteStatus; worsening: boolean } | null;
   lateFeeAdvisory: { assessable: boolean; reason: string } | null;
+  /**
+   * False when the note's record states no grace period.
+   *
+   * The aging sweep measures such a note against ZERO days — deliberate, and
+   * NOT the choice the document generators make (see `noteGracePeriodDays`):
+   * an internal aging signal can be re-derived, a signed instrument cannot.
+   * Surfaced here rather than logged inside, because this function is pure
+   * by design and a caller that wants to log it can.
+   */
+  graceStated: boolean;
 }
 
 /**
@@ -189,6 +200,7 @@ export function planNoteAging(note: AgingNoteRow, asOf: Date): AgingPlan {
     nextPaymentDate: note.nextPaymentDate ?? null,
   };
   const inert: AgingPlan = {
+    graceStated: noteGracePeriodDays(note.gracePeriodDays) !== null,
     skipReason: null,
     changes: {},
     changed: false,
@@ -267,7 +279,17 @@ export function planNoteAging(note: AgingNoteRow, asOf: Date): AgingPlan {
     };
   }
 
-  const gracePeriodDays = note.gracePeriodDays ?? 0;
+  // ONE resolver for this term across the servicing engine and the documents.
+  // These read `?? 0` while `documents.ts` and `routes-documents.ts` read
+  // `|| 10`, so the same note was a zero-day grace period for delinquency
+  // scoring and a ten-day one in the instrument the borrower signed.
+  //
+  // `null` (the record states no term) still measures as ZERO here, which is
+  // deliberate and is NOT the same choice the documents make: aging is an
+  // internal signal that can be re-derived, while a signed instrument cannot.
+  // It is logged so an unstated term is visible rather than assumed.
+  const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
+  const gracePeriodDays = statedGrace ?? 0;
   const { daysDelinquent, delinquencyStatus } = computeNoteDelinquency({
     nextPaymentDate,
     gracePeriodDays,
@@ -295,6 +317,7 @@ export function planNoteAging(note: AgingNoteRow, asOf: Date): AgingPlan {
   if (statusChanged) changes.status = targetStatus;
 
   return {
+    graceStated: statedGrace !== null,
     skipReason: null,
     changes,
     changed: Object.keys(changes).length > 0,
@@ -427,6 +450,21 @@ export async function runAcquiredNoteAgingSweep(options?: {
     orgs.add(note.organizationId);
     try {
       const plan = planNoteAging(note, asOf);
+
+      // The note states no grace period, so this sweep measured it against
+      // ZERO days. The instruments generated for the same note decline to
+      // state a term at all (see `noteGracePeriodDays`), and that asymmetry is
+      // deliberate — but it must be visible, because it means the borrower's
+      // aging is being computed on an assumption the paperwork will not make.
+      if (!plan.graceStated) {
+        logger.info("note_grace_period_unstated", {
+          metadata: {
+            noteId: note.id,
+            organizationId: note.organizationId,
+            assumedForAging: 0,
+          },
+        });
+      }
 
       if (plan.changed) {
         await db

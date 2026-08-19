@@ -6,6 +6,50 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
+
+/**
+ * The LATE CHARGES clause of a generated promissory note.
+ *
+ * This was a template literal reading `note.gracePeriodDays || 10`. Two things
+ * were wrong with it, and this is a document with a SIGNATURES block:
+ *
+ *  1. `||` fires on `0`, so a note whose record explicitly grants NO grace
+ *     period produced an instrument promising ten days;
+ *  2. when the record states no grace period at all, the clause asserted a term
+ *     nobody agreed to — while `acquiredNoteAging` measured that same note's
+ *     delinquency against ZERO days. The engine and the signed note disagreed.
+ *
+ * Both now read `noteGracePeriodDays`. When the record does not state a term,
+ * the clause says so instead of inventing one, and names the field to set.
+ */
+function lateChargeClause(note: {
+  gracePeriodDays?: number | null;
+  lateFee?: unknown;
+}): string {
+  const grace = noteGracePeriodDays(note.gracePeriodDays);
+  const lateFee = Number(note.lateFee ?? 0);
+  const feeText = `$${lateFee.toLocaleString()}`;
+
+  if (grace === null) {
+    return (
+      "This note does not state a grace period. No late charge terms are " +
+      "included; set the note's grace period before issuing this instrument " +
+      "if a late charge is intended."
+    );
+  }
+  if (grace === 0) {
+    return (
+      `If any payment is not received on its due date, Borrower agrees to pay ` +
+      `a late charge of ${feeText}.`
+    );
+  }
+  return (
+    `If any payment is not received within ${grace} day${grace === 1 ? "" : "s"} ` +
+    `after its due date, Borrower agrees to pay a late charge of ${feeText}.`
+  );
+}
+
 import { Errors } from "./utils/errors";
 
 export function registerDocumentRoutes(app: Express): void {
@@ -377,7 +421,7 @@ PAYMENT TERMS
 - First Payment Due: ${note.firstPaymentDate ? new Date(note.firstPaymentDate).toLocaleDateString() : 'TBD'}
 
 LATE CHARGES
-If any payment is not received within ${note.gracePeriodDays || 10} days after its due date, Borrower agrees to pay a late charge of $${Number(note.lateFee || 0).toLocaleString()}.
+${lateChargeClause(note)}
 
 DEFAULT
 If Borrower fails to make any payment when due, the entire unpaid principal balance and accrued interest shall become immediately due and payable at Lender's option.

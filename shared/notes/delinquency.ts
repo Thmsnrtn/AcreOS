@@ -64,3 +64,46 @@ export function delinquencyIsDeterminable(
 ): boolean {
   return parseCalendarDate(nextPaymentDate ?? null) !== null;
 }
+
+/**
+ * The note's grace period in days, or `null` when the record does not carry one.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * Three call sites read `acquired_notes.grace_period_days`, and they disagreed
+ * about the same term on the same note:
+ *
+ *   server/jobs/acquiredNoteAging.ts   `note.gracePeriodDays ?? 0`
+ *   server/services/documents.ts       `note.gracePeriodDays || 10`
+ *   server/routes-documents.ts         `note.gracePeriodDays || 10`
+ *
+ * So the servicing engine measured delinquency against a ZERO-day grace period
+ * while the promissory note the borrower signs — the one with a SIGNATURES
+ * block — promised TEN. A borrower could be marked late by the engine inside a
+ * window the instrument grants them.
+ *
+ * The `||` is worse than the disagreement. It fires on `0`, so a note whose
+ * record explicitly says "no grace period" generated a legal document
+ * asserting ten days. That is not a default filling a gap; it is a document
+ * contradicting the record it was generated from.
+ *
+ * ── THE CONTRACT ────────────────────────────────────────────────────────────
+ * • an explicit `0` is a REAL TERM and is returned as `0`;
+ * • `null` / `undefined` / a non-finite or negative value means the record does
+ *   not state one, and the answer is `null` — never a stand-in;
+ * • callers decide what to do with `null`, and they must decide DIFFERENTLY:
+ *   the aging engine may treat "unstated" as no grace (conservative for the
+ *   lender is not conservative for the borrower, so it says so in a log), while
+ *   a document may not print a number nobody agreed to.
+ *
+ * The column carries `.default(10)` in the schema, so a note created through
+ * the app has 10. `null` reaches here from imported or legacy rows — exactly
+ * the notes whose terms AcreOS did not originate and must not invent.
+ */
+export function noteGracePeriodDays(
+  gracePeriodDays: number | null | undefined,
+): number | null {
+  if (gracePeriodDays === null || gracePeriodDays === undefined) return null;
+  if (!Number.isFinite(gracePeriodDays)) return null;
+  if (gracePeriodDays < 0) return null;
+  return Math.floor(gracePeriodDays);
+}

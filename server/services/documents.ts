@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import { storage } from "../storage";
 import type { Note, Property, Lead, Organization } from "@shared/schema";
 import { format } from "date-fns";
@@ -160,7 +161,17 @@ export async function generatePromissoryNote(
   
   if (note.lateFee && Number(note.lateFee) > 0) {
     y = addField(doc, "Late Fee", formatCurrency(note.lateFee), y);
-    y = addField(doc, "Grace Period", `${note.gracePeriodDays || 10} days`, y);
+    // `note.gracePeriodDays || 10` printed "Grace Period: 10 days" for a note
+    // whose record says 0 (the `||` fires on zero) and for one that states no
+    // term at all — while acquiredNoteAging measured the same note's
+    // delinquency against ZERO days. One resolver now answers for both.
+    const grace = noteGracePeriodDays(note.gracePeriodDays);
+    y = addField(
+      doc,
+      "Grace Period",
+      grace === null ? "Not stated on this note" : `${grace} day${grace === 1 ? "" : "s"}`,
+      y,
+    );
   }
   y += 10;
 
