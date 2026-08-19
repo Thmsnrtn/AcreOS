@@ -34,7 +34,8 @@ interface Session {
 interface SecuritySummary {
   userId: string;
   email: string;
-  twoFactorEnabled: boolean;
+  /** null when the identity provider could not be reached — not a finding. */
+  twoFactorEnabled: boolean | null;
   lastSignInAt: string | null;
   fcraAttestationStale: boolean | null;
 }
@@ -149,7 +150,11 @@ export default function AccountSecurityPage() {
               <KeyRound className="w-3 h-3" aria-hidden="true" /> Two-factor
             </div>
             <div className="text-base font-semibold mt-1">
-              {summary.data.twoFactorEnabled ? (
+              {summary.data.twoFactorEnabled === null ? (
+                // The check could not run. A red "not enrolled" badge here
+                // would state a finding about the account that nobody made.
+                <Badge variant="outline" className="text-xs">unknown</Badge>
+              ) : summary.data.twoFactorEnabled ? (
                 <Badge variant="default" className="text-xs"><Check className="w-3 h-3 mr-1" /> enrolled</Badge>
               ) : (
                 <Badge variant="destructive" className="text-xs"><AlertTriangle className="w-3 h-3 mr-1" /> not enrolled</Badge>

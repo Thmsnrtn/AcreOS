@@ -1252,3 +1252,42 @@ each dependency made to throw in turn. Its first assertion is a vacuity guard �
 with every dependency healthy the action must NOT be blocked by an
 unevaluable-gate violation — so "refuse everything" cannot pass for a fix.
 Mutations restoring each swallowing catch individually all fail.
+
+### The fail-open class, scanned — a mostly NEGATIVE result
+
+After the `executionEngine` finding, a scan of `server/**` for **empty catches
+in gate-shaped context** returned 524 empty catches, 133 of them near
+gate/guard/authorize/verify vocabulary. Auditing the highest-consequence subset
+by hand — auth, security, middleware — the class is **handled correctly almost
+everywhere**:
+
+- `middleware/security.ts` — an invalid `APP_URL` simply is not added to the
+  CORS allowlist. More restrictive, not less.
+- `middleware/getOrCreateOrg.ts` (two sites) — a failed membership lookup
+  leaves `org` null and falls through to the user's OWN org. Fail-closed for
+  tenancy, which is the direction that matters.
+- `routes-account-security.ts:147` — if the session lookup throws,
+  `sessionUserId` stays null and `null !== clerkUserId` returns 403. Textbook.
+- `routes-autopilot.ts:366` — a draft's example county; advisory, and annotated
+  as such.
+
+`executionEngine` was the outlier, not the tip of an iceberg. **Recording the
+negative result deliberately**: it bounds the class, and the alternative — a
+ratcheted gate over 133 mostly-correct sites — would have frozen noise and
+taught future sessions that empty catches are suspect when they usually are
+not. A gate whose register is mostly false positives gets ignored, and then it
+guards nothing.
+
+One real case did come out of the audit: `routes-account-security.ts` reported
+`twoFactorEnabled: false` whenever the identity provider was unreachable,
+unconfigured, or the lookup threw — and `account-security.tsx` renders that as
+a red **"not enrolled"** badge. An unavailable check displayed as a finding
+about the user's own security posture, on the page whose job is to state it.
+Now `boolean | null`, rendering "unknown", with the failure logged.
+
+`fcraAttestationStale`, ten lines below in the same handler, already did this
+correctly (`boolean | null`, "leave null" on error). **Fifth instance this
+session of the correct rule sitting adjacent to the broken one.** That
+frequency is itself the finding: this codebase usually knows the right answer
+somewhere within a few lines of where it gets it wrong, which is why reading
+the neighbours has been the highest-yield technique in the whole campaign.

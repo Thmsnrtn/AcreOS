@@ -261,7 +261,15 @@ export function registerAccountSecurityRoutes(app: Express): void {
         const [localUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!localUser) return Errors.notFound(res, "User");
 
-        let twoFactorEnabled = false;
+        // `false` here ASSERTED that the user has no second factor — on the
+        // page whose job is to tell them their security posture — whenever the
+        // identity provider was unreachable, unconfigured, or the lookup threw.
+        // The UI renders it as a red "not enrolled" badge, so an unavailable
+        // check displayed as a finding about the account.
+        //
+        // `fcraAttestationStale` ten lines below already does this correctly
+        // (`boolean | null`, "leave null" on error). Same handler.
+        let twoFactorEnabled: boolean | null = null;
         let lastSignInAt: string | null = null;
         if (localUser.clerkUserId) {
           const clerk = await getClerk();
@@ -270,7 +278,11 @@ export function registerAccountSecurityRoutes(app: Express): void {
               const u = await clerk.users.getUser(localUser.clerkUserId);
               twoFactorEnabled = Boolean(u?.twoFactorEnabled);
               lastSignInAt = u?.lastSignInAt ? new Date(u.lastSignInAt).toISOString() : null;
-            } catch {/* fall through */}
+            } catch (err) {
+              logger.warn("[account-security] identity provider lookup failed; 2FA state unknown", {
+                metadata: { userId, error: err instanceof Error ? err.message : String(err) },
+              });
+            }
           }
         }
 
