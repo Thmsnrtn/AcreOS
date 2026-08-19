@@ -82,12 +82,20 @@ vi.mock("../../server/services/paxPause", async () => {
   return { ...actual, getPaxPauseState };
 });
 
-vi.mock("../../server/services/autonomyGuardrails", () => ({
-  getOrgAutonomyLevel,
-  checkSendRateLimit,
-  checkTcpaBeforeSend,
-  recordAutonomousSend,
-}));
+// `unattendedSendPermitted` is deliberately the REAL implementation, not a stub.
+// It is the predicate deciding whether a level may send without a human tap, and
+// a mock returning a fixed answer would make this suite agree with any
+// implementation of it — including one that inverts the polarity.
+vi.mock("../../server/services/autonomyGuardrails", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/autonomyGuardrails")>();
+  return {
+    getOrgAutonomyLevel,
+    checkSendRateLimit,
+    checkTcpaBeforeSend,
+    recordAutonomousSend,
+    unattendedSendPermitted: actual.unattendedSendPermitted,
+  };
+});
 vi.mock("../../server/services/approvalKernel", () => ({
   APPROVAL_REQUIRED_TOOLS: new Set([
     "send_email",

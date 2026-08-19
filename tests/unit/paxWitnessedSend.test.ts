@@ -74,12 +74,23 @@ const {
 }));
 
 // ── Stub the autonomy kernel so we can assert it's actually invoked ──────────
-vi.mock("../../server/services/autonomyGuardrails", () => ({
-  getOrgAutonomyLevel,
-  checkSendRateLimit,
-  checkTcpaBeforeSend,
-  recordAutonomousSend,
-}));
+//
+// `unattendedSendPermitted` is deliberately the REAL implementation, not a stub.
+// It is the predicate that decides whether a level may send without a human tap,
+// and a mock returning a fixed answer would make this suite agree with any
+// implementation of it — including one that inverts the polarity. The rest of
+// the kernel is stubbed because this file isolates send-path CONTROL FLOW; that
+// one function IS the control flow being asserted.
+vi.mock("../../server/services/autonomyGuardrails", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/autonomyGuardrails")>();
+  return {
+    getOrgAutonomyLevel,
+    checkSendRateLimit,
+    checkTcpaBeforeSend,
+    recordAutonomousSend,
+    unattendedSendPermitted: actual.unattendedSendPermitted,
+  };
+});
 
 // ── Stub the Tier-1A approval kernel's propose path (no DB in this test).
 // pendingActionArtifact mirrors the real shape; kernel internals are covered

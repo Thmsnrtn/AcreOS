@@ -38,12 +38,8 @@
  * bare `/api/auth`) for the same reason.
  */
 
-/**
- * Does `path` fall inside `prefix`, at a path-segment boundary?
- *
- * Exported for the boundary tests; callers normally want `pathIsExempt`.
- */
-export function pathWithin(path: string, prefix: string): boolean {
+/** Does `path` fall inside `prefix`, at a path-segment boundary? */
+function pathWithin(path: string, prefix: string): boolean {
   if (prefix.endsWith("/")) return path.startsWith(prefix);
   return path === prefix || path.startsWith(prefix + "/");
 }

@@ -40,7 +40,7 @@ import { logActivity } from "./systemActivityLogger";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
-import { getOrgAutonomyLevel, checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
+import { getOrgAutonomyLevel, unattendedSendPermitted, checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
 import { getIdentityForSend } from "./orgEmailIdentity";
 import { readIntegrationCredentials } from "./integrationCredentials";
 import {
@@ -508,7 +508,7 @@ export class FinanceAgentService {
     // prepared and parked for one-tap approval. Orgs at supervised/autonomous
     // dispatch unattended.
     const autonomy = await getOrgAutonomyLevel(orgId);
-    if (autonomy === "assisted" && !options.humanApproved) {
+    if (!unattendedSendPermitted(autonomy) && !options.humanApproved) {
       return finish(
         REMINDER_STATUS.awaitingApproval,
         "Ready to send — your autonomy level is 'assisted', so Pax waits for your tap (Settings → Pax controls).",

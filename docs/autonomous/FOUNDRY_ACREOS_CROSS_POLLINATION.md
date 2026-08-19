@@ -1100,9 +1100,130 @@ allowed for a read-only account. Rewritten to the new truth rather than deleted,
 per the wave-discipline rule — the invariant it was written for (every entry
 reaches something) survives; only the false half is gone.
 
+### 24 — "Refusing promotion into an unproven state at the write" → ADAPTED, and it found something worse
+
+**Foundry shape.** `115_operating_promotion_freeze.sql` is four lines:
+
+```sql
+CREATE TRIGGER responsibility_operating_promotion_freeze
+BEFORE INSERT ON responsibility_transitions WHEN NEW.to_state='operating'
+BEGIN SELECT RAISE(ABORT,'responsibility_operating:not_earned'); END;
+```
+
+`operating` is documented as unproven, so no caller string and no successful
+assisted action may advance into it — and the refusal is at the WRITE, not in
+whichever service happens to be the only known writer today.
+
+**What AcreOS had.** Two autonomy lanes, and the theme landed differently in each.
+
+*Lane 1 — Pax send autonomy (`organizations.paxAutonomyLevel`).* The Foundry
+shape held: `autonomous` is marked "(future)" in `autonomyGuardrails.ts`'s own
+header and there is no promotion path in the codebase at all — the single write
+is the circuit-breaker DOWNGRADE. Refused by absence. But the READ was the
+inverse of safe:
+
+```ts
+return (org?.paxAutonomyLevel as AutonomyLevel) ?? "assisted";   // a cast, not a check
+```
+
+`??` catches only null/undefined, so `""`, a typo, or anything a later code path
+wrote came back unchanged. Every consumer then asked
+`if (level === "assisted" && !trustedApproval)` — a check for the ONE level that
+must not send. So an unrecognised level was read as MORE permission than the
+default and fell straight through to the guarded send, contradicting the
+invariant those same call sites state in capitals. Fixed by parsing rather than
+casting, and by replacing the polarity with one predicate,
+`unattendedSendPermitted(level)`, consumed by all three send paths
+(`server/ai/tools.ts` email + SMS, `financeAgent.ts` borrower notices). Asking
+which levels MAY send means a level added later sends nothing until someone says
+so; the old spelling would have granted it unattended sending on the day it was
+added, silently, at every call site at once.
+
+*Lane 2 — the VA agent engine. This is where the real defect was.* Not a
+promotion into an unproven state: a CLASSIFIER that resolved the unknown
+downward.
+
+`inferRiskProfile` (`server/jobs/autonomousTaskProcessor.ts`) ended with a branch
+commented **"Default: conservative"** returning `category: "data_write"` — base
+risk 20 — for any action string it had no branch for. It was the opposite:
+
+| | |
+|---|---|
+| `THRESHOLDS.supervised` | `{ auto: 25 }` |
+| `evaluate()` | `if (riskScore <= thresholds.auto) → auto_execute` |
+| `getAutonomyLevel()` with no config row | `"supervised"` |
+| `vaAgents.autonomyLevel` column | `default("supervised")` |
+
+20 ≤ 25, so **every unrecognised action auto-executed unattended at the DEFAULT
+autonomy level.** Among the actions taking that branch was `execute_skill` — the
+most general action the engine accepts, which dispatches an arbitrary skill id
+through `skillRegistry.executeSkill`. The registry holds `sendEmail`,
+`startCollectionSequence`, `processPayoff` and `prepareContract`.
+
+**Reachability, read rather than assumed.** `POST /api/agents/tasks`
+(`routes-ai.ts:53`, authenticated and org-scoped) inserts an `agentTasks` row
+whose `input` is a free-form JSON column. `processBatch()` selects
+`WHERE status='pending' AND requiresReview=false` — nothing excludes such a row.
+`startAutonomousTaskProcessor()` is started at boot with no env gate
+(`runScheduledJobs.ts:4028`); its own comment says the loop "AUTO-EXECUTES agent
+actions". Three further enqueue paths exist (`queueDirectorGoal`, the
+orchestration `create_task` trigger whose `taskInput` is org-configurable, and
+`storage.createAgentTask`).
+
+**A second defect fell out of the same reading.** `inferRiskProfile` could only
+ever emit `offer`, `draft`, `research` and `data_write`. The `communication`
+(40), `financial` (70) and `contract` (90) bands were declared in
+`CATEGORY_BASE_RISK` and **dead** — no production caller could reach them. A
+guard band nothing can emit is a guard that looks stronger than it is, which is
+this repository's named signature defect in a new place.
+
+**The adaptation.** The refusal went at the DECISION point rather than into each
+classifier, because there turned out to be four of them:
+
+1. `evaluate()` escalates any profile that is not explicitly `classified: true`,
+   at every autonomy level. The flag is optional so existing callers compile, and
+   *absent reads as unclassified* — a caller who forgets gets the cautious
+   answer. The check sits ABOVE the auto-approve list on purpose: that list is
+   keyed on `category`, and an unclassified profile's category is a guess, so an
+   org that auto-approves `data_write` must not thereby launder everything nobody
+   has classified.
+2. It escalates rather than denies. The human sees it in the approval queue and
+   the work still happens on a tap; denying would cancel legitimate tasks and
+   remove a capability instead of governing it.
+3. `SKILL_RISK` classifies `execute_skill` by the SKILL, since the risk is a
+   property of the skill and a single answer for `execute_skill` would be either
+   a lie about `sendEmail` or a lie about `lookupParcel`. It is cross-checked
+   against `skillRegistry.getAllSkills()` in both directions, so a newly
+   registered skill cannot inherit a classification nobody chose for it — until
+   it is added it is unclassified and escalates. This is also what made the three
+   dead bands reachable.
+4. `classifyAction()` — the LLM classifier behind the preview route — had the
+   same two shapes: `parsed.category || "data_write"` (a cast that also accepted
+   categories outside the union, which index `CATEGORY_BASE_RISK` to `undefined`)
+   and `catch { /* Fallback to conservative profile */ ... }`, so one malformed
+   response or an LLM outage reclassified every action as safe enough to
+   auto-execute. Now parsed against `KNOWN_CATEGORIES` (derived from the risk
+   table, not re-listed), and the catch returns an explicitly unclassified
+   profile: a classification that FAILED is not a classification of "low risk" —
+   the second application of ledger entry 22.
+
+**Exit test.** `autonomyRiskClassification.test.ts` drives the real classifier
+into the real `evaluate()`. Falsified against four mutations, each of which
+fires: re-spelling the fallback as a different low band, moving the check below
+the auto-approve list, marking the unmapped-skill residue classified, and
+dropping one skill from the map. `autonomyLevelFailsClosed.test.ts` covers lane 1
+and is falsified against both the cast and the old polarity. `paxWitnessedSend`
+and `paxPauseToolGate` now mock `unattendedSendPermitted` with the REAL
+implementation rather than a stub, because a stubbed safety predicate makes a
+suite agree with any implementation of it, including an inverted one.
+
+**Complexity change.** One flag, one predicate, one map. **Liability change.**
+Down, sharply, and pre-customer: the blast radius today is zero, which is exactly
+why this was the moment to fix it rather than after Customer #1.
+
 ## Status
 
-**All 23 admitted candidates are now dispositioned** — implemented, adapted,
+**All 24 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 
@@ -1129,8 +1250,13 @@ Themes noted but not yet tested against AcreOS HEAD:
   derives the protected door set from the parsed `NAV_MODULES` rather than
   re-listing it, so a door cannot be hidden by a broader entry and the door set
   cannot drift.
-- **Refusing promotion into an unproven state at the write**
-  (`115_operating_promotion_freeze.sql`).
+- ~~**Refusing promotion into an unproven state at the write**~~ — CLOSED as
+  ledger entry 24. AcreOS refused the unproven Pax level by ABSENCE, which held,
+  but its READ of the level was a cast that made any unrecognised value more
+  permissive than the default. Testing the theme against the sibling VA-agent
+  lane found the larger defect: a risk classifier whose residue resolved
+  DOWNWARD, so any action it did not recognise auto-executed at the default
+  autonomy level.
 - **Owner direction that is structurally non-authoritative** — a disposition
   ledger with no consent/scope/capability column, so no later authority lookup
   can read it (`118_judgment_owner_disposition.sql`).

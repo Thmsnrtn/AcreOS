@@ -15,6 +15,7 @@ import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
 import {
   getOrgAutonomyLevel,
+  unattendedSendPermitted,
   checkSendRateLimit,
   checkTcpaBeforeSend,
   recordAutonomousSend,
@@ -1873,7 +1874,7 @@ export async function executeTool(
         // was previously args._approved, which the model could emit itself.)
         const autonomyLevel = await getOrgAutonomyLevel(org.id);
 
-        if (autonomyLevel === "assisted" && !trustedApproval) {
+        if (!unattendedSendPermitted(autonomyLevel) && !trustedApproval) {
           // Draft-for-approval. No send. Surface a one-tap approval artifact.
           return {
             success: true,
@@ -1982,7 +1983,7 @@ export async function executeTool(
         // guarded send, which honors the daily envelope + TCPA + audit trail.
         const smsAutonomyLevel = await getOrgAutonomyLevel(org.id);
 
-        if (smsAutonomyLevel === "assisted" && !trustedApproval) {
+        if (!unattendedSendPermitted(smsAutonomyLevel) && !trustedApproval) {
           // Draft-for-approval. No send. Surface a one-tap approval artifact.
           return {
             success: true,

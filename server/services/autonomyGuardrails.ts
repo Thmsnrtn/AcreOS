@@ -319,13 +319,31 @@ export async function generateAutonomousAuditSummary(
   }
 }
 
+/** The levels this module actually knows how to reason about. */
+const KNOWN_LEVELS: ReadonlySet<string> = new Set<AutonomyLevel>([
+  "assisted",
+  "supervised",
+  "autonomous",
+]);
+
 /**
- * Returns the autonomy level for an org.
+ * Read a stored autonomy level, PARSING it rather than casting it.
  *
- * TODO: When organizations.paxAutonomyLevel is added to the schema, replace the
- * hardcoded return with:
- *   const org = await storage.getOrganization(orgId);
- *   return ((org as any).paxAutonomyLevel as AutonomyLevel) ?? "assisted";
+ * The previous body was `(org?.paxAutonomyLevel as AutonomyLevel) ?? "assisted"`.
+ * A cast is not a check, and `??` only catches null/undefined — so an empty
+ * string, a typo, or any value written by a future code path came back
+ * unchanged. That mattered because every consumer asks `=== "assisted"`:
+ *
+ *     if (autonomyLevel === "assisted" && !trustedApproval) { ...draft, no send }
+ *
+ * so ANY unrecognised value is not "assisted" and falls straight through to the
+ * guarded send. An unknown level was read as MORE permission than the default,
+ * which is the exact inverse of what a safety default is for, and it contradicts
+ * the invariant those call sites state in capitals: nothing sends without an
+ * explicit human tap.
+ *
+ * `assisted` is the safe floor, so an unrecognised value resolves there and is
+ * logged — a value nobody recognises is a fact worth seeing, not one to swallow.
  */
 export async function getOrgAutonomyLevel(
   orgId: number
@@ -334,7 +352,27 @@ export async function getOrgAutonomyLevel(
     where: eq(organizations.id, orgId),
     columns: { paxAutonomyLevel: true },
   });
-  return (org?.paxAutonomyLevel as AutonomyLevel) ?? "assisted";
+  const stored = org?.paxAutonomyLevel;
+  if (stored == null) return "assisted";
+  if (KNOWN_LEVELS.has(stored)) return stored as AutonomyLevel;
+  logger.warn(
+    `[autonomy] org=${orgId} has an unrecognised paxAutonomyLevel ${JSON.stringify(stored)}; ` +
+      `reading it as "assisted" rather than granting the permission it does not name`,
+  );
+  return "assisted";
+}
+
+/**
+ * May this level send to a counterparty WITHOUT an explicit human tap?
+ *
+ * The one predicate for that question. Every call site used to spell it
+ * `level === "assisted"` — a check for the one level that must NOT send, so a
+ * level added later would be granted unattended sending by default, silently,
+ * by every consumer at once. Asking which levels MAY send inverts that: a new
+ * level sends nothing until someone adds it here on purpose.
+ */
+export function unattendedSendPermitted(level: AutonomyLevel): boolean {
+  return level === "supervised" || level === "autonomous";
 }
 
 // ── Graduated Autonomy Ramp ──────────────────────────────────────────────────

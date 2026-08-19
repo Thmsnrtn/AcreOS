@@ -41,6 +41,14 @@ export interface ActionRiskProfile {
   isIrreversible: boolean;
   /** Human-readable description for the approval UI */
   description: string;
+  /**
+   * Did the classifier RECOGNISE this action, or is `category` a guess?
+   *
+   * Optional so existing callers keep compiling, but absent is read as
+   * unclassified — see `evaluate()`. The polarity is deliberate: a caller that
+   * forgets to set this gets the cautious answer, not the permissive one.
+   */
+  classified?: boolean;
   /** Entity IDs for context */
   relatedLeadId?: number;
   relatedPropertyId?: number;
@@ -70,6 +78,13 @@ const CATEGORY_BASE_RISK: Record<ActionCategory, number> = {
   offer:       80,
   contract:    90,
 };
+
+/**
+ * The categories that actually exist, derived from the risk table rather than
+ * re-listed — a second hand-written list is a second thing to forget to update,
+ * and a category absent from CATEGORY_BASE_RISK scores `undefined`.
+ */
+const KNOWN_CATEGORIES: ReadonlySet<string> = new Set(Object.keys(CATEGORY_BASE_RISK));
 
 function scoreRisk(profile: ActionRiskProfile): number {
   let score = CATEGORY_BASE_RISK[profile.category];
@@ -128,6 +143,39 @@ export class AutonomousAgentEngine {
       return {
         decision: "escalate",
         reason: `Category "${profile.category}" is configured to always require approval`,
+        riskScore,
+        autonomyLevel: level,
+        requiresApproval: true,
+      };
+    }
+
+    // An action the classifier did not RECOGNISE is not a low-risk action.
+    //
+    // `inferRiskProfile` used to fall through to `data_write` (base risk 20) for
+    // any action string it had no branch for, under a comment reading "Default:
+    // conservative". It was the opposite. 20 is at or below the auto threshold
+    // for `supervised` — which is the level `getAutonomyLevel` returns when an
+    // org has no config row, and the column default besides — so every
+    // unrecognised action auto-executed unattended at the DEFAULT autonomy
+    // level. That included `execute_skill`, the most general action in the
+    // engine, which dispatches an arbitrary skill id: sendEmail,
+    // startCollectionSequence, processPayoff, prepareContract.
+    //
+    // This check sits ABOVE the auto-approve list on purpose. That list is keyed
+    // on `category`, and an unclassified profile's category is a guess — an org
+    // that auto-approves `data_write` must not thereby launder every action
+    // nobody has classified.
+    //
+    // It escalates rather than denies: the human sees it in the approval queue
+    // and the work still happens on a tap. Denying would cancel legitimate tasks
+    // and remove a capability instead of governing it.
+    if (profile.classified !== true) {
+      return {
+        decision: "escalate",
+        reason:
+          `Action was not recognised by the risk classifier, so its risk is unknown ` +
+          `(scored ${riskScore} as "${profile.category}" only for display). ` +
+          `Unknown risk requires approval regardless of autonomy level.`,
         riskScore,
         autonomyLevel: level,
         requiresApproval: true,
@@ -214,20 +262,40 @@ Respond with exactly this JSON structure:
       });
 
       const parsed = JSON.parse(response.content);
+      // PARSE the model's answer, do not cast it. `parsed.category || "data_write"`
+      // accepted anything the model emitted — including a category that is not in
+      // the union at all, which indexes CATEGORY_BASE_RISK to `undefined` and
+      // makes scoreRisk return NaN — and silently substituted the score-20 band
+      // when the field was missing. A category nobody can check is not a
+      // classification.
+      const category = KNOWN_CATEGORIES.has(parsed?.category)
+        ? (parsed.category as ActionCategory)
+        : null;
       return {
-        category: parsed.category || "data_write",
-        financialImpact: parsed.financialImpact || 0,
-        isExternal: parsed.isExternal || false,
-        isIrreversible: parsed.isIrreversible || false,
-        description: parsed.description || actionDescription,
+        category: category ?? "data_write",
+        financialImpact: typeof parsed?.financialImpact === "number" ? parsed.financialImpact : 0,
+        isExternal: parsed?.isExternal === true,
+        isIrreversible: parsed?.isIrreversible === true,
+        // Only a category the model actually named, and that we recognise,
+        // counts as a classification. Anything else escalates in `evaluate()`.
+        classified: category !== null,
+        description: typeof parsed?.description === "string" ? parsed.description : actionDescription,
       };
     } catch {
-      // Fallback to conservative profile
+      // A classification that FAILED is not a classification of "low risk".
+      //
+      // This branch said "Fallback to conservative profile" and returned the
+      // score-20 band, so an LLM outage — or one malformed response — silently
+      // reclassified every action as safe enough to auto-execute. The profile
+      // below is explicitly UNCLASSIFIED: `evaluate()` escalates it to a human
+      // regardless of autonomy level, which is what "we could not tell" should
+      // mean.
       return {
         category: "data_write",
         financialImpact: 0,
         isExternal: false,
         isIrreversible: false,
+        classified: false,
         description: actionDescription,
       };
     }

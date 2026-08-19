@@ -30,8 +30,113 @@ const MAX_RETRY_COUNT   = 3;
 
 // ─── Task → Risk profile mapping ─────────────────────────────────────────────
 
-function inferRiskProfile(agentType: string, input: Record<string, any>): ActionRiskProfile {
+
+/**
+ * What each registered skill actually does, in the engine's risk vocabulary.
+ *
+ * `execute_skill` is the most general action the engine accepts: it dispatches
+ * an arbitrary skill id through `skillRegistry.executeSkill`. Its risk is
+ * therefore not a property of the ACTION at all — it is a property of the SKILL,
+ * and a single classification for "execute_skill" would be either a lie about
+ * `sendEmail` or a lie about `lookupParcel`.
+ *
+ * Keyed on the real registry: `autonomyRiskClassification.test.ts` fails if any
+ * id in `skillRegistry.getAllSkills()` is missing here, so a newly registered
+ * skill cannot quietly inherit a classification nobody chose for it. Until it is
+ * added, it is unclassified and escalates — the residue is safe, not permissive.
+ *
+ * Categories follow the bands already declared in `autonomousAgentEngine.ts`.
+ * Three of them (`communication`, `financial`, `contract`) had no production
+ * caller that could emit them before this map existed: the guard bands were
+ * declared and dead.
+ */
+const SKILL_RISK: Record<string, { category: ActionCategory; external?: boolean; irreversible?: boolean }> = {
+  // Read-only lookups and analysis. Due diligence, which is what `research` is for.
+  lookupParcel:              { category: "research" },
+  lookupEnvironmental:       { category: "research" },
+  researchComps:             { category: "research" },
+  researchCounty:            { category: "research" },
+  marketAnalysis:            { category: "research" },
+  scoreLead:                 { category: "research" },
+  scoreBuyer:                { category: "research" },
+  analyzeNote:               { category: "research" },
+  generateSwotReport:        { category: "research" },
+  suggestFollowUp:           { category: "research" },
+  calculateFinancing:        { category: "research" },
+  gis_property_enrichment:   { category: "research" },
+  gis_flood_lookup:          { category: "research" },
+  gis_environmental_lookup:  { category: "research" },
+  gis_infrastructure_lookup: { category: "research" },
+  gis_hazards_lookup:        { category: "research" },
+
+  // Drives a headless browser over third-party sites on the org's behalf.
+  browserResearch:           { category: "external_api", external: true },
+
+  // Mutate CRM records.
+  enrichLead:                { category: "data_write" },
+  scrubLeadList:             { category: "data_write" },
+
+  // Produces copy; sends nothing.
+  generateAdCopy:            { category: "draft" },
+
+  // Offer generation. `offer` rather than `draft` to stay consistent with the
+  // action-name branch above, which already treats anything named "offer" as an
+  // offer: producing a priced offer is a step toward a binding communication,
+  // and the batch variant produces many at once.
+  generateOffer:             { category: "offer", external: true },
+  draftOfferLetter:          { category: "offer", external: true },
+  generateBatchOffers:       { category: "offer", external: true },
+
+  // Reaches a real counterparty. Irreversible in the only sense that matters —
+  // a sent message cannot be unsent.
+  sendEmail:                 { category: "communication", external: true, irreversible: true },
+  startCollectionSequence:   { category: "communication", external: true, irreversible: true },
+  escalateDelinquency:       { category: "communication", external: true, irreversible: true },
+
+  // Quotes a payoff figure to a borrower — a financial commitment, not a draft.
+  processPayoff:             { category: "financial", external: true },
+
+  // Contract instruments. Base risk 90, above every auto threshold including
+  // full_auto's, which is the intended posture for anything contractual.
+  prepareContract:           { category: "contract", external: true, irreversible: true },
+  generateClosingPacket:     { category: "contract", external: true, irreversible: true },
+};
+
+/** Exported for the drift test, which cross-checks it against the live registry. */
+export const _SKILL_RISK = SKILL_RISK;
+
+export function _inferRiskProfile(agentType: string, input: Record<string, any>): ActionRiskProfile {
   const action: string = input.action || "";
+
+  // `execute_skill` runs an arbitrary registered skill, so the skill decides the
+  // risk. An unmapped skill stays unclassified and escalates.
+  if (action === "execute_skill") {
+    const skillId: string = input.parameters?.skillId ?? "";
+    const risk = SKILL_RISK[skillId];
+    if (risk) {
+      return {
+        category: risk.category,
+        financialImpact: 0,
+        isExternal: risk.external ?? false,
+        isIrreversible: risk.irreversible ?? false,
+        classified: true,
+        description: `Run skill "${skillId}"`,
+        relatedLeadId: input.context?.relatedLeadId,
+        relatedPropertyId: input.context?.relatedPropertyId,
+        relatedDealId: input.context?.relatedDealId,
+      };
+    }
+    return {
+      category: "data_write" as ActionCategory,
+      financialImpact: 0,
+      isExternal: false,
+      isIrreversible: false,
+      classified: false,
+      description: skillId
+        ? `Run unclassified skill "${skillId}"`
+        : "Run skill (no skillId supplied)",
+    };
+  }
 
   // Offer actions are high risk
   if (action.includes("offer") || action.includes("generate_offer")) {
@@ -40,6 +145,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: input.parameters?.offerPrice || 50_000,
       isExternal: true,
       isIrreversible: false, // offers can be rescinded
+      classified: true,
       description: `Generate purchase offer${input.parameters?.offerPrice ? ` for $${input.parameters.offerPrice.toLocaleString()}` : ""}`,
       relatedLeadId: input.context?.relatedLeadId,
       relatedPropertyId: input.context?.relatedPropertyId,
@@ -53,6 +159,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: `Draft ${action.includes("sms") ? "SMS" : "email"} for lead`,
       relatedLeadId: input.context?.relatedLeadId,
     };
@@ -65,6 +172,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: "Plan lead nurturing touchpoint",
       relatedLeadId: input.context?.relatedLeadId,
     };
@@ -82,6 +190,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: `Run ${action.replace(/_/g, " ")} for property`,
       relatedPropertyId: input.context?.relatedPropertyId,
     };
@@ -94,6 +203,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: "Analyze investment deal",
       relatedDealId: input.context?.relatedDealId,
     };
@@ -106,6 +216,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: "Calculate financing terms",
     };
   }
@@ -117,6 +228,7 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: "Generate campaign content",
     };
   }
@@ -128,16 +240,28 @@ function inferRiskProfile(agentType: string, input: Record<string, any>): Action
       financialImpact: 0,
       isExternal: false,
       isIrreversible: false,
+      classified: true,
       description: `Run ${action.replace(/_/g, " ")}`,
     };
   }
 
-  // Default: conservative
+  // UNCLASSIFIED. Not "conservative" — that is what this comment used to say,
+  // and it was the opposite.
+  //
+  // `data_write` scores 20, which is at or below the auto-execute threshold for
+  // `supervised` — the level an org gets when it has no config row, and the
+  // column default. So every action string with no branch above executed
+  // unattended, including `execute_skill` with an arbitrary skill id.
+  //
+  // The category below is retained ONLY so the approval UI has something to
+  // show. `classified: false` is what governs: `evaluate()` escalates any
+  // profile that is not explicitly classified, whatever its score.
   return {
     category: "data_write" as ActionCategory,
     financialImpact: 0,
     isExternal: false,
     isIrreversible: false,
+    classified: false,
     description: `Execute ${action.replace(/_/g, " ")} for ${agentType} agent`,
   };
 }
@@ -166,7 +290,7 @@ async function processBatch(): Promise<{ processed: number; autoExecuted: number
     try {
       const input = task.input as Record<string, any>;
       const agentType = task.agentType as CoreAgentType;
-      const riskProfile = inferRiskProfile(agentType, input);
+      const riskProfile = _inferRiskProfile(agentType, input);
 
       // Evaluate autonomy decision
       const decision = await autonomousAgentEngine.evaluate(
