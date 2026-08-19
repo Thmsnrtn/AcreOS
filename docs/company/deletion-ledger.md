@@ -875,3 +875,39 @@ correctness risks across 2+ machines. Disposition:
   `check-ledger-refs` (it scans the verdict table and the defect registry, not
   source comments), so nothing fails on them — which is exactly why they need
   to be named here rather than left to rot.
+
+---
+
+### `governedExecute` — deleted 2026-08-19
+
+**What it was.** A wrapper in `server/services/agentActionExecutors.ts` around
+`executeAction`, adding a `governanceBrainV13` policy check before dispatch and a
+chronicle log after it.
+
+**Why it went.** Zero call sites — every live path called the bare
+`executeAction` — and what it added was not governance:
+
+- its policy check ended in `catch { /* Governance check failure is
+  non-blocking — proceed with caution */ }`, the same fail-open closed in the
+  same file's confidence-cascade gate the same week. Wiring it would have ADDED
+  a permissive path to a system while looking like a safety layer;
+- it passed `ctx.input.orgId || 0`, inventing the org sentinel this repository
+  forbids by name;
+- its "log to chronicle for institutional memory" step was an empty `try` block
+  containing a comment and no code.
+
+**Why retire rather than wire.** The bootstrap audit had just demonstrated the
+cost of a file that reads as enforcement and is not: a steward looked at
+`agentAuthorityGate.ts`, saw a founder-only hard-stop list, and concluded agent
+autonomy was bounded by it — when no live action can match any of those 15 names.
+`governedExecute` was the same shape one module over. A broken safety wrapper is
+worse than no wrapper, because the next reader budgets their attention against it.
+
+**What replaces it.** The confidence cascade inside `executeAction`, which now
+refuses when it cannot be evaluated (rather than proceeding), and which is
+exempt-by-name rather than gated-by-name, so a new executor is gated by default.
+
+**Reactivation criteria.** If `governanceBrain` should gate agent actions, that
+is a fresh design against a working gate — a policy check that fails CLOSED, a
+real tenant, and a call site — not a resurrection of this. The intent was sound;
+only the implementation was a stub.

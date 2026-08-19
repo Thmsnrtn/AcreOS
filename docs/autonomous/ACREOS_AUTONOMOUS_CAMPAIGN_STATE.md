@@ -71,16 +71,20 @@ if still needed by then.
 
 Not a queue. Each is a live gap with its evidence; pick by value at the time.
 
-1. **The `isSignificantAction` scope.** `agentActionExecutors` gates 13 named
-   actions through the confidence cascade and nothing else — `restart_failed_job`,
-   `resolve_stale_ticket`, `acknowledge_incident`, `clear_cache`,
-   `update_roadmap_priority` get no check at all. The gate's MECHANISM now fails
-   closed (ledger 27); its SCOPE is a product decision nobody has made
-   deliberately.
-2. **`governedExecute` has zero call sites.** It is the wrapper that adds the
-   governanceBrain policy check before `executeAction`, and every live path calls
-   the bare function. Either wire it or retire it — built-but-unwired is this
-   codebase's most common defect.
+1. **The five verticals with dedicated schema but no pack contract.** 60 tables
+   across fix-and-flip, notes, rental, subdivision and wholesale, six
+   `businessTypeOnly` nav modules, and `businessType` as scattered conditionals
+   in ~137 client and ~102 server locations — while `strategy_pack_id` exists on
+   `decision_snapshots` and `scenarios` and every production caller writes
+   `null`. Canon's own `profile-extensibility` fitness function says `partial`
+   for exactly this reason. This is the highest-leverage architectural work
+   available and the largest single item on this list.
+2. **Should `governanceBrain` gate agent actions at all?** `governedExecute` —
+   the unwired wrapper that would have done it — is deleted (deletion ledger,
+   2026-08-19), because what it added was a fail-open check and a dead block. The
+   INTENT is still open: the confidence cascade is now the only gate on an agent
+   action, and a policy engine is a different question from a confidence
+   threshold. A fresh design against the working gate, if it is worth it.
 3. **`FOUNDER_ROUTE_BASELINE` does not ratchet down.** It asserts only
    `toBeLessThanOrEqual`, and the count equals the baseline at 82 — so a
    consolidation to 78 passes silently and hands the next session four free
@@ -98,11 +102,42 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
    2026-08-17: the gate stayed at baseline with six new unadopted exports in the
    tree. Widening the roots will re-seed the count upward, which is why it has
    not been done casually.
-6. **The land vertical does not yet demonstrate AcreOS's own thesis.** 13 of 15
-   verticals stop before a recorded decision (`readiness.ts`, frozen and
-   down-only). The gap is the LOOP, not the surface — every vertical has a
-   surface. Connecting the existing land pieces through the canonical spine is
-   worth more than any new land feature.
+6. **The land vertical has TWO implementations of land-deal economics, and the
+   canonical one is the unreached one.** Measured 2026-08-19, and this is the
+   sharpest statement of the §19 gap yet:
+
+   - `land_deal` is a registered CORE scenario engine (`shared/calculators/
+     landDeal.ts`, `computeLandDeal`) producing total_cost / net_proceeds /
+     profit / roi / annualized_return / irr / breakeven_sale. **Zero production
+     callers** — grep for `land_deal` across `server/` and `client/src` returns
+     nothing.
+   - `buildCashFlipScenario` in `blindOfferCalculator.ts` computes the same
+     quantities independently, is live, and is what the customer sees at
+     `POST /api/data-intel/blind-offer`. Canonical law 1 forbids exactly this;
+     the flipMao adapter's header says so in as many words ("two implementations
+     of the same money formula is the duplication canonical law 1 forbids").
+   - Its inputs are **invented constants with no provenance and no operator
+     override**: holding = `acquisition*0.02 + salePrice*0.01`, disposition =
+     `salePrice*0.08`, hold = 45 days, and `roi = 0` when acquisition is 0 — a
+     fabricated zero rather than null. Fix-and-flip, by contrast, reads every
+     one of these from `organizations.underwritingDefaults.flip` and stamps each
+     `origin: user | platform-default` so a platform default can never later
+     read as the operator's own rule.
+   - `underwritingDefaults` has an `ownerFinance` section and a `flip` section.
+     **There is no land section.** The wedge vertical has no operator
+     underwriting rules at all.
+   - Nothing records a land scenario or decision, so land's Today outcome prompt
+     is structurally empty and calibration has nothing to grade.
+
+   The order that follows from this: give land the shape flip already has (a
+   `landDeal` defaults section, a `PLATFORM_LAND_DEFAULTS` fallback badged as
+   such, and `buildCashFlipScenario` DELEGATING to `computeLandDeal`), and only
+   then record the scenario and decision on the deliberate act. Recording first
+   would freeze invented numbers into decision memory, which is worse than not
+   recording.
+
+   13 of 15 verticals stop before a recorded decision (`readiness.ts`, frozen and
+   down-only). The gap is the LOOP, not the surface.
 7. **The 58 newly-visible tenancy units are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs `campaigns`

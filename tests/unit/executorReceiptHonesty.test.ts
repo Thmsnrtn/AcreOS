@@ -36,6 +36,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const cascade = vi.fn(async () => ({ status: "resolved", finalConfidence: 90 }));
 vi.mock("../../server/services/confidenceCascadeV14", () => ({
@@ -129,5 +131,79 @@ describe("executors that DO act still say so", () => {
     const r = await run("sentinel_devops", "clear_cache", { cacheKey: "parcels:tx" });
     expect(r.success, `clear_cache: ${r.detail}`).toBe(true);
     expect(r.detail).toMatch(/Cache cleared/);
+  });
+});
+
+describe("no executor may report success for an effect it cannot have", () => {
+  /**
+   * The class, not the instances.
+   *
+   * Five of the 28 executors fabricated: apply_discount, toggle_data_source,
+   * update_roadmap_priority, run_data_quality_check and run_compliance_check.
+   * Two reported invented NUMBERS — "12 checks, 12 passed, 0 failed" and
+   * "violations: 0" — which is worse than an invented sentence, because a
+   * consumer cannot tell a fabricated zero from a measured one.
+   *
+   * At five out of twenty-eight this stopped being a pair of bugs. The register
+   * below is DERIVED from the source at run time rather than listed here, so an
+   * executor added tomorrow is covered the day it lands, and each candidate is
+   * then DRIVEN through the real dispatcher — the assertion is about the result
+   * it returns, not about the shape of its body.
+   *
+   * "Effect" is read generously on purpose: any database call, any mail or SMS
+   * send, or any import of another service counts. A body with none of those
+   * cannot have changed anything outside itself, so `success: true` from it is
+   * a claim about the world made by code that never touched the world.
+   */
+  const SRC = readFileSync(
+    resolve(__dirname, "../../server/services/agentActionExecutors.ts"), "utf8",
+  );
+
+  const EFFECT = /\bdb\.(insert|update|delete|query|select)\b|emailService|sendEmail|sendOrgSMS|await import\("\.\/[a-zA-Z]+"\)/;
+
+  function executorBlocks(): Array<{ agent: string; action: string; body: string }> {
+    const re = /registerExecutor\("([a-z_]+)",\s*"([a-z_]+)",\s*async \((?:ctx|_ctx)\) => \{([\s\S]*?)\n\}\);/g;
+    const out: Array<{ agent: string; action: string; body: string }> = [];
+    for (const m of SRC.matchAll(re)) out.push({ agent: m[1], action: m[2], body: m[3] });
+    return out;
+  }
+
+  it("vacuity: the parser finds the real executor population", () => {
+    // If the regex stopped matching — a formatting change, a rename — every
+    // case below would pass over an empty list and certify nothing.
+    const blocks = executorBlocks();
+    expect(blocks.length, "executor parser found too few blocks").toBeGreaterThanOrEqual(25);
+    // And it must find BOTH kinds, or the discrimination below is untested.
+    const inert = blocks.filter((b) => !EFFECT.test(b.body));
+    const acting = blocks.filter((b) => EFFECT.test(b.body));
+    expect(acting.length, "no executor appears to act — the EFFECT regex broke").toBeGreaterThan(15);
+    expect(inert.length, "no inert executor remains — update this test's premise").toBeGreaterThan(0);
+  });
+
+  it("every executor with no effect in its body refuses", async () => {
+    const lying: string[] = [];
+    for (const b of executorBlocks()) {
+      if (EFFECT.test(b.body)) continue;
+      const r = await run(b.agent, b.action, {
+        sourceName: "x", featureId: 1, newPriority: "high", checkType: "general",
+      });
+      if (r.success) lying.push(`${b.agent}:${b.action} reported success having done nothing`);
+    }
+    expect(lying).toEqual([]);
+  });
+
+  it("and reports no measured number it did not measure", async () => {
+    // The specific harm in run_data_quality_check and run_compliance_check: a
+    // fabricated count is indistinguishable from a real one downstream.
+    for (const [agent, action] of [
+      ["crucible_qa", "run_data_quality_check"],
+      ["shield_legal", "run_compliance_check"],
+    ] as const) {
+      const r = await run(agent, action, { checkType: "general" });
+      expect(r.success, `${action}`).toBe(false);
+      expect(JSON.stringify(r.metrics ?? {}), `${action} still reports a finding`)
+        .not.toMatch(/"(passed|failed|violations)":\s*\d/);
+      expect(r.detail, action).toMatch(/not evidence|ran none/i);
+    }
   });
 });

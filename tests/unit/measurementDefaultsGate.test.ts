@@ -73,6 +73,10 @@ function withProbe(source: string): { out: string; ok: boolean } {
 }
 
 describe("the gate is wired and sees a real population", () => {
+  // 120s, not the 30s default: this shells out to the REAL gate over ~1500
+  // files. Its sibling in reachabilityGate.test.ts timed out under the full
+  // suite's parallelism on 2026-08-19 — a red that looks like a finding and
+  // is not. Same budget here, for the same reason.
   it("passes on the current tree, at or below its ceiling", () => {
     const { out, ok } = run();
     expect(out, `the lint is not passing:\n${out}`).toContain("[measurement-defaults] PASS");
@@ -91,7 +95,7 @@ describe("the gate is wired and sees a real population", () => {
       "a baseline entry no longer matches — delete the line in the commit " +
         "that fixed it. A stale-high baseline is free headroom.",
     ).toBe(0);
-  });
+  }, 120_000);
 
   it("walks a real population and self-tests its own predicate (vacuity)", () => {
     const { out } = run();

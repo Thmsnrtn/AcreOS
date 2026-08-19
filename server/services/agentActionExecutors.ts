@@ -333,10 +333,16 @@ registerExecutor("compass_pm", "create_feature_request", async (ctx) => {
 registerExecutor("compass_pm", "update_roadmap_priority", async (ctx) => {
   const { featureId, newPriority, rationale } = ctx.input;
 
+  // REFUSES. This returned `Roadmap priority updated for feature #7: high` and
+  // performed no query and no write — it did not even check that the feature
+  // exists. The receipt was the whole implementation.
   return {
-    success: true,
-    detail: `Roadmap priority updated for feature #${featureId}: ${newPriority}. Rationale: ${rationale || "Agent recommendation"}`,
-    metrics: { featureId, newPriority },
+    success: false,
+    detail:
+      `Refusing to report a roadmap priority change for feature #${featureId}: ` +
+      `nothing here writes a priority, so the roadmap is unchanged. ` +
+      `Rationale offered: ${rationale || "none"}.`,
+    metrics: { featureId, newPriority, applied: false },
   };
 });
 
@@ -345,10 +351,22 @@ registerExecutor("compass_pm", "update_roadmap_priority", async (ctx) => {
 registerExecutor("shield_legal", "run_compliance_check", async (ctx) => {
   const { checkType } = ctx.input;
 
+  // REFUSES. It reported `No violations found` with `violations: 0` and
+  // performed no check — a clean compliance bill of health from a function that
+  // does not look. `violations: 0` is indistinguishable from a real zero by
+  // every consumer, and the consumer here is the person deciding whether the
+  // company has a problem.
+  //
+  // Real compliance enforcement DOES exist elsewhere and is not affected by
+  // this: `complianceGate` middleware runs in strict mode and refuses rather
+  // than warns. This action was never part of it.
   return {
-    success: true,
-    detail: `Compliance check completed: ${checkType || "general"}. No violations found.`,
-    metrics: { checkType: checkType || "general", violations: 0 },
+    success: false,
+    detail:
+      `Refusing to report a ${checkType || "general"} compliance result: no check ` +
+      `runs behind this action, so the absence of a reported violation here is ` +
+      `not evidence of compliance.`,
+    metrics: { checkType: checkType || "general", applied: false },
   };
 });
 
@@ -372,11 +390,24 @@ registerExecutor("shield_legal", "flag_compliance_issue", async (ctx) => {
 
 // ─── Crucible QA Executors (v4) ───────────────────────────────────────────
 
-registerExecutor("crucible_qa", "run_data_quality_check", async (ctx) => {
+registerExecutor("crucible_qa", "run_data_quality_check", async (_ctx) => {
+  // REFUSES, and this one was the worst of the five.
+  //
+  // It reported "All critical data integrity constraints passing" with
+  // `{ checksRun: 12, passed: 12, failed: 0 }` while running nothing at all.
+  // Twelve is an invented number, and zero failures is an invented finding —
+  // the fabrication ban's exact target, on a surface whose entire purpose is to
+  // tell the reader whether the data is sound.
+  //
+  // Silence is not a clean bill of health, and neither is a zero nobody
+  // measured. Until real checks exist behind this action it must say so.
   return {
-    success: true,
-    detail: "Data quality check completed. All critical data integrity constraints passing.",
-    metrics: { checksRun: 12, passed: 12, failed: 0 },
+    success: false,
+    detail:
+      "Refusing to report a data quality result: no checks run behind this action, " +
+      "so this is not evidence that the data is sound. It reported 12 passing " +
+      "checks and ran none.",
+    metrics: { checksRun: 0, applied: false },
   };
 });
 
@@ -633,46 +664,74 @@ registerExecutor("shield_legal", "flag_compliance_risk", async (ctx) => {
 
 // ─── Governed Execution Wrapper ───────────────────────────────────────────
 
-const SIGNIFICANT_ACTIONS = new Set([
-  "extend_trial", "apply_discount", "send_retention_email", "send_upgrade_nudge",
-  "schedule_call", "unlock_feature_temporarily", "send_guided_walkthrough",
-  "toggle_data_source", "draft_social_post", "draft_blog_post",
-  "flag_compliance_risk", "create_issue", "send_churn_rescue",
+/**
+ * Actions the confidence cascade does NOT gate.
+ *
+ * THE POLARITY IS THE POINT. This was a 13-name SIGNIFICANT_ACTIONS allowlist,
+ * so an executor added tomorrow was ungated by default and nobody had to decide
+ * that. The hand-written list also got the substance wrong in both directions:
+ * `draft_social_post` — which drafts and sends nothing — was gated, while
+ * `pause_campaign`, which UPDATEs a customer's live campaign, and
+ * `resolve_stale_ticket`, which writes into a customer's support thread, were
+ * not.
+ *
+ * Asking which actions may SKIP the gate inverts that. A new executor is
+ * significant until someone exempts it here on purpose, with a reason.
+ *
+ * Two kinds are exempt, and nothing else is:
+ *
+ * 1. INTERNAL-ONLY — writes `system_alerts` or `platform_issues`, or reads and
+ *    reports. Nothing a customer can see, nothing outside the company.
+ * 2. INCIDENT RESPONSE — `restart_failed_job` and `clear_cache`. Recovery must
+ *    not need a confidence cascade to run: an outage is exactly when the
+ *    cascade is most likely to be unavailable, and the cascade now refuses when
+ *    it cannot be evaluated. Both are already bounded elsewhere —
+ *    `clear_cache` refuses auth/session keys, and both sit at the Operator
+ *    trust tier or above.
+ */
+const CASCADE_EXEMPT_ACTIONS = new Set([
+  // Internal records and reports.
+  "acknowledge_incident",
+  "generate_fix_prompt",
+  "create_feature_request",
+  "update_roadmap_priority",
+  "flag_quality_issue",
+  "run_data_quality_check",
+  "flag_anomaly",
+  "flag_metric_anomaly",
+  "generate_trend_report",
+  "flag_compliance_issue",
+  "run_compliance_check",
+  // Incident response — see (2) above.
+  "restart_failed_job",
+  "clear_cache",
 ]);
 
 export function isSignificantAction(actionName: string): boolean {
-  return SIGNIFICANT_ACTIONS.has(actionName);
+  return !CASCADE_EXEMPT_ACTIONS.has(actionName);
 }
 
-export async function governedExecute(ctx: ActionContext): Promise<ActionResult> {
-  // 1. Check governance policy
-  try {
-    const { governanceBrainService } = await import("./governanceBrainV13");
-    const govCheck = await governanceBrainService.evaluateAction({
-      actionId: `${ctx.agentCodename}:${ctx.actionName}`,
-      agentCodename: ctx.agentCodename,
-      actionType: ctx.actionName,
-      actionContext: ctx.input,
-      orgId: ctx.input.orgId || 0,
-    });
-    if (govCheck.overallResult === "blocked") {
-      return { success: false, detail: `Blocked by governance: ${govCheck.explanation || "policy violation"}` };
-    }
-  } catch {
-    // Governance check failure is non-blocking — proceed with caution
-  }
+/** Exported for the drift test, which checks it against the real executor set. */
+export const _CASCADE_EXEMPT_ACTIONS = CASCADE_EXEMPT_ACTIONS;
 
-  // 2. Execute the action
-  const result = await executeAction(ctx);
 
-  // 3. Log to chronicle for institutional memory
-  try {
-    const { companyChronicleService } = await import("./companyChronicle");
-    // Chronicle records are generated periodically, not per-action
-  } catch {}
-
-  return result;
-}
+// `governedExecute` was DELETED 2026-08-19 (deletion ledger). It wrapped
+// `executeAction` with a governanceBrain policy check and had ZERO call sites —
+// every live path called the bare function. Retiring rather than wiring it,
+// because what it added was not governance:
+//
+//   - its policy check ended in `catch { /* non-blocking — proceed */ }`, the
+//     same fail-open this file just closed on the confidence cascade, so wiring
+//     it would have ADDED a permissive path while looking like a safety layer;
+//   - it passed `ctx.input.orgId || 0`, inventing the org sentinel this
+//     repository forbids by name;
+//   - its "log to chronicle" step was an empty try block containing a comment
+//     and no code.
+//
+// The real seam is the confidence cascade inside `executeAction`, which now
+// refuses when it cannot be evaluated and is exempt-by-name rather than
+// gated-by-name. If governanceBrain should gate agent actions, that is a fresh
+// design against a working gate, not a resurrection of this.
 
 // ─── Execute Function ───────────────────────────────────────────────────────
 

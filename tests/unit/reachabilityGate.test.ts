@@ -809,11 +809,24 @@ describe("lint-reachability — vacuity guard", () => {
 });
 
 describe("lint-reachability — the real repo", () => {
+  /**
+   * 120s, not the 30s default.
+   *
+   * This case shells out to the REAL linter over the REAL tree — thousands of
+   * files, six families — which takes ~8s alone and exceeded 30s under the full
+   * suite's parallelism on 2026-08-19. It failed as a TIMEOUT, not an
+   * assertion, which is the worst kind of red: it looks like the gate found
+   * something and it did not.
+   *
+   * Retrying a slow gate teaches the next reader to re-run reds until they go
+   * away, so the budget is raised to something the machine can actually meet
+   * under load rather than left to chance. The scan itself is unchanged.
+   */
   it("passes at its own committed baseline", () => {
     const { code, out } = run();
     expect(out).toContain("[lint-reachability] PASS");
     expect(code).toBe(0);
-  });
+  }, 120_000);
 
   it("declares every family baseline in scripts/ratchets/reachability.json", async () => {
     const cfg = (

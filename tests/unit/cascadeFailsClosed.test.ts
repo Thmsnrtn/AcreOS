@@ -33,6 +33,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+// Aliased: this file already binds `resolve` to the cascade mock.
+import { resolve as resolvePath } from "node:path";
 
 const resolve = vi.fn();
 vi.mock("../../server/services/confidenceCascadeV14", () => ({
@@ -44,9 +47,10 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 const mod = await import("../../server/services/agentActionExecutors");
-const { executeAction, isSignificantAction } = mod as unknown as {
+const { executeAction, isSignificantAction, _CASCADE_EXEMPT_ACTIONS } = mod as unknown as {
   executeAction: (ctx: Record<string, unknown>) => Promise<{ success: boolean; detail?: string }>;
   isSignificantAction?: (n: string) => boolean;
+  _CASCADE_EXEMPT_ACTIONS: ReadonlySet<string>;
 };
 
 /**
@@ -117,5 +121,65 @@ describe("the cascade gate refuses when it cannot answer", () => {
     const r = await executeAction(ctx({ actionName: "clear_cache", input: {} }));
     expect(r.detail ?? "").not.toMatch(/could not be evaluated|no organization/i);
     expect(resolve).not.toHaveBeenCalled();
+  });
+});
+
+describe("the cascade gate is exempt-by-name, not gated-by-name", () => {
+  /**
+   * The list used to be a 13-name SIGNIFICANT_ACTIONS allowlist, so an executor
+   * added tomorrow skipped the cascade by default and nobody had to decide
+   * that. It also got the substance wrong in both directions: `draft_social_post`
+   * (drafts, sends nothing) was gated, while `pause_campaign` — which UPDATEs a
+   * customer's live campaign — was not.
+   *
+   * The exempt set is checked against the REAL executor registry parsed from
+   * source, so an exemption for an executor that no longer exists fails, and a
+   * new executor cannot inherit an exemption nobody chose.
+   */
+  const SRC = readFileSync(
+    resolvePath(__dirname, "../../server/services/agentActionExecutors.ts"), "utf8",
+  );
+  const registeredActions = [
+    ...new Set([...SRC.matchAll(/registerExecutor\("[a-z_]+",\s*"([a-z_]+)"/g)].map((m) => m[1])),
+  ];
+
+  it("vacuity: the registry parse found the real executor population", () => {
+    expect(registeredActions.length).toBeGreaterThanOrEqual(25);
+  });
+
+  it("a customer-visible state change is never exempt", () => {
+    // The two the old allowlist missed, plus the sends it did cover — stated by
+    // name because these are the ones whose exemption would cost a customer.
+    for (const action of [
+      "pause_campaign", "resolve_stale_ticket",
+      "send_retention_email", "send_upgrade_nudge", "send_churn_rescue",
+      "apply_discount", "extend_trial", "unlock_feature_temporarily",
+    ]) {
+      expect(registeredActions, `${action} is no longer a registered executor`).toContain(action);
+      expect(isSignificantAction?.(action), `${action} skips the confidence cascade`).toBe(true);
+    }
+  });
+
+  it("an action nobody has classified is significant by default", () => {
+    // The polarity, stated directly. Under the old allowlist these were all
+    // ungated; under the exempt set they are all gated until someone says
+    // otherwise.
+    for (const invented of ["send_wire", "delete_org", "publish_listing", ""]) {
+      expect(isSignificantAction?.(invented), `"${invented}" was exempt`).toBe(true);
+    }
+  });
+
+  it("no exemption names an executor that no longer exists", () => {
+    const stale = [..._CASCADE_EXEMPT_ACTIONS].filter((a) => !registeredActions.includes(a));
+    expect(stale, "exemptions for executors the registry no longer has").toEqual([]);
+  });
+
+  it("the exempt set stays small, and none of it reaches a customer", () => {
+    // Every exemption is a place the cascade does not run. The list growing
+    // quietly is how the gate stops meaning anything.
+    expect(_CASCADE_EXEMPT_ACTIONS.size).toBeLessThanOrEqual(15);
+    for (const a of _CASCADE_EXEMPT_ACTIONS) {
+      expect(a, `${a} looks like an outbound action`).not.toMatch(/^send_|email|sms|publish/);
+    }
   });
 });

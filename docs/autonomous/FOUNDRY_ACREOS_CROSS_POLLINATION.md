@@ -1431,9 +1431,64 @@ before reporting it. Two offenders out of twenty-eight, which is why this is a
 fix rather than a new gate — a register of twenty-six correct executors would
 freeze noise.
 
+### 29 — The receipt defect was a CLASS, so it got a gate
+
+Entry 28 fixed two executors that reported effects they never had. Sweeping the
+other twenty-six — mechanically, on the body of each `registerExecutor` block
+rather than by eye — found **five of twenty-eight**, and the three it added are
+worse than the two that started it.
+
+`crucible_qa:run_data_quality_check` returned
+*"Data quality check completed. All critical data integrity constraints
+passing."* with `{ checksRun: 12, passed: 12, failed: 0 }` and ran nothing.
+Twelve is an invented number and zero failures is an invented finding, on a
+surface whose entire purpose is to say whether the data is sound.
+
+`shield_legal:run_compliance_check` returned *"No violations found"* with
+`violations: 0` and performed no check — a clean compliance bill of health from
+a function that does not look. (Real compliance enforcement exists elsewhere and
+is unaffected: the `complianceGate` middleware runs in strict mode and refuses
+rather than warns. This action was never part of it.)
+
+`compass_pm:update_roadmap_priority` returned *"Roadmap priority updated for
+feature #7: high"* with no query and no write — it did not even check the
+feature exists.
+
+A fabricated ZERO is worse than a fabricated sentence: no consumer can
+distinguish it from a measured one, and the consumer here is the person deciding
+whether the company has a problem.
+
+**Why a gate this time.** Ledger discipline says a register of mostly-correct
+sites freezes noise — that is why the 133-site fail-open catch class got fixes
+and no gate. Five of twenty-eight is 18%, every one sits on the owner's decision
+surface, and the shape is mechanically detectable, which is a different case.
+
+`executorReceiptHonesty.test.ts` DERIVES the population from source at run time —
+every `registerExecutor` block — classifies each body as acting or inert on any
+database call, mail/SMS send, or service import, then DRIVES each inert one
+through the real dispatcher and requires `success: false`. So an executor added
+tomorrow is covered the day it lands, and the assertion is about the result it
+returns rather than the shape of its body. Falsified by adding a new inert
+executor that reports success, and by restoring `violations: 0`.
+
+**And the significance list had the polarity backwards.** `SIGNIFICANT_ACTIONS`
+was a 13-name allowlist deciding which actions the confidence cascade gates, so
+a new executor skipped the gate by default. It was also wrong in both
+directions: `draft_social_post` — which drafts and sends nothing — was gated,
+while `pause_campaign`, which UPDATEs a customer's live campaign, and
+`resolve_stale_ticket`, which writes into a customer's support thread, were not.
+
+Now `CASCADE_EXEMPT_ACTIONS`: an action is significant unless someone exempts it
+on purpose. Thirteen exemptions, of two kinds only — internal records and
+reports, and the two incident-response actions (`restart_failed_job`,
+`clear_cache`), because recovery must not need a cascade to run and an outage is
+exactly when the cascade is least likely to be evaluable. The exempt set is
+checked against the real registry in both directions, so an exemption for a
+deleted executor fails and a new executor cannot inherit one nobody chose.
+
 ## Status
 
-**All 28 admitted candidates are now dispositioned** — implemented, adapted,
+**All 29 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 
