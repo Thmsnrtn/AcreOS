@@ -1727,9 +1727,78 @@ string concatenation, so "absence of " and "a valuation" sit on different source
 lines and a regex spanning them finds nothing even though the rendered text is
 correct. The assertion now matches a phrase contained within a single literal.
 
+### 34 — "A price row is not an existence proof" → THE CHEAP TIER WAS PINNED TO MODELS THAT DO NOT EXIST
+
+Found by a deliberate whole-product reassessment rather than by following the
+previous thread — six lenses over dimensions this campaign had not examined
+(Pax, UX, cost, tenancy rule 2, Customer #1, simplification), then one owner
+ranking by consequence-over-effort with instructions to spot-check and demolish.
+It demolished one finding, corrected a count, and refused to endorse five it had
+not verified. Recording that here because the reassessment is the transferable
+part: the previous thread was still producing findings, and they were smaller
+than this.
+
+**The defect.** Every id in `MODELS` (`server/services/models.ts`) that names an
+Anthropic model was absent from OpenRouter's catalogue, and so was the reasoning
+model. Measured against the live catalogue on 2026-08-19 (415 models):
+
+| pinned | status | catalogue's string |
+|---|---|---|
+| `anthropic/claude-opus-4-8` | absent | `anthropic/claude-opus-4.8` |
+| `anthropic/claude-sonnet-4-6` | absent | `anthropic/claude-sonnet-4.6` |
+| `anthropic/claude-haiku-4-5-20251001` | absent, 404s outright | `anthropic/claude-haiku-4.5` |
+| `deepseek/deepseek-reasoner` | absent | `deepseek/deepseek-r1` |
+
+Two independent naming errors. **Versions are DOTTED, not hyphenated** — 18
+dotted Anthropic ids in the catalogue, zero hyphenated. And **slugs are
+UNDATED** — Anthropic's own API pins a dated id for Haiku, no catalogue slug
+carries a date.
+
+`MODELS.HAIKU` is `MODEL_MODERATE`, returned by `modelForTier` for `standard`
+and `background` and by `selectProviderAndModel` for `TaskComplexity.MODERATE` —
+and the primary completion's catch RETHROWS rather than falling back.
+
+**The guard that looked like it checked this.** `models.ts` throws at boot if an
+id has no row in `AI_COST_RATES`. So the only thing it ever proved was that
+somebody had written down a PRICE — and `aiCostRates` dutifully carried one for
+every non-existent id. A price table is a LEDGER of what was charged, not a
+catalogue of what can be called; it can never be the existence check, and the
+new test says so beside the restated price guard so the distinction is visible.
+
+**A correction I made to my own fix, mid-unit, worth recording.** The first pass
+changed only Haiku, on the strength of probing
+`/models/{id}/endpoints` per id — which returned **200 for
+`anthropic/claude-haiku-4-5`** and 404 for the dated form. That endpoint
+normalises hyphens to dots; the catalogue LISTING does not contain the
+hyphenated form at all. Probing ids one at a time confirmed the wrong thing, and
+only listing the catalogue revealed that Opus and Sonnet were wrong too. The
+per-id probe is the kind of check that agrees with you.
+
+**Honest limit on the claim.** These are the catalogue's canonical strings,
+verified present. Whether the old hyphenated forms would ALSO have been accepted
+by the completions endpoint could not be tested — that needs a provider API key,
+and inventing one is not available. The dated Haiku id is unambiguously broken
+either way. Pinning canonical strings is the conservative choice: a no-op if
+normalisation exists, the fix if it does not.
+
+**Two gates, and the split is the point.**
+`scripts/check-model-ids.mjs` probes the live catalogue and REFUSES when it
+cannot reach it, because an unreachable catalogue is not a catalogue saying
+everything is fine. It is a script and not a test precisely because a vitest case
+that fetches would pass whenever the network is down — green in exactly the
+environment that cannot check.
+`tests/unit/modelIdsAreReal.test.ts` carries the offline, deterministic rules the
+probe's findings imply: every id prefixed, no dated Anthropic slug, no
+hyphenated version, and the dead ids named individually. Falsified three ways —
+restoring the derivation, hyphenating a version, dropping a prefix.
+
+Rule 1 alone would have passed `anthropic/claude-haiku-4-5-20251001` happily:
+its shape is fine. That is the difference between proving the symbol and proving
+the behaviour, on this repository's own terms.
+
 ## Status
 
-**All 33 admitted candidates are now dispositioned** — implemented, adapted,
+**All 34 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

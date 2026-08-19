@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `33dbd74f`, 2026-08-19. Working tree clean, 924 test files /
-12,444 tests green, 25 gates green.
+Verified at: `8e8c0943`, 2026-08-19. Working tree clean, 930 test files /
+12,499 tests green, 25 gates green.
 
 ---
 
@@ -70,99 +70,116 @@ if still needed by then.
 ## Highest-value frontier candidates
 
 Not a queue. Each is a live gap with its evidence; pick by value at the time.
+Items 1–6 come from a whole-product reassessment on 2026-08-19 — six independent
+lenses, then one owner ranking by consequence-over-effort with instructions to
+spot-check and demolish. It demolished one finding and refused to endorse five it
+had not verified; those are deliberately absent below.
 
-1. **The five verticals with dedicated schema but no pack contract.** 60 tables
-   across fix-and-flip, notes, rental, subdivision and wholesale, six
-   `businessTypeOnly` nav modules, and `businessType` as scattered conditionals
-   in ~137 client and ~102 server locations — while `strategy_pack_id` exists on
-   `decision_snapshots` and `scenarios` and every production caller writes
-   `null`. Canon's own `profile-extensibility` fitness function says `partial`
-   for exactly this reason. This is the highest-leverage architectural work
-   available and the largest single item on this list.
-2. **Should `governanceBrain` gate agent actions at all?** `governedExecute` —
-   the unwired wrapper that would have done it — is deleted (deletion ledger,
-   2026-08-19), because what it added was a fail-open check and a dead block. The
-   INTENT is still open: the confidence cascade is now the only gate on an agent
-   action, and a policy engine is a different question from a confidence
-   threshold. A fresh design against the working gate, if it is worth it.
-3. **`FOUNDER_ROUTE_BASELINE` does not ratchet down.** It asserts only
-   `toBeLessThanOrEqual`, and the count equals the baseline at 82 — so a
-   consolidation to 78 passes silently and hands the next session four free
-   slots for new top-level founder routes, which is exactly the sprawl the
-   four-door doctrine exists to prevent. Measured: of the 18 baseline-carrying
-   test files, 7 assert stale-high and 11 do not. The registers driven by
-   `ratchet.mjs` are fine; several hand-written test baselines are one-way.
-4. **`NEVER_PROMOTE_ACTIONS` governs a namespace no live caller enters.** Live
-   actions are `proactive:${id}` / `reaction:${id}`; the 15 hard-stop names have
-   no executor anywhere, so nothing hard-stop-class currently executes. The
-   ceiling proves nothing rather than being stepped over — a canonical-with-no-
-   adoption instance that needs the vocabularies reconciled, not more names.
-5. **`lint-reachability` does not scan `shared/**`.** A new shared module with no
-   production caller is invisible to the built-but-unwired gate. Measured
-   2026-08-17: the gate stayed at baseline with six new unadopted exports in the
-   tree. Widening the roots will re-seed the count upward, which is why it has
-   not been done casually.
-6. **Land's loop is OPEN at one end, and the open end is the interesting one.**
-   As of 2026-08-19 `POST /api/offer-letters/batch` records a canonical decision
-   per letter — land operators finally have decision memory for the offers they
-   send, `/api/decisions/due` has something to surface, and calibration has
-   something to grade. Ledger entries 30 and 32.
+1. **Pax's skip-trace tool bypasses the FCRA permissible-purpose gate.**
+   VERIFIED. The REST door (`routes-leads.ts:1806`, `routes-skip-tracing.ts:244`)
+   requires `requireScope("tenant_pii_write")` — a scope `member` and `va` do NOT
+   hold — plus purposeOfUse, justification and a current FCRA §1681b(a)(3)(F)
+   attestation, all persisted to a `skip_traces` row explicitly for
+   "class-action defense audit trail". The Pax door
+   (`ai/tools.ts:799` def, `:2767` dispatch → `connectors/executor.ts:290`)
+   requires none of it: no scope, no purpose, no attestation, no audit row, no
+   credit ledger — and `batch_leads_skip_trace` sits on `PAUSE_SAFE_TOOLS`
+   (`tools.ts:1005`) so it runs even under the customer's Pax kill switch. A
+   `member` types a sentence and gets phone numbers, emails and prior addresses.
+   `requiredScope` IS declared per intent and is consumed only by
+   `mcp/safeIntents.ts` — never by `executeTool`.
+   **Exposure today is zero** (pre-customer, no org has BatchLeads credentials
+   connected), which is why it is not #1 by ratio — but it is the top
+   security/authority item and it is medium effort.
 
-   What is deliberately NOT claimed: the vertical readiness measure is
-   unchanged. `DECISION_ROUTE_OWNER` derives `decided` from vertical-OWNED
-   routes, and `/offers/batches` sits under Deals with no `businessTypeOnly` —
-   a shared CRM surface every persona uses, not land's own loop. Adding it
-   would have dropped the overclaim count from 13 and been false.
+2. **`schedule_background_job` schedules nothing and reports `status: "queued"`.**
+   VERIFIED. `ai/tools.ts:343` advertises an enum including `campaign_send`,
+   `bulk_lead_import`, `report_generation`; the implementation at `:1532` is one
+   `logger.info` followed by a success payload. A user who asks Pax to run the
+   overnight campaign send is told it is queued. Small effort — refuse, or wire
+   it. The strongest built-but-unwired instance on the Pax tool surface.
 
-   **So the real remaining work is a LAND-OWNED surface that decides.** The
-   blind-offer wizard is the candidate: it is land-flavoured, it now computes
-   real economics through `computeLandDeal`, and it has no commit point at all —
-   the operator calculates and the report evaporates. Giving it one (save this
-   offer / send this letter) would record a decision AND freeze the scenario
-   that justified it, which is the full flip-analyzer shape and the thing that
+3. **52 bare `gpt-4o`-style ids sent to an OpenRouter-only client.** Measured at
+   HEAD: 52 non-telemetry `model: "gpt-4o*"` literals across 22 files that never
+   construct their own OpenAI client. Every catalogue id carries an
+   `author/slug` prefix (0 of 415 without), so each is a 404. Ledger 34 fixed the
+   central registry and gated it; these are direct literals that bypass it.
+
+4. **Buyer-qualification IDOR.** VERIFIED. `routes-buyer-qualification.ts:174`
+   proves the caller owns `buyer_qualifications` row `:id`, then passes that same
+   integer to `estimateClosingProbability(buyerProfileId, …)`, which resolves
+   `eq(buyerProfiles.id, <a qualification id>)` with no org predicate
+   (`buyerQualificationBot.ts:783`). Independent serial PKs. Leaks budget bands,
+   preferences, preApproved, urgency, and writes a cross-tenant `agent_events`
+   row. It is also functionally wrong for its own owner, which is likely why it
+   was never noticed. `grep -rn buyer-qualification client/src` returns ZERO —
+   the endpoint is dark. Fix when next touching tenancy: return the qualification
+   ROW and pass `qualification.buyerProfileId`; give the service an
+   organizationId.
+
+5. **`POST /api/clear-demo-data` has no permission gate.** `routes-admin.ts:670`
+   mounts it with only `isAuthenticated, getOrCreateOrg` — no
+   `requirePermission`. `member` and `va` are both `canDeleteOrg: false` and
+   both blocked from deleting a single lead, yet can wipe the org's entire FK
+   closure; the confirmation is client-side only. One middleware line. A
+   passenger — bundle it into whatever next touches that file.
+
+6. **Settings → Account claims a GDPR export and deletion that never happened.**
+   The SERVER is honest: `routes-gdpr.ts:104` and `:127` return 202 queue
+   receipts. The CLIENT lies: `settings/account-sections.tsx:208` calls
+   `res.blob()` on that 202 and saves it as a data export under a "Data export
+   downloaded" toast, and `:232` toasts "Your personal data has been deleted".
+   `anonymizeUser` has zero callers; the founder-side fulfiller `runErasureStub`
+   unconditionally throws. The client honesty fix is one file; the erasure
+   implementation behind it is separate, larger, and legal-facing.
+
+7. **A land-OWNED surface that decides.** Land operators now get decision memory
+   through the offer-letter batch (ledger 32), but that is a SHARED surface and
+   deliberately does not promote the vertical. The blind-offer wizard is the
+   candidate: land-flavoured, computes real economics through `computeLandDeal`
+   since ledger 30, and has no commit point at all — the operator calculates and
+   the report evaporates. Giving it one would record a decision AND freeze the
+   scenario behind it, which is the full flip-analyzer shape and what
    legitimately moves land to `decided`.
 
-   13 of 15 verticals still stop before a recorded decision (`readiness.ts`,
-   frozen and down-only). The gap is the LOOP, not the surface.
+8. **`lint-reachability` does not treat `shared/**` as an export-candidate root.**
+   `shared` IS in `PRODUCTION_ROOTS` (so it counts as a call site); it is
+   `EXPORT_SOURCE_DIRS` that bounds what can be reported unreached. A new shared
+   module with no production caller is invisible to the built-but-unwired gate,
+   and widening `PRODUCTION_ROOTS` would change nothing.
 
-7. **The `measurement ? x : 0` class on money is CLOSED for now.** Both
-   remaining sites are fixed (ledger 33): the cash-flow forecast names the
-   carrying costs it could not price rather than silently omitting them, and the
-   due-diligence report says its projections were not made rather than printing
-   a page of zeros. `ai/tools.ts` was already correct.
-
-   The class is closed on the sites found by grepping the idiom on MONEY fields.
-   It has not been swept over non-money measurements, and no gate was built —
-   `check-measurement-defaults.mjs` covers `x.y ?? N` but not the ternary form
-   `x.y ? f(x.y) : 0`. Extending that gate is a candidate if the class recurs; it
-   has not yet recurred often enough to justify freezing a register.
-8. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
+9. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
-   another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs `campaigns`
-   by primary key alone with the org right there on the object).
+   another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs
+   `campaigns` by primary key alone with the org right there on the object).
 
 ---
 
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
+Full reasoning in the cross-pollination ledger, entries 23–34.
 
-- `33dbd74f` — the institution's five missing documents, written from measured
-  reality; `escalate_to_founder` permitted at every trust tier.
-- `10447296` — the campaign state becomes a frontier instead of a diary.
-- `5fa8ed62` — four places where omission was read as permission: the
-  auto-approve ceiling, the absence grant that outlived its expiry, the
-  delegation that conveyed unclassified actions, and the cascade check that
-  proceeded on its own failure. Ledger 25–27.
-- `2f10c1e5` — the autonomy risk classifier's residue resolved DOWNWARD, so any
-  unrecognised action auto-executed at the default autonomy level. Ledger 24.
-  Opened `docs/acreos-institution/`.
-- `e783c716` — posture-gate exemptions were textual prefixes, not path prefixes.
-  Ledger 23.
-- `8737bfe9` — the restore drill found the gate that would have failed the
-  outage.
-- `819e4eec`, `2c6260a6` — one command rebuilds the database; the schema rebuild
-  needs one SQL pass, not two.
+- **model ids** — the cheap tier was pinned to models that do not exist. All
+  three Anthropic ids and the reasoner used naming the catalogue does not use
+  (hyphenated versions, a dated slug); the only guard checked that a PRICE row
+  existed. Ledger 34.
+- **absence in forecasts** — the cash-flow forecast omitted carrying costs it
+  could not price; the due-diligence report printed a page of $0 projections.
+  Ledger 33.
+- **land closes its loop** — the offer-letter batch records a canonical decision,
+  and the vertical readiness ratchet was deliberately NOT moved to say so.
+  Ledger 32.
+- **offer pricing** — a lead with no assessed value got a $0 offer letter, and
+  the offer PDF derived a price from assessed value or printed $0.00. Ledger 31.
+- **land economics** — two implementations of land-deal economics, the canonical
+  one unreached; ROI computed on purchase price rather than total cost.
+  Ledger 30.
+- **executor receipts** — five of 28 company-agent executors reported effects
+  they never had, two of them inventing counts. Ledger 28–29.
+- **the unknown resolves toward caution** — the autonomy classifier's residue
+  resolved downward; four more places read omission as permission. Ledger 24–27.
+- **posture-gate exemptions** — textual prefixes, not path prefixes. Ledger 23.
 
 ---
 

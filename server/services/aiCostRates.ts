@@ -53,6 +53,12 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
   // cachedInput = ~0.1× input (Anthropic prompt-cache READ price).
   "anthropic/claude-haiku-4-5-20251001": { input: 1.00, output: 5.00, cachedInput: 0.10 },
   "anthropic/claude-haiku-4-5":          { input: 1.00, output: 5.00, cachedInput: 0.10 },
+  // OpenRouter's canonical ids use DOTTED versions. The hyphenated keys above
+  // are kept so a stored historical usage row still prices; the dotted ones are
+  // what MODELS pins. See models.ts for the measurement behind this.
+  "anthropic/claude-opus-4.8":   { input: 5.00, output: 25.00, cachedInput: 0.50 },
+  "anthropic/claude-sonnet-4.6": { input: 3.00, output: 15.00, cachedInput: 0.30 },
+  "anthropic/claude-haiku-4.5":  { input: 1.00, output: 5.00, cachedInput: 0.10 },
   "anthropic/claude-sonnet-4-6":         { input: 3.00, output: 15.00, cachedInput: 0.30 },
   "anthropic/claude-sonnet-4-5":         { input: 3.00, output: 15.00, cachedInput: 0.30 },
   // Opus corrected from the stale $15/$75 figure to the current $5/$25
@@ -71,7 +77,12 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
 
   // ── DeepSeek (via OpenRouter) ─────────────────────────────────────────────
   "deepseek/deepseek-chat":     { input: 0.14, output: 0.28 },
+  // `deepseek/deepseek-reasoner` is DeepSeek's own API name and 404s on
+  // OpenRouter; the catalogue slug is `deepseek/deepseek-r1`. The old key is
+  // kept so a stored historical usage row still prices, and the new one is what
+  // MODELS pins.
   "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
+  "deepseek/deepseek-r1":       { input: 0.55, output: 2.19 },
 
   // ── Direct OpenAI (fallback path) ────────────────────────────────────────
   "gpt-4o":      { input: 2.50, output: 10.00 },

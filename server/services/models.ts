@@ -36,8 +36,30 @@ import { AI_COST_RATES, getRate, type AICostRate } from "./aiCostRates";
 //   Haiku 4.5  — short lookups / restatement / formatting   (OpenRouter $0.80/$4)
 // Bare Anthropic-SDK ids (no `anthropic/` prefix) for the call sites that hit
 // the Anthropic API directly instead of OpenRouter (the Solene dispatch
-// runner, the pre-call constitutional checker). Kept in LOCKSTEP with MODELS
-// below by construction — the prefixed ids are derived from these.
+// runner, the pre-call constitutional checker).
+//
+// THESE ARE A DIFFERENT NAMESPACE FROM `MODELS` AND MUST NOT BE DERIVED FROM
+// EACH OTHER. They used to be: `MODELS.*` were built as
+// `` `anthropic/${ANTHROPIC_MODELS.*}` `` under a comment claiming the two sets
+// were "kept in LOCKSTEP by construction". They are not the same names, in two
+// independent ways — measured against the live catalogue on 2026-08-19
+// (415 models, 28 of them Anthropic):
+//
+//   1. VERSIONS ARE DOTTED, NOT HYPHENATED. The catalogue has 18 dotted
+//      Anthropic ids (`claude-opus-4.8`) and ZERO hyphenated ones
+//      (`claude-opus-4-8`). All three derived ids had the hyphenated form.
+//   2. SLUGS ARE UNDATED. Anthropic's own API pins a dated id for Haiku
+//      (`claude-haiku-4-5-20251001`); no catalogue slug carries a date, and
+//      `anthropic/claude-haiku-4-5-20251001` 404s outright.
+//
+// Honest limit on this claim: the ids below are the catalogue's CANONICAL
+// strings, verified present. Whether the old hyphenated forms would also have
+// been accepted by the completions endpoint could not be tested here — that
+// needs a provider API key, and inventing one to find out is not available.
+// `/models/{id}/endpoints` does normalise `-4-5` to `-4.5`, which is very
+// likely why this survived unnoticed; the dated form is unambiguously broken
+// either way. Pinning the canonical strings is the conservative choice: if
+// normalisation exists it is a no-op, and if it does not, this is the fix.
 export const ANTHROPIC_MODELS = {
   OPUS: "claude-opus-4-8",
   SONNET: "claude-sonnet-4-6",
@@ -46,15 +68,21 @@ export const ANTHROPIC_MODELS = {
 
 export const MODELS = {
   /** Tier 4 — highest-stakes reasoning. Pinned to the current best Opus. */
-  OPUS: `anthropic/${ANTHROPIC_MODELS.OPUS}`,
+  OPUS: "anthropic/claude-opus-4.8",
   /** Tier 3 — complex analysis, deal decisions, grounded synthesis. */
-  SONNET: `anthropic/${ANTHROPIC_MODELS.SONNET}`,
+  SONNET: "anthropic/claude-sonnet-4.6",
   /** Tier 2 — balanced reasoning / extraction / restatement. */
-  HAIKU: `anthropic/${ANTHROPIC_MODELS.HAIKU}`,
+  HAIKU: "anthropic/claude-haiku-4.5",
   /** Tier 1 — cheapest micro/templated tasks. */
   DEEPSEEK_CHAT: "deepseek/deepseek-chat",
-  /** Tier 3R — step-by-step reasoning for valuation/financial models. */
-  DEEPSEEK_REASONER: "deepseek/deepseek-reasoner",
+  /**
+   * Tier 3R — step-by-step reasoning for valuation/financial models.
+   *
+   * Was `deepseek/deepseek-reasoner`, which is DeepSeek's own API name and does
+   * not exist on OpenRouter (404). The catalogue's reasoning slug is
+   * `deepseek/deepseek-r1`.
+   */
+  DEEPSEEK_REASONER: "deepseek/deepseek-r1",
   /** Tier V — vision/document parsing. */
   VISION: "openai/gpt-4o",
 } as const;

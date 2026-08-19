@@ -32,8 +32,15 @@ import {
 import { computeCostUsd } from "../../server/services/aiCostRates";
 
 describe("models.ts — single source of truth for model IDs", () => {
-  it("pins Opus to the current best (claude-opus-4-8)", () => {
-    expect(MODELS.OPUS).toBe("anthropic/claude-opus-4-8");
+  it("pins Opus to the current best (claude-opus-4.8)", () => {
+    // The version separator is a DOT. This assertion read `claude-opus-4-8`
+    // until 2026-08-19 and was pinning a string absent from OpenRouter's
+    // catalogue — 18 dotted Anthropic ids there, zero hyphenated — so the test
+    // that existed to keep the model pinned was holding it pinned to a name the
+    // provider does not serve. Rewritten to the measured truth rather than
+    // deleted: the invariant it was written for (Opus stays pinned to the
+    // current best, not floated) survives. See modelIdsAreReal.test.ts.
+    expect(MODELS.OPUS).toBe("anthropic/claude-opus-4.8");
   });
 
   it("aiRouter MODEL_* resolve to the single source (no independent strings)", () => {
