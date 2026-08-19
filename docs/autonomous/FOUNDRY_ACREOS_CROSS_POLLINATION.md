@@ -1796,11 +1796,127 @@ Rule 1 alone would have passed `anthropic/claude-haiku-4-5-20251001` happily:
 its shape is fine. That is the difference between proving the symbol and proving
 the behaviour, on this repository's own terms.
 
+### 35 — THE GATE WAS READING COMMENTS: three dead services certified as wired by their own docblocks
+
+Not a Foundry transfer. Found by accident, and the accident is the finding.
+
+**How it surfaced.** Entry 34 removed a vestigial `await import()` from
+`scripts/check-model-ids.mjs` and wrote a comment explaining why. Two
+reachability counters had moved when the line was added; deleting it did not
+move them back. The hypothesis that the dynamic import caused the movement was
+already disproven at that point — and the actual cause was the *sentence*: the
+comment SPELLED the call it was describing, and `lint-reachability` scans raw
+source with regexes that have no idea what a comment is. Rewording the comment
+moved the counters. Nothing else changed.
+
+**What that bought anyone who wanted it.** This gate's two strongest exemptions
+were available to prose:
+
+- a dynamic-import specifier inside a comment marks the whole target module
+  `opaque` — *every* export in it becomes unassertable and drops out of the
+  unreached count. One sentence, one module's worth of exemption.
+- a `from "./x"` inside a comment records x as imported, so `isModuleOrphan(x)`
+  returns false and a file nothing loads stops reading as a file nothing loads.
+
+**The three it was hiding.** `stripCommentsPreservingLines()` now feeds both
+import scans. Line structure is preserved, so every reported line number still
+points where it did, and a 10-case self-test prints on every run — a stripper
+that quietly returned `""` would empty both scans and turn the whole gate green.
+Stripping revealed three service modules that NOTHING in the repository loads:
+
+| module | LOC | why it read as imported |
+|---|---|---|
+| `atlasContextInjector.ts` | 344 | ` *   import { buildAtlasContextBlock } from "./atlasContextInjector";` |
+| `communicationDeduplication.ts` | 132 | ` *   import { commDedup } from "./communicationDeduplication";` |
+| `userAiCostControls.ts` | 234 | ` *   import { userAiCostControls } from "./userAiCostControls";` |
+
+Each is a **usage example in the module's own header** — the scanner read it as
+the module importing itself. The gate whose entire purpose is finding
+built-and-unwired code was certifying it wired, on the strength of the sentence
+explaining how one day it might be.
+
+**None of the three was a close call.** The 2026-08 audit had already reviewed
+two: `09-correctness.md:68` reviewed `communicationDeduplication` and recorded
+"**zero callers** (dead code, TOCTOU moot; handed to slice 04, not reported
+here)"; `16-cost.md` F-16-3 said of `userAiCostControls` "either wire
+`checkBudget` into the shared AI entry path or delete it and correct the
+registry entry." Both were handed onward and neither was actioned — the gate
+that should have kept them visible was reporting them as fine. And each
+duplicated a live canonical owner with a **weaker** mechanism:
+
+- `commDedup` is a Redis-or-in-memory-`Map` check-then-act (`isDuplicate` →
+  `fn()` → `markSent`, not atomic, `catch { return false; // fail open }`)
+  beside the DB-backed outward-action ledger + `idempotencyKey` that
+  `emailService` and `directMailService` already run on, which raises
+  `LetterAlreadySentError` rather than racing.
+- `userAiCostControls` is a spend cap whose usage read catches everything and
+  falls back to a per-process `Map`: with Redis down it reads 0 and the cap
+  never fires; with no `REDIS_URL` it is per-instance and resets on restart. It
+  fails OPEN — the third law from this campaign inverted, the unknown resolving
+  toward permission — beside the DB-backed `intelligence/budget`,
+  `founderInboxBudget`, `credits` and `outreachStopLoss`.
+- `atlasContextInjector` eagerly assembled portfolio state into *every* Pax turn
+  (~9 sequential DB reads) that Pax already fetches on demand through
+  `get_deals` / `get_stale_leads` / `get_tasks` / `get_pipeline_summary` /
+  `get_notes`. Wiring it would have been strictly worse than the tool surface it
+  duplicates.
+
+**The cascade, and why it was followed.** Deleting the injector revealed its own
+dependency: `buildPaxSystemPromptAddition` in `paxRelationshipArc.ts` had
+exactly one production consumer, and it was the dead injector. Deleted too,
+rather than left counted — and it is the most consequential line in this entry.
+The block it rendered for Pax's system prompt said:
+
+> "You MAY take autonomous actions (create tasks, flag deals) without explicit
+> permission."
+
+granted on a relationship "stage" that advances on an **interaction counter**.
+It had never appeared in a prompt. Wiring it would put a permission grant in a
+channel with no authority to issue one: autonomy here is decided by
+`autonomyGuardrails` / `autonomousAgentEngine.evaluate` and enforced inside
+`executeTool`'s approval kernel, so the sentence could not widen authority — it
+could only make Pax attempt actions the kernel then refuses, and make the next
+reader believe usage buys authority. `getRelationshipState`, `getStageBehavior`
+and `recordPaxInteraction` are live behind `/api/pax/relationship` and stay;
+only the prompt projection went, with a tombstone in its place.
+
+**Exit test.** Four fixtures in `reachabilityGate.test.ts`, mutating where a
+specifier SITS — code or prose — rather than which symbol it names. Falsified
+against the un-hardened linter: the two defect cases fail (a self-importing
+docblock reads as imported; a commented dynamic import confers opacity) and the
+two negative controls pass unchanged (a real import beside a comment about it
+still counts; `//` inside a URL string is not a comment). The self-test line is
+asserted full, with a floor on its case count.
+
+**Still open, measured the same day and deliberately not taken.** The
+IDENTIFIER pass still reads raw source, so a comment merely NAMING a symbol
+still counts as a production use of it. That is documented in the linter's own
+allowlist (`InvestorVerificationService`, whose only consumer was a stale
+`TODO`), so it is a known property — but it had never been sized. Stripping
+comments there too moves `unreachedExports` 1398 → **1478**: eighty exports are
+currently certified reached by a sentence. The ratchet is down-only, so that
+cannot land in halves; it is an 80-item adjudication and it is on the frontier.
+
+**The general form.** This repository's first law says a load-bearing gate must
+be falsified against the semantic defect, not the symbol. This is the same law
+one level down: the gate was falsified against symbols in *text*, and text
+includes the part of the file that is not code. Any scanner that reads raw
+source shares the defect — `check-org-scoped-fetch.mjs` is already in
+`SYMBOL_REGISTERS` for the mirror-image reason, and `aiPromptLeakage.test.ts`
+once flagged a docblock *explaining* a founder-only boundary as a leak of it. A
+comment cannot import, cannot call, and cannot reach a customer.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
+
+Entries numbered above 34 are NOT Foundry candidates. They are findings this
+ledger's own work turned up and which belong beside it because the reasoning
+continues from an entry here; each says so in its first line. Do not read the
+entry count as a transfer count.
 
 
 ## Not yet dispositioned

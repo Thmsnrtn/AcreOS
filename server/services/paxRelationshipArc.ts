@@ -177,28 +177,29 @@ export function getStageBehavior(stage: RelationshipStage): StageBehavior {
   return STAGE_BEHAVIORS[stage];
 }
 
-export function buildPaxSystemPromptAddition(state: RelationshipState): string {
-  const behavior = getStageBehavior(state.stage);
-  const lines = [
-    `## Pax Relationship Stage: ${state.stage.toUpperCase()}`,
-    `You are in the "${state.stage}" relationship stage with this user.`,
-    `Proactivity: ${behavior.proactivityLevel}`,
-    `Suggestion style: ${behavior.suggestionsStyle}`,
-    `Personality: ${behavior.personalityTraits.join(", ")}`,
-    `Memory depth: ${behavior.memoryDepth}`,
-    behavior.canTakeAutonomousActions
-      ? "You MAY take autonomous actions (create tasks, flag deals) without explicit permission."
-      : "Do NOT take autonomous actions. Always ask before doing anything.",
-    `Unlocked capabilities: ${behavior.unlockedCapabilities.join(", ")}`,
-    `Greeting style example: "${behavior.greetingStyle}"`,
-  ];
-
-  if (state.stage === "partner") {
-    lines.push("As a partner-stage advisor, you should proactively challenge their assumptions and suggest portfolio-level strategies.");
-  }
-
-  return lines.join("\n");
-}
+/*
+ * `buildPaxSystemPromptAddition(state)` was deleted 2026-08-19. It rendered a
+ * stage block for Pax's system prompt whose central line was:
+ *
+ *     "You MAY take autonomous actions (create tasks, flag deals) without
+ *      explicit permission."
+ *
+ * — granted on a relationship "stage" that advances on an INTERACTION COUNTER.
+ * Its only production consumer was `atlasContextInjector.ts`, itself loaded by
+ * nothing; deleting that revealed this. It had therefore never appeared in any
+ * prompt, and permission has never actually been issued this way.
+ *
+ * Not resurrected, because wiring it would put a permission grant in the
+ * channel that has no authority to issue one. Autonomy in this system is
+ * decided by `autonomyGuardrails`/`autonomousAgentEngine.evaluate` and enforced
+ * in `executeTool`'s approval kernel; a system-prompt sentence cannot widen
+ * that, it can only make Pax attempt actions the kernel then refuses — and make
+ * the next reader believe usage buys authority. It does not.
+ *
+ * `getRelationshipState`, `getStageBehavior` and `recordPaxInteraction` are
+ * live (GET/POST /api/pax/relationship, /api/pax/interaction) and stay. What
+ * went is only the prompt projection.
+ */
 
 // Record a Pax interaction (increments counter for stage progression)
 export async function recordPaxInteraction(orgId: number): Promise<void> {

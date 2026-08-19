@@ -175,12 +175,31 @@ Resolving commits: 53d38f5
 ### DEFECT-0017
 Title: AI endpoints missing per-user credit checks
 Severity: P1
-Status: FIXED
+Status: FIXED (per-ORG only) — **the per-USER half was never wired; see correction 2026-08-19**
 Surfaced by lenses: 51 (RACE-010), 100 (cost controls unwired)
 Description: `callWithCreditCheck` and `callWithCircuitBreaker` from `openaiClient.ts` were imported by zero files. `userAiCostControls.ts` was also unused. AI endpoints could be called without credit verification.
 Evidence: Grep for `callWithCreditCheck` returned only definition/export.
 Remediation plan: Wire credit checks to all AI endpoints.
 Resolving commits: a763756
+
+**Correction, 2026-08-19.** This entry read FIXED with a remediation of "wire
+credit checks to *all* AI endpoints", and that is not what landed. What landed
+in a763756 was the **per-org** `aiCostCeiling` on `routeAITask`.
+`userAiCostControls.ts` — the per-USER daily/monthly budget this entry names —
+was never wired to anything and has now been **deleted** (deletion ledger,
+2026-08-19). It was not merely unused: its usage read caught every error and
+fell back to a per-process `Map`, so with Redis unreachable it read 0 and the
+cap never fired, and without `REDIS_URL` it was per-instance and reset on
+restart. A cap that silently disables itself is worse than no cap, because the
+registry entry above is what someone reads instead of checking.
+
+Two things this entry should not be read as covering, both still open and both
+already recorded by the 2026-08 audit (`docs/audit-2026-08/16-cost.md`):
+F-16-1, the `/api/va` surface, has no per-user or per-org cost check at all;
+and per-USER granularity does not exist anywhere — the per-org ceiling is the
+whole of the control. If per-user caps are wanted they are a fresh design
+against a DB-backed counter that fails CLOSED, not a resurrection of the deleted
+service.
 
 ### DEFECT-0018
 Title: Prompt injection guards missing on indirect data paths (knowledge base, file attachments, tool results)

@@ -153,13 +153,40 @@ had not verified; those are deliberately absent below.
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs
    `campaigns` by primary key alone with the org right there on the object).
 
+10. **80 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19,
+    not estimated. `lint-reachability`'s identifier pass tokenises raw source, so
+    a symbol NAMED in prose counts as a production use of it. Stripping comments
+    there moves `unreachedExports` 1398 → 1478. Ledger 35 closed the two scans
+    that grant EXEMPTIONS from prose (dynamic-import opacity, module-orphan
+    suppression) and deliberately stopped there: this direction produces 80
+    ACCUSATIONS, and the ratchet is down-only, so it cannot land in halves —
+    every one has to be adjudicated (delete / wire / allowlist) in the commit
+    that turns the stripper on. The three modules the first half revealed were
+    all genuinely dead and two had already been flagged by the 2026-08 audit, so
+    the yield here is likely real. Do not start this alongside other work: the
+    reproduction is a one-line change to the linter (point the identifier pass
+    at `code` instead of `raw`), and the whole cost is the adjudication.
+
+11. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
+    The per-org `aiCostCeiling` on `routeAITask` is the entire control.
+    `userAiCostControls.ts` — the per-user daily/monthly budget — was deleted in
+    ledger 35 as unwired and fail-open, and `DEFECT-0017` was corrected in the
+    same commit because it claimed the class FIXED. `docs/audit-2026-08/16-cost.md`
+    F-16-1 records the `/api/va` gap independently. Pre-customer this costs
+    nothing; it is on the list because the registry no longer says it is handled,
+    and a real fix is a DB-backed counter that fails CLOSED, not a restore.
+
 ---
 
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–34.
+Full reasoning in the cross-pollination ledger, entries 23–35.
 
+- **the gate was reading comments** — `lint-reachability` scanned raw source, so
+  a specifier inside a comment granted its two strongest exemptions. Three
+  services whose own docblocks showed a usage example were reading as
+  self-imported; nothing loaded any of them. Ledger 35.
 - **model ids** — the cheap tier was pinned to models that do not exist. All
   three Anthropic ids and the reasoner used naming the catalogue does not use
   (hyphenated versions, a dated slug); the only guard checked that a PRICE row
@@ -201,7 +228,7 @@ DR RTO remains unmeasured — no bucket access from this container.
 
 ## Proof debt
 
-- `lint-reachability` scan roots exclude `shared/**` (see frontier candidate 5).
+- `lint-reachability` scan roots exclude `shared/**` (see frontier candidate 8).
 - The measurement-defaults register still holds its baseline; the largest
   remaining family is LLM-parse confidence (`parsed.confidence || 50`), which is
   also the lowest individual consequence.

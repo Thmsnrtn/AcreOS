@@ -394,6 +394,107 @@ for (const d of EXPORT_SOURCE_DIRS) {
 const candidateNames = new Set([...candidates.values()].map((c) => c.symbol));
 
 /**
+ * ── A COMMENT CANNOT IMPORT ANYTHING ────────────────────────────────────────
+ *
+ * The import scanners below are regexes over raw source, and raw source has
+ * comments in it. That is not a cosmetic imprecision — it hands out this gate's
+ * two strongest EXEMPTIONS to prose:
+ *
+ *   - a specifier inside a comment marks the target module dynamically
+ *     imported, and every export in it becomes "opaque: unassertable". One
+ *     sentence exempts a whole module.
+ *   - a `from "./x"` inside a comment records x as imported, so
+ *     `isModuleOrphan(x)` returns false and a file NOTHING loads stops
+ *     reading as a file nothing loads.
+ *
+ * Both were live. Three services — atlasContextInjector, userAiCostControls,
+ * communicationDeduplication — each opened with a docblock showing callers how
+ * to use them:
+ *
+ *       Usage:
+ *         import { commDedup } from "./communicationDeduplication";
+ *
+ * …which this scanner read as the module importing ITSELF. Nothing anywhere
+ * loaded any of the three. The gate that exists to find built-and-unwired code
+ * was certifying it as wired, on the strength of the sentence explaining how
+ * one day it might be. Found 2026-08-19 when a comment in
+ * scripts/check-model-ids.mjs — one written to explain that a dynamic import
+ * had been REMOVED — kept the removal from taking effect.
+ *
+ * Line structure is preserved (comment bodies become spaces, newlines stay) so
+ * every reported line number still points where it did. `verifyStripper()`
+ * below is the self-test, and the banner prints its score: a stripper that
+ * quietly returned "" would empty every scan and turn this whole gate green.
+ */
+function stripCommentsPreservingLines(src) {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  // "code" | "line" | "block" | one of the three quote characters
+  let state = "code";
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (state === "code") {
+      if (c === "/" && d === "/") { state = "line"; out += "  "; i += 2; continue; }
+      if (c === "/" && d === "*") { state = "block"; out += "  "; i += 2; continue; }
+      if (c === "'" || c === '"' || c === "`") { state = c; out += c; i++; continue; }
+      out += c; i++; continue;
+    }
+    if (state === "line") {
+      if (c === "\n") { state = "code"; out += c; } else out += " ";
+      i++; continue;
+    }
+    if (state === "block") {
+      if (c === "*" && d === "/") { state = "code"; out += "  "; i += 2; continue; }
+      out += c === "\n" ? "\n" : " ";
+      i++; continue;
+    }
+    // Inside a string/template literal.
+    if (c === "\\") { out += c + (d ?? ""); i += 2; continue; }
+    if (c === state) { state = "code"; out += c; i++; continue; }
+    // An unterminated ' or " cannot span a line; recover rather than swallow
+    // the rest of the file. Templates legitimately span lines, so they do not
+    // recover here.
+    if (state !== "`" && c === "\n") { state = "code"; out += c; i++; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
+/**
+ * Cases the stripper must get right, checked on every run.
+ *
+ * The first two are the defect. The rest are the ways a naive strip breaks the
+ * scan it feeds: `//` inside a string is protocol punctuation, not a comment,
+ * and eating it would destroy the very specifiers this gate reads.
+ */
+const STRIPPER_CASES = [
+  ['import { a } from "./x";', 'import { a } from "./x";'],
+  ['// import { a } from "./x";', ''],
+  [' * import { a } from "./x";', ' * import { a } from "./x";'], // inside a block comment: caller strips the /** first
+  ['/* await import("./x") */ const y = 1;', 'const y = 1;'],
+  ['const u = "https://example.com/a";', 'const u = "https://example.com/a";'],
+  ["const u = 'a//b';", "const u = 'a//b';"],
+  ['const u = `a/*b*/c`;', 'const u = `a/*b*/c`;'],
+  ['const u = "a\\"b//c";', 'const u = "a\\"b//c";'],
+  ['const a = 1; // note\nconst b = 2;', 'const a = 1;\nconst b = 2;'],
+  ['/**\n * import { z } from "./z";\n */\nconst c = 3;', 'const c = 3;'],
+];
+
+/** Runs STRIPPER_CASES; returns [passed, total]. Line count must never change. */
+function verifyStripper() {
+  let ok = 0;
+  for (const [input, expected] of STRIPPER_CASES) {
+    const got = stripCommentsPreservingLines(input);
+    const sameLines = got.split("\n").length === input.split("\n").length;
+    const norm = (t) => t.split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
+    if (sameLines && norm(got) === norm(expected)) ok++;
+  }
+  return [ok, STRIPPER_CASES.length];
+}
+
+/**
  * Modules pulled in dynamically anywhere in production code. Their exports are
  * OPAQUE — reported, never counted as dead.
  */
@@ -455,9 +556,15 @@ function recordImport(importerRel, spec) {
 for (const p of productionFiles) {
   const raw = read(p);
 
+  // Comments are not code: see stripCommentsPreservingLines above. The
+  // identifier pass below still reads `raw` — stripping it there is a much
+  // larger change (80 more findings, measured 2026-08-19) and is tracked
+  // separately; this closes the two EXEMPTION-granting scans only.
+  const code = stripCommentsPreservingLines(raw);
+
   DYNAMIC_IMPORT_RE.lastIndex = 0;
   let dm;
-  while ((dm = DYNAMIC_IMPORT_RE.exec(raw)) !== null) {
+  while ((dm = DYNAMIC_IMPORT_RE.exec(code)) !== null) {
     const spec = dm[1];
     // A DESTRUCTURING dynamic import needs no opacity, and skipping it is the
     // whole of this narrowing. `const { routeAITask } = await import("./x")`
@@ -472,7 +579,7 @@ for (const p of productionFiles) {
     // hides which exports are touched. This linter's stated bias is that a false
     // OPAQUE is a miss while a false UNREACHED is an ACCUSATION, so anything not
     // clearly destructured keeps its exemption.
-    const destructured = isDestructuredDynamicImport(raw, dm.index, dm.index + dm[0].length);
+    const destructured = isDestructuredDynamicImport(code, dm.index, dm.index + dm[0].length);
     // A destructured dynamic import still IMPORTS the module — it just does not
     // hide which exports are used. Recording it in `importedModules`/`importedTails`
     // keeps `isModuleOrphan` honest; skipping the opaque sets is the narrowing.
@@ -511,7 +618,7 @@ for (const p of productionFiles) {
 
   STATIC_IMPORT_RE.lastIndex = 0;
   let sm;
-  while ((sm = STATIC_IMPORT_RE.exec(raw)) !== null) recordImport(p, sm[1]);
+  while ((sm = STATIC_IMPORT_RE.exec(code)) !== null) recordImport(p, sm[1]);
 
   if (candidateNames.size === 0) continue;
   const text = raw.replace(REEXPORT_RE, "");
@@ -1104,6 +1211,21 @@ console.log(
     `${tables.size} pgTable definitions · ${routeCandidates.size} route candidates ` +
     `(registrar or Router) under ${ROUTE_SCAN_ROOT}`,
 );
+
+// The comment stripper feeds both import scans, so a broken one would silently
+// widen or empty them. Printed, not merely asserted, so a run's own output says
+// whether the input to those scans was trustworthy.
+{
+  const [passed, total] = verifyStripper();
+  console.log(`${TAG} comment-stripper self-test: ${passed}/${total} correct`);
+  if (passed !== total) {
+    console.error(
+      `${TAG} the comment stripper is WRONG, so every import scan above read ` +
+        `corrupted source. Refusing to report a verdict.`,
+    );
+    process.exit(1);
+  }
+}
 
 // ----------------------------------------------------------------------------
 // VACUITY GUARD — see the header. A scan that stops seeing files reports zero

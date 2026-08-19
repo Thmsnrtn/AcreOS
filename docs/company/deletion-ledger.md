@@ -911,3 +911,75 @@ exempt-by-name rather than gated-by-name, so a new executor is gated by default.
 is a fresh design against a working gate — a policy check that fails CLOSED, a
 real tenant, and a call site — not a resurrection of this. The intent was sound;
 only the implementation was a stub.
+
+---
+
+## `atlasContextInjector` / `communicationDeduplication` / `userAiCostControls` — executed 2026-08-19
+
+**What went.** Three service modules, 710 LOC, that nothing in the repository
+loaded: `server/services/atlasContextInjector.ts` (344), `.../userAiCostControls.ts`
+(234), `.../communicationDeduplication.ts` (132), plus `tests/unit/atlasContext.test.ts`.
+
+**Why they were invisible.** Each opened with a docblock showing callers how to
+use it —
+
+```
+ * Usage:
+ *   import { commDedup } from "./communicationDeduplication";
+```
+
+— and `lint-reachability` scanned raw source, so it read the usage example as
+the module importing ITSELF and reported all three as imported. The gate that
+exists to find built-and-unwired code was certifying it wired. The scanner now
+strips comments before both import scans; see cross-pollination ledger entry 35
+and `reachabilityGate.test.ts` → "a comment is not code".
+
+**Why deleted rather than wired.** Each duplicated a live canonical owner with a
+weaker mechanism, and two had already been reviewed and handed onward by the
+2026-08 audit without action (`09-correctness.md:68`; `16-cost.md` F-16-3):
+
+- `commDedup` — Redis-or-in-memory-`Map`, check-then-act (`isDuplicate` →
+  `fn()` → `markSent` is not atomic) with `catch { return false; // fail open }`,
+  beside the DB-backed outward-action ledger + `idempotencyKey` that
+  `emailService` and `directMailService` already run on.
+- `userAiCostControls` — a spend cap that fails OPEN: the usage read catches
+  everything and falls back to a per-process `Map`, so with Redis down it reads
+  0 and never fires, and with no `REDIS_URL` it is per-instance and resets on
+  restart. `DEFECT-0017` in the defect registry claimed this class FIXED; that
+  entry has been corrected in the same commit. The DB-backed owners
+  (`intelligence/budget`, `founderInboxBudget`, `credits`, `outreachStopLoss`)
+  are unaffected.
+- `atlasContextInjector` — eagerly assembled portfolio state into every Pax
+  turn (~9 sequential DB reads) that Pax already fetches on demand via
+  `get_deals` / `get_stale_leads` / `get_tasks` / `get_pipeline_summary` /
+  `get_notes`. Eager injection would have been strictly worse than the live tool
+  surface it duplicates.
+
+**Cascade, followed rather than baselined.** Deleting the injector revealed
+`buildPaxSystemPromptAddition` in `paxRelationshipArc.ts` — one production
+consumer, and it was the dead injector. Deleted too, with a tombstone in place,
+because of what it rendered into Pax's system prompt: *"You MAY take autonomous
+actions (create tasks, flag deals) without explicit permission"*, granted on a
+stage that advances on an interaction COUNTER. It had never reached a prompt.
+Wiring it would put a permission grant in a channel with no authority to issue
+one — autonomy is decided by `autonomyGuardrails`/`autonomousAgentEngine.evaluate`
+and enforced in `executeTool`'s approval kernel — so it could only make Pax
+attempt refused actions and make the next reader believe usage buys authority.
+`getRelationshipState`, `getStageBehavior` and `recordPaxInteraction` are live
+behind `/api/pax/relationship` and were not touched.
+
+**Not opportunistic.** These were adjudicated because a gate change surfaced
+them, on the execution rule that a revealed orphan is resolved in the commit
+that reveals it rather than baselined. No tables were involved (none of the
+three owned one), no webhooks, no feature flags, no client surface.
+`unreachedExports` 1398 → 1395 and `moduleOrphans` held at 28 in the same
+commit.
+
+**Reactivation criteria.** Per-user AI spend caps, if wanted, are a fresh design
+against a DB-backed counter that fails CLOSED — see the corrected `DEFECT-0017`
+and `docs/audit-2026-08/16-cost.md` F-16-1, which records the still-open
+`/api/va` gap. Outbound-send deduplication is already owned by the
+outward-action ledger; extend that, do not re-add a parallel cache. Live
+portfolio state in Pax's prompt is a product question, not a restore: Pax reads
+it on demand today, and the trade is per-turn tokens and latency against fewer
+tool round-trips.

@@ -421,6 +421,160 @@ describe("lint-reachability — export family", () => {
   });
 });
 
+describe("lint-reachability — a comment is not code", () => {
+  // ── THE DEFECT, EXACTLY AS IT SHIPPED ─────────────────────────────────────
+  // Three services (atlasContextInjector, communicationDeduplication,
+  // userAiCostControls) each opened with a docblock showing callers how to use
+  // them. Nothing anywhere loaded any of the three, and this gate reported all
+  // three as imported — because the scanner read the USAGE EXAMPLE inside the
+  // module's own header as the module importing itself. The gate whose whole
+  // job is finding built-and-unwired code was certifying it wired on the
+  // strength of the sentence explaining how one day it might be.
+  //
+  // These fixtures mutate the thing the gate GOVERNS — where a specifier sits,
+  // code or prose — not a symbol it mentions. Both directions are pinned: a
+  // comment must confer nothing, and real code beside a comment must still
+  // confer everything, because a stripper that over-reaches would silently
+  // widen every finding in the repo.
+
+  it("a usage example in a module's own docblock does not import it", () => {
+    const d = mkdtempSync(join(tmpdir(), "reach-comment-selfimport-"));
+    try {
+      const f = fixture(d);
+      // Verbatim shape of the three real headers.
+      f.write(
+        "server/services/deadService.ts",
+        "/**\n" +
+          " * Usage:\n" +
+          ' *   import { commDedup } from "./deadService";\n' +
+          " */\n" +
+          "export const commDedup = { isDuplicate: () => false };\n",
+      );
+      f.write("server/routes-live.ts", "export function handler() { return 1; }\n");
+      f.ratchet({ unreachedExports: 1, moduleOrphans: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(
+        out,
+        "a module whose only importer is its own docblock is still a module " +
+          "orphan — this is the exact shape that hid three dead services",
+      ).toContain("module-orphans: PASS — 1");
+      expect(out).toContain("MODULE ORPHAN");
+      expect(out).toContain("commDedup");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("a dynamic-import specifier in a comment confers no opacity", () => {
+    // The bigger blast radius of the two: one sentence exempts EVERY export of
+    // the named module from the unreached count. Found when a comment written
+    // to explain that a dynamic import had been deleted kept the deletion from
+    // taking effect.
+    const d = mkdtempSync(join(tmpdir(), "reach-comment-dynimport-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyService.ts",
+        "export function runLazily() { return 1; }\n" +
+          "export function neverCalledSibling() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export function handler() {\n" +
+          '  // An earlier draft did `await import("./services/lazyService")`\n' +
+          "  // and discarded the result. It is gone.\n" +
+          "  return 1;\n" +
+          "}\n",
+      );
+      f.ratchet({ unreachedExports: 2, moduleOrphans: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(
+        out,
+        "a dynamic import mentioned in prose is exempting a whole module",
+      ).toContain("opaque-exports: PASS — 0");
+      expect(out).toContain("unreached-exports: PASS — 2");
+      expect(out).toContain("runLazily");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("still sees a REAL import sitting beside a comment about it", () => {
+    // The negative direction. Over-stripping would report imported modules as
+    // orphans and reached exports as dead, at repo scale, which is the failure
+    // mode that gets a gate deleted rather than fixed.
+    const d = mkdtempSync(join(tmpdir(), "reach-comment-negative-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/liveService.ts",
+        "export function runLive() { return 1; }\n",
+      );
+      f.write(
+        "server/routes-live.ts",
+        "// We import runLive from ./services/liveService below.\n" +
+          '/* import { runLive } from "./services/liveService"; -- old form */\n' +
+          'import { runLive } from "./services/liveService";\n' +
+          "export function handler() { return runLive(); }\n",
+      );
+      f.ratchet({});
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(out).toContain("unreached-exports: PASS — 0");
+      expect(out).toContain("module-orphans: PASS — 0");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("does not mistake `//` inside a string for a comment", () => {
+    // The way a naive strip breaks the scan it feeds. Every specifier this gate
+    // reads lives in a string literal, and URLs live there too; eating from the
+    // first `//` would blind the scanner to the import on the same line.
+    const d = mkdtempSync(join(tmpdir(), "reach-comment-url-"));
+    try {
+      const f = fixture(d);
+      f.write("server/services/liveService.ts", "export function runLive() { return 1; }\n");
+      f.write(
+        "server/routes-live.ts",
+        'const DOCS = "https://example.com/a"; import { runLive } from "./services/liveService";\n' +
+          "export function handler() { return [DOCS, runLive()]; }\n",
+      );
+      f.ratchet({});
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(
+        out,
+        "the stripper ate a URL's `//` and took the import on that line with it",
+      ).toContain("module-orphans: PASS — 0");
+      expect(out).toContain("unreached-exports: PASS — 0");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("prints a FULL comment-stripper self-test on every run", () => {
+    // A stripper that returned "" would empty both import scans and turn the
+    // whole gate green, so its correctness is reported, not merely assumed.
+    const { out } = run();
+    const m = /comment-stripper self-test: (\d+)\/(\d+) correct/.exec(out);
+    expect(m, `the self-test line is gone:\n${out}`).not.toBeNull();
+    expect(Number(m![1]), "the comment stripper is failing its own cases").toBe(
+      Number(m![2]),
+    );
+    expect(
+      Number(m![2]),
+      "the stripper self-test lost its cases — an empty case list passes trivially",
+    ).toBeGreaterThanOrEqual(8);
+  }, 120_000);
+});
+
 describe("lint-reachability — allowlist", () => {
   let dir: string;
   beforeAll(() => {
