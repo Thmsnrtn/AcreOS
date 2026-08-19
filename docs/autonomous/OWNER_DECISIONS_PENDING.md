@@ -1,6 +1,6 @@
 # OWNER DECISIONS PENDING
 
-> **ONE DECISION IS OPEN: OD-7 (the Pax model picker). The other six are taken.**
+> **ALL SEVEN DECISIONS ARE TAKEN. NOTHING ON THIS PAGE IS WAITING ON THE OWNER.**
 >
 > OD-2, OD-3, OD-4 and OD-5 are DECIDED AND IMPLEMENTED. OD-1 is DECIDED (hold)
 > and stays listed because the hold is the live state. OD-6 is DECIDED (accept
@@ -370,7 +370,7 @@ this is open.
 
 ---
 
-## OD-7 — OPEN, raised 2026-08-19: what the Pax model picker should be
+## OD-7 — DECIDED 2026-08-19 (delegated back to the session): REMOVE IT
 
 **Decision:** whether a customer may choose Pax's model at all, and if so
 whether that choice may exceed the model tier their plan pays for.
@@ -410,7 +410,24 @@ drift, not design.
     argues against giving customers model dials at all.
 (c) Leave it. Not viable: it is a live 422 either way.
 
-**RECOMMENDATION: (b), remove it.** The picker offers a choice the product
+**DECISION: (b) — removed, 2026-08-19.** Raised in the picker; the owner
+returned it with "use your best and highest judgement and decide", so the call
+is the session's and the reasoning is recorded here and in cross-pollination
+ledger 37. Implemented in the same commit: the `Select` and its `localStorage`
+preference are gone from the rail, `modelOverride` is gone from the stream
+schema, from `ChatOptions`, and from both resolution chains in
+`ai/executive.ts`. `paxTierCeilingIsTheCeiling.test.ts` pins the shape rather
+than the identifier and is falsified against `HEAD~1`'s actual source.
+
+One thing the options below understated, found while implementing: the two
+defects were each other's camouflage. Six of the seven server-side enum ids were
+names no provider serves, and the seventh (`deepseek/deepseek-chat`) is the
+CHEAPEST model in the registry — so the only value that both validated and
+existed made the org cheaper. The ceiling bypass was real and unreachable at the
+same time, and would have become reachable the moment someone made the enum
+match the picker. That is the obvious repair, and it is the wrong one.
+
+**Original recommendation: (b), remove it.** The picker offers a choice the product
 philosophy says Pax should be making, its labels do not map to anything the
 customer can reason about, and (a) costs a model-ordering concept plus a clamp
 that has to stay correct as tiers change — real machinery to preserve a control

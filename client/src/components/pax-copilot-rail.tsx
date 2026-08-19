@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sparkles, Send, Loader2, X, ChevronRight,
   Users, MapPin, Building, Megaphone, LayoutDashboard,
@@ -413,10 +412,13 @@ export function PaxCopilotRail() {
   const [pendingResults, setPendingResults] = useState<PendingTaskResult[]>([]);
   const [showResultsBanner, setShowResultsBanner] = useState(false);
 
-  // Model selector
-  const [modelOverride, setModelOverride] = useState<string>(() =>
-    localStorage.getItem("pax_model_override") || "auto"
-  );
+  // NO model selector. It offered fast|balanced|powerful|reasoning|claude and
+  // posted the raw string as `modelOverride`; the server's zod enum accepted
+  // raw model ids, the two sets did not intersect, and every option except
+  // "Auto" returned a 422 — persisted here in localStorage, so it kept failing
+  // until the user set it back. And what it was reaching for outranked the
+  // paid-tier ceiling server-side. Removed 2026-08-19 (owner decision OD-7):
+  // Auto routes per turn, which is what the tooltip always promised.
 
   // Message ratings (local optimistic state: messageId → 1 | -1)
   const [ratings, setRatings] = useState<Record<string, 1 | -1>>({});
@@ -728,7 +730,6 @@ export function PaxCopilotRail() {
       if (filePayload.length > 0) body.files = filePayload;
       if (currentEntities.length > 0) body.mentionedEntities = currentEntities;
       if (activeProjectId) body.activeProjectId = activeProjectId;
-      if (modelOverride && modelOverride !== "auto") body.modelOverride = modelOverride;
 
       const res = await fetch("/api/ai/chat/stream", {
         method: "POST",
@@ -1273,36 +1274,6 @@ export function PaxCopilotRail() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Pax Memory</TooltipContent>
-                </Tooltip>
-                {/* Model selector */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <Select
-                        value={modelOverride}
-                        onValueChange={(v) => {
-                          setModelOverride(v);
-                          localStorage.setItem("pax_model_override", v);
-                        }}
-                      >
-                        {/* `focus:ring-1`, not `ring-0`: the global *:focus-visible rule swaps the
-    outline for a ring, so zeroing the ring on a borderless trigger leaves a
-    keyboard user with no focus indicator at all. */}
-                        <SelectTrigger className="h-6 w-auto text-micro border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-1 focus:ring-ring">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="end" className="text-xs min-w-[110px]">
-                          <SelectItem value="auto" className="text-xs">Auto</SelectItem>
-                          <SelectItem value="fast" className="text-xs">Fast</SelectItem>
-                          <SelectItem value="balanced" className="text-xs">Balanced</SelectItem>
-                          <SelectItem value="powerful" className="text-xs">Powerful</SelectItem>
-                          <SelectItem value="reasoning" className="text-xs">Reasoning</SelectItem>
-                          <SelectItem value="claude" className="text-xs">Claude</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>Auto picks the right brain for each question · Fast = quick answers · Powerful and Reasoning = deeper thinking, slower</TooltipContent>
                 </Tooltip>
                 {/* Conversation switcher toggle */}
                 <Tooltip>

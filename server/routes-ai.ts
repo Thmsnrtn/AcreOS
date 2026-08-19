@@ -416,11 +416,18 @@ export function registerAIRoutes(app: Express): void {
       name: z.string().optional(),
     })).optional(),
     activeProjectId: z.number().int().optional(),
-    modelOverride: z.enum([
-      "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
-      "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307",
-      "deepseek/deepseek-chat",
-    ]).optional(),
+    // NO modelOverride. It used to be a z.enum of raw model ids here, and it
+    // was two defects at once. (1) The client sends
+    // `fast|balanced|powerful|reasoning|claude`; the two sets did not
+    // intersect at all, so every non-"Auto" selection failed this safeParse
+    // and the customer got a 422 and no answer — persisted to localStorage,
+    // so it kept failing. (2) Whatever survived went to
+    // `ai/executive.ts`'s resolution chain AHEAD of the tier ceiling and its
+    // soft-cap downgrade, i.e. a customer-settable field outranking the margin
+    // guard. Six of the seven ids named here were also names no provider in
+    // this system serves, which is how it stayed invisible: nobody could reach
+    // the path that would have 404'd. Removed 2026-08-19 (owner decision
+    // OD-7). Auto routes per turn — that is the product.
   });
 
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
@@ -435,7 +442,7 @@ export function registerAIRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId } = parsed.data;
 
       // Normalize request shapes into the ChatOptions contract: FileAttachment
       // carries a numeric `size`, and mentionedEntities require numeric id +
@@ -543,7 +550,6 @@ export function registerAIRoutes(app: Express): void {
         propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
         mentionedEntities: normalizedMentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
-        modelOverride: modelOverride || undefined,
         paxPromptVersion: streamPaxPromptVersion,
       });
       

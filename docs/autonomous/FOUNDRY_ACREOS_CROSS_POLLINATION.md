@@ -2031,6 +2031,88 @@ be shown from the repository — it depends on secrets and on traffic. What is
 shown is that the id sent does not exist at the provider the client points at.
 
 
+### 37 — A CUSTOMER FIELD OUTRANKED THE PAID-TIER CEILING, and nobody could reach it to find out
+
+Found while tracing entry 36's model ids into the surfaces that choose them.
+Owner decision OD-7; the founder returned it with "use your best and highest
+judgement and decide", so the call below is mine and recorded as such.
+
+**Two defects on the same field, and each hid the other.**
+
+*The visible one.* `client/src/components/pax-copilot-rail.tsx` offered a model
+picker — `Auto · Fast · Balanced · Powerful · Reasoning · Claude` — and posted
+the raw string as `modelOverride`. `server/routes-ai.ts` accepted a `z.enum` of
+raw model ids: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`,
+`claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`,
+`deepseek/deepseek-chat`. **The two sets do not intersect at any value.** The
+route `safeParse`s, so every selection except "Auto" returned a **422 and no
+answer** — on the primary AI surface, with the choice persisted to
+`localStorage`, so it kept failing on every subsequent message until the user
+set it back.
+
+*The one underneath.* `ai/executive.ts` resolved
+`options.modelOverride || visionFallback || costRoutedCeiling || result.model`
+— the request field sat **ahead of the tier ceiling**, i.e. ahead of
+`pickPaxModelForOrg` and its monthly soft-cap downgrade. That is the margin
+guard this codebase built on purpose; `campaignOptimizer.ts:186` carries the
+note explaining why ("the optimizer used to hardcode gpt-4o for every org — the
+Scale/Pro tier-downgrade ladder covered ONLY Pax chat, so heavy free/capped orgs
+billed premium-model COGS invisibly").
+
+**Each defect was the other's camouflage.** Six of the seven enum ids were names
+no provider in this system serves (bare or dated — entry 36's family), and the
+seventh, `deepseek/deepseek-chat`, is the CHEAPEST model in the registry. So the
+only value that both passed validation and existed made the org cheaper, never
+dearer. The ceiling bypass was real and unreachable at once, and it would have
+become reachable the moment someone "fixed" the enum to match the picker —
+which is the obvious repair, and the wrong one.
+
+**The comment that made it look intentional.** executive.ts described the branch
+as "Explicit modelOverride (founder dashboard, eval harness)". Grep across
+`server/`, `client/src` and `tests/` found **one** setter: the customer-facing
+`POST /api/ai/chat/stream`. `processChat` has four callers and the other three
+(`tools.ts` sub-agent, `paxScheduler`, `/api/ai/chat`) never set it. The
+founder dashboard and eval harness the comment names do not exist. Same species
+as entry 36's `getOpenAIClient` and aiRouter's "routes to OpenRouter" comment:
+a note asserting a caller, a provider, or an intent that the code does not have.
+
+**Decision: remove it, rather than clamp it.** The alternative was to accept the
+client's tier vocabulary and clamp it to the org's ceiling. Rejected on three
+grounds. The product already promises the opposite — the picker's own tooltip
+says "Auto picks the right brain for each question", and `routePaxModelForTurn`
+does exactly that per turn under the ceiling. The labels are not something a
+land investor can reason about ("Claude" is a vendor name). And a clamp is
+machinery that must stay correct as tiers change, built to preserve a control
+that has never once worked for anyone — there is no regression to weigh against
+it, because there is no working behaviour to lose. If a model choice should
+exist, "Fast vs Thorough" as an explicit latency/cost trade is a better product
+and a design task, not a repair. Removing the field also removes the bypass
+outright rather than bounding it, which is the difference between a hole with a
+guard on it and no hole.
+
+Removed: the `Select` and its `localStorage` preference from the rail, the
+`modelOverride` key from the stream schema, the field from `ChatOptions`, and
+the branch from both resolution chains. `resolveModel` (the unified resolver,
+deliberately in SHADOW MODE) is untouched.
+
+**Exit test.** `paxTierCeilingIsTheCeiling.test.ts` pins the SHAPE, not the
+identifier — renaming `modelOverride` would satisfy a word-matching gate while
+reintroducing the defect exactly. Every operand of every multi-alternative
+`model = …` chain must be in a server-sourced set; the two chat schemas must
+carry no key matching `/model/i`; `ChatOptions` likewise; the rail must post no
+model field and keep no model preference. Each predicate runs twice — once on
+the real source, once on a mutation that reintroduces the defect **under a
+different name** (`options.tierBoost`, `preferredModel`, `pinnedModel`) — plus a
+negative control that merely REORDERS the legitimate operands and must stay
+green, and vacuity guards on every scan.
+
+Then falsified against the real thing rather than only against synthetic
+mutations: run against `HEAD~1`'s source, the predicates report
+`['options.modelOverride', 'options.modelOverride']` and
+`['aiChatStreamSchema.modelOverride']`. The gate catches the defect that
+actually existed.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

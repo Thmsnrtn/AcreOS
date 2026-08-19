@@ -260,7 +260,7 @@
     },
     {
       "file": "client/src/components/pax-copilot-rail.tsx",
-      "line": 821,
+      "line": 822,
       "category": "id",
       "note": "React key for a streaming tool-call event. The tool's NAME and ARGS come from the stream; only the key is random."
     },

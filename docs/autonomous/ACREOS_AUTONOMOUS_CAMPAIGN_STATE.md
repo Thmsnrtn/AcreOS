@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `3792080a` + the model-id commit below, 2026-08-19. Working tree
-clean, 931 test files / 12,520 tests green, 26 gates green.
+Verified at: `28ad21b7` + the tier-ceiling commit below, 2026-08-19. Working
+tree clean, 932 test files / 12,531 tests green, 26 gates green.
 
 ---
 
@@ -170,30 +170,13 @@ had not verified; those are deliberately absent below.
     reproduction is a one-line change to the linter (point the identifier pass
     at `code` instead of `raw`), and the whole cost is the adjudication.
 
-11. **The Pax model picker 422s on every option except Auto.** VERIFIED, and
-    it is customer-facing on the primary AI surface. `pax-copilot-rail.tsx:1294`
-    offers `fast | balanced | powerful | reasoning | claude` and posts the raw
-    value as `modelOverride`; `routes-ai.ts:419` accepts a `z.enum` of
-    `gpt-4o | gpt-4o-mini | gpt-4-turbo | gpt-3.5-turbo |
-    claude-3-5-sonnet-20241022 | claude-3-haiku-20240307 | deepseek/deepseek-chat`.
-    **The two sets do not intersect at all**, and the route uses `safeParse` →
-    `Errors.validationFailed`, so the customer gets a 422 and no answer. The
-    selection is persisted to `localStorage`, so it keeps failing on every
-    subsequent message until they switch back to Auto.
-    Six of the seven server-side ids are also ids no provider in this system
-    serves (bare or dated), which is how it went unnoticed — nobody could reach
-    the code path that would have 404'd.
-    **Do NOT just make the picker work.** `ai/executive.ts:1522` resolves
-    `modelOverride || visionFallback || costRoutedCeiling || result.model` — the
-    override wins over `pickPaxModelForOrg`'s TIER CEILING and its soft-cap
-    downgrade. Making the picker functional as-is hands every free-tier org an
-    Opus selector that bypasses the margin guard the same codebase built
-    (see `campaignOptimizer.ts:186`, "Margin guard (S3 follow-up)"). The two
-    honest options are: accept the tier vocabulary and CLAMP to the org's
-    ceiling, or remove the picker from the customer rail (executive.ts's own
-    comment says the override is "founder dashboard, eval harness"). That is a
-    product + billing call, so it is queued for the owner rather than decided
-    here — but the 422 is a defect under either answer.
+11. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
+    ledger 37 / OD-7 — the picker is removed, not repaired. The two defects were
+    each other's camouflage: six of the seven server-side enum ids were names no
+    provider serves and the seventh is the cheapest model in the registry, so
+    the ceiling bypass underneath was real and unreachable at once — and would
+    have become reachable the moment someone made the enum match the picker,
+    which is the obvious repair.
 
 12. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
     `openaiClient.ts`'s docblock forbids exactly this and names
@@ -238,8 +221,11 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–36.
+Full reasoning in the cross-pollination ledger, entries 23–37.
 
+- **the tier ceiling is the ceiling** — a customer-settable `modelOverride` sat
+  ahead of the paid-tier ceiling and its soft-cap downgrade, on a picker that
+  422'd on every option. Removed rather than repaired. Ledger 37 / OD-7.
 - **the client's name was not its provider** — `getOpenAIClient()` returns an
   OpenRouter client, and 59 literals across 31 files sent it OpenAI's bare ids,
   which 404. Three services decide their provider from a secret at runtime, so
@@ -273,15 +259,11 @@ Full reasoning in the cross-pollination ledger, entries 23–36.
 
 ## Blocked — owner
 
-`docs/autonomous/OWNER_DECISIONS_PENDING.md`. **One decision is open: OD-7** —
-what the Pax model picker should be (raised 2026-08-19, recommendation: remove
-it from the customer rail). It is a product + billing call because the override
-currently outranks the tier ceiling; the 422 underneath it is a defect either
-way. Nothing is blocked on it.
-
-The other six are made: OD-2/3/4/5 implemented, OD-1 a live hold (0236 stays
+`docs/autonomous/OWNER_DECISIONS_PENDING.md`. The queue is **empty again**: all
+seven decisions are made. OD-2/3/4/5 implemented, OD-1 a live hold (0236 stays
 unregistered), OD-6 needed no code and names Customer #1 as the trigger to
-revisit.
+revisit, OD-7 raised and closed on 2026-08-19 — the owner returned it to the
+session to decide, and the reasoning is recorded rather than assumed.
 
 Two items are recorded there awaiting a ruling rather than blocking work:
 `scoreCountyForTargeting` (sellerMotivationEngine.ts:703) and the five
@@ -298,6 +280,15 @@ DR RTO remains unmeasured — no bucket access from this container.
 - The measurement-defaults register still holds its baseline; the largest
   remaining family is LLM-parse confidence (`parsed.confidence || 50`), which is
   also the lowest individual consequence.
+- `scripts/no-fabrication.allowlist.json` is keyed on `file:line`, and it broke
+  TWICE on 2026-08-19 from edits that had nothing to do with it (a 9-line
+  comment inserted above two `makeSeededRng(` sites; a client edit that shifted
+  one `Math.random` by one line). Each time the fix is mechanical renumbering,
+  which is exactly the habit that lets a genuinely new fabrication slide into a
+  vacated slot — the gate checks the TOKEN at the line matches, so the damage is
+  bounded, but the category and the note are not re-read. Keying on the enclosing
+  symbol, or on a hash of the matched expression, would survive line shifts. 57
+  entries, so it is a real but bounded migration.
 - A deliberate NEGATIVE result, recorded so it is not re-litigated: the
   fail-open catch class was surveyed (524 empty catches, 133 in gate context)
   and is handled correctly almost everywhere. No gate was built — a register of

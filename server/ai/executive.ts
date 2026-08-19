@@ -994,7 +994,6 @@ interface ChatOptions {
   propertyId?: number;
   mentionedEntities?: { type: string; id: number; name: string; preview: string }[];
   activeProjectId?: number;
-  modelOverride?: string; // Override automatic model selection
   subAgentDepth?: number; // Internal: depth counter for spawn_subagent recursion guard
   /**
    * Pax response-shape prompt version. Default "v3" (one-line headline +
@@ -1491,18 +1490,29 @@ export async function processChat(
     client = result.client;
     provider = result.provider;
     // Resolution order:
-    //   1. Explicit modelOverride (founder dashboard, eval harness).
-    //   2. Vision: image inputs that aren't already on a vision-capable model
-    //      get bumped to gpt-4o so the image parts don't fall on the floor.
-    //   3. Pax tier choice (Free→Haiku / Pro→Sonnet / Scale→Opus, with the
+    //   1. Vision: image inputs that aren't already on a vision-capable model
+    //      get bumped to openai/gpt-4o so the image parts don't fall on the
+    //      floor.
+    //   2. Pax tier choice (Free→Haiku / Pro→Sonnet / Scale→Opus, with the
     //      monthly soft-cap downgrade applied) — the TIER CEILING.
-    //   3b. Tahoe Andrei (#7): COST-AWARE TASK-TYPE ROUTING. Given the tier
+    //   2b. Tahoe Andrei (#7): COST-AWARE TASK-TYPE ROUTING. Given the tier
     //       ceiling, route the cheapest model whose data-grounding eval is
     //       green for THIS turn type (extraction/restatement/formatting →
     //       Haiku/Sonnet; multi-parcel reasoning stays at the ceiling).
     //       Gated on DATA_GROUNDING_EVAL_GREEN; fully reversible. Never
-    //       exceeds the ceiling, never applies when vision/override won.
-    //   4. Router default (legacy fallback if something above returns empty).
+    //       exceeds the ceiling, never applies when vision won.
+    //   3. Router default (legacy fallback if something above returns empty).
+    //
+    // THERE IS NO REQUEST-SUPPLIED OVERRIDE, and there deliberately is not.
+    // `options.modelOverride` used to sit at the head of this chain under a
+    // comment saying it was for the "founder dashboard, eval harness" — but
+    // grep found exactly ONE setter, the customer-facing POST
+    // /api/ai/chat/stream, whose zod enum any authenticated member could
+    // populate. A field a customer controls cannot outrank the tier ceiling and
+    // its soft-cap downgrade; that is the margin guard, not a default. Removed
+    // 2026-08-19 (owner decision OD-7). If a founder or eval surface ever needs
+    // to pin a model, it gets a founder-gated path of its own — the fix is not
+    // to reopen this branch. `paxTierCeilingIsTheCeiling.test.ts` pins it.
     const visionFallback =
       imageFiles.length > 0
       && !result.model.includes('gpt-4o')
@@ -1519,8 +1529,7 @@ export async function processChat(
           surface: "processChat",
         }).model
       : paxChoice.model;
-    model = options.modelOverride
-      || visionFallback
+    model = visionFallback
       || costRoutedCeiling
       || result.model;
   } catch (error: any) {
@@ -1991,8 +2000,7 @@ export async function* processChatStream(
           surface: "processChatStream",
         }).model
       : paxChoice.model;
-    model = options.modelOverride
-      || visionFallback
+    model = visionFallback
       || costRoutedCeiling
       || result.model;
   } catch (error: any) {
