@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 1356,
+  "baselineCount": 1355,
   "direction": "down",
-  "lastBumpNote": "1357 -> 1356 on 2026-08-19: ceoAbsenceMode.activeTrustBoosts narrows the absence row to the two fields it reads instead of casting each use, so a rename on that row is a type error rather than a silent undefined.",
+  "lastBumpNote": "1356 -> 1355 on 2026-08-19: routes-data-intelligence reads organizations.underwritingDefaults through its declared $type instead of casting to any, so a renamed section is a type error rather than a silent undefined. The landDeal section added in the same commit needed no cast for the same reason.",
   "minima": {
     "files": 1100
   },

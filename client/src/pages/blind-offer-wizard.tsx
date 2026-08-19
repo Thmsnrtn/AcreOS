@@ -89,9 +89,18 @@ interface OfferReport {
   cashFlipScenario: {
     salePrice: number;
     netProfit: number;
-    roi: number;
+    /** null when there is no cost basis — a return on nothing, not a zero. */
+    roi: number | null;
     holdingPeriodDays: number;
-    annualizedROI: number;
+    annualizedROI: number | null;
+    breakevenSale: number;
+    /** Which cost rules this rests on, and whether the operator set them. */
+    assumptions: Array<{
+      key: string;
+      label: string;
+      display: string;
+      source: "org_rule" | "platform_default";
+    }>;
   };
   ownerFinanceScenario: {
     salePrice: number;
@@ -768,8 +777,10 @@ function StepExit({ report, onNext, onBack, onGoToComps }: StepExitProps) {
                 <dd className="font-bold tabular-nums text-acr-pos m-0">{fmt(cf.netProfit)}</dd>
               </div>
               <div className="flex justify-between text-sm">
-                <dt className="text-muted-foreground">ROI</dt>
-                <dd className="font-bold tabular-nums m-0">{cf.roi}%</dd>
+                <dt className="text-muted-foreground">ROI on total cost</dt>
+                <dd className="font-bold tabular-nums m-0">
+                  {cf.roi === null ? "Not applicable" : `${cf.roi}%`}
+                </dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Hold period</dt>
@@ -777,9 +788,45 @@ function StepExit({ report, onNext, onBack, onGoToComps }: StepExitProps) {
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Annualized ROI</dt>
-                <dd className="font-bold tabular-nums text-acr-accent m-0">{cf.annualizedROI}%</dd>
+                <dd className="font-bold tabular-nums text-acr-accent m-0">
+                  {cf.annualizedROI === null ? "Not applicable" : `${cf.annualizedROI}%`}
+                </dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Breakeven sale</dt>
+                <dd className="font-semibold tabular-nums m-0">{fmt(cf.breakevenSale)}</dd>
               </div>
             </dl>
+
+            {/* WHOSE NUMBERS THESE ARE.
+                Every cost above rests on a rule that is either the operator's
+                or ours, and until 2026-08-19 they were unattributed constants
+                compiled into the calculator. Badging them is what stops a
+                platform default from later reading as what the customer
+                believed. */}
+            {cf.assumptions?.length > 0 && (
+              <div className="mt-4 border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Based on these assumptions
+                </p>
+                <ul className="space-y-1 m-0 list-none p-0">
+                  {cf.assumptions.map((a) => (
+                    <li key={a.key} className="flex justify-between text-xs gap-2">
+                      <span className="text-muted-foreground">{a.label}</span>
+                      <span className="flex items-center gap-1.5 tabular-nums">
+                        {a.display}
+                        <Badge
+                          variant={a.source === "org_rule" ? "default" : "secondary"}
+                          className="text-[10px] px-1.5 py-0"
+                        >
+                          {a.source === "org_rule" ? "Your rule" : "Our default"}
+                        </Badge>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -960,7 +1007,17 @@ Private Real Estate Investor`;
           <CardContent className="p-4 text-center">
             <dt className="text-xs text-muted-foreground">Cash flip target</dt>
             <dd className="text-2xl font-black tabular-nums m-0">{fmt(report.cashFlipScenario.salePrice)}</dd>
-            <p className="text-xs text-acr-pos tabular-nums">{report.cashFlipScenario.roi}% ROI</p>
+            {/* `roi` is null when the offer has no cost basis. Rendering
+                "null% ROI" — or silently coercing it to 0 — would present an
+                undefined return as a measured break-even. */}
+            {report.cashFlipScenario.roi === null ? (
+              <p className="text-xs text-muted-foreground">ROI not applicable — no cost basis</p>
+            ) : (
+              <p className="text-xs text-acr-pos tabular-nums">
+                {report.cashFlipScenario.roi}% ROI
+                <span className="sr-only"> on total cost in</span>
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

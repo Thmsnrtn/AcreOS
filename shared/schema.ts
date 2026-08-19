@@ -337,6 +337,21 @@ export const organizations = pgTable("organizations", {
       monthlyHoldingCostCents?: number; // carry per month, integer cents
       targetProfitPct?: number; // minimum acceptable net profit, percent of ARV
     };
+    // Land buy/hold/resell rules, consumed by the blind-offer exit model
+    // (server/services/landDealDefaults.ts). Same jsonb, no migration — and
+    // the same optional-with-provenance discipline as `flip` above: an absent
+    // field falls back to PLATFORM_LAND_DEFAULTS and is badged as ours, never
+    // shown as the operator's own rule.
+    //
+    // The wedge vertical had NO section here until 2026-08-19, which is why
+    // blindOfferCalculator hardcoded its costs — the numbers reached the
+    // customer as netProfit and roi with nothing marking them as defaults.
+    landDeal?: {
+      closingAtBuyPct?: number; // acquisition closing as a percent of price, e.g. 2
+      dispositionCostPct?: number; // resale closing + marketing, percent of sale, e.g. 8
+      holdMonths?: number; // whole months held from close to resale
+      monthlyHoldingPctOfSale?: number; // carry per month as a percent of sale price
+    };
   }>(),
   // ─── Per-tenant constitutional / alignment preferences (Tahoe L11) ────
   // Schema-bind landed ahead of any consumer. Quinn's horizon vision is

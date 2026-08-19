@@ -50,6 +50,19 @@ export interface CompData {
   notes?: string;
 }
 
+import {
+  resolveLandDefaults,
+  PLATFORM_LAND_DEFAULTS,
+  LAND_DEFAULT_LABELS,
+  formatLandDefault,
+  type LandDealDefaults,
+} from "./landDealDefaults";
+import { computeLandDeal } from "@shared/calculators/landDeal";
+
+const LAND_DEFAULT_KEYS = Object.keys(PLATFORM_LAND_DEFAULTS) as Array<
+  keyof LandDealDefaults
+>;
+
 export interface BlindOfferInput {
   state: string;
   county: string;
@@ -68,6 +81,12 @@ export interface BlindOfferInput {
   // provided, replaces the legacy 9% / 84 months hardcode in
   // buildOwnerFinanceScenario. Caller threads these in from
   // organizations.underwritingDefaults.ownerFinance.
+  /**
+   * Per-org land underwriting rules. Threaded from
+   * `organizations.underwritingDefaults.landDeal`; absent fields fall back to
+   * PLATFORM_LAND_DEFAULTS and are badged as ours.
+   */
+  landDealDefaults?: Partial<LandDealDefaults>;
   ownerFinanceDefaults?: {
     apr: number;
     termMonths: number;
@@ -122,15 +141,44 @@ export interface OwnerFinanceScenario {
   regNotes: string;
 }
 
+/** Where a figure came from — the operator's own rule, or ours. */
+export type LandAssumptionSource = "org_rule" | "platform_default";
+
+export interface LandAssumption {
+  key: string;
+  label: string;
+  /** Pre-formatted ("8%", "2 months") so server and client word it identically. */
+  display: string;
+  source: LandAssumptionSource;
+}
+
 export interface CashFlipScenario {
   salePrice: number;
   acquisition: number;
-  holdingCosts: number; // Property taxes, insurance during hold
-  dispositionCosts: number; // Agent, closing, listing fees
+  holdingCosts: number; // Closing at purchase + carry across the hold
+  dispositionCosts: number; // Resale closing + marketing
   netProfit: number;
-  roi: number;
-  holdingPeriodDays: number; // Target 30 days
-  annualizedROI: number;
+  /**
+   * Return on TOTAL COST IN, as a percent — not on the purchase price alone.
+   *
+   * `null` when there is no cost to return against. It was `0`, which reads
+   * downstream as a measured break-even rather than as "not applicable"; the
+   * engine's null is the honest value and it survives the conversion here.
+   */
+  roi: number | null;
+  holdingPeriodDays: number;
+  annualizedROI: number | null;
+  /** Sale gross needed to break even, given the costs above. */
+  breakevenSale: number;
+  /**
+   * Every cost rule this scenario rests on, and whether the operator set it.
+   *
+   * Present so a UI can badge "your rule" against "our default" — the same
+   * distinction `stampAssumptionSources` carries on the flip side, and the
+   * reason a platform default can never later read as what the customer
+   * believed.
+   */
+  assumptions: LandAssumption[];
 }
 
 export interface BlindOfferReport {
@@ -346,7 +394,12 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
 
   // Exit scenarios
   const acquisition = recommendedOfferTotal;
-  const cashFlipScenario = buildCashFlipScenario(acquisition, medianCompPerAcre, targetAcres);
+  const cashFlipScenario = buildCashFlipScenario(
+    acquisition,
+    medianCompPerAcre,
+    targetAcres,
+    input.landDealDefaults,
+  );
   const ownerFinanceScenario = buildOwnerFinanceScenario(
     acquisition,
     medianCompPerAcre,
@@ -610,28 +663,91 @@ function recommendTier(
 // Exit Scenarios
 // ---------------------------------------------------------------------------
 
+/**
+ * The land exit model. DELEGATES to `computeLandDeal`; it does not reimplement.
+ *
+ * WHAT THIS USED TO DO, AND WHY IT CHANGED
+ * ----------------------------------------
+ * It computed profit, ROI and annualised ROI inline from four hardcoded
+ * constants — 2% of acquisition plus 1% of sale for carry, 8% of sale for
+ * disposition, and a 45-day hold. That made it a SECOND implementation of land
+ * deal economics beside `shared/calculators/landDeal.ts`, which is a registered
+ * scenario engine (`land_deal`) and had zero production callers. The flip
+ * adapter's header states the rule this violated in as many words: two
+ * implementations of the same money formula is the duplication canonical law 1
+ * forbids — and the canonical one was the unreached one.
+ *
+ * TWO NUMBERS THE CUSTOMER SEES ARE NOW DIFFERENT, BOTH MORE CONSERVATIVE
+ * ----------------------------------------------------------------------
+ * 1. ROI was `netProfit / acquisition`. The engine computes it against TOTAL
+ *    COST IN — purchase plus closing plus carry plus marketing — which is the
+ *    money actually at risk. The old denominator was smaller, so the old figure
+ *    read HIGH by construction. This is the same flaw the flip adapter's header
+ *    calls out about the legacy `calculateFlipAnalysis`.
+ * 2. ROI was `0` when acquisition was 0. The engine returns `null`, because a
+ *    return on nothing is not a return of nothing — and a fabricated zero is
+ *    indistinguishable downstream from a measured one.
+ *
+ * The COST ASSUMPTIONS are unchanged in value: `PLATFORM_LAND_DEFAULTS` carries
+ * the same 2% / 8% / 1%-of-sale-over-the-hold the constants encoded. What
+ * changed is that they are now named, sourced, and overridable per org, and the
+ * returned `assumptions` say which of the two they are.
+ */
 function buildCashFlipScenario(
   acquisition: number,
   medianMarketPerAcre: number,
-  acres: number
+  acres: number,
+  landDefaults?: Partial<LandDealDefaults>,
 ): CashFlipScenario {
+  const resolved = resolveLandDefaults(landDefaults);
+  const { closingAtBuyPct, dispositionCostPct, holdMonths, monthlyHoldingPctOfSale } =
+    resolved.values;
+
   const salePrice = medianMarketPerAcre * acres; // Sell at median (not highest)
-  const holdingCosts = (acquisition * 0.02) + (salePrice * 0.01); // ~2% of acquisition + 1% taxes
-  const dispositionCosts = salePrice * 0.08; // 8% closing/marketing (no agent on buyer side = lower)
-  const netProfit = salePrice - acquisition - holdingCosts - dispositionCosts;
-  const roi = acquisition > 0 ? (netProfit / acquisition) * 100 : 0;
-  const holdingPeriodDays = 45; // 30-day target + buffer
-  const annualizedROI = roi * (365 / holdingPeriodDays);
+
+  // The engine works in integer cents; this file works in dollars. Convert at
+  // the boundary rather than teaching the engine about dollars — every other
+  // caller of computeLandDeal is already in cents.
+  const toCents = (dollars: number) => Math.round(dollars * 100);
+
+  const out = computeLandDeal({
+    purchaseCents: toCents(acquisition),
+    closingAtBuyCents: toCents(acquisition * (closingAtBuyPct / 100)),
+    holdingPerMonthCents: toCents(salePrice * (monthlyHoldingPctOfSale / 100)),
+    holdMonths,
+    // Marketing is not a separate line here: `dispositionCostPct` is documented
+    // as resale closing AND marketing, exactly as the old 8% constant was
+    // ("8% closing/marketing"). Passing a second marketing figure would count
+    // it twice.
+    marketingCents: 0,
+    salePriceCents: toCents(salePrice),
+    closingAtSaleCents: toCents(salePrice * (dispositionCostPct / 100)),
+  });
+
+  const fromCents = (cents: number) => Math.round(cents / 100);
 
   return {
     salePrice: Math.round(salePrice),
     acquisition: Math.round(acquisition),
-    holdingCosts: Math.round(holdingCosts),
-    dispositionCosts: Math.round(dispositionCosts),
-    netProfit: Math.round(netProfit),
-    roi: Math.round(roi),
-    holdingPeriodDays,
-    annualizedROI: Math.round(annualizedROI),
+    holdingCosts: fromCents(
+      toCents(salePrice * (monthlyHoldingPctOfSale / 100)) * Math.max(0, Math.floor(holdMonths)) +
+        toCents(acquisition * (closingAtBuyPct / 100)),
+    ),
+    dispositionCosts: fromCents(toCents(salePrice * (dispositionCostPct / 100))),
+    netProfit: fromCents(out.profitCents),
+    // `roi` and `annualizedROI` are percentages on this interface and ratios in
+    // the engine. NULL SURVIVES the conversion — it is the whole point.
+    roi: out.roi === null ? null : Math.round(out.roi * 100),
+    holdingPeriodDays: Math.max(0, Math.floor(holdMonths)) * 30,
+    annualizedROI:
+      out.annualizedReturn === null ? null : Math.round(out.annualizedReturn * 100),
+    breakevenSale: fromCents(out.breakevenSaleCents),
+    assumptions: LAND_DEFAULT_KEYS.map((key) => ({
+      key,
+      label: LAND_DEFAULT_LABELS[key],
+      display: formatLandDefault(key, resolved.values[key]),
+      source: resolved.sources[key],
+    })),
   };
 }
 
@@ -717,10 +833,32 @@ function buildHybridRecommendation(
   ownerFinance: OwnerFinanceScenario,
   preferOwnerFinance?: boolean
 ): string {
+  // A comparison against an UNKNOWN cannot be made, and must not be made
+  // silently. `cashFlip.roi` is null when there is no cost to return against;
+  // `null * 1.5` is 0 in JavaScript, so the old expression would have compared
+  // owner-finance ROI against zero and always recommended it — while printing
+  // "null% ROI" into the sentence justifying the choice.
+  if (cashFlip.roi === null) {
+    return (
+      `No cash-flip return to compare: the offer has no cost basis, so a ` +
+      `return on it is undefined rather than zero. Owner finance projects ` +
+      `${ownerFinance.roi}% ROI over the note term. Set an offer amount to ` +
+      `compare the two exits.`
+    );
+  }
+
+  const holdDescription =
+    cashFlip.holdingPeriodDays > 0
+      ? `~${cashFlip.holdingPeriodDays} days`
+      : "the assumed hold";
+
   if (preferOwnerFinance || ownerFinance.roi > cashFlip.roi * 1.5) {
     return `Owner Finance (Recommended): ${ownerFinance.roi}% ROI over 7 years vs. ${cashFlip.roi}% ROI from a cash flip. Down payment of $${ownerFinance.downPayment.toLocaleString()} recoups your entire acquisition cost on day 1. Then collect $${ownerFinance.monthlyPayment.toLocaleString()}/month for 84 months — pure passive income. This is how the industry standard model builds wealth compoundingly.`;
   }
-  return `Cash Flip (Recommended for capital recycling): ${cashFlip.roi}% ROI in ~45 days. Deploy capital immediately into the next deal. Once you have 10-20 successful flips and understand the market, transition to owner financing to build the note portfolio that generates true passive income.`;
+  // The hold reads from the scenario rather than a literal "~45 days": the hold
+  // is now an operator-settable rule, and a sentence that contradicts the
+  // number above it is its own small fabrication.
+  return `Cash Flip (Recommended for capital recycling): ${cashFlip.roi}% ROI in ${holdDescription}. Deploy capital immediately into the next deal. Once you have 10-20 successful flips and understand the market, transition to owner financing to build the note portfolio that generates true passive income.`;
 }
 
 // ---------------------------------------------------------------------------

@@ -264,8 +264,16 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
     // organizations.underwritingDefaults; falls back gracefully when
     // unset.
     const orgForUnderwriting = (req as AuthenticatedRequest).organization;
-    const ownerFinanceDefaults =
-      (orgForUnderwriting?.underwritingDefaults as any)?.ownerFinance ?? undefined;
+    // No cast: `organizations.underwritingDefaults` is a typed jsonb column
+    // (`$type<{ ownerFinance?, flip?, landDeal? }>`), so reaching into it is
+    // checked. It used to be `as any`, which would have silently accepted a
+    // renamed section as `undefined`.
+    const ownerFinanceDefaults = orgForUnderwriting?.underwritingDefaults?.ownerFinance;
+    // Land buy/hold/resell rules. Absent fields fall back to
+    // PLATFORM_LAND_DEFAULTS and come back BADGED as ours in
+    // `cashFlipScenario.assumptions`, rather than reaching the customer as
+    // unattributed constants the way the old inline hardcodes did.
+    const landDealDefaults = orgForUnderwriting?.underwritingDefaults?.landDeal;
 
     const report = await calculateBlindOffer({
       state,
@@ -276,6 +284,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
       marketCondition,
       ownerFinanceGoal: ownerFinanceGoal || false,
       ownerFinanceDefaults,
+      landDealDefaults,
     });
 
     res.json(report);

@@ -1486,9 +1486,74 @@ exactly when the cascade is least likely to be evaluable. The exempt set is
 checked against the real registry in both directions, so an exemption for a
 deleted executor fails and a new executor cannot inherit one nobody chose.
 
+### 30 — "Deterministic economics have ONE implementation" → NATIVE, no Foundry lesson needed
+
+Recorded here because the ledger is where transfer discipline lives, and this
+entry is the discipline working in the negative: the defect was found by AcreOS
+evidence, the fix is AcreOS-native, and Foundry contributed nothing. Not every
+defect needs an import.
+
+**The defect.** `computeLandDeal` (`shared/calculators/landDeal.ts`) is a
+registered scenario engine — `land_deal`, in `CORE_ENGINES`, producing
+total_cost / net_proceeds / profit / roi / annualized_return / irr /
+breakeven_sale. It had **zero production callers**; grep across `server/` and
+`client/src` returned nothing, and the only generic path to it,
+`POST /api/scenarios`, has no client caller either.
+
+`buildCashFlipScenario` in `blindOfferCalculator.ts` computed the same
+quantities independently, was live, and was what the customer saw at
+`POST /api/data-intel/blind-offer`. Canonical law 1 forbids exactly this, and
+the flip adapter's own header states it: two implementations of one money
+formula is duplication. **The canonical one was the unreached one** — on the
+wedge vertical.
+
+Its inputs were four constants compiled into the function: carry as
+`acquisition*0.02 + salePrice*0.01`, disposition as `salePrice*0.08`, a 45-day
+hold. Fix-and-flip reads every equivalent from `underwritingDefaults.flip` and
+stamps each `org_rule` or `platform_default` — and `underwritingDefaults` had an
+`ownerFinance` section and a `flip` section and **nothing for land**.
+
+**Two customer-visible numbers were wrong, both in the optimistic direction.**
+ROI was `netProfit / acquisition`; the money actually at risk is total cost in,
+so the old figure read HIGH by construction — the same flaw the flip adapter
+calls out about the legacy `calculateFlipAnalysis`. And ROI was `0` when there
+was no cost basis, presenting an undefined return as a measured break-even.
+
+**The adaptation.** `landDealDefaults.ts` mirrors `resolveFlipDefaults` rather
+than inventing a second shape, `underwritingDefaults.landDeal` joins the same
+jsonb with no migration, and `buildCashFlipScenario` DELEGATES to
+`computeLandDeal`. The platform defaults are the old hardcodes **unchanged in
+value** — the defect was that they were invisible and unoverridable, not that
+they were wrong, and inventing fresher figures would be the same mistake with
+new digits. The scenario now returns its assumptions with provenance, and the
+wizard badges each "Your rule" or "Our default".
+
+A stale sentence went with it: the recommendation prose said "ROI in ~45 days"
+against a hold that is now settable, and compared `ownerFinance.roi >
+cashFlip.roi * 1.5` — where `null * 1.5` is 0 in JavaScript, so an unknown ROI
+would have silently recommended owner finance while printing "null% ROI" in the
+sentence justifying it. It now says the comparison cannot be made.
+
+**Exit tests, and why there are two.** `landDealEconomicsCanonical.test.ts`
+proves the engine behaves and — the load-bearing case — recomputes the OLD
+formula inline and requires agreement, so "adopting this moved no customer's
+number" is checkable rather than claimed in a comment. `landExitModelDelegates.
+test.ts` drives the REAL `calculateBlindOffer` and asserts on properties only
+the engine path can produce, because a test that exercises the canonical
+function while the product still runs the other one is the adoption trap this
+repository has hit twice. Four mutations, all firing: tidying a platform
+default, adopting a non-finite stored value, and reverting the calculator to its
+inline formula.
+
+**What this unblocks.** `land_deal` now has a real production caller, so a land
+scenario is recordable for the first time — which is the prerequisite for land
+closing the canonical loop. That is the next unit, and it is deliberately NOT
+this one: recording a scenario before fixing its inputs would have frozen
+invented numbers into decision memory.
+
 ## Status
 
-**All 29 admitted candidates are now dispositioned** — implemented, adapted,
+**All 30 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

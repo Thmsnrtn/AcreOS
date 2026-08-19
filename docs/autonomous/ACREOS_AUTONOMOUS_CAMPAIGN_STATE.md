@@ -102,43 +102,32 @@ Not a queue. Each is a live gap with its evidence; pick by value at the time.
    2026-08-17: the gate stayed at baseline with six new unadopted exports in the
    tree. Widening the roots will re-seed the count upward, which is why it has
    not been done casually.
-6. **The land vertical has TWO implementations of land-deal economics, and the
-   canonical one is the unreached one.** Measured 2026-08-19, and this is the
-   sharpest statement of the §19 gap yet:
+6. **Land can now record a scenario — so close the loop.** As of 2026-08-19 the
+   blind-offer exit model DELEGATES to `computeLandDeal` instead of computing
+   its own, so the canonical `land_deal` engine has a real production caller for
+   the first time. Its cost rules live on `underwritingDefaults.landDeal` with
+   per-field provenance, and the wizard badges each "Your rule" or "Our
+   default". The two customer-visible numbers that were optimistic — ROI on
+   purchase price rather than total cost in, and a fabricated `0` where there is
+   no cost basis — are corrected. Ledger entry 30.
 
-   - `land_deal` is a registered CORE scenario engine (`shared/calculators/
-     landDeal.ts`, `computeLandDeal`) producing total_cost / net_proceeds /
-     profit / roi / annualized_return / irr / breakeven_sale. **Zero production
-     callers** — grep for `land_deal` across `server/` and `client/src` returns
-     nothing.
-   - `buildCashFlipScenario` in `blindOfferCalculator.ts` computes the same
-     quantities independently, is live, and is what the customer sees at
-     `POST /api/data-intel/blind-offer`. Canonical law 1 forbids exactly this;
-     the flipMao adapter's header says so in as many words ("two implementations
-     of the same money formula is the duplication canonical law 1 forbids").
-   - Its inputs are **invented constants with no provenance and no operator
-     override**: holding = `acquisition*0.02 + salePrice*0.01`, disposition =
-     `salePrice*0.08`, hold = 45 days, and `roi = 0` when acquisition is 0 — a
-     fabricated zero rather than null. Fix-and-flip, by contrast, reads every
-     one of these from `organizations.underwritingDefaults.flip` and stamps each
-     `origin: user | platform-default` so a platform default can never later
-     read as the operator's own rule.
-   - `underwritingDefaults` has an `ownerFinance` section and a `flip` section.
-     **There is no land section.** The wedge vertical has no operator
-     underwriting rules at all.
-   - Nothing records a land scenario or decision, so land's Today outcome prompt
-     is structurally empty and calibration has nothing to grade.
+   What remains is the loop itself. Land records no scenario and no decision, so
+   its Today outcome prompt is structurally empty and calibration has nothing to
+   grade. Follow the flip precedent exactly (`routes-flip-analyzer.ts:520-620`):
+   record on a DELIBERATE act, not every recompute; let `recordScenario` compute
+   from inputs rather than accept pre-computed numbers; best-effort in its own
+   try/catch so a bookkeeping failure cannot cost the operator their offer.
 
-   The order that follows from this: give land the shape flip already has (a
-   `landDeal` defaults section, a `PLATFORM_LAND_DEFAULTS` fallback badged as
-   such, and `buildCashFlipScenario` DELEGATING to `computeLandDeal`), and only
-   then record the scenario and decision on the deliberate act. Recording first
-   would freeze invented numbers into decision memory, which is worse than not
-   recording.
+   The open design question, and it is real: for flip the deliberate act is
+   submitting an offer. For land, `POST /api/data-intel/blind-offer` is a
+   CALCULATION the wizard re-runs as the user tunes inputs — recording there
+   would fill decision memory with keystrokes. The candidates are generating the
+   offer LETTER or adding to an offer batch. Confirm which against the wizard's
+   real flow before writing anything.
 
-   13 of 15 verticals stop before a recorded decision (`readiness.ts`, frozen and
-   down-only). The gap is the LOOP, not the surface.
-7. **The 58 newly-visible tenancy units are frozen DEBT, not fixed code.** Rule-2
+   13 of 15 verticals still stop before a recorded decision (`readiness.ts`,
+   frozen and down-only). The gap is the LOOP, not the surface.
+7. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs `campaigns`
    by primary key alone with the org right there on the object).
