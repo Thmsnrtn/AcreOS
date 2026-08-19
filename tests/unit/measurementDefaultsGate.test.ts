@@ -29,7 +29,13 @@ const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-measurement-defaults.mjs");
 
 /** Measured 2026-08-18. Down-only: a fix DELETES its baseline line. */
-const BASELINE_CEILING = 75;
+const BASELINE_CEILING = 72;
+// 75 -> 72 on 2026-08-18: the three `dataIntelligenceEngine` county signals.
+// `medianDomDays ?? 180` awarded 5 of 35 market-health points to a county
+// nobody had measured; `dataQualityScore ?? 0.5` awarded 4 of 20 on the axis
+// that is ABOUT how much data exists; `medianHouseholdIncome ?? 50000` asserted
+// a demographic. `scoreCounty({})` returned a real TIER — a buy/avoid
+// instruction — from those three plus `ruralUrbanCode ?? 5`.
 // 77 -> 75 on 2026-08-18: both `note.gracePeriodDays || 10` sites. They printed
 // a ten-day grace period into a promissory note (SIGNATURES block included) for
 // a note whose record either states nothing or explicitly states ZERO — the

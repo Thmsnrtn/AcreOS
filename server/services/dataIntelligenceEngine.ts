@@ -391,26 +391,53 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
   let marketScore = 0;
 
   // Market liquidity (0-15 pts)
-  const dom = inputs.medianDomDays ?? 180;
-  if (dom <= 30) {
-    marketScore += 15;
-    flags.push({ type: "positive", signal: `${dom} median DOM`, impact: "Highly liquid market — fast exit once listed" });
-    confidence += 0.10;
-  } else if (dom <= 60) {
-    marketScore += 12;
-    flags.push({ type: "positive", signal: `${dom} median DOM`, impact: "Active market — good sell-through rate" });
-    confidence += 0.08;
-  } else if (dom <= 120) {
-    marketScore += 7;
-  } else if (dom <= 180) {
-    marketScore += 3;
-    flags.push({ type: "warning", signal: `${dom} median DOM`, impact: "Slower market — plan for longer hold time or aggressive pricing" });
+  //
+  // This read `inputs.medianDomDays ?? 180`, and 180 falls through every band
+  // into the final `else` — so a parcel whose county DOM nobody had measured
+  // came back with a NEGATIVE flag reading "180+ median DOM · Illiquid market
+  // — exit may be difficult". A fabricated number, rendered as a finding, in a
+  // scorer that returns PASS and DEAL_KILLER.
+  //
+  // An unmeasured signal scores nothing and flags nothing. The gap is reported
+  // as a gap, and `confidence` carries it — that field exists for exactly this.
+  if (inputs.medianDomDays != null) {
+    const dom = inputs.medianDomDays;
+    if (dom <= 30) {
+      marketScore += 15;
+      flags.push({ type: "positive", signal: `${dom} median DOM`, impact: "Highly liquid market — fast exit once listed" });
+      confidence += 0.10;
+    } else if (dom <= 60) {
+      marketScore += 12;
+      flags.push({ type: "positive", signal: `${dom} median DOM`, impact: "Active market — good sell-through rate" });
+      confidence += 0.08;
+    } else if (dom <= 120) {
+      marketScore += 7;
+    } else if (dom <= 180) {
+      marketScore += 3;
+      flags.push({ type: "warning", signal: `${dom} median DOM`, impact: "Slower market — plan for longer hold time or aggressive pricing" });
+    } else {
+      flags.push({ type: "negative", signal: `${dom}+ median DOM`, impact: "Illiquid market — exit may be difficult" });
+    }
   } else {
-    flags.push({ type: "negative", signal: `${dom}+ median DOM`, impact: "Illiquid market — exit may be difficult" });
+    flags.push({
+      type: "warning",
+      signal: "No median DOM on file",
+      impact: "Market liquidity is unscored for this parcel — verify before committing to an exit timeline",
+    });
+    confidence -= 0.05;
   }
 
-  // Price trend (0-10 pts)
-  const trend = inputs.pricePerAcreTrend ?? 0;
+  // Price trend (0-10 pts). `?? 0` awarded 3 points for a trend nobody
+  // measured, via the `trend >= 0` band.
+  if (inputs.pricePerAcreTrend == null) {
+    flags.push({
+      type: "warning",
+      signal: "No price trend on file",
+      impact: "Price direction is unscored for this parcel",
+    });
+    confidence -= 0.05;
+  } else {
+  const trend = inputs.pricePerAcreTrend;
   if (trend >= 10) {
     marketScore += 10;
     flags.push({ type: "positive", signal: `+${trend.toFixed(1)}% YoY price trend`, impact: "Strong appreciation — buy now before prices rise further" });
@@ -423,16 +450,29 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
   } else {
     flags.push({ type: "warning", signal: `${trend.toFixed(1)}% YoY price trend`, impact: "Flat or declining market — price aggressively on exit" });
   }
+  }
 
-  // Road access premium (0-5 pts)
-  const roadDist = inputs.distanceToPrimaryRoad ?? 10;
-  if (roadDist <= 0.25) {
-    marketScore += 5;
-    flags.push({ type: "positive", signal: "Excellent road access", impact: "Broadest buyer pool — accessible to all buyer types" });
-  } else if (roadDist <= 1) {
-    marketScore += 3;
-  } else if (roadDist > 5) {
-    flags.push({ type: "negative", signal: `${roadDist.toFixed(1)} miles to road`, impact: "Remote location limits buyer pool significantly" });
+  // Road access premium (0-5 pts). `?? 10` fell into the `> 5` branch, so a
+  // parcel whose road distance nobody measured got a NEGATIVE flag reading
+  // "10.0 miles to road · Remote location limits buyer pool significantly" —
+  // the same fabricated-finding shape as the DOM default above.
+  if (inputs.distanceToPrimaryRoad != null) {
+    const roadDist = inputs.distanceToPrimaryRoad;
+    if (roadDist <= 0.25) {
+      marketScore += 5;
+      flags.push({ type: "positive", signal: "Excellent road access", impact: "Broadest buyer pool — accessible to all buyer types" });
+    } else if (roadDist <= 1) {
+      marketScore += 3;
+    } else if (roadDist > 5) {
+      flags.push({ type: "negative", signal: `${roadDist.toFixed(1)} miles to road`, impact: "Remote location limits buyer pool significantly" });
+    }
+  } else {
+    flags.push({
+      type: "warning",
+      signal: "No road distance on file",
+      impact: "Access is unscored for this parcel — verify before assuming a buyer pool",
+    });
+    confidence -= 0.05;
   }
 
   // ── PHYSICAL SCORE (0–20 pts) ──────────────────────────────────────────────
@@ -496,16 +536,31 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
     valueScore += 3;
   }
 
-  // Parcel size sweet spot (2-40 acres optimal for the model)
-  const acres = inputs.acresSize ?? 5;
-  if (acres >= 2 && acres <= 40) {
-    valueScore += 3;
-    flags.push({ type: "positive", signal: `${acres.toFixed(1)} acres`, impact: "Optimal parcel size for owner-financed land business model" });
-  } else if (acres < 1) {
-    flags.push({ type: "warning", signal: `${acres.toFixed(2)} acres (very small)`, impact: "Very small parcel — limited buyer pool and use cases" });
-  } else if (acres > 100) {
-    valueScore += 1; // Large parcels have value but complexity
-    flags.push({ type: "warning", signal: `${acres.toFixed(0)} acres (large)`, impact: "Large parcel — may need subdivision analysis to maximize value" });
+  // Parcel size sweet spot (2-40 acres optimal for the model).
+  //
+  // `inputs.acresSize ?? 5` landed inside the sweet spot, so a parcel whose
+  // size nobody knew got +3 points AND a POSITIVE flag reading "5.0 acres ·
+  // Optimal parcel size for owner-financed land business model". An invented
+  // measurement presented as a favourable finding — and the fifth place in
+  // this codebase where an unknown parcel was assumed to be five acres.
+  if (inputs.acresSize != null) {
+    const acres = inputs.acresSize;
+    if (acres >= 2 && acres <= 40) {
+      valueScore += 3;
+      flags.push({ type: "positive", signal: `${acres.toFixed(1)} acres`, impact: "Optimal parcel size for owner-financed land business model" });
+    } else if (acres < 1) {
+      flags.push({ type: "warning", signal: `${acres.toFixed(2)} acres (very small)`, impact: "Very small parcel — limited buyer pool and use cases" });
+    } else if (acres > 100) {
+      valueScore += 1; // Large parcels have value but complexity
+      flags.push({ type: "warning", signal: `${acres.toFixed(0)} acres (large)`, impact: "Large parcel — may need subdivision analysis to maximize value" });
+    }
+  } else {
+    flags.push({
+      type: "warning",
+      signal: "No parcel size on file",
+      impact: "Size is unscored — the model's 2-40 acre fit cannot be assessed for this parcel",
+    });
+    confidence -= 0.05;
   }
 
   // Premium features bonus
@@ -530,7 +585,11 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
 
   // ── COMPOSITE SCORE ────────────────────────────────────────────────────────
   const total = Math.min(100, Math.round(motivationScore + marketScore + physicalScore + valueScore));
-  confidence = Math.min(0.99, confidence);
+  // Clamped at BOTH ends. The unmeasured-signal branches above subtract from
+  // confidence, and a one-sided clamp let it go negative — a number below the
+  // field's documented 0-1 range, which a renderer would print or a threshold
+  // would compare against.
+  confidence = Math.max(0.05, Math.min(0.99, confidence));
 
   // ── RECOMMENDATION ─────────────────────────────────────────────────────────
   // Check for deal killers first
@@ -611,12 +670,76 @@ export interface CountyScore {
   opportunityDensity: number;       // 0-35
   dataAccessibility: number;        // 0-20
   demographicTailwinds: number;     // 0-10
-  tier: "TIER_1" | "TIER_2" | "TIER_3" | "AVOID";
+  /**
+   * `UNSCORED` when too little was measured to place the county in a tier.
+   *
+   * `POST /api/data-intel/county-score` passes `req.body || {}` straight in, so
+   * `scoreCounty({})` used to return a real tier — the signals defaulted to
+   * `medianDomDays ?? 180` (5 pts), `dataQualityScore ?? 0.5` (4 pts),
+   * `ruralUrbanCode ?? 5` (3 pts) and an income of 50,000 — and the caller
+   * could not tell that from a scored county. A tier is a buy/avoid
+   * instruction; it needs measurements behind it.
+   */
+  tier: "TIER_1" | "TIER_2" | "TIER_3" | "AVOID" | "UNSCORED";
   explanation: string;
   recommendedActions: string[];
+  /** Which signals were measured, and which were absent. */
+  dataBasis: { measured: string[]; missing: string[] };
 }
 
+/**
+ * The signals `scoreCounty` reads. Named here rather than inline so the basis
+ * report cannot drift from what is actually scored.
+ */
+const COUNTY_SIGNALS = [
+  "medianDomDays",
+  "soldCompsLast12mo",
+  "pricePerAcreTrend1yr",
+  "hasGisPortal",
+  "dataQualityScore",
+  "populationTrend5yr",
+  "ruralUrbanCode",
+  "medianHouseholdIncome",
+] as const;
+
+/**
+ * Fewer measured signals than this and the county is not scored.
+ *
+ * Three of eight is the point at which each of the four dimensions can have at
+ * least something behind it; below that the total is mostly arithmetic on
+ * defaults. Stated as a threshold rather than "any signal" because the
+ * dimensions are weighted, and one measured signal cannot carry a 100-point
+ * scale.
+ */
+const COUNTY_MIN_SIGNALS = 3;
+
 export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
+  const measured = COUNTY_SIGNALS.filter(
+    (k) => intel[k] !== undefined && intel[k] !== null,
+  ) as string[];
+  const missing = COUNTY_SIGNALS.filter((k) => !measured.includes(k)) as string[];
+
+  // REFUSE. Below the threshold the total is arithmetic on defaults, and a
+  // tier is a buy/avoid instruction.
+  if (measured.length < COUNTY_MIN_SIGNALS) {
+    return {
+      total: 0,
+      marketHealth: 0,
+      opportunityDensity: 0,
+      dataAccessibility: 0,
+      demographicTailwinds: 0,
+      tier: "UNSCORED",
+      explanation:
+        `Not scored: ${measured.length} of ${COUNTY_SIGNALS.length} county signals are on file ` +
+        `(at least ${COUNTY_MIN_SIGNALS} are needed). This is an absence of data, not a finding ` +
+        `about the county.`,
+      recommendedActions: [
+        `Gather county data before scoring: ${missing.slice(0, 4).join(", ")}`,
+      ],
+      dataBasis: { measured, missing },
+    };
+  }
+
   let marketHealth = 0;
   let opportunityDensity = 0;
   let dataAccessibility = 0;
@@ -624,11 +747,19 @@ export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
   const actions: string[] = [];
 
   // Market Health (0-35 pts)
-  const dom = intel.medianDomDays ?? 180;
-  if (dom <= 45) marketHealth += 15;
-  else if (dom <= 90) marketHealth += 10;
-  else if (dom <= 180) marketHealth += 5;
-  else actions.push("Verify market liquidity before heavy investment in this county");
+  // `?? 180` silently awarded 5 of 35 market-health points to a county whose
+  // days-on-market nobody had measured. An unmeasured signal now scores
+  // nothing and says so, which is the same shape as the comp-count branch
+  // below — that one already got this right.
+  if (intel.medianDomDays != null) {
+    const dom = intel.medianDomDays;
+    if (dom <= 45) marketHealth += 15;
+    else if (dom <= 90) marketHealth += 10;
+    else if (dom <= 180) marketHealth += 5;
+    else actions.push("Verify market liquidity before heavy investment in this county");
+  } else {
+    actions.push("No median days-on-market on file — market liquidity is unscored");
+  }
 
   const comps = intel.soldCompsLast12mo ?? 0;
   if (comps >= 50) marketHealth += 10;
@@ -665,8 +796,13 @@ export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
   } else {
     actions.push("No GIS portal found — manual parcel research required");
   }
-  const dataQuality = intel.dataQualityScore ?? 0.5;
-  dataAccessibility += Math.round(dataQuality * 8);
+  // `?? 0.5` awarded 4 of 20 data-accessibility points for data quality nobody
+  // had assessed — on the dimension that is ABOUT how much data exists.
+  if (intel.dataQualityScore != null) {
+    dataAccessibility += Math.round(intel.dataQualityScore * 8);
+  } else {
+    actions.push("No data-quality assessment on file for this county");
+  }
 
   // Demographic Tailwinds (0-10 pts)
   const popTrend = intel.populationTrend5yr ?? 0;
@@ -674,12 +810,16 @@ export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
   else if (popTrend >= 2) demographicTailwinds += 3;
   else if (popTrend < -5) actions.push("Population declining — assess long-term land demand sustainability");
 
-  const rucc = intel.ruralUrbanCode ?? 5;
-  if (rucc >= 4 && rucc <= 7) demographicTailwinds += 3; // Rural but not too remote
-  else if (rucc >= 2 && rucc <= 3) demographicTailwinds += 2;
+  if (intel.ruralUrbanCode != null) {
+    const rucc = intel.ruralUrbanCode;
+    if (rucc >= 4 && rucc <= 7) demographicTailwinds += 3; // Rural but not too remote
+    else if (rucc >= 2 && rucc <= 3) demographicTailwinds += 2;
+  }
 
-  const income = intel.medianHouseholdIncome ?? 50000;
-  if (income >= 55000 && income <= 90000) demographicTailwinds += 2; // Sweet spot for buyers
+  if (intel.medianHouseholdIncome != null) {
+    const income = intel.medianHouseholdIncome;
+    if (income >= 55000 && income <= 90000) demographicTailwinds += 2; // Sweet spot for buyers
+  }
 
   const total = Math.min(100, marketHealth + opportunityDensity + dataAccessibility + demographicTailwinds);
 
@@ -699,8 +839,14 @@ export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
     dataAccessibility,
     demographicTailwinds,
     tier,
-    explanation: `County score ${total}/100 (${tier}). Market: ${marketHealth}/35, Opportunity density: ${opportunityDensity}/35, Data access: ${dataAccessibility}/20, Demographics: ${demographicTailwinds}/10.`,
+    explanation:
+      `County score ${total}/100 (${tier}). Market: ${marketHealth}/35, ` +
+      `Opportunity density: ${opportunityDensity}/35, Data access: ${dataAccessibility}/20, ` +
+      `Demographics: ${demographicTailwinds}/10. ` +
+      `Based on ${measured.length} of ${COUNTY_SIGNALS.length} signals` +
+      `${missing.length > 0 ? `; not on file: ${missing.join(", ")}` : ""}.`,
     recommendedActions: actions.slice(0, 5),
+    dataBasis: { measured, missing },
   };
 }
 

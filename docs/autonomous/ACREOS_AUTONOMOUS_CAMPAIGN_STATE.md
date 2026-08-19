@@ -1044,3 +1044,66 @@ someone else.
 `lint:measurement-defaults`, added hours earlier, reported both
 `note.gracePeriodDays || 10` entries **stale** the moment they were fixed —
 exactly what a down-only register is for. Baseline 77 → 75, locked in.
+
+## PHASE 9 — WHEN A DEFAULT LANDS IN A BAND THAT FLAGS (2026-08-18)
+
+Second item off the phase-7 register: the market-measurement group in
+`dataIntelligenceEngine`. It turned out to be a sharper variant of the pattern,
+and the variant is worth naming.
+
+### The variant
+
+Every previous instance inflated a SCORE. These fell into a band that **pushes
+a flag** — so the invented number was rendered as a finding, in prose, with an
+impact statement beside it. Both routes pass `req.body || {}` straight in, so
+`{}` was a fully-formed assessment:
+
+| default | what it emitted |
+|---|---|
+| `inputs.medianDomDays ?? 180` | negative flag: *"180+ median DOM · Illiquid market — exit may be difficult"* |
+| `inputs.distanceToPrimaryRoad ?? 10` | negative flag: *"10.0 miles to road · Remote location limits buyer pool significantly"* |
+| `inputs.acresSize ?? 5` | **positive** flag: *"5.0 acres · Optimal parcel size for owner-financed land business model"* |
+
+The third is the sharpest. An invented measurement presented as a FAVOURABLE
+finding, in a scorer whose recommendation ranges over STRONG_BUY … DEAL_KILLER.
+It is also the **fifth** place in this codebase where a parcel of unknown size
+was assumed to be five acres — after `dealFeedEngine` (twice) and
+`offerBatchService` (twice, as one acre).
+
+`scoreCounty({})` had the same shape one level up: `medianDomDays ?? 180` (5 of
+35 market-health points), `dataQualityScore ?? 0.5` (4 of 20 on the axis that is
+ABOUT how much data exists), `ruralUrbanCode ?? 5`, and an asserted household
+income — producing a real **TIER**, which is a buy/avoid instruction.
+
+### The fix, and the one that was already right
+
+Each signal now scores only when measured, and says so when not.
+`scoreCounty` refuses below three of eight signals and returns
+`tier: "UNSCORED"` with a `dataBasis`.
+
+Worth noting: the comp-count branch in the same function **already did this
+correctly** — `intel.soldCompsLast12mo ?? 0` scores nothing and pushes *"Low
+comp count — gather more sold data before committing to this county"*. The
+right pattern was sitting four lines above the wrong one, in the same function,
+written by the same hand. That is the recurring shape of this whole campaign:
+the correct rule usually already exists somewhere nearby and is not the one
+being used.
+
+Also fixed: `confidence` was clamped only at the top (`Math.min(0.99, …)`), and
+the new unmeasured branches subtract from it — so it could go negative, outside
+the field's own documented 0–1 range. Clamped at both ends.
+
+### Mutation-tested, including the over-correction
+
+  M1 restore `acresSize ?? 5`                     -> 2 tests fail
+  M2 an EQUIVALENT default (8 acres, not 5)       -> 2 tests fail
+  M3 `scoreCounty` stops refusing                 -> 2 tests fail
+  M4 make EVERYTHING unknown (over-correct)       -> 1 test fails
+
+M4 is the one that matters for a fix of this kind. Every "does not fabricate"
+assertion passes trivially if the fix simply stopped scoring anything, so the
+suite also demands that a fully-measured parcel scores HIGHER and still states
+the measurements it was given.
+
+Ratchet: `lint:measurement-defaults` 75 → 72, reported stale by the gate itself
+and locked in.
