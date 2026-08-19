@@ -12,6 +12,7 @@
  */
 
 import { db } from "../db";
+import { logger } from "../utils/logger";
 import { wsServer } from "../websocket";
 import {
   leads, deals, properties, tasks, agentEvents,
@@ -348,9 +349,37 @@ async function checkRateLimit(agentCodename: string): Promise<{ allowed: boolean
 
 // ─── Safety Gate Pre-Execution Validation ────────────────────────────────────
 
+/**
+ * A CHECK THAT CANNOT RUN IS NOT A CHECK THAT PASSED.
+ *
+ * Four gates below were wrapped in `catch { /* … may not be available *\/ }`,
+ * so an unavailable governance brain, trust service, delegation service or
+ * database meant the gate contributed NO violation — and `passed` is
+ * `violations.length === 0`. Unavailability was therefore permission, on the
+ * function that authorises autonomous agent actions including
+ * `advance_deal_stage` and `send_churn_intervention` (a customer contact).
+ *
+ * The comment was the tell: "may not be available" describes the failure and
+ * then treats it as a pass. Each check now records a violation when it cannot
+ * be evaluated, which fails CLOSED — the action is refused and the reason
+ * names the unavailable check, so an operator sees "could not verify" rather
+ * than silence.
+ */
 async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boolean; violations: string[]; suggestedAlternatives?: string[] }> {
   const violations: string[] = [];
   const suggestedAlternatives: string[] = [];
+
+  /** Records an unevaluable gate as a refusal rather than swallowing it. */
+  const unevaluable = (gate: string, err: unknown): void => {
+    const detail = err instanceof Error ? err.message : String(err);
+    violations.push(`${gate} could not be evaluated — refusing rather than assuming permission (${detail})`);
+    suggestedAlternatives.push(
+      `Restore ${gate} and retry, or use escalate_to_founder to proceed under human authority`,
+    );
+    logger.warn("[execution-engine] safety gate unevaluable; failing closed", {
+      metadata: { gate, agentCodename: ctx.agentCodename, action: ctx.action, error: detail },
+    });
+  };
 
   // Rate limit check
   const rateCheck = await checkRateLimit(ctx.agentCodename);
@@ -379,7 +408,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
           "Reduce action scope to comply with policy",
         );
       }
-    } catch { /* governance brain may not be available */ }
+    } catch (err) { unevaluable("Governance policy check", err); }
   }
 
   // Trust-based authority check
@@ -396,7 +425,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
         `Use escalate_to_founder to request this action be performed`,
       );
     }
-  } catch { /* trust service may not be available */ }
+  } catch (err) { unevaluable("Trust authority check", err); }
 
   // Financial actions require delegation token check
   const financialActions = ["advance_deal_stage", "flag_deal_risk"];
@@ -408,7 +437,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
         violations.push(`No delegation token for ${ctx.agentCodename} to perform ${ctx.action}`);
         suggestedAlternatives.push("Request delegation token from founder");
       }
-    } catch { /* delegation service may not be available */ }
+    } catch (err) { unevaluable("Delegation token check", err); }
   }
 
   // Deal actions require LTV check if deal involves financing
@@ -422,7 +451,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
           suggestedAlternatives.push("Escalate to founder for high-value deal approval");
         }
       }
-    } catch {}
+    } catch (err) { unevaluable("Deal value threshold check", err); }
   }
 
   return { passed: violations.length === 0, violations, suggestedAlternatives };

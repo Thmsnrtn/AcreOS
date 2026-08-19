@@ -1,0 +1,159 @@
+/**
+ * A check that cannot run is not a check that passed.
+ *
+ * ── THE DEFECT ──────────────────────────────────────────────────────────────
+ * `validateSafetyGates` in the autonomous execution engine returns
+ * `passed: violations.length === 0`. Four of its gates were wrapped in
+ * swallowing catches:
+ *
+ *   } catch { /* governance brain may not be available *\/ }
+ *   } catch { /* trust service may not be available *\/ }
+ *   } catch { /* delegation service may not be available *\/ }
+ *   } catch {}                                    // deal value threshold
+ *
+ * An unavailable governance brain, trust service, delegation service or
+ * database therefore contributed NO violation — and no violation is a PASS.
+ * Unavailability was permission, on the function that authorises autonomous
+ * agent actions including `advance_deal_stage` and `send_churn_intervention`
+ * (a customer contact).
+ *
+ * The comments were the tell. "may not be available" names the failure and
+ * then treats it as success.
+ *
+ * ── THE PATTERN WAS ALREADY IN THE FILE ─────────────────────────────────────
+ * `checkRateLimit`, the gate immediately above these four, ends:
+ *
+ *   } catch { return { allowed: false, reason: "rate-limit state unverifiable
+ *                      — refusing action (fail closed)" }; }
+ *
+ * Same file, same function, one gate earlier. The recurring shape of this
+ * campaign: the correct rule usually already exists nearby and is not the one
+ * being used.
+ *
+ * ── WHAT IS GATED ───────────────────────────────────────────────────────────
+ * Each unavailable dependency must produce a REFUSAL naming the gate — and the
+ * suite asserts the same action succeeds when the dependencies work, so
+ * "refuse everything" cannot pass for a fix.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const ORG = 12;
+
+/** A high-impact action, so the governance and delegation gates both run. */
+const CTX = {
+  orgId: ORG,
+  agentCodename: "atlas",
+  action: "advance_deal_stage",
+  input: { dealId: 5 },
+};
+
+interface Deps {
+  governanceThrows?: boolean;
+  trustThrows?: boolean;
+  delegationThrows?: boolean;
+  dbSelectThrows?: boolean;
+}
+
+async function runExecute(deps: Deps) {
+  vi.resetModules();
+
+  const chain = (rows: unknown[]) => {
+    const self: any = {
+      from: () => self,
+      where: () => self,
+      limit: () => self,
+      orderBy: () => self,
+      values: () => self,
+      returning: () => self,
+      onConflictDoUpdate: () => self,
+      then: (r: (v: unknown) => void) => r(rows),
+    };
+    return self;
+  };
+
+  vi.doMock("../../server/db", () => ({
+    db: {
+      select: () => {
+        if (deps.dbSelectThrows) throw new Error("db unavailable");
+        // No deal row → the value-threshold gate finds nothing to object to.
+        return chain([]);
+      },
+      insert: () => chain([{ id: 1 }]),
+      update: () => chain([]),
+      execute: async () => [],
+    },
+  }));
+  vi.doMock("../../server/websocket", () => ({
+    wsServer: { broadcastFounderEvent: () => {} },
+  }));
+
+  // The rate limiter runs first and fails closed on a db error; give it a
+  // clean path so the four gates under test are what decide the outcome.
+  vi.doMock("../../server/services/governanceBrainV13", () => {
+    if (deps.governanceThrows) throw new Error("governance brain offline");
+    return {
+      governanceBrainService: {
+        evaluateAction: async () => ({ overallResult: "allowed", explanation: "" }),
+      },
+    };
+  });
+  vi.doMock("../../server/services/trustAuthorityEscalation", () => {
+    if (deps.trustThrows) throw new Error("trust service offline");
+    return {
+      trustAuthorityEscalation: {
+        isActionAllowed: () => true,
+        getTier: () => ({ level: 3, label: "Director", allowedActions: ["advance_deal_stage"] }),
+      },
+    };
+  });
+  vi.doMock("../../server/services/companyAgents", () => ({
+    companyAgentService: { getByCodename: async () => ({ trustScore: 95 }) },
+  }));
+  vi.doMock("../../server/services/delegationTokensV11", () => {
+    if (deps.delegationThrows) throw new Error("delegation service offline");
+    return {
+      delegationTokenService: {
+        checkDelegation: async () => ({ hasDelegation: true }),
+      },
+    };
+  });
+
+  const { executionEngine } = await import("../../server/services/executionEngine");
+  return executionEngine.execute(CTX as never);
+}
+
+describe("safety gates fail CLOSED when they cannot be evaluated", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("vacuity guard: with every dependency healthy the action is NOT blocked by these gates", async () => {
+    const result = await runExecute({});
+    const err = result.error ?? "";
+    // The action may still fail downstream (no real handler), but it must not
+    // be refused by an unevaluable-gate violation — otherwise every assertion
+    // below passes for the wrong reason.
+    expect(err, `a healthy run was blocked:\n${err}`).not.toMatch(/could not be evaluated/);
+  });
+
+  it.each([
+    ["governanceThrows", /Governance policy check could not be evaluated/],
+    ["trustThrows", /Trust authority check could not be evaluated/],
+    ["delegationThrows", /Delegation token check could not be evaluated/],
+  ] as const)("an unavailable dependency (%s) refuses the action", async (key, pattern) => {
+    const result = await runExecute({ [key]: true });
+    expect(result.success, "the action ran with an unevaluable authority gate").toBe(false);
+    expect(result.error ?? "").toMatch(pattern);
+    // The refusal must say WHY, so an operator sees "could not verify" rather
+    // than a bare denial.
+    expect(result.error ?? "").toMatch(/refusing rather than assuming permission/);
+  });
+
+  it("the refusal offers a route forward rather than a dead end", async () => {
+    const result = await runExecute({ trustThrows: true });
+    const alternatives = JSON.stringify((result as { output?: unknown }).output ?? "") + (result.error ?? "");
+    expect(alternatives).toMatch(/Trust authority check/);
+    expect(result.success).toBe(false);
+  });
+});

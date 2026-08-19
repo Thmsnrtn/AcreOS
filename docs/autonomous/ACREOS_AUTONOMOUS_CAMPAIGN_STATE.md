@@ -1191,3 +1191,64 @@ would make every `not.toMatch` in the file pass vacuously.
 
 Recording it because the temptation was to re-run and move on: a gate that
 fails intermittently is a gate that gets ignored, and then it guards nothing.
+
+## PHASE 11 — UNAVAILABILITY WAS PERMISSION (2026-08-18)
+
+Started from the phase-7 register's autopilot group (`agent?.trustScore ?? 50`)
+and found something sharper next to it.
+
+### The seeded 50 is not the defect
+
+`trustAuthorityEscalation.getTier(50)` returns tier 0 — *"Observer — Recommend
+Only"*, allowing only `generate_report` and `store_learning`. So an agent with
+no trust record lands in the MOST restrictive tier. That default is
+conservative and stays. Worth stating plainly, because the register flagged it
+and the honest answer was "this one is fine".
+
+### The defect beside it
+
+`validateSafetyGates` returns `passed: violations.length === 0`, and four of its
+gates were wrapped in swallowing catches:
+
+```
+} catch { /* governance brain may not be available */ }
+} catch { /* trust service may not be available */ }
+} catch { /* delegation service may not be available */ }
+} catch {}                                    // deal value threshold
+```
+
+An unavailable governance brain, trust service, delegation service or database
+contributed **no violation** — and no violation is a PASS. Unavailability was
+permission, on the function that authorises autonomous agent actions including
+`advance_deal_stage` and `send_churn_intervention` (a customer contact).
+
+The comments were the tell: *"may not be available"* names the failure and then
+treats it as success. This is the identity ≠ authority lesson in its quietest
+form — not a wrong authority decision, but an authority decision that never
+happened and reported as if it had.
+
+### The right pattern was one gate above
+
+`checkRateLimit`, immediately preceding these four in the same function:
+
+```
+} catch { return { allowed: false, reason: "rate-limit state unverifiable — refusing action (fail closed)" }; }
+```
+
+Same file, same function, one gate earlier. Fourth recorded instance this
+session of the correct rule already existing adjacent to the broken one — after
+`parcelIntelligenceFusion`'s own header, `dataIntelligenceEngine`'s comp-count
+branch, and `outcomeBasis` in the original Foundry transfer.
+
+### The fix and its proof
+
+Each check now records a violation naming the gate that could not be evaluated,
+with the underlying error and a route forward (restore the service, or
+`escalate_to_founder` to proceed under human authority), and logs it. Failing
+closed on an authority gate is the only safe direction.
+
+`safetyGateFailClosed.test.ts` drives the real `executionEngine.execute()` with
+each dependency made to throw in turn. Its first assertion is a vacuity guard —
+with every dependency healthy the action must NOT be blocked by an
+unevaluable-gate violation — so "refuse everything" cannot pass for a fix.
+Mutations restoring each swallowing catch individually all fail.
