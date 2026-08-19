@@ -155,6 +155,24 @@ const FUNCTION_RULE_2_BASELINE = 84;
  */
 const FUNCTION_SCAN_FLOOR = 1600;
 
+/**
+ * RULE 3 — "scoped unit, unscoped query". Down-only ceiling.
+ *
+ * Added 2026-08-18 after `generateDealFeed` shipped a live cross-tenant read
+ * that rules 1 and 2 BOTH passed: the function was org-scoped six other ways,
+ * so rule 1 saw `organizationId` in the body, and the query resolved by
+ * county rather than primary key, so rule 2 had nothing to say either.
+ *
+ * Measured 127 on 2026-08-18. Set slightly above so ordinary refactoring of a
+ * baselined query does not fail the suite, while a genuine new population
+ * does — and every REDUCTION must be locked in here, same as the registers
+ * above.
+ */
+const RULE_3_BASELINE = 133;
+
+/** Chains rule 3 must keep seeing; 1,060 measured 2026-08-18. */
+const RULE_3_CHAIN_FLOOR = 300;
+
 function run(): string {
   // Runs the real lint. Asserting against its own output is the only way to
   // know the walk is live; reading the source only proves the code is present.
@@ -235,6 +253,93 @@ describe("the tenancy lint covers the service layer", () => {
         "so the gate says nothing about it — that is coverage loss, and the " +
         "names are printed above. Fix the finder; do not accept the skip.",
     ).toBe(0);
+  });
+
+  it("rule 3 is wired, sees a real population, and is down-only", () => {
+    const out = run();
+    const m =
+      /rule 3 \(scoped unit, unscoped query[^)]*\): scanned (\d+) query chains inside scoped units; baseline (\d+), new (\d+), stale (\d+)/.exec(
+        out,
+      );
+    expect(
+      m,
+      "rule 3's summary line is gone or changed shape, so the register that " +
+        "catches an unscoped QUERY inside a scoped function is unpinned. Do " +
+        "not delete this assertion — re-point it:\n" + out,
+    ).not.toBeNull();
+    const [, chains, baseline, added, stale] = m!.map(Number) as unknown as number[];
+    expect(
+      chains,
+      `rule 3 walked only ${chains} query chains (floor ${RULE_3_CHAIN_FLOOR}, ` +
+        "measured 1,060 on 2026-08-18). A chain walk that sees nothing " +
+        "certifies every query as scoped, which is the false green this rule " +
+        "exists to remove. Do NOT lower this floor.",
+    ).toBeGreaterThan(RULE_3_CHAIN_FLOOR);
+    expect(
+      baseline,
+      "the rule 3 register GREW. Every entry is a query that reads an " +
+        "org-scoped table from inside a function that has an organization and " +
+        "does not use it on that query. Scope the query; do not baseline it.",
+    ).toBeLessThanOrEqual(RULE_3_BASELINE);
+    expect(added, "a new unscoped query — scope it, or baseline it WITH a reason").toBe(0);
+    expect(
+      stale,
+      "a rule 3 baseline entry no longer matches. That is the gate working: " +
+        "delete the line in the same commit that scoped the query.",
+    ).toBe(0);
+  });
+
+  it("rule 3 FIRES on the exact shape that defeated rules 1 and 2 (canary)", () => {
+    // Mutation-as-test. The fixture is the deal-feed defect verbatim: a
+    // function that mentions `organizationId` (so rule 1 passes), reading an
+    // org-scoped table by a NON-primary-key predicate (so rule 2 passes),
+    // with no org predicate on the query itself.
+    //
+    // Written as a real file under server/services so the lint's own walk
+    // finds it, then removed — a canary the gate never sees is not a canary.
+    const dir = path.join(ROOT, "server/services");
+    const file = path.join(dir, "__rule3_canary__.ts");
+    const bad = [
+      'import { db } from "../db";',
+      'import { properties } from "@shared/schema";',
+      'import { eq, and, sql } from "drizzle-orm";',
+      "",
+      "export async function canaryScopedUnitUnscopedQuery(orgId: number) {",
+      "  const own = await db.select().from(properties)",
+      "    .where(eq(properties.organizationId, orgId));",
+      "  const leaked = await db.select().from(properties)",
+      "    .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
+      "  return { own, leaked };",
+      "}",
+      "",
+    ].join("\n");
+    fs.writeFileSync(file, bad);
+    let out = "";
+    let exitedNonZero = false;
+    try {
+      // `run()` uses execFileSync, which THROWS on the non-zero exit this
+      // canary is asking for. The output lives on the error.
+      out = run();
+    } catch (err) {
+      exitedNonZero = true;
+      const e = err as { stdout?: string | Buffer; stderr?: string | Buffer };
+      out = String(e.stdout ?? "") + String(e.stderr ?? "");
+    } finally {
+      fs.unlinkSync(file);
+    }
+    expect(
+      exitedNonZero,
+      "the lint EXITED ZERO with an unscoped cross-tenant query in the tree. " +
+        "A gate that reports a finding and still passes is not a gate:\n" + out,
+    ).toBe(true);
+    expect(
+      out,
+      "rule 3 did NOT fire on a function that mentions organizationId and " +
+        "still reads properties without it. The rule is decoration:\n" + out,
+    ).toContain("__rule3_canary__.ts");
+    expect(out).toMatch(/canaryScopedUnitUnscopedQuery\(\)\s+<- properties/);
+    // And the lint must be RED, not merely chatty.
+    expect(out).not.toContain("[check-org-scoped-fetch] PASS");
   });
 
   it("passes, with no new offenders and no stale baseline entries", () => {

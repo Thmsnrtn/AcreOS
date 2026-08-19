@@ -1166,6 +1166,219 @@ function loneIdPredicates(methodText, orgScopedIdents) {
 }
 
 
+/**
+ * RULE 3 — "the UNIT is scoped, this QUERY is not".
+ *
+ * Rules 1 and 2 judge a unit. Rule 1 asks whether it mentions an org; rule 2
+ * asks whether a unit that has one uses it on primary-key lookups. Both are
+ * blind to the shape that produced a LIVE cross-tenant read on 2026-08-18:
+ *
+ *   generateDealFeed(orgId)                     // org-scoped six other ways
+ *     …
+ *     await db.select().from(properties)        // <- no org predicate
+ *       .where(and(LOWER(state) = …, LOWER(county) = …))
+ *
+ * `properties.organization_id` is NOT NULL with a cascade FK, so that query
+ * returned every organization's parcels in the target counties, and the feed
+ * persisted them into the READING org's `daily_deal_feed` — APN, address,
+ * coordinates, assessed value, tax-delinquency signals.
+ *
+ * Rule 1 passed because `organizationId` appears elsewhere in the function.
+ * Rule 2 passed because the query does not resolve by primary key. The gate's
+ * blind spot is therefore not "unscoped functions" but "unscoped QUERIES in
+ * scoped functions" — which gets strictly MORE likely as a codebase gets more
+ * correct, because every fix that adds an org predicate somewhere in a function
+ * pushes the rest of that function out of rule 1's view.
+ *
+ * The check walks each `.from(<org-scoped table>)` CHAIN — from `.from(` to the
+ * statement's terminating `;` at paren depth 0 — and asks whether THAT chain
+ * names the org.
+ *
+ * Four discriminators, each for a family verified by hand across the 361 raw
+ * chains this finds, so the register holds cases worth reading rather than a
+ * wall of noise:
+ *
+ *   (a) the enclosing unit must HAVE an org — a unit with none is rule 1's job;
+ *   (b) the chain must not resolve by primary key — `eq(t.id, x)` is rule 2's
+ *       job, and is routinely verified by a guard query above it;
+ *   (c) founder / platform / admin / telemetry / migration paths are excluded,
+ *       because a platform-wide read is the POINT there;
+ *   (d) chains whose predicate is a hoisted variable are not reachable by text
+ *       and are not guessed at — see HOISTED_LONE_ID for the same limitation
+ *       stated honestly rather than papered over.
+ *
+ * The remaining entries are mostly legitimate and are recorded as such: a
+ * verified-parent join (`offers.batchId` after the batch was org-checked), a
+ * deliberately all-org sweep that then loops per org, a frozen cross-org
+ * marketplace. The register exists so a NEW one has to be looked at, and so the
+ * count can only shrink.
+ */
+const RULE3_BASELINE = new Set([
+  "server/services/abTestEngine.ts::getTest::outreachAbTests",
+  "server/services/achAutopay.ts::postReversal::payments",
+  "server/services/achAutopay.ts::postSettlement::payments",
+  "server/services/achMandateSetup.ts::confirmAchMandateSetup::achMandates",
+  "server/services/achMandateSetup.ts::startAchMandateSetup::achMandates",
+  "server/services/acquisitionRadar.ts::getTopOpportunities::opportunityScores",
+  "server/services/acquisitionRadar.ts::scanParcelsForOrganization::properties",
+  "server/services/agentLlmTraces.ts::listRecentTraces::agentLlmTraces",
+  "server/services/agentOrchestration.ts::addStep::agentSessionSteps",
+  "server/services/agentOrchestration.ts::executeStep::agentSessionSteps",
+  "server/services/agentOrchestration.ts::getEvents::agentEvents",
+  "server/services/agentOrchestration.ts::getOutcomes::outcomeTelemetry",
+  "server/services/agentPromotionGate.ts::canPromoteToLive::agentTasks",
+  "server/services/alerting.ts::getAlerts::systemAlerts",
+  "server/services/autonomyFinalMile.ts::checkDelegationCompletions::agentEvents",
+  "server/services/autonomyFinalMile.ts::retryFailedActions::agentEvents",
+  "server/services/autonomyHealth.ts::gradeRecentDecisions::decisionsInboxItems",
+  "server/services/autopilot/attribution.ts::attributeSignup::marketingTouch",
+  "server/services/autopilot/hands/counterpartyMatch.ts::counterpartyMatch::buyerReservations",
+  "server/services/buyerMatchingAI.ts::matchBuyerToProperties::buyerPropertyMatches",
+  "server/services/buyerMatchingAI.ts::matchPropertyToBuyers::buyerPropertyMatches",
+  "server/services/cashFlowForecaster.ts::analyzePaymentHealth::payments",
+  "server/services/cashFlowForecaster.ts::compareActualVsProjected::payments",
+  "server/services/cohortAnalysis.ts::buildCohortReport::leads",
+  "server/services/comms/tracking-pool.ts::assignNumber::trackingNumberAssignments",
+  "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment::trackingNumberAssignments",
+  "server/services/comms/tracking-pool.ts::attributeInbound::trackingNumberAssignments",
+  "server/services/creditPool.ts::poolDebit::financialLedger",
+  "server/services/customerNarrative.ts::deliverAllPendingLettersForMonth::customerLetters",
+  "server/services/data-cache/land-intelligence-store.ts::readStoredReport::landIntelligenceReports",
+  "server/services/dataNetworkVisibility.ts::getCountyIntelligenceOverview::properties",
+  "server/services/digest.ts::getSubscriptionsNeedingDigest::digestSubscriptions",
+  "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch::disclosureTimingScheduled",
+  "server/services/emailSuppressions.ts::recordSoftBounce::emailSuppressions",
+  "server/services/expansionRadar.ts::runWeeklyExpansionScan::expansionCandidates",
+  "server/services/externalStatusMonitor.ts::notifyUsersOfOutage::systemAlerts",
+  "server/services/financial-ledger.ts::postOpexSpent::financialLedger",
+  "server/services/financial-ledger.ts::postRefund::financialLedger",
+  "server/services/financial-ledger.ts::postRevenue::financialLedger",
+  "server/services/form1098Batch.ts::collectAcquiredCandidates::notePayments",
+  "server/services/form1098Batch.ts::collectOriginatedCandidates::payments",
+  "server/services/gdprService.ts::anonymizeUser::leads",
+  "server/services/gdprService.ts::anonymizeUser::teamMembers",
+  "server/services/lateFees/index.ts::assessLateFee::lateFeeAssessments",
+  "server/services/lateFees/index.ts::assessLateFee::paymentApplications",
+  "server/services/lcsCalibrator.ts::runLcsCalibrationSweep::deals",
+  "server/services/leadQualification.ts::generateSuggestedResponse::messages",
+  "server/services/leadScoreDecay.ts::processLeadScoreDecay::leads",
+  "server/services/leadScoring.ts::recordConversion::leadActivities",
+  "server/services/leadScoring.ts::recordConversion::leadScoreHistory",
+  "server/services/leadScoring.ts::scoreLead::leadScoreHistory",
+  "server/services/leaseExpiryDetector.ts::runLeaseExpiryScan::rentalLeases",
+  "server/services/lifecycleProgram.ts::verifyReactivationToken::reactivationTokens",
+  "server/services/modelCalibration.ts::runWeeklyCalibration::deals",
+  "server/services/notePaymentDueDetector.ts::runNotePaymentDueScan::notes",
+  "server/services/offerBatchService.ts::getBatchStatus::offers",
+  "server/services/onboarding/firstValueInstrumentation.ts::computeFunnelMetrics::lifecycleEvents",
+  "server/services/onboardingAutonomy.ts::listJourneys::onboardingJourneys",
+  "server/services/outcomeCalibrationLoop.ts::calibrateRadar::deals",
+  "server/services/outcomeCalibrationLoop.ts::calibrateRadar::opportunityScores",
+  "server/services/outcomeCalibrationLoop.ts::calibrateSellerIntent::sellerIntentPredictions",
+  "server/services/outcomeCalibrationLoop.ts::runBacktestAccuracy::deals",
+  "server/services/outcomeLedger.ts::evaluateMachineCheck::decisionsInboxItems",
+  "server/services/outcomeLedger.ts::scoreDueCheckIns::decisionsInboxItems",
+  "server/services/paidDataEvalHarness.ts::countCorpus::landIntelligenceReports",
+  "server/services/paidDataEvalHarness.ts::getLatestEvalRun::paidDataEvalRuns",
+  "server/services/paidDataEvalHarness.ts::runPaidDataEval::landIntelligenceReports",
+  "server/services/parcel-biography.ts::getParcelBiography::parcelObservations",
+  "server/services/paxLearning.ts::detectBulkIssue::supportTickets",
+  "server/services/paxLearning.ts::learnFromHumanResolution::supportResolutionHistory",
+  "server/services/paymentApplication/index.ts::applyPayment::suspenseBalances",
+  "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::paymentApplications",
+  "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::periodicStatements",
+  "server/services/periodicStatements/index.ts::generateOneStatement::periodicStatements",
+  "server/services/portfolioOptimizer.ts::analyzeDiversification::properties",
+  "server/services/portfolioSentinel.ts::checkCompetitorActivity::marketMetrics",
+  "server/services/portfolioSentinel.ts::checkMarketChanges::marketMetrics",
+  "server/services/portfolioSentinel.ts::getActiveAlerts::portfolioAlerts",
+  "server/services/priceOptimizer.ts::recordPriceOutcome::priceRecommendations",
+  "server/services/proactiveMonitor.ts::getActiveAlerts::systemAlerts",
+  "server/services/propertyVisionReimaging.ts::findPropertiesDueForReimaging::properties",
+  "server/services/propertyVisionReimaging.ts::reimageProperty::propertyVisionSnapshots",
+  "server/services/realtimeAlerts.ts::syncDealAlertsToWebSocket::dealAlerts",
+  "server/services/recognitionWorker.ts::runRecognitionTick::recognitionSchedules",
+  "server/services/recourseDrafter.ts::collectRecourseSignals::cancellationSurveys",
+  "server/services/recourseDrafter.ts::collectRecourseSignals::supportCases",
+  "server/services/recourseDrafter.ts::collectRecourseSignals::systemAlerts",
+  "server/services/rental/leaseSigningPacket.ts::getLeaseSignatureStatus::signingConsentAudit",
+  "server/services/rental/rentChargeGenerator.ts::previewScheduledCharges::rentalLeases",
+  "server/services/revenueRecognition.ts::getPeriodTotals::revenueRecognitionPeriods",
+  "server/services/selfAssessmentAgent.ts::analyzeToolFailures::agentTasks",
+  "server/services/sellerIntentPredictor.ts::getLeadMessageContent::messages",
+  "server/services/taxDelinquentPipeline.ts::getLeads::leads",
+  "server/services/unsubscribeTokens.ts::issueToken::unsubscribeTokens",
+  "server/services/unsubscribeTokens.ts::resolveToken::unsubscribeTokens",
+  "server/services/vaManagement.ts::listTasks::vaTasks",
+  "server/storage.ts::getConversations::conversations",
+  "server/storage.ts::getSubscriptionEvents::subscriptionEvents",
+  "server/storage/acquisitionRepo.ts::getOfferLetters::offerLetters",
+  "server/storage/auditRepo.ts::getAuditLogCount::auditLog",
+  "server/storage/auditRepo.ts::getAuditLogs::auditLog",
+  "server/storage/automationRepo.ts::getActivityFeed::activityLog",
+  "server/storage/automationRepo.ts::getNotifications::notifications",
+  "server/storage/commsRepo.ts::getActivityEvents::activityEvents",
+  "server/storage/commsRepo.ts::getCampaignResponses::campaignResponses",
+  "server/storage/dealRepo.ts::getDealsPaginated::deals",
+  "server/storage/documentsRepo.ts::getDocumentPackages::documentPackages",
+  "server/storage/documentsRepo.ts::getGeneratedDocuments::generatedDocuments",
+  "server/storage/documentsRepo.ts::getSignatures::signatures",
+  "server/storage/leadRepo.ts::findDuplicateLeads::leads",
+  "server/storage/leadRepo.ts::getLeads::leads",
+  "server/storage/leadRepo.ts::getLeadsByComputedStage::leads",
+  "server/storage/leadRepo.ts::getLeadsCursor::leads",
+  "server/storage/leadRepo.ts::getLeadsPaginated::leads",
+  "server/storage/mailRepo.ts::getInboxMessages::inboxMessages",
+  "server/storage/mailRepo.ts::getMailingOrders::mailingOrders",
+  "server/storage/noteRepo.ts::updateNote::notes",
+  "server/storage/paymentRemindersRepo.ts::findLadderReminder::paymentReminders",
+  "server/storage/paymentRemindersRepo.ts::getDispatchableReminders::paymentReminders",
+  "server/storage/paymentRemindersRepo.ts::getOrganizationIdsWithActiveNotes::notes",
+  "server/storage/propertyRepo.ts::getPropertiesPaginated::properties",
+  "server/storage/supportOpsRepo.ts::getSupportCases::supportCases",
+  "server/storage/supportOpsRepo.ts::getSystemAlerts::systemAlerts",
+  "server/storage/tasksRepo.ts::getTasks::tasks",
+  "server/storage/vaRepo.ts::getVaActions::vaActions",
+  "server/storage/vaRepo.ts::getVaCalendarEvents::vaCalendarEvents",
+  "server/storage/vaRepo.ts::getVaTemplates::vaTemplates",
+]);
+
+/** `.from(` → the statement's `;` at paren depth 0. */
+function queryChainsFrom(unitText, orgScopedIdents) {
+  const chains = [];
+  const re = /\.from\(\s*([A-Za-z0-9_]+)\s*\)/g;
+  let m;
+  while ((m = re.exec(unitText)) !== null) {
+    const table = m[1];
+    if (!orgScopedIdents.has(table)) continue;
+    let depth = 0;
+    let end = -1;
+    for (let j = m.index; j < unitText.length; j++) {
+      const ch = unitText[j];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      else if (ch === ";" && depth <= 0) { end = j; break; }
+    }
+    if (end === -1) end = unitText.length;
+    chains.push({ table, text: unitText.slice(m.index, end) });
+  }
+  return chains;
+}
+
+const RULE3_EXCLUDED_PATH = /founder|platform|admin|telemetry|migration|backfill/i;
+
+function unscopedChains(unitText, orgScopedIdents, rel) {
+  if (RULE3_EXCLUDED_PATH.test(rel)) return [];
+  const out = [];
+  for (const chain of queryChainsFrom(unitText, orgScopedIdents)) {
+    if (ORG_CONTEXT_RE.test(chain.text)) continue;
+    // (b) primary-key resolution belongs to rule 2.
+    if (new RegExp(`eq\\(\\s*${chain.table}\\.id\\s*,`).test(chain.text)) continue;
+    out.push(chain.table);
+  }
+  return out;
+}
+
 function touchedOrgScopedTables(methodText, orgScopedIdents) {
   const touched = new Set();
   const accessRe = /\b(?:from|(?:db|tx)\s*\.\s*update|(?:db|tx)\s*\.\s*delete)\s*\(\s*([A-Za-z0-9_]+)\s*[),]/g;
@@ -1266,6 +1479,9 @@ function main() {
   const newUnusedOrg = [];
   const unusedOrgSeen = new Set();
   const unusedOrgSeenFunction = new Set();
+  const newUnscopedChains = [];
+  const rule3Seen = new Set();
+  let rule3ChainsScanned = 0;
   let scannedMethods = 0;
   let scannedFunctions = 0;
   let methodsTouchingOrgTables = 0;
@@ -1298,6 +1514,15 @@ function main() {
       const key = `${rel}::${unit.name}`;
       if (ORG_CONTEXT_RE.test(unit.text)) {
         conformingMethods += 1;
+        // Rule 3: the UNIT is scoped — is every QUERY in it? Rules 1 and 2
+        // both pass a scoped function that contains one unscoped chain, which
+        // is how a live cross-tenant read shipped. See RULE3_BASELINE.
+        rule3ChainsScanned += queryChainsFrom(unit.text, orgScopedIdents).length;
+        for (const table of new Set(unscopedChains(unit.text, orgScopedIdents, rel))) {
+          const chainKey = `${rel}::${unit.name}::${table}`;
+          if (RULE3_BASELINE.has(chainKey)) rule3Seen.add(chainKey);
+          else newUnscopedChains.push({ key: chainKey, file: rel, line: unit.line, name: unit.name, table });
+        }
         // Rule 2: it HAS an org — does it use it? See the note on
         // loneIdPredicates for why rule 1 cannot answer that.
         const lone = loneIdPredicates(unit.text, orgScopedIdents);
@@ -1333,6 +1558,7 @@ function main() {
     ...[...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k)),
     ...[...BASELINE_FUNCTION_UNUSED_ORG].filter((k) => !unusedOrgSeenFunction.has(k)),
   ];
+  const staleRule3 = [...RULE3_BASELINE].filter((k) => !rule3Seen.has(k));
 
   // ── VACUITY GUARD ────────────────────────────────────────────────────────
   // A scan that stops SEEING things must FAIL, never read as a clean bill of
@@ -1394,6 +1620,13 @@ function main() {
       `rule 2 baseline ${unusedOrgSeenFunction.size} — both down-only`,
   );
 
+  console.log(
+    `[check-org-scoped-fetch] rule 3 (scoped unit, unscoped query; added ` +
+      `2026-08-18): scanned ${rule3ChainsScanned} query chains inside scoped ` +
+      `units; baseline ${rule3Seen.size}, new ${newUnscopedChains.length}, ` +
+      `stale ${staleRule3.length} — down-only`,
+  );
+
   // ALWAYS PRINTED, including the zero. A line that appears only when something
   // is wrong teaches nobody that the check exists — and "no body was skipped"
   // is exactly the claim this gate could not previously make.
@@ -1406,14 +1639,60 @@ function main() {
           unreadableDeclarations.join("\n  ")),
   );
 
+  // Rule 3's own vacuity floor. A chain walk that stops finding chains reads
+  // as "every query is scoped", which is the exact false green this rule was
+  // added to remove.
+  if (rule3ChainsScanned < 300) {
+    console.error("");
+    console.error(
+      `[check-org-scoped-fetch] FAIL (VACUITY GUARD) — rule 3 found only ` +
+        `${rule3ChainsScanned} query chains inside scoped units (expected >= 300; ` +
+        `measured 947 across the repo on 2026-08-18). A chain walk that sees ` +
+        `nothing certifies everything. Do NOT lower this floor.`,
+    );
+    process.exit(1);
+  }
+
   if (
     newOffenders.length === 0 &&
     staleAllowlistEntries.length === 0 &&
     newUnusedOrg.length === 0 &&
-    staleUnusedOrg.length === 0
+    staleUnusedOrg.length === 0 &&
+    newUnscopedChains.length === 0 &&
+    staleRule3.length === 0
   ) {
     console.log("[check-org-scoped-fetch] PASS");
     process.exit(0);
+  }
+
+  if (newUnscopedChains.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL — the following QUERIES sit inside a " +
+        "unit that has an organization, read an org-scoped table, and do not " +
+        "name the organization themselves. This is the shape that shipped a " +
+        "live cross-tenant read in the daily deal feed: the function was " +
+        "org-scoped six other ways, so rules 1 and 2 both passed it.",
+    );
+    for (const o of newUnscopedChains) {
+      console.error(`  ${o.file}:${o.line}  ${o.name}()  <- ${o.table}`);
+    }
+    console.error(
+      "\n  Add the organization predicate to the QUERY. If the read is " +
+        "legitimately cross-org (a verified-parent join, a deliberate " +
+        "all-org sweep), add the key to RULE3_BASELINE with the reason — and " +
+        "write the reason, because the next reader has to be able to check it.",
+    );
+  }
+
+  if (staleRule3.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL — rule 3 baseline entries that no longer " +
+        "match. If you fixed them, DELETE them here in the same commit: a " +
+        "stale-high baseline is free headroom for the next unscoped query.",
+    );
+    for (const k of staleRule3) console.error(`  ${k}`);
   }
 
   if (newUnusedOrg.length > 0) {

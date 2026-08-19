@@ -808,3 +808,78 @@ overclaiming failure as a test NAME that does, and both read as coverage.
 fire, establish which of three things is true before changing anything —
 the gate is weak, the mutation was semantically null, or the mutated code is
 unreachable. Only the first calls for a stronger gate.
+
+## PHASE 6 — RULE 3: THE GATE'S BLIND SPOT, CLOSED (2026-08-18)
+
+### The blind spot, stated precisely
+
+`check-org-scoped-fetch` had two rules, and both judge a **unit**:
+
+- **Rule 1** — does this method/function mention an organization anywhere?
+- **Rule 2** — a unit that HAS an org: does it resolve an org-scoped table by
+  primary key without using it?
+
+The deal-feed leak passed both, and not by accident:
+
+```
+generateDealFeed(orgId)                     // org-scoped six other ways
+  await db.select().from(properties)        // <- no org predicate
+    .where(and(LOWER(state) = …, LOWER(county) = …))
+```
+
+Rule 1 saw `organizationId` in the body. Rule 2 had nothing to say because the
+query resolves by county, not by id. So the blind spot is not *unscoped
+functions* — it is **unscoped QUERIES inside scoped functions**, and this is the
+class that gets MORE likely as the codebase gets more correct: every fix that
+adds an org predicate somewhere in a function pushes the rest of that function
+out of rule 1's view. The same mechanism was recorded in phase 3 from the other
+direction ("a completely unscoped function is LESS visible than a partly scoped
+one"); this is its second and worse consequence.
+
+### Rule 3
+
+Walks each `.from(<org-scoped table>)` **chain** — `.from(` to the statement's
+`;` at paren depth 0 — and asks whether THAT chain names the org. Four
+discriminators, each for a false-positive family verified by hand:
+
+| discriminator | family it removes |
+|---|---|
+| enclosing unit must have an org | rule 1's job |
+| chain must not resolve by primary key | rule 2's job; guard-then-use |
+| founder/platform/admin/telemetry/migration paths excluded | platform-wide by design |
+| hoisted predicate variables not guessed at | stated as a limit, not papered over |
+
+**947 → 361 → 127.** The register holds cases worth reading rather than a wall
+of noise. Most are legitimate and are recorded as such: a verified-parent join
+(`offers.batchId` after the batch was org-checked), a deliberate all-org sweep
+that then loops per org, the frozen cross-org marketplace, a ternary predicate
+whose branches both carry the org.
+
+### Falsified against the semantic defect, per the first law
+
+The rule was mutation-tested against the thing it governs, not the thing it
+mentions:
+
+- **Reintroduce the exact deal-feed leak** → rule 3 fires, gate red.
+- **Equivalent representation** — remove the org predicate from the query but
+  ADD an unrelated `organizationId` mention to the function body, which is
+  precisely what defeated rules 1 and 2 → still fires.
+- **Report but do not fail** (drop rule 3 from the PASS condition) → the canary
+  test fails. A gate that prints a finding and exits zero is not a gate.
+- **Break the chain walker** (`.from` → `.fromZZZ`) → the vacuity floor fails,
+  loudly, rather than reporting every query as scoped.
+- **Drop the primary-key discriminator** → the baseline inflates past its
+  ceiling and the pin fails.
+
+`orgScopedFetchCoverage.test.ts` gained a live **canary**: it writes a real file
+into `server/services/` containing a function that mentions `organizationId` and
+still reads `properties` without it, runs the lint, asserts it names the file
+AND exits non-zero, then removes it. A canary the gate never walks is not a
+canary — this one is written where the walk actually goes.
+
+### What this buys
+
+The two earlier tenancy phases fixed occurrences. This one changes what the
+repository can *see*: 127 previously invisible queries are now frozen and
+down-only, a new one has to be looked at, and the specific shape that shipped a
+live cross-tenant read cannot return silently.
