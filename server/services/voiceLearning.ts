@@ -143,7 +143,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
 
     try {
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 800,
         temperature: 0.3,
@@ -292,7 +292,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
 
     try {
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'openai/gpt-4o-mini',
         messages: [
           {
             role: 'system',

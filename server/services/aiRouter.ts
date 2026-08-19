@@ -5,7 +5,7 @@ import { computeCostUsd } from "./aiCostRates";
 // Single source of truth for model IDs + their token prices. aiRouter no longer
 // hard-codes model strings or a private cost table — both come from here so the
 // router and paxModelTier can never disagree on which Opus is "best" again.
-import { MODELS, priceFor, isKnownModel } from "./models";
+import { MODELS, priceFor, isKnownModel, OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
 import {
   recordAiCall as recordCascadeCall,
@@ -669,7 +669,15 @@ export function isClaudeModel(model: string): boolean {
 }
 
 let openrouterClient: OpenAI | null = null;
-let openaiClient: OpenAI | null = null;  // Kept for backward compat but routes to OpenRouter
+// Direct-OpenAI fallback client. NOTE: this used to carry the comment "Kept
+// for backward compat but routes to OpenRouter", which was false — it is built
+// from AI_INTEGRATIONS_OPENAI_BASE_URL, which has no default, so with the
+// secret unset the OpenAI SDK's own default (https://api.openai.com/v1)
+// applies and this really is direct OpenAI. That comment is the same species
+// as the defect it sat next to: `utils/openaiClient.ts` is NAMED
+// getOpenAIClient and returns an OpenRouter client, and forty-four call sites
+// believed the name.
+let openaiClient: OpenAI | null = null;
 
 function getOpenRouterClient(): OpenAI | null {
   if (!openrouterClient) {
@@ -696,6 +704,22 @@ function getOpenRouterClient(): OpenAI | null {
     });
   }
   return openrouterClient;
+}
+
+/**
+ * The fallback model for the direct-OpenAI branch, named for whichever
+ * provider AI_INTEGRATIONS_OPENAI_BASE_URL actually points at. `gpt-4o` is an
+ * OpenAI name; OpenRouter 404s it and wants `openai/gpt-4o`. Read from the same
+ * env var getOpenAIClient() builds from, so the id and the client cannot
+ * disagree — see openAiModelIdFor in services/models.ts.
+ */
+function openAiFallbackModel(complexity: TaskComplexity): string {
+  return openAiModelIdFor(
+    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    complexity === TaskComplexity.SIMPLE
+      ? OPENAI_DIRECT_MODELS.GPT4O_MINI
+      : OPENAI_DIRECT_MODELS.GPT4O,
+  );
 }
 
 function getOpenAIClient(): OpenAI | null {
@@ -926,7 +950,7 @@ export function selectProviderAndModel(
     if (openai) {
       return {
         provider: AIProvider.OPENAI,
-        model: complexity === TaskComplexity.SIMPLE ? "gpt-4o-mini" : "gpt-4o",
+        model: openAiFallbackModel(complexity),
         client: openai,
       };
     }
@@ -953,7 +977,7 @@ export function selectProviderAndModel(
   if (openai) {
     return {
       provider: AIProvider.OPENAI,
-      model: complexity === TaskComplexity.SIMPLE ? "gpt-4o-mini" : "gpt-4o",
+      model: openAiFallbackModel(complexity),
       client: openai,
     };
   }

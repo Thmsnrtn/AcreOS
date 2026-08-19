@@ -2982,7 +2982,7 @@ export async function executeSupportTool(
         try {
           const openai = getOpenAIClient();
           const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "openai/gpt-4o",
             messages: [
               {
                 role: "system",
@@ -5300,12 +5300,12 @@ export async function processSupportChat(
 
   const traceStarted = Date.now();
   let response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "openai/gpt-4o",
     messages: chatMessages,
     tools,
     tool_choice: "auto"
   });
-  recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+  recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "openai/gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
   let assistantMessage = response.choices[0].message;
 
@@ -5319,7 +5319,7 @@ export async function processSupportChat(
       organizationId: org.id,
       agentCodename: "pax",
       purpose: "support_chat",
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       systemPrompt,
       userPrompt: message,
       response: assistantMessage.content ?? JSON.stringify(assistantMessage.tool_calls ?? ""),
@@ -5368,12 +5368,12 @@ export async function processSupportChat(
     chatMessages.push(...toolResults);
 
     response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       messages: chatMessages,
       tools,
       tool_choice: "auto"
     });
-    recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "openai/gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     assistantMessage = response.choices[0].message;
   }

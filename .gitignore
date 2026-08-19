@@ -112,3 +112,4 @@ persona-prod-parcelcheck-desktop.png
 # gates' "passes on the current tree" case. They are never source.
 server/services/__measurement_probe__.ts
 server/services/__rule3_canary__.ts
+server/services/__model_prefix_probe__.ts

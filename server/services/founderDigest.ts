@@ -123,7 +123,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
   recommendedActionBullet: string;
 }> {
   const response = await requireOpenAIClient().chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "openai/gpt-4o-mini",
     response_format: { type: "json_object" },
     messages: [{
       role: "system",

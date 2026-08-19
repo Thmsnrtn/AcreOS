@@ -89,6 +89,48 @@ export const MODELS = {
 
 export type ModelId = (typeof MODELS)[keyof typeof MODELS];
 
+/**
+ * ── THE SAME MODEL HAS TWO NAMES ────────────────────────────────────────────
+ *
+ * OpenAI serves `gpt-4o`. OpenRouter serves `openai/gpt-4o` and 404s on the
+ * bare form — measured 2026-08-19: `gpt-4o` and `gpt-4o-mini` are absent from
+ * the 415-model catalogue AND 404 on `/models/{id}/endpoints`, which normalises
+ * hyphens to dots but does not supply a missing author prefix.
+ *
+ * Almost everything in this codebase therefore wants the PREFIXED form,
+ * because `utils/openaiClient.ts` — despite being named `getOpenAIClient` —
+ * returns an OpenRouter client and says so in its own docblock. Forty-four
+ * call sites across twenty-two files sent the bare id to it and 404'd.
+ *
+ * Two services are the exception. `ai/vaService.ts` and
+ * `services/supportBrain.ts` build their own client from
+ * `AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL`, and
+ * that base URL has NO DEFAULT — so which provider they reach, and therefore
+ * which of the two names is correct, is decided by a secret this repository
+ * cannot read. It is not hypothetical that the secret moves:
+ * `docs/runbooks/ai-quota-exceeded.md` instructs the operator to point it at
+ * OpenRouter during a quota incident, which would silently 404 every call in
+ * both services at the exact moment someone is trying to restore service.
+ *
+ * So the id follows the client rather than being guessed. Unknown hosts
+ * resolve to the BARE name: the env var is documented as
+ * `https://api.openai.com/v1`, an OpenAI-compatible proxy in front of OpenAI
+ * takes OpenAI's names, and OpenRouter is the one host in this system that
+ * does not.
+ */
+export const OPENAI_DIRECT_MODELS = {
+  GPT4O: "gpt-4o",
+  GPT4O_MINI: "gpt-4o-mini",
+} as const;
+
+/** Which name a direct-OpenAI-shaped client should be given for `bareId`. */
+export function openAiModelIdFor(
+  baseURL: string | undefined,
+  bareId: (typeof OPENAI_DIRECT_MODELS)[keyof typeof OPENAI_DIRECT_MODELS],
+): string {
+  return baseURL?.includes("openrouter.ai") ? `openai/${bareId}` : bareId;
+}
+
 /** Every model the platform can deliberately route to (for "known model" checks). */
 export const KNOWN_MODELS: readonly string[] = Object.values(MODELS);
 

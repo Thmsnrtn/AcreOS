@@ -220,7 +220,10 @@ export const growthConfigRepo = {
       copies: data.copies ?? null,
       images: data.images ?? null,
       error: data.error ?? null,
-      model: data.model ?? "gpt-4o",
+      // Names what adCreativeService actually sends. It runs on the OpenRouter
+      // client, so the id is prefixed; a bare "gpt-4o" here recorded a model
+      // that was never called.
+      model: data.model ?? "openai/gpt-4o",
     }).returning();
     return created;
   },

@@ -644,7 +644,7 @@ Return ONLY a JSON object with this exact format (no markdown, no explanation):
 Base your estimate on typical rural land market conditions in ${county} County, ${state}. Be conservative.`;
 
         const completion = await requireOpenAIClient().chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: 'openai/gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.2,
           max_tokens: 200,
@@ -1033,7 +1033,7 @@ Consider factors like:
 Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
       });

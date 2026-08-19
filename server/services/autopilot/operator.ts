@@ -202,7 +202,15 @@ export async function buildOperatorModelCall(): Promise<((prompt: string) => Pro
     const OpenAImod = (await import("openai")).default;
     const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
     const { tracedLlmCall } = await import("../tracedLlmCall");
-    const model = process.env.COGNITION_MODEL ?? process.env.AUTOPILOT_DELIBERATION_MODEL ?? "gpt-4o-mini";
+    const { OPENAI_DIRECT_MODELS, openAiModelIdFor } = await import("../models");
+    // Same reasoning as continuousLoop's deliberation model: the default is
+    // named for whichever provider AI_INTEGRATIONS_OPENAI_BASE_URL points at,
+    // read from the same var the client above is built from. An explicit
+    // COGNITION_MODEL / AUTOPILOT_DELIBERATION_MODEL passes through untouched.
+    const model = process.env.COGNITION_MODEL ?? process.env.AUTOPILOT_DELIBERATION_MODEL ?? openAiModelIdFor(
+      process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      OPENAI_DIRECT_MODELS.GPT4O_MINI,
+    );
     return async (prompt: string) =>
       (
         await tracedLlmCall({

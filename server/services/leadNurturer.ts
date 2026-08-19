@@ -185,12 +185,12 @@ Respond in JSON format:
         purpose: "lead_nurture_followup",
         organizationId: lead.organizationId,
         decisionId: lead.id,
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         userPrompt: prompt,
         metadata: { leadStage: context.nurturingStage, leadType: context.type },
         call: () =>
           openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "openai/gpt-4o",
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
             max_tokens: 500,

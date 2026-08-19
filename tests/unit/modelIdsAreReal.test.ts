@@ -57,7 +57,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { MODELS, ANTHROPIC_MODELS, KNOWN_MODELS } from "../../server/services/models";
+import {
+  MODELS,
+  ANTHROPIC_MODELS,
+  KNOWN_MODELS,
+  OPENAI_DIRECT_MODELS,
+  openAiModelIdFor,
+} from "../../server/services/models";
 import { AI_COST_RATES } from "../../server/services/aiCostRates";
 
 describe("every pinned OpenRouter id is shaped like a real one", () => {
@@ -123,6 +129,57 @@ describe("every pinned OpenRouter id is shaped like a real one", () => {
       "gpt-4o",
     ]) {
       expect(KNOWN_MODELS, `${dead} is not in the provider catalogue`).not.toContain(dead);
+    }
+  });
+});
+
+describe("the id follows the client, because the same model has two names", () => {
+  // Measured 2026-08-19: OpenRouter serves `openai/gpt-4o` (200) and 404s
+  // `gpt-4o`; OpenAI is the other way round. Two services and the router's
+  // fallback build their client from AI_INTEGRATIONS_OPENAI_BASE_URL, a secret
+  // with NO DEFAULT — and docs/runbooks/ai-quota-exceeded.md tells the operator
+  // to repoint it at OpenRouter during a quota incident. So which name is
+  // correct is decided at runtime, and guessing it wrong 404s every call in
+  // those services at the exact moment someone is restoring service.
+
+  it("prefixes for OpenRouter", () => {
+    expect(
+      openAiModelIdFor("https://openrouter.ai/api/v1", OPENAI_DIRECT_MODELS.GPT4O),
+    ).toBe("openai/gpt-4o");
+    expect(
+      openAiModelIdFor("https://openrouter.ai/api/v1", OPENAI_DIRECT_MODELS.GPT4O_MINI),
+    ).toBe("openai/gpt-4o-mini");
+  });
+
+  it("stays bare for OpenAI, and for an unset base URL", () => {
+    // Unset is the production default: the OpenAI SDK falls back to
+    // https://api.openai.com/v1, so the bare name is the correct one. An
+    // unrecognised host resolves the same way — the env var is documented as
+    // OpenAI's, and an OpenAI-compatible proxy takes OpenAI's names.
+    expect(openAiModelIdFor(undefined, OPENAI_DIRECT_MODELS.GPT4O)).toBe("gpt-4o");
+    expect(openAiModelIdFor("https://api.openai.com/v1", OPENAI_DIRECT_MODELS.GPT4O)).toBe(
+      "gpt-4o",
+    );
+    expect(openAiModelIdFor("https://llm-proxy.internal/v1", OPENAI_DIRECT_MODELS.GPT4O)).toBe(
+      "gpt-4o",
+    );
+  });
+
+  it("the two forms are not equal — the whole point of the function", () => {
+    // Vacuity guard. If the resolver ever returned its input unchanged, every
+    // assertion above would still pass on the bare cases and the OpenRouter
+    // case is the only one that catches it.
+    expect(openAiModelIdFor("https://openrouter.ai/api/v1", OPENAI_DIRECT_MODELS.GPT4O)).not.toBe(
+      openAiModelIdFor(undefined, OPENAI_DIRECT_MODELS.GPT4O),
+    );
+  });
+
+  it("OPENAI_DIRECT_MODELS holds BARE names, deliberately", () => {
+    // These are the one place a bare id is correct: they are the input to the
+    // resolver, not something sent anywhere. check-model-prefix.mjs registers
+    // them scoped to models.ts for exactly this reason.
+    for (const id of Object.values(OPENAI_DIRECT_MODELS)) {
+      expect(id, "OPENAI_DIRECT_MODELS must hold OpenAI's own names").not.toMatch(/\//);
     }
   });
 });

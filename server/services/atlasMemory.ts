@@ -183,7 +183,14 @@ EXTRACTED MEMORIES (JSON array only, no other text):`;
 
   try {
     const response = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
+      // Deliberately the cheap model, not the conversation's — extraction is a
+      // restatement task and a Scale org's Opus turn must not drag its memory
+      // pass up with it. Prefixed because the injected client is the one
+      // ai/executive.ts got from the router, i.e. OpenRouter, which 404s the
+      // bare OpenAI name. The client is a parameter and the model is a literal,
+      // so the two can drift; if this ever needs to follow the caller's
+      // provider, thread the id in beside the client rather than guessing here.
+      model: 'openai/gpt-4o-mini',
       messages: [{ role: 'user', content: extractionPrompt }],
       temperature: 0.1,
       max_tokens: 1000,

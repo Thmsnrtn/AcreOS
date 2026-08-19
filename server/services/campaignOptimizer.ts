@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import { voiceLearningService } from "./voiceLearning";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { MODELS } from "./models";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
@@ -190,12 +191,12 @@ Respond in JSON format:
     // Resolve the org's pax tier and mirror its ladder onto this client:
     // free tier / soft-cap-downgraded orgs get the mini model. Fail-open to
     // the default so a tier lookup hiccup never breaks optimization.
-    let model = "gpt-4o";
+    let model: string = MODELS.VISION;
     try {
       const { pickPaxModelForOrg, PAX_MODEL_HAIKU } = await import("./paxModelTier");
       const choice = await pickPaxModelForOrg(campaign.organizationId);
       if (choice.tier === "free" || choice.isDowngraded || choice.model === PAX_MODEL_HAIKU) {
-        model = "gpt-4o-mini";
+        model = "openai/gpt-4o-mini";
       }
     } catch { /* keep default */ }
 

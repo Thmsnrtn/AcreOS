@@ -3481,7 +3481,7 @@ export function registerAdminRoutes(app: Express): void {
         const openai = getOpenAIClient();
         if (openai) {
           const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "openai/gpt-4o",
             messages: [{
               role: "user",
               content: `You are the AI co-pilot for AcreOS, a SaaS platform for real estate professionals. Write a crisp 2-3 sentence executive briefing for the founder based on these metrics:
@@ -3650,7 +3650,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       ).join('\n\n');
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [{
           role: "system",
           content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for real estate professionals. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${sanitizePromptInline(org?.name || "Unknown", { source: "org.name" })}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,

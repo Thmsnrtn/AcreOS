@@ -622,7 +622,7 @@ class PortfolioSentinelService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -695,7 +695,7 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",

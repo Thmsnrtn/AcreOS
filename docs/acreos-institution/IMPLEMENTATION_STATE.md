@@ -18,7 +18,7 @@ the repository, the repository is right and this file is stale; edit it.
 | Scheduled jobs | **149** roster entries in `jobRegistry.ts` (47 job FILES — not the same number) |
 | Client pages | **154** |
 | Test files / tests | **924** / **12,447** (+1 skipped), all green |
-| Gates in `npm run check` | **25** steps (tsc + check:tests + 23 lint gates), **all green** |
+| Gates in `npm run check` | **26** steps (tsc + check:tests + 24 lint gates), **all green** |
 | Counted ratchets | **14** registers under `scripts/ratchets/` |
 
 `npm run check` takes roughly ten minutes; the full suite roughly five. Both
@@ -156,7 +156,7 @@ the remaining 23 gates.** While it is red, every ratchet below it is unevaluated
 `check:tests` green first, then read the rest.
 
 ```bash
-npm run check                      # 25 gates, ~10 min, background it
+npm run check                      # 26 gates, ~10 min, background it
 npx vitest run                     # full suite, ~5 min, background it
 node scripts/lint-reachability.mjs --measure
 node scripts/check-measurement-defaults.mjs

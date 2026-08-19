@@ -15,6 +15,7 @@ import { logger } from "../utils/logger";
 import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "../utils/sanitizePrompt";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
+import { OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
 
 // Lazy client: constructing OpenAI at module scope threw at import time when
 // the key was unset, so the first hit on any support-brain route surfaced as
@@ -33,6 +34,21 @@ function getOpenAI(): OpenAI {
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
   return openaiSingleton;
+}
+
+/**
+ * `gpt-4o-mini` on OpenAI, `openai/gpt-4o-mini` on OpenRouter. Same reasoning
+ * as `vaModel()` in ai/vaService.ts: this service builds its own client from
+ * AI_INTEGRATIONS_OPENAI_BASE_URL, a secret with no default that the
+ * quota-incident runbook tells the operator to repoint at OpenRouter — at which
+ * point the bare id 404s. Resolved from the same env var the client is built
+ * from so the two cannot disagree.
+ */
+function brainModel(): string {
+  return openAiModelIdFor(
+    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    OPENAI_DIRECT_MODELS.GPT4O_MINI,
+  );
 }
 
 interface ClassificationResult {
@@ -94,12 +110,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         purpose: "support_classify",
         organizationId: context.organizationId,
         decisionId: context.existingCase?.id ?? null,
-        model: "gpt-4o-mini",
+        model: brainModel(),
         systemPrompt,
         userPrompt: safeMessage,
         call: () =>
           getOpenAI().chat.completions.create({
-            model: "gpt-4o-mini",
+            model: brainModel(),
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: safeMessage },
@@ -261,7 +277,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       caseId: supportCase.id,
       role: "ai_support",
       content: response,
-      aiModel: "gpt-4o-mini",
+      aiModel: brainModel(),
       aiConfidence: allSucceeded ? "0.9" : "0.5",
       playbookUsed: playbook.slug,
       actionsAttempted,
@@ -408,13 +424,13 @@ Adapt this template with the specific details from the context. Be conversationa
         agentCodename: "pax",
         purpose: "support_playbook_response",
         organizationId,
-        model: "gpt-4o-mini",
+        model: brainModel(),
         systemPrompt,
         userPrompt: "Generate the response message.",
         metadata: { playbookSlug: playbook.slug, actionsTaken },
         call: () =>
           getOpenAI().chat.completions.create({
-            model: "gpt-4o-mini",
+            model: brainModel(),
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the response message." },
@@ -481,12 +497,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         purpose: "support_contextual_response",
         organizationId,
         decisionId: supportCase.id,
-        model: "gpt-4o-mini",
+        model: brainModel(),
         systemPrompt,
         userPrompt: userMessage,
         call: () =>
           getOpenAI().chat.completions.create({
-            model: "gpt-4o-mini",
+            model: brainModel(),
             messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
             temperature: 0.7,
             max_tokens: 400,
@@ -504,7 +520,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         caseId: supportCase.id,
         role: "ai_support",
         content: aiResponse,
-        aiModel: "gpt-4o-mini",
+        aiModel: brainModel(),
         aiConfidence: "0.7",
       });
 
@@ -543,7 +559,7 @@ In the meantime, is there anything else I can help you with?`;
       caseId: supportCase.id,
       role: "ai_support",
       content: response,
-      aiModel: "gpt-4o-mini",
+      aiModel: brainModel(),
     });
 
     logActivity({

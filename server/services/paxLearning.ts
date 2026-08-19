@@ -47,7 +47,7 @@ export const paxLearningService = {
       }
       
       const response = await requireOpenAIClient().chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",

@@ -1907,6 +1907,130 @@ once flagged a docblock *explaining* a founder-only boundary as a leak of it. A
 comment cannot import, cannot call, and cannot reach a customer.
 
 
+### 36 — `getOpenAIClient()` RETURNS AN OPENROUTER CLIENT, and fifty-nine call sites believed the name
+
+Continues entry 34, and is the half that entry did not fix. Ledger 34 corrected
+the central `MODELS` registry. A registry is only authoritative over the call
+sites that USE it, and most did not.
+
+**The defect.** `server/utils/openaiClient.ts` exports `getOpenAIClient()` and
+`requireOpenAIClient()`. Both return an **OpenRouter** client — built from
+`AI_INTEGRATIONS_OPENROUTER_API_KEY`, based at `https://openrouter.ai/api/v1`,
+under a docblock that says "Platform AI is OpenRouter-only … the previous
+OpenAI fallback was a cost trap". Fifty-nine model literals across thirty-one
+files passed it OpenAI's *bare* ids.
+
+Measured against the live catalogue on 2026-08-19, and both halves matter:
+
+| id | in catalogue (415) | `/models/{id}/endpoints` |
+|---|---|---|
+| `gpt-4o` | absent | **404** |
+| `gpt-4o-mini` | absent | **404** |
+| `openai/gpt-4o` | present | 200 |
+| `openai/gpt-4o-mini` | present | 200 |
+
+That endpoint normalises hyphens to dots — which is what made entry 34's
+first pass wrong — but it does **not** supply a missing author prefix. So this
+is not a naming nicety; the request 404s.
+
+`server/ai/paxSupportResolver.ts` is the clearest illustration: its own header
+reads "getOpenAIClient() — the SAME OpenRouter-backed client wrapper the rest of
+…", and two lines later it sends `model: "gpt-4o"`. The file knew which provider
+it was talking to and still used the other provider's name for the model.
+
+**A methodology error of my own, worth recording because it nearly shipped.**
+The first inventory grepped `model: "gpt-4o"` — double quotes — and produced
+"57 sites across 25 files". Nine more files use single quotes
+(`negotiationOrchestrator`, `acreOSValuation`, `voiceLearning`,
+`portfolioOptimizer`, `atlasMemory`, `complianceAI`, `routes-realtime`, and two
+more literals in files already on the list). They surfaced only because
+`complianceAI.ts:403` had a double-quoted `modelKey` two lines under a
+single-quoted `model`, and the mismatch was visible. **A quote-biased grep is a
+sampling method presented as a census** — the frontier's "52 sites" was that
+number, and the real figure was fifty-nine. The gate that replaced the grep
+matches on the KEY and accepts either quote.
+
+**Where a bare id is genuinely correct, and why that made this harder.**
+`byok/aiByok.ts:98` strips `openai/` and returns the bare name — correctly: that
+client is bound to the CUSTOMER's own OpenAI key. The repository already knew
+the two namespaces differ; it just did not apply that knowledge on the platform
+side.
+
+**The runtime-decided cases.** Three places build their own client from
+`AI_INTEGRATIONS_OPENAI_API_KEY` / `AI_INTEGRATIONS_OPENAI_BASE_URL` —
+`ai/vaService.ts`, `services/supportBrain.ts`, and `aiRouter`'s direct-OpenAI
+fallback — plus two autopilot deliberation call sites. That base URL has **no
+default**, so which provider they reach, and therefore which of the two names is
+correct, is decided by a secret this repository cannot read.
+
+It is not hypothetical that the secret moves. `docs/runbooks/ai-quota-exceeded.md`
+Option 3 instructs the operator to point it at OpenRouter during a quota
+incident — which, before this commit, silently 404'd every call in all three, at
+the one moment anyone runs that runbook. The id now follows the client:
+`openAiModelIdFor(baseURL, bareId)` in `services/models.ts`, read from the same
+env var the client is constructed from, so the two cannot disagree. The runbook
+now says so.
+
+`aiRouter.ts` carried the comment `// Kept for backward compat but routes to
+OpenRouter` on that client. It does not — it reads
+`AI_INTEGRATIONS_OPENAI_BASE_URL`, and with the secret unset the OpenAI SDK's
+own default applies. Same species as the defect beside it: a name (and a
+comment) asserting a provider the code does not use.
+
+**MEASURED BUT NOT SETTLED — registered, not rewritten.** Four call sites use
+non-chat OpenAI endpoints on the platform client, which `openaiClient.ts`'s own
+docblock forbids ("OpenRouter does not proxy /v1/audio/transcriptions … do not
+route those through this helper"; `routes-field-scout.ts` is named as the
+sanctioned pattern and correctly reads `OPENAI_API_KEY` directly). Probing
+OpenRouter unauthenticated:
+
+| endpoint | status | reading |
+|---|---|---|
+| `POST /api/v1/chat/completions` | 401 | route exists |
+| `POST /api/v1/embeddings` | 401 | route exists |
+| `POST /api/v1/audio/transcriptions` | 401 | route exists |
+| `POST /api/v1/images/generations` | 400 (ZodError) | route exists |
+| `POST /api/v1/models` | **404** | control — this is what absence looks like |
+
+So the docblock's premise is stale: those routes DO exist. But no `whisper-*`,
+`dall-e-*` or `text-embedding-*` id appears in the 415-model catalogue, and the
+ids those endpoints accept cannot be enumerated without a key. **Both possible
+rewrites are guesses**: prefixing them guesses at ids nothing lists, and moving
+them to a direct OpenAI client moves spend to a key that may not be configured
+(the deploy log records `AI_INTEGRATIONS_OPENAI_API_KEY` failing its health
+check). Registered in the gate with the measurement and its limit, and on the
+frontier. Refusing to guess is the finding, not a gap in it.
+
+**Two gates, same split as entry 34.**
+`scripts/check-model-prefix.mjs` is the OFFLINE half and the new 26th step of
+`npm run check`: every model-carrying key in `server/**` must hold an
+`author/slug` id or appear in a register whose entries name the client and the
+reason, three of them scoped to a single file. It strips comments first — a
+docblock showing a caller how to pass a model id is documentation, not a
+request, which is entry 35's lesson applied prospectively rather than after the
+fact. `scripts/lib/strip-comments.mjs` is now shared by three scanners instead
+of copied into each.
+`scripts/check-model-ids.mjs` (live, refuses when it cannot reach the catalogue)
+now probes **every prefixed literal in `server/`**, not just the registry — 6
+registry ids plus 2 distinct literals across 56 sites — because the defect was
+never "the registry is wrong", it was "an id that does not exist reached a
+provider", and a literal reaches one just as well.
+
+**Exit test.** `modelPrefixGate.test.ts` writes a probe into the real tree and
+runs the real gate: it fires on the exact defect, on an EQUIVALENT
+representation (different key, different model family, single quotes), and on a
+registered id used outside the file it was registered for. Two negative controls
+— a prefixed id, and a bare id inside a comment — must not fire. Plus a vacuity
+case on the walk, the literal count and the stripper's own score.
+`modelIdsAreReal.test.ts` pins `openAiModelIdFor` in both directions with a
+vacuity guard, because a resolver that returned its input unchanged would pass
+every bare-side assertion.
+
+**What this does not claim.** That these calls were failing in production cannot
+be shown from the repository — it depends on secrets and on traffic. What is
+shown is that the id sent does not exist at the provider the client points at.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

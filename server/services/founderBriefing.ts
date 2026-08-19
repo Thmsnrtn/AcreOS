@@ -157,7 +157,7 @@ async function writeBriefingWithAI(
 
   try {
     const resp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "openai/gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
       max_tokens: 300,

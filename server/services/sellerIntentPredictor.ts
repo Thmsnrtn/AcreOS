@@ -608,7 +608,7 @@ export class SellerIntentPredictorService {
       const signalsSummary = this.formatSignalsForAI(signals);
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [
           {
             role: "system",

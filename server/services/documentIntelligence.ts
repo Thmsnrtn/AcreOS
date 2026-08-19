@@ -277,7 +277,7 @@ export class DocumentIntelligenceService {
     if (openai && fileUrl) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "user",
@@ -331,7 +331,7 @@ export class DocumentIntelligenceService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -406,7 +406,7 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -455,7 +455,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -559,7 +559,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
     if (openai && differences.length > 0) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",
@@ -634,7 +634,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",

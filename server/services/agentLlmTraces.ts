@@ -11,7 +11,7 @@
  *     organizationId: orgId,
  *     agentCodename: "sophie_csm",
  *     purpose: "customer_monthly_letter",
- *     model: "claude-opus-4",
+ *     model: "anthropic/claude-opus-4.8",
  *     systemPrompt,
  *     userPrompt,
  *     response: response.text,

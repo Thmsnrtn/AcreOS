@@ -274,7 +274,7 @@ export class VoiceCallAIService {
     if (openai) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",
@@ -356,7 +356,7 @@ Respond in JSON format:
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",
@@ -433,7 +433,7 @@ Respond in JSON format:
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",
@@ -525,7 +525,7 @@ Respond in JSON format:
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",

@@ -67,7 +67,7 @@ is what keeps the next steward from inferring more.
 
 ## The surface
 
-`npm run check` is **25 steps**: one `tsc --noEmit` plus 24 lint/check gates.
+`npm run check` is **26 steps**: one `tsc --noEmit` plus 25 lint/check gates.
 **14 JSON-configured ratchets** live in `scripts/ratchets/`. The suite is 924
 files / 12,444 tests. "The gates" means these 25 — nothing else.
 

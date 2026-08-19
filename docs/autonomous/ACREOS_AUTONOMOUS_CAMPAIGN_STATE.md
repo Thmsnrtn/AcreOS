@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `8e8c0943`, 2026-08-19. Working tree clean, 930 test files /
-12,499 tests green, 25 gates green.
+Verified at: `3792080a` + the model-id commit below, 2026-08-19. Working tree
+clean, 931 test files / 12,520 tests green, 26 gates green.
 
 ---
 
@@ -99,11 +99,14 @@ had not verified; those are deliberately absent below.
    overnight campaign send is told it is queued. Small effort — refuse, or wire
    it. The strongest built-but-unwired instance on the Pax tool surface.
 
-3. **52 bare `gpt-4o`-style ids sent to an OpenRouter-only client.** Measured at
-   HEAD: 52 non-telemetry `model: "gpt-4o*"` literals across 22 files that never
-   construct their own OpenAI client. Every catalogue id carries an
-   `author/slug` prefix (0 of 415 without), so each is a 404. Ledger 34 fixed the
-   central registry and gated it; these are direct literals that bypass it.
+3. ~~**52 bare `gpt-4o`-style ids sent to an OpenRouter-only client.**~~ CLOSED
+   as ledger 36 — and the count was wrong in the safe direction only by accident.
+   The real figure was **59 literals across 31 files**: this entry's number came
+   from a grep for `model: "gpt-4o"` with double quotes, and nine files use
+   single quotes. A quote-biased grep is a sample presented as a census. The gate
+   that replaced it (`lint:model-prefix`, `npm run check` step 26) matches on the
+   KEY and accepts either quote. What remains from this item is the non-chat
+   endpoint question, which is now item 12.
 
 4. **Buyer-qualification IDOR.** VERIFIED. `routes-buyer-qualification.ts:174`
    proves the caller owns `buyer_qualifications` row `:id`, then passes that same
@@ -167,7 +170,61 @@ had not verified; those are deliberately absent below.
     reproduction is a one-line change to the linter (point the identifier pass
     at `code` instead of `raw`), and the whole cost is the adjudication.
 
-11. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
+11. **The Pax model picker 422s on every option except Auto.** VERIFIED, and
+    it is customer-facing on the primary AI surface. `pax-copilot-rail.tsx:1294`
+    offers `fast | balanced | powerful | reasoning | claude` and posts the raw
+    value as `modelOverride`; `routes-ai.ts:419` accepts a `z.enum` of
+    `gpt-4o | gpt-4o-mini | gpt-4-turbo | gpt-3.5-turbo |
+    claude-3-5-sonnet-20241022 | claude-3-haiku-20240307 | deepseek/deepseek-chat`.
+    **The two sets do not intersect at all**, and the route uses `safeParse` →
+    `Errors.validationFailed`, so the customer gets a 422 and no answer. The
+    selection is persisted to `localStorage`, so it keeps failing on every
+    subsequent message until they switch back to Auto.
+    Six of the seven server-side ids are also ids no provider in this system
+    serves (bare or dated), which is how it went unnoticed — nobody could reach
+    the code path that would have 404'd.
+    **Do NOT just make the picker work.** `ai/executive.ts:1522` resolves
+    `modelOverride || visionFallback || costRoutedCeiling || result.model` — the
+    override wins over `pickPaxModelForOrg`'s TIER CEILING and its soft-cap
+    downgrade. Making the picker functional as-is hands every free-tier org an
+    Opus selector that bypasses the margin guard the same codebase built
+    (see `campaignOptimizer.ts:186`, "Margin guard (S3 follow-up)"). The two
+    honest options are: accept the tier vocabulary and CLAMP to the org's
+    ceiling, or remove the picker from the customer rail (executive.ts's own
+    comment says the override is "founder dashboard, eval harness"). That is a
+    product + billing call, so it is queued for the owner rather than decided
+    here — but the 422 is a defect under either answer.
+
+12. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
+    `openaiClient.ts`'s docblock forbids exactly this and names
+    `routes-field-scout.ts` as the sanctioned pattern (read `OPENAI_API_KEY`
+    directly). `voiceCallAI.ts:171` and `routes-ai.ts:1859` call
+    `audio.transcriptions.create({ model: "whisper-1" })`;
+    `adCreativeService.ts:243` calls `images.generate({ model: "dall-e-3" })`;
+    `dealPatternCloning.ts:745` calls
+    `embeddings.create({ model: "text-embedding-3-small" })`.
+    Measured 2026-08-19: all four OpenRouter routes EXIST (401/400 unauthenticated,
+    against a 404 control on `POST /api/v1/models`), so the docblock's premise is
+    stale — but no whisper/dall-e/embedding id appears in the 415-model
+    catalogue, and what those endpoints accept cannot be enumerated without a
+    key. Both rewrites are guesses. Registered in `check-model-prefix.mjs` with
+    the measurement and its limit. **Needs one provider key to settle**, then it
+    is a small fix.
+
+13. **`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
+    most expensive one.** `models.ts` states it is "the ONLY price surface
+    callers should use — there is no second cost table"; `routes-ai.ts:1207`
+    declares a local `MODEL_COSTS` with four stale bare keys. On the same
+    customer-facing `/api/ai/cost-savings` surface, `:1243` reads
+    `metadata.model || "gpt-4o"` and prices the result at gpt-4o's rate — a
+    dollar figure derived from a model label nobody recorded, on a page whose
+    whole purpose is telling the customer what they saved. Sibling defaults at
+    `:368` and `:574` write that same fabricated label into the usage record the
+    page later reads. This is the fabrication family, one type away from the
+    `measurement-defaults` register (that gate matches numeric defaults; this one
+    is a string key that becomes a number downstream).
+
+14. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
     The per-org `aiCostCeiling` on `routeAITask` is the entire control.
     `userAiCostControls.ts` — the per-user daily/monthly budget — was deleted in
     ledger 35 as unwired and fail-open, and `DEFECT-0017` was corrected in the
@@ -181,8 +238,12 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–35.
+Full reasoning in the cross-pollination ledger, entries 23–36.
 
+- **the client's name was not its provider** — `getOpenAIClient()` returns an
+  OpenRouter client, and 59 literals across 31 files sent it OpenAI's bare ids,
+  which 404. Three services decide their provider from a secret at runtime, so
+  their id now follows the client. Ledger 36.
 - **the gate was reading comments** — `lint-reachability` scanned raw source, so
   a specifier inside a comment granted its two strongest exemptions. Three
   services whose own docblocks showed a usage example were reading as
@@ -212,8 +273,13 @@ Full reasoning in the cross-pollination ledger, entries 23–35.
 
 ## Blocked — owner
 
-`docs/autonomous/OWNER_DECISIONS_PENDING.md`. The queue is currently **empty**:
-all six decisions are made, OD-2/3/4/5 implemented, OD-1 a live hold (0236 stays
+`docs/autonomous/OWNER_DECISIONS_PENDING.md`. **One decision is open: OD-7** —
+what the Pax model picker should be (raised 2026-08-19, recommendation: remove
+it from the customer rail). It is a product + billing call because the override
+currently outranks the tier ceiling; the 422 underneath it is a defect either
+way. Nothing is blocked on it.
+
+The other six are made: OD-2/3/4/5 implemented, OD-1 a live hold (0236 stays
 unregistered), OD-6 needed no code and names Customer #1 as the trigger to
 revisit.
 

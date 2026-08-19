@@ -204,7 +204,7 @@ Angles to write:
 Make each variant distinctly different. These will run as A/B tests so they must each take a genuinely different angle, tone, and structure.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },

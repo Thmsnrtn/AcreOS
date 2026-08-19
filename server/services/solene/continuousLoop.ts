@@ -744,7 +744,16 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const OpenAImod = (await import("openai")).default;
               const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
               const { tracedLlmCall } = await import("../tracedLlmCall");
-              const model = process.env.AUTOPILOT_DELIBERATION_MODEL ?? "gpt-4o-mini";
+              const { OPENAI_DIRECT_MODELS, openAiModelIdFor } = await import("../models");
+              // The default is named for whichever provider
+              // AI_INTEGRATIONS_OPENAI_BASE_URL points at — the client three
+              // lines above is built from that same var, and OpenRouter 404s
+              // the bare OpenAI name. An explicitly configured
+              // AUTOPILOT_DELIBERATION_MODEL is passed through untouched.
+              const model = process.env.AUTOPILOT_DELIBERATION_MODEL ?? openAiModelIdFor(
+                process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+                OPENAI_DIRECT_MODELS.GPT4O_MINI,
+              );
               callModel = async (prompt: string) =>
                 (
                   await tracedLlmCall({

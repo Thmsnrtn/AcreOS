@@ -770,7 +770,7 @@ export class BuyerMatchingAIService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -1075,7 +1075,7 @@ ${property.listPrice ? `Listed at $${parseFloat(property.listPrice).toLocaleStri
     if (openai && activeBuyers.length >= 5) {
       try {
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             {
               role: "system",

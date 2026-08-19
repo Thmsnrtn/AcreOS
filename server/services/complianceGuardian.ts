@@ -690,7 +690,7 @@ Generate a comprehensive compliance report in markdown format that includes:
 6. Estimated timeline and costs if available`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 2000,
     });

@@ -61,6 +61,16 @@ fly secrets set AI_INTEGRATIONS_OPENAI_BASE_URL=https://openrouter.ai/api/v1 -a 
 fly secrets set AI_INTEGRATIONS_OPENAI_API_KEY=$OPENROUTER_KEY -a acreos
 ```
 
+**This swap used to break the three services it touches, silently.** OpenAI
+serves `gpt-4o`; OpenRouter 404s it and wants `openai/gpt-4o`. `ai/vaService.ts`,
+`services/supportBrain.ts` and `aiRouter`'s direct-OpenAI fallback all hardcoded
+the bare name, so repointing this base URL at OpenRouter turned every call in
+them into a 404 — during an incident, which is the only time anyone runs this.
+Fixed 2026-08-19: those call sites now resolve the id from this same env var via
+`openAiModelIdFor()` in `server/services/models.ts`, so the swap works. If you
+add a service on that client, use the resolver rather than a literal; the
+`lint:model-prefix` gate enforces it.
+
 ### Option 4: Temporarily reduce AI rate limits
 ```bash
 # In server/index.ts, the AI limiter is:

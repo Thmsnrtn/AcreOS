@@ -102,7 +102,7 @@ PostgreSQL 16 in six CI workflows — and vitest cannot see it, because its
 
 **2. You cannot run the product here.** No `DATABASE_URL`, no `.env`, no Clerk
 secret. The README's Quick Start was written for the founder's laptop. Do not
-spend an hour booting it. All work here is source-level plus the 25 gates plus
+spend an hour booting it. All work here is source-level plus the 26 gates plus
 vitest; anything needing a query plan, an index, a migration ordering, or real
 provider behaviour must be handed over with a runbook rather than attempted and
 declared done.

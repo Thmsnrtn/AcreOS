@@ -19,10 +19,61 @@
  * Both had price rows in aiCostRates, which is all the boot guard in models.ts
  * ever checked. A price is not an existence proof.
  *
+ * WHAT IT COVERS
+ * --------------
+ * Not just the MODELS registry. A registry is only authoritative over the call
+ * sites that USE it, and most do not: sixty-odd sites across thirty-one files
+ * passed their own literal to the platform client. So this probes both — the
+ * registry's ids AND every prefixed model literal in server/ — because the
+ * defect was never "the registry is wrong", it was "an id that does not exist
+ * reached a provider", and a literal reaches one just as well.
+ *
  *   node scripts/check-model-ids.mjs
  */
 
+import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
+import { join, relative, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
+
 const CATALOGUE = "https://openrouter.ai/api/v1/models";
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "coverage", "test-results"]);
+function walkTs(dir, out = []) {
+  if (!existsSync(dir)) return out;
+  for (const entry of readdirSync(dir)) {
+    if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
+    const full = join(dir, entry);
+    const st = lstatSync(full);
+    if (st.isSymbolicLink()) continue;
+    if (st.isDirectory()) walkTs(full, out);
+    else if (/\.ts$/.test(entry) && !/\.(test|spec)\.ts$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+/**
+ * Every PREFIXED model literal in server/, with where it came from. Bare ids
+ * are `check-model-prefix.mjs`'s job (it runs offline and has the register of
+ * deliberate exceptions); this only asks whether a prefixed id is real.
+ * Comments are stripped: a docblock example is not a request.
+ */
+function sourceLiterals() {
+  const found = new Map();
+  for (const abs of walkTs(join(REPO, "server"))) {
+    const rel = relative(REPO, abs).split("\\").join("/");
+    const code = stripCommentsPreservingLines(readFileSync(abs, "utf8"));
+    const re = /\b(?:model|modelKey|modelId|aiModel|forceModel|tierCeilingModel)\s*:\s*(["'])([a-z0-9-]+\/[^"'\n]+)\1/g;
+    let m;
+    while ((m = re.exec(code)) !== null) {
+      const line = code.slice(0, m.index).split("\n").length;
+      if (!found.has(m[2])) found.set(m[2], []);
+      found.get(m[2]).push(`${rel}:${line}`);
+    }
+  }
+  return found;
+}
 
 async function main() {
   // The registry is TypeScript; read the ids out of the SOURCE rather than
@@ -69,19 +120,34 @@ async function main() {
     process.exit(1);
   }
 
+  const literals = sourceLiterals();
+  console.log(`[check-model-ids] prefixed literals in server/: ${literals.size} distinct across ${[...literals.values()].reduce((n, v) => n + v.length, 0)} site(s)`);
+  if (literals.size === 0) {
+    console.error("[check-model-ids] FAIL — the source walk found no prefixed model literal at all. That is a broken scan reporting compliance, not a clean tree.");
+    process.exit(1);
+  }
+
+  const nearest = (id) => {
+    const stem = (id.split("/")[1] ?? id).replace(/-20\d{6}$/, "").replace(/[.-]\d+([.-]\d+)?$/, "");
+    const near = [...catalogue].filter((c) => c.includes(stem)).slice(0, 4);
+    return near.length ? `   — did you mean: ${near.join(", ")}` : "";
+  };
+
   const missing = ids.filter((id) => !catalogue.has(id));
-  if (missing.length > 0) {
-    console.error("\n[check-model-ids] FAIL — these pinned ids are not in the provider catalogue:");
-    for (const id of missing) {
-      const stem = id.split("/")[1].replace(/-20\d{6}$/, "");
-      const near = [...catalogue].filter((c) => c.includes(stem)).slice(0, 4);
-      console.error(`  ${id}${near.length ? `   — did you mean: ${near.join(", ")}` : ""}`);
+  const missingLiterals = [...literals.keys()].filter((id) => !catalogue.has(id));
+
+  if (missing.length > 0 || missingLiterals.length > 0) {
+    console.error("\n[check-model-ids] FAIL — these ids are not in the provider catalogue:");
+    for (const id of missing) console.error(`  MODELS   ${id}${nearest(id)}`);
+    for (const id of missingLiterals) {
+      console.error(`  literal  ${id}${nearest(id)}`);
+      for (const site of literals.get(id).slice(0, 6)) console.error(`             ${site}`);
     }
     console.error("\n  A price row in aiCostRates is not an existence proof. Fix the id.");
     process.exit(1);
   }
 
-  console.log("[check-model-ids] PASS — every pinned id exists at the provider.");
+  console.log("[check-model-ids] PASS — every pinned id AND every prefixed source literal exists at the provider.");
 }
 
 main().catch((err) => {

@@ -381,7 +381,7 @@ Format as a professional report.`;
       }
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,
       });
@@ -400,7 +400,7 @@ Format as a professional report.`;
         const { gateOutputOrThrow } = await import("./aiEvalHarness");
         await gateOutputOrThrow({
           surface: "complianceAI_disclosure",
-          modelKey: "gpt-4o",
+          modelKey: "openai/gpt-4o",
           output: generated,
         });
       } catch (gateErr: any) {

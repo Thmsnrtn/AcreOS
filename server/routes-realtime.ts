@@ -71,7 +71,7 @@ Available app paths:
 Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel": "Button label or null" }`;
 
     const completion = await requireOpenAIClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'openai/gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message },

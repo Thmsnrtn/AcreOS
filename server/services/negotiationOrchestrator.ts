@@ -79,7 +79,7 @@ ${sellerCommunication.join('\n\n')}
 Respond in JSON format.`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: analysisPrompt }],
         response_format: { type: 'json_object' },
       });
@@ -193,7 +193,7 @@ Provide:
 Respond in JSON format.`;
 
       const reasoning = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: reasoningPrompt }],
         response_format: { type: 'json_object' },
       });
@@ -564,7 +564,7 @@ Create a professional, persuasive script (200-300 words) that:
 Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -881,7 +881,7 @@ build_negotiation_plan as your final tool to produce the structured output.`,
       // Agentic loop: let the model call tools until it's done
       for (let round = 0; round < 6; round++) {
         const response = await requireOpenAIClient().chat.completions.create({
-          model: 'gpt-4o',
+          model: 'openai/gpt-4o',
           messages,
           tools,
           tool_choice: 'auto',

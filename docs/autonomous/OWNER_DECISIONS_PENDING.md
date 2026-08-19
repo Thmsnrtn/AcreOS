@@ -1,12 +1,12 @@
 # OWNER DECISIONS PENDING
 
-> **ALL SIX DECISIONS ARE TAKEN. NOTHING ON THIS PAGE IS WAITING ON THE OWNER.**
+> **ONE DECISION IS OPEN: OD-7 (the Pax model picker). The other six are taken.**
 >
 > OD-2, OD-3, OD-4 and OD-5 are DECIDED AND IMPLEMENTED. OD-1 is DECIDED (hold)
 > and stays listed because the hold is the live state. OD-6 is DECIDED (accept
 > the cascade) with nothing to build — the code already behaves that way; it is
 > recorded so the choice is deliberate rather than inherited, and it is the one
-> to revisit at Customer #1.
+> to revisit at Customer #1. OD-7 was opened 2026-08-19 and is at the bottom.
 
 Genuine owner decisions only. Ordinary engineering — schemas, refactors, tests,
 migration mechanics, deletion, dependency ordering — is not escalated here.
@@ -367,3 +367,62 @@ trail that vanishes with the customer who left.
 **Blocked:** nothing. `evidenceClaimsIntegrity.test.ts` fails if any migration
 reintroduces `DO INSTEAD NOTHING`, so the broken mechanism cannot return while
 this is open.
+
+---
+
+## OD-7 — OPEN, raised 2026-08-19: what the Pax model picker should be
+
+**Decision:** whether a customer may choose Pax's model at all, and if so
+whether that choice may exceed the model tier their plan pays for.
+
+**The defect that raised it (fix it either way).** The picker is broken end to
+end and returns a **422**. `client/src/components/pax-copilot-rail.tsx:1294`
+offers `fast | balanced | powerful | reasoning | claude` and posts the raw
+string; `server/routes-ai.ts:419` accepts a `z.enum` of raw model ids
+(`gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`,
+`claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`,
+`deepseek/deepseek-chat`). **The two sets do not intersect**, and the route
+`safeParse`s, so any selection other than "Auto" fails validation — the customer
+gets an error and no answer, on the primary AI surface, and the choice is
+persisted to `localStorage` so it keeps failing until they set it back. Six of
+the seven server-side ids are also names no provider in this system serves
+(bare or dated), which is how it stayed invisible: nobody could reach the code
+path that would have 404'd.
+
+**Why this is not just a bug fix.** `server/ai/executive.ts:1522` resolves
+`modelOverride || visionFallback || costRoutedCeiling || result.model` — the
+override wins over `pickPaxModelForOrg`'s tier ceiling AND its monthly soft-cap
+downgrade. Making the picker work as written would hand every free-tier org an
+Opus selector that bypasses the margin guard this codebase deliberately built
+(`campaignOptimizer.ts:186`). executive.ts's own comment says the override is
+for "founder dashboard, eval harness" — the customer rail sending it looks like
+drift, not design.
+
+**Options.**
+(a) **Clamp.** Server accepts the tier vocabulary the client already sends, maps
+    it to `MODELS.*`, then clamps to the org's ceiling. The customer keeps a
+    real choice, bounded by what they pay for; "powerful" on a free plan quietly
+    resolves to the free ceiling rather than erroring.
+(b) **Remove the picker from the customer rail.** Keep `modelOverride` for the
+    founder dashboard and eval harness, as executive.ts describes. Auto already
+    routes per turn — the tooltip literally says "Auto picks the right brain for
+    each question" — and the constitution's "Pax stays ambient fabric" line
+    argues against giving customers model dials at all.
+(c) Leave it. Not viable: it is a live 422 either way.
+
+**RECOMMENDATION: (b), remove it.** The picker offers a choice the product
+philosophy says Pax should be making, its labels do not map to anything the
+customer can reason about, and (a) costs a model-ordering concept plus a clamp
+that has to stay correct as tiers change — real machinery to preserve a control
+nobody has been able to use. If the choice should exist, "Fast vs Thorough" as
+an explicit latency/cost trade is a better product than a model list, and that
+is a design task rather than a repair.
+
+**Consequence of (b):** one component edit, one zod field narrowed to the
+founder path. **Consequence of (a):** the same plus a tier ladder and its own
+gate, because an override that silently exceeds a ceiling is a margin hole with
+a UI.
+
+**Blocked meanwhile:** nothing. Ledger 36 fixed the provider-side ids around it;
+the picker itself is untouched pending this.
+

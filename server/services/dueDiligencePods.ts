@@ -800,7 +800,7 @@ Format: RECOMMENDATION: [recommendation]
 REASONING: [reasoning]`;
 
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             { role: "system", content: "You are a land investment analyst providing concise due diligence recommendations." },
             { role: "user", content: prompt },
@@ -886,7 +886,7 @@ Green Flags: ${(dossier.greenFlags as string[] || []).join(", ") || "None"}
 Write a professional executive summary suitable for an investor.`;
 
         const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "openai/gpt-4o",
           messages: [
             { role: "system", content: "You are a real estate investment analyst writing executive summaries for property due diligence reports." },
             { role: "user", content: prompt },

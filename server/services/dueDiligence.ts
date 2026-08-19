@@ -218,7 +218,7 @@ Provide a professional assessment focusing on:
 3. Recommended next steps for due diligence`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       messages: [
         { role: "system", content: "You are a professional real estate analyst specializing in land investments." },
         { role: "user", content: prompt }

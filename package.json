@@ -12,7 +12,7 @@
     "verify-receipt": "node scripts/verify-receipt.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "NODE_OPTIONS=--max-old-space-size=6144 tsc --noEmit --incremental false && npm run check:tests && npm run lint:schema && npm run lint:schema-migrate-mirror && npm run lint:ledger-refs && npm run lint:no-fabrication && npm run lint:measurement-defaults && npm run lint:boundaries && npm run lint:kernel-boundary && npm run lint:ratchets && npm run lint:reachability && npm run lint:prompt-envelope && npm run lint:contract-adoption && npm run lint:org-fetch && npm run lint:css-hover && npm run lint:page-hex && npm run lint:prefetch-authority && npm run lint:date-format && npm run lint:zindex && npm run lint:translucency && npm run lint:eslint-ratchet && npm run lint:browser-safe-shared && npm run lint:route-order && npm run lint:infrastructure-restraint && npm run lint:residential-comps-hold",
+    "check": "NODE_OPTIONS=--max-old-space-size=6144 tsc --noEmit --incremental false && npm run check:tests && npm run lint:schema && npm run lint:schema-migrate-mirror && npm run lint:ledger-refs && npm run lint:no-fabrication && npm run lint:measurement-defaults && npm run lint:boundaries && npm run lint:kernel-boundary && npm run lint:ratchets && npm run lint:reachability && npm run lint:model-prefix && npm run lint:prompt-envelope && npm run lint:contract-adoption && npm run lint:org-fetch && npm run lint:css-hover && npm run lint:page-hex && npm run lint:prefetch-authority && npm run lint:date-format && npm run lint:zindex && npm run lint:translucency && npm run lint:eslint-ratchet && npm run lint:browser-safe-shared && npm run lint:route-order && npm run lint:infrastructure-restraint && npm run lint:residential-comps-hold",
     "lint:browser-safe-shared": "node scripts/check-browser-safe-shared.mjs",
     "lint:infrastructure-restraint": "node scripts/check-infrastructure-restraint.mjs",
     "lint:residential-comps-hold": "node scripts/check-residential-comps-hold.mjs",
@@ -80,7 +80,8 @@
     "mobile:ios:build": "npm run build && npx cap copy ios && cd ios/App && xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build clean build",
     "mobile:android:build": "npm run build && npx cap copy android && cd android && ./gradlew assembleDebug",
     "lint:prompt-envelope": "node scripts/lint-prompt-envelope.mjs",
-    "lint:measurement-defaults": "node scripts/check-measurement-defaults.mjs"
+    "lint:measurement-defaults": "node scripts/check-measurement-defaults.mjs",
+    "lint:model-prefix": "node scripts/check-model-prefix.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.110.0",

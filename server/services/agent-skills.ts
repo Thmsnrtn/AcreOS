@@ -2372,7 +2372,7 @@ Include:
 Do not include legal advice disclaimers inside the letter body. Keep it under 350 words.`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800,
       });
@@ -2545,7 +2545,7 @@ Return a JSON object with:
 Be specific and actionable.`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 400,
         response_format: { type: "json_object" },
@@ -2628,7 +2628,7 @@ Return a JSON object with:
 - targetExitMultiple: e.g. "2x – 3x in 12-18 months"`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 500,
         response_format: { type: "json_object" },

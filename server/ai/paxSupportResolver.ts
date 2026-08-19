@@ -232,7 +232,7 @@ export async function resolveTicketWithPax(
   let draft: { response: string; confidence: number; resolutionType?: string } | null = null;
 
   let response = await createCompletion({
-    model: "gpt-4o",
+    model: "openai/gpt-4o",
     messages: chatMessages,
     tools,
     tool_choice: "auto",
@@ -309,7 +309,7 @@ export async function resolveTicketWithPax(
     chatMessages.push(...toolResults);
 
     response = await createCompletion({
-      model: "gpt-4o",
+      model: "openai/gpt-4o",
       messages: chatMessages,
       tools,
       tool_choice: "auto",

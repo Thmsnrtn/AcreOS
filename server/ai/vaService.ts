@@ -6,6 +6,7 @@ import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing 
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { OPENAI_DIRECT_MODELS, openAiModelIdFor } from "../services/models";
 
 // Lazy client: constructing OpenAI at module scope threw at import time when
 // the key was unset, so the first hit on any VA route surfaced as a generic
@@ -25,6 +26,22 @@ function getOpenAI(): OpenAI {
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
   return openaiSingleton;
+}
+
+/**
+ * `gpt-4o` on OpenAI, `openai/gpt-4o` on OpenRouter — and which one this
+ * service reaches is decided by AI_INTEGRATIONS_OPENAI_BASE_URL, a secret with
+ * no default that `docs/runbooks/ai-quota-exceeded.md` tells the operator to
+ * repoint at OpenRouter during a quota incident. Resolved per call rather than
+ * captured at module load, so a restart is not required for the runbook's swap
+ * to take effect, and read through the same env var the client is built from so
+ * the two cannot disagree. See `openAiModelIdFor` in services/models.ts.
+ */
+function vaModel(): string {
+  return openAiModelIdFor(
+    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    OPENAI_DIRECT_MODELS.GPT4O,
+  );
 }
 
 const MAX_TOOL_ITERATIONS = 10;
@@ -665,12 +682,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     await assertAiSpendAllowed(orgId);
 
     let response = await getOpenAI().chat.completions.create({
-      model: "gpt-4o",
+      model: vaModel(),
       messages,
       tools: tools.length > 0 ? tools : undefined,
       max_tokens: 2048
     });
-    recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     let assistantMessage = response.choices[0].message;
 
@@ -703,12 +720,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       messages.push(...toolResults);
 
       response = await getOpenAI().chat.completions.create({
-        model: "gpt-4o",
+        model: vaModel(),
         messages,
         tools: tools.length > 0 ? tools : undefined,
         max_tokens: 2048
       });
-      recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+      recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
       assistantMessage = response.choices[0].message;
     }
@@ -844,7 +861,7 @@ Generate a briefing with:
 Keep it concise and actionable.`;
 
     const response = await getOpenAI().chat.completions.create({
-      model: "gpt-4o",
+      model: vaModel(),
       messages: [
         { 
           role: "system", 
@@ -854,7 +871,7 @@ Keep it concise and actionable.`;
       ],
       max_tokens: 1500
     });
-    recordExternalAiSpend({ orgId, taskType: "va_briefing", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    recordExternalAiSpend({ orgId, taskType: "va_briefing", model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     const content = response.choices[0].message.content || "";
     

@@ -9,11 +9,11 @@
  *     purpose: "negotiation_script",
  *     organizationId: orgId,
  *     decisionId: dealId,
- *     model: "gpt-4o",
+ *     model: "openai/gpt-4o",
  *     systemPrompt,
  *     userPrompt,
  *     call: () => openai.chat.completions.create({
- *       model: "gpt-4o",
+ *       model: "openai/gpt-4o",
  *       messages: [
  *         { role: "system", content: systemPrompt },
  *         { role: "user", content: userPrompt },
