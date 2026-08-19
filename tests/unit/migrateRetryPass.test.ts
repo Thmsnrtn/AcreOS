@@ -31,6 +31,20 @@ const SRC = fs.readFileSync(
   "utf8",
 );
 
+/**
+ * Source with comments removed.
+ *
+ * The ordering assertion below first compared `indexOf("WOULD FAIL")` against
+ * the raw file and failed — because the phrase appears in the explanatory
+ * comment ABOVE the code it describes. A source gate that reads its own
+ * documentation is matching prose, not behaviour; the same mistake this
+ * session already made twice, in the county-opportunity and deal-feed scanners.
+ */
+const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "")
+  .split("\n")
+  .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
+  .join("\n");
+
 describe("the retry pass exists and is bounded", () => {
   it("vacuity guard: the runner still has its statement loop and skip bookkeeping", () => {
     expect(SRC.length).toBeGreaterThan(100000);
@@ -76,6 +90,53 @@ describe("the retry pass exists and is bounded", () => {
   });
 });
 
+describe("the dry-run gate does not call an unvalidatable statement a failure", () => {
+  /**
+   * Found by running the DR runbook's restore drill end to end for the first
+   * time: `migrate.mjs --dry-run` exited 1 with "NOT safe to deploy as-is"
+   * against a database that had just restored PERFECTLY (row counts exact).
+   * All 7 reported failures were `CREATE INDEX CONCURRENTLY`, which PostgreSQL
+   * refuses inside a transaction block — and the dry-run validates inside one
+   * transaction and rolls back. Its own mechanism cannot host them; the real
+   * non-transactional run applies all 7 without trouble.
+   *
+   * An operator following the runbook after a real outage would be told their
+   * good backup is unsafe. One who has seen it before learns to ignore the
+   * gate, and then it cannot warn them about anything.
+   */
+  it("classifies non-transactional statements separately from failures", () => {
+    expect(SRC).toMatch(/const unvalidatable = \[\]/);
+    expect(SRC).toMatch(/cannot run inside a transaction block/);
+    expect(SRC).toMatch(/NOT VALIDATED \(cannot run inside a transaction/);
+  });
+
+  it("an unvalidatable statement does NOT set the failure exit code", () => {
+    // The whole defect: these counted toward `failures`, which sets exit 1.
+    const at = SRC.indexOf("unvalidatable.push(");
+    expect(at).toBeGreaterThan(-1);
+    const branch = SRC.slice(at - 200, at + 300);
+    expect(branch, "the unvalidatable branch still marks a failure").not.toMatch(/failures\.push\(/);
+    expect(branch, "the unvalidatable branch still sets exit 1").not.toMatch(/exitCode = 1/);
+  });
+
+  it("the unvalidatable branch is checked BEFORE the generic failure branch", () => {
+    // Order matters: a generic `else` reached first would re-classify them as
+    // failures and restore the false alarm.
+    // 61,856 chars measured after stripping (the file is heavily commented).
+    expect(CODE.length, "the comment stripper ate the file").toBeGreaterThan(40000);
+    const conc = CODE.indexOf("CANNOT_DRY_RUN.test(err.message)");
+    const wouldFail = CODE.indexOf("WOULD FAIL");
+    expect(conc).toBeGreaterThan(-1);
+    expect(conc).toBeLessThan(wouldFail);
+  });
+
+  it("the gate STATES the coverage it does not have, on every run", () => {
+    // A gate that silently drops a category is claiming proof it never had.
+    expect(SRC).toMatch(/not validated \(non-transactional\)/);
+    expect(SRC).toMatch(/they are not proof either — this gate says nothing about them/);
+  });
+});
+
 describe("the DR runbook states the procedure that was actually measured", () => {
   const RUNBOOK = fs.readFileSync(
     path.join(path.resolve(__dirname, "../.."), "docs/reliability/dr-runbook-postgres-restore.md"),
@@ -93,5 +154,18 @@ describe("the DR runbook states the procedure that was actually measured", () =>
   it("carries the measured end state rather than a claim", () => {
     expect(RUNBOOK).toMatch(/757 tables/);
     expect(RUNBOOK).toMatch(/ZERO skipped/);
+  });
+
+  it("the RTO table is filled in, and says which step was NOT exercised", () => {
+    // It read "PLACEHOLDER, fill on first drill … Until then, RTO is unproven."
+    expect(RUNBOOK, "the RTO table is a placeholder again").not.toMatch(/PLACEHOLDER, fill on first drill/);
+    expect(RUNBOOK).toMatch(/first drill run 2026-08-18/);
+    // The honest half: a measured local drill is not a measured production RTO,
+    // and the S3 fetch was never run. Dropping that caveat would turn a partial
+    // proof into a claimed one.
+    expect(RUNBOOK, "the un-exercised S3 step is no longer disclosed").toMatch(
+      /not exercised/,
+    );
+    expect(RUNBOOK).toMatch(/does \*\*not\*\* prove the timings|not prove the timings/);
   });
 });

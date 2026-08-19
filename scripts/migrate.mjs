@@ -10822,6 +10822,27 @@ const FOUNDATIONAL_TABLES = ["organizations", "users"];
 let exitCode = 0;
 const failures = [];
 const skipped = [];
+/**
+ * Statements the dry-run's own mechanism cannot host.
+ *
+ * `--dry-run` validates inside ONE transaction and ROLLBACKs. PostgreSQL
+ * refuses `CREATE INDEX CONCURRENTLY` inside a transaction block, so those
+ * statements report "cannot run inside a transaction block" — which the dry-run
+ * counted as WOULD FAIL.
+ *
+ * Found on 2026-08-18 by running the DR runbook's restore drill end to end for
+ * the first time: a database restored PERFECTLY from a dump (row counts exact)
+ * failed step 5 with exit 1 and "NOT safe to deploy as-is", on 7 statements
+ * that the real (non-transactional) run applies without trouble.
+ *
+ * That is the worst failure mode a gate can have. An operator who follows the
+ * runbook after a genuine outage is told their good backup is unsafe; an
+ * operator who has seen it before learns to ignore the gate, and then it cannot
+ * warn them about anything real. These are now reported in their own category —
+ * NOT validated, and NOT a failure.
+ */
+const unvalidatable = [];
+const CANNOT_DRY_RUN = /cannot run inside a transaction block/i;
 
 if (DRY_RUN) {
   // Validate the whole batch inside ONE transaction, then ROLLBACK. Nothing is
@@ -10838,7 +10859,13 @@ if (DRY_RUN) {
         // run here means each statement parsed + executed against the snapshot.
       } catch (err) {
         const isExpected = EXPECTED_FAILURE_PATTERNS.some((rx) => rx.test(err.message));
-        if (isExpected) {
+        if (CANNOT_DRY_RUN.test(err.message)) {
+          unvalidatable.push({ stmt, message: err.message });
+          console.warn(
+            `[migrate:dry-run] NOT VALIDATED (cannot run inside a transaction; ` +
+              `the real run executes this outside one): ${stmt}`,
+          );
+        } else if (isExpected) {
           skipped.push({ stmt, message: err.message });
           console.warn(`[migrate:dry-run] SKIP (dependency missing — non-fatal): ${err.message}`);
         } else {
@@ -10858,8 +10885,19 @@ if (DRY_RUN) {
     await pool.end().catch(() => {});
   }
   console.log(
-    `[migrate:dry-run] complete — ${STATEMENTS.length - failures.length - skipped.length} ok, ${skipped.length} skipped (missing prereq), ${failures.length} would-fail`,
+    `[migrate:dry-run] complete — ${STATEMENTS.length - failures.length - skipped.length - unvalidatable.length} ok, ` +
+      `${skipped.length} skipped (missing prereq), ${unvalidatable.length} not validated (non-transactional), ` +
+      `${failures.length} would-fail`,
   );
+  if (unvalidatable.length > 0) {
+    // Stated on every run, including when it is the only non-ok category —
+    // a gate must not report coverage it does not have.
+    console.warn(
+      `[migrate:dry-run] ${unvalidatable.length} statement(s) could NOT be validated by this mode ` +
+        `(CREATE INDEX CONCURRENTLY and the like cannot run inside a transaction). ` +
+        `They are not failures, and they are not proof either — this gate says nothing about them.`,
+    );
+  }
   if (failures.length > 0) {
     console.error(`[migrate:dry-run] ${failures.length} statement(s) would fail. NOT safe to deploy as-is.`);
   }

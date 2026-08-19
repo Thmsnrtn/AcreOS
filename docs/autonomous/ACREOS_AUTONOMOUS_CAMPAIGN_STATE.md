@@ -1447,3 +1447,66 @@ that's fine" to zero.
 gone — an operator following a stale runbook is the failure this whole
 sequence started from). Mutations: removing the retry fails 3 assertions;
 swallowing a retry failure fails 1; making the retry unbounded fails 1.
+
+## PHASE 14 — THE DRILL FOUND THE GATE THAT WOULD HAVE FAILED THE OUTAGE (2026-08-18)
+
+Backlog item 2: *"a restore drill (runbook step 5) would be the first end-to-end
+proof of the DR path itself."* Run.
+
+### What the drill did
+
+`pg_dump` → `createdb` → `psql` restore → row counts → step 5, against the
+757-table database rebuilt in phases 12–13, with a small seeded graph
+(2 orgs / 2 properties / 2 deals / 1 user).
+
+| step | measured |
+|---|---|
+| dump (2.0 MB) | 0.55 s |
+| createdb + extension | 0.16 s |
+| restore (`psql`, exit 0) | 6.5 s |
+| smoke verify — row counts matched the source EXACTLY | 0.04 s |
+| step 5 `migrate.mjs --dry-run` | 0.45 s |
+| **total (steps 2–5)** | **7.7 s** |
+
+The RTO table in the runbook had read *"PLACEHOLDER, fill on first drill …
+Until then, RTO is unproven."* It is now filled — **with its caveat attached**:
+this proves the MECHANISM, not the timings (the dump has almost no data), and
+the S3 fetch was **not exercised at all**. Half the RTO is still unmeasured and
+the table says so.
+
+### The defect the drill existed to find
+
+**Step 5 failed on a perfectly restored database.** `migrate.mjs --dry-run`
+exited 1 with *"7 statement(s) would fail. NOT safe to deploy as-is."*
+
+All 7 were `CREATE INDEX CONCURRENTLY`, which PostgreSQL refuses inside a
+transaction block. The dry-run validates inside ONE transaction and rolls back —
+so its own mechanism cannot host those statements. The real, non-transactional
+run applies all 7 without trouble; nothing was wrong with the database or the
+backup.
+
+This is the worst thing a gate can do, and worth stating precisely: an operator
+following this runbook **after a genuine outage** would be told their good
+backup is unsafe to deploy. And an operator who has seen the false alarm before
+learns to ignore the gate — after which it cannot warn them about anything
+real. A gate that cries wolf on the healthy case is strictly worse than no gate,
+because it trains the response.
+
+Fixed by classification, not suppression: those statements report as **NOT
+VALIDATED** in their own category, excluded from the failure count, and the
+verdict line states the coverage the gate does not have on every run —
+*"they are not failures, and they are not proof either — this gate says nothing
+about them."*
+
+Step 5 now exits 0 on a good restore, and the mutation that restores the old
+classification reproduces exit 1 on the same healthy database.
+
+### A third instance of my own recurring mistake
+
+The ordering assertion in the new test first compared `indexOf("WOULD FAIL")`
+against the RAW source — and failed, because that phrase appears in the
+explanatory comment above the code it describes. Same mistake as the
+county-opportunity and deal-feed scanners earlier this session: **a source gate
+that reads its own documentation is matching prose, not behaviour.** Stripped
+comments, with a floor on the stripped size so the stripper cannot quietly eat
+the file instead.

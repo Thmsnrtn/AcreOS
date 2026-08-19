@@ -70,18 +70,44 @@ DATABASE_URL="$RESTORE_URL" npm run check
 #    dropdb acreos_restore_check    # or: fly apps destroy acreos-restore-drill
 ```
 
-### Measured RTO — **PLACEHOLDER, fill on first drill**
+### Measured RTO — **first drill run 2026-08-18. Read the caveat.**
 
-| Step | Target | Measured (drill date: ____) |
+| Step | Target | Measured (2026-08-18, LOCAL) |
 |------|--------|------------------------------|
-| Locate + download latest dump | < 2 min | ____ |
-| Restore via `psql` | depends on DB size | ____ |
-| Smoke verify (row counts) | < 1 min | ____ |
-| **Total RTO** | **< 30 min goal** | **____** |
+| Locate + download latest dump | < 2 min | **not exercised** — no S3 in this environment |
+| `createdb` + extension | — | 0.16 s |
+| Restore via `psql` | depends on DB size | 6.5 s |
+| Smoke verify (row counts) | < 1 min | 0.04 s |
+| Step 5 `migrate.mjs --dry-run` | — | 0.45 s |
+| **Total (steps 2–5)** | **< 30 min goal** | **7.7 s** |
 | **RPO** (max data loss) | ≤ backup interval | = backup cron cadence |
 
-Run the drill once by hand, time each step, and replace the blanks. Until then,
-RTO is unproven.
+**What this drill does and does not prove.** It was run against a local
+PostgreSQL 16 on a database rebuilt from this repository — 757 tables, a
+handful of seeded rows, a 2.0 MB dump. So it proves the MECHANISM end to end:
+`pg_dump` → `createdb` → `psql` restore (exit 0) → row counts matching the
+source exactly (2 orgs / 2 deals / 1 user, both sides) → step 5 exit 0.
+
+It does **not** prove the timings. Restore time is dominated by data volume,
+and this dump has almost none; treat 6.5 s as a floor for schema creation, not
+an estimate. The S3 fetch (step 1) was not exercised at all — that half of the
+RTO is still unmeasured, and the next drill should run somewhere with bucket
+access and a real dump.
+
+**The drill found a defect, which is the point of drills.** Step 5 —
+`migrate.mjs --dry-run`, the pre-deploy schema gate — **failed with exit 1 and
+"NOT safe to deploy as-is" against a database that had just restored
+perfectly.** All 7 reported failures were `CREATE INDEX CONCURRENTLY`, which
+PostgreSQL refuses inside a transaction block; the dry-run validates inside one
+transaction and rolls back, so its own mechanism cannot host them. The real
+(non-transactional) run applies all 7 without trouble.
+
+That is the worst thing a gate can do: an operator following this runbook after
+a genuine outage would be told their good backup is unsafe to deploy, and an
+operator who has seen it before learns to ignore the gate — after which it
+cannot warn them about anything real. Those statements are now reported in
+their own category, **NOT VALIDATED** rather than WOULD FAIL, stated on every
+run so the gate never claims coverage it does not have.
 
 ---
 
