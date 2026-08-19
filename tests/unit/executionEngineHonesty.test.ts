@@ -61,6 +61,11 @@ vi.mock("../../server/services/trustAuthorityEscalation", () => ({
 vi.mock("../../server/services/companyAgents", () => ({
   companyAgentService: {
     getByCodename: vi.fn().mockResolvedValue(undefined),
+    // The trust-authority gate reads the EFFECTIVE score (base + any active
+    // CEO-absence boost, derived rather than stored). An unknown agent has no
+    // earned standing, so 0 — which is what the real implementation returns for
+    // a missing row, and which getTier() maps to Observer.
+    effectiveTrustScore: vi.fn().mockResolvedValue(0),
   },
 }));
 vi.mock("../../server/services/eventMeshPublisher", () => ({

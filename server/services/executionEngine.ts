@@ -415,8 +415,10 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
   try {
     const { trustAuthorityEscalation } = await import("./trustAuthorityEscalation");
     const { companyAgentService } = await import("./companyAgents");
-    const agent = await companyAgentService.getByCodename(ctx.agentCodename);
-    const trustScore = agent?.trustScore ?? 50;
+    // The EFFECTIVE score, not the stored one: a CEO-absence elevation is
+    // derived at this read and expires with the absence, rather than being
+    // written into the agent's own standing where it would outlive its grant.
+    const trustScore = await companyAgentService.effectiveTrustScore(ctx.agentCodename);
     if (!trustAuthorityEscalation.isActionAllowed(trustScore, ctx.action)) {
       violations.push(`Agent ${ctx.agentCodename} (trust: ${trustScore}) not authorized for action ${ctx.action}`);
       const tier = trustAuthorityEscalation.getTier(trustScore);

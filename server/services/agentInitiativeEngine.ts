@@ -203,8 +203,8 @@ class AgentInitiativeEngine {
           let trustScore = 50;
           try {
             const { companyAgentService } = await import("./companyAgents");
-            const agent = await companyAgentService.getByCodename(proposal.agentCodename);
-            trustScore = agent?.trustScore ?? 50;
+            // Effective, not stored — see companyAgentService.effectiveTrustScore.
+            trustScore = await companyAgentService.effectiveTrustScore(proposal.agentCodename);
           } catch {}
 
           // Check if agent can auto-execute this action

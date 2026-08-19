@@ -104,12 +104,50 @@ class CEOAbsenceService {
       perAgentBoosts,
     } as any).returning({ id: ceoAbsenceMode.id });
 
-    // Apply per-agent trust boosts
-    for (const [codename, boost] of Object.entries(perAgentBoosts)) {
-      await companyAgentService.updateTrustScore(codename, boost);
-    }
-
+    // The boosts are NOT written to companyAgents.trustScore.
+    //
+    // They used to be, and that made a time-boxed grant permanent by
+    // construction. `getCurrent()` returns null once `endsAt` has passed, so
+    // `deactivate()` — which is the only thing that subtracts the boost — could
+    // never run after natural expiry: the absence ended and the authority it
+    // conveyed stayed. Worse, `activate()` begins by calling `deactivate()`, so
+    // a second activation after an expired first one added a boost on top of one
+    // that was never taken away. Three "I'm away" commands walked an agent from
+    // Observer (50) through Assistant and Operator to Director (95), unlocking
+    // real customer contact, with no way back. `updateTrustScore` also clamps at
+    // 100, so even a reversal that DID run returned less than it took.
+    //
+    // The boost is now DERIVED at the point of authority instead — see
+    // `activeTrustBoosts()` below and `effectiveTrustScore()` in companyAgents.
+    // Expiry then needs no reversal to work, which is the only kind of expiry
+    // worth having.
     return absence.id;
+  }
+
+  /**
+   * The trust boosts an ACTIVE, UNEXPIRED absence currently confers.
+   *
+   * The single source of the elevation. Returns `{}` when no absence is running,
+   * which is what makes expiry automatic: `getCurrent()` already refuses an
+   * absence whose `endsAt` has passed, so the boost disappears at the same
+   * moment the absence does, with nothing to remember to run.
+   *
+   * Fails to `{}` on any error. An elevation that cannot be read is not an
+   * elevation that applies — the same rule the execution engine's safety gates
+   * use for a check that cannot run.
+   */
+  async activeTrustBoosts(): Promise<Record<string, number>> {
+    try {
+      const current = await this.getCurrent();
+      if (!current) return {};
+      const per = (current as any).perAgentBoosts as Record<string, number> | undefined;
+      if (per && Object.keys(per).length > 0) return per;
+      const uniform = (current as any).trustBoost ?? 15;
+      const agents = await companyAgentService.getAll();
+      return Object.fromEntries(agents.map((a: any) => [a.codename, uniform]));
+    } catch {
+      return {};
+    }
   }
 
   /** Deactivate absence mode and generate return briefing */
@@ -117,18 +155,10 @@ class CEOAbsenceService {
     const current = await this.getCurrent();
     if (!current) return null;
 
-    // Restore trust scores — reverse per-agent boosts if available, otherwise uniform
-    const perAgentBoosts = (current as any).perAgentBoosts as Record<string, number> | undefined;
-    if (perAgentBoosts && Object.keys(perAgentBoosts).length > 0) {
-      for (const [codename, boost] of Object.entries(perAgentBoosts)) {
-        await companyAgentService.updateTrustScore(codename, -boost);
-      }
-    } else {
-      const agents = await companyAgentService.getAll();
-      for (const agent of agents) {
-        await companyAgentService.updateTrustScore(agent.codename, -(current.trustBoost || 15));
-      }
-    }
+    // Nothing to restore. The boost was never written to the agent row, so
+    // marking this absence inactive is the whole reversal — the same code path
+    // that natural expiry takes, rather than a second one that has to be
+    // remembered.
 
     // Generate return briefing
     const briefing = await this.generateReturnBriefing(current);

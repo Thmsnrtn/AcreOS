@@ -1170,6 +1170,18 @@ actions". Three further enqueue paths exist (`queueDirectorGoal`, the
 orchestration `create_task` trigger whose `taskInput` is org-configurable, and
 `storage.createAgentTask`).
 
+An independent adversarial pass — three skeptics, each assigned to REFUTE the
+finding on reachability, consequence and scoring grounds — returned 0 of 3
+refuted, and corrected the account in two ways worth keeping. First, there is a
+MORE direct path than the one above: `POST /api/autonomous/tasks`
+(`routes-autonomous-agent.ts:224`) validates `action` as `z.string().min(1)` and
+calls `queueAgentTask`, which hardcodes `requiresReview: false`; the same router
+exposes `POST /trigger-processor`, which calls `runOnce()` synchronously, so the
+30-second poll was not even a delay. Second, the job is not merely ungated but
+rostered `critical: true` with no `disabledWhen` clause (`jobRegistry.ts:177`),
+unlike three of its neighbours — the deadman pages if it goes dark, so
+production expects it continuously alive.
+
 **A second defect fell out of the same reading.** `inferRiskProfile` could only
 ever emit `offer`, `draft`, `research` and `data_write`. The `communication`
 (40), `financial` (70) and `contract` (90) bands were declared in
@@ -1221,9 +1233,157 @@ suite agree with any implementation of it, including an inverted one.
 Down, sharply, and pre-customer: the blast radius today is zero, which is exactly
 why this was the moment to fix it rather than after Customer #1.
 
+### 25 — "A ceiling belongs to the action class" → SECOND APPLICATION, in the autonomy engine
+
+Ledger entry 8 established `isNeverPromote()` for agent authority: a ceiling is a
+property of the ACTION CLASS, not of whoever issues the grant. The same sweep
+that produced entry 24 found the rule had been learned there and not applied one
+module over.
+
+**The defect.** `evaluate()` consulted the org's `autoApproveCategories` list
+BEFORE the score bands, and nothing capped what could go in it. The zod enum on
+`PUT /agents/:type/config` admits all nine categories, `contract` included, and
+that route carries `isAuthenticated + getOrCreateOrg` and no role check at all.
+So `autoApproveCategories: ["contract"]` made `prepareContract` — base risk 90,
+scoring 100 with its boosts — return `auto_execute`. For any org that set the
+field, `CATEGORY_BASE_RISK` and `THRESHOLDS` were both entirely dead: the 0–100
+score became a display value and the approval band an opt-out.
+
+It held at autonomy level `manual` too, whose own comment reads "never
+auto-executes" — `manual` + `autoApprove["contract"]` returned `auto_execute`
+for a score-100 profile. A stated contract that the code contradicts is the
+shape this repository keeps finding.
+
+**The adaptation.** The cap is the level's own auto threshold:
+`CATEGORY_BASE_RISK[category] <= thresholds.auto`. That preserves what the list
+is FOR — letting a category skip the `+external` / `+irreversible` boosts that
+push it over the line — while making it impossible to grant a category the level
+would refuse at base risk. `manual` has an auto threshold of 0, so nothing is
+auto-approvable there. Above the cap it falls THROUGH to the score bands rather
+than escalating early, because the score may still permit the action on its own
+merits; the list loses its override, not the action its chance.
+
+No new hand-maintained list, which matters: a `NEVER_AUTO_APPROVE` register would
+be a second thing to keep in sync with `CATEGORY_BASE_RISK`, and the whole defect
+class here is a second source of truth for the same question.
+
+**Exit test.** Three cases in `autonomyRiskClassification.test.ts`, driving the
+real engine: the list cannot grant above the level at any of the three levels;
+`manual` auto-executes nothing even with all nine categories approved; and the
+convenience still works (`data_write` + boosts = 45 is auto-approvable at
+supervised because its base 20 is under the 25 ceiling). Falsified by removing
+the cap — two cases fire. The pre-existing test that pinned the neighbouring
+claim ("contract stays above full_auto's threshold") passed throughout, because
+it used the DEFAULT empty auto-approve list: the gate was real and simply never
+asked this question.
+
+### 26 — "A grant may not outlive its expiry" → ADAPTED, and the previous fix created it
+
+**Foundry source.** §14/§15 grant expiry and revocation semantics, the same
+family as ledger entry 8.
+
+**The defect, and its provenance.** `ceoAbsenceService.activate()` materialised
+its trust boost into `companyAgents.trustScore` — the permanent column that IS
+the authority input, read by `trustAuthorityEscalation.getTier()` from
+`executionEngine.validateSafetyGates` and `agentInitiativeEngine`.
+
+An earlier session had already fixed the neighbouring half of this: `getCurrent()`
+used to select on `isActive` alone, so an absence once switched on was active
+forever. It now also refuses any row whose `endsAt` has passed. That fix is
+correct, and it is what made this one live — `deactivate()` opens with
+`const current = await this.getCurrent(); if (!current) return null;`, and it is
+the only thing that subtracts the boost. After natural expiry the reversal became
+**structurally unreachable**: the absence ends, the authority it conveyed stays.
+`activate()` also opens by calling `deactivate()`, so a second activation stacked
+a boost on top of one never taken away.
+
+Seeded agents start at 50 = Observer, allowed only `generate_report` /
+`store_learning`. 65 = Assistant unlocks `send_follow_up` and `send_alert`;
+80 = Operator unlocks `send_churn_intervention`, a real customer contact;
+95 = Director unlocks `advance_deal_stage`. Three "I'm away" commands walked an
+agent the whole way with no path back. `updateTrustScore` clamps at 100 besides,
+so even a reversal that DID run returned less than it took.
+
+The module header asserted `activate()` had no production caller. It has one:
+`ceoCommandBridge.ts` handles the `activate_absence` command, reached from
+`POST /api/founder/intelligence/command`. Stale prose over live code — the exact
+failure the institution's VERIFY step exists to catch, found by an adversarial
+sweep that read the callers rather than the comment.
+
+**The adaptation.** Stop materialising. `ceoAbsenceService.activeTrustBoosts()`
+reports what an active, unexpired absence currently confers, and
+`companyAgentService.effectiveTrustScore(codename)` adds it at the point of
+authority. `companyAgents.trustScore` returns to meaning the agent's EARNED
+standing and is never written by a grant. Expiry then needs no reversal to work,
+which is the only kind of expiry worth having, and `deactivate()` becomes the
+same code path as natural expiry rather than a second one to remember.
+
+Both readers were rewired, because a derived score nothing consumes is the
+canonical-with-no-adoption failure in a new place.
+
+**Exit test.** `absenceGrantExpires.test.ts`. The ratchet case is stated as an
+equality against the ORIGINAL score across three activate/expire cycles, so any
+residue fails it. Falsified against three mutations: an `effectiveTrustScore`
+that ignores the clock, an `activate()` that materialises again, and — the one
+the first pass MISSED — either authority reader reverting to `agent.trustScore`.
+That third mutation stayed green until a call-site assertion was added, which is
+the two-thirds-of-canonical trap: authoritative semantics and drift prevention
+without production adoption.
+
+### 27 — "A check that cannot run is not a check that passed" → SECOND APPLICATION
+
+Ledger entry 20's fix taught `executionEngine.validateSafetyGates` to record an
+`unevaluable(...)` violation instead of swallowing a failed gate. The same sweep
+found the rule had been applied in that file and not in its sibling.
+
+**The defect.** `agentActionExecutors.executeAction` is the function behind every
+real side effect the company-agent fleet produces — 28 registered executors,
+including a live retention email (`emailService.sendEmail`), a trial extension
+that writes `organizations.trialEndsAt`, and a feature unlock that writes
+`organizations.featureOverrides`. Its only pre-execution gate is the confidence
+cascade, and the entire gate ended in:
+
+```ts
+} catch {
+  // Cascade check failure is non-blocking — proceed with execution
+}
+```
+
+An unavailable cascade service was therefore permission.
+
+The same ten lines carried a second instance of a different recorded rule:
+`const orgId = ctx.input.orgId || 0`. The cascade is evaluated FOR A TENANT, and
+`|| 0` invented org 0 — the sentinel this repository forbids by name elsewhere —
+so an action with no organization resolved its cascade against a tenant that does
+not exist, and that answer was read as a pass.
+
+**The adaptation.** Both refuse now, with the reason in the returned detail so it
+reaches the caller rather than only the log. The refusal is narrow on purpose: it
+applies only where the gate already applied — `isSignificantAction` — so a
+routine action is not dragged into a check that never governed it.
+
+**Exit test.** `cascadeFailsClosed.test.ts`, falsified against both reversions.
+Its vacuity case is load-bearing here: an action name with no registered executor
+returns early and never reaches the cascade, and a non-significant name skips the
+gate entirely, so the test asserts the cascade was actually consulted before
+trusting anything else it observes.
+
+**Recorded, not fixed.** `isSignificantAction` covers 13 names; actions outside
+that set (`restart_failed_job`, `resolve_stale_ticket`, `acknowledge_incident`,
+`clear_cache`, `update_roadmap_priority`) get no check at all. That is the gate's
+SCOPE, which is a product decision about which actions warrant a cascade, not a
+defect in its mechanism — widening it silently would be the same mistake in the
+other direction. It belongs on the frontier, not in this fix.
+
+Also noted and deliberately not chased: `governedExecute` — the wrapper that adds
+the governanceBrain policy check before delegating to `executeAction` — has zero
+call sites, and every live path calls the bare `executeAction`. That is a
+built-but-unwired candidate for the deletion ledger or for wiring, and it is a
+separate decision from making the gate that IS wired fail closed.
+
 ## Status
 
-**All 24 admitted candidates are now dispositioned** — implemented, adapted,
+**All 27 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

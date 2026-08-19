@@ -666,11 +666,38 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     return { success: false, detail: `No executor for ${originalKey}` };
   }
 
-  // Run significant actions through the confidence cascade before executing
+  // Run significant actions through the confidence cascade before executing.
+  //
+  // A CHECK THAT CANNOT RUN IS NOT A CHECK THAT PASSED. This block used to end
+  // in `catch { /* non-blocking — proceed with execution */ }`, so an
+  // unavailable cascade service was permission: every significant action — a
+  // real retention email, a trial extension, a feature unlock — executed with
+  // its only gate silently skipped. The sibling module `executionEngine.ts`
+  // learned this and says so in capitals at its own safety gates; the lesson was
+  // applied in one file and not the other.
   if (isSignificantAction(ctx.actionName)) {
+    // The cascade is evaluated FOR A TENANT, so without one there is nothing to
+    // evaluate. `ctx.input.orgId || 0` used to invent org 0 here — a value this
+    // repository treats as a forbidden sentinel elsewhere — which resolved the
+    // cascade against a tenant that does not exist and called the answer a pass.
+    const orgId = typeof ctx.input.orgId === "number" && ctx.input.orgId > 0
+      ? ctx.input.orgId
+      : null;
+    if (orgId === null) {
+      logger.warn(
+        `[ActionExecutor] refusing ${ctx.actionName} for ${ctx.agentCodename}: ` +
+          `no organization on the action input, so the confidence cascade cannot be evaluated`,
+      );
+      return {
+        success: false,
+        detail:
+          `Refusing ${ctx.actionName}: this action requires a confidence-cascade check ` +
+          `and no organization was supplied, so the check cannot be evaluated. ` +
+          `Refusing rather than assuming permission.`,
+      };
+    }
     try {
       const { confidenceCascadeService } = await import("./confidenceCascadeV14");
-      const orgId = ctx.input.orgId || 0;
       const cascadeResult = await confidenceCascadeService.resolve(orgId, {
         triggerType: ctx.actionName,
         triggerContext: ctx.input,
@@ -692,8 +719,21 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
           detail: `Action requires founder approval — confidence ${cascadeResult.finalConfidence} below threshold. Escalation ID: ${cascadeResult.resolutionId}`,
         };
       }
-    } catch {
-      // Cascade check failure is non-blocking — proceed with execution
+    } catch (err) {
+      // Refuse, do not proceed. The action is significant by this module's own
+      // definition, and "we could not tell" is not "it is fine".
+      logger.error(
+        `[ActionExecutor] confidence cascade could not be evaluated for ` +
+          `${ctx.actionName} (${ctx.agentCodename}) — refusing rather than assuming permission`,
+        err instanceof Error ? err : undefined,
+      );
+      return {
+        success: false,
+        detail:
+          `Refusing ${ctx.actionName}: the confidence cascade could not be evaluated ` +
+          `(${err instanceof Error ? err.message : String(err)}). ` +
+          `A check that cannot run is not a check that passed.`,
+      };
     }
   }
 

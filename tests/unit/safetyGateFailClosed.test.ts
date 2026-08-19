@@ -108,7 +108,12 @@ async function runExecute(deps: Deps) {
     };
   });
   vi.doMock("../../server/services/companyAgents", () => ({
-    companyAgentService: { getByCodename: async () => ({ trustScore: 95 }) },
+    companyAgentService: {
+      getByCodename: async () => ({ trustScore: 95 }),
+      // The gate reads the EFFECTIVE score, which folds in any active
+      // CEO-absence boost at the read rather than from the stored column.
+      effectiveTrustScore: async () => 95,
+    },
   }));
   vi.doMock("../../server/services/delegationTokensV11", () => {
     if (deps.delegationThrows) throw new Error("delegation service offline");

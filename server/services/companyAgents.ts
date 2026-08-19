@@ -333,6 +333,37 @@ class CompanyAgentService {
   }
 
   /** Update trust score with clamping */
+  /**
+   * The trust score AUTHORITY should read: the agent's own, plus any boost an
+   * active CEO-absence currently confers.
+   *
+   * `companyAgents.trustScore` is the agent's EARNED standing and changes only
+   * through its own record. A temporary elevation is added here, at the read,
+   * rather than written into that column — a grant materialised into the field
+   * it elevates cannot expire without someone remembering to reverse it, and
+   * when the reversal is skipped the elevation is permanent and invisible.
+   *
+   * Every authority check consumes this rather than `agent.trustScore`.
+   */
+  async effectiveTrustScore(codename: string): Promise<number> {
+    const agent = await this.getByCodename(codename);
+    // No agent row means no earned standing — 0, not a plausible-looking 50.
+    // `trustAuthorityEscalation.getTier()` maps both to Observer today, so this
+    // changes no current behaviour; it changes what happens when a threshold
+    // moves. A fabricated 50 sitting ten points under the Assistant band would
+    // silently promote every unknown agent the day that band moved to 45.
+    const base = agent?.trustScore ?? 0;
+    try {
+      const { ceoAbsenceService } = await import("./ceoAbsenceMode");
+      const boosts = await ceoAbsenceService.activeTrustBoosts();
+      const boost = boosts[codename] ?? 0;
+      return Math.max(0, Math.min(100, base + boost));
+    } catch {
+      // An elevation that cannot be read is not an elevation that applies.
+      return base;
+    }
+  }
+
   async updateTrustScore(codename: string, delta: number): Promise<number> {
     const agent = await this.getByCodename(codename);
     if (!agent) throw new Error(`Agent ${codename} not found`);

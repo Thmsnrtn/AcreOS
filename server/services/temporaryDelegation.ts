@@ -50,10 +50,27 @@ function toDelegation(row: AuthorityDelegation): Delegation {
 /**
  * Grant temporary authority elevation to an agent.
  */
+/**
+ * An OMITTED field is not a request for maximum authority.
+ *
+ * `toLevel` defaulted to 0 — full autonomy, and silent: `executeWithAuthority`
+ * notifies the founder only at level 1. Combined with `actions` defaulting to
+ * `["*"]`, a grant posted as `{ agentCodename, durationHours, reason }` — which
+ * is what the founder route forwards when the body omits the rest — put the
+ * agent's entire action surface at full autonomy with no notification. Two
+ * absent fields, read as the broadest possible grant.
+ *
+ * The default is now level 1: the agent acts, and the founder is told. Somebody
+ * who wants silent full autonomy asks for it explicitly, which is a different
+ * act from not mentioning it. The wildcard stays, because "I am away, act for
+ * me" is legitimately broad and narrowing it would remove the feature rather
+ * than govern it — and the authority gate now refuses to let any delegation
+ * elevate an action nobody classified, which is where the real breadth was.
+ */
 export async function grantTemporaryAuthority(params: {
   agentCodename: string;
   actions?: string[];       // specific actions, or empty for all
-  toLevel?: number;         // default: 0 (full autonomy)
+  toLevel?: number;         // default: 1 (act, and notify the founder)
   durationHours: number;
   reason: string;
 }): Promise<Delegation> {
@@ -63,7 +80,7 @@ export async function grantTemporaryAuthority(params: {
       agentCodename: params.agentCodename,
       elevatedActions: params.actions && params.actions.length > 0 ? params.actions : ["*"],
       fromLevel: 2, // default: recommend+wait
-      toLevel: params.toLevel ?? 0,
+      toLevel: params.toLevel ?? 1,
       reason: params.reason,
       expiresAt: new Date(Date.now() + params.durationHours * 60 * 60 * 1000),
     })

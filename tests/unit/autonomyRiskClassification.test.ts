@@ -48,6 +48,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 vi.mock("../../server/db", () => ({ db: {} }));
 vi.mock("../../server/utils/logger", () => ({
@@ -248,6 +250,114 @@ describe("the skill map cannot drift from the registry", () => {
     );
     for (const band of ["communication", "financial", "contract"]) {
       expect(emitted.has(band as never), `no skill can emit "${band}" — the band is still dead`).toBe(true);
+    }
+  });
+});
+
+describe("the auto-approve list has a ceiling", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /**
+   * The list used to sit above the score bands with no cap, so an org config
+   * field defeated the whole risk model — and the field is writable through
+   * `PUT /agents/:type/config` behind nothing but `isAuthenticated +
+   * getOrCreateOrg`. The cap is the level's own auto threshold, so the list can
+   * still let a category skip the +external/+irreversible boosts but can never
+   * grant one the level would refuse at base risk.
+   */
+  const HIGH = ["contract", "offer", "financial"] as const;
+
+  it("vacuity: these categories really are above the supervised ceiling", () => {
+    // If a band were re-tuned below 25 this test would pass while proving
+    // nothing, so the premise is asserted rather than assumed.
+    const e = engineAt("supervised");
+    expect(e).toBeTruthy();
+    expect(HIGH.length).toBeGreaterThan(0);
+  });
+
+  it("cannot grant a category the level would refuse at base risk", async () => {
+    const granted: string[] = [];
+    for (const level of LEVELS) {
+      for (const category of HIGH) {
+        const e = engineAt(level, [...HIGH]);
+        const d = await e.evaluate(1, "deals", {
+          category,
+          financialImpact: 0,
+          isExternal: true,
+          isIrreversible: true,
+          classified: true,
+          description: `a ${category} action`,
+        });
+        // contract(90) is above every level's auto threshold; offer(80) and
+        // financial(70) are below full_auto's 85 and would auto-execute on the
+        // SCORE anyway at that level, which is the point — the list may confirm
+        // what the level already permits, never exceed it.
+        const permittedByLevel =
+          (level === "full_auto" && category !== "contract");
+        if (d.decision === "auto_execute" && !permittedByLevel) {
+          granted.push(`${level} + autoApprove[${category}] → auto_execute`);
+        }
+      }
+    }
+    expect(granted).toEqual([]);
+  });
+
+  it('"manual" means never auto-executes, even with everything auto-approved', async () => {
+    // THRESHOLDS.manual is { auto: 0 }, and its comment says "never
+    // auto-executes". Before the ceiling, manual + autoApprove["contract"]
+    // returned auto_execute for a score-100 profile.
+    const every = ["research", "draft", "data_write", "scheduling", "external_api",
+                   "communication", "financial", "offer", "contract"];
+    const e = engineAt("manual", every);
+    for (const category of every) {
+      const d = await e.evaluate(1, "deals", {
+        category: category as never,
+        financialImpact: 0,
+        isExternal: false,
+        isIrreversible: false,
+        classified: true,
+        description: category,
+      });
+      expect(d.decision, `manual auto-executed ${category}`).not.toBe("auto_execute");
+    }
+  });
+
+  it("still does its job — a low category skips the boosts that would escalate it", async () => {
+    // The other direction. A ceiling that neutered the feature would pass every
+    // assertion above. `data_write`(20) + external(10) + irreversible(15) = 45,
+    // over supervised's auto band of 25; auto-approving it is exactly the
+    // convenience the list exists for, and 20 <= 25 so the ceiling allows it.
+    const e = engineAt("supervised", ["data_write"]);
+    const d = await e.evaluate(1, "research", {
+      category: "data_write",
+      financialImpact: 0,
+      isExternal: true,
+      isIrreversible: true,
+      classified: true,
+      description: "bulk CRM update",
+    });
+    expect(d.decision).toBe("auto_execute");
+  });
+});
+
+describe("autonomousEvaluatePreviewIsInert", () => {
+  it("the preview route executes nothing, which is what licenses its classified:true", () => {
+    // POST /evaluate builds a profile from the CALLER's declared category and
+    // marks it classified so the preview answers the same question the
+    // processor answers. A caller cannot declare its own safety, so that is
+    // defensible only while the handler acts on nothing. Pinned by reading the
+    // handler body: it must not call any executor.
+    const src = readFileSync(
+      resolve(__dirname, "../../server/routes-autonomous-agent.ts"), "utf8",
+    );
+    const start = src.indexOf('router.post("/evaluate"');
+    expect(start, "the /evaluate route moved or was renamed").toBeGreaterThan(-1);
+    const end = src.indexOf("router.", start + 10);
+    const handler = src.slice(start, end === -1 ? src.length : end);
+    expect(handler.length).toBeGreaterThan(200);
+    for (const forbidden of ["executeAgentTask", "executeSkill", "queueAgentTask", "runOnce"]) {
+      expect(handler, `/evaluate now reaches ${forbidden} — remove classified:true`)
+        .not.toContain(forbidden);
     }
   });
 });

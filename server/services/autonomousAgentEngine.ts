@@ -182,15 +182,43 @@ export class AutonomousAgentEngine {
       };
     }
 
-    // Explicitly auto-approved categories
+    // Explicitly auto-approved categories — CAPPED BY THE AUTONOMY LEVEL.
+    //
+    // This list used to sit above the score bands with no ceiling at all, so an
+    // org config field defeated the entire risk model. `autoApproveCategories:
+    // ["contract"]` made `prepareContract` — base risk 90, scoring 100 with its
+    // boosts — auto-execute, and it did so even at autonomy level `manual`,
+    // whose own comment reads "never auto-executes". CATEGORY_BASE_RISK and
+    // THRESHOLDS were both dead for any org that set the field, and the field is
+    // writable through PUT /agents/:type/config behind nothing but
+    // `isAuthenticated + getOrCreateOrg`.
+    //
+    // The cap is the level's own auto threshold. That keeps what the list is
+    // FOR — an org tired of approving routine work can have a category skip the
+    // +external / +irreversible boosts that push it over the line — while making
+    // it impossible for the list to grant a category the level would not grant
+    // at base risk. `manual` has an auto threshold of 0, so nothing is
+    // auto-approvable there, which is what "never auto-executes" has to mean if
+    // it means anything.
+    //
+    // This is the ceiling rule already recorded for agent authority: a ceiling
+    // is a property of the ACTION CLASS, not of whoever issues the grant
+    // (`isNeverPromote` in agentAuthorityGate.ts). It was learned there and not
+    // applied here.
     if (autoApproveCategories.includes(profile.category)) {
-      return {
-        decision: "auto_execute",
-        reason: `Category "${profile.category}" is in the auto-approve list`,
-        riskScore,
-        autonomyLevel: level,
-        requiresApproval: false,
-      };
+      const baseRisk = CATEGORY_BASE_RISK[profile.category];
+      if (baseRisk !== undefined && baseRisk <= thresholds.auto) {
+        return {
+          decision: "auto_execute",
+          reason: `Category "${profile.category}" is in the auto-approve list`,
+          riskScore,
+          autonomyLevel: level,
+          requiresApproval: false,
+        };
+      }
+      // Above the ceiling: fall through to the score bands, which is where this
+      // action was always going to be decided. Deliberately NOT an early
+      // escalate — the score may still permit it on its own merits.
     }
 
     // Score-based decision

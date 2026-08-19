@@ -128,3 +128,63 @@ describe("a learned trust score does not replace the founder's placement", () =>
     }
   });
 });
+
+describe("a delegation does not convey an action nobody classified", () => {
+  /**
+   * The delegation branch returned the delegated level for ANY action,
+   * `unclassified` included — the exact inference the promotion block below it
+   * refuses to make, and states its reason for. The rule was written down in
+   * one branch and not applied in the one above it.
+   *
+   * It is not academic. `agentProactiveEngine` emits `proactive:${behavior.id}`
+   * and `agentReactionEngine` emits `reaction:${rule.id}`; no roster entry's
+   * level0/1/2/3Actions contains a colon, so EVERY live call through this gate
+   * is unclassified. One blanket delegation flipped the whole fleet — and at
+   * level 0 silently, since executeWithAuthority notifies only at level 1.
+   */
+  const LIVE_ACTION_SHAPES = [
+    "proactive:churn_watch",
+    "reaction:forge_churn_to_sophie",
+    "queue_director_goal",
+    "some_action_nobody_added_to_the_roster",
+  ];
+
+  it("vacuity: these really are unclassified under the roster used here", async () => {
+    // authorityConfig lists only send_followup, so each of these is absent from
+    // every level. If one were ever added the case below would pass for the
+    // wrong reason.
+    for (const action of LIVE_ACTION_SHAPES) {
+      for (const level of Object.values(authorityConfig)) {
+        expect(level, `${action} is classified after all`).not.toContain(action);
+      }
+    }
+  });
+
+  it("holds an unclassified action at recommend-and-wait despite a level-0 delegation", async () => {
+    delegation = { hasDelegation: true, toLevel: 0, reason: "founder away" };
+    for (const action of LIVE_ACTION_SHAPES) {
+      const res = await check(action);
+      expect(res.effectiveLevel, `delegation elevated unclassified "${action}"`).toBe(2);
+      expect(res.downgraded, action).toBe(true);
+      expect(res.reason).toMatch(/not classified/i);
+    }
+  });
+
+  it("narrows the delegation, it does not refuse it", async () => {
+    // The action still runs — at level 2, recommend-and-wait — so the grant
+    // keeps working. A guard that returned allowed:false here would break the
+    // proactive and reaction engines outright rather than governing them.
+    delegation = { hasDelegation: true, toLevel: 0, reason: "founder away" };
+    const res = await check("proactive:churn_watch");
+    expect(res.allowed).toBe(true);
+  });
+
+  it("a CLASSIFIED action still gets the full delegated level", async () => {
+    // The other direction, and the reason this is a narrowing rather than a ban:
+    // everything the founder actually placed is still elevated.
+    delegation = { hasDelegation: true, toLevel: 0, reason: "founder away" };
+    const res = await check("send_followup");
+    expect(res.effectiveLevel).toBe(0);
+    expect(res.downgraded).toBe(false);
+  });
+});

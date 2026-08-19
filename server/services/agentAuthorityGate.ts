@@ -178,6 +178,42 @@ export async function checkAuthority(codename: string, action: string): Promise<
         downgraded: true,
       };
     }
+    // A DELEGATION MAY NOT CONVEY AN ACTION NOBODY CLASSIFIED.
+    //
+    // This returned the delegated level for ANY action, `unclassified` included
+    // — the exact inference the promotion block twenty lines below refuses to
+    // make, and states its reason for: omission means both "the founder allowed
+    // this at level 2" and "nobody has classified this yet", and reading the
+    // second as the first is how an unconsidered action acquires authority.
+    // The rule was written down there and not applied here.
+    //
+    // It matters most because of what live callers actually emit.
+    // `agentProactiveEngine` emits `proactive:${behavior.id}` and
+    // `agentReactionEngine` emits `reaction:${rule.id}`; no agent's
+    // level0/1/2/3Actions in AGENT_ROSTER contains a colon, so EVERY live call
+    // through this gate is unclassified. Without this branch a single blanket
+    // delegation flipped the entire fleet to the delegated level, and at level 0
+    // that is also silent — `executeWithAuthority` notifies only at level 1.
+    //
+    // The delegation is NARROWED, not refused: the action still runs at the
+    // level-2 safe default (recommend and wait), so the grant keeps working for
+    // everything the founder classified and stops laundering everything nobody
+    // did.
+    if (delegation.hasDelegation && unclassified) {
+      return {
+        allowed: true,
+        effectiveLevel: 2,
+        requestedLevel,
+        action,
+        trustRequired: 0,
+        currentTrust: agent.trustScore,
+        reason:
+          `Temporary delegation is active, but "${action}" is not classified in ` +
+          `${codename}'s authority config, so it stays at recommend-and-wait. ` +
+          `Classify it to let a delegation elevate it.`,
+        downgraded: true,
+      };
+    }
     if (delegation.hasDelegation) {
       return {
         allowed: true,

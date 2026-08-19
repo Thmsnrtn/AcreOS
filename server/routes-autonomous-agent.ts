@@ -387,12 +387,28 @@ export function registerAutonomousAgentRoutes(app: Express): void {
 
       let profile;
       if (parsed.data.category) {
-        // User provided explicit risk profile
+        // The caller states the category, and this endpoint SIMULATES it.
+        //
+        // A caller cannot declare its own safety, so `classified: true` here
+        // would be indefensible on any path that executes. This route executes
+        // nothing — it returns { profile, decision, summary } for the approval
+        // UI to show — so the honest reading is a hypothetical: "IF this action
+        // is a `contract` action, here is what the engine would decide." Without
+        // the flag the engine escalates every explicit category before reaching
+        // the score bands, which made the preview answer a different question
+        // from the one the processor answers, for every category including
+        // `research`.
+        //
+        // The load-bearing condition is that nothing downstream of here acts:
+        // `autonomousEvaluatePreviewIsInert` in autonomyRiskClassification.test.ts
+        // pins it. If this handler ever gains an execution path, this flag has
+        // to go with it.
         profile = {
           category: parsed.data.category as ActionCategory,
           financialImpact: parsed.data.financialImpact || 0,
           isExternal: parsed.data.isExternal || false,
           isIrreversible: parsed.data.isIrreversible || false,
+          classified: true,
           description: actionDescription,
         };
       } else {
