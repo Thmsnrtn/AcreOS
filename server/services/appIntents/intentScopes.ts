@@ -40,7 +40,6 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   complete_task: { door: "today", scope: "deal_write" },
   schedule_followup: { door: "today", scope: "deal_write" },
   schedule_follow_up: { door: "today", scope: "deal_write" },
-  schedule_background_job: { door: "today", scope: "deal_write" },
   remember_fact: { door: "today", scope: null },
   recall_facts: { door: "today", scope: null },
 

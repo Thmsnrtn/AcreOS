@@ -186,7 +186,7 @@ describe("paused org — side-effecting tool calls are refused, honestly", () =>
   it("refuses update_lead_status with the pause message; nothing executes", async () => {
     setPaused();
     const result = await executeTool(
-      "update_lead_status",
+  "update_lead_status",
       { lead_id: 42, status: "qualified" },
       org,
     );
@@ -202,7 +202,7 @@ describe("paused org — side-effecting tool calls are refused, honestly", () =>
   it("refuses create_lead too — record writes are acting, not drafting", async () => {
     setPaused();
     const result = await executeTool(
-      "create_lead",
+  "create_lead",
       { first_name: "New", last_name: "Lead" },
       org,
     );
@@ -237,7 +237,7 @@ describe("paused org — side-effecting tool calls are refused, honestly", () =>
       checkFailed: true,
     });
     const result = await executeTool(
-      "update_lead_status",
+  "update_lead_status",
       { lead_id: 42, status: "qualified" },
       org,
     );
@@ -250,7 +250,7 @@ describe("paused org — side-effecting tool calls are refused, honestly", () =>
   it("an unapproved send while paused is frozen as an ask (kernel), never sent", async () => {
     setPaused();
     const result = await executeTool(
-      "send_email",
+  "send_email",
       { lead_id: 42, subject: "s", message: "m" },
       org,
     );
@@ -262,7 +262,7 @@ describe("paused org — side-effecting tool calls are refused, honestly", () =>
   it("trustedApproval bypasses the pause gate — a human tapping Send is the human acting", async () => {
     setPaused();
     const result = await executeTool(
-      "send_email",
+  "send_email",
       { lead_id: 42, subject: "s", message: "m" },
       org,
       { trustedApproval: true },
@@ -278,7 +278,7 @@ describe("unpaused org — side-effecting tool calls run as before", () => {
   it("update_lead_status executes when not paused", async () => {
     setUnpaused();
     const result = await executeTool(
-      "update_lead_status",
+  "update_lead_status",
       { lead_id: 42, status: "qualified" },
       org,
     );
@@ -297,7 +297,7 @@ describe("unpaused org — side-effecting tool calls run as before", () => {
       checkFailed: false,
     });
     const result = await executeTool(
-      "create_lead",
+  "create_lead",
       { first_name: "A", last_name: "B" },
       org,
     );
@@ -305,6 +305,31 @@ describe("unpaused org — side-effecting tool calls run as before", () => {
     expect(createLead).toHaveBeenCalledTimes(1);
   });
 });
+
+/** Tools that must never be pause-safe. Named so two cases can share it. */
+const NOT_PAUSE_SAFE = [
+  "send_email",
+  "send_sms",
+  "send_gmail",
+  "send_slack_message",
+  "create_stripe_payment_link",
+  "create_calendar_event",
+  "trigger_zapier",
+  "trigger_make",
+  "create_lead",
+  "update_lead_status",
+  "create_property",
+  "update_property",
+  "create_properties_batch",
+  "create_deal",
+  "update_deal",
+  "create_task",
+  "update_task",
+  "complete_task",
+  "schedule_followup",
+  "schedule_follow_up",
+  "generate_offer_letter", // upserts a pipeline deal — a record write
+] as const;
 
 describe("PAUSE_SAFE_TOOLS allowlist hygiene", () => {
   it("every allowlisted name is a real tool (no typos silently allowing nothing)", () => {
@@ -314,31 +339,22 @@ describe("PAUSE_SAFE_TOOLS allowlist hygiene", () => {
     }
   });
 
+  it("every name in the not-pause-safe list is a real tool", () => {
+    // The mirror of the hygiene test above, added 2026-08-19 when
+    // `schedule_background_job` was DELETED (it reported `status: "queued"` and
+    // queued nothing) and left a ghost entry in the list below. The assertion
+    // there is `PAUSE_SAFE_TOOLS.has(name) === false`, which a name that no
+    // longer exists satisfies trivially — so the list would have kept reading
+    // as "these tools exist and are correctly not pause-safe" while one of
+    // them did not exist at all.
+    const known = new Set(Object.keys(toolDefinitions));
+    for (const name of NOT_PAUSE_SAFE) {
+      expect(known.has(name), `"${name}" is in the not-pause-safe list but is not a tool`).toBe(true);
+    }
+  });
+
   it("sends, external triggers, and record writes are NOT pause-safe", () => {
-    for (const name of [
-      "send_email",
-      "send_sms",
-      "send_gmail",
-      "send_slack_message",
-      "create_stripe_payment_link",
-      "create_calendar_event",
-      "trigger_zapier",
-      "trigger_make",
-      "schedule_background_job",
-      "create_lead",
-      "update_lead_status",
-      "create_property",
-      "update_property",
-      "create_properties_batch",
-      "create_deal",
-      "update_deal",
-      "create_task",
-      "update_task",
-      "complete_task",
-      "schedule_followup",
-      "schedule_follow_up",
-      "generate_offer_letter", // upserts a pipeline deal — a record write
-    ]) {
+    for (const name of NOT_PAUSE_SAFE) {
       expect(PAUSE_SAFE_TOOLS.has(name), `"${name}" must NOT be pause-safe`).toBe(false);
     }
   });

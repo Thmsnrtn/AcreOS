@@ -344,24 +344,15 @@ export const toolDefinitions = {
     }
   },
 
-  // Background Job Tools
-  schedule_background_job: {
-    name: "schedule_background_job",
-    description: "Schedule a background job that runs independently. Use for bulk operations or long-running tasks.",
-    parameters: {
-      type: "object",
-      properties: {
-        job_type: { 
-          type: "string", 
-          enum: ["bulk_property_import", "bulk_lead_import", "campaign_send", "report_generation"],
-          description: "Type of background job" 
-        },
-        data: { type: "object", description: "Job-specific data" },
-        description: { type: "string", description: "Human-readable description of what this job does" }
-      },
-      required: ["job_type", "description"]
-    }
-  },
+  // `schedule_background_job` was here until 2026-08-19, and it was a lie with
+  // a status field. It advertised an enum — bulk_property_import,
+  // bulk_lead_import, campaign_send, report_generation — and its entire
+  // implementation was one logger.info followed by
+  // `{ success: true, data: { status: "queued" } }`. A user who asked Pax to run
+  // the overnight campaign send was told it was queued. Nothing was queued;
+  // none of those four job types exists anywhere in server/jobs or the outbox.
+  // Deleted rather than wired, because wiring it means BUILDING four job types
+  // and the defect is that it claimed to have them. See the deletion ledger.
 
   // Document Processing Tools
   extract_properties_from_text: {
@@ -1631,18 +1622,6 @@ export async function executeTool(
         const task = await storage.updateTask(args.task_id, { status: "completed" }, org.id);
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Task marked as completed", task } };
-      }
-
-      case "schedule_background_job": {
-        logger.info(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
-        return { 
-          success: true, 
-          data: { 
-            message: `Background job scheduled: ${args.description}`,
-            jobType: args.job_type,
-            status: "queued"
-          } 
-        };
       }
 
       case "extract_properties_from_text": {

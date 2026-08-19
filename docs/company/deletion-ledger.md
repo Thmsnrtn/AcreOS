@@ -983,3 +983,42 @@ outward-action ledger; extend that, do not re-add a parallel cache. Live
 portfolio state in Pax's prompt is a product question, not a restore: Pax reads
 it on demand today, and the trade is per-turn tokens and latency against fewer
 tool round-trips.
+
+---
+
+## `schedule_background_job` (Pax tool) — executed 2026-08-19
+
+**What went.** The tool definition, its dispatch case, and its App Intent
+registry entry (`{ door: "today", scope: "deal_write" }`).
+
+**Why.** It advertised four job types — `bulk_property_import`,
+`bulk_lead_import`, `campaign_send`, `report_generation` — and its entire
+implementation was:
+
+```ts
+logger.info(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
+return { success: true, data: { message: …, jobType: args.job_type, status: "queued" } };
+```
+
+A user who asked Pax to run the overnight campaign send was told it was queued.
+None of those four job types exists in `server/jobs` or the outbox. Not a stub
+that returns nothing — a stub that returns a **status field**, using the word a
+real queue would use, in the place a real queue would put it.
+
+**Deleted rather than wired** because wiring it means building four job types,
+and the defect is the claim to already have them. A tool that reports
+`status: "queued"` and queues nothing is worse than one that does not exist:
+with no tool, Pax says it cannot do the thing.
+
+**Residue check.** The App Intent entry went in the same commit — a deleted tool
+leaving a door and a scope declared behind it is this repository's most common
+deletion residue. `paxPauseToolGate.test.ts` named it in a "must NOT be
+pause-safe" list whose assertion a non-existent name satisfies trivially; the
+entry was removed and a mirror hygiene case added so the next deletion cannot
+leave a ghost there either.
+
+**Reactivation criteria.** If Pax should schedule bulk work, the job types have
+to exist first — the outbox is the mechanism (`fly.toml` documents its consumer
+set) and `server/jobs/scheduler.ts` the lease. A tool comes after the job, not
+before it.
+

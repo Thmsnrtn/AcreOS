@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `299915b8` + the tool-scope commit below, 2026-08-19. Working tree
-clean, 933 test files / 12,545 tests green, 26 gates green.
+Verified at: `c649da29` + the tool-honesty commit below, 2026-08-19. Working
+tree clean, 934 test files / 12,551 tests green, 26 gates green.
 
 ---
 
@@ -89,12 +89,12 @@ had not verified; those are deliberately absent below.
    model-authored sentence persisted as the operator's stated reason in a legal
    record.
 
-2. **`schedule_background_job` schedules nothing and reports `status: "queued"`.**
-   VERIFIED. `ai/tools.ts:343` advertises an enum including `campaign_send`,
-   `bulk_lead_import`, `report_generation`; the implementation at `:1532` is one
-   `logger.info` followed by a success payload. A user who asks Pax to run the
-   overnight campaign send is told it is queued. Small effort — refuse, or wire
-   it. The strongest built-but-unwired instance on the Pax tool surface.
+2. ~~**`schedule_background_job` schedules nothing and reports `status: "queued"`.**~~
+   CLOSED as ledger 39 — deleted, not wired. The survey around it is the part
+   worth keeping: all 61 switch cases scanned for the shape (returns
+   `success: true`, calls nothing that can have an effect) found exactly ONE
+   offender, which is when a rule is cheap enough to install rather than after
+   the second occurrence. `paxToolsReportRealEffects.test.ts` now holds it.
 
 3. ~~**52 bare `gpt-4o`-style ids sent to an OpenRouter-only client.**~~ CLOSED
    as ledger 36 — and the count was wrong in the safe direction only by accident.
@@ -229,8 +229,10 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–38.
+Full reasoning in the cross-pollination ledger, entries 23–39.
 
+- **`status: "queued"`, nothing queued** — the one Pax tool of 61 that reported
+  an effect it never had, deleted; the shape is now scanned for. Ledger 39.
 - **two doors on one operation** — skip-trace's REST door required a PII scope,
   a purpose, a justification and an FCRA attestation; its Pax door required
   nothing, and the registry that declared a scope for all ~60 intents was read

@@ -2217,6 +2217,62 @@ data flows through the provider registry". The same is true of
 that file. On the frontier.
 
 
+### 39 — `status: "queued"`, and nothing was queued
+
+Frontier item 2, closed. Small, and worth its own entry for what the survey
+around it settled.
+
+**The defect.** `schedule_background_job` advertised an enum of four job types —
+`bulk_property_import`, `bulk_lead_import`, `campaign_send`,
+`report_generation` — and its entire implementation was one `logger.info`
+followed by `{ success: true, data: { …, status: "queued" } }`. A user who asked
+Pax to run the overnight campaign send was told it was queued. None of those
+four job types exists anywhere in `server/jobs` or the outbox.
+
+It is a purer instance of the class than most: not a stub that returns nothing,
+but a stub that returns a **status field**. `"queued"` is the word a real queue
+would use, in the place a real queue would put it.
+
+**Deleted, not wired.** Wiring it means BUILDING four job types, and the defect
+is that it claimed to already have them. Removed from `toolDefinitions`, from
+the dispatch, and from the App Intent table — the last of those being the
+residue this repository leaves most often, where a deleted tool keeps a door
+and a scope declared for something nobody can call.
+
+**The survey is the part worth keeping.** Rather than fixing the one, I scanned
+all 61 switch cases for the shape: returns `success: true`, calls nothing that
+can have an effect. Exactly one offender, and the other four candidates were
+three pure calculators and `get_system_context` (which awaits a real read). So
+the class was bounded at one — which is precisely when a rule is cheap enough to
+install, rather than after the second occurrence.
+
+**The predicate, and why `await` carries it.** Every handler in this file that
+reads or writes anything awaits something — storage, the db, a service, a
+dynamic import, a fetch. A case that returns success having awaited nothing has,
+by construction, done nothing beyond arithmetic on its own arguments. The first
+version of the rule listed effect-shaped identifiers instead (`storage.`,
+`Service.`, `emit…`, `send…`) and immediately produced a false positive on
+`get_system_context`, whose effect is a plain call to a statically imported
+function. Enumerating the ways code can have an effect is a losing game;
+`await` is the one signal that generalises.
+
+**Exit test.** `paxToolsReportRealEffects.test.ts` scans the switch and asserts
+no unregistered case claims success without effect. Falsified by re-inserting
+**the real deleted handler** into a copy of the source — not a synthetic shape,
+the code that actually shipped — and by a negative control on the same site: a
+handler that awaits a storage write must NOT be flagged. Plus a vacuity guard
+(>50 cases parsed, four known tools present, and every name in the
+pure-computation register must be a real tool).
+
+**And the register that named it.** `paxPauseToolGate.test.ts` asserted
+`schedule_background_job` is not pause-safe. `PAUSE_SAFE_TOOLS.has(name) ===
+false` is satisfied trivially by a name that no longer exists, so the list would
+have kept reading as "these tools exist and are correctly not pause-safe" while
+one of them did not exist at all. Per CLAUDE.md's rule about tests that pinned a
+stub: the entry was removed and a mirror hygiene case added — every name in that
+list must be a real tool — so the next deletion cannot leave a ghost.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
