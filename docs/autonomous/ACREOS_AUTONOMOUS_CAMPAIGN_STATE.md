@@ -1107,3 +1107,87 @@ the measurements it was given.
 
 Ratchet: `lint:measurement-defaults` 75 → 72, reported stale by the gate itself
 and locked in.
+
+## PHASE 10 — WHERE A DEFAULT BECAME A COMMITMENT (2026-08-18)
+
+Completes the phase-7 market-measurement group. Everything fixed before this
+inflated a score, a report or a ranking. Two of these **spent money**.
+
+### The offer quoted to a property owner
+
+`computeOfferIntelligence` (leadIntelligenceEngine) read
+
+```
+parseFloat(lead.acres || lead.acreage || "5")   and   nassData?.pasturePerAcre || 1000
+```
+
+For a lead with no acreage on file in a county USDA has no value for, that is
+`1000 × 0.25 × 5` = a **$1,250 offer** — and `offerPrice` is interpolated
+verbatim into the outreach message sent to the owner: *"My offer for your X
+County property is $1,250."* A dollar figure quoted to a counterparty, from two
+constants. Both inputs are now required, and the six message angles have
+price-free variants that open the conversation without naming a number.
+
+`buildNextBestAction` had the same shape for the operator ("Send blind offer
+letter today at $1,250") and now says the figure is not established yet.
+
+### The instruction to spend
+
+`rankCountiesForCampaign` (parcelIntelligenceFusion) read
+`profileData?.opportunityScore || 50`, and 50 lands on **"Test with 500
+letters"** — an instruction to spend money, issued for a county nothing had
+scored. That file's own header, ~620 lines above, documents refusing to feed a
+scoring model placeholder constants. The rule was written down in the same file
+that broke it. Unscored counties now return "Not scored — no county profile on
+file" and hold no rank.
+
+### Three of my own errors, and what each teaches
+
+**A regex gate governed a spelling, not a behaviour.** The first assertion
+matched the source for `lead.acres || lead.acreage || "5"`. The mutation that
+restored it as `lead?.acres || …` — one character different — sailed straight
+past. There is always another spelling. Replaced with behavioural assertions:
+`scoreLeadIntelligence` touches no database on that path, so the real function
+is called and the returned `estimatedOfferPrice` and `recommendedMessage` are
+asserted. The redone mutation fails.
+
+**A file-wide assertion found a second occurrence I had missed.** The same file
+carried a SECOND `|| "5"` on the profile's own `acres` field, next to the offer
+computed from the first. The test written for occurrence one is what found
+occurrence two — the argument for asserting on the general form rather than the
+one call site.
+
+**I annotated the wrong consumer.** My comment claimed `maps.tsx` and
+`blind-offer-wizard.tsx` render `leadIntelligenceEngine`'s
+`countyContext.usdaLandValuePerAcre`. They do not — they read the
+identically-named field on `blindOfferCalculator.marketContext`, which carried
+the same `|| 0` and was the live one. The wrong-target mutation (M5) survived
+until that was found, and both are now fixed: the live one behaviourally
+tested, the dormant one corrected because the next consumer would inherit it.
+
+`|| 0` is worth naming here, because this gate deliberately treats zero as the
+honest empty. For a **land value per acre** it is not: the page rendered "Offer
+modeled from USDA land values ($0/ac)" — land priced at nothing, presented as
+the basis for an offer. Zero is only the honest empty for a COUNT.
+
+### A flaky gate of my own, fixed rather than retried
+
+The full suite failed once on `climateRiskRefusal.test.ts` (phase 4) with the
+TX render containing the OH render's "Climate Risk: Not assessed" line. It
+passed on re-run, at HEAD, and four times in a row afterwards — and a bisect
+across the working set produced contradictory results, which is itself the
+signature of chasing noise rather than a cause.
+
+The cause: the three PDF cases shared one module instance and one `printed`
+buffer, cleared only in `beforeEach`. Every `Promise.allSettled` branch in
+`generateFullReport` rejects under those mocks (no db) and
+`recordSnapshotAsync` is fire-and-forget, so a late write from the previous
+case could land in the next case's buffer.
+
+Fixed at the source — `vi.resetModules()` per render, buffer cleared
+immediately before the call, text snapshotted synchronously after — plus a
+guard that throws if a render produces almost no text, since an empty render
+would make every `not.toMatch` in the file pass vacuously.
+
+Recording it because the temptation was to re-run and move on: a gate that
+fails intermittently is a gate that gets ignored, and then it guards nothing.

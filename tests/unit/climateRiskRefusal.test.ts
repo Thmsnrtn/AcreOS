@@ -170,13 +170,38 @@ describe("due-diligence PDF — silence is not a clean bill of health", () => {
     printed = [];
   });
 
+  /**
+   * Each render is isolated.
+   *
+   * The first version shared one module instance and one `printed` array
+   * across the three cases, resetting the array only in `beforeEach`. The
+   * generator's `Promise.allSettled` branches all reject under these mocks
+   * (no db), and `recordSnapshotAsync` is fire-and-forget — so a late write
+   * from the PREVIOUS case could land in the next case's buffer. That produced
+   * an intermittent failure where the TX render contained the OH render's
+   * "Climate Risk: Not assessed" line, which reads as a real defect and is
+   * not one.
+   *
+   * A flaky gate is a gate that gets ignored, so it is fixed rather than
+   * retried: `vi.resetModules()` gives each render its own module instance,
+   * the buffer is cleared immediately before the call, and the text is
+   * snapshotted synchronously after the await.
+   */
   async function renderFor(state: string): Promise<string> {
+    vi.resetModules();
     process.env.__TEST_DD_STATE = state;
+    printed = [];
     const { generateFullReport } = await import(
       "../../server/services/dueDiligenceReportGenerator"
     );
     await generateFullReport(1, 1);
-    return printed.join("\n");
+    const text = printed.join("\n");
+    // Guard the isolation itself: a render that produced nothing would make
+    // every `not.toMatch` below pass vacuously.
+    if (text.length < 200) {
+      throw new Error(`the ${state} render produced almost no text (${text.length} chars)`);
+    }
+    return text;
   }
 
   it("an uncovered state gets an explicit 'not assessed', not an omission", async () => {

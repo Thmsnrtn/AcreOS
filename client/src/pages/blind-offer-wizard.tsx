@@ -112,7 +112,8 @@ interface OfferReport {
     closingTimeline: string;
   };
   marketContext: {
-    usdaLandValuePerAcre: number;
+    /** null when USDA has no value on file for the county. */
+    usdaLandValuePerAcre: number | null;
     usdaCagr5Year: number;
     marketCondition: string;
     ebayValidationNote: string;
@@ -645,8 +646,16 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
           <dl className="grid grid-cols-3 gap-4 text-center m-0">
             <div>
               <dt className="text-xs text-muted-foreground">USDA land value</dt>
-              <dd className="text-xl font-bold tabular-nums m-0">{fmt(report.marketContext.usdaLandValuePerAcre)}/ac</dd>
-              <p className="text-xs text-muted-foreground">Pastureland benchmark</p>
+              <dd className="text-xl font-bold tabular-nums m-0">
+                {report.marketContext.usdaLandValuePerAcre === null
+                  ? "—"
+                  : `${fmt(report.marketContext.usdaLandValuePerAcre)}/ac`}
+              </dd>
+              <p className="text-xs text-muted-foreground">
+                {report.marketContext.usdaLandValuePerAcre === null
+                  ? "No USDA value on file for this county"
+                  : "Pastureland benchmark"}
+              </p>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Lowest comp</dt>

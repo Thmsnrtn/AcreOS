@@ -69,7 +69,8 @@ export interface LeadIntelligenceProfile {
   ownerName: string | null;
   county: string;
   state: string;
-  acres: number;
+  /** null when the lead record carries no usable acreage. */
+  acres: number | null;
 
   // Core motivation score (existing engine)
   motivationScore: number;
@@ -92,7 +93,8 @@ export interface LeadIntelligenceProfile {
 
   // County-level context
   countyContext: {
-    usdaLandValuePerAcre: number;
+    /** null when USDA has no pasture value on file for this county. */
+    usdaLandValuePerAcre: number | null;
     landValueYoYChange: number;
     countyOpportunityScore: number;
     isHotMigrationCounty: boolean;
@@ -108,9 +110,15 @@ export interface LeadIntelligenceProfile {
   nextBestAction: string;
 
   // Offer intelligence
-  estimatedOfferPrice: number; // Blind offer formula applied
-  estimatedFlipPrice: number;
-  estimatedOwnerFinanceMonthly: number;
+  /**
+   * null when the blind-offer formula had no real acreage or no USDA per-acre
+   * value for the county. These used to fall back to 5 acres × $1,000/acre,
+   * and `estimatedOfferPrice` is quoted verbatim in the outreach message —
+   * so the fallback made an OFFER, not just a bad estimate.
+   */
+  estimatedOfferPrice: number | null; // Blind offer formula applied
+  estimatedFlipPrice: number | null;
+  estimatedOwnerFinanceMonthly: number | null;
 
   // Metadata
   scoredAt: string;
@@ -243,15 +251,62 @@ function selectMessageAngle(signals: LeadIntelligenceProfile["signals"]): Messag
   return "hassle_free";
 }
 
+/**
+ * The same six angles, without a dollar figure.
+ *
+ * Reached when `computeOfferIntelligence` had no real acreage or no USDA
+ * per-acre value. The alternative — quoting a number derived from `?? 5` acres
+ * and `|| 1000` per acre — is an offer to a counterparty that no measurement
+ * supports, which is the one place in this codebase where a fabricated default
+ * became a commitment rather than a score.
+ */
+function hookWithoutPrice(
+  firstName: string,
+  county: string,
+  state: string,
+  angle: MessageAngle,
+  signals: LeadIntelligenceProfile["signals"],
+): string {
+  switch (angle) {
+    case "tax_relief":
+      return `${firstName}, I see your property has been accruing property tax obligations for ${signals.taxDelinquentYears} year(s). I specialize in helping property owners resolve tax situations quickly through a cash purchase — no auction, no credit impact, just a clean sale. I'd like to look at your ${county} County parcel and put a firm cash number in front of you.`;
+
+    case "estate_settlement":
+      return `${firstName}, handling inherited property can be overwhelming, especially when the estate needs to be settled. I purchase ${state} land quickly and as-is, with no repairs, no agents, and no complications. Tell me a little about the parcel and I'll come back with a firm cash offer — we can close in 30 days or less.`;
+
+    case "out_of_state":
+      return `${firstName}, managing property in ${county} County from ${signals.ownerState} can be a headache you didn't sign up for. I make it simple: a firm cash offer, no inspections, no contingencies, and we close on your timeline — wherever you are. Send me the parcel details and I'll put a number together.`;
+
+    case "corporate_asset":
+      return `I specialize in acquiring non-productive land assets from business portfolios. I can move quickly on your ${county} County property — simple paperwork, fast closing, and capital back in your business within 30 days. Share the parcel details and I'll return a firm cash offer.`;
+
+    case "equity_unlock":
+      return `${firstName}, you've held your ${county} County property for ${signals.yearsOwned} years. That tenure represents real equity. I'm a cash buyer — no real estate agents, no fees on your side — and I'd like to work out a firm number with you if you're ready to convert that land to cash.`;
+
+    case "hassle_free":
+    default:
+      return `${firstName}, I'm a private land buyer focused on ${county} County. I pay all cash — no agents, no closing costs on your side, and no hassle. If you're open to a simple conversation, I'd welcome the chance to look at your parcel and put a firm number in front of you.`;
+  }
+}
+
 function generateMessageHook(
   ownerName: string | null,
   county: string,
   state: string,
   angle: MessageAngle,
   signals: LeadIntelligenceProfile["signals"],
-  offerPrice: number
+  /**
+   * null when no offer could be computed from real inputs — see
+   * `computeOfferIntelligence`. Every angle below quoted `offerFmt`
+   * unconditionally, so a lead with no acreage and no USDA value received a
+   * message naming a dollar figure built from two constants.
+   */
+  offerPrice: number | null
 ): string {
   const firstName = ownerName?.split(" ")[0] || "Property Owner";
+  // No price, no quote. The angle still works — it opens the conversation and
+  // says the number comes after a look at the parcel, which is true.
+  if (offerPrice === null) return hookWithoutPrice(firstName, county, state, angle, signals);
   const offerFmt = `$${Math.round(offerPrice).toLocaleString()}`;
 
   switch (angle) {
@@ -307,12 +362,52 @@ function getBestContactTime(state: string): string {
 // Offer Intelligence
 // ---------------------------------------------------------------------------
 
+/**
+ * The lead's acreage, or null when the record does not carry a usable one.
+ *
+ * Structurally typed rather than `any`: this needs exactly two fields, so it
+ * should not erase the caller's row type to get them. (`lint:ratchets` caught
+ * the `any` on the first draft — strictly-down means the fix is to type it,
+ * not to raise the count.)
+ */
+function acresOrNull(lead: { acres?: unknown; acreage?: unknown } | null | undefined): number | null {
+  const raw = lead?.acres ?? lead?.acreage;
+  if (raw == null) return null;
+  const n = parseFloat(String(raw));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Returns nulls when the offer cannot be computed from real inputs.
+ *
+ * This read `parseFloat(lead.acres || lead.acreage || "5")` and
+ * `nassData?.pasturePerAcre || 1000`. For a lead with no acreage on file in a
+ * county USDA has no value for, that produced 1000 × 0.25 × 5 = a $1,250
+ * offer — and `offerPrice` is interpolated straight into the outreach message
+ * sent to the property owner: "My offer for your X County property is $1,250."
+ *
+ * A dollar figure quoted to a counterparty, derived entirely from two
+ * constants. Every other fabricated default in this codebase inflated a score
+ * or a report; this one made an offer. Both inputs are now required, and the
+ * message hook has phrasing for the case where there is no price to quote.
+ */
 function computeOfferIntelligence(
   lead: any,
   nassData: any
-): { offerPrice: number; flipPrice: number; ownerFinanceMonthly: number } {
-  const acres = parseFloat(lead.acres || lead.acreage || "5");
-  const usdaPerAcre = nassData?.pasturePerAcre || 1000;
+): {
+  offerPrice: number | null;
+  flipPrice: number | null;
+  ownerFinanceMonthly: number | null;
+} {
+  const acres = acresOrNull(lead);
+  const usdaPerAcre = nassData?.pasturePerAcre;
+
+  if (
+    acres === null ||
+    typeof usdaPerAcre !== "number" || !Number.isFinite(usdaPerAcre) || usdaPerAcre <= 0
+  ) {
+    return { offerPrice: null, flipPrice: null, ownerFinanceMonthly: null };
+  }
 
   // Blind offer formula
   const lowestCompPerAcre = usdaPerAcre;
@@ -365,7 +460,15 @@ export async function scoreLeadIntelligence(
   // County context
   const nassSnapshot = nassData || null;
   const countyContext: LeadIntelligenceProfile["countyContext"] = {
-    usdaLandValuePerAcre: nassSnapshot?.pasturePerAcre || 0,
+    // `|| 0` said a county's land was worth nothing when USDA simply had no
+    // value on file — a measurement of worthlessness rather than an absence.
+    //
+    // (The identically-named field the offer pages actually render comes from
+    // `blindOfferCalculator.marketContext`, which carried the same `|| 0` and
+    // is fixed alongside this. This one has no consumer today; it is corrected
+    // because the next consumer would inherit the lie, not because a surface
+    // is showing it.)
+    usdaLandValuePerAcre: nassSnapshot?.pasturePerAcre ?? null,
     landValueYoYChange: 0,
     countyOpportunityScore: 50,
     isHotMigrationCounty: false,
@@ -408,7 +511,12 @@ export async function scoreLeadIntelligence(
     ownerName: lead.ownerName || null,
     county: lead.county || "Unknown",
     state: lead.state || "TX",
-    acres: parseFloat(lead.acres || lead.acreage || "5"),
+    // A SECOND `|| "5"` lived here, reporting the lead's parcel as five acres
+    // when nothing on file said so — the profile's own acreage field, beside
+    // the offer computed from the same default. Found by the test written for
+    // the first one, which is the argument for asserting on the general form
+    // rather than the single call site.
+    acres: acresOrNull(lead),
     motivationScore: motivation.score,
     motivationGrade: motivation.grade,
     signals,
@@ -433,20 +541,31 @@ function buildNextBestAction(
   urgencyLevel: number,
   signals: LeadIntelligenceProfile["signals"],
   channel: OutreachChannel,
-  offerPrice: number
+  /** null when no offer could be computed — see `computeOfferIntelligence`. */
+  offerPrice: number | null
 ): string {
-  const offerFmt = `$${Math.round(offerPrice).toLocaleString()}`;
+  // The action is an instruction to an operator: "send a blind offer letter at
+  // $X". Without a computable offer it must instruct them to establish one,
+  // not name a figure derived from a default acreage and a default per-acre
+  // value.
+  const offerFmt =
+    offerPrice === null ? null : `$${Math.round(offerPrice).toLocaleString()}`;
+  const atOffer = offerFmt === null ? "" : ` at ${offerFmt}`;
+  const noOfferNote =
+    offerFmt === null
+      ? " No offer figure yet — acreage or a USDA per-acre value for this county is missing; establish the number before mailing."
+      : "";
 
   if (priority === "immediate" && urgencyLevel >= 60) {
-    return `URGENT: Send blind offer letter today at ${offerFmt}. Tax delinquency creates a countdown — act before this month's tax sale deadline.`;
+    return `URGENT: Send blind offer letter today${atOffer}. Tax delinquency creates a countdown — act before this month's tax sale deadline.${noOfferNote}`;
   }
 
   if (signals.hasResponded && signals.lastContactDaysAgo && signals.lastContactDaysAgo > 30) {
-    return `Re-engage warm lead by phone. They responded before — follow up to see if circumstances have changed. Offer ${offerFmt}.`;
+    return `Re-engage warm lead by phone. They responded before — follow up to see if circumstances have changed.${offerFmt === null ? noOfferNote : ` Offer ${offerFmt}.`}`;
   }
 
   if (signals.touchCount === 0) {
-    return `Send initial blind offer letter at ${offerFmt}. Mail to their out-of-state address for highest deliverability.`;
+    return `Send initial blind offer letter${atOffer}. Mail to their out-of-state address for highest deliverability.${noOfferNote}`;
   }
 
   if (signals.touchCount === 1) {
@@ -461,7 +580,7 @@ function buildNextBestAction(
     return `Skip trace for updated contact info. ${signals.touchCount >= 4 ? "Consider final 5th touch before marking as unresponsive." : "Add phone layer alongside letter #4."}`;
   }
 
-  return `Add to monthly mailing campaign at ${offerFmt}. Monitor for response.`;
+  return `Add to monthly mailing campaign${atOffer}. Monitor for response.${noOfferNote}`;
 }
 
 // ---------------------------------------------------------------------------

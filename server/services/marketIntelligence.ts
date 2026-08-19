@@ -85,7 +85,13 @@ export interface MarketAnalysisResult {
 
 export interface MarketHealthResult {
   location: MarketLocation;
-  healthScore: number;
+  /**
+   * null when the metric row on file carries no health score. It used to read
+   * `|| 50`, and 50 is not neutral on a 0-100 health scale — it is a finding
+   * that the market is middling, indistinguishable from a measured 50. The
+   * sibling `quickMetrics` fields were already nullable for the same reason.
+   */
+  healthScore: number | null;
   status: MarketStatus;
   statusLabel: string;
   quickMetrics: {
@@ -506,7 +512,10 @@ class MarketIntelligenceService {
     
     return {
       location,
-      healthScore: latestMetric.marketHealthScore || 50,
+      // `|| 50` reported a mid-range market health for a metric row that
+      // carries none — and 50 is not neutral on a 0-100 health scale, it is a
+      // finding. null says the score is not on file.
+      healthScore: latestMetric.marketHealthScore ?? null,
       status: (latestMetric.marketStatus as MarketStatus) || "stable",
       statusLabel: MARKET_STATUS[(latestMetric.marketStatus as MarketStatus) || "stable"].name,
       quickMetrics: {

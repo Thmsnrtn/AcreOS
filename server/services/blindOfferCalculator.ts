@@ -181,7 +181,8 @@ export interface BlindOfferReport {
 
   // Market context
   marketContext: {
-    usdaLandValuePerAcre: number;
+    /** null when USDA has no pasture value on file for this county. */
+    usdaLandValuePerAcre: number | null;
     usdaCagr5Year: number;
     marketCondition: string;
     competitionLevel: string;
@@ -250,7 +251,12 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
   const effectiveMarketCondition = marketCondition || detectMarketCondition(trend);
 
   const marketContext = {
-    usdaLandValuePerAcre: nassData?.pasturePerAcre || 0,
+    // `|| 0` is the one place here where zero is NOT the honest empty:
+    // `maps.tsx` renders this as "Offer modeled from USDA land values ($0/ac)"
+    // and `blind-offer-wizard.tsx` as a headline figure — so a county USDA has
+    // no value for showed land priced at nothing, presented as the basis for
+    // an offer. Both pages now render the absence.
+    usdaLandValuePerAcre: nassData?.pasturePerAcre ?? null,
     usdaCagr5Year: trend?.cagr5Year || 0,
     marketCondition: effectiveMarketCondition,
     competitionLevel:

@@ -29,7 +29,14 @@ const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-measurement-defaults.mjs");
 
 /** Measured 2026-08-18. Down-only: a fix DELETES its baseline line. */
-const BASELINE_CEILING = 72;
+const BASELINE_CEILING = 69;
+// 72 -> 69 on 2026-08-18: the last three of the market-measurement group.
+// `pasturePerAcre || 1000` produced a $1,250 offer QUOTED TO A PROPERTY OWNER
+// in the outreach message; `opportunityScore || 50` produced "Test with 500
+// letters" — an instruction to spend money — for a county nothing had scored;
+// `marketHealthScore || 50` reported a mid-range market health for a metric
+// row that carries none. The first two are the only places in this campaign
+// where a fabricated default became a COMMITMENT rather than a score.
 // 75 -> 72 on 2026-08-18: the three `dataIntelligenceEngine` county signals.
 // `medianDomDays ?? 180` awarded 5 of 35 market-health points to a county
 // nobody had measured; `dataQualityScore ?? 0.5` awarded 4 of 20 on the axis

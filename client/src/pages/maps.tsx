@@ -261,7 +261,7 @@ interface InlineOfferReport {
   recommendationReason: string;
   compAnalysis: { compCount: number };
   letterVariables: { offerAmount: number; offerAmountWords: string };
-  marketContext: { usdaLandValuePerAcre: number };
+  marketContext: { usdaLandValuePerAcre: number | null };
   warnings: string[];
 }
 
@@ -410,8 +410,18 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
           {noComps ? (
             <p className="text-micro text-acr-warn flex items-start gap-1">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
-              Offer modeled from USDA land values ({usd(report.marketContext.usdaLandValuePerAcre, { noCents: true })}/ac);
-              no recent comps available.
+              {report.marketContext.usdaLandValuePerAcre === null ? (
+                <>
+                  No recent comps available and no USDA land value on file for this
+                  county — this offer is not anchored to a measured land value.
+                </>
+              ) : (
+                <>
+                  Offer modeled from USDA land values (
+                  {usd(report.marketContext.usdaLandValuePerAcre, { noCents: true })}/ac); no
+                  recent comps available.
+                </>
+              )}
             </p>
           ) : (
             <p className="text-micro text-muted-foreground">

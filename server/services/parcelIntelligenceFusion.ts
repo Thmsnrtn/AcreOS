@@ -828,8 +828,14 @@ export async function screenCountiesForCampaign(
       const trendData = trend.status === "fulfilled" ? trend.value : null;
       const profileData = profile.status === "fulfilled" ? profile.value : null;
 
-      const score = profileData?.opportunityScore || 50;
-      const usdaValue = nassData?.pasturePerAcre || 0;
+      // `profileData?.opportunityScore || 50` put an unprofiled county at 50,
+      // which lands on "Test with 500 letters" — an instruction to spend money,
+      // issued for a county nothing had scored. Notably this file's own header
+      // (~line 207) documents refusing to feed a scoring model placeholder
+      // constants, for exactly this reason; the rule was written down here and
+      // broken six hundred lines below it.
+      const score: number | null = profileData?.opportunityScore ?? null;
+      const usdaValue = nassData?.pasturePerAcre ?? null;
 
       return {
         county: c.county,
@@ -838,7 +844,11 @@ export async function screenCountiesForCampaign(
         thesis: profileData?.investorThesis || "Insufficient data for analysis.",
         usdaLandValue: usdaValue,
         landValueTrend: trendData?.trend || "unknown",
-        recommendation: score >= 70 ? "Run campaign now"
+        // No score, no instruction. "Not scored" is a real answer and the only
+        // honest one for a county with no profile on file.
+        recommendation:
+          score === null ? "Not scored — no county profile on file"
+          : score >= 70 ? "Run campaign now"
           : score >= 50 ? "Test with 500 letters"
           : score >= 35 ? "Research further"
           : "Skip",
@@ -846,11 +856,18 @@ export async function screenCountiesForCampaign(
     })
   );
 
-  const ranked = results
+  // Unscored counties sort last and are NOT ranked. `b.score - a.score` with a
+  // null score yields NaN, which leaves the comparator's ordering undefined —
+  // and a county nobody scored must not occupy a rank position either way.
+  const all = results
     .filter(r => r.status === "fulfilled")
-    .map(r => (r as PromiseFulfilledResult<any>).value)
-    .sort((a, b) => b.score - a.score)
-    .map((item, idx) => ({ ...item, rank: idx + 1 }));
+    .map(r => (r as PromiseFulfilledResult<any>).value);
+  const scored = all.filter((r) => typeof r.score === "number");
+  const unscored = all.filter((r) => typeof r.score !== "number");
+  const ranked = [
+    ...scored.sort((a, b) => b.score - a.score).map((item, idx) => ({ ...item, rank: idx + 1 })),
+    ...unscored.map((item) => ({ ...item, rank: null })),
+  ];
 
   return ranked;
 }
