@@ -2113,6 +2113,110 @@ mutations: run against `HEAD~1`'s source, the predicates report
 actually existed.
 
 
+### 38 — TWO DOORS ON THE SAME OPERATION, and only one was guarded
+
+The frontier's top-ranked security item, verified and closed. Not a Foundry
+transfer.
+
+**The defect.** Skip-trace is FCRA-adjacent under §1681b(a)(3)(F), and AcreOS
+has two doors to it.
+
+The REST door (`POST /api/skip-traces`, `routes-leads.ts:1806`) requires
+`requireScope("tenant_pii_write")` — a scope `member`, `va`, `viewer` and
+`intern` do not hold — plus a purpose from a closed enum, a justification of at
+least ten characters, and a current annual attestation, all persisted on a
+`skip_traces` row whose stated reason for existing is *"class-action defense
+audit trail"*.
+
+The Pax door (`ai/tools.ts:2767` → `connectors/executor.batchLeadsSkipTrace`)
+required none of it. No scope, no purpose, no attestation, no audit row, no
+credit ledger. A `member` typed a sentence and got a third party's phone
+numbers, emails and prior addresses. It also sat on `PAUSE_SAFE_TOOLS`, so it
+ran while the customer had Pax paused.
+
+**Underneath it, the general hole.** The App Intent registry declares a
+`requiredScope` for every one of its ~60 intents. Nothing on the Pax path read
+it. The only consumer was `mcp/safeIntents.ts`, which uses it to decide which
+intents an EXTERNAL agent may SEE — visibility, not authority. Sixty
+declarations, zero enforcement: CLAUDE.md's second law again, and this instance
+had a structural cause worth recording. `appIntents/catalog.ts` imports
+`executeTool` from `ai/tools.ts`, so `tools.ts` importing the catalog back would
+have been a cycle — **the declarations sat in a module the chokepoint could not
+import.** Fixed by extracting the table into `appIntents/intentScopes.ts`, a
+leaf that imports types only, so both sides can have it. One table, two readers.
+
+**And the declaration itself was wrong.** `batch_leads_skip_trace` was tagged
+`{ door: "map", scope: "deal_read" }` — the weakest scope in the ladder, held by
+every role including `intern`. A consumer-report lookup declared as a deal read.
+Corrected to `tenant_pii_write`, matching the REST door for the same operation.
+Worth noting for its own sake: the registry was not merely unenforced, it was
+unenforced AND untrue, and the second is what would have made a naive
+"enforce the declarations" change ineffective.
+
+**The permission ladder could not answer the question.** `hasRoleScope(req,
+scope)` took an Express request. `executeTool` has an `Organization` and
+sometimes a user id, never a `req`. Extracted `userHasScope(org, userId, scope)`
+with `hasRoleScope` delegating to it, so there is one implementation rather than
+two that drift. The FOUNDER bypass deliberately stays in the request-shaped
+wrapper — it reads `req.isFounder`, which upstream middleware establishes; a
+caller with only a user id gets the org-membership answer and no ambient
+elevation from a path that cannot prove it.
+
+**Two rules at the chokepoint, and the asymmetry is the design.**
+
+1. An **identified** caller is held to the declared scope. `ai/executive.ts`
+   passes `userId` on all four of its call sites, so the customer-facing surface
+   is covered.
+2. An **unidentified** caller — `vaService`'s org-level agent loop, the
+   registry's own `handler(args, org)`, the approved-send replay — may act as
+   the org for ordinary scopes, because there is no user to hold one and
+   refusing would break automation that has always run this way. It is REFUSED
+   for the PII scopes, where *"the org did it"* is not an answer anyone can give
+   a regulator.
+
+`trustedApproval` does **not** bypass this. A human tapping "Send" on a frozen
+action is a witnessed send; it is not evidence that they hold
+`tenant_pii_write`.
+
+**The FCRA gate refuses rather than collecting.** Skip-trace needs three things
+the Pax path could plausibly have gathered: the purpose is enum-constrained and
+checkable, the attestation is a stored human act and checkable — and the
+JUSTIFICATION would be a sentence the MODEL wrote, persisted as the operator's
+stated reason in a legal record. That is where "fabrication is never acceptable"
+is at its sharpest: an audit trail exists to show that a PERSON claimed a
+purpose, and a model claiming one on their behalf is the exact thing it is
+supposed to disprove. So Pax refuses, names all three requirements, and points
+at the surface that records them. If skip-trace through Pax is wanted it needs a
+purpose-capture step the human completes — the pending-action approval flow is
+the natural place — not a wider tool schema.
+
+**Exit test.** `paxToolScopeAndFcra.test.ts`, driving the REAL `userHasScope`
+and the REAL `ROLE_SCOPES`; only the `team_members` row is a fixture, because a
+mock standing in for the predicate would make the suite agree with any
+implementation of it — including one with the polarity inverted, which is the
+mistake `paxPauseToolGate.test.ts` records for `unattendedSendPermitted`. The
+connector mock THROWS rather than returning "not connected", so a bypass cannot
+look like a refusal.
+
+The case that matters most is the one that gives the caller everything: a
+`screening_specialist` — who genuinely holds `tenant_pii_write` — is still
+refused, and so is the org OWNER, and so is a call carrying `trustedApproval`.
+Holding every scope is not an attestation. Without those three, the refusal
+would prove nothing about FCRA, because the scope gate fires first and the two
+messages differ. Both directions on the ladder as well: a `viewer` is refused
+`create_lead` and a `member` is permitted it, a `bookkeeper` is refused
+`draft_outreach_message` on a different scope so the pair cannot both be passing
+for a reason peculiar to `deal_write`, an unidentified caller still gets the
+non-PII intent through, and the membership read throwing fails CLOSED.
+
+**Found alongside, recorded not fixed.** `batchLeadsSkipTrace` calls BatchLeads
+with `fetch` directly — no provider registry, so no credit deduction, no
+`provider_cache` row, no circuit breaker, contrary to CLAUDE.md's "all external
+data flows through the provider registry". The same is true of
+`propstreamLookup`, `propstreamComps`, `searchMlsListings` and `getMlsComps` in
+that file. On the frontier.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

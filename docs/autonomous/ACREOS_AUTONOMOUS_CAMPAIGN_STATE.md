@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `28ad21b7` + the tier-ceiling commit below, 2026-08-19. Working
-tree clean, 932 test files / 12,531 tests green, 26 gates green.
+Verified at: `299915b8` + the tool-scope commit below, 2026-08-19. Working tree
+clean, 933 test files / 12,545 tests green, 26 gates green.
 
 ---
 
@@ -75,22 +75,19 @@ lenses, then one owner ranking by consequence-over-effort with instructions to
 spot-check and demolish. It demolished one finding and refused to endorse five it
 had not verified; those are deliberately absent below.
 
-1. **Pax's skip-trace tool bypasses the FCRA permissible-purpose gate.**
-   VERIFIED. The REST door (`routes-leads.ts:1806`, `routes-skip-tracing.ts:244`)
-   requires `requireScope("tenant_pii_write")` — a scope `member` and `va` do NOT
-   hold — plus purposeOfUse, justification and a current FCRA §1681b(a)(3)(F)
-   attestation, all persisted to a `skip_traces` row explicitly for
-   "class-action defense audit trail". The Pax door
-   (`ai/tools.ts:799` def, `:2767` dispatch → `connectors/executor.ts:290`)
-   requires none of it: no scope, no purpose, no attestation, no audit row, no
-   credit ledger — and `batch_leads_skip_trace` sits on `PAUSE_SAFE_TOOLS`
-   (`tools.ts:1005`) so it runs even under the customer's Pax kill switch. A
-   `member` types a sentence and gets phone numbers, emails and prior addresses.
-   `requiredScope` IS declared per intent and is consumed only by
-   `mcp/safeIntents.ts` — never by `executeTool`.
-   **Exposure today is zero** (pre-customer, no org has BatchLeads credentials
-   connected), which is why it is not #1 by ratio — but it is the top
-   security/authority item and it is medium effort.
+1. ~~**Pax's skip-trace tool bypasses the FCRA permissible-purpose gate.**~~
+   CLOSED as ledger 38. Two things the entry above understated. The registry's
+   own declaration was WRONG, not merely unenforced — `batch_leads_skip_trace`
+   was tagged `deal_read`, the weakest scope in the ladder, for an operation
+   whose REST door requires `tenant_pii_write`; "enforce the declarations" alone
+   would have changed nothing. And the reason nothing enforced them was
+   structural: `appIntents/catalog.ts` imports `executeTool`, so `ai/tools.ts`
+   could not import the catalog back — the declarations sat in a module the
+   chokepoint could not reach. Now a type-only leaf both sides import.
+   Pax refuses skip-trace outright rather than collecting purpose +
+   justification + attestation, because the justification would be a
+   model-authored sentence persisted as the operator's stated reason in a legal
+   record.
 
 2. **`schedule_background_job` schedules nothing and reports `status: "queued"`.**
    VERIFIED. `ai/tools.ts:343` advertises an enum including `campaign_send`,
@@ -178,7 +175,18 @@ had not verified; those are deliberately absent below.
     have become reachable the moment someone made the enum match the picker,
     which is the obvious repair.
 
-12. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
+12. **Five connector executors bypass the provider registry.** CLAUDE.md: "All
+    external data flows through the provider registry … tier-based filtering,
+    credit deduction on paid lookups, circuit breaking, response caching via
+    `provider_cache`." `server/services/connectors/executor.ts` calls
+    BatchLeads, PropStream (×2) and the MLS (×2) with bare `fetch` and the org's
+    own key: no credit deduction, no cache, no circuit breaker. Found while
+    closing ledger 38, which is why it is here rather than in it — the FCRA hole
+    was the ranked item and this is a different rule broken by the same file.
+    Each is a PAID third-party lookup, so the missing half is the customer's
+    money.
+
+13. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
     `openaiClient.ts`'s docblock forbids exactly this and names
     `routes-field-scout.ts` as the sanctioned pattern (read `OPENAI_API_KEY`
     directly). `voiceCallAI.ts:171` and `routes-ai.ts:1859` call
@@ -194,7 +202,7 @@ had not verified; those are deliberately absent below.
     the measurement and its limit. **Needs one provider key to settle**, then it
     is a small fix.
 
-13. **`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
+14. **`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
     most expensive one.** `models.ts` states it is "the ONLY price surface
     callers should use — there is no second cost table"; `routes-ai.ts:1207`
     declares a local `MODEL_COSTS` with four stale bare keys. On the same
@@ -207,7 +215,7 @@ had not verified; those are deliberately absent below.
     `measurement-defaults` register (that gate matches numeric defaults; this one
     is a string key that becomes a number downstream).
 
-14. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
+15. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
     The per-org `aiCostCeiling` on `routeAITask` is the entire control.
     `userAiCostControls.ts` — the per-user daily/monthly budget — was deleted in
     ledger 35 as unwired and fail-open, and `DEFECT-0017` was corrected in the
@@ -221,8 +229,12 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–37.
+Full reasoning in the cross-pollination ledger, entries 23–38.
 
+- **two doors on one operation** — skip-trace's REST door required a PII scope,
+  a purpose, a justification and an FCRA attestation; its Pax door required
+  nothing, and the registry that declared a scope for all ~60 intents was read
+  by nothing on that path. Ledger 38.
 - **the tier ceiling is the ceiling** — a customer-settable `modelOverride` sat
   ahead of the paid-tier ceiling and its soft-cap downgrade, on a picker that
   422'd on every option. Removed rather than repaired. Ledger 37 / OD-7.

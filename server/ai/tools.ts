@@ -28,6 +28,11 @@ import {
   pendingActionArtifact,
 } from "../services/approvalKernel";
 import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
+// The permission ladder, reachable without an Express request. `intentScopes`
+// is a TYPE-ONLY leaf so importing it here is not the cycle that importing
+// `appIntents/catalog` would be (catalog imports executeTool from this file).
+import { userHasScope } from "../middleware/roleScope";
+import { scopeForIntent, PII_SCOPES } from "../services/appIntents/intentScopes";
 // Wave B "Wire the engine" — a lead Pax creates is a lead like any other, and
 // a status Pax moves is a status change like any other. Both fire the same
 // workflow events the human routes fire. Fire-and-forget: never throws.
@@ -960,6 +965,13 @@ export { APPROVAL_REQUIRED_TOOLS } from "../services/approvalKernel";
 //
 // DEFAULT-DENY: a new tool is side-effecting until someone deliberately adds
 // it here. That is the safe failure mode for a kill switch.
+/**
+ * Tools refused on the Pax path because a legal precondition cannot be met by a
+ * model. See the FCRA gate in executeTool for the reasoning; the set exists so
+ * the refusal is enumerable rather than a branch buried in a switch.
+ */
+const FCRA_REFUSED_TOOLS: ReadonlySet<string> = new Set(["batch_leads_skip_trace"]);
+
 export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   // System / dashboard reads
   "get_system_context",
@@ -1002,7 +1014,11 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "list_stripe_payments",
   "propstream_lookup",
   "propstream_comps",
-  "batch_leads_skip_trace",
+  // batch_leads_skip_trace was here until 2026-08-19. A consumer-report lookup
+  // that spends the org's BatchLeads credits and returns a third party's phone
+  // numbers and prior addresses is not "safe to run while Pax is paused"; the
+  // FCRA gate below refuses it outright now, and it must not sit on an
+  // allowlist that says otherwise if that ever changes.
   "search_mls_listings",
   "get_mls_comps",
   // Org memory — conversation-scoped notes, not actions on the world
@@ -1100,6 +1116,94 @@ export async function executeTool(
         });
         return { success: false, error: paxPauseRefusalMessage(pause) };
       }
+    }
+
+    // ── Permission-ladder gate (2026-08-19) ───────────────────────────────
+    // The App Intent registry declares a `requiredScope` for every intent
+    // (server/services/appIntents/intentScopes.ts). Until now NOTHING on the
+    // Pax path read it: the only consumer was mcp/safeIntents.ts, which uses it
+    // to decide which intents an external agent may see. So the REST door for
+    // an operation could require `tenant_pii_write` while the Pax door for the
+    // SAME operation required nothing at all, and a `member` — who does not
+    // hold that scope — could reach it by typing a sentence.
+    //
+    // Two rules, and the asymmetry is the point:
+    //
+    //  1. An IDENTIFIED caller is held to the declared scope. `ai/executive.ts`
+    //     (the Pax chat + streaming loops) passes `userId` on all four of its
+    //     call sites, so this covers the customer-facing surface.
+    //  2. An UNIDENTIFIED caller — vaService's org-level agent loop, the
+    //     registry's own `handler(args, org)`, the approved-send replay — is
+    //     allowed to act as the org for ordinary scopes, because there is no
+    //     user to hold one and refusing would break automation that has always
+    //     run this way. It is REFUSED for the PII scopes, where "the org did
+    //     it" is not an answer anyone can give a regulator.
+    //
+    // `trustedApproval` does NOT bypass this. A human tapping "Send" on a
+    // frozen action is a witnessed send; it is not evidence that the human
+    // holds `tenant_pii_write`.
+    {
+      const declaredScope = scopeForIntent(toolName);
+      if (declaredScope) {
+        const callerId = options?.userId ?? null;
+        const piiScope = PII_SCOPES.has(declaredScope);
+        if (callerId || piiScope) {
+          const permitted = await userHasScope(
+            { id: org.id, ownerId: org.ownerId ?? null },
+            callerId,
+            declaredScope,
+          );
+          if (!permitted) {
+            logger.warn("[executeTool] Refused — caller lacks the intent's declared scope", {
+              orgId: org.id,
+              metadata: { toolName, declaredScope, identified: Boolean(callerId) },
+            });
+            return {
+              success: false,
+              error:
+                `You do not have permission to do that here. "${toolName}" requires ` +
+                `the "${declaredScope}" permission in this workspace. An owner or ` +
+                `admin can grant it under Settings → Team.`,
+            };
+          }
+        }
+      }
+    }
+
+    // ── FCRA permissible-purpose gate (2026-08-19) ────────────────────────
+    // Skip-trace is FCRA-adjacent under §1681b(a)(3)(F). Its REST door
+    // (`POST /api/skip-traces`) requires the operator to claim a purpose from a
+    // closed enum, write a justification of at least ten characters, and hold a
+    // current annual attestation — and it persists all three on a `skip_traces`
+    // row whose stated reason for existing is "class-action defense audit
+    // trail". The Pax door required none of it.
+    //
+    // This refuses rather than collecting the three from the model, and that is
+    // deliberate. The purpose is enum-constrained and the attestation is a
+    // stored human act, so both could be checked — but the JUSTIFICATION would
+    // be a sentence the MODEL wrote, persisted as the operator's stated reason
+    // in a legal record. "Fabrication is never acceptable" (CLAUDE.md) is at its
+    // sharpest there: an audit trail exists to show that a person claimed a
+    // purpose, and a model claiming one on their behalf is the exact thing it
+    // is supposed to disprove.
+    //
+    // If skip-trace through Pax is wanted, it needs a purpose-capture step the
+    // HUMAN completes — the pending-action approval flow is the natural place —
+    // not a wider tool schema.
+    if (FCRA_REFUSED_TOOLS.has(toolName)) {
+      logger.info("[executeTool] Refused FCRA-gated tool on the Pax path", {
+        orgId: org.id,
+        metadata: { toolName },
+      });
+      return {
+        success: false,
+        error:
+          "I can't run a skip trace from chat. Skip-tracing is regulated under " +
+          "the FCRA: it needs a permissible purpose, a written justification, " +
+          "and a current annual attestation from the person requesting it — and " +
+          "those have to come from you, not from me. Run it from the lead's page " +
+          "(Deals → the lead → Skip trace), which records all three.",
+      };
     }
 
     switch (toolName) {

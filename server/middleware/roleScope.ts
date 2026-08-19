@@ -98,15 +98,46 @@ export async function hasRoleScope(req: AuthenticatedRequest, scope: Scope): Pro
   // Founders bypass — already gated upstream by requireFounder for
   // /founder/* routes; here we treat isFounder as "all scopes."
   if (req.isFounder) return true;
-  // Org owner shortcut.
-  if (req.organization.ownerId === req.user.id) return true;
+  return userHasScope(
+    { id: req.organization.id, ownerId: req.organization.ownerId },
+    req.user.id,
+    scope,
+  );
+}
+
+/**
+ * The same question WITHOUT an Express request.
+ *
+ * Added 2026-08-19 because the permission ladder was unreachable from the one
+ * place that most needed it: `ai/executeTool` is the chokepoint every Pax tool
+ * call passes through, and it has an `Organization` and a user id but no `req`.
+ * So the App Intent registry declared a `requiredScope` per intent and nothing
+ * on the Pax path ever read it — a `member` could ask Pax for a skip trace, an
+ * operation whose REST door requires `tenant_pii_write`.
+ *
+ * `hasRoleScope` above now delegates here, so there is one implementation of
+ * "does this user hold this scope in this org" rather than two that can drift.
+ * The FOUNDER bypass deliberately stays in the request-shaped wrapper: it reads
+ * `req.isFounder`, which upstream middleware establishes. A caller with only a
+ * user id gets the org-membership answer and nothing more — no ambient
+ * elevation from a path that cannot prove it.
+ *
+ * Falls CLOSED on a lookup failure, as it always did.
+ */
+export async function userHasScope(
+  org: { id: number; ownerId: string | null },
+  userId: string | null | undefined,
+  scope: Scope,
+): Promise<boolean> {
+  if (!userId) return false;
+  if (org.ownerId === userId) return true;
   try {
     const [member] = await db
       .select()
       .from(teamMembers)
       .where(and(
-        eq(teamMembers.organizationId, req.organization.id),
-        eq(teamMembers.userId, req.user.id),
+        eq(teamMembers.organizationId, org.id),
+        eq(teamMembers.userId, userId),
         eq(teamMembers.isActive, true),
       ))
       .limit(1);
