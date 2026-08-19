@@ -86,17 +86,26 @@ The **intent** is bidirectional enforcement:
 The second direction is the one that does the work. Without it a register drifts
 upward invisibly whenever something else drifts down.
 
-**But bidirectionality is per-gate, not a property of the apparatus.** Measured:
-of the 18 baseline-carrying test files, **7 assert stale-high and 11 do not**.
-The `scripts/ratchets/*.json` registers driven by `ratchet.mjs` do; several
-hand-written test baselines assert only `toBeLessThanOrEqual`.
+**But bidirectionality is per-gate, not a property of the apparatus** — every
+`scripts/ratchets/*.json` register enforces both directions, while hand-written
+test baselines each decide for themselves. A survey on 2026-08-19 found four
+one-directional registers and fixed the two that mattered most:
 
-`FOUNDER_ROUTE_BASELINE` is one of the one-directional ones, and it is the worst
-place for that: the count is 82 against a baseline of 82, so a consolidation to
-78 would pass silently and hand the next session four free slots for new
-top-level founder routes — exactly the sprawl the four-door doctrine exists to
-prevent. Do not assume a baseline you see is self-ratcheting; check the
-assertion.
+- `FOUNDER_ROUTE_BASELINE` — the worst case, because the count equalled the
+  baseline at 82. A consolidation to 78 would have passed silently and handed
+  the next session four free slots for new top-level founder routes, exactly the
+  sprawl the four-door doctrine exists to prevent.
+- `statuteRegister`'s `UNREVIEWED` / `PROSE_ONLY` / `REFUSAL_ONLY` — the count of
+  laws AcreOS implements that no lawyer has read. Getting five reviewed created
+  five unclaimed slots for new unreviewed implementations.
+
+Both now fail stale-high, both falsified by simulating the consolidation.
+`orgScopedFetchCoverage` asserts only an upper bound in the test, but the script
+it wraps enforces both directions itself, so it is sound.
+
+**Do not assume a baseline you see is self-ratcheting; check the assertion.**
+That is the general lesson, and it is why the survey mattered more than either
+individual fix.
 
 **Fix the occurrence, not the baseline.** Raising a baseline to make a gate green
 is the one move that turns the whole apparatus into decoration.

@@ -255,6 +255,30 @@ describe("statute register ratchet — UNREVIEWED may only shrink", () => {
     ).toBeLessThanOrEqual(UNREVIEWED_BASELINE);
   });
 
+  it("and never sits below it — a review must be locked in", () => {
+    // Bidirectional as of 2026-08-19. The upper bound alone meant that getting
+    // five statutes reviewed silently created five unclaimed slots for new
+    // UNREVIEWED implementations, and the next session could add them green.
+    // The comment above already told the reviewer to lower the baseline in the
+    // same commit; this makes it so.
+    const debt = unreviewed().map((e) => e.id);
+    expect(
+      debt.length,
+      `UNREVIEWED statute implementations (${debt.length}) are BELOW the baseline ` +
+        `(${UNREVIEWED_BASELINE}). A review landed — lower UNREVIEWED_BASELINE to ` +
+        `${debt.length} in this same commit, or the headroom becomes free slots for ` +
+        `the next unreviewed implementation.`,
+    ).toBeGreaterThanOrEqual(UNREVIEWED_BASELINE);
+  });
+
+  it("vacuity: the register is populated and the predicates select from it", () => {
+    // Every count above is derived from STATUTE_REGISTER. If the register were
+    // empty, or `unreviewed()` stopped matching, all three bounds would hold
+    // trivially and this file would certify a compliance posture nobody has.
+    expect(STATUTE_REGISTER.length).toBeGreaterThan(20);
+    expect(unreviewed().length).toBeGreaterThan(0);
+  });
+
   it("reports the enforcement mix (informational, and a floor on real coverage)", () => {
     // Not a threshold to game — a visible split so a wave that converts a
     // tested statute back to prose-only shows up in the diff.
@@ -278,6 +302,21 @@ describe("statute register ratchet — UNREVIEWED may only shrink", () => {
       `refusal-path-only statutes (${refusal.length}) exceed the baseline ` +
         `(${REFUSAL_ONLY_BASELINE}): ${refusal.join(", ")}`,
     ).toBeLessThanOrEqual(REFUSAL_ONLY_BASELINE);
+    // Both directions, for the same reason as UNREVIEWED: converting a
+    // prose-only statute to a real gate is the whole point, and leaving the
+    // baseline high hands the next session a free slot to add another.
+    expect(
+      prose.length,
+      `prose-only statutes (${prose.length}) are BELOW the baseline ` +
+        `(${PROSE_ONLY_BASELINE}) — a statute gained real enforcement. Lower ` +
+        `PROSE_ONLY_BASELINE to ${prose.length} in this same commit.`,
+    ).toBeGreaterThanOrEqual(PROSE_ONLY_BASELINE);
+    expect(
+      refusal.length,
+      `refusal-path-only statutes (${refusal.length}) are BELOW the baseline ` +
+        `(${REFUSAL_ONLY_BASELINE}). Lower REFUSAL_ONLY_BASELINE to ${refusal.length} ` +
+        `in this same commit.`,
+    ).toBeGreaterThanOrEqual(REFUSAL_ONLY_BASELINE);
     // The five obligations the audits actually got wrong must never fall back
     // to prose — they are the reason this file exists.
     for (const id of [

@@ -70,13 +70,45 @@ describe("desktop sidebar teaches the same four doors", () => {
 });
 
 describe("founder route-sprawl ratchet", () => {
-  it("the /founder/* route count never exceeds the baseline (it may only shrink)", () => {
+  /**
+   * BIDIRECTIONAL, and it was not until 2026-08-19.
+   *
+   * The assertion was `toBeLessThanOrEqual`, and the count equals the baseline —
+   * zero headroom. That combination is the worst case for a one-way ratchet: a
+   * consolidation from 82 to 78 passed silently and left FOUR unclaimed slots
+   * for new top-level founder routes, which is precisely the sprawl the
+   * four-door doctrine exists to prevent. The comment above the baseline told a
+   * consolidator to lower it and nothing made them.
+   *
+   * A count BELOW the baseline now fails as stale-high, so the reduction gets
+   * locked into the commit that earned it — the same discipline every
+   * `scripts/ratchets/*.json` register already enforces.
+   *
+   * The vacuity guard is not decoration: `founderRouteCount()` matches a string
+   * in App.tsx, so a refactor that renamed the prop or moved the routes would
+   * take the count to 0 and satisfy any upper bound.
+   */
+  it("counts a real population — a zero here means the matcher broke, not that sprawl ended", () => {
+    expect(founderRouteCount()).toBeGreaterThan(40);
+  });
+
+  it("the /founder/* route count never exceeds the baseline", () => {
     const count = founderRouteCount();
     expect(
       count,
       `founder routes (${count}) exceed the baseline (${FOUNDER_ROUTE_BASELINE}). New founder ` +
         `surfaces must live behind one of the four doors as a child/section/tab, not a new ` +
-        `top-level route. If you are CONSOLIDATING, lower FOUNDER_ROUTE_BASELINE to the new count.`,
+        `top-level route.`,
     ).toBeLessThanOrEqual(FOUNDER_ROUTE_BASELINE);
+  });
+
+  it("and never sits below it — a consolidation must be locked in", () => {
+    const count = founderRouteCount();
+    expect(
+      count,
+      `founder routes (${count}) are BELOW the baseline (${FOUNDER_ROUTE_BASELINE}). ` +
+        `Good — a consolidation landed. Lower FOUNDER_ROUTE_BASELINE to ${count} in this same ` +
+        `commit, or the headroom you just created becomes free slots for the next session.`,
+    ).toBeGreaterThanOrEqual(FOUNDER_ROUTE_BASELINE);
   });
 });

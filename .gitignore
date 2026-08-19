@@ -103,3 +103,12 @@ walk-*.png
 w2-*.png
 persona-prod-parcelcheck-desktop.png
 .playwright-mcp/
+
+# Gate self-test fixtures. `measurementDefaultsGate.test.ts` and
+# `orgScopedFetchCoverage.test.ts` write these into the real tree, run the real
+# gate against them, and delete them again — that is how each gate proves it
+# still FIRES rather than only that it passes. An interrupted run leaves one
+# behind, and one was committed by accident on 2026-08-19, which broke both
+# gates' "passes on the current tree" case. They are never source.
+server/services/__measurement_probe__.ts
+server/services/__rule3_canary__.ts
