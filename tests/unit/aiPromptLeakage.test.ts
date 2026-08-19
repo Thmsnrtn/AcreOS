@@ -250,8 +250,31 @@ function scanFileForLeaks(
   const lines = text.split("\n");
   const leaks: { term: string; line: number; snippet: string }[] = [];
 
+  // A COMMENT CANNOT REACH A CUSTOMER.
+  //
+  // This scanner read every line, so a docblock explaining WHY a founder-only
+  // boundary exists was flagged as a leak of it — the mirror image of the
+  // recorded trap where a source gate matches its own fix comments and calls
+  // that behaviour. Only whole-line comments are skipped (first non-space
+  // characters are `//`, `*` or `/*`), so a string containing `//` — a URL, a
+  // path — is still scanned.
+  //
+  // Guarded by a floor: if comment-skipping ever swallowed most of a file, the
+  // gate would silently stop scanning it, which is exactly the vacuous green
+  // this repository fails gates for.
+  const isWholeLineComment = (l: string) => /^\s*(\/\/|\*|\/\*)/.test(l);
+  const scannable = lines.filter((l) => !isWholeLineComment(l));
+  if (lines.length > 20 && scannable.length < lines.length * 0.2) {
+    throw new Error(
+      `${filePath}: comment-skipping removed ${lines.length - scannable.length} of ` +
+        `${lines.length} lines. The scanner is no longer reading this file — fix the ` +
+        `comment detection rather than accepting a green.`,
+    );
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (isWholeLineComment(line)) continue;
     // Skip the line if any allowlisted substring matches the line.
     if (allow.some((a) => line.includes(a))) continue;
 

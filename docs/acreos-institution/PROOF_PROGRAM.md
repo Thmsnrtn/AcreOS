@@ -150,6 +150,14 @@ Two recurring traps, each found more than once:
 - **A source gate that reads its own fix comments is matching prose, not
   behaviour.** Strip comments before scanning, with a floor on the stripped size
   so the stripping itself cannot silently empty the file.
+
+  This has a mirror image, found 2026-08-19: `aiPromptLeakage.test.ts` scanned
+  every line for founder POV, so a docblock *explaining why a founder-only
+  boundary exists* was reported as a leak of it. A comment cannot reach a
+  customer. The gate now skips whole-line comments — and carries the floor,
+  because a comment detector that swallowed a file would silently stop scanning
+  it. Both mutations fire: a real leak in a string is still caught, and
+  disabling the detector trips the floor.
 - **A stubbed safety predicate makes a suite agree with any implementation of
   it, including an inverted one.** Import the real function into the mock.
 

@@ -418,8 +418,33 @@ registerExecutor("forge_revenue", "apply_discount", async (ctx) => {
   if (durationMonths > 3) return { success: false, detail: "Governance: max discount duration is 3 months" };
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
-  // Record the discount offer (actual Stripe coupon creation requires Stripe API key)
-  return { success: true, detail: `Discount offer created: ${percentOff}% off for ${durationMonths} months for ${org.name}`, metrics: { orgId, percentOff, durationMonths }, verifyAfterMs: 30 * 24 * 60 * 60 * 1000 };
+
+  // REFUSES. It used to return success:true with the detail "Discount offer
+  // created: 20% off for 3 months for X" and create nothing — no Stripe coupon,
+  // no row, no record anywhere. Its own comment admitted the coupon "requires
+  // Stripe API key" while the receipt claimed the effect regardless.
+  //
+  // Two rules, both already written down, and this violated each:
+  //   - A receipt must not claim more than the effect achieved. The founder
+  //     reads this line in the decisions inbox and believes a discount exists.
+  //     `verifyAfterMs` then scheduled a 30-day verification of a discount that
+  //     was never applied, so the outcome loop would have graded a fiction.
+  //   - Pricing changes are founder-only FOREVER (CLAUDE.md DO-NOT-DO list). An
+  //     agent may not apply one, so the honest answer is not a better receipt —
+  //     it is a refusal that says where the authority lives.
+  //
+  // The percentOff/durationMonths caps above are kept: they still describe the
+  // envelope any future implementation must respect, and deleting them would
+  // lose a real decision.
+  return {
+    success: false,
+    detail:
+      `Refusing to apply a ${percentOff}% / ${durationMonths}-month discount to ${org.name}. ` +
+      `Pricing changes are owner-only, and nothing here applies one — there is no ` +
+      `coupon, no billing change and no record. Use escalate_to_founder to raise the ` +
+      `proposal for approval; the discount is applied in Stripe, not here.`,
+    metrics: { orgId, percentOff, durationMonths, applied: false },
+  };
 });
 
 registerExecutor("forge_revenue", "send_upgrade_nudge", async (ctx) => {
@@ -513,7 +538,23 @@ registerExecutor("sentinel_devops", "clear_cache", async (ctx) => {
 registerExecutor("sentinel_devops", "toggle_data_source", async (ctx) => {
   const { sourceName, enabled } = ctx.input;
   if (!sourceName) return { success: false, detail: "No source name provided" };
-  return { success: true, detail: `Data source "${sourceName}" ${enabled ? "enabled" : "disabled"}`, metrics: { sourceName, enabled } };
+
+  // REFUSES, for the same reason as apply_discount. This returned
+  // success:true with `Data source "X" enabled` and performed no write, no
+  // config change and no call — the receipt was the entire implementation.
+  //
+  // The effect it claimed is not cosmetic: enabling a data source can turn on a
+  // PAID provider, and the founder reading "enabled" in the inbox would believe
+  // both that the source is live and that its spend has started.
+  return {
+    success: false,
+    detail:
+      `Refusing to report data source "${sourceName}" as ${enabled ? "enabled" : "disabled"}: ` +
+      `nothing here changes provider configuration, so the source is unchanged. ` +
+      `Provider enablement is a real config change and has to be made where the ` +
+      `configuration lives.`,
+    metrics: { sourceName, enabled, applied: false },
+  };
 });
 
 // ─── Beacon Marketing Executors (v5) ──────────────────────────────────────

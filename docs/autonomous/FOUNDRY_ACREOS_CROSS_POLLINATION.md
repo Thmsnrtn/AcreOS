@@ -1381,9 +1381,59 @@ call sites, and every live path calls the bare `executeAction`. That is a
 built-but-unwired candidate for the deletion ledger or for wiring, and it is a
 separate decision from making the gate that IS wired fail closed.
 
+### 28 — "A receipt must not claim more than the effect achieved" → THIRD APPLICATION
+
+Ledger entry 5 established the rule and entry 9 applied it a second time to
+carrier acceptance. Pulling the thread on the agent-authority vocabularies found
+it broken again, in the place where the reader is the founder.
+
+**The defect.** Two of the 28 company-agent executors returned `success: true`
+with a receipt describing an effect they never produced.
+
+`forge_revenue:apply_discount` returned
+`"Discount offer created: 20% off for 3 months for <org>"` and created nothing —
+no Stripe coupon, no billing change, no row anywhere. Its own comment said the
+coupon *"requires Stripe API key"* while the receipt claimed the effect anyway.
+`verifyAfterMs: 30 days` then scheduled the outcome loop to verify a discount
+that was never applied, so the loop would have graded a fiction and moved the
+agent's trust score on it.
+
+`sentinel_devops:toggle_data_source` returned `'Data source "X" enabled'` with no
+write, no config change and no call. The receipt WAS the implementation. The
+claimed effect is not cosmetic: enabling a source can turn on a PAID provider,
+so the reader believes both that it is live and that its spend has started.
+
+Both are reachable through the decisions inbox and the CEO command bridge, which
+means the person acting on the false receipt is the founder.
+
+**The second rule `apply_discount` broke.** Pricing changes are founder-only
+FOREVER (DO-NOT-DO list). So the fix is not a better receipt — an agent applying
+a discount is a boundary, not a missing feature.
+
+**The adaptation.** Both refuse, and each refusal names what did not happen and
+where the authority is: `apply_discount` points at `escalate_to_founder` (now
+permitted at every trust tier, which is what makes that advice actionable), and
+`toggle_data_source` says the source is unchanged and provider enablement has to
+happen where the configuration lives. `verifyAfterMs` is gone from both — nothing
+happened, so there is nothing to verify. The `percentOff` / `durationMonths` caps
+are KEPT: they encode a real decision about how large a discount may ever be, and
+a refusal that swallowed them would lose it.
+
+**Exit test.** `executorReceiptHonesty.test.ts`, driving the real `executeAction`
+dispatcher. Falsified by restoring the old receipt — three cases fire. The
+opposite direction is asserted through `clear_cache`, which really does clear a
+cache and must still report success, so a change that refused everything cannot
+pass.
+
+**Checked and clean:** `extend_trial`, `unlock_feature_temporarily`,
+`pause_campaign`, `restart_failed_job` and `clear_cache` all perform their effect
+before reporting it. Two offenders out of twenty-eight, which is why this is a
+fix rather than a new gate — a register of twenty-six correct executors would
+freeze noise.
+
 ## Status
 
-**All 27 admitted candidates are now dispositioned** — implemented, adapted,
+**All 28 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 
