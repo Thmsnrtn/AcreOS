@@ -1675,9 +1675,61 @@ letter, never against a null property, the real authority grant rather than a
 generic "system", and best-effort placement. Falsified by removing the recording
 and by making the catch rethrow.
 
+### 33 — "Silence is not a clean bill of health" → THE FORECAST AND THE PROJECTION PAGE
+
+The rule from the climate-risk fix (entry recorded 2026-08-18), applied to the
+two remaining money sites the offer-pricing sweep found and deliberately did not
+bundle.
+
+**The cash-flow forecast omitted the carry instead of naming it.**
+`projectExpenses` derived tax, insurance and maintenance as percentages of
+`assessedValue`, read as `property.assessedValue ? parseFloat(...) : 0`. A
+property with no assessed value therefore produced three costs of exactly zero,
+and the `> 0` guards below then skipped pushing them at all — so the forecast
+came out with NO carrying costs and no indication any were missing. That reads
+as "this property costs nothing to hold" and makes projected cash flow look
+better than it is. Silence, not a zero, was the failure mode.
+
+It now emits one row, amount 0, whose entire purpose is to carry the sentence:
+carrying costs are NOT included, no assessed value is on file, and this forecast
+understates holding cost by an unknown amount. A labelled gap, the same shape
+`LandProfileGap` uses on the parcel surface.
+
+**The due-diligence report projected from a value it did not have.** The whole
+Financial Projections page derived from
+`valuation?.estimatedValue || (property?.marketValue ? Number(...) : 0)`, so a
+parcel with neither printed, in a document headed "due diligence":
+
+```
+Aggressive (25%):  Buy $0 → Sell $0 → Profit $0 (N/A% ROI)
+7% / 84mo:         Down $0 + $0/mo = $0 total
+```
+
+An entire page of figures nobody computed. This is the same document whose
+CLIMATE section carried the same defect until 2026-08-18, and it takes the same
+answer: the page now says the projections were not made, and that this is the
+absence of a valuation rather than a valuation of zero.
+
+Worth noting for whoever reads that file next: line 375, the "Estimated Value"
+row, already got this right — it passes `undefined` through to `fmt$` rather
+than substituting 0. The honest version and the dishonest one sat six lines
+apart, which is the pattern this repository keeps finding: the correct rule is
+usually already in the file.
+
+**Exit test.** `forecastAbsenceIsVisible.test.ts`, both directions on both
+surfaces — the gap is stated AND the real projections still print when a value
+exists, so a guard that suppressed everything cannot pass. Falsified by
+restoring each `: 0`.
+
+**The test caught something about itself**, which is worth recording because it
+is a trap for source-scanning gates generally: the asserted sentence is built by
+string concatenation, so "absence of " and "a valuation" sit on different source
+lines and a regex spanning them finds nothing even though the rendered text is
+correct. The assertion now matches a phrase contained within a single literal.
+
 ## Status
 
-**All 32 admitted candidates are now dispositioned** — implemented, adapted,
+**All 33 admitted candidates are now dispositioned** — implemented, adapted,
 retired as already-present, or checked and REJECTED with the evidence recorded.
 The three rejections are in entries 14, 16 and 18.
 

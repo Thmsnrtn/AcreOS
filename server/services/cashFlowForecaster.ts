@@ -358,8 +358,46 @@ class CashFlowForecasterService {
         .where(and(eq(properties.id, entityId), eq(properties.organizationId, organizationId)));
 
       if (property) {
-        const assessedValue = property.assessedValue ? parseFloat(property.assessedValue) : 0;
-        
+        // A PROPERTY WE CANNOT VALUE HAS UNKNOWN CARRY, NOT ZERO CARRY.
+        //
+        // This read `property.assessedValue ? parseFloat(...) : 0`, and every
+        // carrying cost below is a percentage OF that value — so a property
+        // with no assessed value produced a monthly tax, insurance and
+        // maintenance of exactly 0, and the `> 0` guards then skipped pushing
+        // them at all. The forecast came out with no carrying costs and no
+        // indication that any were missing, which reads as "this property costs
+        // nothing to hold" and makes projected cash flow look better than it is.
+        //
+        // Silence is the failure mode here, not the zero: a reader of a cash
+        // flow forecast cannot tell an omitted expense from an absent one.
+        const rawAssessed = property.assessedValue === null || property.assessedValue === undefined
+          ? null
+          : parseFloat(property.assessedValue);
+        const assessedValue =
+          rawAssessed !== null && Number.isFinite(rawAssessed) && rawAssessed > 0
+            ? rawAssessed
+            : null;
+
+        if (assessedValue === null) {
+          // One row, amount 0, that EXISTS to say the carry is unknown. A
+          // labelled gap beats both an invented cost and an invisible one —
+          // the same shape `LandProfileGap` uses on the parcel surface.
+          projections.push({
+            month: today.toISOString().slice(0, 7),
+            amount: 0,
+            category: "taxes",
+            notes:
+              `Carrying costs (tax, insurance, maintenance) are NOT included for ` +
+              `property #${entityId}: no assessed value is on file, and these are ` +
+              `derived from it. This forecast understates holding cost by an ` +
+              `unknown amount.`,
+          });
+          return projections;
+        }
+
+        // The three rates below are platform assumptions, not measurements, and
+        // are named as such in every row's `notes` for the same reason the land
+        // exit model badges its defaults.
         const annualTaxRate = 0.015;
         const monthlyTax = (assessedValue * annualTaxRate) / 12;
         

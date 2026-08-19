@@ -378,28 +378,74 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   doc.addPage();
   y = addPageHeader(doc, "Financial Projections", 5, margin, pageWidth);
 
-  const estValue = valuation?.estimatedValue || (property?.marketValue ? Number(property.marketValue) : 0);
-  const tiers = [
-    { name: "Aggressive (25%)", price: Math.round(estValue * 0.25) },
-    { name: "Market (40%)", price: Math.round(estValue * 0.40) },
-    { name: "Generous (55%)", price: Math.round(estValue * 0.55) },
-  ];
+  // NO VALUE BASIS MEANS NO PROJECTIONS, NOT PROJECTIONS OF ZERO.
+  //
+  // This read `valuation?.estimatedValue || (... : 0)`, so a parcel with neither
+  // an estimated value nor a market value on file produced `estValue = 0` and
+  // this page still printed in full:
+  //
+  //   Aggressive (25%): Buy $0 → Sell $0 → Profit $0 (N/A% ROI)
+  //   7% / 84mo: Down $0 + $0/mo = $0 total
+  //
+  // An entire page headed "Financial Projections", in a document headed "due
+  // diligence", made of zeros nobody computed. It is the same defect the
+  // climate section of this very report carried until 2026-08-18, and it takes
+  // the same answer: say the thing was not assessed, and say what that does and
+  // does not mean.
+  //
+  // Line 375 above already gets this right — it passes `undefined` through to
+  // `fmt$` rather than substituting 0 — which is why the Estimated Value row
+  // was honest while the page built on it was not.
+  const estValue =
+    valuation?.estimatedValue ??
+    (property?.marketValue != null && Number.isFinite(Number(property.marketValue))
+      ? Number(property.marketValue)
+      : null);
 
-  y = addSection(doc, "Cash Flip Scenarios", y, margin);
-  for (const tier of tiers) {
-    const profit = estValue - tier.price;
-    const roi = tier.price > 0 ? Math.round((profit / tier.price) * 100) : "N/A";
-    y = addRow(doc, tier.name, `Buy ${fmt$(tier.price)} → Sell ${fmt$(estValue)} → Profit ${fmt$(profit)} (${roi}% ROI)`, y, margin);
-  }
+  if (estValue === null || estValue <= 0) {
+    y = addSection(doc, "Cash Flip Scenarios", y, margin);
+    y = addRow(
+      doc,
+      "Not projected",
+      "No estimated value or market value is on file for this parcel, so no " +
+        "purchase, profit or ROI figure can be computed. This is the absence of " +
+        "a valuation, not a valuation of zero.",
+      y,
+      margin,
+    );
+    y += 0.2;
+    y = addSection(doc, "Seller Finance Scenarios", y, margin);
+    y = addRow(
+      doc,
+      "Not projected",
+      "Seller-finance terms are derived from the parcel value, which is not " +
+        "available. Add a valuation to see these scenarios.",
+      y,
+      margin,
+    );
+  } else {
+    const tiers = [
+      { name: "Aggressive (25%)", price: Math.round(estValue * 0.25) },
+      { name: "Market (40%)", price: Math.round(estValue * 0.40) },
+      { name: "Generous (55%)", price: Math.round(estValue * 0.55) },
+    ];
 
-  y += 0.2;
-  y = addSection(doc, "Seller Finance Scenarios", y, margin);
-  const rates = [7, 9, 11];
-  for (const rate of rates) {
-    const loanAmt = Math.round(estValue * 0.75);
-    const monthly = (loanAmt * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -84));
-    const totalCollected = Math.round(estValue * 0.25) + Math.round(monthly * 84);
-    y = addRow(doc, `${rate}% / 84mo`, `Down ${fmt$(Math.round(estValue * 0.25))} + ${fmt$(Math.round(monthly))}/mo = ${fmt$(Math.round(totalCollected))} total`, y, margin);
+    y = addSection(doc, "Cash Flip Scenarios", y, margin);
+    for (const tier of tiers) {
+      const profit = estValue - tier.price;
+      const roi = tier.price > 0 ? Math.round((profit / tier.price) * 100) : "N/A";
+      y = addRow(doc, tier.name, `Buy ${fmt$(tier.price)} → Sell ${fmt$(estValue)} → Profit ${fmt$(profit)} (${roi}% ROI)`, y, margin);
+    }
+
+    y += 0.2;
+    y = addSection(doc, "Seller Finance Scenarios", y, margin);
+    const rates = [7, 9, 11];
+    for (const rate of rates) {
+      const loanAmt = Math.round(estValue * 0.75);
+      const monthly = (loanAmt * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -84));
+      const totalCollected = Math.round(estValue * 0.25) + Math.round(monthly * 84);
+      y = addRow(doc, `${rate}% / 84mo`, `Down ${fmt$(Math.round(estValue * 0.25))} + ${fmt$(Math.round(monthly))}/mo = ${fmt$(Math.round(totalCollected))} total`, y, margin);
+    }
   }
 
   // ─── Page 6: Data Sources & Methodology ─────────────────────────────
