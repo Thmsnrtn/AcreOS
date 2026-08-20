@@ -16,6 +16,7 @@ import {
   buildDisclosureMissingPayload,
 } from "./services/disclosureRegistry";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { loadSigningProgress, statusPatchFor, type RosterSigner } from "./services/esign/signingProgress";
 import {
   parseSignerRequest,
   SignerRequestError,
@@ -921,10 +922,38 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const sessionUser = req.user;
       const { documentId, signerName, signerEmail, signerRole, signatureData, signatureType, consentGiven, consentText } = req.body;
-      
+
       if (!signerName || !signatureData) {
         return Errors.badRequest(res, "Signer name and signature data are required");
+      }
+
+      // ── An operator may sign for themselves, never for a counterparty ─────
+      // This route took `signerName`, `signerEmail` and `signatureData` from
+      // the request body behind nothing but `isAuthenticated`, so any member of
+      // the org could mint a signature attributed to the party across the
+      // table. Worse, it then stored `req.ip` and the request's user-agent on
+      // that row as the signer's audit trail — so the evidentiary record did
+      // not merely fail to prove the counterparty acted, it actively asserted
+      // the operator's device and network were theirs.
+      //
+      // AcreOS should assume only the responsibility it needs. Attesting that a
+      // counterparty signed, when the only party present was the operator, is
+      // not a responsibility it can discharge. The signer-request flow exists
+      // for exactly this: it issues a signing link, the signer opens it, and
+      // /api/public/sign/:docId records THEIR ip, THEIR user agent, and an
+      // E-SIGN §101(c) consent row captured from them.
+      const sessionEmail = sessionUser?.email?.trim().toLowerCase() ?? null;
+      const claimedEmail = typeof signerEmail === "string" ? signerEmail.trim().toLowerCase() : null;
+      if (!sessionEmail || !claimedEmail || claimedEmail !== sessionEmail) {
+        return Errors.forbidden(
+          res,
+          "This endpoint records only the signature of the signed-in user, and the " +
+            "signer email must match their account. To collect a signature from " +
+            "anyone else, send them a signing link — the public signing route captures " +
+            "the signer's own IP, device and E-SIGN consent, which this route cannot.",
+        );
       }
 
       // R2: capture a SHA-256 hash of the document content at the moment
@@ -957,38 +986,17 @@ export function registerDocSystemRoutes(app: Express): void {
         documentContentHash,
       });
       
-      // If linked to a document, update document signers
+      // Advance document status from the SIGNATURES, never by rewriting the
+      // roster. See services/esign/signingProgress.ts: the roster rewrite this
+      // block used to perform tripped `acreos_block_signed_doc_mutation_trigger`
+      // for every signer after the first, so no multi-signer document could be
+      // completed. `statusPatchFor` carries status fields only.
       if (documentId) {
         const document = await storage.getGeneratedDocument(org.id, documentId);
         if (document) {
-          const existingSigners = (document.signers || []) as Array<{
-            id: string;
-            name: string;
-            email: string;
-            role: string;
-            signedAt?: string;
-            signatureUrl?: string;
-          }>;
-          
-          const updatedSigners = existingSigners.map(s => {
-            if (s.name === signerName || s.email === signerEmail) {
-              return {
-                ...s,
-                signedAt: new Date().toISOString(),
-                signatureUrl: signatureData,
-              };
-            }
-            return s;
-          });
-          
-          // Check if all signers have signed
-          const allSigned = updatedSigners.every(s => s.signedAt);
-          
-          await storage.updateGeneratedDocument(documentId, {
-            signers: updatedSigners,
-            status: allSigned ? "signed" : "partially_signed",
-            ...(allSigned && { completedAt: new Date() }),
-          });
+          const roster = (document.signers || []) as RosterSigner[];
+          const progress = await loadSigningProgress(org.id, documentId, roster);
+          await storage.updateGeneratedDocument(documentId, statusPatchFor(progress));
         }
       }
       

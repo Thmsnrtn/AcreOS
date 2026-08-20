@@ -491,7 +491,7 @@ describe("every standing decision in CLAUDE.md reached the registry", () => {
    * a standing decision to CLAUDE.md, mirror it in constitution.ts and raise
    * this number in the SAME commit; that is the whole mechanism.
    */
-  const DO_NOT_DO_BULLETS = 9;
+  const DO_NOT_DO_BULLETS = 10; // +1 on 2026-08-20: the e-sign ceremony ruling (rails.esign-ceremony-is-external)
 
   it(`the list still has ${DO_NOT_DO_BULLETS} bullets`, () => {
     const bullets = doNotDoBullets();
@@ -535,6 +535,7 @@ describe("every standing decision in CLAUDE.md reached the registry", () => {
       ["AI destinations", "ambient"],
       ["fabrication", "fabricat"],
       ["founder-only hard stops", "founder-only"],
+      ["e-sign ceremony ownership", "signing ceremony"],
     ];
     const missing = subjects.filter(([, needle]) => !registryText.includes(needle));
     expect(

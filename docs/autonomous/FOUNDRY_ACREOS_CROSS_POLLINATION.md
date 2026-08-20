@@ -3699,3 +3699,154 @@ Three enums in one file advertising capabilities that did not exist
 (`fix_common_issue`, `check_data_integrity`, and the tool list itself) is a
 pattern, not a slip: **the schema a model reads is a promise, and nothing in
 this repo was checking those promises against the code until now.**
+
+---
+
+### 57 — EVERY MULTI-SIGNER DOCUMENT WAS IMPOSSIBLE TO SIGN, AND THE GUARD THAT MADE IT SO WAS RIGHT
+
+Found while reconciling the e-sign surface against the founder's
+*orchestrate-not-build* ruling. It is the most clear-cut live defect in this
+program: not a fabrication, not a latent hazard — a counterparty-facing page
+that returned 500 to the second signer of every document, every time.
+
+**The mechanism.** Both signature-capture paths recorded progress by rewriting
+`generated_documents.signers`:
+
+```ts
+const updatedSigners = signers.map((x, i) =>
+  i === signerIdx ? { ...x, signedAt: now, signatureUrl: … } : x);
+await storage.updateGeneratedDocument(doc.id, {
+  signers: updatedSigners,
+  status: allSigned ? "signed" : "partially_signed",
+});
+```
+
+`acreos_block_signed_doc_mutation_trigger` raises on any UPDATE that changes
+`content`, `variables` or `signers` once the row is `signed` |
+`partially_signed` | `final`. So signature 1 landed on a `draft` and set
+`partially_signed`; signature 2 changed `signers` on a `partially_signed` row
+and the trigger raised. `allSigned` could never become true, so no multi-signer
+document ever reached `signed` or got a `completedAt`, and the lease-execution
+path that reads that state could never clear.
+
+**The part worth keeping: the guard was not the bug.** The obvious repair —
+let the trigger permit `signers` edits while `partially_signed` — reopens
+exactly the tamper vector the trigger exists to close, namely changing WHO is on
+the roster after somebody has signed. Loosening a correct guard because correct
+code tripped it is how a safety property quietly becomes a comment.
+
+The actual bug was **two different things sharing one column**. The roster is
+document *substance* — who is asked to sign, in what role — and belongs under
+the trigger. Who *actually* signed is *evidence*, and it already had a canonical
+home: the `signatures` table, with the image, the IP, the user agent, the
+consent text and the SHA-256 content hash captured at signing. Deriving progress
+from the evidence makes the trigger's existing semantics correct instead of
+obstructive, needs no migration, and removes a duplicate source of truth — the
+roster's `signatureUrl` was written by both paths and rendered nowhere in the
+entire client.
+
+**A general shape, stated because it will recur.** When a correct-looking guard
+fires on correct-looking code, the usual cause is not that one of them is wrong.
+It is that a single field is carrying two concepts with different lifetimes, and
+the guard is right about one of them. Look for the conflation before touching
+the guard.
+
+**Second defect, same route.** `POST /api/signatures` took `signerName`,
+`signerEmail` and `signatureData` from the request body behind nothing but
+`isAuthenticated`, so any org member could mint a signature attributed to the
+party across the table — and it then stored `req.ip` and the request's
+user-agent on that row as the *signer's* audit trail. The evidentiary record did
+not merely fail to prove the counterparty acted; it asserted the operator's
+device and network were theirs. Now restricted to the signed-in user's own
+signature, with a pointer to the signer-request flow, which captures the
+signer's own IP, device and E-SIGN §101(c) consent.
+
+**The gate reads the rule out of the migration.** `multiSignerDocumentsComplete.test.ts`
+parses the protected-column list and the immutable-status list out of the
+`CREATE OR REPLACE FUNCTION` body rather than restating them, so a trigger that
+grows a fourth protected column is covered without editing the test — and a
+trigger that changes underneath a hardcoded copy cannot leave the test pinning a
+rule the database no longer has. It also pins that the app-layer restatement
+(`IMMUTABLE_DOCUMENT_STATUSES`, `CONTENT_BEARING_FIELDS`) still matches the
+trigger, because two independent statements of one rule drift silently and in
+the dangerous direction.
+
+**The first version of the gate was too broad, and the gate said so.** It
+asserted that no `updateGeneratedDocument` call anywhere may carry `signers`,
+and immediately failed on three legitimate sites: `PUT /api/generated-documents/:id`
+and both `/request-signature` paths, each of which refuses first when the
+document is already frozen. They ESTABLISH a roster on a draft; they never
+mutate one mid-signing. Rescoped to the two signature-RECORDING handlers, which
+is the actual semantic defect. Worth recording: a rule that also flags the safe
+sites gets turned off, so over-broad is not the safe direction.
+
+---
+
+### 58 — THE CONNECTOR CATALOG TOOK CUSTOMERS' THIRD-PARTY SECRETS FOR FIVE INTEGRATIONS THAT DO NOT EXIST
+
+The founder asked whether the existing DocuSign connector could serve as the
+first real e-sign adapter *"if current repository evidence supports it."* It does
+not, and finding out why surfaced a larger defect than the question.
+
+`send_docusign_envelope` and `get_docusign_status` occur at exactly ONE place in
+the repository: the `tools:` array that declares them. No adapter, no client, no
+HTTP call to any DocuSign endpoint anywhere.
+
+**Asking the population question rather than the entry question** — CLAUDE.md's
+third law, applied on purpose — turned one stale row into five:
+
+| connector | declared tools | implemented |
+|---|---|---|
+| docusign | 2 | 0 |
+| quickbooks | 2 | 0 |
+| dropbox | 2 | 0 |
+| batch_leads | 1 | 0 (refuses on FCRA grounds; 3 of its 4 advertised capabilities have no tool at all) |
+| google_drive | 3 | 2 |
+
+**Why this was not a cosmetic problem.** Two routes compound it:
+
+* `GET /api/ai/connectors` returns the whole definition to the client
+  (`...def`), so customers were shown present-tense capability lists — *"Send
+  offer letters for signature"*, *"Check signature status"* — for integrations
+  that do nothing.
+* `POST /api/ai/connectors/:id/connect` accepted, **encrypted and stored**
+  credentials for any id in the registry and answered `status: "connected"`.
+
+So a customer could hand AcreOS their DocuSign, QuickBooks, Dropbox or
+BatchLeads secret and be told the integration was live. **AcreOS took custody of
+a third-party credential it had no code to use** — the plainest possible case of
+assuming a responsibility with no corresponding capability, and the one where
+the customer, not AcreOS, carries the loss if it leaks. Under Minimum Necessary
+Responsibility this is the exact category the founder named: *unnecessary raw
+credential responsibility.*
+
+And `POST /api/ai/connectors/:id/test`, commented *"Basic connectivity test —
+attempt to load credentials"*, loaded nothing, called nothing, and returned
+`success: true`. A green connection test that never contacted the provider is
+the answer a customer relies on precisely when their integration is silently
+broken.
+
+**The fix, and the shape of the gate.** `ConnectorDef.availability` separates an
+intended entry from a working one; the connect route refuses a `planned`
+connector BEFORE the credential is encrypted or stored (ordering asserted, not
+just presence — a refusal after `encryptCredentials` would still have handled
+the secret); `google_drive` was narrowed to its two real tools; and the test
+route now reports that it cannot verify.
+
+`connectorCatalogIsHonest.test.ts` never trusts the new field. It resolves each
+declared tool against the dispatch switch a model's call actually lands in and
+requires the FIELD to agree with the CODE — in both directions, so marking
+DocuSign available without building it fails, and finishing the adapter without
+clearing the flag fails too. A flag that could be set by assertion would be the
+same defect one layer up.
+
+**Why no DocuSign adapter was written.** The same ruling said *do not build
+speculative adapters*. An envelope client that has never executed against the
+provider — no account, no OAuth app, no round trip — would be a larger version
+of `send_docusign_envelope`: a name that promises a thing. The boundary is
+specified in `docs/esign/PROVIDER_BOUNDARY.md`; the adapter waits on an owner
+action (a DocuSign account and per-org connected accounts, since the rail is
+customer-controlled). Deliberately, no `SigningRail` interface was shipped
+either: an interface with one implementation is a description of that
+implementation, and CLAUDE.md's second law says a canonical thing with no second
+caller is not canonical yet.

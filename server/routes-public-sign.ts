@@ -23,6 +23,7 @@ import { storage } from "./storage";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
 
 export function registerPublicSignRoutes(app: Express): void {
   // consent — registered BEFORE /api/public/sign/:docId so the literal path wins (2026-07-11 route-order sweep).
@@ -169,6 +170,13 @@ export function registerPublicSignRoutes(app: Express): void {
         return res.status(410).json({ error: "This signing link has expired" });
       }
 
+      // Progress from the signatures table, not the roster — the roster no
+      // longer carries it. Reading `signers[].signedAt` here would report every
+      // in-flight document as 0 signed, and would tell a signer who has already
+      // signed that they have not.
+      const progress = await loadSigningProgress(doc.organizationId, doc.id, signers);
+      const thisSigner = progress.perSigner.find((p) => p.signer.id === signer.id);
+
       res.json({
         document: {
           id: doc.id,
@@ -184,11 +192,11 @@ export function registerPublicSignRoutes(app: Express): void {
           name: signer.name,
           email: signer.email,
           role: signer.role,
-          signedAt: signer.signedAt ?? null,
+          signedAt: thisSigner?.signedAt ? thisSigner.signedAt.toISOString() : null,
           order: signer.order ?? 1,
         },
         signersTotal: signers.length,
-        signersCompleted: signers.filter((s) => !!s.signedAt).length,
+        signersCompleted: progress.perSigner.filter((p) => p.signed).length,
       });
     } catch (error: any) {
       logger.error("Public sign fetch error", error instanceof Error ? error : undefined);
@@ -232,11 +240,19 @@ export function registerPublicSignRoutes(app: Express): void {
       }>;
       const signerIdx = signers.findIndex((x) => x.id === String(signerId));
       if (signerIdx < 0) return res.status(403).json({ error: "Invalid or expired signing link" });
-      if (signers[signerIdx].signedAt) {
-        return res.status(409).json({ error: "This document has already been signed" });
-      }
 
       const signer = signers[signerIdx];
+
+      // Progress comes from the signatures table, not from the roster. See
+      // services/esign/signingProgress.ts: writing progress back onto
+      // `generated_documents.signers` tripped the immutability trigger for
+      // every signer after the first, so no multi-signer document could be
+      // completed. The already-signed guard below used to read the roster
+      // marker this path itself wrote; it now reads the evidence.
+      const priorProgress = await loadSigningProgress(doc.organizationId, doc.id, signers);
+      if (priorProgress.hasSigned(String(signerId))) {
+        return res.status(409).json({ error: "This document has already been signed" });
+      }
 
       // E-SIGN Act §101(c) server-side gate (Workstream A): before we will
       // record a signature on a consumer document, a consent audit row must
@@ -281,21 +297,22 @@ export function registerPublicSignRoutes(app: Express): void {
           "I agree that this electronic signature is legally binding and has the same legal effect as a handwritten signature.",
       });
 
-      const now = new Date().toISOString();
-      const updatedSigners = signers.map((x, i) =>
-        i === signerIdx ? { ...x, signedAt: now, signatureUrl: String(signatureData) } : x,
-      );
-      const allSigned = updatedSigners.every((x) => !!x.signedAt);
-      await storage.updateGeneratedDocument(doc.id, {
-        signers: updatedSigners,
-        status: allSigned ? "signed" : "partially_signed",
-        ...(allSigned ? { completedAt: new Date(), signedAt: new Date() } : {}),
-      });
+      // Re-derive from the signatures table now that this signature exists.
+      // The patch deliberately carries status fields ONLY — no `signers`, no
+      // `content`, no `variables` — so `acreos_block_signed_doc_mutation_trigger`
+      // cannot fire. Restoring the roster write here reintroduces the 500 that
+      // made every second signer fail.
+      const progress = await loadSigningProgress(doc.organizationId, doc.id, signers);
+      await storage.updateGeneratedDocument(doc.id, statusPatchFor(progress));
+
+      const signedAtIso =
+        progress.perSigner.find((p) => p.signer.id === String(signerId))?.signedAt?.toISOString() ??
+        new Date().toISOString();
 
       res.json({
         success: true,
-        signer: { id: signer.id, signedAt: now },
-        allSigned,
+        signer: { id: signer.id, signedAt: signedAtIso },
+        allSigned: progress.allSigned,
       });
     } catch (error: any) {
       logger.error("Public sign submit error", error instanceof Error ? error : undefined);

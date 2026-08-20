@@ -4,14 +4,22 @@
  * register recorded as a well-designed refusal with ZERO tests.
  *
  * Caller paths into the sensitive write (a signature row via
- * `storage.createSignature` + the signers/status flip on the document):
+ * `storage.createSignature`, then a STATUS-ONLY patch on the document —
+ * progress moved off `generated_documents.signers` on 2026-08-20 because
+ * rewriting the roster tripped the immutability trigger for every signer after
+ * the first; see services/esign/signingProgress.ts):
  *
  *   1. POST /api/public/sign/:docId (server/routes-public-sign.ts) — GUARDED.
  *      Refuses 412 ESIGN_CONSENT_REQUIRED unless a signing_consent_audit row
  *      exists for this signer + document at the CURRENT disclosure version.
  *   2. POST /api/signatures (server/routes-doc-system.ts) — UNGUARDED SIBLING.
  *      Writes a signature with no consent-audit check at all. Pinned below as
- *      a known statute-register finding, not blessed as correct.
+ *      a known statute-register finding, not blessed as correct. NARROWED
+ *      2026-08-20: it now records only the SIGNED-IN USER's own signature and
+ *      refuses any other signer email, so the unguarded path can no longer be
+ *      used to mint a counterparty's signature — which was its sharpest edge.
+ *      The missing consent check on an operator self-signature remains open and
+ *      is still pinned below.
  *   3. executeSignedLease (server/services/rental/leaseSigningPacket.ts) —
  *      downstream consumer: a lease may only flip to 'active' when every
  *      signer has BOTH signed and a consent row at the current version.
@@ -154,7 +162,28 @@ const H = vi.hoisted(() => {
   const storageMock = {
     createSignature: vi.fn(async (sig: any) => {
       CALLS.push("storage.createSignature");
+      // Land the row so `getSignatures` below can see it. Progress is derived
+      // from these rows now, not from the roster (see the note on getSignatures).
+      (state.tables["signatures"] ??= []).push({ id: 1, ...sig });
       return { id: 1, ...sig };
+    }),
+    /**
+     * Added 2026-08-20. Signing progress moved OFF the document roster and onto
+     * the signatures table, because writing progress back to
+     * `generated_documents.signers` tripped
+     * `acreos_block_signed_doc_mutation_trigger` for every signer after the
+     * first — so no multi-signer document could ever complete.
+     *
+     * This mock previously had no `getSignatures`, so the moment the route
+     * started deriving progress every case here 500'd. That is the mock pinning
+     * the OLD shape, not a defect in the route; it is updated to the new truth
+     * rather than deleted, so every consent assertion below still means what it
+     * meant.
+     */
+    getSignatures: vi.fn(async (_orgId: number, documentId?: number) => {
+      CALLS.push("storage.getSignatures");
+      const rows = state.tables["signatures"] ?? [];
+      return documentId === undefined ? rows : rows.filter((r: any) => r.documentId === documentId);
     }),
     updateGeneratedDocument: vi.fn(async (id: number, updates: any) => {
       CALLS.push("storage.updateGeneratedDocument");

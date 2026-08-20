@@ -45,6 +45,7 @@ import {
 } from "@shared/schema";
 import { storage } from "../../storage";
 import { makeSigningToken } from "../signingTokens";
+import { loadSigningProgress } from "../esign/signingProgress";
 import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../../utils/logger";
 
@@ -471,12 +472,25 @@ export async function getLeaseSignatureStatus(args: {
     consentRows.map((r) => (r.signerEmail ?? "").toLowerCase()).filter((e) => e.length > 0),
   );
 
+  // Signing progress comes from the signatures table, not from the roster.
+  // This used to read `s.signedAt` off `generated_documents.signers`, which is
+  // where both capture paths wrote progress until that write was found to trip
+  // `acreos_block_signed_doc_mutation_trigger` for every signer after the
+  // first. Progress now lives with the evidence; reading the roster here would
+  // report a fully-signed lease as unsigned. `loadSigningProgress` still
+  // honours legacy roster markers, so leases signed under the old scheme
+  // continue to evaluate exactly as before.
+  const progress = await loadSigningProgress(doc.organizationId, doc.id, docSigners);
+  const signedAtBySignerId = new Map(
+    progress.perSigner.map((p) => [p.signer.id, p.signedAt ? p.signedAt.toISOString() : null]),
+  );
+
   const signers: LeaseSignerState[] = docSigners.map((s) => ({
     signerId: s.id,
     name: s.name,
     email: s.email ?? null,
     role: s.role ?? "signer",
-    signedAt: s.signedAt ?? null,
+    signedAt: signedAtBySignerId.get(s.id) ?? null,
     consentRecorded: !!s.email && consentedEmails.has(s.email.toLowerCase()),
   }));
 

@@ -36,6 +36,32 @@ export interface ConnectorDef {
   // External docs / setup URL shown in the UI
   setupUrl?: string;
   isPremium?: boolean;
+  /**
+   * Whether the adapter behind this entry EXISTS.
+   *
+   * Added 2026-08-20 after a survey found four entries advertising seven tools
+   * that are implemented nowhere in the repository — `send_docusign_envelope`,
+   * `get_docusign_status`, `get_quickbooks_pnl`, `list_quickbooks_transactions`,
+   * `search_dropbox`, `get_dropbox_file`, `upload_drive_file`. Each name
+   * appeared exactly once: in the `tools` array that declares it.
+   *
+   * That was not a cosmetic problem. `GET /api/ai/connectors` returns the whole
+   * definition to the client, so customers were shown present-tense capability
+   * lists ("Send offer letters for signature", "Check signature status") for
+   * integrations that do nothing; and `POST /api/ai/connectors/:id/connect`
+   * accepted, ENCRYPTED and STORED credentials for any id in this registry and
+   * reported `status: "connected"`. AcreOS was therefore taking custody of a
+   * customer's DocuSign, QuickBooks and Dropbox secrets in exchange for
+   * nothing — the plainest possible case of assuming responsibility it had no
+   * use for.
+   *
+   * "planned" entries keep their place in the catalog so the intent is not
+   * lost, but the connect route refuses them rather than banking a secret.
+   * `connectorCatalogIsHonest.test.ts` derives this field's correctness from
+   * whether the declared tools actually resolve, so an entry cannot be marked
+   * available by assertion.
+   */
+  availability?: "available" | "planned";
 }
 
 export const CONNECTOR_REGISTRY: ConnectorDef[] = [
@@ -120,6 +146,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   },
   {
     id: "quickbooks",
+    availability: "planned", // No adapter exists: get_quickbooks_pnl and list_quickbooks_transactions are implemented nowhere.
     name: "QuickBooks",
     description: "Sync deal financials with QuickBooks. Pull P&L, track deal expenses, and reconcile payments.",
     icon: "BookOpen",
@@ -155,11 +182,12 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
       "Upload due diligence files",
       "Create folders per deal",
     ],
-    tools: ["search_drive", "get_drive_file", "upload_drive_file"],
+    tools: ["search_drive", "get_drive_file"],
     setupUrl: "https://console.cloud.google.com/apis/library/drive.googleapis.com",
   },
   {
     id: "dropbox",
+    availability: "planned", // No adapter exists: search_dropbox and get_dropbox_file are implemented nowhere.
     name: "Dropbox",
     description: "Access your Dropbox files. Pax can search and retrieve property documents.",
     icon: "Archive",
@@ -177,6 +205,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   },
   {
     id: "docusign",
+    availability: "planned", // No adapter exists: neither declared tool is implemented anywhere, and nothing in the repo calls a DocuSign endpoint. See docs/esign/PROVIDER_BOUNDARY.md — this is the intended first adapter behind the e-sign rail port, and needs an org-owned DocuSign account to build against.
     name: "DocuSign",
     description: "Send contracts and offer letters for e-signature. Pax can prepare and send documents without leaving the chat.",
     icon: "FileSignature",
@@ -243,6 +272,15 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   },
   {
     id: "batch_leads",
+    availability: "planned", // Its one tool, batch_leads_skip_trace, is in FCRA_REFUSED_TOOLS
+    // (server/ai/tools.ts) and refuses before the dispatch switch — skip trace is
+    // FCRA-adjacent under 1681b(a)(3)(F) and needs a permissible purpose plus a
+    // governed provider path. Three of the four capabilities above ("Pull targeted
+    // lists", "Get owner phone numbers", "Cross-reference properties") have no tool
+    // at all. Marked planned so the connect route stops banking the customer's
+    // BatchLeads API key for a connector whose every advertised capability is
+    // unavailable. Reactivation is via the provider registry, not here — see the
+    // deletion ledger entry for batchLeadsSkipTrace (2026-08-20).
     name: "BatchLeads",
     description: "Skip trace leads and pull list data directly from Pax conversations.",
     icon: "Users",

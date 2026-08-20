@@ -1158,6 +1158,25 @@ export function registerAIRoutes(app: Express): void {
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       if (!def) return Errors.notFound(res, "Connector");
+
+      // Refuse to bank a secret we cannot use. Three catalog entries —
+      // docusign, quickbooks, dropbox — declare tools that are implemented
+      // nowhere in this repository. Until 2026-08-20 this route accepted their
+      // credentials anyway, encrypted them, stored them and answered
+      // `status: "connected"`, so a customer could hand over their DocuSign or
+      // QuickBooks secrets and be told the integration was live. Taking custody
+      // of a third-party credential AcreOS has no code to use is responsibility
+      // assumed for nothing, and it is the customer who carries the loss if it
+      // leaks.
+      if (def.availability === "planned") {
+        return Errors.badRequest(
+          res,
+          `${def.name} is not implemented yet, so AcreOS will not take your credentials for it. ` +
+            "The catalog lists it because it is intended, not because it is available.",
+          { connectorId, availability: "planned" },
+        );
+      }
+
       const { encryptCredentials } = await import("./services/fieldEncryption");
       const credentialsEncrypted = credentials
         ? encryptCredentials(JSON.stringify(credentials), org.id)
@@ -1182,12 +1201,31 @@ export function registerAIRoutes(app: Express): void {
       if (!instance || instance.status !== "connected") {
         return Errors.badRequest(res, "Connector not connected");
       }
-      // Basic connectivity test — attempt to load credentials
+      // This does NOT test connectivity, and until 2026-08-20 it said it did:
+      // the comment read "attempt to load credentials" and the body loaded
+      // nothing, called nothing, and returned `success: true`. A green
+      // connection test that never contacted the provider is worse than no
+      // test — it is the answer a customer relies on when their integration is
+      // silently broken.
+      //
+      // There is no per-connector adapter to probe with yet (see
+      // CONNECTOR_REGISTRY.availability), so the honest answer is that AcreOS
+      // cannot verify this. The attempt is still recorded, because "when did we
+      // last look" is true and useful; what is not returned is a verdict.
+      const { getConnector } = await import("./services/connectors/registry");
+      const def = getConnector(connectorId);
       await storage.upsertPaxConnector(org.id, connectorId, {
         lastTestedAt: new Date(),
-        errorMessage: undefined,
       });
-      res.json({ success: true, testedAt: new Date() });
+      res.json({
+        success: false,
+        verified: false,
+        testedAt: new Date(),
+        message:
+          `AcreOS cannot verify the ${def?.name ?? connectorId} connection: there is no ` +
+          "adapter behind this connector to call, so a reachability check would be " +
+          "reporting on nothing. Stored credentials are unchanged.",
+      });
     } catch (err: any) {
       Errors.internal(res, err);
     }

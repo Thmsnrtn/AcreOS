@@ -98,6 +98,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
       "hard-stop.customer-data-deletion",
       "hard-stop.ads-founder-only-rail",
       "rails.byo-not-refront",
+      "rails.esign-ceremony-is-external",
     ],
     enforcement: {
       kind: "ratchet-test",
@@ -516,6 +517,51 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "existed and the registry did not know it. Nothing was downgraded and " +
         "no debt counter moved; the pointer was corrected to name the test " +
         "that was already running.",
+    },
+  },
+  {
+    id: "rails.esign-ceremony-is-external",
+    title: "The signing ceremony belongs to a customer-controlled specialist rail",
+    statement:
+      "AcreOS owns document intelligence, canonical deal/document state, preparation, workflow, authority checks, provider orchestration, receipts/reconciliation and sealed-artifact references. The signing ceremony itself — signer authentication, signature capture and provider-specific mechanics — belongs to a customer-controlled specialist e-sign rail. AcreOS does not attest that a counterparty signed when the only party present was an operator, and it does not take custody of a credential for a rail it has not implemented.",
+    category: "rails",
+    source: "Founder decision 2026-08-20 (orchestrate, not build); docs/esign/PROVIDER_BOUNDARY.md",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "docs/esign/PROVIDER_BOUNDARY.md",
+        "tests/unit/multiSignerDocumentsComplete.test.ts",
+        "tests/unit/connectorCatalogIsHonest.test.ts",
+        "server/services/esign/signingProgress.ts",
+      ],
+      note:
+        "PARTIAL BY CONSTRUCTION, and the entry says so rather than implying " +
+        "a chokepoint that does not exist. There is no external rail yet: the " +
+        "DocuSign connector was a catalog entry declaring two tools that occur " +
+        "nowhere else in the repository, so the ruling's own precondition — " +
+        "'use the existing connector IF repository evidence supports it' — is " +
+        "not met, and no speculative adapter was written. What IS enforced " +
+        "today is the half that is checkable now. " +
+        "(1) connectorCatalogIsHonest.test.ts resolves every connector's " +
+        "declared tools against the dispatch switch a model's call actually " +
+        "lands in and requires `availability` to agree with the code IN BOTH " +
+        "DIRECTIONS, so a rail cannot be advertised before it exists nor " +
+        "hidden after it does; it also pins that the connect route refuses a " +
+        "planned connector BEFORE encryptCredentials runs, since a refusal " +
+        "after the encryption would still have handled the customer's secret. " +
+        "(2) multiSignerDocumentsComplete.test.ts pins the internal ceremony " +
+        "that must keep working until a rail exists to replace it, deriving " +
+        "the immutability rule from the trigger in scripts/migrate.mjs rather " +
+        "than restating it. " +
+        "(3) The operator-minting refusal in POST /api/signatures is the " +
+        "posture's sharpest instance: attesting that a counterparty acted, " +
+        "when they did not, is a responsibility AcreOS cannot discharge at " +
+        "any scale. " +
+        "DELIBERATELY NOT PRESENT: a SigningRail interface. An interface with " +
+        "one implementation is a description of that implementation, and the " +
+        "first adapter written against it becomes the contract by accident. " +
+        "It is written when the second rail arrives to constrain it, which is " +
+        "also when it first has a caller.",
     },
   },
 
