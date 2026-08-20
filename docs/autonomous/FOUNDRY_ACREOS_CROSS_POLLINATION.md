@@ -2748,6 +2748,115 @@ of the module test, so pushing a symbol test into `isDynamicallyImported` still
 trips it.
 
 
+### 46 — THE UNKNOWN MODEL WAS THE CHEAPEST THING IN THE LEDGER
+
+`DEFAULT_RATE` is the per-million price applied to any model id the platform
+does not recognise. It read:
+
+```ts
+// Conservative fallback for unknown models — assume mid-tier pricing.
+// Better to slightly overcount than to silently $0 a real call.
+export const DEFAULT_RATE: AICostRate = { input: 1.0, output: 3.0 };
+```
+
+$1/$3 sits BELOW ten of that table's rows on input and twelve on output. Against
+Opus it is one fifth of input and one eighth of output. The comment states the
+posture the file wants; the number implements its opposite.
+
+**It is not a display.** `computeCostUsd` writes this figure into
+`ai_telemetry_events.estimated_cost_cents`, and `aiCostCeiling.sumCostCentsSince`
+SUMS that column to decide whether an org has passed its daily and monthly AI
+ceiling. So an unrecognised model drew down a FREE org's $2/day allowance at a
+fifth of its true rate — on the order of $16/day of real Opus-equivalent COGS
+before the gate tripped — and every gate in the stack reported green throughout.
+`predictCostCents` reads the same table to forecast whether the next call fits
+under the ceiling, so the unknown model also looked like the cheap one to route
+to. The undercount fed the router that chose it.
+
+**AND IT HAD ALREADY SURVIVED ITS OWN FIX.** `aiRouter.estimateCost` once kept a
+private cost table. Its docblock still records the repair, and this is the whole
+entry in one sentence:
+
+> "unkeyed models fell back to a silent {input:1,output:3}. Now … costed via the
+> central **conservative** DEFAULT_RATE."
+
+The central DEFAULT_RATE *was* `{input:1, output:3}`. The centralisation was
+real and worth doing — one table, no second copy to drift — and the SEMANTIC
+defect crossed straight through it, unchanged, reached by a different route, and
+came out wearing an adjective that asserted the opposite. CLAUDE.md's first law
+says to prove the forbidden behaviour cannot be reintroduced through an
+equivalent representation. Here the equivalent representation was the same
+literal in a better location, and the word "conservative" is what stopped anyone
+looking again.
+
+**Everything else in that file already resolved toward caution**, which is what
+makes the exception legible rather than a general sloppiness: `CHARS_PER_TOKEN`
+is padded to 4.0 "so the predictor never under-bills"; `outputTokens` falls back
+to the `maxTokens` ceiling as "a deliberately conservative upper bound"; Haiku is
+metered at first-party $1/$5 rather than OpenRouter's cheaper listing, citing
+"this file's own philosophy (better to slightly overcount)". Every knob was set
+cautiously except the one governing a model nobody recognised — the case where
+least is known and caution matters most.
+
+**The fix is a derivation, not a bigger number.** `DEFAULT_RATE` is now
+`Math.max` over the table on each axis independently, so there is no longer a
+value anyone can set below the rows it is supposed to dominate. `cachedInput`
+stays undefined: we cannot know an unrecognised model supports prompt caching,
+so its cached portion bills at the full input rate. Today it resolves to
+$15.00/$75.00 — the legacy `anthropic/claude-opus-4` row, a real price that was
+really billed. If that is judged too punitive, the answer is to retire that row
+on purpose, never to reintroduce a floor beneath the table.
+
+Overcounting an unknown model pauses AI early: visible, complained about, and
+fixed by adding one line to the table. Undercounting spends real money and
+reports green.
+
+**This does NOT contradict ledger 42**, and the difference is the point. There,
+`summariseCostSavings` was made to REFUSE to price an unknown model and report
+`unpricedCalls` instead. Here the ceiling prices one at the dearest known rate.
+Both follow the same rule from opposite sides: 42's number is a CLAIM MADE TO A
+CUSTOMER about what they saved, and a guess presented as a measurement is
+fabrication; 46's number is a SAFETY LIMIT, and refusing to price would mean not
+counting, which unbounds the thing the limit exists to bound. Checked rather than
+assumed: `summariseCostSavings` guards every record with `isKnownModel` before it
+reaches `priceFor`, so it never touches `DEFAULT_RATE` and this change does not
+move a single figure on the customer-facing savings card.
+
+**Exit test.** `unknownModelCostsTheMost.test.ts`, falsified four ways, each
+watched failing first:
+
+1. restore `{1.0, 3.0}` → three cases fail;
+2. replace the derivation with `{15.0, 75.0}`, correct TODAY → only the
+   derivation case fails, which is precisely its job;
+3. add a dearer row while the value is derived → all eight still pass, because
+   the value follows the table;
+4. **(2) and (3) together — the actual drift** → three fail.
+
+The rule is checked through `computeCostUsd` across six token mixes including a
+fully cache-warmed call (the cheapest a known row ever gets), not against the
+constant alone, because the constant does not cover the cached-input path. Two
+vacuity cases run first: the table has more than eight rows, the id used as
+"unknown" really is absent, and more than five rows are dearer than the old
+default — without that last one the rule could be satisfied by a table where
+nothing costs more than $1/$3.
+
+The source case that pins the derivation strips comments before scanning. It has
+to: the note explaining this defect quotes `{ input: 1.0, output: 3.0 }`
+verbatim, and a scan that reads prose would match the explanation of the defect
+and call it the defect. Ledger 35's lesson, arriving as a practical constraint
+two commits after ledger 45 generalised it.
+
+**A correction this turned up.** Frontier item 16 claimed AcreOS had "no per-ORG
+cap" on the VA path and needed one built. False at HEAD: `assertWithinAiCostCeiling`
+enforces per-org daily AND monthly ceilings with tier-proportional defaults,
+founder overrides, a last-known-good spend cache, and a fail-closed posture for
+autonomous callers. Acting on the entry would have built a second copy of a
+control that already exists — the exact defect this ledger entry is about, one
+layer up. The entry is corrected in place. Second time a frontier claim has been
+wrong (ledger 44 was the first); both times it read as a note rather than a
+claim.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

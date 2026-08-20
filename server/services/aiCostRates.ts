@@ -20,8 +20,9 @@
  *     (90% discount on the cached portion).
  *
  * The model IDs used here MUST match the OpenRouter model IDs returned by
- * the upstream API in `response.model`. Unknown models fall back to the
- * conservative `DEFAULT_RATE` to ensure we never silently report $0.
+ * the upstream API in `response.model`. Unknown models fall back to
+ * `DEFAULT_RATE`, which is DERIVED from this table's most expensive row on each
+ * axis — see the long note on it below for why it is derived rather than set.
  */
 
 export interface AICostRate {
@@ -32,10 +33,6 @@ export interface AICostRate {
   /** Optional USD per 1M cached-input tokens (Anthropic prompt caching). */
   cachedInput?: number;
 }
-
-// Conservative fallback for unknown models — assume mid-tier pricing.
-// Better to slightly overcount than to silently $0 a real call.
-export const DEFAULT_RATE: AICostRate = { input: 1.0, output: 3.0 };
 
 export const AI_COST_RATES: Record<string, AICostRate> = {
   // ── Anthropic (via OpenRouter) ────────────────────────────────────────────
@@ -87,6 +84,61 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
   // ── Direct OpenAI (fallback path) ────────────────────────────────────────
   "gpt-4o":      { input: 2.50, output: 10.00 },
   "gpt-4o-mini": { input: 0.15, output: 0.60 },
+};
+
+/**
+ * PRICE OF A MODEL WE DO NOT RECOGNISE — the most expensive rate this table
+ * knows, on each axis independently.
+ *
+ * ── WHY IT IS DERIVED AND NOT A NUMBER ──────────────────────────────────────
+ * It used to be a hand-set `{ input: 1.0, output: 3.0 }` under a comment
+ * reading "Conservative fallback … better to slightly overcount than to
+ * silently $0 a real call." The intent was right and the value contradicted it:
+ * $1/$3 sits BELOW ten of this table's rows on input and twelve on output. An
+ * unknown model was metered at one fifth of Opus input and one eighth of Opus
+ * output — not overcounting, undercounting, by up to 8×.
+ *
+ * That matters because this number is not a display. `computeCostUsd` writes it
+ * into `ai_telemetry_events.estimated_cost_cents`, and `aiCostCeiling` SUMS that
+ * column to decide whether an org has hit its daily and monthly ceiling. An
+ * unknown model therefore consumed a FREE org's $2/day allowance at a fifth of
+ * its true rate — roughly $16/day of real Opus-equivalent COGS before the gate
+ * tripped — and the gate reported green the whole way. `predictCostCents` reads
+ * the same table to forecast whether the next call fits under the ceiling, so
+ * the unknown model also looked like the cheap option to route to.
+ *
+ * ── AND IT HAD ALREADY SURVIVED ONE FIX ─────────────────────────────────────
+ * `aiRouter.estimateCost` once kept its own private table, and its docblock
+ * still records the repair: "unkeyed models fell back to a silent
+ * {input:1,output:3}. Now … costed via the central conservative DEFAULT_RATE."
+ * The central DEFAULT_RATE *was* `{input:1, output:3}`. Centralising the table
+ * was real and worth doing; the semantic defect crossed into it unchanged and
+ * came out wearing the word "conservative". Deriving the value is what makes
+ * that unrepeatable — there is no longer a number anyone can set below the
+ * table.
+ *
+ * ── THE POSTURE ─────────────────────────────────────────────────────────────
+ * Every other unknown in this file already resolves toward caution:
+ * CHARS_PER_TOKEN is padded to 4.0 "so the predictor never under-bills",
+ * `outputTokens` falls back to the `maxTokens` ceiling, and Haiku is metered at
+ * first-party rates rather than OpenRouter's cheaper listing. This is the same
+ * rule applied to the one input that was exempt from it. Overcounting an
+ * unknown model pauses AI early, which is visible and has a one-line remedy —
+ * add the model to the table. Undercounting spends real money and reports
+ * green.
+ *
+ * `cachedInput` is deliberately left undefined: we cannot know an unrecognised
+ * model supports prompt caching, so its cached portion bills at the full input
+ * rate. Same direction.
+ *
+ * Today this resolves to $15.00 / $75.00 — the legacy `anthropic/claude-opus-4`
+ * row, which is a real price that was really billed. If that is judged too
+ * punitive the answer is to retire that row (a deliberate decision about
+ * historical pricing), never to reintroduce a floor beneath the table.
+ */
+export const DEFAULT_RATE: AICostRate = {
+  input: Math.max(...Object.values(AI_COST_RATES).map((r) => r.input)),
+  output: Math.max(...Object.values(AI_COST_RATES).map((r) => r.output)),
 };
 
 /**

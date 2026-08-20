@@ -1094,8 +1094,17 @@ export function extractModelConfidence(content: string): number | null {
  * real $5/$25 — 3× wrong) and unkeyed models fell back to a silent
  * {input:1,output:3}. Now: known models (every id in models.MODELS) get their
  * real rate; an UNKNOWN model is logged once (so a routing bug surfaces) and
- * still costed via the central conservative DEFAULT_RATE — never a private,
- * separately-maintained guess.
+ * costed via the central DEFAULT_RATE — never a private, separately-maintained
+ * guess.
+ *
+ * CORRECTED 2026-08-20, because the sentence above used to end "the central
+ * CONSERVATIVE DEFAULT_RATE" and that word was carrying a falsehood. The
+ * central DEFAULT_RATE was `{ input: 1.0, output: 3.0 }` — the identical value
+ * this paragraph names as the defect it replaced. Centralising the table was
+ * real and worth doing, and the semantic defect crossed into it untouched,
+ * wearing an adjective that asserted the opposite. DEFAULT_RATE is now DERIVED
+ * from the table's dearest row on each axis, so there is no number left for
+ * anyone to set below it; see the note on the constant itself.
  */
 export function estimateCost(
   model: string,
@@ -1104,7 +1113,7 @@ export function estimateCost(
   cachedInputTokens: number = 0,
 ): number {
   if (model && model !== "cache" && !isKnownModel(model)) {
-    logger.warn("[AIRouter] estimateCost: unknown model — costing via central DEFAULT_RATE", {
+    logger.warn("[AIRouter] estimateCost: unknown model — costing at the dearest known rate", {
       metadata: { model },
     });
   }
@@ -1629,7 +1638,7 @@ export async function routeAITask(
   // Use the central aiCostRates calculator for consistency with the founder
   // dashboard rollups. Token-level cost is the source of truth — `costEstimate`
   // above is computed from the same per-million rates and only differs when an
-  // unknown model falls back to the conservative DEFAULT_RATE.
+  // unknown model falls back to DEFAULT_RATE (the table's dearest row).
   if (config.orgId && !config.skipQuota && usage) {
     const usdAuthoritative = computeCostUsd(
       finalModel,

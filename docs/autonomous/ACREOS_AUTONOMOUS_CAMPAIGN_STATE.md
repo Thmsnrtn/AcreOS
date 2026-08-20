@@ -244,24 +244,33 @@ had not verified; those are deliberately absent below.
     to price what it cannot, and reports `unpricedCalls` so the gap is visible
     rather than filled.
 
-16. **Per-user AI spend has no cap anywhere. `/api/va` is capped, but only by
-    the single platform-wide ceiling.** The previous wording of this entry —
-    "`/api/va` has no cap at all" — was copied from `docs/audit-2026-08/16-cost.md`
-    F-16-1 and is STALE at HEAD, checked 2026-08-20: `ai/vaService.ts:682` and
-    `:809` both call `assertAiSpendAllowed(orgId)`, and the second carries the
-    comment "audit F-16-1: respect the platform cost ceiling". The finding was
-    actioned; the backlog entry was not updated.
+16. **Per-org AI cost governance EXISTS and this entry described it wrongly for
+    two revisions.** Kept, corrected, because the correction is the useful part.
 
-    What is still true, and is the smaller real gap: `assertAiSpendAllowed`
-    resolves to `assertWithinAiCostCeiling`, which is ONE global daily counter
-    for the whole platform. There is no per-user cap anywhere in the system
-    (`userAiCostControls` was deleted in ledger 35 as unwired and fail-open) and
-    no per-ORG cap on this path. A single org can consume the platform's whole
-    daily allowance and the ceiling will then refuse everyone.
+    The entry said `assertAiSpendAllowed` "resolves to `assertWithinAiCostCeiling`,
+    which is ONE global daily counter for the whole platform" and that there is
+    "no per-ORG cap on this path". Read at HEAD 2026-08-20: `assertWithinAiCostCeiling`
+    runs the platform envelope FIRST and then a per-org **daily and monthly**
+    ceiling — tier-proportional defaults (`free` $2/day, `pro` $50/day),
+    founder overrides in `ai_cost_ceiling_overrides`, a 10-minute
+    last-known-good spend cache so a telemetry hiccup enforces against recent
+    truth, and a fail-CLOSED posture for autonomous callers. Building the
+    per-org cap this entry asked for would have been building it twice.
 
-    A real fix is a DB-backed per-org counter that fails CLOSED, and per-user
-    caps on top of it if the founder wants them. `DEFECT-0017` in the defect
-    registry was corrected on 2026-08-19 and names the same gap.
+    A frontier entry is a hypothesis. This is the second time that has bitten
+    (ledger 44 was the first), and both times the entry read as a note rather
+    than a claim.
+
+    **What was actually wrong there, found by reading it:** `DEFAULT_RATE` —
+    the price the ceiling applies to a model id it does not recognise — was
+    hand-set BELOW most of the table, so the gate under-counted the spend it
+    exists to bound. Closed as ledger 46; see "Recent verified changes".
+
+    **What remains genuinely open, and it is small:** there is no per-USER cap
+    (`userAiCostControls` was deleted in ledger 35 as unwired and fail-open), so
+    one member of a multi-seat org can consume the whole org allowance. That is
+    an intra-tenant fairness question, not a platform-risk one, and it should
+    wait for a real customer with real seats to say whether it matters.
 
 17. **Two modules the gate could not see until 2026-08-20, each owed a different
     decision.** Revealed by ledger 45's comment strip; `moduleOrphans` was raised
@@ -325,8 +334,16 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–45.
+Full reasoning in the cross-pollination ledger, entries 23–46.
 
+- **the unknown model was the cheapest thing in the ledger** — `DEFAULT_RATE`,
+  the price applied to a model id nothing recognises, was hand-set BELOW ten of
+  the table's rows, so the org AI cost ceiling under-counted the spend it exists
+  to bound by up to 8×. It had already survived one fix: the router's docblock
+  names `{input:1,output:3}` as the defect it replaced with "the central
+  conservative DEFAULT_RATE", and that constant WAS `{input:1,output:3}`. Now
+  derived from the table's dearest row, so there is no number left to set below
+  it. Ledger 46.
 - **the accusing scan was the one still reading prose** — `lint-reachability`'s
   identifier pass counted a symbol NAMED in a comment as a call site. Landing the
   strip meant reading all 86 revealed symbols, which showed 66 of them were a

@@ -174,6 +174,21 @@ Two recurring traps, each found more than once:
   is how it stays unstarted; sizing it by what the findings ARE is how it lands.
 - **A stubbed safety predicate makes a suite agree with any implementation of
   it, including an inverted one.** Import the real function into the mock.
+- **An adjective is not a measurement.** `DEFAULT_RATE` — the price the AI cost
+  ceiling applies to a model it does not recognise — was `{input: 1.0, output:
+  3.0}` under a comment reading "Conservative fallback … better to slightly
+  overcount". It sat below ten of its own table's rows, so the ceiling
+  under-counted the spend it exists to bound by up to 8× (ledger 46). The word
+  had been reviewed; the number never was. Worse, the value had already crossed
+  a refactor that fixed it: the router's docblock names `{input:1,output:3}` as
+  the defect it replaced with "the central *conservative* DEFAULT_RATE", and
+  that constant was `{input:1,output:3}`.
+
+  Two habits fall out. When a constant is described by a property —
+  conservative, safe, minimal, strict — CHECK IT AGAINST THE POPULATION IT IS
+  SUPPOSED TO DOMINATE, not against the sentence. And where the property is a
+  relationship to other values, DERIVE it rather than set it: a `Math.max` over
+  the table cannot fall behind the table, and a literal always eventually does.
 
 ## Canonical requires three things
 

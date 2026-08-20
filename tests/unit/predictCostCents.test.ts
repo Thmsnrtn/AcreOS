@@ -13,6 +13,7 @@ import {
   cheapestModelWithinBudget,
   estimateTokensFromChars,
   computeCostUsd,
+  AI_COST_RATES,
 } from "../../server/services/aiCostRates";
 
 describe("predictCostCents", () => {
@@ -33,11 +34,28 @@ describe("predictCostCents", () => {
     ).toBeCloseTo(600, 5);
   });
 
-  it("falls back to DEFAULT_RATE for unknown models (never silently $0)", () => {
-    // DEFAULT_RATE = $1 in / $3 out → 1M+1M = $4 → 400 cents.
-    expect(
-      predictCostCents({ model: "totally/unknown-model", inputTokens: 1_000_000, outputTokens: 1_000_000 }),
-    ).toBeCloseTo(400, 5);
+  it("prices an unknown model at NO LESS than the dearest model it knows", () => {
+    // REWRITTEN 2026-08-20, not deleted. This used to read "DEFAULT_RATE = $1 in
+    // / $3 out → 400 cents", which pinned the number without asking whether the
+    // number was defensible — and it was not: $1/$3 sat below most of the table,
+    // so the forecast that decides whether the next call fits under an org's
+    // ceiling made an unrecognised model look like the cheap option. The
+    // invariant, not the arithmetic, is what this file should hold.
+    const unknown = predictCostCents({
+      model: "totally/unknown-model",
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+    });
+    const dearestKnown = Math.max(
+      ...Object.keys(AI_COST_RATES).map((m) =>
+        predictCostCents({ model: m, inputTokens: 1_000_000, outputTokens: 1_000_000 }),
+      ),
+    );
+    expect(unknown, "an unknown model forecasts cheaper than a known one").toBeGreaterThanOrEqual(
+      dearestKnown,
+    );
+    // …and still never silently $0, which was the original point of this case.
+    expect(unknown).toBeGreaterThan(0);
   });
 
   it("applies the prompt-prefix cache discount on the cached input fraction", () => {

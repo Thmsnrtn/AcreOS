@@ -144,9 +144,11 @@ export function isKnownModel(model: string): boolean {
 
 /**
  * Per-million-token price for a model, resolved through the centralized
- * `aiCostRates.AI_COST_RATES` table. Unknown models fall back to the
- * conservative `DEFAULT_RATE` there (never silently $0). This is the ONLY price
- * surface callers should use — there is no second cost table.
+ * `aiCostRates.AI_COST_RATES` table. Unknown models fall back to `DEFAULT_RATE`
+ * there, which is DERIVED from the table's dearest row on each axis — so an
+ * unrecognised model is never cheaper to the cost ceiling than a recognised
+ * one, and never silently $0. This is the ONLY price surface callers should
+ * use — there is no second cost table.
  */
 export function priceFor(model: string): AICostRate {
   return getRate(model);
@@ -162,7 +164,8 @@ for (const id of KNOWN_MODELS) {
   if (!(id in AI_COST_RATES) && !(id.toLowerCase() in AI_COST_RATES)) {
     throw new Error(
       `[models] '${id}' has no price row in aiCostRates.AI_COST_RATES — ` +
-        `add one so cost estimates never silently fall back to DEFAULT_RATE.`,
+        `add one so cost estimates never fall back to DEFAULT_RATE, which prices ` +
+        `at the dearest known rate and would overstate this model's COGS.`,
     );
   }
 }
