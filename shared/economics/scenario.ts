@@ -48,6 +48,7 @@ import {
   type CalculatorInputs,
   type CalculatorOutputs,
 } from "../calculators/landDeal";
+import type { StrategyPackId } from "../business-types";
 
 /** Bump when the SCENARIO envelope shape changes, not the engine arithmetic. */
 export const SCENARIO_SHAPE_VERSION = 1 as const;
@@ -366,7 +367,7 @@ export interface ScenarioBody {
   engineId: string;
   /** The engine version AT COMPUTATION TIME. Never back-filled. */
   engineVersion: string;
-  strategyPackId: string | null;
+  strategyPackId: StrategyPackId | null;
   strategyPackVersion: string | null;
   /**
    * The verbatim inputs, so the number can be recomputed and defended later.
@@ -387,7 +388,7 @@ export interface ComputeScenarioRequest {
   engineId: string;
   inputs: Record<string, number | string>;
   assumptions?: ScenarioAssumption[];
-  strategyPackId?: string | null;
+  strategyPackId?: StrategyPackId | null;
   strategyPackVersion?: string | null;
 }
 

@@ -732,3 +732,40 @@ export function isProductionReady(id: string | null | undefined): boolean {
   const m = getBusinessType(id)?.maturity;
   return m === "core" || m === "beta";
 }
+
+// ── Strategy Packs ──────────────────────────────────────────────────────────
+
+/**
+ * A STRATEGY PACK IS A BUSINESS TYPE. There is no second taxonomy.
+ *
+ * `decision_snapshots.strategy_pack_id` and `scenarios.strategy_pack_id` record
+ * "which rules shaped this" (BI91). The obvious mistake would be to invent a
+ * pack registry beside this file — the ids would drift, and the product already
+ * has exactly one canonical list of investor archetypes, which is the one above.
+ * So the pack id is a `BusinessTypeId`, and this alias exists to say that
+ * out loud at every call site rather than leaving it to be inferred from a
+ * `string`.
+ *
+ * ── WHY THE FIELD MATTERED AND WAS EMPTY ──────────────────────────────────
+ * `PRODUCT.md` recorded that the column existed and "every production caller
+ * writes null", and called closing that the highest-leverage architectural work
+ * available. The type's own docblock says null means "no pack applied … so 'no
+ * pack' is explicit". But all four canonical `recordDecision` call sites are
+ * vertical surfaces — the fix-and-flip analyzer, lot pricing, the blind-offer
+ * wizard and the offer-letter batch — so null there was not "no pack applied",
+ * it was a fact nobody recorded. Losing provenance you hold is the same defect
+ * as inventing provenance you do not, pointed the other way.
+ *
+ * ── VERSION STAYS NULL, DELIBERATELY ──────────────────────────────────────
+ * `strategy_pack_version` is still null everywhere and should stay that way
+ * until a versioned pack ARTIFACT exists. Writing "1.0" beside a real id would
+ * manufacture a version nobody cut, and the snapshot renderer already prints
+ * `under <id>@unversioned` for exactly this state — an honest rendering of a
+ * pack that is named but not yet versioned.
+ */
+export type StrategyPackId = BusinessTypeId;
+
+/** True when `id` names a real strategy pack — i.e. a real business type. */
+export function isStrategyPackId(id: string | null | undefined): id is StrategyPackId {
+  return getBusinessType(id) !== null;
+}

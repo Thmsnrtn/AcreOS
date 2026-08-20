@@ -368,7 +368,9 @@ export function registerLotPricingRoutes(app: Express): void {
             // isAuthenticated + getOrCreateOrg, and it prices the org's own
             // parcels. Naming a generic "system" here would be false (BI72).
             authority: "org_member:lot_pricing_lock",
-            strategyPackId: null,
+            // Lot pricing is the subdivider surface — that is the rule set
+            // that shaped this grid (BI91).
+            strategyPackId: "subdivider",
             strategyPackVersion: null,
             assumptions: [
               {

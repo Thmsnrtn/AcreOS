@@ -612,7 +612,11 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
               // above if it exceeded the org's own MAO rule. Naming a generic
               // "autonomous" or "system" here would be false (BI72).
               authority: "org_member:flip_analyzer_offer",
-              strategyPackId: null,
+              // The rules that shaped this decision are the fix-and-flip
+              // analyzer's (BI91). Version stays null until a versioned pack
+              // artifact exists — the renderer prints "@unversioned", which is
+              // honest; "1.0" would be a version nobody cut.
+              strategyPackId: "fix_and_flip",
               strategyPackVersion: null,
               assumptions: [],
               alternatives: [],

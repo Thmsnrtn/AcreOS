@@ -57,14 +57,34 @@ single-tenant, scope `platform`.
 On the customer side there is **no pack contract at all**. Five verticals carry
 dedicated schema files totalling 60 tables; six nav modules are
 `businessTypeOnly`; `businessType` appears in roughly 137 client and 102 server
-locations as scattered conditionals. `strategy_pack_id` exists on
-`decision_snapshots` and `scenarios` and every production caller writes `null`.
+locations as scattered conditionals.
 
 Canon says this about itself: the `profile-extensibility` fitness function is
 `partial`, with the note that the customer side has no Strategy Pack contract.
 So today, customer verticals are **parallel implementations sharing
 infrastructure**, not configurations of a kernel. Closing that is the highest-
 leverage architectural work available.
+
+**ONE LAYER OF IT CLOSED, 2026-08-20 — the attribution layer, and only that.**
+This paragraph used to end "`strategy_pack_id` exists on `decision_snapshots`
+and `scenarios` and every production caller writes `null`". That is no longer
+true, and the fix was small because the taxonomy already existed. A strategy pack
+IS a business type: `StrategyPackId` is an alias of `BusinessTypeId`, not a
+second registry, so there is nothing to drift. All four canonical
+`recordDecision` call sites are vertical surfaces and now say which rules shaped
+them — `fix_and_flip` (the flip analyzer), `subdivider` (lot pricing), and
+`land_flipper` (the blind-offer wizard and the offer-letter batch). Null in that
+column had never meant "no pack applied", which is what the type's docblock says
+it means; it meant a fact those routes held and did not record.
+`strategyPackVersion` stays null on purpose until a versioned pack ARTIFACT
+exists — the renderer already prints `@unversioned`, and "1.0" would be a version
+nobody cut. `strategyPackIsRecorded.test.ts` pins all three claims.
+
+**What that does NOT close:** every decision and scenario is now attributable to
+a strategy, which is the reporting and calibration seam. The verticals are still
+parallel implementations — the 137/102 scattered conditionals are untouched, and
+a pack still configures nothing. Do not read the attribution layer as the
+contract.
 
 **2. The canonical loop closes for exactly two surfaces.** `recordDecision(` has
 two non-generic production call sites: the flip analyzer (fix_and_flip) and lot

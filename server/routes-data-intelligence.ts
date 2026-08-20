@@ -428,7 +428,8 @@ router.post("/blind-offer/commit", async (req: Request, res: Response) => {
         // "system" here would be false.
         authority: "org_member:blind_offer_commit",
         actorRef: userId,
-        strategyPackId: null,
+        // The blind-offer wizard is the land loop (BI91).
+        strategyPackId: "land_flipper",
         strategyPackVersion: null,
         assumptions: [],
         alternatives: input.alternatives ?? [],

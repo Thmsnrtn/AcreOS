@@ -440,8 +440,16 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–49.
+Full reasoning in the cross-pollination ledger, entries 23–50.
 
+- **the column that recorded which strategy shaped a decision always said
+  "none"** — all four canonical `recordDecision` call sites are vertical
+  surfaces, and all four wrote `strategyPackId: null`, which the type's own
+  docblock defines as "no pack applied". Discarding provenance you hold is the
+  mirror of inventing provenance you do not. Closed WITHOUT a second taxonomy: a
+  strategy pack IS a business type, so `StrategyPackId` is an alias of
+  `BusinessTypeId` and an invented id is now a compile error. Version stays null
+  — no versioned artifact exists. Ledger 50.
 - **seven live cross-tenant paths, found by working the register instead of
   admiring it** — the rule-2 population (140 entries) adjudicated in full: 42
   claims, 35 refuted, 6 real defects fixed. Any authenticated user could read

@@ -698,7 +698,9 @@ export function registerTeamMessagingRoutes(app: Express): void {
             // Naming a generic "autonomous" or "system" here would be false.
             authority: "org_member:offer_letter_batch",
             actorRef,
-            strategyPackId: null,
+            // The offer-letter batch prices land off assessed value — the
+            // land rule set shaped it (BI91).
+            strategyPackId: "land_flipper",
             strategyPackVersion: null,
             assumptions: [
               {

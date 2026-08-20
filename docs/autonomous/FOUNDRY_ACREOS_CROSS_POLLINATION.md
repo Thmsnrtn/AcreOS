@@ -3118,6 +3118,67 @@ the rename-survives-the-pin failure CLAUDE.md's first law describes, met inside
 the test written to enforce that law.
 
 
+### 50 — THE COLUMN THAT RECORDED WHICH STRATEGY SHAPED A DECISION, AND ALWAYS SAID "NONE"
+
+`decision_snapshots.strategy_pack_id` and `scenarios.strategy_pack_id` exist to
+record **which rules shaped this** (BI91). `PRODUCT.md` had recorded, accurately,
+that "every production caller writes `null`", and called closing it the
+highest-leverage architectural work available.
+
+The type's own docblock says what null means: *"Null when none applied — recorded
+as null rather than omitted, so 'no pack' is explicit."* But all four canonical
+`recordDecision` call sites are VERTICAL surfaces — the fix-and-flip analyzer,
+lot pricing, the blind-offer wizard, the offer-letter batch. Null there never
+meant "no pack applied". It meant a fact those routes were holding and did not
+write down.
+
+**That is a doctrine violation running the unusual direction.** AcreOS refuses
+invented certainty everywhere — no fabricated numbers, no defaults impersonating
+observed facts. The mirror image is discarding provenance you actually have, and
+it is harder to see because the output looks modest rather than confident. A
+decision snapshot that says "no strategy shaped this" about a fix-and-flip
+analysis is not being careful; it is wrong, immutably, in an append-only record.
+
+**THE FIX WAS SMALL BECAUSE THE TAXONOMY ALREADY EXISTED**, and that is the part
+worth transferring. The tempting move was a strategy-pack registry: ids, labels,
+which engines each pack owns. It would have been a second list of investor
+archetypes beside `BUSINESS_TYPE_IDS`, and the two would have drifted inside a
+month. **A strategy pack IS a business type.** `StrategyPackId` is an alias of
+`BusinessTypeId` — no new list, nothing to keep in sync — and the field is now
+typed against it, so an invented pack id is a compile error rather than a string
+nobody validates. §10's "do not duplicate existing canonical owners" is easiest
+to violate when the duplicate would be genuinely convenient.
+
+The four sites now record `fix_and_flip`, `subdivider`, `land_flipper` and
+`land_flipper`.
+
+**VERSION STAYS NULL, AND THAT IS THE SAME RULE APPLIED AGAIN.** It would have
+been natural to write `"1.0"` beside a real id. No versioned pack artifact
+exists, so that is a version nobody cut — the fabrication the id fix just
+corrected, reintroduced one field to the right. The snapshot renderer already
+prints `under <id>@unversioned`, which is the honest rendering of a pack that is
+named but not yet versioned, and it was already written before any of this.
+
+**WHAT THIS DOES NOT CLOSE, said plainly because the entry above it is easy to
+over-read.** Every decision and scenario is now ATTRIBUTABLE to a strategy —
+that is the reporting and calibration seam, and it is real. The verticals are
+still parallel implementations sharing infrastructure: `businessType` remains
+roughly 137 client and 102 server scattered conditionals, and a pack still
+CONFIGURES nothing. Canon's `profile-extensibility` fitness function stays
+`partial` and should. PRODUCT.md now carries both halves.
+
+**Exit test.** `strategyPackIsRecorded.test.ts`, three mutations each watched
+failing first: revert one site to null (the original defect — the named case for
+that file fails, and it is NAMED rather than counted, because a count is
+satisfied by any file writing any id while the surface in question still writes
+null); write a plausible-looking id outside the registry (`land_subdivision_pack_v2`
+— fails both the named case and the registry case); manufacture
+`strategyPackVersion: "1.0"`. The registry check reads `isStrategyPackId`, which
+resolves through `BUSINESS_TYPES` itself, so the test cannot pass against a
+taxonomy that has drifted from the canonical one — there is no second list for it
+to agree with.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

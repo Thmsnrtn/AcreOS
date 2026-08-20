@@ -47,6 +47,7 @@ import {
   type ResolvedValue,
 } from "../evidence/claim";
 import type { FrozenScenarioRef } from "../economics/scenario";
+import type { StrategyPackId } from "../business-types";
 
 /** Bump when the FROZEN SHAPE changes, so old snapshots stay readable as-written. */
 export const DECISION_SNAPSHOT_VERSION = 1 as const;
@@ -165,9 +166,16 @@ export interface DecisionSnapshotInput {
    */
   authority: string;
 
-  /** Which Strategy Pack version shaped the criteria (BI91). Null when none
-   *  applied — recorded as null rather than omitted, so "no pack" is explicit. */
-  strategyPackId: string | null;
+  /**
+   * Which Strategy Pack shaped the criteria (BI91). Null when none applied —
+   * recorded as null rather than omitted, so "no pack" is explicit.
+   *
+   * TYPED AGAINST THE CANONICAL REGISTRY, not `string`. A strategy pack IS a
+   * business type (see `StrategyPackId` in shared/business-types.ts); typing it
+   * loosely is what let every vertical surface write `null` unnoticed while the
+   * column sat unread. An invented id is now a compile error.
+   */
+  strategyPackId: StrategyPackId | null;
   strategyPackVersion: string | null;
 
   assumptions: FrozenAssumption[];
@@ -211,7 +219,7 @@ export interface DecisionSnapshotBody {
   actorRef: string;
   authority: string;
 
-  strategyPackId: string | null;
+  strategyPackId: StrategyPackId | null;
   strategyPackVersion: string | null;
 
   /** The moment the evidence was resolved AT — replaying with this date and
