@@ -371,7 +371,27 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
 
           // Check if webhook already exists
           const existing = await stripe.webhookEndpoints.list({ limit: 20 });
-          const alreadyExists = existing.data.find(w => w.url === webhookUrl);
+          // Match on URL *and* Connect-ness. An account endpoint sitting at this
+          // URL is not the endpoint we need — it receives no connected-account
+          // events — and treating it as "already registered" would leave the
+          // dispatcher permanently unfed while reporting success.
+          const alreadyExists = existing.data.find(
+            (w) => w.url === webhookUrl && (w as { application?: unknown }).application !== undefined,
+          );
+          const accountEndpointAtSameUrl = existing.data.find(
+            (w) => w.url === webhookUrl && !alreadyExists,
+          );
+          if (accountEndpointAtSameUrl && !alreadyExists) {
+            return res.json({
+              status: "error",
+              message:
+                "A Stripe webhook endpoint exists at this URL but is an ACCOUNT endpoint, not a " +
+                "Connect endpoint, so it receives nothing from connected accounts — borrower " +
+                "payments and refunds would never arrive. Delete it in the Stripe dashboard and " +
+                "re-run this step so it can be recreated with connect: true.",
+              details: { id: accountEndpointAtSameUrl.id, url: webhookUrl },
+            });
+          }
           if (alreadyExists) {
             return res.json({
               status: "ok",
@@ -391,9 +411,26 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
           // invoice.payment_succeeded, charge.dispute.created) had no handler
           // here at all. See STRIPE_CONNECT_WEBHOOK_EVENTS' own note.
           const { STRIPE_CONNECT_WEBHOOK_EVENTS } = await import("./services/stripeConnect");
+          // `connect: true` is what makes this a CONNECT endpoint. Without it
+          // Stripe creates an ACCOUNT endpoint, which receives events for
+          // AcreOS's own platform account and NOTHING from connected accounts.
+          //
+          // Every event this dispatcher exists for originates on a connected
+          // account: borrower card payments are DIRECT charges on the lender's
+          // account, so their checkout.session.completed, payment_intent.* and
+          // charge.refunded are connected-account events. Provisioned without
+          // this flag, the endpoint answers at /api/stripe/connect/webhook and
+          // is never sent a single one of them — the handlers are wired, the
+          // subscription list is correct, and nothing is ever delivered.
+          //
+          // Found 2026-08-20 by an audit of the fix that added charge.refunded
+          // to `enabled_events`: subscribing to an event on an endpoint that
+          // cannot receive it is a list that looks right. The gate now asserts
+          // deliverability rather than the presence of the name.
           const webhook = await stripe.webhookEndpoints.create({
             url: webhookUrl,
             enabled_events: [...STRIPE_CONNECT_WEBHOOK_EVENTS],
+            connect: true,
           });
 
           // Save the webhook secret to config

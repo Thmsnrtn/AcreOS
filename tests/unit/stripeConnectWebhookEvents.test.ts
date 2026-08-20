@@ -58,6 +58,52 @@ function handledEventTypes(): string[] {
   return [...body.matchAll(/^\s*case\s+"([^"]+)":/gm)].map((m) => m[1]);
 }
 
+describe("the endpoint can actually RECEIVE what it subscribes to", () => {
+  /**
+   * The first version of this file asserted that "charge.refunded" appears in
+   * the provisioned `enabled_events`. It was green over a live defect: the
+   * endpoint was created WITHOUT `connect: true`, which makes it an ACCOUNT
+   * endpoint — it receives events for AcreOS's own platform account and nothing
+   * whatsoever from connected accounts.
+   *
+   * Every event this dispatcher exists for is a connected-account event:
+   * borrower card payments are DIRECT charges on the lender's account. So the
+   * subscription list was correct, the handlers were wired, and not one event
+   * could ever be delivered. Subscribing to an event on an endpoint that cannot
+   * receive it is a list that looks right.
+   *
+   * That is CLAUDE.md's first law in miniature — the gate proved the SYMBOL
+   * ("the string is in the array") where the defect was the SEMANTICS ("the
+   * branch can fire"). These cases assert deliverability.
+   */
+  const SETUP = setupSrc;
+
+  it("VACUITY: the provisioning call is found", () => {
+    expect(SETUP, "webhookEndpoints.create moved — re-anchor this").toMatch(
+      /stripe\.webhookEndpoints\.create\(/,
+    );
+  });
+
+  it("creates a CONNECT endpoint, not an account endpoint", () => {
+    const at = SETUP.indexOf("stripe.webhookEndpoints.create(");
+    const call = SETUP.slice(at, SETUP.indexOf("});", at) + 3);
+    expect(
+      /connect:\s*true/.test(call),
+      "the Connect webhook endpoint is provisioned without `connect: true`, so Stripe " +
+        "creates an ACCOUNT endpoint. It will receive nothing from connected accounts — " +
+        "which is every event this dispatcher handles, because borrower card payments are " +
+        "direct charges on the lender's account. The handlers would be wired and never fed.",
+    ).toBe(true);
+  });
+
+  it("does not treat an ACCOUNT endpoint at the same URL as already-registered", () => {
+    // Otherwise a deployment provisioned before this fix reports "already
+    // registered" forever and the dispatcher stays permanently unfed.
+    expect(SETUP).toMatch(/ACCOUNT endpoint, not a\s*\n?\s*"?\s*Connect endpoint|is an ACCOUNT endpoint/);
+    expect(SETUP).toMatch(/accountEndpointAtSameUrl/);
+  });
+});
+
 describe("the Connect webhook subscription mirrors the Connect dispatcher", () => {
   it("VACUITY: the scan finds a real dispatcher with real branches", () => {
     // If the extraction ever silently returns nothing, every set comparison

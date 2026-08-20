@@ -213,8 +213,28 @@ export class LobService {
       );
     }
 
-    const effective = this.effectiveMode(mode);
-    if (effective === 'test') {
+    // THE CUSTOMER'S OWN dry-run switch — not the platform interlock.
+    //
+    // This read `this.effectiveMode(mode) === 'test'`, which folded two
+    // unrelated switches into one and let the PLATFORM interlock decide for a
+    // customer's own account. `isLiveSendArmed()` is false by default, so on
+    // any deployment that has not explicitly armed production, an org sending a
+    // LIVE counterparty letter on THEIR OWN Lob key silently resolved to the
+    // platform sandbox and printed nothing. The org branch below already says
+    // "the platform live-send interlock governs the PLATFORM key only — never a
+    // customer's own account", and this ordering was what made that sentence
+    // unreachable: a correct rule stated in a comment that the control flow
+    // above it defeated.
+    //
+    // Nothing is weakened by narrowing it. Every PLATFORM path is still
+    // interlocked, in both places it can be reached: `getClient()` applies
+    // `effectiveMode` itself, and the platform tier of `getLobClient` applies it
+    // inside `resolvePlatformLobKey`. What is restored is the customer's own
+    // dry-run switch meaning THEIRS — `mode === 'test'` still short-circuits to
+    // the sandbox, which is the safe direction the original comment defends: an
+    // org whose vault holds a live key must not have their own dry-run print
+    // real mail to a real person.
+    if (mode === 'test') {
       // A test-mode send prints NOTHING and reaches no counterparty, so whose
       // account pays is moot (it costs $0). Two reasons to keep the platform
       // sandbox key here rather than resolving the org's own:

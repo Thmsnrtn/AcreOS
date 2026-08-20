@@ -1964,7 +1964,26 @@ export function registerCampaignRoutes(app: Express): void {
 
       const { emailService } = await import("./services/emailService");
 
-      const subject = (campaign as any).subject || campaign.name || "Message from AcreOS";
+      // No platform-branded fallback on the counterparty lane. This read
+      // `|| "Message from AcreOS"`, and the send below is `purpose: 'counterparty'`
+      // in a per-lead loop — so a campaign with no subject and no name put
+      // AcreOS's name in the subject line of every email a customer sent to
+      // their own leads. Same shape as the communications.ts default fixed
+      // alongside it, on the higher-volume surface.
+      //
+      // Refuse rather than invent: a campaign with nothing to put in a subject
+      // line is not a campaign AcreOS should complete on the customer's behalf
+      // under a name that is not theirs.
+      const subject = ((campaign as any).subject || campaign.name || "").trim();
+      if (!subject) {
+        return Errors.badRequest(
+          res,
+          "This campaign has no subject and no name, so there is nothing to put in the " +
+            "subject line. AcreOS will not substitute its own name on mail you are sending " +
+            "to your leads — add a subject to the campaign and send again.",
+          { campaignId: campaign.id },
+        );
+      }
       const htmlTemplate = (campaign as any).templateContent || (campaign as any).htmlContent || `<p>${(campaign as any).textContent || campaign.name}</p>`;
 
       // Send emails with rate limiting. Track in-memory to catch any

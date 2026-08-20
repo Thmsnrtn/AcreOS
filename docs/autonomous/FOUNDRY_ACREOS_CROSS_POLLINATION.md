@@ -3850,3 +3850,107 @@ customer-controlled). Deliberately, no `SigningRail` interface was shipped
 either: an interface with one implementation is a description of that
 implementation, and CLAUDE.md's second law says a canonical thing with no second
 caller is not canonical yet.
+
+---
+
+### 59 — THE ENDPOINT WAS SUBSCRIBED TO AN EVENT IT COULD NOT RECEIVE, AND THE GATE THAT CHECKED THE SUBSCRIPTION AGREED
+
+The refund fix (ledger 58's sibling) added `charge.refunded` to the Connect
+webhook's `enabled_events` and wrote a gate deriving that list from the
+dispatcher's own `case` labels, so the two could not drift. Both correct. An
+independent audit then asked the question neither had: **can the endpoint
+receive a connected-account event at all?**
+
+It could not. `stripe.webhookEndpoints.create({ url, enabled_events })` — no
+`connect: true`, and `grep -rn 'connect: true' server/` returned zero hits
+repo-wide. Without that flag Stripe creates an **account** endpoint, which
+receives events for AcreOS's own platform account and nothing whatsoever from
+connected accounts. Every event this dispatcher exists for originates on a
+connected account: borrower card payments are DIRECT charges on the lender's
+own Stripe account. So the endpoint answered at `/api/stripe/connect/webhook`,
+the handlers were wired, the subscription list was correct and derived, and not
+one event could ever arrive.
+
+**This is the first law with the two halves separated cleanly enough to see
+them.** The gate asserted *"the string `charge.refunded` appears in the
+provisioned list."* The defect was *"the branch can fire."* Those are different
+propositions, and the first is comfortably true while the second is false —
+which is precisely what "falsify against the SEMANTIC defect, not the symbol"
+means when you meet it in the wild rather than in a rule. The gate now asserts
+`connect: true` and refuses to treat an account endpoint at the same URL as
+"already registered", because a deployment provisioned before the fix would
+otherwise report success forever while the dispatcher starved.
+
+Worth stating for the next author: a derived list is a real improvement over a
+hand-kept one, and it is orthogonal to deliverability. Deriving the *contents*
+of a subscription says nothing about whether the *channel* exists.
+
+---
+
+### 60 — AN EXTRA CONJUNCT IN A REFUSAL, WHICH READ AS EXTRA SAFETY AND WAS THE ONE CLAUSE THAT WEAKENED IT
+
+The counterparty From: chokepoint refused a send when four things were true.
+An auditor deleted the second — `!fromAddressIsOrgIdentity` — in an isolated
+tree and found every case still green. Inert. Then the sharper half: it was not
+merely dead, it was the only clause that could ever *permit* a send the other
+three would have blocked, and the state it exempted is exactly the one a reader
+would expect it to catch — an org whose "own identity" resolved to the platform
+address would have sailed straight through the refusal that exists to stop
+that.
+
+The BYO-domain path it was written to protect was already protected, by the
+address comparison: platform AWS keys sending FROM the customer's verified
+domain do not match `defaultFromEmail` and never reach the block. The clause
+bought nothing and cost the guarantee.
+
+Deleted, with the variable behind it. Each remaining conjunct was then
+mutation-tested individually — removing `lane === 'counterparty'` fails 3 cases,
+`source === 'platform'` fails 1, the address comparison fails 8. All three
+load-bearing; the fourth was not.
+
+**The rule this leaves behind:** in a refusal predicate, every additional
+conjunct is a potential exemption, not additional protection. `A && B && C && D`
+refuses strictly LESS than `A && B && C`. So a conjunct added "to be safe" is
+the opposite of safe unless something proves it necessary — and the cheap proof
+is deletion: remove it, run the gate, and if nothing fails, it was never doing
+the work its name implied.
+
+Three more findings from the same audit, recorded because each is a distinct
+shape:
+
+* **A normalization nothing exercised.** `isSameEmailAddress` trims and
+  lower-cases, and the whole refusal rests on it — but replacing its body with
+  `a === b` left every case green, because no case ever supplied an address
+  differing only by case or padding. A comparison whose normalization is unpinned
+  can be simplified away in a refactor with nothing noticing. Now pinned by three
+  cases (`NO-REPLY@ACREOS.IO`, mixed case, surrounding whitespace), each of which
+  fails under exactly that mutation.
+* **The platform interlock was silencing customers' own accounts.**
+  `lobService.resolveClient` evaluated `effectiveMode(mode)` before reaching the
+  org branch, so with `isLiveSendArmed()` false — the DEFAULT — an org's live
+  counterparty letter on THEIR OWN Lob key resolved to the platform sandbox and
+  printed nothing. The org branch's own comment already said the interlock
+  "governs the PLATFORM key only — never a customer's own account"; the ordering
+  above it made that sentence unreachable. **A correct rule, written down, that
+  its own control flow defeated.** I had rejected this finding on first reading —
+  test mode prints nothing, so no identity is fronted — and was half wrong: the
+  half that stands is that a PLATFORM switch was deciding for a CUSTOMER's
+  account. Narrowed to `mode === 'test'` (the customer's own dry-run switch);
+  every platform path stays interlocked inside `getClient` and
+  `resolvePlatformLobKey`.
+* **The fixture had recorded the defect and called it a fixture problem.** That
+  gate's interlock mock was a hardcoded `isLiveSendArmed: () => true` with the
+  comment *"otherwise every 'live' request degrades to the test sandbox and the
+  credential question this file asks would never be reached."* The author
+  observed the exact behaviour, worked around it, and wrote down why — without
+  recognising it as the bug. Worth watching for: **a mock whose comment explains
+  why the real behaviour had to be suppressed is a defect report nobody filed.**
+  The flag is now controllable and the disarmed case is the one that pins the fix.
+
+**And a population, not a site.** The `'Message from AcreOS'` default was fixed
+in `communications.ts`, and the identical shape was still live in
+`routes-campaigns.ts` — the per-lead blast loop, the higher-volume surface — plus
+a `?? 'AcreOS'` sign-off in `routes-deal-rooms.ts`. Fixing them one at a time
+leaves the fourth to be found the same way, so the gate is now a scan over every
+`purpose: 'counterparty'` site in `server/` for a fallback expression yielding an
+AcreOS-bearing literal. Third law, applied without being asked.

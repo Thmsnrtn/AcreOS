@@ -81,8 +81,14 @@ function isSameEmailAddress(a: string | undefined, b: string | undefined): boole
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/** The send lane. See EmailOptions.purpose for the full contract. */
-export type SendLane = 'system' | 'counterparty';
+/**
+ * The send lane. See EmailOptions.purpose for the full contract.
+ *
+ * File-local on purpose: it was `export`ed with no consumer outside this
+ * module, which is a public promise nobody asked for — the shape the
+ * reachability ratchet exists to count.
+ */
+type SendLane = 'system' | 'counterparty';
 
 /**
  * Resolve the CAN-SPAM postal address + brand to render in a footer, FOR A
@@ -1029,9 +1035,6 @@ export class EmailService {
         // to actually send — SES authenticates the From: domain via the
         // identity records (DKIM/SPF/DMARC) the founder published.
         let fromAddress = options.from || defaultFromEmail;
-        // Did the From: address come from the ORG's own verified identity? The
-        // counterparty chokepoint below reads this — see there for why.
-        let fromAddressIsOrgIdentity = false;
         // Lane-aware display name. On the counterparty lane the platform
         // default ('AcreOS', or AWS_SES_FROM_NAME) is UNREACHABLE: we use the
         // customer's own name or NO display name at all. A bare address is
@@ -1044,7 +1047,6 @@ export class EmailService {
           const orgIdentity = await getIdentityForSend(options.organizationId);
           if (orgIdentity) {
             fromAddress = options.from || orgIdentity.fromAddress;
-            fromAddressIsOrgIdentity = !options.from;
           }
         }
 
@@ -1071,9 +1073,23 @@ export class EmailService {
         // with an org identity in hand stays allowed on purpose: platform AWS
         // keys sending FROM the customer's own verified domain is the
         // documented BYO-domain path, and the From: line is theirs.
+        // Three conjuncts, each load-bearing, and deliberately no fourth.
+        //
+        // A `!fromAddressIsOrgIdentity` clause stood here until an audit deleted
+        // it in an isolated tree and found every case still green — inert, and
+        // worse than inert: it was the one clause that WEAKENED the refusal,
+        // exempting exactly the state a reader would expect it to catch (an org
+        // whose "own identity" resolved to the platform address would have
+        // sailed straight through). The BYO-domain path it was meant to protect
+        // is already protected by the address comparison: platform AWS keys
+        // sending FROM the customer's verified domain do not match
+        // `defaultFromEmail`, so they never reach this block at all.
+        //
+        // The lesson is the one this repo keeps paying for — an extra conjunct
+        // reads as extra safety and can be the opposite. Each of the three below
+        // is pinned by a case that fails when that conjunct alone is removed.
         if (
           lane === 'counterparty' &&
-          !fromAddressIsOrgIdentity &&
           source === 'platform' &&
           isSameEmailAddress(fromAddress, defaultFromEmail)
         ) {

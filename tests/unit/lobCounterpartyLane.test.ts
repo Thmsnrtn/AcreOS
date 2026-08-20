@@ -28,6 +28,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = {
+  /** Platform live-send interlock. Governs the PLATFORM key only. */
+  liveSendArmed: true,
   byokKey: null as string | null,
   legacyRow: null as { isEnabled: boolean; credentials: { apiKey?: string } } | null,
   platformKey: { apiKey: "live_platform_key", isTestKey: false } as
@@ -80,11 +82,27 @@ vi.mock("../../server/services/fieldEncryption", () => ({
 vi.mock("../../server/services/mail/liveSendInterlock", () => ({
   resolvePlatformLobKey: () => {
     if (!state.platformKey) throw new Error("Lob test key not configured.");
+    // Model the REAL resolver (services/mail/liveSendInterlock.ts): when the
+    // platform interlock is disarmed it returns the TEST key with
+    // isTestKey: true and never hands out the live one. The first version of
+    // this mock returned state.platformKey unconditionally, which made the
+    // fixture claim the platform key escapes the interlock — it does not, and a
+    // case asserting otherwise would have been testing the mock.
+    if (!state.liveSendArmed) {
+      return { apiKey: "test_platform_key", isTestKey: true };
+    }
     return state.platformKey;
   },
-  // ARMED: otherwise every 'live' request degrades to the test sandbox and the
-  // credential question this file asks would never be reached.
-  isLiveSendArmed: () => true,
+  // Defaults ARMED so the credential question the cases below ask is reached.
+  //
+  // This used to be a hardcoded `() => true` with a comment observing that
+  // otherwise "every 'live' request degrades to the test sandbox". That note was
+  // describing a DEFECT and treating it as a fixture problem: the PLATFORM
+  // interlock was silently degrading a send on the CUSTOMER'S OWN key, and
+  // arming it in the fixture hid that from every case in this file. It is now
+  // controllable, and the disarmed case below is the one that would have caught
+  // it.
+  isLiveSendArmed: () => state.liveSendArmed,
 }));
 
 // Static imports directMailService makes that the credential path never uses.
@@ -100,6 +118,7 @@ const LETTER = { to: TO, from: FROM, file: "<p>Dear Lee</p>" };
 let lobService: typeof import("../../server/services/lobService").lobService;
 
 beforeEach(async () => {
+  state.liveSendArmed = true;
   state.byokKey = null;
   state.legacyRow = null;
   state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
@@ -182,6 +201,59 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/organizationId/i);
     expect(state.created).toHaveLength(0);
+  });
+
+  it("a DISARMED platform interlock does not silence a send on the ORG's own key", async () => {
+    // The platform live-send interlock is a PLATFORM-scoped switch and
+    // `isLiveSendArmed()` is false by default — so on any deployment that has
+    // not explicitly armed production, this is the ordinary state, not an edge
+    // case.
+    //
+    // resolveClient used to evaluate `effectiveMode(mode)` and short-circuit to
+    // the platform sandbox BEFORE reaching the org branch, so a customer's live
+    // counterparty letter, on their OWN Lob account, printed nothing. The org
+    // branch's own comment already said the interlock "governs the PLATFORM key
+    // only — never a customer's own account"; the ordering above it made that
+    // sentence unreachable.
+    //
+    // Restoring `effectiveMode(mode) === 'test'` in place of `mode === 'test'`
+    // fails this case.
+    state.liveSendArmed = false;
+    state.byokKey = "live_org_vault_key";
+
+    const result = await lobService.sendLetter(LETTER, "live", {
+      organizationId: 42,
+      purpose: "counterparty",
+    });
+
+    expect(result.success).toBe(true);
+    expect(state.created).toEqual([{ kind: "letter", apiKey: "live_org_vault_key" }]);
+    expect(
+      result.isTestMode,
+      "the org's own live key was reported as a test send — the platform interlock " +
+        "degraded a customer's own account",
+    ).toBe(false);
+  });
+
+  it("a DISARMED interlock STILL degrades a send on the PLATFORM key", async () => {
+    // The other half, and the reason the narrowing is safe: nothing about the
+    // platform interlock was weakened. An org with nothing connected falls to
+    // the platform key and must still be held by the interlock.
+    state.liveSendArmed = false;
+    state.byokKey = null;
+    state.legacyRow = null;
+
+    const result = await lobService.sendLetter(LETTER, "live", {
+      organizationId: 42,
+      purpose: "counterparty",
+    });
+
+    expect(
+      state.created.some((c) => c.apiKey === "live_platform_key"),
+      "a disarmed platform interlock still handed out the LIVE platform key",
+    ).toBe(false);
+    expect(state.created).toEqual([{ kind: "letter", apiKey: "test_platform_key" }]);
+    expect(result.isTestMode).toBe(true);
   });
 
   it("an explicit TEST-mode request never prints on a live BYOK key", async () => {

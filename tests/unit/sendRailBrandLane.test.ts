@@ -347,6 +347,33 @@ describe("the counterparty From: line can never be the platform sender", () => {
     expect(sentRaw).toHaveLength(0);
   });
 
+  it.each([
+    ["upper case", "NO-REPLY@ACREOS.IO"],
+    ["mixed case", "No-Reply@AcreOS.io"],
+    ["surrounding whitespace", "  no-reply@acreos.io "],
+  ])("blocks the platform address supplied with %s", async (_label, mangled) => {
+    // The chokepoint's refusal rests entirely on `isSameEmailAddress`, which
+    // trims and lower-cases both sides. An audit found that normalization
+    // UNPINNED: replacing its body with `a === b` left every case in this file
+    // green, because no case ever supplied an address differing only by case or
+    // padding. A comparison whose normalization nothing exercises can be
+    // simplified away in a refactor with no test noticing — and what it guards
+    // is whether AcreOS's own address rides on a customer's counterparty mail.
+    credentialLookupDegradesAfterTheGuard();
+
+    const result = await emailService.sendEmail({
+      ...BASE, organizationId: 42, purpose: "counterparty", from: mangled,
+    });
+
+    expect(
+      result.success,
+      `a counterparty send carrying the platform address as "${mangled}" was allowed — ` +
+        "the From: comparison is not normalized, so the chokepoint can be walked " +
+        "around with a capital letter",
+    ).toBe(false);
+    expect(sentRaw).toHaveLength(0);
+  });
+
   it("the refusal names the platform-identity cause, so it is not read as a generic outage", async () => {
     credentialLookupDegradesAfterTheGuard();
 

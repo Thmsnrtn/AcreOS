@@ -25,6 +25,11 @@
  * is what every case below reads.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
+
+const ROOT = path.resolve(__dirname, "../..");
 
 const sendEmail = vi.fn();
 vi.mock("../../server/services/emailService", () => ({
@@ -161,5 +166,94 @@ describe("a counterparty send with NO subject never names the platform", () => {
     expect(createLeadActivity).toHaveBeenCalledTimes(1);
     const row = createLeadActivity.mock.calls[0][0] as Record<string, any>;
     expect(row.metadata.subject).toBe("Message from Brazos Land Partners");
+  });
+});
+
+// ─── No platform-branded fallback anywhere on the counterparty lane ──────────
+
+describe("no counterparty send falls back to an AcreOS literal", () => {
+  /**
+   * A POPULATION rule, not a per-site one, and that is the point.
+   *
+   * Three sites carried the identical shape and were found one at a time:
+   * `communications.ts` (`subject: options.subject || 'Message from AcreOS'`),
+   * `routes-campaigns.ts` (the same default, in a per-lead blast loop — the
+   * higher-volume surface, and the one still live after the first two were
+   * fixed), and `routes-deal-rooms.ts` (`— ${org?.name ?? 'AcreOS'} Team`
+   * signing a customer's invitation to the other side of their own deal).
+   *
+   * Fixing them individually leaves the fourth to be found the same way. What
+   * this asserts instead is that a fallback expression yielding an
+   * AcreOS-bearing literal cannot sit near a `purpose: 'counterparty'` send at
+   * all — so a new counterparty surface written in the same shape fails here
+   * rather than shipping our name on a customer's mail.
+   */
+  const SRC_DIRS = ["server"];
+  const FALLBACK_TO_ACREOS = /(\|\||\?\?)\s*[`'"][^`'"\n]*AcreOS/;
+  /** How far above a counterparty send a fallback still counts as feeding it. */
+  const WINDOW = 40;
+
+  function walk(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) {
+        if (e.name === "node_modules") continue;
+        out.push(...walk(rel));
+      } else if (e.name.endsWith(".ts") && !e.name.endsWith(".test.ts")) {
+        out.push(rel);
+      }
+    }
+    return out;
+  }
+
+  function counterpartySites(): Array<{ file: string; line: number; window: string }> {
+    const sites: Array<{ file: string; line: number; window: string }> = [];
+    for (const rel of SRC_DIRS.flatMap(walk)) {
+      const raw = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      if (!raw.includes("counterparty")) continue;
+      const lines = stripCommentsPreservingLines(raw).split("\n");
+      lines.forEach((line, i) => {
+        if (!/purpose:\s*['"]counterparty['"]/.test(line)) return;
+        sites.push({
+          file: rel,
+          line: i + 1,
+          window: lines.slice(Math.max(0, i - WINDOW), i + 5).join("\n"),
+        });
+      });
+    }
+    return sites;
+  }
+
+  it("VACUITY: the scan finds real counterparty send sites", () => {
+    // Without this, "no offenders" is satisfied by a walker that read nothing.
+    const sites = counterpartySites();
+    expect(sites.length, "no `purpose: 'counterparty'` sites found at all").toBeGreaterThan(3);
+    const files = new Set(sites.map((s) => s.file));
+    expect(files.has("server/services/communications.ts")).toBe(true);
+  });
+
+  it("VACUITY: the matcher recognises the shape that shipped", () => {
+    // The three real offenders, verbatim. If the regex stopped matching these,
+    // the rule below would pass over a repo full of them.
+    expect(FALLBACK_TO_ACREOS.test(`const s = a || "Message from AcreOS";`)).toBe(true);
+    expect(FALLBACK_TO_ACREOS.test("`— ${org?.name ?? 'AcreOS'} Team`")).toBe(true);
+    // And does NOT match an ordinary org-name fallback with no AcreOS in it.
+    expect(FALLBACK_TO_ACREOS.test(`const s = a || campaign.name;`)).toBe(false);
+  });
+
+  it("finds none", () => {
+    const offenders = counterpartySites()
+      .filter((s) => FALLBACK_TO_ACREOS.test(s.window))
+      .map((s) => `${s.file}:${s.line}`);
+
+    expect(
+      offenders,
+      "a counterparty send has a fallback to a literal containing 'AcreOS' within " +
+        `${WINDOW} lines above it. Counterparty mail carries the CUSTOMER's identity — ` +
+        "the platform sender is for system mail only (founder decision 2026-07-17). " +
+        "Use the org's own name, or refuse: an unsigned message is honest, a " +
+        "misattributed one is not.",
+    ).toEqual([]);
   });
 });
