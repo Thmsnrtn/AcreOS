@@ -185,6 +185,18 @@ Two recurring traps, each found more than once:
   is how it stays unstarted; sizing it by what the findings ARE is how it lands.
 - **A stubbed safety predicate makes a suite agree with any implementation of
   it, including an inverted one.** Import the real function into the mock.
+- **A silent artifact is not a passing one.** Twice on 2026-08-20 an absence was
+  read as success: a `vi.mock` of `fetchGeo` that instrumentation showed was hit
+  ZERO times, and a `tsc` log checked while it was still empty because the
+  process had not written yet — the task's own output said `TSC=2` and listed
+  four errors. A broken commit went out on the second one, its message claiming
+  "tsc clean".
+
+  The rule that follows is narrow and mechanical: **read the exit code, not the
+  artifact.** A log with no lines, a mock with no assertion on its call count, a
+  gate that printed nothing — each is consistent with "it worked" and with "it
+  never ran", and only one of those two is worth acting on. When a check matters,
+  make it say something on success, then read the thing it said.
 - **An adjective is not a measurement.** `DEFAULT_RATE` — the price the AI cost
   ceiling applies to a model it does not recognise — was `{input: 1.0, output:
   3.0}` under a comment reading "Conservative fallback … better to slightly

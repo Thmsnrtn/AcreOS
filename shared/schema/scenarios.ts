@@ -47,6 +47,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { organizations } from "../schema";
+import type { StrategyPackId } from "../business-types";
 import type {
   ScenarioAssumption,
   ScenarioMetric,
@@ -80,7 +81,9 @@ export const scenarios = pgTable(
     /** NOT NULL, deliberately: an unversioned number cannot be defended. */
     engineVersion: text("engine_version").notNull(),
 
-    strategyPackId: text("strategy_pack_id"),
+    // See the same column on decision_snapshots: a strategy pack IS a business
+    // type, so the row read carries the narrow type.
+    strategyPackId: text("strategy_pack_id").$type<StrategyPackId>(),
     strategyPackVersion: text("strategy_pack_version"),
 
     /** The verbatim inputs the engine consumed. The defence of the number. */

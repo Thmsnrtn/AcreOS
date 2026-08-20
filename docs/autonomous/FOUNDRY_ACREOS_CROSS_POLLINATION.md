@@ -3179,6 +3179,142 @@ taxonomy that has drifted from the canonical one — there is no second list for
 to agree with.
 
 
+### 51 — PAX COULD TELL ONE CUSTOMER ABOUT ANOTHER, AND THE PATCH FOR THAT ALREADY EXISTED DOWNSTREAM
+
+Rule 3 — "a unit that HAS an organization in scope runs a query against an
+org-scoped table without naming it" — worked in full: 120 entries, 8 classifiers
+carrying the rule-2 calibration, two independent refuters per claim, then
+hand-verification of every survivor before a line changed.
+
+**Result: 5 claims, 5 confirmed, 0 refuted** — against rule 2's 42 claims and 35
+refutations. The classifiers had been given rule 2's lesson ("verify against the
+CALLER, not the signature; expect a low hit rate; platform-wide crons are
+deliberate") and it shows: 39 entries came back DELIBERATE_CROSS_ORG, 17
+SAFE_PARENT_VERIFIED, 12 NOT_REACHABLE, 7 SAFE_SELF_INSERTED. A zero-refutation
+rate is normally a warning that the verifiers went soft; here every one survived
+independent hand-checking too.
+
+**THE WORST OF THE FIVE.** `paxLearning.detectBulkIssue(issuePattern)` ran
+`db.select()` — every column — over `support_tickets` with NO organization
+predicate, up to 100 rows, matched by `LIKE %pattern%`. `issuePattern` is an LLM
+TOOL ARGUMENT: the model composes it from the user's own message inside a
+customer-facing support chat, where the tool is advertised as "Check if the
+current issue is affecting multiple users". So it is attacker-influencable by
+prompt injection, and a short pattern matched essentially every ticket created
+platform-wide in the last hour. What came back to the user was `affectedOrgs` —
+a literal list of other tenants' organization ids — plus their support volume,
+narrated by the LLM, with foreign ticket subjects and descriptions sitting in its
+context.
+
+The route above it guards correctly. `routes-support-tickets.ts` 403s when
+`ticketForGuard.organizationId !== org.id`, commented *"Must run BEFORE any
+grading/mutation below so we never touch a sibling org's ticket"*. The agent then
+ran under that same authenticated session and queried the table directly, one
+layer down. **A guard on the entity is not a guard on the agent.**
+
+**AND THE FIX FOR IT ALREADY EXISTED, POINTING THE WRONG WAY.** Its neighbouring
+tool `apply_bulk_fix` was hardened by DEFECT-0030 to reject any
+`affected_org_ids` entry that is not the caller's own. But `detect_bulk_issue` is
+where the model OBTAINED foreign org ids in the first place. The enumeration that
+patch assumes cannot happen was exactly what its sibling performed, thirty lines
+away. When you harden a consumer against untrusted input, ask what produced the
+input.
+
+**SCOPING THE QUERY WAS THE EASY HALF.** Once every row belongs to the caller,
+`uniqueOrgs` can only be `[]` or `[callerOrg]` — which made `uniqueOrgs.length >= 2`
+and `>= 5` dead branches, one of them announcing *"CRITICAL: System-wide issue
+detected. Check infrastructure and notify all affected users."* to a customer.
+A cross-tenant claim computed from single-tenant data is a fabrication whether or
+not the branch can fire, so the counting was rewritten to what the data supports.
+Leaving the arithmetic behind would have been the more dangerous half of the bug:
+a leak becomes a lie. Genuine cross-tenant systemic detection is a FOUNDER
+question and belongs behind `isFounderAdmin` returning a count with no org
+identifiers.
+
+**THE SUBTLEST OF THE FIVE IS FINANCIAL, NOT A LEAK.**
+`financial_ledger.external_event_id` is GLOBALLY unique. Five of its six callers
+namespace it with a provider-unique id — a Twilio SID, a Lob id, a Stripe charge.
+The sixth, skip-tracing, built it from lead PII alone:
+`[apn, zip, address, lastName, firstName].join("|")`, no org component. So two
+organizations skip-tracing the same person minted the SAME key: the second
+insert was swallowed by `onConflictDoNothing`, **the second org was never charged
+for a lookup they really paid a vendor for**, and the fallback SELECT — also
+unscoped — handed them the first org's ledger row. Both halves fixed: the key is
+org-namespaced, and the fallback names the org so it is safe whatever a future
+caller does with its key.
+
+**THE OTHER THREE.** `leadScoring.recordConversion` — `POST /api/leads/:id/conversion`
+passes `Number(req.params.id)` straight in with no ownership check, so the unit
+read another tenant's score history and first-touch timestamp and then INSERTED a
+`leadConversions` row under the CALLER's org carrying the foreign lead id and the
+foreign org's `scoreAtConversion`: a cross-tenant read and a poisoned write in one
+call. Scoped at the service rather than the route, because its other caller
+(routes-deals) is already safe and the guarantee should not depend on which door
+you came through. And `modelCalibration.runWeeklyCalibration` — the FIFTH
+calibration entry point, and evidence that ledger 49's fix was incomplete: four
+were fixed in `outcomeCalibrationLoop.ts` and this one lives in another file with
+the identical `orgId?: number`-accepted-and-discarded shape.
+
+**A CORRECTION TO THE AUDIT'S OWN REPORT, and it would have broken the gate.**
+The workflow returned 40 entries as ALREADY_SCOPED — "stale, free reductions".
+The gate reports 0 stale. Both are right: those queries DO name the organization,
+built into a local `conditions` array and spread into `.where(and(...conditions))`,
+which the gate's extractor cannot follow because it only reads the text inside
+the `.where(` call. Removing them would have produced 40 new offenders and a red
+gate. **A third of the rule-3 baseline is the gate's own blind spot rather than
+tenancy debt** — recorded on the frontier as its own item, because it both
+overstates the debt and dilutes the signal for whoever works the rest.
+
+**Exit test.** `paxCannotEnumerateTenants.test.ts` drives the real function
+against a fake db that returns rows from THREE organizations and asserts the
+caller learns about exactly one — behaviour, not spelling, so a rewrite that
+drops the predicate fails here. Three mutations watched failing first: drop the
+org predicate; revert to the one-argument signature; widen the projection back to
+`select()`.
+
+The projection case did NOT fail on its first draft, and the reason is worth
+recording. It sliced the function with `body.indexOf("\n  }", at)` and got 210
+characters — that brace closes the `Promise<{ … }>` RETURN TYPE in the signature,
+so the assertion scanned the signature and never reached the query. An inert
+check that read as a passing one. Fifth encounter in this repo with a truncating
+reader (the SIGPIPE'd diff, the mispaired comment stripper, the fixed-width
+slice, the brace-truncated interpolation capture, this). The window is now bounded
+by `\n  async ` — a real method boundary — and carries a vacuity assertion that
+the slice actually contains the query.
+
+**Ratchet:** rule-3 baseline 120 → 115, the five retired in the commit that fixed
+them.
+
+**AND A CORRECTION TO LEDGER 50, WHICH WAS PUSHED BROKEN.** That commit's message
+claims "tsc clean". It was not: typing `strategyPackId` as `StrategyPackId | null`
+broke four sites the change had not traced — the two GENERIC write routes
+(`routes-decisions.ts`, `routes-scenarios.ts`) validate the field with
+`z.string().nullable()`, and the two stores read it back off a `text` column as
+`string | null`.
+
+The failure was fully visible and I did not read it. tsc ran in the background;
+I checked its log file, saw zero lines, and called it clean — the log was empty
+because tsc had not written yet. The task's own output said `TSC=2` and listed
+all four errors. **Absence of output taken as evidence of success**, which is the
+same mistake as the inert `fetchGeo` mock two commits earlier: both times the
+artifact I trusted was silent for a reason that had nothing to do with the thing
+I was asking about.
+
+The repairs are strictly better than what shipped, which is the one consolation:
+the columns now carry `.$type<StrategyPackId>()` at the schema (the pattern
+`actorType` already used in the same file), so the stores narrow at the source
+instead of every consumer re-narrowing; and the two public write paths validate
+with `z.enum(BUSINESS_TYPE_IDS)`, so the API now REFUSES an invented pack id at
+the door rather than storing it.
+
+**It also surfaced a sixth calibration entry point.** `POST /api/ml/calibrate`
+called `runWeeklyCalibration()` with no argument at all, behind
+`isAuthenticated + getOrCreateOrg` — another platform-wide sweep served to any
+authenticated tenant user. It appeared only because the parameter became
+REQUIRED. An optional org parameter hides its own absence; that is now the second
+time in one session that making it required found a caller nobody knew about.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

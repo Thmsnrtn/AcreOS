@@ -234,51 +234,45 @@ had not verified; those are deliberately absent below.
    newly-visible population was frozen in registers of its own. Do that here —
    per-root counts — rather than a +494 bump that erases the server signal.
 
-10. **The tenancy register's highest-risk 140 are ADJUDICATED; ~400 remain.**
-   Rule 2 — "has an org and resolves by id anyway" — was worked in full on
-   2026-08-20 (ledger 49): 9 classifiers, then two independent refuters per
-   claim, then hand-verification of every survivor. **42 claims, 35 refuted,
-   6 real defects, all fixed**, and the eight register entries behind them
-   retired in the same commit (rule-2 function-shape 78 → 73, rule-3 127 → 120).
+10. **The tenancy register's two RISK rules are adjudicated in full; rule 1 and a
+   gate blind spot remain.** Rule 2 (140 entries) and rule 3 (120) were both
+   worked on 2026-08-20 — classifiers, two independent refuters per claim, then
+   hand-verification of every survivor. **11 real cross-tenant defects, all
+   fixed**; baselines rule-2 function-shape 78 → 73 and rule-3 127 → 115.
 
-   The argument for working this list rather than admiring it is now measured
-   rather than asserted. What was found included a route where **any
-   authenticated user could read another org's lead and the last ten messages of
-   its seller negotiation**, a calibration report served to every tenant computed
-   over **every** tenant's data, and two writes that re-pointed another org's
-   outbound sender identity.
+   | rule | entries | claims | confirmed |
+   |---|---|---|---|
+   | 2 (has an org, resolves by id anyway) | 140 | 42 | 6 |
+   | 3 (scoped unit, unscoped query) | 120 | 5 | 5 |
 
-   **CALIBRATION FOR WHOEVER WORKS THE REST — this is the part to read.** The hit
-   rate is low: 6 real in 140, and 35 plausible claims died under refutation.
-   Class (b) — the id came from a row this unit already fetched org-scoped —
-   dominates and is textually identical to the dangerous shape. **Verify against
-   the CALLER, not the signature.** The register's own header used to name two
-   worked examples as "real tenancy weaknesses on live paths" and BOTH were
-   wrong (`optimizeCampaign` receives an org-scoped row; `gradeRecentDecisions`
-   takes no arguments and is founder-only); it is corrected and now carries these
-   numbers.
+   Rule 3's 5-for-5 versus rule 2's 6-of-42 is the calibration transferring: the
+   rule-3 classifiers were given rule 2's lesson and returned 39
+   DELIBERATE_CROSS_ORG, 17 SAFE_PARENT_VERIFIED, 12 NOT_REACHABLE and 7
+   SAFE_SELF_INSERTED instead of guessing. Ledgers 49 and 51.
 
-   **The transferable shape, which found five of the six:** a function accepts
-   `organizationId` and does not put it in the `WHERE` — four times as
-   `orgId?: number`, optional, with every production caller passing one.
-   `orgIsRequiredNotOptional.test.ts` pins that shape where the query gate cannot
-   see it. Worth running that lens over the ~400 rule-1 entries next: it is a
-   signature grep, not a read.
+   **~40 OF THE 120 RULE-3 ENTRIES ARE THE GATE'S OWN BLIND SPOT, NOT DEBT.**
+   The audit returned them as "already scoped — free reductions"; the gate
+   reports 0 stale. Both are right, and acting on the report would have produced
+   40 new offenders and a red gate. Those queries DO name the organization —
+   built into a local `conditions` array and spread into
+   `.where(and(...conditions))` — and the extractor only reads the text inside
+   the `.where(` call, so it cannot follow the indirection. `leadRepo.getLeads`,
+   `auditRepo.getAuditLogs`, `automationRepo.getNotifications` and
+   `vaRepo.getVaActions` are all this shape.
 
-   Still frozen: `BASELINE_OFFENDERS` (160 method / 124 function, rule 1 — "no
-   org context at all"), and the remaining rule-2 and rule-3 entries. Rule 1 is a
-   different and probably softer population — many are genuinely org-less
-   platform tables — but it has never been adjudicated at all.
+   That is worth fixing for two reasons, not one: the baseline overstates real
+   debt by a third, AND a reader working the list wastes a third of their effort
+   on non-defects, which is how a list stops being read. Teaching the extractor
+   to resolve a local array spread into `.where()` should drop the baseline ~40
+   in a single verifiable step. Do that BEFORE working the remainder — the
+   remaining entries only mean something once the noise is gone.
 
-   **AND RULE 3 IS WHERE THE YIELD WAS.** Corrected after the commit: the audit
-   claimed the gate had missed four of the five calibration functions. Checked
-   against `HEAD~1` — it had not. Three of the four query-bearing ones sat in
-   `RULE3_BASELINE` (four lines, frozen since 2026-08-18); the fifth reads a
-   table with no `organization_id` and was correctly absent. So the gate found
-   them and the register held them, and the only thing missing was somebody
-   working the list. That argues for adjudicating the 120 remaining rule-3
-   entries NEXT, ahead of rule 1: rule 3 is "scoped unit, unscoped query", it has
-   already proven it catches live defects, and it is a smaller population.
+   **Still frozen and never adjudicated: rule 1** (`BASELINE_OFFENDERS`, 160
+   method + 124 function) — "no org context at all". A different and probably
+   softer population, since many are genuinely org-less platform tables, but it
+   has had no pass at all. Apply the rule-2/3 method: the signature lens
+   ("accepts `organizationId`, never puts it in the WHERE") found five of the six
+   rule-2 defects and is a grep, not a read.
 
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had
@@ -440,8 +434,16 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–50.
+Full reasoning in the cross-pollination ledger, entries 23–51.
 
+- **Pax could tell one customer about another** — a support-agent tool ran an
+  unscoped `LIKE` over every tenant's tickets, on a pattern the MODEL composes
+  from the user's own message, and returned other orgs' ids to the user. The
+  route above it guards the ticket; the agent went around it one layer down. Its
+  neighbour had already been patched to reject foreign org ids — this is where
+  the model got them. Scoping it also made a "System-wide issue detected" claim
+  uncomputable, so that arithmetic was rewritten rather than left to lie.
+  Ledger 51.
 - **the column that recorded which strategy shaped a decision always said
   "none"** — all four canonical `recordDecision` call sites are vertical
   surfaces, and all four wrote `strategyPackId: null`, which the type's own

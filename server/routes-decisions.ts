@@ -17,6 +17,7 @@
  */
 
 import { Router, type Response } from "express";
+import { BUSINESS_TYPE_IDS } from "@shared/business-types";
 import { z } from "zod";
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
@@ -80,7 +81,11 @@ const recordSchema = z.object({
   actorType: z.enum(DECISION_ACTOR_TYPES),
   actorRef: z.string().min(1),
   authority: z.string().min(1),
-  strategyPackId: z.string().nullable().default(null),
+  // VALIDATED AGAINST THE CANONICAL REGISTRY, not `z.string()`. This is a
+  // public write path: accepting any string here would let a caller store a
+  // pack id that names nothing, which is the drift a second taxonomy would have
+  // caused anyway. z.enum over BUSINESS_TYPE_IDS rejects it at the door.
+  strategyPackId: z.enum(BUSINESS_TYPE_IDS).nullable().default(null),
   strategyPackVersion: z.string().nullable().default(null),
   assumptions: z.array(assumptionSchema).default([]),
   alternatives: z.array(alternativeSchema).default([]),

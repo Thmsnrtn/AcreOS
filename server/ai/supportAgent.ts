@@ -2895,9 +2895,14 @@ export async function executeSupportTool(
       }
       
       case "detect_bulk_issue": {
+        // `issue_pattern` is model-authored from the user's own message, so it
+        // is attacker-influencable. `org` is the authenticated caller's
+        // organization and is what bounds the search — see the note on
+        // detectBulkIssue. Without it this returned other tenants' org ids to
+        // the user, which is the enumeration DEFECT-0030 patched downstream.
         const { issue_pattern } = args;
         const { paxLearningService } = await import("../services/paxLearning");
-        const result = await paxLearningService.detectBulkIssue(issue_pattern);
+        const result = await paxLearningService.detectBulkIssue(org.id, issue_pattern);
         
         return {
           success: true,

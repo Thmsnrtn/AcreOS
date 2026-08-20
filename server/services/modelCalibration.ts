@@ -59,12 +59,19 @@ export async function recordScoreOutcome(outcome: ScoreOutcome): Promise<void> {
   });
 }
 
-export async function runWeeklyCalibration(orgId?: number): Promise<CalibrationResult> {
+export async function runWeeklyCalibration(orgId: number): Promise<CalibrationResult> {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
 
   // Get closed deals from last 90 days
+  // SCOPED. `orgId` was optional and referenced nowhere in this body, so the
+  // sweep ran platform-wide while `/api/ml/calibration-report` — reachable by
+  // any authenticated tenant user — returned the result as that org's own
+  // calibration. This is the fifth entry point of the calibration set; the other
+  // four live in outcomeCalibrationLoop.ts and were fixed first. Fixing four of
+  // five is why the parameter is now required rather than defaulted.
   const closedDeals = await db.select().from(deals)
     .where(and(
+      eq(deals.organizationId, orgId),
       gte(deals.updatedAt, ninetyDaysAgo),
       sql`${deals.status} IN ('closed', 'cancelled')`
     ))

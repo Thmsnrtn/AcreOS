@@ -699,8 +699,27 @@ export class LeadScoringService {
       profitMargin?: number;
     }
   ): Promise<void> {
+    // OWN THE LEAD FIRST. `POST /api/leads/:id/conversion` passes
+    // `Number(req.params.id)` straight in behind isAuthenticated + getOrCreateOrg
+    // with no ownership check of its own, so without this a caller could name
+    // any lead id: the two reads below returned another tenant's score history
+    // and first-touch timestamp, and the INSERT then filed a `leadConversions`
+    // row under the CALLER's org carrying the foreign lead's id and the foreign
+    // org's `scoreAtConversion` — a cross-tenant read and a poisoned write in
+    // one call. (The other caller, routes-deals.ts, is safe: its `sellerId`
+    // comes from `storage.getProperty(org.id, …)`. Scoping here rather than at
+    // that route is what makes the guarantee hold for both.)
+    const [ownedLead] = await db.select({ id: leads.id })
+      .from(leads)
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
+      .limit(1);
+    if (!ownedLead) return;
+
     const [latestScore] = await db.select().from(leadScoreHistory)
-      .where(eq(leadScoreHistory.leadId, leadId))
+      .where(and(
+        eq(leadScoreHistory.leadId, leadId),
+        eq(leadScoreHistory.organizationId, organizationId),
+      ))
       .orderBy(desc(leadScoreHistory.scoredAt))
       .limit(1);
     
@@ -708,7 +727,10 @@ export class LeadScoringService {
       firstTouch: sql`MIN(${leadActivities.createdAt})` 
     })
       .from(leadActivities)
-      .where(eq(leadActivities.leadId, leadId));
+      .where(and(
+        eq(leadActivities.leadId, leadId),
+        eq(leadActivities.organizationId, organizationId),
+      ));
     
     let daysFromFirstTouch = null;
     if (activities?.firstTouch) {

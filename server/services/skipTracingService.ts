@@ -227,7 +227,17 @@ async function postSkipTraceCostToLedger(
       feature: "skip_trace",
       providerName: result.source,
       providerEventId: externalSeed,
-      externalEventId: `${result.source}:skiptrace:${externalSeed}`,
+      // ORG-NAMESPACED, and that is a correctness fix rather than a style one.
+      // `financial_ledger.external_event_id` is GLOBALLY unique, and this seed
+      // is built from lead PII alone (apn|zip|address|lastName|firstName) with
+      // no org component — so two organizations skip-tracing the same person or
+      // parcel minted the SAME key. The second org's insert was swallowed as a
+      // duplicate: they were never charged for a lookup they really paid a
+      // vendor for, and the fallback read handed them the first org's ledger
+      // row. Every other caller of postOpexSpent namespaces by a
+      // provider-unique id (a Twilio SID, a Lob id, a Stripe charge); this was
+      // the one that keyed on customer data instead.
+      externalEventId: `org${organizationId}:${result.source}:skiptrace:${externalSeed}`,
     });
   } catch (err) {
     logger.warn(`[skipTrace] ledger postOpexSpent failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);

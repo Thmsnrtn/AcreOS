@@ -243,11 +243,23 @@ export async function postOpexSpent(args: PostOpexArgs): Promise<{
   if (result.length > 0) {
     return { row: result[0], inserted: true };
   }
-  // Duplicate — fetch the original.
+  // Duplicate — fetch the original, WITHIN THIS ORG.
+  //
+  // `external_event_id` is globally unique (shared/schema/finance.ts), so a key
+  // that is not namespaced per org makes two tenants collide: the second
+  // insert is swallowed by onConflictDoNothing above and this fallback then
+  // handed the FIRST org's ledger row back to the second one. That was live —
+  // see the skip-trace key, fixed alongside this. The org predicate makes the
+  // fallback safe whatever a caller does with its key: a colliding foreign row
+  // now returns null (recorded as not-inserted) instead of another tenant's
+  // financial record.
   const [existing] = await db
     .select()
     .from(financialLedger)
-    .where(eq(financialLedger.externalEventId, args.externalEventId))
+    .where(and(
+      eq(financialLedger.externalEventId, args.externalEventId),
+      eq(financialLedger.organizationId, args.organizationId),
+    ))
     .limit(1);
   return { row: existing ?? null, inserted: false };
 }

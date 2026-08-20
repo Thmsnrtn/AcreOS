@@ -54,6 +54,7 @@ import type {
   FrozenUnknown,
 } from "../decisions/snapshot";
 import type { FrozenScenarioRef } from "../economics/scenario";
+import type { StrategyPackId } from "../business-types";
 
 export const decisionSnapshots = pgTable(
   "decision_snapshots",
@@ -92,7 +93,10 @@ export const decisionSnapshots = pgTable(
     authority: text("authority").notNull(),
 
     // ── Which rules shaped it (BI91) ─────────────────────────────────────
-    strategyPackId: text("strategy_pack_id"),
+    // $type'd like `actorType` above: the pack id is a BusinessTypeId, so a row
+    // read carries the narrow type rather than a bare string every consumer has
+    // to re-narrow. There is no second taxonomy — see StrategyPackId.
+    strategyPackId: text("strategy_pack_id").$type<StrategyPackId>(),
     strategyPackVersion: text("strategy_pack_version"),
 
     // ── The frozen epistemic state ───────────────────────────────────────

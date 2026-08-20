@@ -254,8 +254,13 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   // Run calibration (admin/scheduled)
   app.post("/api/ml/calibrate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      // A SIXTH ENTRY POINT, surfaced only by making the parameter required:
+      // this called runWeeklyCalibration() with no org at all, behind
+      // isAuthenticated + getOrCreateOrg, so any authenticated tenant user ran a
+      // platform-wide sweep over every org's deals and received the result.
+      const org = req.organization;
       const { runWeeklyCalibration } = await import("./services/modelCalibration");
-      const result = await runWeeklyCalibration();
+      const result = await runWeeklyCalibration(org.id);
       res.json(result);
     } catch (error) {
       Errors.internal(res, error);

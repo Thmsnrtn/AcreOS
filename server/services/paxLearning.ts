@@ -437,7 +437,34 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     };
   },
   
-  async detectBulkIssue(issuePattern: string): Promise<{
+  /**
+   * TAKES THE ORG, like every other method in this file.
+   *
+   * It used to take `issuePattern` alone and `select()` every column of
+   * `support_tickets` across ALL tenants, up to 100 rows, matching on a `LIKE`
+   * of that pattern. `issuePattern` is an LLM TOOL ARGUMENT: the model composes
+   * it from the user's own chat message inside a customer-facing support
+   * conversation, so it is attacker-influencable by prompt injection, and a
+   * short pattern matched essentially every ticket created platform-wide in the
+   * last hour. What came back to the user was `affectedOrgs` — a literal list of
+   * other tenants' organization ids — plus their support volume, narrated by the
+   * LLM, with foreign ticket subjects and descriptions sitting in its context.
+   *
+   * The route above it DOES guard the ticket (`ticketForGuard.organizationId !==
+   * org.id` → 403, "so we never touch a sibling org's ticket"). The agent then
+   * ran under that same session and stepped around it one layer down.
+   *
+   * AND IT WAS THE UPSTREAM HALF OF AN ALREADY-PATCHED DEFECT. Its neighbour
+   * `apply_bulk_fix` was hardened by DEFECT-0030 to reject any
+   * `affected_org_ids` entry that is not the caller's own — but this function is
+   * where the model got foreign org ids in the first place, so the enumeration
+   * that patch assumes cannot happen was exactly what this performed.
+   *
+   * A genuine platform-wide systemic-issue signal is a founder question and
+   * belongs behind `isFounderAdmin`, returning a count with no org identifiers —
+   * never through a customer-facing chat tool.
+   */
+  async detectBulkIssue(organizationId: number, issuePattern: string): Promise<{
     isSystemic: boolean;
     affectedCount: number;
     affectedOrgs: number[];
@@ -446,9 +473,13 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
   }> {
     const recentHour = new Date(Date.now() - 60 * 60 * 1000);
     
-    const similarTickets = await db.select()
+    // Narrowed to the one column the aggregate needs. Even if the predicate
+    // below were ever dropped again, foreign ticket SUBJECTS and DESCRIPTIONS
+    // can no longer reach the model's context through this path.
+    const similarTickets = await db.select({ organizationId: supportTickets.organizationId })
       .from(supportTickets)
       .where(and(
+        eq(supportTickets.organizationId, organizationId),
         gte(supportTickets.createdAt, recentHour),
         or(
           like(supportTickets.subject, `%${issuePattern}%`),
@@ -458,29 +489,37 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       ))
       .limit(100);
     
-    const uniqueOrgsSet = new Set<number>();
-    for (const t of similarTickets) {
-      uniqueOrgsSet.add(t.organizationId);
-    }
-    const uniqueOrgs = Array.from(uniqueOrgsSet);
-    
-    const isSystemic = similarTickets.length >= 3 || uniqueOrgs.length >= 2;
-    
-    let recommendedAction = "Monitor for additional reports";
-    if (isSystemic) {
-      if (uniqueOrgs.length >= 5) {
-        recommendedAction = "CRITICAL: System-wide issue detected. Check infrastructure and notify all affected users.";
-      } else if (uniqueOrgs.length >= 2) {
-        recommendedAction = "Multiple users affected. Investigate common cause and prepare bulk notification.";
-      } else {
-        recommendedAction = "Pattern detected within single organization. Check for org-specific data issues.";
-      }
-    }
+    // SCOPING THE QUERY CHANGED WHAT THIS FUNCTION CAN HONESTLY SAY, and leaving
+    // the old arithmetic behind would have been the more dangerous half of the
+    // bug. Every row now belongs to the caller, so `uniqueOrgs` can only ever be
+    // [] or [organizationId] — which made `uniqueOrgs.length >= 2` and
+    // `>= 5` dead branches that could never fire, and one of them announced
+    // "CRITICAL: System-wide issue detected" to a customer. A cross-tenant claim
+    // computed from single-tenant data is a fabrication whether or not the
+    // branch is reachable, so the counting is now what the data supports:
+    // how many of THIS org's tickets match, and nothing about anyone else.
+    //
+    // Cross-tenant systemic detection is a real and useful signal — it is simply
+    // a FOUNDER question. It belongs on a founder surface behind isFounderAdmin
+    // returning a count with no org identifiers, never in a customer-facing chat
+    // tool. Recorded on the frontier rather than smuggled back in here.
+    const affectedCount = similarTickets.length;
+
+    // Kept in the shape for the tool's consumers, and it names exactly one org:
+    // the caller's. It is [] when nothing matched.
+    const affectedOrgs = affectedCount > 0 ? [organizationId] : [];
+
+    const isSystemic = affectedCount >= 3;
+
+    const recommendedAction = isSystemic
+      ? "Pattern detected across multiple tickets in this workspace. Check for " +
+        "org-specific data issues and prepare a single notification."
+      : "Monitor for additional reports";
     
     return {
       isSystemic,
-      affectedCount: similarTickets.length,
-      affectedOrgs: uniqueOrgs,
+      affectedCount,
+      affectedOrgs,
       pattern: issuePattern,
       recommendedAction
     };

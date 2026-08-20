@@ -22,6 +22,7 @@
  */
 
 import { Router, type Response } from "express";
+import { BUSINESS_TYPE_IDS } from "@shared/business-types";
 import { z } from "zod";
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
@@ -58,7 +59,11 @@ const computeSchema = z.object({
   // so this is not a loophole for "42000.50".
   inputs: z.record(z.string(), z.union([z.number(), z.string()])),
   assumptions: z.array(assumptionSchema).default([]),
-  strategyPackId: z.string().nullable().default(null),
+  // VALIDATED AGAINST THE CANONICAL REGISTRY, not `z.string()`. This is a
+  // public write path: accepting any string here would let a caller store a
+  // pack id that names nothing, which is the drift a second taxonomy would have
+  // caused anyway. z.enum over BUSINESS_TYPE_IDS rejects it at the door.
+  strategyPackId: z.enum(BUSINESS_TYPE_IDS).nullable().default(null),
   strategyPackVersion: z.string().nullable().default(null),
 });
 
