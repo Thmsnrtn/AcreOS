@@ -3625,3 +3625,77 @@ so long: nothing rendered it, so nobody read the numbers. Worth stating plainly,
 because it cuts against the instinct that an unused surface is a low-severity
 finding. It is a mounted JSON API returning tax figures; the absence of a caller
 meant the absence of a reader, not the absence of exposure.
+
+---
+
+### 56 — THE SUPPORT AGENT COULD DELETE ROWS IN THREE TABLES WITH NO TENANT PREDICATE, AND THE ONLY THING STOPPING IT WAS A CONSTRAINT IN ANOTHER FILE
+
+Found while reading `supportAgent.ts` for ledger 54, and it is a different
+species from everything else in that pass. Every other defect there was a tool
+doing LESS than it claimed. `repair_orphaned_records` did **more than it was
+allowed to**, and it was perfectly honest about it — which is exactly why no
+amount of strengthening the honesty predicate would ever have surfaced it.
+
+**What it was.** A tool in `supportToolDefinitions`, reachable by a model
+mid-conversation with any customer, taking `{ module, dry_run }` where
+`dry_run: false` is documented as *"delete orphaned records."* It issued four
+`db.delete(...)` calls. **Three carried no organization predicate:**
+
+```
+db.delete(leads).where(sql`${leads.organizationId} IS NULL`)
+db.delete(properties).where(sql`${properties.organizationId} IS NULL`)
+db.delete(deals).where(sql`${deals.propertyId} IS NULL`)
+```
+
+The fourth, on `tasks`, *was* scoped to `org.id`. That is the tell: the author
+scoped one of the four.
+
+**The severity, stated accurately, because the first reading was wrong.** My
+initial read was that this deletes every unlinked deal on the platform. It does
+not. All three columns are `.notNull()` in `shared/schema.ts`, so every one of
+those predicates matches zero rows in a schema-conformant database, and nothing
+was ever deleted. Recording that correction rather than the alarming version,
+because the accurate finding is the more useful one:
+
+**the safety was coincidental, and it lived in a different file.** No gate, no
+comment and no call-site check enforced it. A migration making any one of those
+columns nullable — a soft-delete flag, a staging import, a backfill — converts a
+conversational support tool into a tenant-blind platform-wide deleter, with no
+change at the call site and nothing anywhere to notice. And the adjacent code
+shows the author did not believe the predicates were empty: `check_data_integrity`
+queries the same `deals.propertyId IS NULL` and reports a count for it, so the
+repo contains a diagnostic for a condition that cannot occur, sitting next to a
+destructive repair for it.
+
+**Why the fix is deletion and not scoping.** Adding `eq(x.organizationId,
+org.id)` to the three unscoped queries would answer the tenant-isolation
+objection and leave the real one standing: *"customer-data deletion"* is a
+founder-only hard-stop (CLAUDE.md standing decisions), and founder-only means at
+**every** blast radius. A correctly-scoped delete issued by an AI support tool is
+still an AI support tool deleting a customer's data. So the tool is gone, the two
+`recommendation:` strings that prescribed it to the model now point at
+`check_data_integrity` and escalation, and the one check of its four whose
+predicate can genuinely match rows — orphaned tasks, `entityId` pointing at a
+vanished entity — moved into `check_data_integrity` as a read-only, org-scoped
+finding with `canAutoFix: false`. No diagnostic coverage was lost.
+
+**The gate, and why it is a second file rather than a stronger predicate in the
+first.** `paxToolsReportRealEffects.test.ts` asks whether a handler does less
+than it claims. `paxToolsPerformNoDeletion.test.ts` asks whether it does more
+than it may. Those are different questions and conflating them would weaken
+both. The new rule is categorical — no model-callable handler performs a
+deletion, in any spelling (`db.delete`, `tx.delete`, `storage.delete*`, raw
+`DELETE FROM`, `TRUNCATE`) — and it is falsified four ways: the unscoped delete
+that shipped fires it, a **correctly org-scoped** delete fires it (the rule is
+not a scoping check), a raw-SQL delete naming no Drizzle method fires it, and an
+`db.update` next to the word "deleted" in prose does not.
+
+**A third enum was lying.** `check_data_integrity` advertised
+`["leads", "properties", "deals", "notes", "tasks", "campaigns", "all"]` and
+queried four of those. Asking it about `notes` or `campaigns` returned
+`issuesFound: 0` — indistinguishable from a clean check. Its `modulesChecked`
+field then reported `"notes"` as checked. Narrowed to what the handler queries.
+Three enums in one file advertising capabilities that did not exist
+(`fix_common_issue`, `check_data_integrity`, and the tool list itself) is a
+pattern, not a slip: **the schema a model reads is a promise, and nothing in
+this repo was checking those promises against the code until now.**

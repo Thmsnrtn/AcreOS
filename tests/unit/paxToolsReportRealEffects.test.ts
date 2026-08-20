@@ -395,6 +395,42 @@ describe("deleted tools are gone from every register that named them", () => {
     }
   });
 
+  it("advertises no check_data_integrity module the handler does not query", () => {
+    // The same defect in the same file: the enum listed `notes` and `campaigns`
+    // and the handler queried neither, so asking about either returned
+    // `issuesFound: 0` — which reads as "checked, all clean" rather than "not
+    // checked". The handler then reported `notes` in its `modulesChecked` list.
+    //
+    // Scoped deliberately to the two DISPATCH-KEY enums in this file rather
+    // than generalised to every enum. A survey of all enum-valued tool args
+    // across both switches found the rest are pass-through — the handler hands
+    // the value to a service (`getServiceStatus(service)`) or writes it to a
+    // column — where naming each value in the body would be the anomaly, not
+    // the requirement. A general rule here would be almost entirely false
+    // positives, and a gate that cries wolf gets deleted.
+    const src = source("server/ai/supportAgent.ts");
+    const enumBlock = /enum: \[([^\]]*?)\],\s*description: "Which module to check"/.exec(src);
+    expect(enumBlock, "the check_data_integrity enum moved — re-anchor this").not.toBeNull();
+    const advertised = [...enumBlock![1].matchAll(/"([a-z_]+)"/g)]
+      .map((m) => m[1])
+      .filter((v) => v !== "all");
+    expect(advertised.length, "no modules parsed out of the enum").toBeGreaterThan(0);
+
+    const handler = switchCases(src).find((c) => c.name === "check_data_integrity");
+    expect(handler, "check_data_integrity is not in the dispatch switch").toBeDefined();
+
+    expect(
+      advertised.filter((m) => !handler!.body.includes(`module === "${m}"`)),
+      "check_data_integrity advertises these modules to the model and queries none of them",
+    ).toEqual([]);
+
+    // And the reported coverage must match what it actually checked.
+    const reported = /modulesChecked: module === "all" \? \[([^\]]*)\]/.exec(handler!.body);
+    expect(reported, "modulesChecked moved — re-anchor this").not.toBeNull();
+    const claimed = [...reported![1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    expect(claimed.sort()).toEqual([...advertised].sort());
+  });
+
   it("advertises no fix_common_issue type the handler cannot perform", () => {
     // The enum listed eight; five had no case at all and fell through to "not
     // yet implemented" — so the model offered a customer five repairs that

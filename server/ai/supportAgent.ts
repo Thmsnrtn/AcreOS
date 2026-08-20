@@ -80,7 +80,11 @@ export const supportToolDefinitions = {
       properties: {
         module: {
           type: "string",
-          enum: ["leads", "properties", "deals", "notes", "tasks", "campaigns", "all"],
+          // `notes` and `campaigns` were advertised here and never queried by
+          // the handler, so asking for either returned `issuesFound: 0` —
+          // indistinguishable from a clean check. Same defect as the
+          // fix_common_issue enum: an enum is a promise to the model.
+          enum: ["leads", "properties", "deals", "tasks", "all"],
           description: "Which module to check"
         }
       },
@@ -909,25 +913,6 @@ export const supportToolDefinitions = {
   // schema. If session invalidation is genuinely wanted, wire it and bring the
   // tool back.
 
-  repair_orphaned_records: {
-    name: "repair_orphaned_records",
-    description: "Find and fix orphaned database records. Orphaned records are those with missing required relationships (e.g., leads without organization, deals without property).",
-    parameters: {
-      type: "object",
-      properties: {
-        module: {
-          type: "string",
-          enum: ["leads", "properties", "deals", "tasks", "all"],
-          description: "Which module to check for orphaned records"
-        },
-        dry_run: {
-          type: "boolean",
-          description: "If true, only report counts without making changes. If false, delete orphaned records."
-        }
-      },
-      required: ["module", "dry_run"]
-    }
-  },
   
   reset_user_preferences: {
     name: "reset_user_preferences",
@@ -1384,10 +1369,40 @@ export async function executeSupportTool(
           }
         }
         
+        // Moved here 2026-08-20 from repair_orphaned_records, which surveyed
+        // this and then DELETED the rows it found. Unlike the three checks
+        // above, this predicate is not vacuous: `tasks.entityId` is nullable and
+        // the entity it points at can genuinely be gone. Read-only and
+        // org-scoped, like everything else in this handler.
+        if (module === "all" || module === "tasks") {
+          const orphanedTasks = await db.select({ count: sql<number>`count(*)` })
+            .from(tasks)
+            .where(and(
+              eq(tasks.organizationId, org.id),
+              sql`${tasks.entityId} IS NOT NULL`,
+              sql`${tasks.entityType} IS NOT NULL`,
+              sql`NOT EXISTS (
+                SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
+                UNION
+                SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
+                UNION
+                SELECT 1 FROM deals WHERE deals.id = ${tasks.entityId} AND ${tasks.entityType} = 'deal'
+              )`
+            ));
+          if (orphanedTasks[0].count > 0) {
+            issues.push({
+              module: "tasks",
+              issue: "Tasks linked to an entity that no longer exists",
+              count: orphanedTasks[0].count,
+              canAutoFix: false
+            });
+          }
+        }
+        
         return {
           success: true,
           data: {
-            modulesChecked: module === "all" ? ["leads", "properties", "deals", "notes", "tasks"] : [module],
+            modulesChecked: module === "all" ? ["leads", "properties", "deals", "tasks"] : [module],
             issuesFound: issues.length,
             issues,
             overallStatus: issues.length === 0 ? "clean" : "issues_found"
@@ -2160,7 +2175,7 @@ export async function executeSupportTool(
               severity: issue.count > 10 ? "warning" : "info",
               prediction: issue.description,
               details: issue,
-              recommendation: "Consider running repair_orphaned_records to fix data issues"
+              recommendation: "Run check_data_integrity for the org-scoped detail. These are reported, not auto-repaired — data deletion is a founder-only action, so escalate if a repair is actually needed."
             });
           }
         }
@@ -2268,7 +2283,7 @@ export async function executeSupportTool(
               area: "data_integrity",
               severity: issue.count > 10 ? "warning" : "info",
               issue: issue.description,
-              recommendation: "Run repair_orphaned_records to fix"
+              recommendation: "Run check_data_integrity for detail; escalate to repair — data deletion is founder-only."
             });
           }
         }
@@ -4618,121 +4633,36 @@ export async function executeSupportTool(
         }
       }
       
-      case "repair_orphaned_records": {
-        const { module, dry_run } = args;
-        const results: Record<string, { found: number; fixed: number }> = {};
-        
-        const modulesToCheck = module === "all" ? ["leads", "properties", "deals", "tasks"] : [module];
-        
-        for (const mod of modulesToCheck) {
-          let foundCount = 0;
-          let fixedCount = 0;
-          
-          switch (mod) {
-            case "leads": {
-              const orphanedLeads = await db.select({ count: sql<number>`count(*)` })
-                .from(leads)
-                .where(sql`${leads.organizationId} IS NULL`);
-              foundCount = Number(orphanedLeads[0]?.count || 0);
-              
-              if (!dry_run && foundCount > 0) {
-                await db.delete(leads).where(sql`${leads.organizationId} IS NULL`);
-                fixedCount = foundCount;
-              }
-              break;
-            }
-            case "properties": {
-              const orphanedProperties = await db.select({ count: sql<number>`count(*)` })
-                .from(properties)
-                .where(sql`${properties.organizationId} IS NULL`);
-              foundCount = Number(orphanedProperties[0]?.count || 0);
-              
-              if (!dry_run && foundCount > 0) {
-                await db.delete(properties).where(sql`${properties.organizationId} IS NULL`);
-                fixedCount = foundCount;
-              }
-              break;
-            }
-            case "deals": {
-              const orphanedDeals = await db.select({ count: sql<number>`count(*)` })
-                .from(deals)
-                .where(sql`${deals.propertyId} IS NULL`);
-              foundCount = Number(orphanedDeals[0]?.count || 0);
-              
-              if (!dry_run && foundCount > 0) {
-                await db.delete(deals).where(sql`${deals.propertyId} IS NULL`);
-                fixedCount = foundCount;
-              }
-              break;
-            }
-            case "tasks": {
-              const orphanedTasks = await db.select({ count: sql<number>`count(*)` })
-                .from(tasks)
-                .where(and(
-                  eq(tasks.organizationId, org.id),
-                  sql`${tasks.entityId} IS NOT NULL`,
-                  sql`${tasks.entityType} IS NOT NULL`,
-                  sql`NOT EXISTS (
-                    SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
-                    UNION
-                    SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
-                    UNION
-                    SELECT 1 FROM deals WHERE deals.id = ${tasks.entityId} AND ${tasks.entityType} = 'deal'
-                  )`
-                ));
-              foundCount = Number(orphanedTasks[0]?.count || 0);
-              
-              if (!dry_run && foundCount > 0) {
-                await db.delete(tasks).where(and(
-                  eq(tasks.organizationId, org.id),
-                  sql`${tasks.entityId} IS NOT NULL`,
-                  sql`${tasks.entityType} IS NOT NULL`,
-                  sql`NOT EXISTS (
-                    SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
-                    UNION
-                    SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
-                    UNION
-                    SELECT 1 FROM deals WHERE deals.id = ${tasks.entityId} AND ${tasks.entityType} = 'deal'
-                  )`
-                ));
-                fixedCount = foundCount;
-              }
-              break;
-            }
-          }
-          
-          results[mod] = { found: foundCount, fixed: fixedCount };
-        }
-        
-        const totalFound = Object.values(results).reduce((sum, r) => sum + r.found, 0);
-        const totalFixed = Object.values(results).reduce((sum, r) => sum + r.fixed, 0);
-        
-        await db.insert(activityLog).values({
-          organizationId: org.id,
-          action: dry_run ? "orphaned_records_scan" : "orphaned_records_repaired",
-          entityType: "system",
-          entityId: org.id,
-          userId: org.ownerId,
-          description: dry_run 
-            ? `Scanned for orphaned records: found ${totalFound} across ${modulesToCheck.join(", ")}`
-            : `Repaired ${totalFixed} orphaned records across ${modulesToCheck.join(", ")}`,
-          metadata: { results, dryRun: dry_run }
-        });
-        
-        return {
-          success: true,
-          data: {
-            dryRun: dry_run,
-            modulesChecked: modulesToCheck,
-            results,
-            totalFound,
-            totalFixed,
-            message: dry_run 
-              ? `Found ${totalFound} orphaned records. Run with dry_run=false to fix them.`
-              : `Successfully repaired ${totalFixed} orphaned records.`
-          }
-        };
-      }
+      // DELETED 2026-08-20 — repair_orphaned_records. A support tool, reachable
+      // by a model mid-conversation with any customer, that issued four
+      // `db.delete(...)` calls. THREE OF THEM CARRIED NO ORGANIZATION
+      // PREDICATE:
+      //
+      //     db.delete(leads).where(sql`${leads.organizationId} IS NULL`)
+      //     db.delete(properties).where(sql`${properties.organizationId} IS NULL`)
+      //     db.delete(deals).where(sql`${deals.propertyId} IS NULL`)
+      //
+      // (the fourth, on tasks, WAS scoped to org.id — which is the tell: the
+      // author scoped one of the four).
+      //
+      // Severity, stated accurately: all three columns are `.notNull()` in
+      // shared/schema.ts, so these predicates match zero rows in a
+      // schema-conformant database and nothing was ever deleted. That safety is
+      // COINCIDENTAL — it lives in a different file, and any migration making
+      // one of those columns nullable (a soft-delete, a staging import, a
+      // backfill) silently turns this into a platform-wide deleter with no
+      // tenant scope. Adjacent code shows the author did not believe the
+      // predicates were empty: `check_data_integrity` queries the same
+      // `deals.propertyId IS NULL` and reports a count for it.
+      //
+      // Deleted rather than scoped, because scoping is not the whole objection:
+      // "customer-data deletion" is a founder-only hard-stop (CLAUDE.md), so an
+      // AI support tool must not perform one at any blast radius. The read-only
+      // survey it offered is `check_data_integrity`, which is org-scoped on
+      // every branch and marks every finding `canAutoFix: false`; the orphaned
+      // -task check has been moved there so no diagnostic coverage was lost.
+      // `paxToolsPerformNoDeletion.test.ts` now holds this shut.
+
       
       case "reset_user_preferences": {
         const { preference_type } = args;
