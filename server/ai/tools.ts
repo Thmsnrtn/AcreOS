@@ -2847,10 +2847,12 @@ export async function executeTool(
         const { propstreamComps } = await import("../services/connectors/executor");
         return propstreamComps(org, args as any);
       }
-      case "batch_leads_skip_trace": {
-        const { batchLeadsSkipTrace } = await import("../services/connectors/executor");
-        return batchLeadsSkipTrace(org, args as any);
-      }
+      // `batch_leads_skip_trace` had a dispatch branch here until 2026-08-20.
+      // The FCRA gate above returns before this switch, so it was unreachable
+      // the moment that gate landed. The TOOL stays — a refusal that names what
+      // it needs and where to do it is better than a tool that vanishes and
+      // leaves Pax improvising — but the executor behind it is gone; see the
+      // deletion ledger.
       case "search_mls_listings": {
         const { searchMlsListings } = await import("../services/connectors/executor");
         return searchMlsListings(org, args as any);

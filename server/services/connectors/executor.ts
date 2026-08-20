@@ -286,19 +286,20 @@ export async function propstreamComps(org: Organization, args: { address: string
 }
 
 // ── BatchLeads ─────────────────────────────────────────────────────────────
-
-export async function batchLeadsSkipTrace(org: Organization, args: { firstName?: string; lastName?: string; address?: string; phone?: string }) {
-  const creds = await getCredentials(org.id, "batch_leads");
-  if (!creds?.apiKey) return { success: false, error: "BatchLeads is not connected." };
-
-  const res = await fetch("https://api.batchleads.io/v2/skip-trace", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${creds.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(args),
-  });
-  if (!res.ok) return { success: false, error: `BatchLeads error: ${res.status}` };
-  return { success: true, data: await res.json() };
-}
+//
+// `batchLeadsSkipTrace` was deleted 2026-08-20, deletion-revealed: the FCRA
+// gate in ai/tools.ts made its only caller unreachable, and Pax was its only
+// caller. What it did was run a consumer-report lookup with a bare `fetch` —
+// no provider registry, so no `provider_cache`, no circuit breaker, no
+// telemetry, and no license check. AcreOS already has a governed skip-trace
+// path: `services/providers/batchdata-provider.ts` registers the category with
+// a cost, a circuit breaker, and `license: "proprietary"` marking the feed as
+// non-redistributable. Two skip-trace implementations, one governed and one
+// not, and the ungoverned one was the one a customer could reach by typing a
+// sentence.
+//
+// If skip-trace through a BatchLeads key is wanted again, it belongs in the
+// registry as a provider — not as a second raw fetch.
 
 // ── Zapier / Make webhooks ────────────────────────────────────────────────
 

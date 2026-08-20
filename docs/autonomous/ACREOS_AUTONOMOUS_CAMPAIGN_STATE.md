@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `a3e56ca8` + the land-decides commit below, 2026-08-20. Working
-tree clean, 939 test files / 12,594 tests green, 26 gates green.
+Verified at: `63b29bbf` + the skip-trace-deletion commit below, 2026-08-20.
+Working tree clean, 939 test files / 12,595 tests green, 26 gates green.
 
 ---
 
@@ -187,16 +187,23 @@ had not verified; those are deliberately absent below.
     have become reachable the moment someone made the enum match the picker,
     which is the obvious repair.
 
-13. **Five connector executors bypass the provider registry.** CLAUDE.md: "All
-    external data flows through the provider registry … tier-based filtering,
-    credit deduction on paid lookups, circuit breaking, response caching via
-    `provider_cache`." `server/services/connectors/executor.ts` calls
-    BatchLeads, PropStream (×2) and the MLS (×2) with bare `fetch` and the org's
-    own key: no credit deduction, no cache, no circuit breaker. Found while
-    closing ledger 38, which is why it is here rather than in it — the FCRA hole
-    was the ranked item and this is a different rule broken by the same file.
-    Each is a PAID third-party lookup, so the missing half is the customer's
-    money.
+13. **Four connector executors bypass the provider registry — and the claim in
+    the previous version of this entry was partly wrong.** It said five, and
+    framed the gap as "the missing half is the customer's money" via credit
+    deduction. Checked: the registry explicitly supports BYO keys ("runs on
+    their account, platform COGS $0, pool never debited"), so a BYO connector
+    not debiting the credit pool is CORRECT, not a defect. What these four
+    genuinely lack is `provider_cache` (the org pays its vendor twice for the
+    same lookup), circuit breaking, telemetry, and the license flags the
+    registry carries. The fifth — `batchLeadsSkipTrace` — was deleted on
+    2026-08-20 as deletion-revealed (ledger 38's FCRA gate made it unreachable),
+    and it was the one where the framing DID hold: a proprietary,
+    non-redistributable consumer-report feed run with a bare `fetch`.
+    Remaining: `propstreamLookup`, `propstreamComps`, `searchMlsListings`,
+    `getMlsComps`, all reachable only through Pax. Routing them through the
+    registry means writing two new providers AND migrating their credentials
+    from `storage.getPaxConnector` to `byok/dataByok` — real work, correctly
+    sized here rather than under-described.
 
 14. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
     `openaiClient.ts`'s docblock forbids exactly this and names
@@ -236,8 +243,12 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–43.
+Full reasoning in the cross-pollination ledger, entries 23–44.
 
+- **two skip-trace paths, one governed** — the ungoverned one (bare `fetch`, no
+  cache, no breaker, no license flag on a non-redistributable feed) was the one
+  Pax could reach. Deleted; and the frontier claim that described it was itself
+  partly wrong, which is recorded. Ledger 44.
 - **land can decide, not only calculate** — the blind-offer wizard commits a
   canonical decision with its scenario frozen behind it; land was the only
   strategy that could produce a number and never a decision. Ledger 43.

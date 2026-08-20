@@ -102,15 +102,16 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 vi.mock("../../server/ai/validators", () => ({ validateAtlasOutput: vi.fn(), AtlasOutputType: {} }));
 
-// The connector must NEVER be reached. If the gate lets a call through, this
-// throws rather than silently returning "not connected" — which is what the
-// unguarded path returns today for an org with no credentials, and would make
-// a refusal and a bypass look identical from the outside.
-const skipTraceExecutor = vi.fn(async () => {
-  throw new Error("batchLeadsSkipTrace was CALLED — the FCRA gate did not hold");
-});
+// The executor this gate blocked was DELETED on 2026-08-20 (deletion ledger):
+// the FCRA refusal made it unreachable and Pax was its only caller. The
+// dispatch branch went with it, so `batch_leads_skip_trace` has no path past
+// the gate at all.
+//
+// The old scaffold kept a throwing mock here and asserted it was never called.
+// With nothing left to call, that assertion would be true no matter what the
+// gate did — decoration. It is replaced by the source case at the bottom of
+// this file, which asserts the branch and the executor are actually gone.
 vi.mock("../../server/services/connectors/executor", () => ({
-  batchLeadsSkipTrace: skipTraceExecutor,
   propstreamLookup: vi.fn(),
   propstreamComps: vi.fn(),
   searchMlsListings: vi.fn(),
@@ -180,7 +181,6 @@ describe("the FCRA-regulated lookup is refused on the Pax path", () => {
     expect(result.error, "the scope gate answered; the FCRA gate never ran").toMatch(
       /skip trace/i,
     );
-    expect(skipTraceExecutor).not.toHaveBeenCalled();
   });
 
   it("refuses the OWNER too — holding every scope is not an attestation", async () => {
@@ -195,7 +195,6 @@ describe("the FCRA-regulated lookup is refused on the Pax path", () => {
       { userId: OWNER },
     );
     expect(result.success).toBe(false);
-    expect(skipTraceExecutor).not.toHaveBeenCalled();
   });
 
   it("refuses even with trustedApproval — a human tap is not an attestation", async () => {
@@ -209,7 +208,6 @@ describe("the FCRA-regulated lookup is refused on the Pax path", () => {
       { trustedApproval: true, userId: OWNER },
     );
     expect(result.success).toBe(false);
-    expect(skipTraceExecutor).not.toHaveBeenCalled();
   });
 
   it("says WHERE it can be done, rather than only that it cannot", async () => {
@@ -219,6 +217,38 @@ describe("the FCRA-regulated lookup is refused on the Pax path", () => {
     expect(result.error).toMatch(/permissible purpose/i);
     expect(result.error).toMatch(/attestation/i);
     expect(result.error).toMatch(/Deals/);
+  });
+});
+
+describe("there is no path past the FCRA gate any more", () => {
+  it("the dispatch branch and the executor behind it are gone", async () => {
+    // What makes the refusal above load-bearing is not that a mock went
+    // uncalled — it is that nothing remains to call. Asserted in source
+    // because the absence of a code path cannot be observed at runtime.
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { stripCommentsPreservingLines } = await import("../../scripts/lib/strip-comments.mjs");
+    const read = (rel: string) =>
+      stripCommentsPreservingLines(
+        fs.readFileSync(path.resolve(__dirname, "../..", rel), "utf8"),
+      );
+
+    const tools = read("server/ai/tools.ts");
+    expect(tools, "the tool must still exist, so Pax can explain the refusal").toContain(
+      "batch_leads_skip_trace",
+    );
+    expect(
+      tools,
+      "the dispatch branch is back — a path past the FCRA gate",
+    ).not.toContain('case "batch_leads_skip_trace"');
+
+    const executor = read("server/services/connectors/executor.ts");
+    expect(
+      executor,
+      "batchLeadsSkipTrace is back. If a BatchLeads skip trace is wanted, it " +
+        "belongs in the provider registry — which has a cost, a circuit breaker " +
+        "and a license flag — not as a second raw fetch.",
+    ).not.toContain("export async function batchLeadsSkipTrace");
   });
 });
 
@@ -297,7 +327,6 @@ describe("an UNIDENTIFIED caller may act as the org, except for PII", () => {
     const result = await executeTool("batch_leads_skip_trace", {}, org);
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/tenant_pii_write/);
-    expect(skipTraceExecutor).not.toHaveBeenCalled();
   });
 });
 

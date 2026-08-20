@@ -1022,3 +1022,44 @@ to exist first — the outbox is the mechanism (`fly.toml` documents its consume
 set) and `server/jobs/scheduler.ts` the lease. A tool comes after the job, not
 before it.
 
+---
+
+## `batchLeadsSkipTrace` (connector executor) — executed 2026-08-20
+
+**What went.** `batchLeadsSkipTrace` in `server/services/connectors/executor.ts`
+and its dispatch branch in `server/ai/tools.ts`. The TOOL
+`batch_leads_skip_trace` stays and still refuses (cross-pollination ledger 38):
+a refusal that names what it needs and where to do it is better than a tool that
+vanishes and leaves Pax improvising.
+
+**Deletion-revealed.** The FCRA permissible-purpose gate added on 2026-08-19
+returns before the dispatch switch, so the branch was unreachable the moment it
+landed, and Pax was the executor's only caller — `grep` across `server/` and
+`client/src` returned exactly two references, the dynamic import and the call,
+both in `ai/tools.ts`.
+
+**What it was, which is the part worth recording.** A consumer-report lookup run
+with a bare `fetch` to `api.batchleads.io`: no provider registry, so no
+`provider_cache`, no circuit breaker, no telemetry, no cost accounting, and no
+license check. AcreOS already had a governed skip-trace path —
+`services/providers/batchdata-provider.ts` registers the `skip_trace` category
+with a cost of 15, a circuit breaker, and `license: "proprietary"` marking the
+feed as non-redistributable. Two skip-trace implementations, one governed and
+one not, and the ungoverned one was the one a customer could reach by typing a
+sentence.
+
+Its credentials came from a different store as well (`storage.getPaxConnector`
+rather than `byok/dataByok`), so the two paths did not even share the customer's
+key.
+
+**Reactivation criteria.** If a BatchLeads skip trace is wanted, it belongs in
+the provider registry as a provider — the registry already handles BYO keys
+("runs on their account, platform COGS $0, pool never debited") and would give
+it caching, breaking and a license flag. Not a second raw fetch.
+
+**Residue check.** The dispatch branch went in the same commit. The App Intent
+entry stays, because the tool stays. `paxToolScopeAndFcra.test.ts` had a
+throwing mock asserting the executor was never called; with nothing left to
+call, that assertion would have been true no matter what the gate did, so it was
+replaced by a source case asserting the branch and the export are actually gone.
+

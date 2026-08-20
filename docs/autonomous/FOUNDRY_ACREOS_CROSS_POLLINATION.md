@@ -2588,6 +2588,58 @@ body never reaches the database, and — the one that matters most — **a faili
 decision write returns 5xx rather than a 201 with no decision behind it**.
 
 
+### 44 — TWO SKIP-TRACE PATHS, ONE GOVERNED, AND THE UNGOVERNED ONE WAS THE REACHABLE ONE
+
+A short entry, and half of it is a correction to my own frontier claim.
+
+**The deletion.** `batchLeadsSkipTrace` (`services/connectors/executor.ts`) ran
+a consumer-report lookup with a bare `fetch` to `api.batchleads.io`: no provider
+registry, so no `provider_cache`, no circuit breaker, no telemetry, no cost
+accounting, and no license check. AcreOS already had a governed skip-trace path
+— `services/providers/batchdata-provider.ts` registers the `skip_trace`
+category with a cost of 15, a circuit breaker, and `license: "proprietary"`
+marking the feed as non-redistributable. Two implementations of the same
+regulated lookup, one governed and one not, and the ungoverned one was the one a
+customer could reach by typing a sentence to Pax. Their credentials did not even
+come from the same store.
+
+Deletion-revealed rather than hunted: ledger 38's FCRA gate returns before the
+dispatch switch, so the branch was unreachable the moment that landed, and Pax
+was the executor's only caller — two references in the whole repository, the
+dynamic import and the call, both in one file. The TOOL stays and still refuses;
+a refusal that names what it needs and where to do it beats a tool that vanishes
+and leaves Pax improvising.
+
+**The correction, which matters more than the deletion.** The frontier entry I
+wrote for this said FIVE executors bypass the registry and framed the gap as
+*"the missing half is the customer's money"*. Checked against the registry: it
+explicitly supports BYO keys — *"runs on their account, platform COGS $0, pool
+never debited"* — so a BYO connector not debiting the credit pool is CORRECT.
+The framing was wrong for four of the five. What those four genuinely lack is
+caching (the org pays its vendor twice for the same lookup), circuit breaking,
+telemetry and license flags; and routing them through the registry means writing
+two new providers AND migrating their credentials between two stores. Real work,
+correctly sized on the frontier now instead of under-described.
+
+The framing DID hold for the one deleted: a proprietary, non-redistributable
+consumer-report feed with no license check on it.
+
+**Recorded because it is the same failure mode this campaign keeps finding, one
+level up.** A frontier entry is a hypothesis. I wrote "five … the customer's
+money" from a grep and a rule in CLAUDE.md, without checking whether the rule
+applied to a BYO key. Had I "fixed" it as written, four connectors would have
+been routed through a credit path they should not be on. The audit of one's own
+backlog is the same discipline as the audit of one's own code, and it is easier
+to skip because a backlog entry feels like a note rather than a claim.
+
+**Exit test.** No new file. `paxToolScopeAndFcra.test.ts` kept a throwing mock
+asserting the executor was never called; with nothing left to call, that
+assertion would have been true no matter what the gate did — decoration by
+deletion. Replaced with a source case asserting the dispatch branch and the
+export are actually gone, and that the TOOL still exists so the refusal still
+has a voice.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
