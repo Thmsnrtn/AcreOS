@@ -2857,6 +2857,66 @@ wrong (ledger 44 was the first); both times it read as a note rather than a
 claim.
 
 
+### 47 — THE LAST GATE THAT REWROTE THE TREE IT WAS CERTIFYING
+
+`orgScopedFetchCoverage.test.ts` proved its tenancy gate still FIRES by writing
+`server/services/__rule3_canary__.ts` into the LIVE tree, running the real gate
+over ~906 files, and deleting it. That is the right instinct — a canary the gate
+never sees is not a canary — and it cost twice before the cost was visible.
+
+An interrupted run leaves the file behind; one was committed by accident on
+2026-08-19 and broke two other gates' "passes on the current tree" case. And
+roughly 69 suites walk `server/**`, vitest runs them in parallel workers, and a
+walk could list the canary and read it after the delete — killing an unrelated
+test with an fs stack trace rather than an assertion. Twice on 2026-08-20.
+
+Two gates were converted to `--root DIR` fixture trees earlier that day
+(ledger 43). This was the third and last, and it is the one that makes the
+property total: **the repository no longer rewrites itself under a test run.**
+The `.gitignore` block that existed to catch abandoned probes is deleted, and
+what stands in its place says so — if you are about to add an ignore rule for a
+probe file, add `--root` to the gate instead.
+
+**Why this one was harder, and what that taught.** A fixture is a different KIND
+of tree, and three things in this gate had to be told so:
+
+- the VACUITY FLOORS, sized for the repository (300 files / 200 tables / 1500
+  methods / 1200 functions / 700 org-touching units) and unmeetable by a
+  two-file fixture;
+- the STALENESS CHECKS on five registers — every one of ~540 keys names a real
+  `file::method` here, so against a fixture all of them look stale at once and
+  would drown the single finding the run exists to show;
+- rule 3's own chain floor (300 chains).
+
+Everything that ENFORCES — new offenders, new unscoped chains, the allowlist
+acting as an allowlist — runs identically in both modes. That split is the whole
+design: a fixture run must be weaker in what it CERTIFIES and identical in what
+it CATCHES.
+
+**The second fixture is the part worth copying.** A canary that only asserts
+"this tree fails" is satisfied by a gate that rejects every fixture for an
+unrelated reason — a red that means nothing. So a CLEAN fixture was added: the
+same tree, the same schema, one org predicate added, which must PASS. Both cases
+also assert the gate actually recognised the fixture's org-scoped table and
+walked at least one query chain, because a tree the gate cannot parse produces
+"no PASS" too.
+
+**Exit test.** Four mutations, each watched failing first: apply the vacuity
+floors to fixtures (both fixture cases fail); ignore `--root` (the canary and
+the no-live-write case fail); reintroduce a live-tree write in the test (the
+no-live-write case fails); gut the mutator list the no-live-write case scans for
+(its own vacuity assertion fails).
+
+**And the no-live-write check matched itself on the first draft.** It searched
+the file for the bare word `writeFileSync` and found its own loop condition and
+its own failure message. Rewritten to match `fs.<name>(` CALLS and to require
+every one of them to sit inside the fixture runner's span — stated as a span
+rather than a pattern, because a regex naming the old variable would have been
+satisfied by renaming the variable. A source scan matching itself is the same
+defect `SYMBOL_REGISTERS` exists for one gate over, met for the third time in
+three commits, and the third time it took ten minutes instead of an afternoon.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

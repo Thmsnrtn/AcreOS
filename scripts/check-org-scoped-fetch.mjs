@@ -749,9 +749,50 @@ import { dirname, join, resolve } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, "..");
+
+/**
+ * `--root DIR` — scan a FIXTURE TREE instead of the repository.
+ *
+ * THE REASON, because it is not a convenience. This gate's own canary test used
+ * to write `server/services/__rule3_canary__.ts` into the LIVE tree, run the
+ * real gate over ~906 files, and delete it. Roughly 69 other test files walk
+ * `server/**`, vitest runs them in parallel workers, and one of them would list
+ * the canary and read it after the delete — dying with an fs stack trace
+ * instead of an assertion. That happened twice on 2026-08-20. Two other gates
+ * were moved to fixture trees the same day (ledger 43); this was the last
+ * writer, so with it moved the tree no longer rewrites itself under a test run
+ * at all.
+ *
+ * A fixture tree is a different KIND of tree, and three things below have to be
+ * told so: the vacuity floors (sized for the repo, unmeetable by five files),
+ * the register-staleness checks (every baseline entry names a real file, so all
+ * of them look stale against a fixture), and the rule-3 chain floor. Everything
+ * that ENFORCES — new offenders, new unscoped chains — runs identically, which
+ * is what makes the canary meaningful.
+ */
+const argv = process.argv.slice(2);
+function argValue(flag) {
+  const i = argv.indexOf(flag);
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
+}
+const DEFAULT_ROOT = resolve(__dirname, "..");
+const REPO_ROOT = resolve(argValue("--root") ?? DEFAULT_ROOT);
+/** False when pointed at a fixture — see the note above for what that changes. */
+const SCANNING_REAL_REPO = REPO_ROOT === DEFAULT_ROOT;
 const SHARED_DIR = join(REPO_ROOT, "shared");
 const SERVER_DIR = join(REPO_ROOT, "server");
+
+/**
+ * Files the walk listed that were gone by the time they were read.
+ *
+ * Kept even though this gate no longer writes probes itself: OTHER tooling can
+ * still rewrite the tree under a scan, and crashing with an fs stack trace
+ * reads as a finding when it is not one. Counted, not ignored — a tree
+ * rewriting itself mid-scan is not a tree this gate can certify — and checked
+ * against a ceiling in the verdict.
+ */
+let vanishedDuringScan = 0;
+const VANISHED_CEILING = 5;
 
 // ----------------------------------------------------------------------------
 // Schema discovery — org-scoped table identifiers
@@ -759,6 +800,7 @@ const SERVER_DIR = join(REPO_ROOT, "server");
 
 function findSchemaFiles() {
   const files = [];
+  if (!statSync(SHARED_DIR, { throwIfNoEntry: false })?.isDirectory()) return files;
   for (const entry of readdirSync(SHARED_DIR)) {
     const full = join(SHARED_DIR, entry);
     if (!statSync(full).isFile()) continue;
@@ -904,7 +946,9 @@ function collectOrgScopedTableIdents() {
 // ----------------------------------------------------------------------------
 
 function findScannedFiles() {
-  const files = [join(SERVER_DIR, "storage.ts")];
+  const files = [];
+  const storageEntry = join(SERVER_DIR, "storage.ts");
+  if (statSync(storageEntry, { throwIfNoEntry: false })?.isFile()) files.push(storageEntry);
   const subdir = join(SERVER_DIR, "storage");
   if (statSync(subdir, { throwIfNoEntry: false })?.isDirectory()) {
     for (const entry of readdirSync(subdir)) {
@@ -923,7 +967,13 @@ function findScannedFiles() {
       const dir = stack.pop();
       for (const entry of readdirSync(dir)) {
         const full = join(dir, entry);
-        if (statSync(full).isDirectory()) {
+        // throwIfNoEntry:false — a path can vanish between readdir and stat.
+        const st = statSync(full, { throwIfNoEntry: false });
+        if (!st) {
+          vanishedDuringScan += 1;
+          continue;
+        }
+        if (st.isDirectory()) {
           stack.push(full);
           continue;
         }
@@ -1491,7 +1541,15 @@ function main() {
     // Masked for the same reason as the schema pass — and as a bonus,
     // commented-out code can no longer count as "touching" a table or as
     // providing org context.
-    const source = maskComments(readFileSync(file, "utf8"));
+    let raw;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch (err) {
+      if (!err || err.code !== "ENOENT") throw err;
+      vanishedDuringScan += 1;
+      continue;
+    }
+    const source = maskComments(raw);
 
     // Two SHAPES, one RULE. `async name(` is method syntax; `async function
     // name(` is function syntax. They were never semantically different for
@@ -1549,15 +1607,23 @@ function main() {
     }
   }
 
-  const staleAllowlistEntries = [
+  // STALENESS IS A CLAIM ABOUT THIS REPOSITORY, so it is only asked of this
+  // repository. Every register key names a real file::method here; against a
+  // five-file fixture all ~540 of them look stale at once, which would drown
+  // the one finding a fixture run exists to show. The registers still act as
+  // ALLOWLISTS in fixture mode — a fixture offender is not in them, so it is
+  // reported, which is the half the canary depends on.
+  const staleAllowlistEntries = !SCANNING_REAL_REPO ? [] : [
     ...[...BASELINE_OFFENDERS].filter((k) => !baselineSeen.has(k)),
     ...[...BASELINE_FUNCTION_OFFENDERS].filter((k) => !baselineSeenFunction.has(k)),
   ];
-  const staleUnusedOrg = [
+  const staleUnusedOrg = !SCANNING_REAL_REPO ? [] : [
     ...[...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k)),
     ...[...BASELINE_FUNCTION_UNUSED_ORG].filter((k) => !unusedOrgSeenFunction.has(k)),
   ];
-  const staleRule3 = [...RULE3_BASELINE].filter((k) => !rule3Seen.has(k));
+  const staleRule3 = !SCANNING_REAL_REPO
+    ? []
+    : [...RULE3_BASELINE].filter((k) => !rule3Seen.has(k));
 
   // ── VACUITY GUARD ────────────────────────────────────────────────────────
   // A scan that stops SEEING things must FAIL, never read as a clean bill of
@@ -1567,13 +1633,33 @@ function main() {
   // 2026-08-16 values (365 tables / 906 files / 2485 methods / 2121
   // functions), so ordinary churn never trips them, but a regex that stops
   // matching or a directory walk that returns nothing does.
+  //
+  // FIXTURE MODE (`--root`): these floors are sized for the repository and a
+  // five-file fixture cannot meet any of them, so they are skipped there. That
+  // is not a hole — a fixture run is driven by this gate's own tests, which
+  // assert on the FINDINGS, and `orgScopedFetchCoverage.test.ts` still runs the
+  // real repo through the floored path.
   const vacuity = [];
+  if (!SCANNING_REAL_REPO) {
+    console.log(
+      `[check-org-scoped-fetch] fixture mode (--root ${REPO_ROOT}) — vacuity ` +
+        `floors and register-staleness checks do not apply; enforcement does.`,
+    );
+  }
+  if (SCANNING_REAL_REPO) {
   if (scannedFiles.length < 300) vacuity.push(`only ${scannedFiles.length} files scanned (expected >= 300)`);
   if (orgScopedIdents.size < 200) vacuity.push(`only ${orgScopedIdents.size} org-scoped tables found (expected >= 200)`);
   if (scannedMethods < 1500) vacuity.push(`only ${scannedMethods} async methods extracted (expected >= 1500)`);
   if (scannedFunctions < 1200) vacuity.push(`only ${scannedFunctions} async functions extracted (expected >= 1200)`);
   if (methodsTouchingOrgTables < 700)
     vacuity.push(`only ${methodsTouchingOrgTables} units touch org-scoped tables (expected >= 700)`);
+  }
+  if (vanishedDuringScan > VANISHED_CEILING) {
+    vacuity.push(
+      `${vanishedDuringScan} file(s) vanished between the walk and the read ` +
+        `(ceiling ${VANISHED_CEILING}) — the tree is being rewritten under this scan`,
+    );
+  }
   if (vacuity.length > 0) {
     console.error("");
     console.error(
@@ -1641,7 +1727,7 @@ function main() {
   // Rule 3's own vacuity floor. A chain walk that stops finding chains reads
   // as "every query is scoped", which is the exact false green this rule was
   // added to remove.
-  if (rule3ChainsScanned < 300) {
+  if (SCANNING_REAL_REPO && rule3ChainsScanned < 300) {
     console.error("");
     console.error(
       `[check-org-scoped-fetch] FAIL (VACUITY GUARD) — rule 3 found only ` +

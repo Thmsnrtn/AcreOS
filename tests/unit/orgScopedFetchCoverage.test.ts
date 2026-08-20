@@ -39,7 +39,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
 
 const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-org-scoped-fetch.mjs");
@@ -173,11 +175,56 @@ const RULE_3_BASELINE = 133;
 /** Chains rule 3 must keep seeing; 1,060 measured 2026-08-18. */
 const RULE_3_CHAIN_FLOOR = 300;
 
-function run(): string {
+function run(...args: string[]): string {
   // Runs the real lint. Asserting against its own output is the only way to
   // know the walk is live; reading the source only proves the code is present.
-  return execFileSync("node", [LINT], { cwd: ROOT, encoding: "utf8" });
+  return execFileSync("node", [LINT, ...args], { cwd: ROOT, encoding: "utf8" });
 }
+
+/**
+ * Runs the lint over a THROWAWAY TREE and returns its output plus whether it
+ * exited non-zero.
+ *
+ * The canary below used to write its fixture into `server/services/` — the live
+ * tree — run the real gate over ~906 files, and delete it. About 69 other test
+ * files walk `server/**`, vitest runs them in parallel workers, and one of them
+ * would list the canary and read it after the delete, dying with an fs stack
+ * trace instead of an assertion. That happened twice on 2026-08-20. This gate
+ * was the last of the three probe-writers; with it moved, the repository no
+ * longer rewrites itself under a test run at all.
+ *
+ * `execFileSync` THROWS on the non-zero exit a canary is asking for, so the
+ * output has to be recovered from the error — which is also why the old version
+ * of this helper could see stdout only on the failure path.
+ */
+function runOverFixture(files: Record<string, string>): { out: string; failed: boolean } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "org-scoped-fixture-"));
+  try {
+    for (const [rel, body] of Object.entries(files)) {
+      const abs = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body);
+    }
+    return { out: run("--root", dir), failed: false };
+  } catch (err) {
+    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; status?: number };
+    if (e.status === undefined) throw err; // a real harness failure, not a verdict
+    return { out: String(e.stdout ?? "") + String(e.stderr ?? ""), failed: true };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The one org-scoped table every fixture below needs the gate to recognise. */
+const FIXTURE_SCHEMA = [
+  'import { pgTable, serial, integer, text } from "drizzle-orm/pg-core";',
+  'export const properties = pgTable("properties", {',
+  '  id: serial("id").primaryKey(),',
+  '  organizationId: integer("organization_id").notNull(),',
+  '  state: text("state"),',
+  "});",
+  "",
+].join("\n");
 
 /**
  * Parses the function-shape summary line, and refuses to return a number over
@@ -295,40 +342,29 @@ describe("the tenancy lint covers the service layer", () => {
     // org-scoped table by a NON-primary-key predicate (so rule 2 passes),
     // with no org predicate on the query itself.
     //
-    // Written as a real file under server/services so the lint's own walk
-    // finds it, then removed — a canary the gate never sees is not a canary.
-    const dir = path.join(ROOT, "server/services");
-    const file = path.join(dir, "__rule3_canary__.ts");
-    const bad = [
-      'import { db } from "../db";',
-      'import { properties } from "@shared/schema";',
-      'import { eq, and, sql } from "drizzle-orm";',
-      "",
-      "export async function canaryScopedUnitUnscopedQuery(orgId: number) {",
-      "  const own = await db.select().from(properties)",
-      "    .where(eq(properties.organizationId, orgId));",
-      "  const leaked = await db.select().from(properties)",
-      "    .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
-      "  return { own, leaked };",
-      "}",
-      "",
-    ].join("\n");
-    fs.writeFileSync(file, bad);
-    let out = "";
-    let exitedNonZero = false;
-    try {
-      // `run()` uses execFileSync, which THROWS on the non-zero exit this
-      // canary is asking for. The output lives on the error.
-      out = run();
-    } catch (err) {
-      exitedNonZero = true;
-      const e = err as { stdout?: string | Buffer; stderr?: string | Buffer };
-      out = String(e.stdout ?? "") + String(e.stderr ?? "");
-    } finally {
-      fs.unlinkSync(file);
-    }
+    // Run over a THROWAWAY TREE since 2026-08-20 (see `runOverFixture`). It used
+    // to be written into `server/services/` and deleted again, which is how a
+    // parallel worker came to read a file that no longer existed.
+    const { out, failed } = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__rule3_canary__.ts": [
+        'import { db } from "../db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export async function canaryScopedUnitUnscopedQuery(orgId: number) {",
+        "  const own = await db.select().from(properties)",
+        "    .where(eq(properties.organizationId, orgId));",
+        "  const leaked = await db.select().from(properties)",
+        "    .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
+        "  return { own, leaked };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
     expect(
-      exitedNonZero,
+      failed,
       "the lint EXITED ZERO with an unscoped cross-tenant query in the tree. " +
         "A gate that reports a finding and still passes is not a gate:\n" + out,
     ).toBe(true);
@@ -340,6 +376,98 @@ describe("the tenancy lint covers the service layer", () => {
     expect(out).toMatch(/canaryScopedUnitUnscopedQuery\(\)\s+<- properties/);
     // And the lint must be RED, not merely chatty.
     expect(out).not.toContain("[check-org-scoped-fetch] PASS");
+    // Vacuity on the fixture itself: a tree the gate cannot parse would also
+    // produce "no PASS", so prove the schema was read and the rule ran.
+    expect(out, "the fixture's org-scoped table was not recognised").toMatch(
+      /org-scoped tables: [1-9]/,
+    );
+    expect(out).toMatch(/rule 3 .*scanned [1-9]\d* query chains/);
+  });
+
+  it("a CLEAN fixture passes — the canary above is not just 'any tree fails'", () => {
+    // The other half of the mutation. Same tree, same schema, one predicate
+    // added. Without this, the canary would be satisfied by a gate that
+    // rejects every fixture for an unrelated reason — a red that means nothing.
+    const { out, failed } = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__clean__.ts": [
+        'import { db } from "../db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export async function scopedUnitScopedQuery(orgId: number) {",
+        "  const own = await db.select().from(properties)",
+        "    .where(eq(properties.organizationId, orgId));",
+        "  const alsoOwn = await db.select().from(properties)",
+        "    .where(and(eq(properties.organizationId, orgId),",
+        "      sql`LOWER(${properties.state}) = LOWER('TX')`));",
+        "  return { own, alsoOwn };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(failed, `a correctly-scoped fixture was rejected:\n${out}`).toBe(false);
+    expect(out).toContain("[check-org-scoped-fetch] PASS");
+    expect(out, "the fixture ran without the gate seeing its table").toMatch(
+      /org-scoped tables: [1-9]/,
+    );
+  });
+
+  it("the gate no longer writes probes into the working tree", () => {
+    // THE POINT OF THE FIXTURE MOVE, pinned so it cannot quietly revert. Two
+    // gates were converted on 2026-08-20 (ledger 43) and this was the third and
+    // last; a future edit that reintroduces a live-tree write brings back an
+    // intermittent fs stack trace in whichever unrelated test happens to be
+    // walking server/** at the time — a failure that reads as a finding and is
+    // not one.
+    const src = fs.readFileSync(
+      path.join(ROOT, "tests/unit/orgScopedFetchCoverage.test.ts"),
+      "utf8",
+    );
+    // Comments stripped: this very docblock discusses writing into
+    // server/services, and a scan that reads prose matches the explanation of
+    // the defect and calls it the defect (ledger 35, then 45, then 46).
+    const code = stripCommentsPreservingLines(src);
+    // Stated as a SPAN over CALLS, not as a pattern over text. Every mutating
+    // `fs.*` call in this file must sit inside `runOverFixture`, which writes
+    // only into a mkdtemp directory it removes again. A regex naming the old
+    // variable would have been satisfied by renaming the variable.
+    //
+    // Matched on `fs.<name>(` specifically: the first draft searched for the
+    // bare word and found its own loop condition and its own failure message —
+    // a source scan matching itself, which is the register problem in
+    // miniature and the reason SYMBOL_REGISTERS exists one gate over.
+    const runnerStart = code.indexOf("function runOverFixture");
+    expect(runnerStart, "the fixture runner was removed").toBeGreaterThan(-1);
+    const runnerEnd = code.indexOf("\n}", runnerStart);
+    expect(runnerEnd).toBeGreaterThan(runnerStart);
+
+    const MUTATORS =
+      /\bfs\.(writeFileSync|appendFileSync|mkdirSync|rmSync|unlinkSync|renameSync|cpSync|symlinkSync)\s*\(/g;
+    const calls: Array<{ at: number; text: string }> = [];
+    for (let m = MUTATORS.exec(code); m !== null; m = MUTATORS.exec(code)) {
+      calls.push({ at: m.index, text: m[0] });
+    }
+    expect(
+      calls.length,
+      "no fs mutation found at all — this check would pass over a file that " +
+        "had stopped writing its fixture too, which is not what it asserts",
+    ).toBeGreaterThan(2);
+    for (const c of calls) {
+      expect(
+        c.at > runnerStart && c.at < runnerEnd,
+        `${c.text} sits outside runOverFixture — something in this file writes ` +
+          `to a path it chose itself:\n  …${code.slice(Math.max(0, c.at - 90), c.at + 40)}…`,
+      ).toBe(true);
+    }
+    // And the gate must still accept the flag the runner depends on.
+    const gate = stripCommentsPreservingLines(fs.readFileSync(LINT, "utf8"));
+    expect(gate, "the gate lost --root support").toContain('argValue("--root")');
+    expect(
+      gate,
+      "the gate no longer distinguishes a fixture from the repository, so the " +
+        "vacuity floors either fail every fixture or protect nothing",
+    ).toContain("SCANNING_REAL_REPO");
   });
 
   it("passes, with no new offenders and no stale baseline entries", () => {

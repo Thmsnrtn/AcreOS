@@ -140,15 +140,20 @@ had not verified; those are deliberately absent below.
    it — the parcel identity crossed the link and landed nowhere, which is
    harmless for a calculator and fatal for a commit point.
 
-8. **`check-org-scoped-fetch.mjs` has no `--root`, so its canary still writes
-   into the live tree.** The last probe writer. `orgScopedFetchCoverage.test.ts`
-   creates `server/services/__rule3_canary__.ts`, runs the real gate (slow — it
-   scans 2,483 methods), and deletes it; ~69 test files walk `server/**` in
-   parallel workers, and one that lists the canary and reads it after the delete
-   fails with an fs stack trace rather than an assertion. That happened twice on
-   2026-08-20 before the other two writers were moved to fixture trees
-   (ledger 43). Same fix, on a harder gate: five registers and two vacuity
-   blocks have to be told they are looking at a fixture.
+8. ~~**`check-org-scoped-fetch.mjs` has no `--root`, so its canary still writes
+   into the live tree.**~~ CLOSED as ledger 47. It was the last of three probe
+   writers; with it moved to a fixture tree the repository no longer rewrites
+   itself under a test run at all, and the `.gitignore` block that existed to
+   catch abandoned probes is gone — replaced by a note saying that if you are
+   about to add such a rule, add `--root` to the gate instead.
+
+   Harder than the other two only because a fixture is a different KIND of tree
+   and three things had to be told so: the vacuity floors (sized for 906 files,
+   unmeetable by two), the staleness checks on five registers (every key names a
+   real file, so all ~540 look stale at once against a fixture), and rule 3's
+   own chain floor. Everything that ENFORCES runs identically, which is what
+   keeps the canary meaningful — and a second fixture was added that must PASS,
+   because a canary satisfied by "any tree fails" is a red that means nothing.
 
 9. **`lint-reachability` does not treat `shared/**` as an export-candidate
    root — and widening it costs 473 decisions.** MEASURED 2026-08-20 rather
@@ -334,8 +339,13 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–46.
+Full reasoning in the cross-pollination ledger, entries 23–47.
 
+- **the repository no longer rewrites itself under a test run** — the last of
+  three gate self-tests that wrote a probe into `server/services/` and deleted
+  it now builds a throwaway tree, so an unrelated suite walking `server/**` can
+  no longer die on a file that vanished mid-walk. The `.gitignore` block for
+  abandoned probes is gone. Ledger 47.
 - **the unknown model was the cheapest thing in the ledger** — `DEFAULT_RATE`,
   the price applied to a model id nothing recognises, was hand-set BELOW ten of
   the table's rows, so the org AI cost ceiling under-counted the spend it exists

@@ -104,19 +104,21 @@ w2-*.png
 persona-prod-parcelcheck-desktop.png
 .playwright-mcp/
 
-# Gate self-test fixture. `orgScopedFetchCoverage.test.ts` writes this into the
-# real tree, runs the real gate against it, and deletes it again — that is how
-# the gate proves it still FIRES rather than only that it passes. An interrupted
-# run leaves it behind, and one such file was committed by accident on
-# 2026-08-19, which broke two gates' "passes on the current tree" case. It is
-# never source.
+# NO GATE WRITES INTO THIS TREE ANY MORE — and the absence is the note.
 #
-# `__measurement_probe__.ts` and `__model_prefix_probe__.ts` were here until
-# 2026-08-20 and are gone because those two gates now take `--root DIR` and
-# their self-tests build a throwaway tree instead. Writing a file into
-# `server/services` while ~69 other suites walk `server/**` in parallel workers
-# made unrelated tests fail with an fs stack trace when the walk listed the
-# probe and the read came after the delete — twice in one day. This entry
-# remains because `check-org-scoped-fetch.mjs` has no `--root` yet; that is on
-# the frontier.
-server/services/__rule3_canary__.ts
+# Three gate self-tests used to write a probe into `server/services/`, run the
+# real gate over it, and delete it again: `__measurement_probe__.ts`,
+# `__model_prefix_probe__.ts` and `__rule3_canary__.ts`. That is a sound way to
+# prove a gate still FIRES rather than only that it passes, and it had two costs
+# that were not obvious until they were paid. An interrupted run leaves the file
+# behind — one was committed by accident on 2026-08-19 and broke two gates'
+# "passes on the current tree" case. And ~69 other suites walk `server/**` in
+# parallel vitest workers, so a walk could list the probe and read it after the
+# delete, killing an unrelated test with an fs stack trace instead of an
+# assertion. That happened twice on 2026-08-20.
+#
+# All three gates now take `--root DIR` and their self-tests build a throwaway
+# tree under `os.tmpdir()`, so there is nothing left to ignore. If you are about
+# to add an ignore rule for a probe file, add `--root` to the gate instead:
+# `orgScopedFetchCoverage.test.ts` pins that no `fs` mutation in it may sit
+# outside its fixture runner, and the same shape is worth copying.
