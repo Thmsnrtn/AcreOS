@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `c649da29` + the tool-honesty commit below, 2026-08-19. Working
-tree clean, 934 test files / 12,551 tests green, 26 gates green.
+Verified at: `353d475e` + the route-guard commit below, 2026-08-20. Working
+tree clean, 935 test files / 12,559 tests green, 26 gates green.
 
 ---
 
@@ -105,24 +105,18 @@ had not verified; those are deliberately absent below.
    KEY and accepts either quote. What remains from this item is the non-chat
    endpoint question, which is now item 12.
 
-4. **Buyer-qualification IDOR.** VERIFIED. `routes-buyer-qualification.ts:174`
-   proves the caller owns `buyer_qualifications` row `:id`, then passes that same
-   integer to `estimateClosingProbability(buyerProfileId, …)`, which resolves
-   `eq(buyerProfiles.id, <a qualification id>)` with no org predicate
-   (`buyerQualificationBot.ts:783`). Independent serial PKs. Leaks budget bands,
-   preferences, preApproved, urgency, and writes a cross-tenant `agent_events`
-   row. It is also functionally wrong for its own owner, which is likely why it
-   was never noticed. `grep -rn buyer-qualification client/src` returns ZERO —
-   the endpoint is dark. Fix when next touching tenancy: return the qualification
-   ROW and pass `qualification.buyerProfileId`; give the service an
-   organizationId.
+4. ~~**Buyer-qualification IDOR.**~~ CLOSED as ledger 40 — and the tenancy debt
+   register already named it. `estimateClosingProbability` was in
+   `check-org-scoped-fetch.mjs`'s BASELINE_UNUSED_ORG, so the fix was confirmed
+   by the gate going stale on its own entry rather than by a test mock. The
+   `propertyId` half was worse than this entry recorded: it came off the query
+   string with no org check at all, so any authenticated user reached any
+   property row. Register now 538.
 
-5. **`POST /api/clear-demo-data` has no permission gate.** `routes-admin.ts:670`
-   mounts it with only `isAuthenticated, getOrCreateOrg` — no
-   `requirePermission`. `member` and `va` are both `canDeleteOrg: false` and
-   both blocked from deleting a single lead, yet can wipe the org's entire FK
-   closure; the confirmation is client-side only. One middleware line. A
-   passenger — bundle it into whatever next touches that file.
+5. ~~**`POST /api/clear-demo-data` has no permission gate.**~~ CLOSED as ledger
+   40 — `requirePermission("canDeleteOrg")`, owner-only. The test pins the RULE
+   over the real permission table (every role denied the unit delete is denied
+   the bulk one), not the one route.
 
 6. **Settings → Account claims a GDPR export and deletion that never happened.**
    The SERVER is honest: `routes-gdpr.ts:104` and `:127` return 202 queue
@@ -148,10 +142,14 @@ had not verified; those are deliberately absent below.
    module with no production caller is invisible to the built-but-unwired gate,
    and widening `PRODUCTION_ROOTS` would change nothing.
 
-9. **539 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
+9. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs
    `campaigns` by primary key alone with the org right there on the object).
+   539 → 538 on 2026-08-19: `buyerQualificationBot::estimateClosingProbability`
+   was one of them, and it was a REAL cross-tenant read of buyer financial data
+   (ledger 40). That is the argument for working this list rather than admiring
+   it — the register is not a list of theoretical shapes.
 
 10. **80 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19,
     not estimated. `lint-reachability`'s identifier pass tokenises raw source, so
@@ -229,8 +227,11 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–39.
+Full reasoning in the cross-pollination ledger, entries 23–40.
 
+- **the guard did not match the authority** — a buyer-profile IDOR the tenancy
+  register already named, and a whole-workspace wipe any member could call.
+  Ledger 40.
 - **`status: "queued"`, nothing queued** — the one Pax tool of 61 that reported
   an effect it never had, deleted; the shape is now scanned for. Ledger 39.
 - **two doors on one operation** — skip-trace's REST door required a PII scope,

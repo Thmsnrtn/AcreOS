@@ -27,7 +27,18 @@ const router = Router();
 // financial + background-check data — or run checks / change status on it — just
 // by guessing the numeric id (cross-tenant IDOR). Returns the parsed id, or null
 // after having already sent the 400/404 response.
-async function requireOwnedQualificationId(req: Request, res: Response): Promise<number | null> {
+/**
+ * The owned qualification ROW, or null after responding 404.
+ *
+ * Returns the row and not just the id, 2026-08-19. The id-only version was an
+ * IDOR generator by shape: `:id` is a `buyer_qualifications` primary key, and
+ * every caller that needed anything ELSE about the qualification had to guess.
+ * `/:id/probability` guessed that it was also the buyer PROFILE id and passed
+ * it straight into a query on `buyer_profiles` — a different table with its own
+ * independent serial sequence. Proving you own row 41 of one table and then
+ * reading row 41 of another is not a tenancy check.
+ */
+async function requireOwnedQualification(req: Request, res: Response) {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { Errors.badRequest(res, "Invalid qualification ID"); return null; }
   const org = req.organization;
@@ -40,7 +51,7 @@ async function requireOwnedQualificationId(req: Request, res: Response): Promise
     Errors.notFound(res, "Qualification");
     return null;
   }
-  return id;
+  return qualification;
 }
 
 
@@ -68,8 +79,9 @@ router.post("/start", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // Get qualification by ID
 router.get("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const qualification = await buyerQualificationBotService.getQualificationById(
       req.organization.id,
       id,
@@ -106,8 +118,9 @@ router.get("/org/high-risk", isAuthenticated, getOrCreateOrg, async (req: Reques
 // Run financial check
 router.post("/:id/financial", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const result = await buyerQualificationBotService.runFinancialCheck(id);
     res.json({ result });
   } catch (err: any) {
@@ -118,8 +131,9 @@ router.post("/:id/financial", isAuthenticated, getOrCreateOrg, async (req: Reque
 // Run background checks
 router.post("/:id/background", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const result = await buyerQualificationBotService.runBackgroundChecks(id);
     res.json({ result });
   } catch (err: any) {
@@ -130,8 +144,9 @@ router.post("/:id/background", isAuthenticated, getOrCreateOrg, async (req: Requ
 // Assess financing readiness
 router.post("/:id/financing", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const result = await buyerQualificationBotService.assessFinancingReadiness(id);
     res.json({ result });
   } catch (err: any) {
@@ -142,8 +157,9 @@ router.post("/:id/financing", isAuthenticated, getOrCreateOrg, async (req: Reque
 // Generate full assessment
 router.post("/:id/assess", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const assessment = await buyerQualificationBotService.generateAssessment(id);
     res.json({ assessment });
   } catch (err: any) {
@@ -154,8 +170,9 @@ router.post("/:id/assess", isAuthenticated, getOrCreateOrg, async (req: Request,
 // Get qualification report
 router.get("/:id/report", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const report = await buyerQualificationBotService.generateQualificationReport(id);
     res.json({ report });
   } catch (err: any) {
@@ -166,12 +183,21 @@ router.get("/:id/report", isAuthenticated, getOrCreateOrg, async (req: Request, 
 // Estimate closing probability
 router.get("/:id/probability", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
-    // estimateClosingProbability(buyerProfileId, propertyId)
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const propertyId = parseInt(String(req.query.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "propertyId query param is required");
-    const probability = await buyerQualificationBotService.estimateClosingProbability(id, propertyId);
+    // The BUYER PROFILE id off the owned row, not the qualification id. Passing
+    // `id` here read `buyer_profiles` by a `buyer_qualifications` key — see
+    // requireOwnedQualification above. The org goes with it so the service can
+    // scope both of its reads; `propertyId` is caller-supplied and was never
+    // checked at all.
+    const probability = await buyerQualificationBotService.estimateClosingProbability(
+      req.organization.id,
+      owned.buyerProfileId,
+      propertyId,
+    );
     res.json({ probability });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -181,8 +207,9 @@ router.get("/:id/probability", isAuthenticated, getOrCreateOrg, async (req: Requ
 // Update qualification status
 router.patch("/:id/status", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = await requireOwnedQualificationId(req, res);
-    if (id === null) return;
+    const owned = await requireOwnedQualification(req, res);
+    if (owned === null) return;
+    const id = owned.id;
     const { status } = req.body;
     if (!status) return Errors.badRequest(res, "status is required");
     // updateQualificationStatus(qualificationId, status) — notes not accepted.

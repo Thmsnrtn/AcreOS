@@ -777,19 +777,36 @@ Generate an overall recommendation.`,
     return report;
   }
 
+  /**
+   * Both reads are ORG-SCOPED, 2026-08-19. They were not: this took a
+   * `buyerProfileId` and a `propertyId` and resolved each by primary key alone,
+   * while its only caller passed a `buyer_qualifications` id as the first
+   * argument — so it read another tenant's buyer profile (budget band,
+   * preApproved, urgency, preferences) whenever the two sequences happened to
+   * line up, and any authenticated user's `?propertyId=` reached any property
+   * in the database. The organizationId is now required rather than optional
+   * precisely so a future caller cannot omit it.
+   */
   async estimateClosingProbability(
+    organizationId: number,
     buyerProfileId: number,
     propertyId: number
   ): Promise<{ probability: number; factors: string[]; confidence: number }> {
     const [profile] = await db.select().from(buyerProfiles)
-      .where(eq(buyerProfiles.id, buyerProfileId));
+      .where(and(
+        eq(buyerProfiles.id, buyerProfileId),
+        eq(buyerProfiles.organizationId, organizationId),
+      ));
 
     if (!profile) {
       throw new Error(`Buyer profile ${buyerProfileId} not found`);
     }
 
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(
+        eq(properties.id, propertyId),
+        eq(properties.organizationId, organizationId),
+      ));
 
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);

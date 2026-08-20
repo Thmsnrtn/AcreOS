@@ -31,6 +31,7 @@ import type { LookupCategory } from "./services/data-source-broker";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requirePermission } from "./utils/permissions";
 import { alertingService } from "./services/alerting";
 import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
@@ -667,7 +668,28 @@ export function registerAdminRoutes(app: Express): void {
   // properties with dependent rows (offers, conversations, campaign
   // responses…) clear cleanly instead of tripping a foreign-key 500 —
   // see server/services/orgDataClear.ts.
-  api.post("/api/clear-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  //
+  // ── canDeleteOrg, added 2026-08-19 ────────────────────────────────────
+  // This route had `isAuthenticated, getOrCreateOrg` and nothing else. It
+  // deletes the org's ENTIRE FK closure — leads, properties, deals, notes,
+  // payments, activity log and everything that transitively blocks them — and
+  // `member`, `va` and `viewer` could all call it. Each of those roles is
+  // blocked from deleting a SINGLE lead (`canDeleteLeads: false`), so the bulk
+  // form of an action was reachable by people denied its unit form. The
+  // confirmation lived only in the client, which is a dialog, not a permission.
+  //
+  // `canDeleteOrg` and not `canDeleteProperties`: this exceeds any per-entity
+  // delete permission, it takes payments with it, and it is irreversible. That
+  // makes it owner-only — an ADMIN may delete properties one at a time and
+  // still cannot empty the workspace in one call, which is the intended
+  // asymmetry rather than an oversight.
+  //
+  // The endpoint NAME is legacy. It does not clear "demo data"; it clears all
+  // data, which is what the Settings UI and its toast already say ("All leads,
+  // properties, deals, notes, and payments were removed from your workspace").
+  // Left as-is because renaming a route the client calls buys nothing here, but
+  // do not read the path as a description of the blast radius.
+  api.post("/api/clear-demo-data", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteOrg"), async (req, res) => {
     try {
       const org = req.organization;
       const { clearOrganizationRecords } = await import("./services/orgDataClear");

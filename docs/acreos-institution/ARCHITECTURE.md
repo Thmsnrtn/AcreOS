@@ -72,7 +72,7 @@ zero `ROW LEVEL SECURITY` / `CREATE POLICY` across `migrations/` and
 | 3 — scoped unit, unscoped query | 127 |
 | function shape, rule 1 / rule 2 | 124 / 78 |
 
-**539 baselined entries.** Each is an unguarded cross-tenant path in principle.
+**538 baselined entries.** Each is an unguarded cross-tenant path in principle.
 Rule 3 exists because rules 1 and 2 both passed a function that shipped a live
 cross-tenant read — it was org-scoped six other ways and the *query* was not.
 Rule-2 entries are the ones to clear first: a caller-supplied id reaching another

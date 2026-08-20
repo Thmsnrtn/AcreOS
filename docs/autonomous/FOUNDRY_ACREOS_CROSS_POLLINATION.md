@@ -2273,6 +2273,75 @@ stub: the entry was removed and a mirror hygiene case added — every name in th
 list must be a real tool — so the next deletion cannot leave a ghost.
 
 
+### 40 — THE GUARD DID NOT MATCH THE AUTHORITY: an IDOR the debt register already named, and a workspace wipe anyone could call
+
+Frontier items 4 and 5, closed together because they are one rule seen twice.
+
+**Proving you own row 41 of one table is not owning row 41 of another.**
+`GET /api/buyer-qualification/:id/probability` verified that `:id` was a
+`buyer_qualifications` row belonging to the caller's org — carefully, through a
+helper whose own comment calls out the IDOR it prevents — and then passed that
+same integer into `estimateClosingProbability(buyerProfileId, propertyId)`,
+which resolved `eq(buyerProfiles.id, <a qualification id>)` with **no org
+predicate**. Two tables, two independent serial sequences. Whenever they lined
+up, the caller read another tenant's buyer profile: budget band, `preApproved`,
+urgency, financing type, acreage preferences. The `propertyId` argument on the
+same call came off the query string and was never checked at all, so any
+authenticated user could also reach any property row in the database.
+
+The fix is the shape, not the patch: the ownership helper now returns the ROW
+rather than the id. The id-only version was an IDOR generator by construction —
+`:id` is one table's key, and every caller needing anything else about the
+qualification had to GUESS. Returning the row means `owned.buyerProfileId` is
+there to be used, and there is nothing to guess.
+
+**The repository's own register already had it.** `check-org-scoped-fetch.mjs`
+carried `"server/services/buyerQualificationBot.ts::estimateClosingProbability"`
+in `BASELINE_UNUSED_ORG` — one of the 539 baselined tenancy entries. Frozen debt
+is a list of live defects with the alarm turned off. That is also how the fix
+was CONFIRMED, and it is better evidence than any mock: adding the org predicate
+made the entry stale, the gate failed demanding its removal, and deleting it
+dropped the register to **538**. The gate reported the fix without being asked
+to.
+
+**The bulk form of a delete was reachable by people denied its unit form.**
+`POST /api/clear-demo-data` carried `isAuthenticated, getOrCreateOrg` and
+nothing else. It deletes the org's ENTIRE FK closure — leads, properties, deals,
+notes, payments, activity log, and every table that transitively blocks them.
+`member`, `va` and `viewer` are each blocked from deleting a single lead
+(`canDeleteLeads: false`) and could all call it. The confirmation lived in the
+client, which is a dialog, not a permission.
+
+Guarded with `requirePermission("canDeleteOrg")` — owner-only, and deliberately
+not `canDeleteProperties`: this exceeds any per-entity delete, it takes payments
+with it, and it is irreversible. An ADMIN may delete properties one at a time
+and still cannot empty the workspace in one call. That asymmetry is the intent,
+not an oversight.
+
+Worth recording without acting on it: the endpoint does not clear "demo data",
+it clears all data. The Settings UI and its toast are honest about that ("All
+leads, properties, deals, notes, and payments were removed from your
+workspace"); only the path is legacy. Left alone because renaming a route the
+client calls buys nothing — but the path is not a description of the blast
+radius, and the comment now says so at the site.
+
+**Exit test.** `routeGuardMatchesAuthority.test.ts`. The IDOR half runs the REAL
+router under supertest with the service mocked, and asserts the arguments: the
+org is passed, the second argument is the buyer profile id (77), and it is NOT
+the qualification id (41). A vacuity case pins that the two differ in the
+fixture, because if they were equal the assertion would pass against the
+defective implementation too. Two regression cases hold the pre-existing guard:
+a foreign qualification still 404s and a missing `propertyId` still 400s, both
+before the service is reached.
+
+The permission half pins the RULE rather than the route: over the real
+permission table, every role denied the unit delete must also be denied
+`canDeleteOrg` — with a counter asserting that some role IS denied the unit
+delete, or the loop would be checking nothing. Plus both vacuity directions on
+the permission itself (not held by everyone, not held by no one), and a source
+case falsified by stripping the guard from a copy of the registration.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

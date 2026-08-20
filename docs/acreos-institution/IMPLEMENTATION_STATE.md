@@ -103,7 +103,7 @@ number in the table.
   down-only. Every vertical has a surface; the gap is the LOOP.
 - **`lint-reachability` does not scan `shared/**`.** A new shared module with no
   production caller is invisible to the built-but-unwired gate.
-- **539 tenancy entries are frozen debt**, across the gate's five down-only
+- **538 tenancy entries are frozen debt**, across the gate's five down-only
   registers: rule 1 **147**, rule 2 **63**, rule 3 **127**, and the
   function-shape pair added 2026-08-16 at **124** and **78**. There is no
   PostgreSQL row-level security anywhere in this repository (zero

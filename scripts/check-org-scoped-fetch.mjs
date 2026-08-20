@@ -341,7 +341,6 @@ const BASELINE_UNUSED_ORG = new Set([
   //   `decisions_inbox_items` rows the same way. These are real tenancy
   //   weaknesses on live paths, not annotation debt.
   "server/services/agentOrchestration.ts::publishEvent",
-  "server/services/buyerQualificationBot.ts::estimateClosingProbability",
   "server/services/campaignOptimizer.ts::optimizeCampaign",
   "server/services/dunning.ts::cancelCase",
   "server/services/dunning.ts::resolveCase",
