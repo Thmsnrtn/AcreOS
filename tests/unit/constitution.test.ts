@@ -384,13 +384,39 @@ describe("constitution registry — enforcement CLAIMS are backed, not just poin
           "if AcreOS now makes the ATR determination, the posture's worked " +
           "example has become an example of the opposite",
       ).toContain("I certify that I have made");
-      expect(src).toMatch(/attestedByUserId/);
+      expect(src).toMatch(/verificationGaps/);
+
+      // ── AND THE CALLER, BECAUSE THE SERVICE ALONE PROVED NOTHING ──────────
+      //
+      // The three assertions above passed while the worked example was broken.
+      // `atrSafeHarbor.ts` did refuse on missing third-party verification — and
+      // the ONLY production caller satisfied that refusal with a hardcoded
+      // array carrying its own `// Stub:` comment: a tax return and a credit
+      // report, both dated today, on every note ever originated. A source scan
+      // of the service cannot see a caller that always satisfies it. Same
+      // lesson as reading a log instead of an exit code, one level up.
+      const gate = read("client/src/components/AtrGate.tsx");
       expect(
-        src,
-        "the ATR path no longer REFUSES when third-party verification is " +
-          "missing. Supplying the determination instead of refusing is exactly " +
-          "the role transfer this posture exists to prevent.",
-      ).toMatch(/verificationGaps/);
+        gate,
+        "AtrGate hardcodes a verification-document array again. That asserts, " +
+          "about a named consumer's credit file, a fact nobody established — " +
+          "the no-fabrication hard stop, inside the posture's own example.",
+      ).not.toMatch(/documentType:\s*["'](?:tax_return|credit_report|w2|pay_stub|voe|bank_statement)["']/);
+      expect(
+        gate,
+        "AtrGate no longer collects the verification records from the operator, " +
+          "so either the refusal is being satisfied artificially again or the " +
+          "field was dropped",
+      ).toMatch(/incomeDoc|creditDoc/);
+
+      // The certifier must come from the session, never the request body.
+      const route = read("server/routes-finance.ts");
+      expect(
+        route,
+        "the ATR route no longer binds attestedBy to the authenticated session. " +
+          "A client-supplied certifier on a §1026.43 record is a signature " +
+          "anyone with a session can forge.",
+      ).toMatch(/attestedBy:\s*`\$\{attestorName\}/);
     });
   });
 

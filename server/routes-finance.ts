@@ -18,6 +18,7 @@ import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import {
   persistAtrDetermination,
+  attestorUserIdToInt,
   AtrIncompleteError,
   type AtrDeterminationInput,
 } from "./services/atrSafeHarbor";
@@ -444,10 +445,30 @@ export function registerFinanceRoutes(app: Express): void {
 
         if (parsed.data.atrDetermination) {
           try {
+            // THE ATTESTOR IS THE SESSION, NEVER THE REQUEST BODY.
+            //
+            // This used to spread the client payload and override only `noteId`
+            // and `organizationId`, so `attestedBy` / `attestedByUserId` arrived
+            // from the browser: any caller with a valid session could name a
+            // colleague, a departed employee or an invented person as the
+            // certifier of a §1026.43 credit determination — a record built to
+            // be read by an examiner or a court years later. The authenticated
+            // user was already in hand two dozen lines up (`getUserId`), used
+            // for the audit-log entry and not for the attestation itself.
+            //
+            // No UX cost and no new approval click: the operator still ticks the
+            // same box. AcreOS simply stops taking their word for who they are.
+            const sessionUser = authedReq.user;
+            const attestorName =
+              [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(" ").trim() ||
+              sessionUser.email ||
+              userId;
             const atrInput: AtrDeterminationInput = {
               ...parsed.data.atrDetermination,
               noteId,
               organizationId: orgId,
+              attestedBy: `${attestorName} (user:${userId})`,
+              attestedByUserId: attestorUserIdToInt(userId),
             };
             await persistAtrDetermination(atrInput);
           } catch (atrErr) {

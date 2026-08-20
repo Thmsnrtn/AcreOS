@@ -118,6 +118,25 @@ export const ATR_ATTESTATION_TEXT =
  * on any missing required field — callers should catch and surface to
  * the operator with a checklist.
  */
+/**
+ * Stable positive 32-bit int for a user UUID, for `attestedByUserId`.
+ *
+ * LIVES SERVER-SIDE ON PURPOSE. This was computed in the browser and sent in
+ * the request body, which meant the certifier of a federal credit determination
+ * was whoever the caller said it was. The route now derives both attestation
+ * identity fields from the authenticated session and ignores anything the body
+ * carries. The column is `integer` while user ids are UUIDs, so this is a
+ * derived reference rather than a foreign key — recorded here plainly, because
+ * `attestedBy` holds the full uuid and is the field to reconstruct from.
+ */
+export function attestorUserIdToInt(userId: string): number {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) {
+    h = (Math.imul(31, h) + userId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 export function validateAtrDetermination(input: AtrDeterminationInput): void {
   const missing: string[] = [];
   if (!Number.isFinite(input.currentOrReasonablyExpectedIncomeCents) || input.currentOrReasonablyExpectedIncomeCents <= 0)

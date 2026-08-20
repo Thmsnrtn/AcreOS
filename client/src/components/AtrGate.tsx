@@ -87,26 +87,16 @@ type ExemptionCode = "raw_land" | "business_purpose" | "commercial_borrower";
 interface AtrGateProps {
   noteId: number;
   /**
-   * Current authenticated user — used to populate the §1026.43 attestation
-   * record. `id` is the user's primary key in the users table (uuid string
-   * in this codebase); we hash it to a positive int for the
-   * attestedByUserId column (which is integer-typed in
-   * atrSafeHarbor.ts). The full UUID is preserved in `attestedBy` along
-   * with the human-readable name for evidentiary reconstruction.
+   * Current authenticated user — DISPLAY ONLY.
+   *
+   * Shown in the affirmation line so the operator can see whose name is going
+   * on the certification. It is no longer sent: the server derives both
+   * `attestedBy` and `attestedByUserId` from the authenticated session, because
+   * a client-supplied certifier on a §1026.43 record is a signature anyone with
+   * a session can forge.
    */
   attestor: { id: string; name: string };
   onActivated?: () => void;
-}
-
-/** Stable 32-bit hash so a user UUID maps to the same int across sessions. */
-function hashStringToInt(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  // Force positive — schema column accepts any int but downstream readers
-  // expect non-negative for user references.
-  return Math.abs(h);
 }
 
 export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
@@ -115,6 +105,26 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
   const [factors, setFactors] = useState<EightFactorState>(EMPTY_FACTORS);
   const [attestationAcknowledged, setAttestationAcknowledged] = useState(false);
   const [exemptionCode, setExemptionCode] = useState<ExemptionCode | "">("");
+  /**
+   * §1026.43(c)(3) verification records — WHAT THE OPERATOR ACTUALLY HAS.
+   *
+   * These two fields used to be a hardcoded array with its own `// Stub:`
+   * comment, shaped to satisfy the server's refusal rather than to describe
+   * anything: `tax_return` + `credit_report`, both dated today, on every note
+   * ever originated. So AcreOS wrote an invented fact about a named consumer's
+   * credit file into a record built to be read by an examiner years later, and
+   * the module's central refusal could never fire.
+   *
+   * The operator holds these documents; AcreOS does not. Asking is the whole
+   * fix, and it is the posture in miniature — AcreOS supplies the form and the
+   * refusal, the customer supplies the facts and certifies them.
+   */
+  const [incomeDoc, setIncomeDoc] = useState<{ documentType: string; receivedDate: string }>(
+    { documentType: "", receivedDate: "" },
+  );
+  const [creditDoc, setCreditDoc] = useState<{ documentType: string; receivedDate: string }>(
+    { documentType: "", receivedDate: "" },
+  );
 
   const allEightFilled =
     factors.factorI_incomeCents.trim() !== "" &&
@@ -127,7 +137,13 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
     factors.factorVII_dtiOrResidualCents.trim() !== "" &&
     factors.factorVIII_creditHistory.trim() !== "";
 
-  const atrReady = allEightFilled && attestationAcknowledged;
+  const verificationRecorded =
+    incomeDoc.documentType !== "" &&
+    incomeDoc.receivedDate.trim() !== "" &&
+    creditDoc.documentType !== "" &&
+    creditDoc.receivedDate.trim() !== "";
+
+  const atrReady = allEightFilled && verificationRecorded && attestationAcknowledged;
   const exemptionReady = exemptionCode !== "";
   const canActivate = mode === "atr" ? atrReady : exemptionReady;
 
@@ -148,15 +164,23 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
                 monthlyDtiOrResidualIncomeCents: Number(factors.factorVII_dtiOrResidualCents),
                 creditHistorySummary: factors.factorVIII_creditHistory.trim(),
                 verificationDocuments: [
-                  // Stub: in a fuller flow, the operator picks docs from a
-                  // file picker tied to the borrower record. The server-side
-                  // validator requires at least income + credit-history docs.
-                  { factor: "factor_i_income", documentType: "tax_return", receivedDate: new Date().toISOString().slice(0, 10) },
-                  { factor: "factor_viii_credit_history", documentType: "credit_report", receivedDate: new Date().toISOString().slice(0, 10) },
+                  {
+                    factor: "factor_i_income",
+                    documentType: incomeDoc.documentType,
+                    receivedDate: incomeDoc.receivedDate,
+                  },
+                  {
+                    factor: "factor_viii_credit_history",
+                    documentType: creditDoc.documentType,
+                    receivedDate: creditDoc.receivedDate,
+                  },
                 ],
                 qmClassification: null,
-                attestedBy: `${attestor.name} (user:${attestor.id})`,
-                attestedByUserId: hashStringToInt(attestor.id),
+                // attestedBy / attestedByUserId are NOT sent. The server derives
+                // both from the authenticated session and ignores the body —
+                // otherwise the certifier of a federal credit determination is
+                // whoever the caller says it is. Kept out of the payload rather
+                // than sent-and-overridden so no reader thinks it is honoured.
                 attestationText: ATR_ATTESTATION_TEXT,
               },
             }
@@ -374,6 +398,85 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
                   data-testid="atr-input-viii"
                 />
               </div>
+            </div>
+
+            {/*
+              §1026.43(c)(3) — the third-party records behind the factors above.
+              These two fields replaced a hardcoded stub that asserted a tax
+              return and a credit report, both dated today, on every note. The
+              operator holds the documents; AcreOS does not, and must not say it
+              does.
+            */}
+            <div className="space-y-3 rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">
+                  Third-party verification records
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  §1026.43(c)(3) requires the income and credit-history factors to
+                  rest on reasonably reliable third-party records. Record what you
+                  verified and when. The documents themselves stay in your own
+                  consumer credit transaction file.
+                </p>
+              </div>
+              {(
+                [
+                  {
+                    key: "income",
+                    label: "Income / assets — factor (i)",
+                    testid: "atr-doc-income",
+                    value: incomeDoc,
+                    set: setIncomeDoc,
+                    types: ["w2", "tax_return", "bank_statement", "pay_stub", "voe", "other"],
+                  },
+                  {
+                    key: "credit",
+                    label: "Credit history — factor (viii)",
+                    testid: "atr-doc-credit",
+                    value: creditDoc,
+                    set: setCreditDoc,
+                    types: ["credit_report", "other"],
+                  },
+                ] as const
+              ).map((row) => (
+                <div key={row.key} className="grid gap-2 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor={`${row.testid}-type`}>{row.label}</Label>
+                    <Select
+                      value={row.value.documentType}
+                      onValueChange={(v) => row.set((d) => ({ ...d, documentType: v }))}
+                    >
+                      <SelectTrigger
+                        id={`${row.testid}-type`}
+                        aria-label={`${row.label} — document type verified`}
+                        data-testid={`${row.testid}-type`}
+                      >
+                        <SelectValue placeholder="Document type verified" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {row.types.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t.replace(/_/g, " ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor={`${row.testid}-date`}>Date received</Label>
+                    <Input
+                      id={`${row.testid}-date`}
+                      type="date"
+                      value={row.value.receivedDate}
+                      onChange={(e) =>
+                        row.set((d) => ({ ...d, receivedDate: e.target.value }))
+                      }
+                      aria-label={`${row.label} — date the record was received`}
+                      data-testid={`${row.testid}-date`}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">

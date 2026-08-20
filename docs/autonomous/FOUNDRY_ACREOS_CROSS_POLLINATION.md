@@ -3382,6 +3382,71 @@ use indirections neither shape covers and remain in the register, which is the
 safe direction: still reported, never hidden.
 
 
+### 53 — THE WORKED EXAMPLE WAS BROKEN, AND IT WAS CITED AS PROOF AN HOUR EARLIER
+
+Commit 3c44506d installed `posture.minimum-necessary-responsibility` and named
+`atrSafeHarbor.ts` as its worked example: Ability-to-Repay under Reg-Z
+§1026.43 is a credit determination about a HUMAN, and AcreOS does not make it —
+it supplies the eight-factor checklist, the DTI arithmetic, a REFUSAL when
+third-party verification is missing, and the retention record, while the customer
+certifies. The commit message called that refusal load-bearing.
+
+The refusal exists. **The only production caller satisfied it unconditionally.**
+`client/src/components/AtrGate.tsx` sent a hardcoded array carrying its own
+comment:
+
+```ts
+// Stub: in a fuller flow, the operator picks docs from a file picker...
+// The server-side validator requires at least income + credit-history docs.
+{ factor: "factor_i_income",           documentType: "tax_return",   receivedDate: <today> },
+{ factor: "factor_viii_credit_history", documentType: "credit_report", receivedDate: <today> },
+```
+
+Written to satisfy the validator rather than to describe anything. So on every
+note ever originated, AcreOS asserted that specific third-party documents existed
+in a NAMED CONSUMER'S credit file — into a record built to be read by an examiner
+or a court years later. That is `truth.no-fabrication`, the standing hard stop,
+violated in the one place held up as the model.
+
+**THE SECOND HALF: THE CERTIFIER WAS FORGEABLE.** `routes-finance.ts` spread the
+client payload and overrode only `noteId` and `organizationId`, so `attestedBy`
+and `attestedByUserId` arrived from the request body. Any caller with a valid
+session could name a colleague, a departed employee or an invented person as the
+certifier of a federal credit determination. The authenticated user was already
+in hand twenty lines up — resolved by `getUserId`, used for the audit-log entry,
+and not for the attestation itself.
+
+**THE FIX IS THE POSTURE IN MINIATURE.** The operator holds those documents;
+AcreOS does not, and must not say it does. The stub is gone, replaced by two
+fields asking what was verified and when — so the server's existing refusal
+actually fires when they are absent. AcreOS supplies the form and the refusal;
+the customer supplies the facts and certifies them. Both attestation identity
+fields are now derived server-side from the session and are no longer sent by the
+client at all — kept OUT of the payload rather than sent-and-overridden, so no
+reader believes the body is honoured. No UX cost, no new approval click: the
+operator ticks the same box; AcreOS stops taking their word for who they are.
+
+**WHY THE GATE MISSED IT, which is the transferable part.** The posture's test
+read `verificationGaps` out of `atrSafeHarbor.ts` and passed the entire time. **A
+source scan of a service cannot see a caller that always satisfies it.** That is
+the same defect as reading an empty log instead of an exit code (ledger 52's
+note), and as `publicMaturityOf()` having no production caller — one level up
+each time. The rule this repo already had says a canonical function needs
+authoritative semantics AND real production adoption; this adds the case where
+adoption exists and is *fraudulent*.
+
+The test now reads the CALLER: it fails if `AtrGate` hardcodes a document type
+again, if the operator-entered fields disappear, or if the route stops binding
+`attestedBy` to the session. Two mutations watched failing first — restore the
+stub, and revert the attestor to the request body.
+
+**Found by the responsibility audit** (109 agents over 10 capability families,
+110 findings, 49 actionable claimed, 37 surviving two adversarial reviewers).
+This was finding 17 of 37, and it is the one that most needed to be true: a
+doctrine whose worked example is broken is worse than no doctrine, because it
+teaches the wrong shape while reading as governance.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
