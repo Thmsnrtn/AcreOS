@@ -38,7 +38,11 @@ export type InvariantCategory =
   | "expansion-gate" // the approved growth ladder (marketplace/API triggers)
   | "data-plane" // gated data planes (residential comps)
   | "rails" // BYO send rails; platform sender for system mail only
-  | "ai-surface"; // Pax stays ambient, never a separate destination
+  | "ai-surface" // Pax stays ambient, never a separate destination
+  // The governing POSTURE that several hard stops above are instances of.
+  // Not itself a ban: it is the rule that decides which role AcreOS takes when
+  // a new capability is designed, and it carries explicit exceptions.
+  | "responsibility-posture";
 
 /** How strongly a decision is backed by automation. */
 export type EnforcementKind =
@@ -65,10 +69,74 @@ export interface ConstitutionInvariant {
   /** Where the decision is recorded (its authoritative source). */
   source: string;
   enforcement: Enforcement;
+  /**
+   * Ids of invariants that are INSTANCES of this one.
+   *
+   * Only a `responsibility-posture` uses this. A posture is not enforceable by
+   * itself — "prefer the customer as principal" has no single chokepoint — but
+   * the specific rulings it generated ARE, and a posture whose instances have
+   * been deleted or downgraded has quietly stopped meaning anything. Naming
+   * them makes that checkable: constitution.test.ts requires every id here to
+   * resolve AND to be machine-enforced.
+   */
+  instances?: readonly string[];
 }
 
 export const CONSTITUTION: readonly ConstitutionInvariant[] = [
   // ── Hard stops (founder-only forever) ──────────────────────────────────
+  {
+    id: "posture.minimum-necessary-responsibility",
+    title: "Assume only the responsibility the product actually requires",
+    statement:
+      "AcreOS assumes only the responsibility necessary to provide exceptional property-investment intelligence, orchestration, continuity and governed automation. Where equivalent customer value can be achieved while the CUSTOMER or a SPECIALIST PROVIDER remains the principal, custodian, sender, counterparty or regulated actor, that architecture is preferred. AcreOS owns intelligence, canonical context, evidence and provenance, deterministic computation, Decision Memory, policy and orchestration, workflow state, governed automation, receipts and outcome learning. It does not take on custody of customer money, escrow, creditor-of-record status, sender identity where a customer-owned sender is appropriate, contractual counterparty status, licensed professional roles, consumer-reporting roles or regulated professional judgment merely because doing so would be convenient to implement.",
+    category: "responsibility-posture",
+    source: "Founder direction 2026-08-20 (Minimum Necessary Responsibility)",
+    instances: [
+      "hard-stop.no-platform-money-custody",
+      "hard-stop.legal-signing",
+      "hard-stop.spend-over-500",
+      "hard-stop.customer-data-deletion",
+      "hard-stop.ads-founder-only-rail",
+      "rails.byo-not-refront",
+    ],
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/constitution.test.ts",
+        "server/services/atrSafeHarbor.ts",
+      ],
+      note:
+        "A POSTURE, NOT A BAN, and the difference is the whole entry. It has " +
+        "explicit exceptions: working architecture is NOT replaced merely to " +
+        "satisfy it when the current factual role is already narrow and " +
+        "defensible, and it is never an argument for weaker platform security, " +
+        "weaker tenant isolation, less truthfulness, or more manual approval " +
+        "clicks — standing authority, scoped grants, budgets, expiry and " +
+        "revocation are how AcreOS stays highly autonomous WITHOUT becoming " +
+        "the customer's business principal. AcreOS remains fully responsible " +
+        "for the integrity, security, truthfulness and lawful operation of the " +
+        "platform itself; this posture allocates ROLES, it does not contract " +
+        "away law that applies to AcreOS. " +
+        "ENFORCEMENT IS INDIRECT AND HONEST ABOUT BEING SO. There is no single " +
+        "chokepoint for 'prefer the customer as principal'. What IS checkable " +
+        "is that the rulings this posture generated remain in force: " +
+        "constitution.test.ts requires every id in `instances` to resolve and " +
+        "to be machine-enforced, so a posture whose instances were deleted or " +
+        "downgraded to prose fails rather than standing as decoration. " +
+        "THE WORKED EXAMPLE IS ALSO CHECKED, because doctrine with a real " +
+        "example survives and doctrine without one rots: atrSafeHarbor.ts is " +
+        "Ability-to-Repay under Reg-Z 1026.43 — a credit determination about a " +
+        "HUMAN — and AcreOS does not make it. It supplies the eight-factor " +
+        "checklist, the DTI arithmetic, a REFUSAL when third-party " +
+        "verification is missing, and the retention record, while " +
+        "ATR_ATTESTATION_TEXT reads 'I certify that I have made a reasonable " +
+        "and good faith determination...' and is signed by a named user at the " +
+        "customer. The customer stays the creditor. The test asserts that " +
+        "shape still holds, so a change making AcreOS the determiner breaks " +
+        "the doctrine's own example.",
+    },
+  },
+
   {
     id: "hard-stop.spend-over-500",
     title: "Spends over $500 are founder-only",

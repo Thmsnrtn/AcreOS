@@ -85,6 +85,64 @@ cross-tenant read — it was org-scoped six other ways and the *query* was not.
 Rule-2 entries are the ones to clear first: a caller-supplied id reaching another
 tenant's row is the shape that actually leaks.
 
+## Which role AcreOS takes
+
+The governing question when a capability is designed is not "can we build it"
+but **which role does building it this way put AcreOS in**. The standing answer,
+recorded machine-readably as `posture.minimum-necessary-responsibility` in
+`shared/governance/constitution.ts`:
+
+> AcreOS assumes only the responsibility necessary to provide exceptional
+> property-investment intelligence, orchestration, continuity and governed
+> automation. Where equivalent customer value can be achieved while the CUSTOMER
+> or a SPECIALIST PROVIDER remains the principal, custodian, sender, counterparty
+> or regulated actor, that architecture is preferred.
+
+AcreOS owns: intelligence, canonical investment context, evidence and provenance,
+deterministic computation, strategy reasoning, Decision Memory, policy and
+orchestration, workflow state, governed automation, receipts and reconciliation,
+outcome learning.
+
+AcreOS does not take on, merely because it would be convenient to implement:
+custody of customer money; escrow; creditor-of-record status; sender identity
+where a customer-owned sender is appropriate; contractual counterparty status;
+licensed broker/appraiser/lawyer/accountant roles; consumer-reporting roles;
+regulated professional judgment.
+
+**This is a posture, and it has explicit exceptions — read them before acting on
+it.** It is *not* an argument for replacing working architecture whose current
+factual role is already narrow and defensible. It is *not* an argument for weaker
+platform security, weaker tenant isolation, or less truthfulness — AcreOS remains
+fully responsible for the integrity and lawful operation of the platform itself,
+and allocating roles never contracts away law that applies to AcreOS. And it is
+emphatically *not* an argument for adding manual approval clicks: high autonomy
+is the goal. Standing authority, scoped grants, budgets, expiry and revocation are
+how AcreOS operates continuously without silently becoming the customer's
+business principal.
+
+**The worked example, because doctrine without one rots.**
+`server/services/atrSafeHarbor.ts` handles Ability-to-Repay under Reg-Z
+§1026.43 — a credit determination about a *human being*. AcreOS does not make it.
+It supplies the eight-factor checklist, the DTI arithmetic, a **refusal** when the
+third-party verification §1026.43(c)(3) requires is absent, and the retention
+record. `ATR_ATTESTATION_TEXT` reads *"I certify that I have made a reasonable and
+good faith determination…"* and is signed by a named user at the customer. The
+customer stays the creditor; AcreOS stays the instrument. Compare new capabilities
+against that shape.
+
+`constitution.test.ts` checks both halves: every hard stop the posture names as an
+instance must still resolve and still be machine-enforced, and the ATR example
+must still carry its first-person certification and its refusal. A posture whose
+instances were deleted would otherwise keep reading as governance while meaning
+nothing.
+
+**A useful boundary for the investment side**, which this posture does not soften:
+AcreOS may help an investor benefit from informational and operational
+*advantage*. It may not manufacture a counterparty's informational *disadvantage*
+through deception or fabricated facts. Internal evidence supporting an aggressive
+offer is the product working; telling a seller that offer is "verified market
+value" is not.
+
 ## Providers
 
 `server/services/providers/` is the documented registry — tier filtering, credit

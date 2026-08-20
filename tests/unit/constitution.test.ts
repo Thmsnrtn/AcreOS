@@ -317,6 +317,83 @@ describe("constitution registry — enforcement CLAIMS are backed, not just poin
     ).toEqual([]);
   });
 
+  // ── A responsibility POSTURE is only real while its instances are ─────────
+
+  describe("posture.minimum-necessary-responsibility", () => {
+    /**
+     * MINIMUM NECESSARY RESPONSIBILITY is a posture, not a ban: "where equivalent
+     * customer value can be achieved while the CUSTOMER or a SPECIALIST remains
+     * the principal, custodian, sender, counterparty or regulated actor, prefer
+     * that architecture". There is no single chokepoint for a preference, and
+     * pretending otherwise would make it decoration.
+     *
+     * What IS checkable is that the specific rulings the posture generated
+     * remain in force, and that its worked example still has the shape it
+     * claims. A posture whose instances have been deleted or quietly downgraded
+     * to prose has stopped meaning anything while still reading as governance —
+     * which is the exact failure this whole registry exists to prevent.
+     */
+    const posture = invariantById("posture.minimum-necessary-responsibility");
+
+    it("is registered, and names the hard stops it is the general case of", () => {
+      expect(posture, "the responsibility posture is gone from the constitution").toBeDefined();
+      expect(posture!.category).toBe("responsibility-posture");
+      expect(
+        posture!.instances?.length ?? 0,
+        "the posture names no instances, so nothing about it is checkable",
+      ).toBeGreaterThanOrEqual(5);
+    });
+
+    it("every instance it names resolves to a real invariant", () => {
+      const missing = (posture!.instances ?? []).filter((id) => !invariantById(id));
+      expect(
+        missing,
+        `the posture names instances that no longer exist: ${missing.join(", ")}. ` +
+          `Either the ruling was removed — in which case the posture is weaker ` +
+          `than it reads — or the id drifted.`,
+      ).toEqual([]);
+    });
+
+    it("every instance is MACHINE-ENFORCED, not prose", () => {
+      // The load-bearing one. A posture backed by six prose-only rulings is a
+      // sentence about a sentence.
+      const weak = (posture!.instances ?? [])
+        .map((id) => invariantById(id)!)
+        .filter((inv) => inv.enforcement.kind === "prose-only")
+        .map((inv) => inv.id);
+      expect(
+        weak,
+        `the posture rests on instances with no automated backstop: ${weak.join(", ")}`,
+      ).toEqual([]);
+    });
+
+    it("its worked example still puts the CUSTOMER in the regulated role", () => {
+      // Doctrine with a real example in the repo survives; doctrine without one
+      // rots. atrSafeHarbor.ts is Ability-to-Repay under Reg-Z 1026.43 — a
+      // credit determination about a HUMAN — and AcreOS does not make it.
+      //
+      // Asserted on the ATTESTATION TEXT and the REFUSAL, not on the filename,
+      // because those two are what actually place the role: a first-person
+      // certification by a named user at the customer, and a hard refusal when
+      // the third-party verification 1026.43(c)(3) requires is absent. If a
+      // change made AcreOS the determiner, this fails.
+      const src = read("server/services/atrSafeHarbor.ts");
+      expect(
+        src,
+        "atrSafeHarbor no longer carries a first-person customer certification — " +
+          "if AcreOS now makes the ATR determination, the posture's worked " +
+          "example has become an example of the opposite",
+      ).toContain("I certify that I have made");
+      expect(src).toMatch(/attestedByUserId/);
+      expect(
+        src,
+        "the ATR path no longer REFUSES when third-party verification is " +
+          "missing. Supplying the determination instead of refusing is exactly " +
+          "the role transfer this posture exists to prevent.",
+      ).toMatch(/verificationGaps/);
+    });
+  });
+
   // ── The test must be a real test (direct port of F-15-2) ───────────────
   it("every test ref actually asserts something (not a hollow file)", () => {
     const hollow: string[] = [];
