@@ -8,8 +8,9 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `63b29bbf` + the skip-trace-deletion commit below, 2026-08-20.
-Working tree clean, 939 test files / 12,595 tests green, 26 gates green.
+Verified at: `62c5c8cd`, 2026-08-20. Working tree clean at that commit;
+940 test files / 12,609 tests green; `npm run check` 26/26 green (tsc, the
+test-typecheck ratchet, and 24 lint gates).
 
 ---
 
@@ -155,20 +156,79 @@ had not verified; those are deliberately absent below.
    keeps the canary meaningful — and a second fixture was added that must PASS,
    because a canary satisfied by "any tree fails" is a red that means nothing.
 
-9. **`lint-reachability` does not treat `shared/**` as an export-candidate
-   root — and widening it costs 473 decisions.** MEASURED 2026-08-20 rather
-   than guessed: adding `shared` to `EXPORT_SOURCE_DIRS` moves
-   unreachedExports 1395 → 1566 (+171), moduleOrphans 28 → 33 (+5), and
-   opaqueExports 120 → 417 (+297). `shared` IS in `PRODUCTION_ROOTS` (so it
-   counts as a call site); it is `EXPORT_SOURCE_DIRS` that bounds what can be
-   reported unreached, so a new shared module with no production caller is
-   invisible to the built-but-unwired gate today.
+9. **`lint-reachability` cannot see `shared/**`, and the family split cut the
+   cost of fixing that from 473 decisions to ~58.** RE-MEASURED 2026-08-20 after
+   ledger 45. The old figure — "adding `shared` to `EXPORT_SOURCE_DIRS` moves
+   unreached +171, orphans +5, opaque +297; 473 in one commit; do not start it
+   alongside other work" — was measured against the MERGED family and is stale.
+   Against HEAD:
 
-   The ratchet is down-only, so this cannot land in halves: every one of those
-   473 has to be adjudicated (delete / wire / allowlist) in the commit that
-   widens the roots. The opaque jump is the bulk of it and the cheapest part —
-   `shared/` is heavily re-exported, so much of it is the gate's own blind spot
-   rather than dead code.
+   | family | now | with `shared` | delta |
+   |---|---|---|---|
+   | unreached-exports | 390 | 443 | **+53** |
+   | internal-only-exports | 1188 | 1610 | +422 |
+   | module-orphans | 30 | 35 | **+5** |
+   | opaque-exports | 23 | 37 | +14 |
+
+   The +422 is `shared/` doing exactly what a shared layer does — exporting
+   helpers its own module uses — and it lands in the family whose remedy is a
+   keyword, carries no runtime risk, and is worked down over time rather than
+   adjudicated one by one. **The real adjudication is 58 items**, and the
+   reduction is not a trick: splitting the families is what made the cheap
+   population separable from the expensive one.
+
+   **WHAT IS BEHIND IT, and it is the reason to do this.** `shared` IS in
+   `PRODUCTION_ROOTS` (so shared files count as call sites); it is
+   `EXPORT_SOURCE_DIRS` that bounds what can be REPORTED unreached. So a shared
+   module nothing loads is invisible to the built-but-unwired gate — and
+   `shared/` is where the canonical registries live. Measured with the linter's
+   own comment-stripped import scan and confirmed independently:
+
+   - `shared/architecture/canon.ts` — **MODULE ORPHAN**. 7 layers, 15 laws, 18
+     canonical objects, 12 fitness functions; named in this file's own "where
+     truth lives" list as source #3 with the instruction *"Extend that registry;
+     do not re-derive it."* Production importers: **NONE**. Only
+     `canonicalArchitecture.test.ts` and `opportunity.test.ts`.
+   - `shared/governance/constitution.ts` — **MODULE ORPHAN**. Production
+     importers: **NONE**. Only four test files.
+   - `shared/governance/statuteRegister.ts` — **MODULE ORPHAN**. Same.
+
+   **DO NOT READ THAT AS "THREE DEAD FILES."** The honest reading is narrower
+   and more useful: these are INDEXES OF ENFORCEMENT, not enforcement. Each
+   entry points at where the rule actually lives (code-invariant / ratchet-test
+   / lint), and each has a drift-prevention test that checks every pointer still
+   resolves. That satisfies two of the second law's three legs — authoritative
+   semantics and drift prevention — and forgoes production adoption because
+   there may be nothing at runtime to adopt. **That is a defensible stance that
+   has never been written down as a decision**, and the gate's inability to see
+   `shared/` is why nobody has had to state it.
+
+   **(ii) IS ALREADY ANSWERED, and it answers in the registries' favour.** The
+   second law's actual danger is not "no callers" — it is production computing
+   the same rule INDEPENDENTLY, which is what made `publicMaturityOf()` a defect
+   (the landing re-implemented its one-line body inline). Searched 2026-08-20:
+   nothing in `server/` or `client/src/` enumerates `CANONICAL_LOOP`, the seven
+   layers, the fifteen laws or the eighteen objects on its own; the only
+   production mention of `CANONICAL_OBJECTS` anywhere is a comment in
+   `enrichmentToClaims.ts` pointing AT canon rather than restating it. And the
+   constitution's entries are pointers to enforcement sites
+   (`customerMoneyRouting.ts`, `PROTECTED_DOOR_ROUTES`, the ratchet tests), not
+   copies of them — an index and its targets, which is the right relationship
+   and the opposite of duplication.
+
+   So the work is two things, in order: (i) decide and RECORD that a test-only
+   canonical registry is the intended shape, and allowlist the three with that
+   reason — which is precisely what the allowlist exists for and what nobody has
+   had to write down while the gate was blind to `shared/`; (ii) widen
+   `EXPORT_SOURCE_DIRS` and adjudicate the remaining ~50, which are ordinary
+   exports, not governance.
+
+   Widening a gate's LENS is not the same operation as a count regressing, and
+   the baselines must not simply be raised to absorb it. The precedent to copy
+   is `check-org-scoped-fetch`'s 2026-08-16 widening from method-shape to
+   function-shape: the existing registers did not move at all and the
+   newly-visible population was frozen in registers of its own. Do that here —
+   per-root counts — rather than a +494 bump that erases the server signal.
 
 10. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
