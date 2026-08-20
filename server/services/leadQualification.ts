@@ -384,7 +384,7 @@ export async function generateSuggestedResponse(
   const [lead] = await db
     .select()
     .from(leads)
-    .where(eq(leads.id, leadId))
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
     .limit(1);
   
   if (!lead) {
@@ -395,7 +395,10 @@ export async function generateSuggestedResponse(
     .select()
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-    .where(eq(conversations.leadId, leadId))
+    .where(and(
+      eq(conversations.leadId, leadId),
+      eq(conversations.organizationId, organizationId),
+    ))
     .orderBy(desc(messages.createdAt))
     .limit(10);
   

@@ -105,7 +105,7 @@ export async function onDealClosed(
 
 // ── Confidence Intervals ────────────────────────────────────────────
 
-export async function computeConfidenceIntervals(orgId?: number): Promise<ConfidenceInterval[]> {
+export async function computeConfidenceIntervals(orgId: number): Promise<ConfidenceInterval[]> {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
   const dimensions = ["location", "physical", "legal", "financial", "environmental", "market"];
 
@@ -113,10 +113,21 @@ export async function computeConfidenceIntervals(orgId?: number): Promise<Confid
 
   for (const dim of dimensions) {
     // Gather recent LCS scores for this dimension
+    // SCOPED THROUGH `properties`, because `land_credit_scores` deliberately
+    // carries no organization_id of its own — migration 0152 moved it to parcel
+    // identity so network cohort benchmarks could be assembled without walking
+    // org structure. The org-owned row is the property, so that is where the
+    // predicate belongs. An org with fewer than five scored parcels now gets
+    // `sampleSize: 0`, which is the honest answer and better than a
+    // platform-wide statistic returned under their name.
     const scores = await db.select({
       score: sql<number>`(${landCreditScores.scoreBreakdown}->>${dim})::float`,
     }).from(landCreditScores)
-      .where(gte(landCreditScores.createdAt, ninetyDaysAgo))
+      .innerJoin(properties, eq(landCreditScores.propertyId, properties.id))
+      .where(and(
+        gte(landCreditScores.createdAt, ninetyDaysAgo),
+        eq(properties.organizationId, orgId),
+      ))
       .limit(500);
 
     const values = scores.map(s => s.score).filter(v => v != null && isFinite(v));
@@ -145,7 +156,7 @@ export async function computeConfidenceIntervals(orgId?: number): Promise<Confid
 
 // ── Backtest Accuracy ───────────────────────────────────────────────
 
-export async function runBacktestAccuracy(orgId?: number): Promise<BacktestResult> {
+export async function runBacktestAccuracy(orgId: number): Promise<BacktestResult> {
   const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
 
   // Get deals with associated LCS scores
@@ -157,6 +168,7 @@ export async function runBacktestAccuracy(orgId?: number): Promise<BacktestResul
     acceptedAmount: deals.acceptedAmount,
   }).from(deals)
     .where(and(
+      eq(deals.organizationId, orgId),
       gte(deals.updatedAt, sixMonthsAgo),
       sql`${deals.status} IN ('closed', 'cancelled')`
     ))
@@ -222,14 +234,17 @@ export async function runBacktestAccuracy(orgId?: number): Promise<BacktestResul
 
 // ── Seller Intent Calibration ───────────────────────────────────────
 
-export async function calibrateSellerIntent(orgId?: number): Promise<SellerIntentCalibration> {
+export async function calibrateSellerIntent(orgId: number): Promise<SellerIntentCalibration> {
   const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000);
 
   const predictions = await db.select({
     leadId: sellerIntentPredictions.leadId,
     intentScore: sellerIntentPredictions.intentScore,
   }).from(sellerIntentPredictions)
-    .where(gte(sellerIntentPredictions.createdAt, sixtyDaysAgo))
+    .where(and(
+      eq(sellerIntentPredictions.organizationId, orgId),
+      gte(sellerIntentPredictions.createdAt, sixtyDaysAgo),
+    ))
     .limit(500);
 
   if (predictions.length < 10) {
@@ -243,7 +258,7 @@ export async function calibrateSellerIntent(orgId?: number): Promise<SellerInten
   for (const leadId of leadIds) {
     const [lead] = await db.select({ status: leads.status, lastContactedAt: leads.lastContactedAt })
       .from(leads)
-      .where(eq(leads.id, leadId))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)))
       .limit(1);
 
     if (lead && (lead.status === "contacted" || lead.status === "qualified" || lead.status === "converted")) {
@@ -266,7 +281,7 @@ export async function calibrateSellerIntent(orgId?: number): Promise<SellerInten
 
 // ── Radar Calibration ───────────────────────────────────────────────
 
-export async function calibrateRadar(orgId?: number): Promise<RadarCalibration> {
+export async function calibrateRadar(orgId: number): Promise<RadarCalibration> {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
 
   // Get opportunity scores and match against deal outcomes
@@ -275,7 +290,10 @@ export async function calibrateRadar(orgId?: number): Promise<RadarCalibration> 
     // opportunity_scores exposes `score`, not totalScore.
     totalScore: opportunityScores.score,
   }).from(opportunityScores)
-    .where(gte(opportunityScores.createdAt, ninetyDaysAgo))
+    .where(and(
+      eq(opportunityScores.organizationId, orgId),
+      gte(opportunityScores.createdAt, ninetyDaysAgo),
+    ))
     .limit(500);
 
   const buckets = [
@@ -291,7 +309,10 @@ export async function calibrateRadar(orgId?: number): Promise<RadarCalibration> 
     // Check if there's a deal for this property
     const [deal] = await db.select({ status: deals.status })
       .from(deals)
-      .where(eq(deals.propertyId, score.propertyId))
+      .where(and(
+        eq(deals.propertyId, score.propertyId),
+        eq(deals.organizationId, orgId),
+      ))
       .orderBy(desc(deals.updatedAt))
       .limit(1);
 
@@ -329,7 +350,7 @@ export async function calibrateRadar(orgId?: number): Promise<RadarCalibration> 
 
 // ── Full Calibration Report ─────────────────────────────────────────
 
-export async function runFullCalibration(orgId?: number): Promise<FullCalibrationReport> {
+export async function runFullCalibration(orgId: number): Promise<FullCalibrationReport> {
   const [lcs, confidence, backtest, sellerIntent, radar] = await Promise.all([
     runWeeklyCalibration(orgId),
     computeConfidenceIntervals(orgId),

@@ -322,6 +322,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.id);
+      const org = req.organization;
       const user = req.user as any;
       const { resolution, rating, feedback, addToKnowledgeBase, publishable } = req.body;
       // Accept either name; publishable wins when both present.
@@ -337,6 +338,15 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       if (!ticket) {
         return Errors.notFound(res, "Ticket");
+      }
+      // Org-scope guard: a customer may only resolve their own org's tickets.
+      // THIS LINE WAS MISSING while the four sibling handlers in this file (the
+      // read at :103, the update at :153, and :235/:272) all performed it — so
+      // this one route let any authenticated user write a resolution onto another
+      // tenant's ticket and then feed that tenant's text into Pax's learning
+      // corpus. Found by the 2026-08-20 rule-2 audit; see ledger 49.
+      if (ticket.organizationId !== org.id && !org.isFounder) {
+        return Errors.forbidden(res);
       }
       
       // Mark ticket as resolved by human
@@ -359,7 +369,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       // Trigger Pax self-learning from this resolution
       try {
         const { paxLearningService } = await import("./services/paxLearning");
-        learningResult = await paxLearningService.learnFromHumanResolution(ticketId);
+        learningResult = await paxLearningService.learnFromHumanResolution(org.id, ticketId);
         logger.info(`[support] Pax learned from human resolution: ${JSON.stringify(learningResult)}`);
         
         // Tahoe E3 Sub-2 — if the resolver marked the resolution as

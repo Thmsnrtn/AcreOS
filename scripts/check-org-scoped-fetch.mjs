@@ -335,18 +335,34 @@ const BASELINE_UNUSED_ORG = new Set([
   // two classes map exactly onto the two rules:
   //   RULE 2 (this register) — has an org and resolves by id anyway, the
   //   shape that lets a caller-supplied id reach another tenant's row.
-  //   campaignOptimizer.optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY
-  //   ONLY while `campaign.organizationId` sits two lines above and IS used
-  //   for the other write; autonomyHealth.gradeRecentDecisions resolves
-  //   `decisions_inbox_items` rows the same way. These are real tenancy
-  //   weaknesses on live paths, not annotation debt.
+  //
+  // ── CORRECTED 2026-08-20, AND BOTH WORKED EXAMPLES WERE WRONG ─────────────
+  // This paragraph used to name `campaignOptimizer.optimizeCampaign` and
+  // `autonomyHealth.gradeRecentDecisions` as "real tenancy weaknesses on live
+  // paths, not annotation debt". A full adjudication of all 140 rule-2 entries
+  // (cross-pollination ledger 49) checked both, and neither holds:
+  //
+  //   • optimizeCampaign takes a `Campaign` ROW, not an id. Its only route
+  //     caller does `storage.getCampaign(org.id, campaignId)` first
+  //     (routes-campaigns.ts:1318), so the row is proven owned before the
+  //     primary-key UPDATE runs. Textbook class (b).
+  //   • gradeRecentDecisions takes NO arguments and sweeps every org on
+  //     purpose. Its callers are a cron and a `requireFounder` route
+  //     (routes-founder-intelligence.ts:1799). Platform-wide by design.
+  //
+  // Two false examples at the top of a register are worse than none: this
+  // paragraph is what a reader uses to decide how to triage the list, and it was
+  // teaching them to look for the wrong thing. The audit's real numbers, for
+  // calibration: of 140 entries, SIX were confirmed live cross-tenant paths (all
+  // fixed and removed from these registers in that commit), 35 claims were
+  // raised and refuted, and the large majority were class (b). Expect a low hit
+  // rate, and verify every claim against the CALLER, not the signature.
   "server/services/agentOrchestration.ts::publishEvent",
   "server/services/campaignOptimizer.ts::optimizeCampaign",
   "server/services/dunning.ts::cancelCase",
   "server/services/dunning.ts::resolveCase",
   "server/services/dunning.ts::retryPayment",
   "server/services/leadNurturer.ts::processLeadsForOrg",
-  "server/services/paxLearning.ts::learnFromHumanResolution",
   "server/services/sequenceOptimizer.ts::applyWinningVariant",
   "server/services/sequenceOptimizer.ts::identifyBestPerformingSegments",
   // ── RULE 2 BASELINE, frozen 2026-08-13 ────────────────────────────────────
@@ -419,8 +435,6 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/storage/customizationRepo.ts::upsertNotificationPreference",
   "server/storage/dealRepo.ts::updateDeal",
   "server/storage/integrationsRepo.ts::upsertOrganizationIntegration",
-  "server/storage/mailRepo.ts::setDefaultEmailSenderIdentity",
-  "server/storage/mailRepo.ts::setDefaultMailSenderIdentity",
   "server/storage/supportOpsRepo.ts::getSupportCaseForPlatformOps",
   "server/storage/tasksRepo.ts::createNextRecurringTask",
 ]);
@@ -658,11 +672,28 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   // two classes map exactly onto the two rules:
   //   RULE 2 (this register) — has an org and resolves by id anyway, the
   //   shape that lets a caller-supplied id reach another tenant's row.
-  //   campaignOptimizer.optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY
-  //   ONLY while `campaign.organizationId` sits two lines above and IS used
-  //   for the other write; autonomyHealth.gradeRecentDecisions resolves
-  //   `decisions_inbox_items` rows the same way. These are real tenancy
-  //   weaknesses on live paths, not annotation debt.
+  //
+  // ── CORRECTED 2026-08-20, AND BOTH WORKED EXAMPLES WERE WRONG ─────────────
+  // This paragraph used to name `campaignOptimizer.optimizeCampaign` and
+  // `autonomyHealth.gradeRecentDecisions` as "real tenancy weaknesses on live
+  // paths, not annotation debt". A full adjudication of all 140 rule-2 entries
+  // (cross-pollination ledger 49) checked both, and neither holds:
+  //
+  //   • optimizeCampaign takes a `Campaign` ROW, not an id. Its only route
+  //     caller does `storage.getCampaign(org.id, campaignId)` first
+  //     (routes-campaigns.ts:1318), so the row is proven owned before the
+  //     primary-key UPDATE runs. Textbook class (b).
+  //   • gradeRecentDecisions takes NO arguments and sweeps every org on
+  //     purpose. Its callers are a cron and a `requireFounder` route
+  //     (routes-founder-intelligence.ts:1799). Platform-wide by design.
+  //
+  // Two false examples at the top of a register are worse than none: this
+  // paragraph is what a reader uses to decide how to triage the list, and it was
+  // teaching them to look for the wrong thing. The audit's real numbers, for
+  // calibration: of 140 entries, SIX were confirmed live cross-tenant paths (all
+  // fixed and removed from these registers in that commit), 35 claims were
+  // raised and refuted, and the large majority were class (b). Expect a low hit
+  // rate, and verify every claim against the CALLER, not the signature.
   "server/services/autonomyHealth.ts::gradeRecentDecisions",
   "server/services/customerSupportAutoResolver.ts::sophieGeniusMode",
   "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch",
@@ -691,20 +722,25 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/commissionService.ts::saveCommissionConfig",
   "server/services/commissionService.ts::saveCommissionRecordsStore",
   "server/services/commissionService.ts::saveSplitConfig",
-  "server/services/comms/tracking-pool.ts::assignNumber",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment",
   "server/services/dealFeedEngine.ts::getTodaysFeed",
-  "server/services/dealHandoffService.ts::generateAtlasBriefing",
   "server/services/dealHandoffService.ts::saveHandoffsStore",
-  "server/services/dealHandoffService.ts::sendHandoffNotification",
   "server/services/disclosureTimingDispatcher.ts::resolveRecipientEmail",
   "server/services/dueDiligence.ts::generateDueDiligenceReport",
   "server/services/form1099Batch.ts::generate1099Batch",
+  // KEPT ON PURPOSE, AND ADDING A PREDICATE HERE WOULD BE A BUG. `resolveEntityOrg`
+  // IS the ownership oracle: it answers "which org owns this entity?" by selecting
+  // the org COLUMN by primary key, and returns `row?.orgId ?? null`. It takes no
+  // expected org — there is nothing in scope to filter by, and filtering would
+  // collapse "belongs to org 7" into "unresolvable", destroying the `actualOrgId`
+  // its caller reports in the mismatch error. The real predicate is one frame up
+  // (`actualOrgId !== expectedOrgId` -> AtlasEntityOrgMismatchError, fail-closed
+  // on null). The lint fires on the SELECT projection, not on an input.
+  // Adjudicated 2026-08-20, ledger 49.
   "server/services/founder-chat/assert-entity-org.ts::resolveEntityOrg",
   "server/services/gdprService.ts::anonymizeUser",
   "server/services/leadEnrichment.ts::enrichLead",
   "server/services/leadQualification.ts::checkForHotLeads",
-  "server/services/leadQualification.ts::generateSuggestedResponse",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
   "server/services/migrationJobs.ts::createImportJob",
@@ -713,7 +749,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/offerBatchService.ts::createOfferBatch",
   "server/services/onboardingAutonomy.ts::handleActivationVerdict",
   "server/services/onboardingAutonomy.ts::handleWeek1Checkin",
-  "server/services/outcomeCalibrationLoop.ts::calibrateSellerIntent",
   "server/services/outcomeLedger.ts::writeOutcome",
   "server/services/pax/continuousAudit.ts::runPaxAudit",
   "server/services/paxMemoryTriggers.ts::onConstraintMentioned",
@@ -1287,7 +1322,6 @@ const RULE3_BASELINE = new Set([
   "server/services/cashFlowForecaster.ts::analyzePaymentHealth::payments",
   "server/services/cashFlowForecaster.ts::compareActualVsProjected::payments",
   "server/services/cohortAnalysis.ts::buildCohortReport::leads",
-  "server/services/comms/tracking-pool.ts::assignNumber::trackingNumberAssignments",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment::trackingNumberAssignments",
   "server/services/comms/tracking-pool.ts::attributeInbound::trackingNumberAssignments",
   "server/services/creditPool.ts::poolDebit::financialLedger",
@@ -1309,7 +1343,6 @@ const RULE3_BASELINE = new Set([
   "server/services/lateFees/index.ts::assessLateFee::lateFeeAssessments",
   "server/services/lateFees/index.ts::assessLateFee::paymentApplications",
   "server/services/lcsCalibrator.ts::runLcsCalibrationSweep::deals",
-  "server/services/leadQualification.ts::generateSuggestedResponse::messages",
   "server/services/leadScoreDecay.ts::processLeadScoreDecay::leads",
   "server/services/leadScoring.ts::recordConversion::leadActivities",
   "server/services/leadScoring.ts::recordConversion::leadScoreHistory",
@@ -1321,10 +1354,6 @@ const RULE3_BASELINE = new Set([
   "server/services/offerBatchService.ts::getBatchStatus::offers",
   "server/services/onboarding/firstValueInstrumentation.ts::computeFunnelMetrics::lifecycleEvents",
   "server/services/onboardingAutonomy.ts::listJourneys::onboardingJourneys",
-  "server/services/outcomeCalibrationLoop.ts::calibrateRadar::deals",
-  "server/services/outcomeCalibrationLoop.ts::calibrateRadar::opportunityScores",
-  "server/services/outcomeCalibrationLoop.ts::calibrateSellerIntent::sellerIntentPredictions",
-  "server/services/outcomeCalibrationLoop.ts::runBacktestAccuracy::deals",
   "server/services/outcomeLedger.ts::evaluateMachineCheck::decisionsInboxItems",
   "server/services/outcomeLedger.ts::scoreDueCheckIns::decisionsInboxItems",
   "server/services/paidDataEvalHarness.ts::countCorpus::landIntelligenceReports",
@@ -1332,7 +1361,6 @@ const RULE3_BASELINE = new Set([
   "server/services/paidDataEvalHarness.ts::runPaidDataEval::landIntelligenceReports",
   "server/services/parcel-biography.ts::getParcelBiography::parcelObservations",
   "server/services/paxLearning.ts::detectBulkIssue::supportTickets",
-  "server/services/paxLearning.ts::learnFromHumanResolution::supportResolutionHistory",
   "server/services/paymentApplication/index.ts::applyPayment::suspenseBalances",
   "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::paymentApplications",
   "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::periodicStatements",

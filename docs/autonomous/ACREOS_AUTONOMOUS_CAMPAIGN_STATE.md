@@ -230,14 +230,41 @@ had not verified; those are deliberately absent below.
    newly-visible population was frozen in registers of its own. Do that here —
    per-root counts — rather than a +494 bump that erases the server signal.
 
-10. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
-   entries first: each is a live path where a caller-supplied id can reach
-   another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs
-   `campaigns` by primary key alone with the org right there on the object).
-   539 → 538 on 2026-08-19: `buyerQualificationBot::estimateClosingProbability`
-   was one of them, and it was a REAL cross-tenant read of buyer financial data
-   (ledger 40). That is the argument for working this list rather than admiring
-   it — the register is not a list of theoretical shapes.
+10. **The tenancy register's highest-risk 140 are ADJUDICATED; ~400 remain.**
+   Rule 2 — "has an org and resolves by id anyway" — was worked in full on
+   2026-08-20 (ledger 49): 9 classifiers, then two independent refuters per
+   claim, then hand-verification of every survivor. **42 claims, 35 refuted,
+   6 real defects, all fixed**, and the eight register entries behind them
+   retired in the same commit (rule-2 function-shape 78 → 73, rule-3 127 → 120).
+
+   The argument for working this list rather than admiring it is now measured
+   rather than asserted. What was found included a route where **any
+   authenticated user could read another org's lead and the last ten messages of
+   its seller negotiation**, a calibration report served to every tenant computed
+   over **every** tenant's data, and two writes that re-pointed another org's
+   outbound sender identity.
+
+   **CALIBRATION FOR WHOEVER WORKS THE REST — this is the part to read.** The hit
+   rate is low: 6 real in 140, and 35 plausible claims died under refutation.
+   Class (b) — the id came from a row this unit already fetched org-scoped —
+   dominates and is textually identical to the dangerous shape. **Verify against
+   the CALLER, not the signature.** The register's own header used to name two
+   worked examples as "real tenancy weaknesses on live paths" and BOTH were
+   wrong (`optimizeCampaign` receives an org-scoped row; `gradeRecentDecisions`
+   takes no arguments and is founder-only); it is corrected and now carries these
+   numbers.
+
+   **The transferable shape, which found five of the six:** a function accepts
+   `organizationId` and does not put it in the `WHERE` — four times as
+   `orgId?: number`, optional, with every production caller passing one.
+   `orgIsRequiredNotOptional.test.ts` pins that shape where the query gate cannot
+   see it. Worth running that lens over the ~400 rule-1 entries next: it is a
+   signature grep, not a read.
+
+   Still frozen: `BASELINE_OFFENDERS` (160 method / 124 function, rule 1 — "no
+   org context at all"), and the remaining rule-2 and rule-3 entries. Rule 1 is a
+   different and probably softer population — many are genuinely org-less
+   platform tables — but it has never been adjudicated at all.
 
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had
@@ -399,8 +426,15 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–48.
+Full reasoning in the cross-pollination ledger, entries 23–49.
 
+- **seven live cross-tenant paths, found by working the register instead of
+  admiring it** — the rule-2 population (140 entries) adjudicated in full: 42
+  claims, 35 refuted, 6 real defects fixed. Any authenticated user could read
+  another org's lead and its seller-negotiation messages; every tenant's
+  calibration report was computed over every tenant's data; two writes
+  re-pointed another org's outbound sender identity. The register's own header
+  named two worked examples and both were wrong. Ledger 49.
 - **one GDPR control, not two** — Settings carried a 257-line near-copy of the
   privacy surface, on the same two endpoints; it was the copy that lied, and the
   test written to hold the two in sync was titled "both privacy surfaces agree,
@@ -486,7 +520,12 @@ Full reasoning in the cross-pollination ledger, entries 23–48.
 
 ## Blocked — owner
 
-`docs/autonomous/OWNER_DECISIONS_PENDING.md`. **One open: OD-8** (2026-08-20) —
+`docs/autonomous/OWNER_DECISIONS_PENDING.md`. **Two open. OD-9** (2026-08-20)
+asks whether the tracking-number pool is shared across tenants — the conservative
+reading is already implemented, so it asks whether to REVERSE, not whether to
+act; the shared version would need an active-assignment exclusion, an
+inbound-attribution rule, and an answer on whose BYO carrier account pays.
+**OD-8** (same day) —
 does AcreOS ASSESS late fees or only advise on them? A complete, tested
 §1026.36(c)(2) non-pyramiding assessor has never had a caller, while the live
 daily job computes the advisory and says in its own header that it "touches no

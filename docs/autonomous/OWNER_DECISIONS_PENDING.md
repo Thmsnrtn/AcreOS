@@ -1,6 +1,6 @@
 # OWNER DECISIONS PENDING
 
-> **ONE DECISION IS OPEN: OD-8, at the bottom. The other seven are taken.**
+> **TWO DECISIONS ARE OPEN: OD-8 and OD-9, at the bottom. The other seven are taken.**
 >
 > OD-2, OD-3, OD-4 and OD-5 are DECIDED AND IMPLEMENTED. OD-1 is DECIDED (hold)
 > and stays listed because the hold is the live state. OD-6 is DECIDED (accept
@@ -8,7 +8,9 @@
 > recorded so the choice is deliberate rather than inherited, and it is the one
 > to revisit at Customer #1. OD-7 was opened and closed on 2026-08-19.
 > **OD-8** (opened 2026-08-20) asks whether AcreOS assesses late fees or only
-> advises on them; nothing is blocked on it.
+> advises on them. **OD-9** (same day) asks whether the tracking-number pool is
+> shared across tenants; the conservative reading is already implemented, so it
+> asks whether to reverse, not whether to act. Nothing is blocked on either.
 
 Genuine owner decisions only. Ordinary engineering — schemas, refactors, tests,
 migration mechanics, deletion, dependency ordering — is not escalated here.
@@ -498,3 +500,56 @@ the §1026.36(c)(2) logic is rebuilt from scratch if this is ever revisited.
 **Blocked meanwhile:** nothing. The module is inert either way; it is held in
 view by the `moduleOrphans` baseline rather than allowlisted, so it cannot be
 forgotten.
+
+---
+
+## OD-9 — OPEN 2026-08-20: is the tracking-number pool shared across tenants, or per-org?
+
+**Not blocking.** The conservative reading is already implemented; this asks
+whether to reverse it.
+
+**What was found.** `assignNumber` (`server/services/comms/tracking-pool.ts`)
+recycles phone numbers from a pool. Its candidate scan carried **no organization
+predicate**, so the pool was platform-wide while everything around it was
+per-org. A request from org B could pick up org A's assignment — released, or
+merely idle past the 60-day window while still ACTIVE — force-release it, and
+re-insert the same number under org B.
+
+Three consequences, none of them a query-shape nicety:
+
+1. `attributeInbound` resolves purely on number + `releasedAt IS NULL`, so
+   inbound SMS and calls to a number org A **printed on physical mail** would
+   then file under org B.
+2. Org A's still-active assignment is cancelled by a stranger's request.
+3. Numbers are BYO — `twilio.rentNumber` resolves credentials per org — so a
+   recycled number can sit on and bill to **org A's own carrier account**, which
+   is the money-custody ruling's territory.
+
+**What was done, and why without asking first.** The scan is now scoped to the
+requesting org. The unknown resolves toward caution: this file's own header
+describes recycling "across campaigns" and never across orgs, and nothing in
+code or comment sanctions a shared pool. Leaving a live cross-tenant
+number-recycling path open while a question sat in a queue was not the safer
+choice.
+
+**The decision.** Was the pool meant to be platform-shared?
+
+(a) **No — per-org, as now implemented.** Nothing further to do. Cost: a number
+    released by one org is never recycled by another, so the platform rents
+    slightly more numbers than a shared pool would.
+(b) **Yes — platform-shared.** Then the predicate comes out, and three things
+    have to be built that do not exist: a hard exclusion of rows with
+    `releasedAt IS NULL` from the idle branch (never force-release an active
+    assignment); a documented rule for what happens to inbound traffic on a
+    recycled number, since the current attribution would misfile it; and an
+    answer to whose carrier account pays, since recycling a number provisioned
+    on org A's BYO Twilio credentials to org B moves a cost onto a customer's
+    own account.
+
+**Recommendation: (a).** The saving in (b) is a few dollars of carrier rent; the
+cost is a cross-tenant identity and billing surface that would need three new
+guarantees to be safe. If number economics later matter, a *platform-owned* pool
+kept separate from BYO numbers is the version of (b) worth building — the
+problem in (b) is not sharing, it is sharing numbers that belong to a customer.
+
+**Blocked meanwhile:** nothing.

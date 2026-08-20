@@ -2861,9 +2861,13 @@ export async function executeSupportTool(
       }
       
       case "learn_from_human_resolution": {
+        // `ticket_id` is an LLM tool argument — a number the MODEL chooses, from
+        // inside a customer-facing chat, which makes it attacker-influencable by
+        // prompt injection. `org` is the authenticated caller's organization and
+        // is what bounds it; the service now refuses a ticket outside it.
         const { ticket_id } = args;
         const { paxLearningService } = await import("../services/paxLearning");
-        const result = await paxLearningService.learnFromHumanResolution(ticket_id);
+        const result = await paxLearningService.learnFromHumanResolution(org.id, ticket_id);
         
         return {
           success: result.learned,

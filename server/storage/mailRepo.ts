@@ -81,9 +81,18 @@ export const mailRepo = {
       .set({ isDefault: false, updatedAt: new Date() })
       .where(eq(emailSenderIdentities.organizationId, orgId));
     
+    // SCOPED. Without the org predicate this UPDATE flipped `isDefault` on ANY
+    // identity by id — `POST /api/email-identities/:id/set-default` hands the URL
+    // param straight in with no ownership check, so one authenticated user could
+    // re-point which connected identity another org's counterparty mail leaves
+    // under. The correct shape was already in this file: see
+    // `deleteEmailSenderIdentity` below, which builds its conditions with the org.
     await db.update(emailSenderIdentities)
       .set({ isDefault: true, updatedAt: new Date() })
-      .where(eq(emailSenderIdentities.id, identityId));
+      .where(and(
+        eq(emailSenderIdentities.id, identityId),
+        eq(emailSenderIdentities.organizationId, orgId),
+      ));
   },
 
   async deleteEmailSenderIdentity(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {
@@ -246,9 +255,15 @@ export const mailRepo = {
       .set({ isDefault: false, updatedAt: new Date() })
       .where(eq(mailSenderIdentities.organizationId, orgId));
     
+    // SCOPED — same defect as the email twin above, on the physical rail: this
+    // set the return address and sender identity printed on another org's
+    // outgoing mail.
     await db.update(mailSenderIdentities)
       .set({ isDefault: true, updatedAt: new Date() })
-      .where(eq(mailSenderIdentities.id, id));
+      .where(and(
+        eq(mailSenderIdentities.id, id),
+        eq(mailSenderIdentities.organizationId, orgId),
+      ));
   },
 
   async deleteMailSenderIdentity(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {

@@ -314,7 +314,10 @@ async function sendHandoffNotification(
     const [recipient] = await db
       .select()
       .from(teamMembers)
-      .where(eq(teamMembers.id, handoff.toTeamMemberId))
+      .where(and(
+        eq(teamMembers.id, handoff.toTeamMemberId),
+        eq(teamMembers.organizationId, organizationId),
+      ))
       .limit(1);
 
     if (!recipient?.email) return;
@@ -322,7 +325,10 @@ async function sendHandoffNotification(
     const [deal] = await db
       .select()
       .from(deals)
-      .where(eq(deals.id, handoff.dealId))
+      .where(and(
+        eq(deals.id, handoff.dealId),
+        eq(deals.organizationId, organizationId),
+      ))
       .limit(1);
 
     const { sendEmail } = await import("./emailService");
@@ -362,7 +368,10 @@ async function generateAtlasBriefing(
     const [deal] = await db
       .select()
       .from(deals)
-      .where(eq(deals.id, handoff.dealId))
+      .where(and(
+        eq(deals.id, handoff.dealId),
+        eq(deals.organizationId, organizationId),
+      ))
       .limit(1);
 
     if (!deal) return;

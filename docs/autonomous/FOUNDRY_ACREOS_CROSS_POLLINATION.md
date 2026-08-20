@@ -2988,6 +2988,117 @@ with legal weight — GDPR allows a month, AcreOS advertised a day — and belon
 with the founder and counsel, not in a component.
 
 
+### 49 — SEVEN LIVE CROSS-TENANT PATHS, AND A REGISTER WHOSE TWO WORKED EXAMPLES WERE BOTH WRONG
+
+Frontier item 10 has read "538 baselined tenancy entries are frozen DEBT, not
+fixed code" since 2026-08-13. It was true and it was inert: a list that size is
+admired, not worked. This entry works the highest-risk 140 of them — the RULE 2
+population, "the unit HAS an organization and resolves an org-scoped table by
+primary key anyway", which is the shape that shipped the buyer-qualification
+IDOR (ledger 40).
+
+**METHOD.** Nine agents classified the 140 in parallel against the register's own
+(a)/(b) triage — caller-supplied id versus id-from-a-row-this-unit-just-made.
+Every claim of real risk then faced **two independent refuters**, one attacking
+the query and one attacking REACHABILITY, both instructed to default to refuted
+when uncertain. 94 agents, 1,794 tool calls. Result: **42 claims raised, 35
+refuted, 7 confirmed** (six defects; one spans two register entries). Then every
+survivor was re-verified by hand against the code before a line was changed —
+because a green agent report is a hypothesis, and one of these reports was wrong
+in the other direction (below).
+
+**THE SIX, ranked by consequence.**
+
+1. **`outcomeCalibrationLoop` — the whole module.** `calibrateSellerIntent(orgId?: number)`
+   accepted an org and never referenced it again; the scan of
+   `seller_intent_predictions` ran platform-wide and the harvested lead ids were
+   dereferenced against `leads` with no predicate either. `GET /api/ml/calibration-report`
+   is `isAuthenticated, getOrCreateOrg` — so any authenticated tenant user
+   received totals computed over EVERY tenant's data, **labelled as their own**:
+   a cross-tenant disclosure and a fabrication at once. And it was not one
+   function. All five entry points in that module took `orgId?` and used it in
+   none of their bodies. Only one was in the register, because the other four
+   are shapes the extractor does not reach — the gate saw a fifth of the defect.
+2. **`leadQualification.generateSuggestedResponse`.** `GET /api/leads/:id/suggested-response`,
+   URL param straight to `eq(leads.id, leadId)`. Returns another org's lead plus
+   the last ten messages on its conversations — the actual text of a competitor's
+   seller negotiation — and an LLM reply composed from it. Increment the id.
+3. **`dealHandoffService`** (two entries). Foreign deal economics pulled into an
+   Atlas briefing stored under the attacker's org; foreign `teamMembers` row read
+   and **emailed** about a handoff they are not party to. Both directions at once.
+4. **`paxLearning.learnFromHumanResolution`.** `POST /api/support/tickets/:id/resolve-human`
+   read the ticket by bare id and went straight to `if (!ticket) notFound` — **the
+   org guard its four sibling handlers perform was simply absent**, one route out
+   of five, and it was the one that writes a resolution AND feeds the text to an
+   LLM whose output is filed under the victim's org. Second path: the
+   customer-facing support agent can choose `ticket_id` as an LLM tool argument,
+   making it prompt-injection reachable.
+5. **`mailRepo.setDefaultEmailSenderIdentity` / `setDefaultMailSenderIdentity`.**
+   No read — a WRITE. Flips `isDefault` on another org's sender identity,
+   re-pointing which connected identity their counterparty mail leaves under, and
+   the return address printed on their physical mail. Directly against the BYO
+   send-rail ruling. The correct shape was already in the same file, three lines
+   down, in `deleteEmailSenderIdentity`.
+6. **`comms/tracking-pool.assignNumber`** — filed UNCLEAR by the audit and worth
+   its own note. Its id is self-selected, not caller-supplied, so it is neither
+   (a) nor (b); but the SELECT that picks it scanned every tenant, so org B could
+   force-release org A's **still-active** number and re-point it. Inbound to a
+   number org A printed on physical mail would then file under org B, and the
+   number may sit on org A's own BYO Twilio account. Fixed toward caution and
+   raised as **OD-9** — the question is whether to REVERSE, not whether to act.
+
+**THE SHAPE UNDERNEATH FIVE OF SIX**, and it is the transferable part:
+
+> a function accepts `organizationId`, and does not put it in the `WHERE`.
+
+In four cases the parameter was literally `orgId?: number` — optional. Every
+production caller passed one. Nothing made the body use it. A query-level gate
+cannot see a signature, so `orgIsRequiredNotOptional.test.ts` now pins that the
+calibration entry points take a REQUIRED org **and mention it more than once** —
+the second half matters, because `orgId: number` with a body that ignores it is
+the same defect wearing a stricter type.
+
+**THE CORRECTION THAT MATTERS MOST IS TO THE REGISTER ITSELF.** Its header
+paragraph — duplicated across both rule-2 registers, and the thing every reader
+uses to decide how to triage the list — named two worked examples and asserted
+"These are real tenancy weaknesses on live paths, not annotation debt". Both are
+wrong:
+
+- `campaignOptimizer.optimizeCampaign` takes a `Campaign` ROW, not an id, and its
+  only route caller fetches it with `storage.getCampaign(org.id, campaignId)`
+  first. Class (b), textbook.
+- `autonomyHealth.gradeRecentDecisions` takes **no arguments at all** and sweeps
+  every org on purpose; its callers are a cron and a `requireFounder` route.
+
+The audit's refuters called `optimizeCampaign` safe, contradicting the
+repository's own record — so it was checked by hand, and the refuters were right.
+A register that opens with two false examples teaches the wrong triage for as
+long as it stands. The header now carries the real calibration: **expect a low
+hit rate, and verify against the CALLER, not the signature.**
+
+**One entry is kept deliberately and now says why.**
+`founder-chat/assert-entity-org.ts::resolveEntityOrg` IS the ownership oracle —
+it answers "which org owns this entity?" by selecting the org column by primary
+key. Adding a predicate would collapse "belongs to org 7" into "unresolvable" and
+destroy the `actualOrgId` its caller reports in the mismatch error. The real
+check is one frame up. The lint fires on the SELECT projection, not on an input.
+
+**Ratchets moved in the same commit, downward, as the rule requires:** rule-2
+function-shape 78 → 73, rule-3 127 → 120, and the eight fixed method entries
+removed from `BASELINE_UNUSED_ORG`. Those units are now ENFORCED rather than
+frozen — a regression is a new offender and the gate fails.
+
+**Exit test.** Four mutations on the new file, each watched failing first: make
+`orgId` optional again; scope-strip one calibration query while keeping the
+required type (the "uses it more than once" case catches it, which is the case
+that would have caught the original defect); delete the restored route guard;
+drop the org parameter from `learnFromHumanResolution`. The guard check matches
+on SHAPE rather than the identifier `ticket` — its first draft counted four of
+five real guards because one handler binds the row as `ticketForGuard`, which is
+the rename-survives-the-pin failure CLAUDE.md's first law describes, met inside
+the test written to enforce that law.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

@@ -18,7 +18,23 @@ const MAX_BACKOFF_MS = 5 * 60 * 1000;
 
 export const paxLearningService = {
   
-  async learnFromHumanResolution(ticketId: number): Promise<{
+  /**
+   * TAKES THE ORG, and the reason is the whole point of the parameter.
+   *
+   * This used to take `ticketId` alone and read the ticket by bare id. Every org
+   * value it then used — the attribution on the `supportResolutionHistory` and
+   * `paxMemory` rows it writes, and the argument to `updateCrossOrgLearning` —
+   * was read OUT of that unverified row, so a ticket belonging to another tenant
+   * was distilled by an LLM and filed under the victim's org. Its caller,
+   * `POST /api/support/tickets/:id/resolve-human`, was missing the org guard its
+   * four sibling routes perform, and the customer-facing support agent can also
+   * choose `ticket_id` as an LLM tool argument — so the id was attacker-chosen on
+   * both paths.
+   *
+   * The org is now supplied by the caller and bound in the WHERE. A ticket from
+   * another tenant simply is not found.
+   */
+  async learnFromHumanResolution(organizationId: number, ticketId: number): Promise<{
     learned: boolean;
     learningEntry?: any;
     crossOrgLearning?: any;
@@ -27,7 +43,10 @@ export const paxLearningService = {
     try {
       const [ticket] = await db.select()
         .from(supportTickets)
-        .where(eq(supportTickets.id, ticketId));
+        .where(and(
+          eq(supportTickets.id, ticketId),
+          eq(supportTickets.organizationId, organizationId),
+        ));
       
       if (!ticket) {
         return { learned: false, error: "Ticket not found" };
@@ -39,7 +58,10 @@ export const paxLearningService = {
       
       const existingLearning = await db.select()
         .from(supportResolutionHistory)
-        .where(eq(supportResolutionHistory.ticketId, ticketId))
+        .where(and(
+          eq(supportResolutionHistory.ticketId, ticketId),
+          eq(supportResolutionHistory.organizationId, organizationId),
+        ))
         .limit(1);
       
       if (existingLearning.length > 0) {

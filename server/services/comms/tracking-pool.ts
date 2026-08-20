@@ -155,16 +155,39 @@ export async function assignNumber(
   // We grab one candidate, then issue a transactional update to flip
   // ownership atomically. Concurrent assignNumber() calls race on the
   // WHERE clause and only one wins.
+  // SCOPED TO THE REQUESTING ORG (2026-08-20, rule-2 audit; ledger 49).
+  //
+  // This scan had no organization predicate, so the pool was PLATFORM-WIDE while
+  // everything around it was per-org. A request from org B could pick up org A's
+  // assignment — released, or merely idle for the 60-day window while still
+  // ACTIVE — force-release it two lines below, and re-insert the same number
+  // under org B. Three things follow, and none of them is a query-shape
+  // nicety: `attributeInbound` resolves purely on number + `releasedAt IS NULL`,
+  // so inbound SMS and calls to a number org A PRINTED ON PHYSICAL MAIL would
+  // then file under org B; org A's still-active assignment is cancelled by a
+  // stranger's request; and numbers are BYO — `twilio.rentNumber` resolves
+  // credentials per org — so the recycled number can sit on and bill to org A's
+  // own carrier account, which is the money-custody ruling's territory.
+  //
+  // The conservative reading is applied here because the unknown resolves toward
+  // caution: this file's own header describes recycling "across campaigns" and
+  // never across orgs, and nothing in code or comment sanctions a shared pool.
+  // If a platform-shared pool IS intended, that is a founder call to reverse —
+  // raised as OD-9, and it would still need an active-assignment exclusion, an
+  // inbound-attribution rule, and an answer on whose carrier account pays.
   const candidates = await db
     .select()
     .from(trackingNumberAssignments)
     .where(
-      or(
-        isNotNull(trackingNumberAssignments.releasedAt),
-        and(
-          isNull(trackingNumberAssignments.releasedAt),
-          isNotNull(trackingNumberAssignments.lastInboundAt),
-          lt(trackingNumberAssignments.lastInboundAt, idleCutoff),
+      and(
+        eq(trackingNumberAssignments.organizationId, organizationId),
+        or(
+          isNotNull(trackingNumberAssignments.releasedAt),
+          and(
+            isNull(trackingNumberAssignments.releasedAt),
+            isNotNull(trackingNumberAssignments.lastInboundAt),
+            lt(trackingNumberAssignments.lastInboundAt, idleCutoff),
+          ),
         ),
       ),
     )
@@ -178,7 +201,10 @@ export async function assignNumber(
       await db
         .update(trackingNumberAssignments)
         .set({ releasedAt: new Date() })
-        .where(eq(trackingNumberAssignments.id, candidate.id));
+        .where(and(
+          eq(trackingNumberAssignments.id, candidate.id),
+          eq(trackingNumberAssignments.organizationId, organizationId),
+        ));
     }
     const [fresh] = await db
       .insert(trackingNumberAssignments)
