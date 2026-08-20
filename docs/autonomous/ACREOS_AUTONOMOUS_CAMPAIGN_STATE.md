@@ -174,26 +174,86 @@ had not verified; those are deliberately absent below.
    (ledger 40). That is the argument for working this list rather than admiring
    it — the register is not a list of theoretical shapes.
 
-11. **88 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19
-    and re-measured 2026-08-20 against HEAD: pointing `lint-reachability`'s
-    identifier pass at stripped source moves unreachedExports 1395 → 1475
-    (+80), moduleOrphans 28 → 30 (+2), opaqueExports 120 → 126 (+6). The pass
-    tokenises raw source, so a symbol NAMED in prose counts as a production use
-    of it — documented in the linter's own allowlist (`InvestorVerificationService`,
-    whose only consumer was a stale `TODO`), but never sized until now.
+11. **88 exports are certified "reached" by a COMMENT — and the 88 is really 20
+    accusations plus 66 items of a DIFFERENT rule.** MEASURED 2026-08-19,
+    re-measured against HEAD and then TRIAGED on 2026-08-20. Pointing
+    `lint-reachability`'s identifier pass at stripped source moves
+    unreachedExports 1395 → 1475 (+80), moduleOrphans 28 → 30 (+2),
+    opaqueExports 120 → 126 (+6). The pass tokenises raw source, so a symbol
+    NAMED in prose counts as a production use of it — documented in the
+    linter's own allowlist (`InvestorVerificationService`, whose only consumer
+    was a stale `TODO`), but never sized until now.
 
     Ledger 35 closed the two scans that grant EXEMPTIONS from prose
     (dynamic-import opacity, module-orphan suppression) and stopped there
     deliberately: this direction produces ACCUSATIONS, and the down-only ratchet
-    means all 88 must be adjudicated in one commit. The reproduction is a
-    one-line change (point the identifier pass at `code` instead of `raw`); the
-    whole cost is the adjudication, and it is spread thin — ~60 files, at most
-    five items in any one of them, so there is no shortcut through a single
-    dead module.
+    means every newly-revealed item must be adjudicated in the commit that
+    lands the strip.
 
-    The three modules the first half revealed were all genuinely dead and two
-    had already been flagged by the 2026-08 audit, so the yield here is likely
-    real. Do not start it alongside other work.
+    **THE TRIAGE (2026-08-20).** Each of the 86 newly-revealed symbols was
+    searched across `server/`, `client/src/`, `shared/` and `scripts/` with
+    comments stripped, tests excluded, and the two register files that
+    ENUMERATE symbols (`lint-reachability.mjs`, `check-org-scoped-fetch.mjs`)
+    excluded for the same reason the linter excludes them. Three buckets:
+
+    - **0 have an external reference the walk missed.** The strip reveals no
+      false accusations. That is the result that makes the change landable at
+      all — had this been non-zero the identifier pass would need a smarter
+      resolver, not an allowlist.
+    - **20 are DEFINITION ONLY** — the symbol appears exactly once in its own
+      module and nowhere else in production. These are the accusations, and
+      they are the whole yield.
+    - **66 are INTERNAL HELPERS** — exported, then used only inside their own
+      module (`assertWithinPlatformCostCeiling`, `evaluateFlag`, `checkOfacSdn`,
+      `SkipTracePurposeRequiredError`, `getSESClient` own:7, `REMINDER_STATUS`
+      own:27), spread over 53 files with at most three in any one of them.
+
+    **THE DESIGN CONCLUSION, which is why this cannot land as a one-line
+    change.** "Exported but only used internally" is a DIFFERENT RULE from
+    "built but never wired". The first is an over-broad export — harmless at
+    runtime, a two-character fix, and 66 of them dumped into `unreachedExports`
+    would bury the 20 that matter under noise the gate then teaches everyone to
+    ignore. So the strip must land WITH a narrowing: report internal-only
+    exports as their own family with its own baseline, so each rule keeps a
+    ratchet that means something. Do that first; the strip is then the small
+    half.
+
+    **THE 20, adjudicated as far as reading gets you** (the deletion review
+    itself is the open work):
+
+    - *Five are already-known and deliberately tolerated* — the webhook
+      convenience wrappers `webhookLeadStatusChanged`, `webhookDealCreated`,
+      `webhookDealStageChanged`, `webhookPaymentReceived`,
+      `webhookCampaignResponse` in `server/services/webhookDispatcher.ts`.
+      `tests/unit/webhookEventCatalogue.test.ts` states in its own docblock that
+      none of them is called from anywhere, and the catalogue badges those
+      events "not live" rather than hiding them. Their adjudication is
+      "allowlist, pointing at that test", not a fresh decision.
+    - *Nine are BUILT, TESTED, AND UNWIRED* — a real behavioural test invokes
+      them and no production code does: `verifyEvidencePacket`
+      (governance/evidencePacket), `sendWinback` (lifecycleProgram),
+      `buildAnnualEscrowStatement` (respaEscrowAnalysis), `growthFunnelLine`
+      (autopilot/growthEngine), `reflexHealthLine` (autopilot/reflexes),
+      `buildUserScopedPromptAppendix` (pax/userContext),
+      `enqueueAdversaryDispatch` (solene/adversarialTests),
+      `predictDispatchConflicts` (solene/agentClaims), `findDuplicateProposals`
+      (solene/capabilityDiscovery). This is the codebase's most common defect
+      wearing its most convincing disguise: a green test is the strongest
+      possible evidence that the code WORKS and no evidence at all that anything
+      CALLS it.
+    - *Six have neither a caller nor a test*: `agentOrchestration`
+      (services/agentOrchestration.ts), `runEvalSurface` (aiEvalHarness),
+      `AUDIT_CHAIN_TAMPER_EVIDENCE_COPY` (compliance/auditChain),
+      `SCREENING_ADVISORY_COPY` (compliance/ofacScreening),
+      `readTelemetrySnapshot` (telemetryDigest), and `assessLateFee`
+      (lateFees/index.ts) — whose apparent test hit is a NAME COLLISION with a
+      synthetic fixture inside the reachability gate's own test, which is a
+      small demonstration of why this list needed reading rather than counting.
+
+    Two of the copy constants are worth a second look before deletion: an
+    unreferenced `AUDIT_CHAIN_TAMPER_EVIDENCE_COPY` and `SCREENING_ADVISORY_COPY`
+    each mean a compliance surface that was written and never rendered, which is
+    a product gap wearing a dead-code costume.
 
 12. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
     ledger 37 / OD-7 — the picker is removed, not repaired. The two defects were
