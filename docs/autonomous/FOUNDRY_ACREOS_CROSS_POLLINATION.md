@@ -3017,8 +3017,27 @@ in the other direction (below).
    received totals computed over EVERY tenant's data, **labelled as their own**:
    a cross-tenant disclosure and a fabrication at once. And it was not one
    function. All five entry points in that module took `orgId?` and used it in
-   none of their bodies. Only one was in the register, because the other four
-   are shapes the extractor does not reach — the gate saw a fifth of the defect.
+   none of their bodies.
+
+   **CORRECTION, made against `HEAD~1` rather than against the report.** The
+   audit said only one of the five was in a register, "shapes the extractor does
+   not reach — the gate saw a fifth of the defect", and the first version of this
+   entry and its commit message repeated it. **It is wrong.** The gate saw three
+   of the four query-bearing functions: `calibrateSellerIntent` was in rule 2 AND
+   rule 3, `calibrateRadar` in rule 3 twice, `runBacktestAccuracy` in rule 3 —
+   four RULE3_BASELINE lines, frozen as debt since 2026-08-18. Only
+   `computeConfidenceIntervals` appeared nowhere, and correctly so: it reads
+   `land_credit_scores`, which carries no `organization_id` at all, so it is not
+   an org-scoped table in the gate's terms. Its fix here is a LABELLING
+   correction (a platform statistic was being returned under an org's name), not
+   a tenancy one.
+
+   That correction matters in the register's favour, which is why it is recorded
+   rather than quietly dropped: the gate was not blind, it had already found
+   these and was holding them. The failure was that nobody worked the list — and
+   repeating an agent's "the gate missed it" without checking `HEAD~1` is exactly
+   the wave-discipline failure this repository keeps writing down. Checked on the
+   turn after the commit went out; the commit message carries the wrong version.
 2. **`leadQualification.generateSuggestedResponse`.** `GET /api/leads/:id/suggested-response`,
    URL param straight to `eq(leads.id, leadId)`. Returns another org's lead plus
    the last ten messages on its conversations — the actual text of a competitor's

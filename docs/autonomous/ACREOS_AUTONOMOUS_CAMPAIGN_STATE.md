@@ -266,6 +266,16 @@ had not verified; those are deliberately absent below.
    different and probably softer population — many are genuinely org-less
    platform tables — but it has never been adjudicated at all.
 
+   **AND RULE 3 IS WHERE THE YIELD WAS.** Corrected after the commit: the audit
+   claimed the gate had missed four of the five calibration functions. Checked
+   against `HEAD~1` — it had not. Three of the four query-bearing ones sat in
+   `RULE3_BASELINE` (four lines, frozen since 2026-08-18); the fifth reads a
+   table with no `organization_id` and was correctly absent. So the gate found
+   them and the register held them, and the only thing missing was somebody
+   working the list. That argues for adjudicating the 120 remaining rule-3
+   entries NEXT, ahead of rule 1: rule 3 is "scoped unit, unscoped query", it has
+   already proven it catches live defects, and it is a smaller population.
+
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had
     sat unstarted because "88 must be adjudicated in one commit" reads as one
