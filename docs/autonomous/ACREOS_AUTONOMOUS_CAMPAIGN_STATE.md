@@ -150,11 +150,20 @@ had not verified; those are deliberately absent below.
    (ledger 43). Same fix, on a harder gate: five registers and two vacuity
    blocks have to be told they are looking at a fixture.
 
-9. **`lint-reachability` does not treat `shared/**` as an export-candidate root.**
-   `shared` IS in `PRODUCTION_ROOTS` (so it counts as a call site); it is
-   `EXPORT_SOURCE_DIRS` that bounds what can be reported unreached. A new shared
-   module with no production caller is invisible to the built-but-unwired gate,
-   and widening `PRODUCTION_ROOTS` would change nothing.
+9. **`lint-reachability` does not treat `shared/**` as an export-candidate
+   root — and widening it costs 473 decisions.** MEASURED 2026-08-20 rather
+   than guessed: adding `shared` to `EXPORT_SOURCE_DIRS` moves
+   unreachedExports 1395 → 1566 (+171), moduleOrphans 28 → 33 (+5), and
+   opaqueExports 120 → 417 (+297). `shared` IS in `PRODUCTION_ROOTS` (so it
+   counts as a call site); it is `EXPORT_SOURCE_DIRS` that bounds what can be
+   reported unreached, so a new shared module with no production caller is
+   invisible to the built-but-unwired gate today.
+
+   The ratchet is down-only, so this cannot land in halves: every one of those
+   473 has to be adjudicated (delete / wire / allowlist) in the commit that
+   widens the roots. The opaque jump is the bulk of it and the cheapest part —
+   `shared/` is heavily re-exported, so much of it is the gate's own blind spot
+   rather than dead code.
 
 10. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
@@ -165,19 +174,26 @@ had not verified; those are deliberately absent below.
    (ledger 40). That is the argument for working this list rather than admiring
    it — the register is not a list of theoretical shapes.
 
-11. **80 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19,
-    not estimated. `lint-reachability`'s identifier pass tokenises raw source, so
-    a symbol NAMED in prose counts as a production use of it. Stripping comments
-    there moves `unreachedExports` 1398 → 1478. Ledger 35 closed the two scans
-    that grant EXEMPTIONS from prose (dynamic-import opacity, module-orphan
-    suppression) and deliberately stopped there: this direction produces 80
-    ACCUSATIONS, and the ratchet is down-only, so it cannot land in halves —
-    every one has to be adjudicated (delete / wire / allowlist) in the commit
-    that turns the stripper on. The three modules the first half revealed were
-    all genuinely dead and two had already been flagged by the 2026-08 audit, so
-    the yield here is likely real. Do not start this alongside other work: the
-    reproduction is a one-line change to the linter (point the identifier pass
-    at `code` instead of `raw`), and the whole cost is the adjudication.
+11. **88 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19
+    and re-measured 2026-08-20 against HEAD: pointing `lint-reachability`'s
+    identifier pass at stripped source moves unreachedExports 1395 → 1475
+    (+80), moduleOrphans 28 → 30 (+2), opaqueExports 120 → 126 (+6). The pass
+    tokenises raw source, so a symbol NAMED in prose counts as a production use
+    of it — documented in the linter's own allowlist (`InvestorVerificationService`,
+    whose only consumer was a stale `TODO`), but never sized until now.
+
+    Ledger 35 closed the two scans that grant EXEMPTIONS from prose
+    (dynamic-import opacity, module-orphan suppression) and stopped there
+    deliberately: this direction produces ACCUSATIONS, and the down-only ratchet
+    means all 88 must be adjudicated in one commit. The reproduction is a
+    one-line change (point the identifier pass at `code` instead of `raw`); the
+    whole cost is the adjudication, and it is spread thin — ~60 files, at most
+    five items in any one of them, so there is no shortcut through a single
+    dead module.
+
+    The three modules the first half revealed were all genuinely dead and two
+    had already been flagged by the 2026-08 audit, so the yield here is likely
+    real. Do not start it alongside other work.
 
 12. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
     ledger 37 / OD-7 — the picker is removed, not repaired. The two defects were
@@ -229,14 +245,24 @@ had not verified; those are deliberately absent below.
     to price what it cannot, and reports `unpricedCalls` so the gap is visible
     rather than filled.
 
-16. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
-    The per-org `aiCostCeiling` on `routeAITask` is the entire control.
-    `userAiCostControls.ts` — the per-user daily/monthly budget — was deleted in
-    ledger 35 as unwired and fail-open, and `DEFECT-0017` was corrected in the
-    same commit because it claimed the class FIXED. `docs/audit-2026-08/16-cost.md`
-    F-16-1 records the `/api/va` gap independently. Pre-customer this costs
-    nothing; it is on the list because the registry no longer says it is handled,
-    and a real fix is a DB-backed counter that fails CLOSED, not a restore.
+16. **Per-user AI spend has no cap anywhere. `/api/va` is capped, but only by
+    the single platform-wide ceiling.** The previous wording of this entry —
+    "`/api/va` has no cap at all" — was copied from `docs/audit-2026-08/16-cost.md`
+    F-16-1 and is STALE at HEAD, checked 2026-08-20: `ai/vaService.ts:682` and
+    `:809` both call `assertAiSpendAllowed(orgId)`, and the second carries the
+    comment "audit F-16-1: respect the platform cost ceiling". The finding was
+    actioned; the backlog entry was not updated.
+
+    What is still true, and is the smaller real gap: `assertAiSpendAllowed`
+    resolves to `assertWithinAiCostCeiling`, which is ONE global daily counter
+    for the whole platform. There is no per-user cap anywhere in the system
+    (`userAiCostControls` was deleted in ledger 35 as unwired and fail-open) and
+    no per-ORG cap on this path. A single org can consume the platform's whole
+    daily allowance and the ceiling will then refuse everyone.
+
+    A real fix is a DB-backed per-org counter that fails CLOSED, and per-user
+    caps on top of it if the founder wants them. `DEFECT-0017` in the defect
+    registry was corrected on 2026-08-19 and names the same gap.
 
 ---
 

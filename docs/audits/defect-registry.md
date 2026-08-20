@@ -193,13 +193,22 @@ cap never fired, and without `REDIS_URL` it was per-instance and reset on
 restart. A cap that silently disables itself is worse than no cap, because the
 registry entry above is what someone reads instead of checking.
 
-Two things this entry should not be read as covering, both still open and both
-already recorded by the 2026-08 audit (`docs/audit-2026-08/16-cost.md`):
-F-16-1, the `/api/va` surface, has no per-user or per-org cost check at all;
-and per-USER granularity does not exist anywhere — the per-org ceiling is the
-whole of the control. If per-user caps are wanted they are a fresh design
-against a DB-backed counter that fails CLOSED, not a resurrection of the deleted
-service.
+Two things this entry should not be read as covering, both still open:
+
+1. **Per-USER granularity does not exist anywhere.** If per-user caps are
+   wanted they are a fresh design against a DB-backed counter that fails
+   CLOSED, not a resurrection of the deleted service.
+2. **The only cap on the `/api/va` path is the single platform-wide daily
+   ceiling.** `ai/vaService.ts:682` and `:809` call `assertAiSpendAllowed`,
+   which resolves to `assertWithinAiCostCeiling` — one global counter. One org
+   can consume the platform's whole daily allowance and the ceiling then
+   refuses everyone.
+
+Corrected 2026-08-20: the previous wording here said `/api/va` "has no per-user
+or per-org cost check at all", following `docs/audit-2026-08/16-cost.md` F-16-1.
+That audit finding was ACTIONED — vaService's own comment cites it by name — and
+the note above had not caught up. The gap is narrower than it read, and the
+platform ceiling is real.
 
 ### DEFECT-0018
 Title: Prompt injection guards missing on indirect data paths (knowledge base, file attachments, tool results)
