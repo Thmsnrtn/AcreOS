@@ -1,9 +1,9 @@
 import Lob from 'lob';
 import { storage } from '../storage';
-import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
+import { getLobClient } from './directMailService';
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -198,47 +198,41 @@ export class DirectMailService {
     }
   }
 
+  /**
+   * The org's OWN Lob client, or null when the org has none.
+   *
+   * Resolution is DELEGATED to `directMailService.getLobClient` — the single
+   * credential authority (BYOK vault → legacy organization_integrations row →
+   * platform key), per the 2026-08-16 consolidation. This method used to run
+   * its own lookup that queried ONLY the legacy row, so an org whose Lob key
+   * lives in the BYOK vault — the documented Universal-BYOK path — had its
+   * campaign postcards and letters to LEADS printed on ACREOS's Lob account.
+   * That is the identical defect the consolidation fixed in mailProvider.ts;
+   * it survived here because the fix was applied to one file, not to the
+   * behaviour.
+   *
+   * We deliberately return NULL on the authority's platform tier rather than
+   * handing the platform client back: the caller's platform branch carries the
+   * live-send interlock and the outreach stop-loss gate, and short-circuiting
+   * past those would spend the founder's mail budget ungated.
+   */
   async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform'; isTestKey: boolean } | null> {
     try {
-      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-      
-      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
-        integration,
-        orgId,
-        'lob (directMail)',
-      );
-      if (integration && integration.isEnabled && decrypted) {
-        if (decrypted.apiKey) {
-          logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
-          return {
-            client: new Lob({ apiKey: decrypted.apiKey }),
-            source: 'organization',
-            isTestKey: decrypted.apiKey.startsWith('test_'),
-          };
-        }
+      const resolved = await getLobClient(orgId);
+      if (resolved.source === 'organization') {
+        logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
+        return resolved;
       }
     } catch (error) {
       logger.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}`, error);
     }
-    
+
     return null;
   }
 
+  /** True when the ORG has its own Lob credential in any tier of the authority. */
   async hasOrgLobCredentials(orgId: number): Promise<boolean> {
-    try {
-      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
-        integration,
-        orgId,
-        'lob (directMail)',
-      );
-      if (integration && integration.isEnabled && decrypted) {
-        return !!decrypted.apiKey;
-      }
-    } catch (error) {
-      logger.error(`[DirectMail] Failed to check org Lob credentials for org ${orgId}`, error);
-    }
-    return false;
+    return (await this.getOrgLobClient(orgId)) !== null;
   }
 
   /**

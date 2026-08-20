@@ -50,7 +50,7 @@
 import { db } from "../db";
 import { notes, organizations, payments, properties, leads } from "@shared/schema";
 import { acquiredNotes, notePayments } from "@shared/schema/notes-vertical";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import {
   buildFire1098File,
@@ -62,6 +62,10 @@ import {
   type FireFileResult,
 } from "./irsFireFormat";
 import { TaxIdentityError, type PayerOrRecipientAddress } from "./bookkeeping";
+// The PRODUCER of the ACH-return reversal id, imported rather than restated —
+// see the reversal-link block below for why a second copy of that format here
+// would be a drift hazard rather than a convenience.
+import { reversalTransactionId as achReturnTransactionId } from "./achAutopay";
 import { decrypt as decryptField, isAnyEncryptedEnvelope } from "./fieldEncryption";
 import { logger } from "../utils/logger";
 
@@ -75,6 +79,92 @@ export const FORM_1098_THRESHOLD_CENTS = 60_000;
 
 /** TINs we must never emit — same placeholder set the 1099 path rejects. */
 const PLACEHOLDER_TINS = new Set(["00-0000000", "000-00-0000", "000000000"]);
+
+// ─── The reversal link (append-only ledgers) ──────────────────────────────
+//
+// Money that came back out — a card refund, an ACH return — is recorded by
+// APPENDING a negative row to the same ledger. The original row is never
+// deleted and its amounts are never edited: the payment genuinely happened,
+// and the reversing pair IS the audit trail.
+//
+// The `payments` table carries no "reverses this row" column, so the link
+// travels inside the UNIQUE `transaction_id`, and there are TWO conventions
+// because there are two writers:
+//
+//   card refund : "<original processor id>::refund::<stripe refund id>"
+//                 — WRITTEN BY webhookHandlers.processBorrowerPaymentRefund,
+//                   which imports `refundReversalTransactionId` below. One
+//                   definition, so this writer cannot drift from this reader.
+//   ACH return  : "<original payment intent>:return"
+//                 — WRITTEN BY achAutopay.ts, which owns that format in its
+//                   own `reversalTransactionId()`. This module does NOT
+//                   restate the literal ":return": it derives the suffix by
+//                   asking the producer what it emits for an empty id. A
+//                   hand-copied literal here is exactly the drift the card
+//                   half avoids by sharing a function — rename the ACH suffix
+//                   and this parser follows it instead of silently going blind
+//                   and reporting returned interest as received.
+//
+// Whether a reversal is a REFUND (the borrower's money was handed back; the
+// interest was received and later reimbursed) or a NONPAYMENT (the money never
+// cleared, so it was never received at all) changes which IRS box it lands in,
+// which is why the two are distinguished rather than lumped as "negative".
+
+/**
+ * Separator for a card-refund reversal's transaction id. Module-private: the
+ * shared thing is the ENCODER (`refundReversalTransactionId`) and the DECODER
+ * (`parseReversalTransactionId`), never the raw punctuation — an exported
+ * separator invites a caller to concatenate its own id and skip both.
+ */
+const REFUND_REVERSAL_SEPARATOR = "::refund::";
+
+/**
+ * Suffix achAutopay.ts stamps on an ACH-return reversal's transaction id,
+ * DERIVED from that module's producer rather than declared again here.
+ */
+const ACH_RETURN_REVERSAL_SUFFIX = achReturnTransactionId("");
+
+/** Deterministic (therefore idempotent) transaction id for a refund reversal. */
+export function refundReversalTransactionId(
+  originalTransactionId: string,
+  refundId: string,
+): string {
+  return `${originalTransactionId}${REFUND_REVERSAL_SEPARATOR}${refundId}`;
+}
+
+export interface LedgerReversalLink {
+  /** Transaction id of the row being reversed. */
+  originalTransactionId: string;
+  /** Refund = money handed back. Nonpayment = money never cleared. */
+  kind: ReversalKind;
+}
+
+/**
+ * Decode a reversal transaction id, or null when the id is an ordinary
+ * payment. Recognises both conventions in the repo.
+ */
+export function parseReversalTransactionId(
+  transactionId: string | null | undefined,
+): LedgerReversalLink | null {
+  if (!transactionId) return null;
+  const cut = transactionId.lastIndexOf(REFUND_REVERSAL_SEPARATOR);
+  if (cut > 0) {
+    return { originalTransactionId: transactionId.slice(0, cut), kind: "refund" };
+  }
+  if (
+    transactionId.length > ACH_RETURN_REVERSAL_SUFFIX.length &&
+    transactionId.endsWith(ACH_RETURN_REVERSAL_SUFFIX)
+  ) {
+    return {
+      originalTransactionId: transactionId.slice(
+        0,
+        transactionId.length - ACH_RETURN_REVERSAL_SUFFIX.length,
+      ),
+      kind: "nonpayment",
+    };
+  }
+  return null;
+}
 
 // ─── Public shapes ────────────────────────────────────────────────────────
 
@@ -132,9 +222,10 @@ export interface Form1098 {
   /** Box 3 — Mortgage origination date, ISO YYYY-MM-DD. */
   box3MortgageOriginationDate: string;
   /**
-   * Box 4 — Refund of overpaid interest. AcreOS has no
-   * interest-refund ledger event, so no refund was made through AcreOS
-   * and this is factually zero. It is NOT a stand-in for unknown data.
+   * Box 4 — Refund of overpaid interest: interest received AND reported in
+   * an earlier year that was handed back during THIS one. Derived from
+   * reversing ledger entries (a refunded card payment posts one), never
+   * estimated. Zero means "no such reversal is on the ledger", not "unknown".
    */
   box4RefundOfOverpaidInterestCents: number;
   /**
@@ -169,7 +260,9 @@ export type Form1098RefusalCode =
   | "MORTGAGE_ORIGINATION_DATE_MISSING"
   | "PROPERTY_SECURING_MORTGAGE_UNKNOWN"
   | "LEDGER_COVERAGE_INCOMPLETE"
-  | "PRINCIPAL_DERIVATION_INCONSISTENT";
+  | "PRINCIPAL_DERIVATION_INCONSISTENT"
+  | "REVERSAL_ORIGIN_UNRESOLVED"
+  | "PRIOR_YEAR_NONPAYMENT_REVERSAL";
 
 /**
  * A mortgage that WOULD require a 1098 but cannot be reported from the
@@ -231,11 +324,38 @@ export interface Form1098Candidate {
   ledger: Form1098LedgerEntry[];
 }
 
+/**
+ * What a negative ledger entry MEANS.
+ *   • "refund"     — the borrower paid, and was later handed the money back.
+ *                    The interest WAS received, then reimbursed. When the
+ *                    reimbursement lands in a later year than the receipt,
+ *                    the IRS wants it in Box 4, not netted out of Box 1.
+ *   • "nonpayment" — the payment never cleared (ACH return, NSF). The
+ *                    interest was never received at all.
+ */
+export type ReversalKind = "refund" | "nonpayment";
+
+export interface Form1098ReversalRef {
+  kind: ReversalKind;
+  /**
+   * ISO day of the payment being reversed, or null when the ledger cannot
+   * say which payment this row reverses. Null is NOT "assume this year" —
+   * it forces a refusal, because the box a reversal belongs in depends
+   * entirely on when the original money was received.
+   */
+  originalDate: string | null;
+}
+
 export interface Form1098LedgerEntry {
   /** ISO YYYY-MM-DD. */
   date: string;
   principalCents: number;
   interestCents: number;
+  /**
+   * Set only on a reversing entry (negative amounts backing out an earlier
+   * row). Absent/null on an ordinary payment.
+   */
+  reversal?: Form1098ReversalRef | null;
 }
 
 export interface Form1098BatchResult {
@@ -410,6 +530,98 @@ export type Form1098Outcome =
   | { kind: "refusal"; refusal: Form1098Refusal }
   | { kind: "excluded"; exclusion: Form1098Exclusion };
 
+/** Box 1 + Box 4, and any refusal a reversing entry forces. */
+export interface Form1098InterestBoxes {
+  /** Box 1 — mortgage interest RECEIVED during the tax year. */
+  box1Cents: number;
+  /** Box 4 — reimbursement of interest received (and reported) in a PRIOR year. */
+  box4Cents: number;
+  /** Non-empty when a reversing entry cannot be placed truthfully. */
+  refusalCodes: Form1098RefusalCode[];
+}
+
+/**
+ * Split the year's ledger into Box 1 and Box 4.
+ *
+ * ── WHY THIS IS NOT JUST A SUM ────────────────────────────────────────────
+ * It used to be: `interest = sum(signed interestCents in year)`, which is
+ * right only while every negative row reverses a payment made in the SAME
+ * year. A card refund issued in February for a payment made in December
+ * reverses interest that last year's Form 1098 already reported to the IRS
+ * under the borrower's TIN. Netting it into THIS year's Box 1 understates the
+ * interest actually received this year and leaves Box 4 — the box the IRS
+ * created for exactly this event — reading zero.
+ *
+ * The rules (Instructions for Form 1098, boxes 1 and 4):
+ *   • ordinary payment in-year                → Box 1
+ *   • reversal of a payment made in the SAME
+ *     tax year                                → nets out of Box 1 (the money
+ *                                               was never, on balance, received)
+ *   • REFUND of interest received in a PRIOR
+ *     year                                    → Box 4, Box 1 untouched
+ *   • NONPAYMENT reversal (ACH return / NSF)
+ *     of a PRIOR year's payment                → REFUSE. The interest was
+ *                                               never received, so the PRIOR
+ *                                               year's form is wrong and needs
+ *                                               a corrected 1098; it is not a
+ *                                               Box 4 reimbursement and it must
+ *                                               not silently shrink this year.
+ *   • reversal whose original cannot be dated  → REFUSE. There is no honest
+ *                                               default; guessing the year is
+ *                                               guessing the figure.
+ *
+ * PURE. Exported so the gate can drive it directly.
+ */
+export function deriveInterestBoxes(
+  ledger: Form1098LedgerEntry[],
+  taxYear: number,
+): Form1098InterestBoxes {
+  const start = yearStartDay(taxYear);
+  const end = yearEndDay(taxYear);
+
+  let box1Cents = 0;
+  let box4Cents = 0;
+  const codes = new Set<Form1098RefusalCode>();
+
+  for (const e of ledger) {
+    if (e.date < start || e.date > end) continue;
+
+    const rev = e.reversal;
+    if (!rev) {
+      box1Cents += e.interestCents;
+      continue;
+    }
+
+    // A reversing entry must be negative; a positive one is an incoherent
+    // row we cannot place, not a payment to report.
+    if (e.interestCents > 0) {
+      codes.add("REVERSAL_ORIGIN_UNRESOLVED");
+      continue;
+    }
+
+    const origin = rev.originalDate;
+    if (!origin || origin > end) {
+      codes.add("REVERSAL_ORIGIN_UNRESOLVED");
+      continue;
+    }
+
+    if (origin >= start) {
+      // Same tax year — net it out of Box 1.
+      box1Cents += e.interestCents;
+      continue;
+    }
+
+    if (rev.kind === "refund") {
+      box4Cents += -e.interestCents;
+      continue;
+    }
+
+    codes.add("PRIOR_YEAR_NONPAYMENT_REVERSAL");
+  }
+
+  return { box1Cents, box4Cents, refusalCodes: Array.from(codes) };
+}
+
 /**
  * Turn one candidate into a form, a refusal, or an exclusion. PURE — no
  * DB, no clock, no randomness. This is the function that enforces
@@ -423,15 +635,22 @@ export function deriveForm1098(
   const start = yearStartDay(taxYear);
   const end = yearEndDay(taxYear);
 
-  // ── Box 1: mortgage interest received, straight off the ledger. ───────
-  // Summing signed interest nets NSF reversals (which post negative) so a
-  // bounced payment cannot inflate the reported figure.
-  const interestCents = candidate.ledger
-    .filter((e) => e.date >= start && e.date <= end)
-    .reduce((s, e) => s + e.interestCents, 0);
+  // ── Boxes 1 and 4, off the ledger. A refunded payment does not count as
+  // interest received; see deriveInterestBoxes for which box it lands in.
+  const boxes = deriveInterestBoxes(candidate.ledger, taxYear);
+  const interestCents = boxes.box1Cents;
+  const reimbursementCents = boxes.box4Cents;
 
   // ── Exclusions: no form is REQUIRED (this is not a failure). ──────────
-  if (interestCents <= 0) {
+  //
+  // Safe to test BEFORE the reversal refusals: a reversing entry can only
+  // ever REDUCE Box 1, so a figure computed while ignoring an unplaceable
+  // reversal is an upper bound. If even the upper bound is under threshold,
+  // the true figure is too, and no form is required either way.
+  //
+  // A reimbursement of $600+ is separately reportable (Instructions for Form
+  // 1098, box 4), so it can require a form on its own.
+  if (interestCents <= 0 && reimbursementCents <= 0) {
     return {
       kind: "excluded",
       exclusion: {
@@ -442,7 +661,10 @@ export function deriveForm1098(
       },
     };
   }
-  if (interestCents < FORM_1098_THRESHOLD_CENTS) {
+  if (
+    interestCents < FORM_1098_THRESHOLD_CENTS &&
+    reimbursementCents < FORM_1098_THRESHOLD_CENTS
+  ) {
     return {
       kind: "excluded",
       exclusion: {
@@ -451,7 +673,10 @@ export function deriveForm1098(
         code: "BELOW_600_THRESHOLD",
         reason:
           `Mortgage interest received on ${candidate.noteRef} in ${taxYear} was ` +
-          `$${(interestCents / 100).toFixed(2)}, below the $600 Form 1098 filing threshold.`,
+          `$${(interestCents / 100).toFixed(2)}, below the $600 Form 1098 filing threshold.` +
+          (reimbursementCents > 0
+            ? ` A $${(reimbursementCents / 100).toFixed(2)} reimbursement of prior-year interest was also below the threshold.`
+            : ""),
       },
     };
   }
@@ -474,7 +699,9 @@ export function deriveForm1098(
   }
 
   // ── Refusal checks: a form IS required but cannot be filled truthfully.
-  const codes: Form1098RefusalCode[] = [];
+  // A reversing entry we could not place comes first — it means the money
+  // figures themselves are in doubt, which is the worst kind of wrong form.
+  const codes: Form1098RefusalCode[] = [...boxes.refusalCodes];
 
   if (!candidate.borrowerName.trim()) codes.push("BORROWER_NAME_MISSING");
 
@@ -550,12 +777,15 @@ export function deriveForm1098(
       // EIN case has already been excluded above.
       borrowerTinType: candidate.borrowerTinType ?? "SSN",
 
-      box1MortgageInterestReceivedCents: interestCents,
+      // Never negative: same-year reversals can in principle outweigh the
+      // year's receipts, and a negative Box 1 is not a figure the form can
+      // carry. Reaching here at all means Box 4 required the form.
+      box1MortgageInterestReceivedCents: Math.max(0, interestCents),
       box2OutstandingMortgagePrincipalCents: principal.cents,
       box2Basis: principal.basis,
       // Non-null: MORTGAGE_ORIGINATION_DATE_MISSING would have refused.
       box3MortgageOriginationDate: candidate.originationDate ?? "",
-      box4RefundOfOverpaidInterestCents: 0,
+      box4RefundOfOverpaidInterestCents: reimbursementCents,
       box5MortgageInsurancePremiumCents: 0,
       box6PointsPaidCents: 0,
       box7PropertyAddressSameAsBorrower: propertySameAsBorrower,
@@ -593,6 +823,10 @@ function refusalReason(
       `the payment ledger contains no entry before ${taxYear}-01-01, so the outstanding principal on January 1 required by Box 2 cannot be derived — it would understate any principal paid before AcreOS began servicing this note`,
     PRINCIPAL_DERIVATION_INCONSISTENT:
       "rolling the current balance back over posted principal produced a negative outstanding principal, so the ledger and the stored balance disagree",
+    REVERSAL_ORIGIN_UNRESOLVED:
+      "the ledger contains a reversing entry (a refund or a returned payment) that cannot be matched to the payment it reverses, so we cannot tell whether it belongs in Box 1 or Box 4 — link the reversal to its original payment",
+    PRIOR_YEAR_NONPAYMENT_REVERSAL:
+      `the ledger contains a returned/bounced payment posted in ${taxYear} that reverses a payment received in an EARLIER year — that interest was never actually received, so the earlier year's Form 1098 needs a CORRECTED filing rather than a silent reduction of this year's Box 1`,
   };
   const reasons = codes.map((c) => explain[c]);
   const joined =
@@ -953,6 +1187,123 @@ function centsFromNumeric(v: string | null | undefined): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+/** The `note_payments` columns the 1098 ledger is built from. */
+export interface AcquiredLedgerRow {
+  id: string;
+  noteId: string;
+  paymentDate: string | Date | null;
+  principalCents: number;
+  interestCents: number;
+  paymentType: string;
+  originalPaymentId: string | null;
+}
+
+/**
+ * `note_payments` rows → 1098 ledger entries, keyed by note.
+ *
+ * PURE, and exported so the gate can drive the REAL mapping over seeded rows
+ * instead of re-implementing it (a rule the product computes independently
+ * from the rule the test checks is not a rule).
+ *
+ * An NSF reversal backs out a payment that never cleared. WHICH YEAR that
+ * payment landed in decides whether it nets out of Box 1 or invalidates an
+ * already-filed prior-year form, so the original's date is carried across.
+ */
+export function toAcquiredLedgerEntries(
+  rows: AcquiredLedgerRow[],
+): Map<string, Form1098LedgerEntry[]> {
+  const dayByPaymentId = new Map<string, string>();
+  for (const l of rows) {
+    const day = toIsoDay(l.paymentDate);
+    if (day) dayByPaymentId.set(l.id, day);
+  }
+
+  const ledgerByNote = new Map<string, Form1098LedgerEntry[]>();
+  for (const l of rows) {
+    const day = toIsoDay(l.paymentDate);
+    if (!day) continue;
+    const list = ledgerByNote.get(l.noteId) ?? [];
+    list.push({
+      date: day,
+      principalCents: l.principalCents,
+      interestCents: l.interestCents,
+      reversal:
+        l.paymentType === "nsf_reversal"
+          ? {
+              kind: "nonpayment",
+              originalDate: l.originalPaymentId
+                ? (dayByPaymentId.get(l.originalPaymentId) ?? null)
+                : null,
+            }
+          : null,
+    });
+    ledgerByNote.set(l.noteId, list);
+  }
+  return ledgerByNote;
+}
+
+/** The `payments` columns the 1098 ledger is built from. */
+export interface OriginatedLedgerRow {
+  noteId: number;
+  paymentDate: string | Date | null;
+  principalAmount: string | null;
+  interestAmount: string | null;
+  transactionId: string | null;
+  status: string;
+}
+
+/**
+ * `payments` rows → 1098 ledger entries, keyed by note. PURE, and exported
+ * for the same reason as its acquired twin.
+ *
+ * Posts only `completed` rows, and drops a reversal whose original is NOT
+ * itself posted — see collectOriginatedCandidates for why that second rule
+ * is what keeps an ACH return from subtracting the same interest twice.
+ */
+export function toOriginatedLedgerEntries(
+  rows: OriginatedLedgerRow[],
+): Map<number, Form1098LedgerEntry[]> {
+  interface PostedRowFacts {
+    day: string;
+    posted: boolean;
+  }
+  const rowByTransactionId = new Map<string, PostedRowFacts>();
+  for (const l of rows) {
+    const day = toIsoDay(l.paymentDate);
+    if (!day || !l.transactionId) continue;
+    rowByTransactionId.set(l.transactionId, { day, posted: l.status === "completed" });
+  }
+
+  const ledgerByNote = new Map<number, Form1098LedgerEntry[]>();
+  for (const l of rows) {
+    if (l.status !== "completed") continue;
+    const day = toIsoDay(l.paymentDate);
+    if (!day) continue;
+
+    const link = parseReversalTransactionId(l.transactionId);
+    let reversal: Form1098ReversalRef | null = null;
+    if (link) {
+      const original = rowByTransactionId.get(link.originalTransactionId);
+      // The row it reverses was itself struck from the ledger (ACH return):
+      // its interest never entered the sum, so backing it out again would
+      // subtract it twice.
+      if (original && !original.posted) continue;
+      reversal = { kind: link.kind, originalDate: original?.day ?? null };
+    }
+
+    const list = ledgerByNote.get(l.noteId) ?? [];
+    // Round each row to cents before summing — never sum floats then round.
+    list.push({
+      date: day,
+      principalCents: centsFromNumeric(l.principalAmount),
+      interestCents: centsFromNumeric(l.interestAmount),
+      reversal,
+    });
+    ledgerByNote.set(l.noteId, list);
+  }
+  return ledgerByNote;
+}
+
 /**
  * Candidates from ACQUIRED notes: `acquired_notes` + the `note_payments`
  * ledger (integer cents, with NSF reversals posting negative).
@@ -969,26 +1320,18 @@ export async function collectAcquiredCandidates(
   const noteIds = rows.map((r) => r.id);
   const ledgerRows = await db
     .select({
+      id: notePayments.id,
       noteId: notePayments.noteId,
       paymentDate: notePayments.paymentDate,
       principalCents: notePayments.principalCents,
       interestCents: notePayments.interestCents,
+      paymentType: notePayments.paymentType,
+      originalPaymentId: notePayments.originalPaymentId,
     })
     .from(notePayments)
     .where(inArray(notePayments.noteId, noteIds));
 
-  const ledgerByNote = new Map<string, Form1098LedgerEntry[]>();
-  for (const l of ledgerRows) {
-    const day = toIsoDay(l.paymentDate);
-    if (!day) continue;
-    const list = ledgerByNote.get(l.noteId) ?? [];
-    list.push({
-      date: day,
-      principalCents: l.principalCents,
-      interestCents: l.interestCents,
-    });
-    ledgerByNote.set(l.noteId, list);
-  }
+  const ledgerByNote = toAcquiredLedgerEntries(ledgerRows);
 
   const propertyIds = rows.map((r) => r.propertyId).filter((id): id is number => id !== null);
   const propertyById = await loadProperties(propertyIds);
@@ -1022,6 +1365,19 @@ export async function collectAcquiredCandidates(
  * Candidates from ORIGINATED notes: `notes` + the `payments` ledger.
  * Only COMPLETED payments are posted entries — pending/failed/refunded
  * rows are not money received and must not appear on a tax form.
+ *
+ * ── WHY THE QUERY READS EVERY STATUS ──────────────────────────────────────
+ * It still POSTS only completed rows. It has to READ the others because a
+ * reversing row is only meaningful next to the row it reverses:
+ *
+ *   • card refund  — the original stays `completed` (it really happened) and
+ *     the reversal is a second completed row with negative amounts. Both post;
+ *     they net, or the refund lands in Box 4 when it crosses a year boundary.
+ *   • ACH return   — achAutopay.ts flips the ORIGINAL to `failed` and appends
+ *     a negative reversal. The original therefore never enters the sum, so
+ *     posting the reversal too would subtract the same interest a SECOND time
+ *     and understate Box 1 by the full amount of the returned payment. The
+ *     reversal is skipped whenever the row it reverses is not itself posted.
  */
 export async function collectOriginatedCandidates(
   orgId: number,
@@ -1036,23 +1392,13 @@ export async function collectOriginatedCandidates(
       paymentDate: payments.paymentDate,
       principalAmount: payments.principalAmount,
       interestAmount: payments.interestAmount,
+      transactionId: payments.transactionId,
+      status: payments.status,
     })
     .from(payments)
-    .where(and(inArray(payments.noteId, noteIds), eq(payments.status, "completed")));
+    .where(inArray(payments.noteId, noteIds));
 
-  const ledgerByNote = new Map<number, Form1098LedgerEntry[]>();
-  for (const l of ledgerRows) {
-    const day = toIsoDay(l.paymentDate);
-    if (!day) continue;
-    const list = ledgerByNote.get(l.noteId) ?? [];
-    // Round each row to cents before summing — never sum floats then round.
-    list.push({
-      date: day,
-      principalCents: centsFromNumeric(l.principalAmount),
-      interestCents: centsFromNumeric(l.interestAmount),
-    });
-    ledgerByNote.set(l.noteId, list);
-  }
+  const ledgerByNote = toOriginatedLedgerEntries(ledgerRows);
 
   const borrowerIds = rows.map((r) => r.borrowerId).filter((id): id is number => id !== null);
   const borrowerById = await loadBorrowers(borrowerIds);

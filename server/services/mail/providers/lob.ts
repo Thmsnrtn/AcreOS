@@ -34,6 +34,26 @@ const LOB_COSTS: Record<PieceType, number> = {
   handwritten: 350, // Lob handwriting integration premium
 };
 
+/**
+ * PLATFORM AVAILABILITY PROBE — NOT a credential path.
+ *
+ * Read this before assuming it is a fourth Lob client (2026-08-20 send-rail
+ * audit checked exactly that). The value returned here is never handed to the
+ * Lob SDK by this adapter: `send()` below delegates every piece to
+ * `directMailService.sendLetter/sendPostcard`, which resolve the client
+ * through `getLobClient` — the single BYO-aware authority (BYOK vault →
+ * legacy organization_integrations row → platform key). So no counterparty
+ * piece ships on an env key picked here.
+ *
+ * Its ONLY job is answering the router's synchronous `isConfigured()`, which
+ * takes no organizationId and therefore cannot ask "does THIS org have its own
+ * key". The consequence is a conservative FALSE NEGATIVE, not a doctrine
+ * breach: an org whose only Lob credential lives in the BYOK vault, on a
+ * deployment with no platform Lob key at all, sees the router skip Lob rather
+ * than send on somebody else's account. Fixing that requires an org-scoped
+ * `isConfigured` on the MailProvider interface (server/services/mail/router.ts)
+ * — a change to the shared provider contract, deliberately not made here.
+ */
 function lobApiKey(): string | null {
   const isProd = process.env.NODE_ENV === "production";
   return (isProd ? process.env.LOB_LIVE_API_KEY : process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY) ?? null;

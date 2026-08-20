@@ -50,7 +50,11 @@ type LobResult = {
 };
 
 const state = {
-  lobCalls: [] as Array<{ toName: string; mode: string }>,
+  // `ctx` records the lane/tenant context the caller now passes (BYO send
+  // rails, 2026-08-20). This file does not assert on it — tests/unit/
+  // directMailLaneAdoption.test.ts does — but capturing it keeps the mock an
+  // honest record of the real call.
+  lobCalls: [] as Array<{ toName: string; mode: string; ctx?: unknown }>,
   /** Consumed in order; the fallback makes an unexpected extra call VISIBLE. */
   lobResults: [] as LobResult[],
   alerts: [] as any[],
@@ -125,8 +129,14 @@ vi.mock("../../server/utils/logger", () => ({
 vi.mock("../../server/services/lobService", () => ({
   lobService: {
     isConfigured: () => true,
-    sendLetter: async (options: any, mode: string) => {
-      state.lobCalls.push({ toName: options.to.name, mode });
+    // 2026-08-20 (BYO send rails, founder decision 2026-07-17): the direct-mail
+    // precheck is now TENANT-AWARE — `isConfigured()` sees only the platform env
+    // keys and refused BYOK orgs that were perfectly well configured on their
+    // own Lob account. The mock keeps returning "configured" so the chain-claim
+    // behaviour this file pins is reached exactly as before; only the seam moved.
+    isConfiguredForOrg: async () => true,
+    sendLetter: async (options: any, mode: string, ctx?: any) => {
+      state.lobCalls.push({ toName: options.to.name, mode, ctx });
       const next = state.lobResults.shift();
       if (!next) {
         // An unqueued call is a real send the test did not expect. Returning a
@@ -243,6 +253,11 @@ describe("(a) control — a normal single-attempt send actually sends", () => {
     expect(state.lobCalls).toHaveLength(1);
     expect(result.success).toBe(true);
     expect(result.lobMailingId).toBe("ltr_first");
+    // SANDBOX HONESTY (2026-08-20 audit). This chain resolved the Lob TEST
+    // client: nothing printed and nothing was mailed. `success: true` alone
+    // would let a caller render "letter sent" for a no-op, so the sandbox flag
+    // rides out on the result as well as into the activity metadata below.
+    expect(result.isTestMode).toBe(true);
     // The send is recorded — the guard did not swallow the bookkeeping.
     expect(state.activities).toHaveLength(1);
     expect(state.activities[0].type).toBe("communication_direct_mail");

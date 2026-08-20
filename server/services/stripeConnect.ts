@@ -64,6 +64,41 @@ export class CustomerMoneyRefusedError extends Error {
   }
 }
 
+/**
+ * THE EVENTS THE CONNECT ENDPOINT MUST BE SUBSCRIBED TO.
+ *
+ * ── WHY THIS IS A CONSTANT AND NOT A LIST IN THE SETUP ROUTE ─────────────
+ * `routes-setup.ts` provisions the webhook endpoint at
+ * `${APP_URL}/api/stripe/connect/webhook` with an `enabled_events` array —
+ * and Stripe DELIVERS NOTHING that is not in it. That array was hand-written
+ * and had drifted badly: it listed `customer.subscription.*`,
+ * `invoice.payment_succeeded` and `charge.dispute.created` (none of which
+ * `handleWebhookEvent` below dispatches on) while omitting `account.updated`,
+ * `checkout.session.completed`, `invoice.paid` and `charge.refunded` (all of
+ * which it does). A handler for an event the endpoint never receives is
+ * "built but unwired" with a green test suite: the branch is real, the code
+ * is reachable in a unit test, and in production the event simply never
+ * arrives.
+ *
+ * So the subscription list lives HERE, next to the switch it must mirror, and
+ * the setup route imports it — one definition, and `stripeConnectWebhookEvents.test.ts`
+ * DERIVES the handled set from this file's actual `case` labels and fails if
+ * the two ever diverge again.
+ *
+ * Ordinary payment-failure/rescue events (`invoice.*`) stay in the list even
+ * though they concern AcreOS's own subscription billing: `handleWebhookEvent`
+ * dispatches them to dunning, so they are handled here in fact.
+ */
+export const STRIPE_CONNECT_WEBHOOK_EVENTS = [
+  "account.updated",
+  "checkout.session.completed",
+  "charge.refunded",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "invoice.payment_failed",
+  "invoice.paid",
+] as const;
+
 export interface StripeConnectStatus {
   isConnected: boolean;
   accountId?: string;
@@ -435,6 +470,26 @@ export class StripeConnectService {
           const { WebhookHandlers } = await import("../webhookHandlers");
           await WebhookHandlers.processBorrowerPortalPayment(session);
         }
+        break;
+      }
+
+      // ── Money going back OUT ────────────────────────────────────────
+      // A lender refunding a borrower's card payment on their own account is
+      // a LEDGER EVENT, not a notification. webhookHandlers' PLATFORM
+      // dispatcher already had a `charge.refunded` branch, but it reverses
+      // AcreOS's own subscription revenue recognition and never sees this
+      // event: a borrower's charge is DIRECT on the lender's account, so the
+      // refund arrives HERE. Until this branch existed it landed in
+      // `default:` as "Unhandled Stripe webhook event": the payment row
+      // stood, the balance stayed reduced, and Form 1098 Box 1 reported
+      // mortgage interest the borrower never actually paid — to the IRS,
+      // under that borrower's real TIN. `charge.refunded` fires for partial
+      // refunds too, which is why the handler proportions rather than
+      // reversing whole rows.
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        const { WebhookHandlers } = await import("../webhookHandlers");
+        await WebhookHandlers.processBorrowerPaymentRefund(charge, event.account ?? null);
         break;
       }
 

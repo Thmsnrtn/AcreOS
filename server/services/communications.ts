@@ -23,6 +23,14 @@ export interface CommunicationResult {
   messageId?: string;
   lobMailingId?: string;
   expectedDeliveryDate?: string;
+  /**
+   * TRUE when the piece went to the Lob SANDBOX: nothing printed, nothing was
+   * mailed, nothing was charged. Reported alongside `success` because a
+   * success that does not say this is a claim the letter was sent — the same
+   * distinction `routes-campaigns` already surfaces to the UI as "Test mail
+   * sent" vs "Mail sent". Only the direct-mail channel sets it.
+   */
+  isTestMode?: boolean;
   error?: string;
   errorType?: LobErrorType;
   tcpaBlocked?: boolean;
@@ -208,34 +216,75 @@ export class CommunicationsService {
     if (channel === 'email' || channel === 'both') {
       const emailCheck = canSendViaChannel(lead, 'email');
       if (emailCheck.allowed && lead.email) {
-        const result = await emailService.sendEmail({
-          to: lead.email,
-          subject: options.subject || 'Message from AcreOS',
-          html: `<p>${options.message}</p>`,
-          // Deal mail: must carry the org's own identity (this call previously
-          // omitted organizationId entirely, so lead outreach silently went
-          // out as platform @acreos.io — the exact leak the counterparty
-          // enforcement closes).
-          organizationId: options.organizationId,
-          purpose: 'counterparty',
-        });
-
-        if (result.success) {
-          await this.recordCommunication(options.leadId, options.organizationId, 'email', {
-            subject: options.subject,
-            messageId: result.messageId,
+        // THE SUBJECT LINE IS IDENTITY TOO (founder decision 2026-07-17).
+        //
+        // This defaulted to the literal 'Message from AcreOS', and the live
+        // caller (POST /api/communications/send) takes `subject` straight from
+        // the request body, where it is optional. So a send with no subject put
+        // OUR name in the subject line of a customer's email to their own
+        // seller — the same re-fronting the From: name and the CAN-SPAM footer
+        // were fixed for, arriving through the one header a recipient reads
+        // first. Nothing downstream could catch it: emailService enforces the
+        // SENDER identity, not the subject text.
+        //
+        // The fallback now names the SENDING ORG, and when the org has no name
+        // on file we REFUSE rather than invent one — a fabricated sender name
+        // is worse than an unsent email, and the caller is told exactly what to
+        // supply.
+        const subjectOrRefusal = await this.counterpartySubject(
+          options.organizationId,
+          options.subject,
+        );
+        if ('error' in subjectOrRefusal) {
+          logger.warn('[Communications] Email refused — no honest subject line available', {
+            metadata: {
+              leadId: options.leadId,
+              organizationId: options.organizationId,
+            },
           });
-        }
+          emailResult = {
+            success: false,
+            channel: 'email',
+            error: subjectOrRefusal.error,
+          };
+          if (channel === 'email') {
+            return emailResult;
+          }
+          // channel === 'both': the email half stays refused and control falls
+          // through to the SMS block below, exactly as the other email
+          // refusals in this method do.
+        } else {
+          const result = await emailService.sendEmail({
+            to: lead.email,
+            subject: subjectOrRefusal.subject,
+            html: `<p>${options.message}</p>`,
+            // Deal mail: must carry the org's own identity (this call previously
+            // omitted organizationId entirely, so lead outreach silently went
+            // out as platform @acreos.io — the exact leak the counterparty
+            // enforcement closes).
+            organizationId: options.organizationId,
+            purpose: 'counterparty',
+          });
 
-        emailResult = { 
-          success: result.success, 
-          channel: 'email', 
-          messageId: result.messageId, 
-          error: result.error 
-        };
+          if (result.success) {
+            await this.recordCommunication(options.leadId, options.organizationId, 'email', {
+              // The subject actually SENT, not the caller's (possibly absent)
+              // one — the activity record has to match what the recipient got.
+              subject: subjectOrRefusal.subject,
+              messageId: result.messageId,
+            });
+          }
 
-        if (channel === 'email') {
-          return emailResult;
+          emailResult = {
+            success: result.success,
+            channel: 'email',
+            messageId: result.messageId,
+            error: result.error,
+          };
+
+          if (channel === 'email') {
+            return emailResult;
+          }
         }
       } else if (!emailCheck.allowed) {
         emailResult = { 
@@ -287,6 +336,48 @@ export class CommunicationsService {
     }
 
     return { success: false, channel: 'none', error: 'No valid contact method available' };
+  }
+
+  /**
+   * The subject line for a COUNTERPARTY email — the org writing to its own
+   * lead — resolved from the caller's subject or, failing that, the SENDING
+   * ORG's own name.
+   *
+   * There is deliberately no platform-brand fallback. The old default was the
+   * literal 'Message from AcreOS', which put our name in the first thing the
+   * recipient reads on mail the customer is sending (founder decision
+   * 2026-07-17: counterparty mail carries the customer's identity, never
+   * ours). And there is no invented substitute either: an org with no name on
+   * file gets a REFUSAL, because "Message from " or a placeholder company name
+   * would be a fabricated sender identity, which this codebase never ships.
+   */
+  private async counterpartySubject(
+    organizationId: number,
+    subject?: string,
+  ): Promise<{ subject: string } | { error: string }> {
+    const explicit = subject?.trim();
+    if (explicit) {
+      return { subject: explicit };
+    }
+    const org = await storage.getOrganization(organizationId).catch((err) => {
+      logger.warn('[Communications] Could not load org while resolving a counterparty subject', {
+        metadata: {
+          organizationId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+      return null;
+    });
+    const orgName = org?.name?.trim();
+    if (!orgName) {
+      return {
+        error:
+          'No subject line was supplied and this organization has no name on file, so there is no honest ' +
+          'sender to name in it. Set a subject, or add your company name in Settings — deal mail is sent ' +
+          "under your identity, never AcreOS's.",
+      };
+    }
+    return { subject: `Message from ${orgName}` };
   }
 
   private determinePreferredChannel(lead: { email?: string | null; phone?: string | null; tcpaConsent?: boolean | null }): 'email' | 'sms' {
@@ -401,8 +492,12 @@ export class CommunicationsService {
       };
     }
 
-    if (!lobService.isConfigured()) {
-      logger.error('[Communications] Lob service not configured - LOB_TEST_API_KEY or LOB_LIVE_API_KEY required');
+    // TENANT-AWARE precheck. `isConfigured()` sees only the platform env keys,
+    // so it refused a BYOK org that has its own Lob account — a false negative
+    // that would have defeated the BYO routing below (founder decision
+    // 2026-07-17 as applied to Lob).
+    if (!(await lobService.isConfiguredForOrg(organizationId))) {
+      logger.error('[Communications] No Lob credential resolves for this org - connect a Lob account or configure the platform key');
       return {
         success: false,
         channel: 'direct_mail',
@@ -452,8 +547,23 @@ export class CommunicationsService {
     if (!settings.companyAddress || !settings.companyCity || !settings.companyState || !settings.companyZip) {
       return { success: false, channel: 'mail', error: "Return address not configured. Set your company address in Settings before sending direct mail." };
     }
+    // The return address on a letter to a LEAD is the customer's, end to end —
+    // name included. There is deliberately no 'AcreOS' default here: printing
+    // our name above the customer's street address would put AcreOS's identity
+    // on their counterparty mail, which is the same re-fronting the founder
+    // banned for email on 2026-07-17. organizations.name is NOT NULL, so this
+    // only trips when the org itself is missing — in which case refusing is the
+    // only honest answer.
+    const senderName = org?.name?.trim();
+    if (!senderName) {
+      return {
+        success: false,
+        channel: 'direct_mail',
+        error: 'Sender organization not found — cannot determine the return-address name for counterparty mail.',
+      };
+    }
     const fromAddress = {
-      name: org?.name || 'AcreOS',
+      name: senderName,
       addressLine1: settings.companyAddress,
       city: settings.companyCity,
       state: settings.companyState,
@@ -512,6 +622,13 @@ export class CommunicationsService {
       };
     }
 
+    // COUNTERPARTY LANE. The recipient is a lead — the customer's seller — so
+    // the letter must print on the CUSTOMER's Lob account when they have one.
+    // Passing the org id routes the credential through
+    // `directMailService.getLobClient`, the single authority (BYOK vault →
+    // legacy organization_integrations row → platform key). Before this,
+    // lobService read only the platform env keys, so every seller letter in
+    // this lane printed on AcreOS's account.
     const lobResult = await lobService.sendLetter(
       {
         to: toAddress,
@@ -520,7 +637,8 @@ export class CommunicationsService {
         color: false,
         doubleSided: false,
       },
-      mailMode
+      mailMode,
+      { organizationId, purpose: 'counterparty' },
     );
 
     if (lobResult.success) {
@@ -540,6 +658,10 @@ export class CommunicationsService {
         channel: 'direct_mail',
         lobMailingId: lobResult.lobMailingId,
         expectedDeliveryDate: lobResult.expectedDeliveryDate,
+        // Carried out of the service, not just into the activity record: a
+        // caller that renders "letter sent" from `success` alone would
+        // otherwise report a sandbox no-op as real mail.
+        isTestMode: lobResult.isTestMode,
       };
     }
 

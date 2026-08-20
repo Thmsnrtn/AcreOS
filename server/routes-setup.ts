@@ -380,18 +380,20 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
             });
           }
 
+          // Subscribe to exactly what the Connect dispatcher handles, taken
+          // FROM the dispatcher rather than restated here. Stripe delivers
+          // nothing outside `enabled_events`, so a hand-kept copy of this
+          // list is a silent way to unwire a live handler — which is what had
+          // happened: `charge.refunded`, `account.updated`,
+          // `checkout.session.completed` and `invoice.paid` were all handled
+          // and none were subscribed, while five subscribed events
+          // (customer.subscription.created/updated/deleted,
+          // invoice.payment_succeeded, charge.dispute.created) had no handler
+          // here at all. See STRIPE_CONNECT_WEBHOOK_EVENTS' own note.
+          const { STRIPE_CONNECT_WEBHOOK_EVENTS } = await import("./services/stripeConnect");
           const webhook = await stripe.webhookEndpoints.create({
             url: webhookUrl,
-            enabled_events: [
-              "customer.subscription.created",
-              "customer.subscription.updated",
-              "customer.subscription.deleted",
-              "invoice.payment_succeeded",
-              "invoice.payment_failed",
-              "payment_intent.succeeded",
-              "payment_intent.payment_failed",
-              "charge.dispute.created",
-            ],
+            enabled_events: [...STRIPE_CONNECT_WEBHOOK_EVENTS],
           });
 
           // Save the webhook secret to config

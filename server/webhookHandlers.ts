@@ -15,6 +15,122 @@ import { logger } from './utils/logger';
 import { addMonths } from './utils/dateUtils';
 import { recordSense } from './services/autopilot/perception';
 
+// ─── Refund reversal derivation (PURE) ──────────────────────────────────────
+//
+// A refunded card payment is backed out by APPENDING a negative row to the
+// payments ledger. The original row is never edited and never deleted: the
+// borrower really did pay, and the reversing pair IS the audit trail. This is
+// the same shape achAutopay.ts uses for an ACH return.
+//
+// Everything below is pure so the tax gate can drive it without a database.
+
+/** The original payment's buckets, in cents. */
+export interface ReversibleLedgerRow {
+  amountCents: number;
+  principalCents: number;
+  interestCents: number;
+  feeCents: number;
+  lateFeeCents: number;
+}
+
+/** One Stripe refund against that payment. */
+export interface StripeRefundFact {
+  id: string;
+  amountCents: number;
+  /** ISO instant the refund was created — the day the reversal posts. */
+  createdIso: string;
+}
+
+/** One reversing ledger row to append. Every money field is NEGATIVE. */
+export interface RefundReversalRow {
+  refundId: string;
+  postedAt: Date;
+  amountCents: number;
+  principalCents: number;
+  interestCents: number;
+  feeCents: number;
+  lateFeeCents: number;
+}
+
+/**
+ * Split refunds across the original payment's buckets.
+ *
+ * PARTIAL REFUNDS ARE THE NORMAL CASE, not an edge: a lender who refunds a
+ * $50 late fee off a $500 payment has reversed none of the principal and none
+ * of the interest in proportion... so each bucket is reduced in the ratio the
+ * refund bears to the payment. Reversing the whole row for a partial refund
+ * would wipe out interest the borrower really did pay.
+ *
+ * Allocation is CUMULATIVE, not per-refund: each row carries the difference
+ * between the split at the running total and the split at the previous total.
+ * Two consequences that a naive per-refund `round()` gets wrong:
+ *   • rounding cannot drift — three refunds of a third each reverse exactly
+ *     the original, to the cent;
+ *   • a refund that completes the payment reverses exactly what is left, so a
+ *     fully refunded payment nets to zero and can never leave a stray cent of
+ *     interest on a Form 1098.
+ *
+ * `alreadyReversedRefundIds` are skipped but still ADVANCE the running total,
+ * which is what makes redelivery and second-partial-refund events idempotent.
+ */
+export function deriveRefundReversals(input: {
+  original: ReversibleLedgerRow;
+  refunds: StripeRefundFact[];
+  alreadyReversedRefundIds: ReadonlySet<string>;
+}): RefundReversalRow[] {
+  const { original, refunds, alreadyReversedRefundIds } = input;
+  const total = original.amountCents;
+  // A zero/negative original is not a payment we can proportion a refund
+  // against. Refuse rather than invent a split.
+  if (total <= 0) return [];
+
+  const ordered = [...refunds]
+    .filter((r) => r.amountCents > 0)
+    .sort((a, b) => (a.createdIso === b.createdIso ? a.id.localeCompare(b.id) : a.createdIso.localeCompare(b.createdIso)));
+
+  /** The share of `bucket` reversed once `cumulative` has been refunded. */
+  const share = (bucket: number, cumulative: number): number =>
+    cumulative >= total ? bucket : Math.round((bucket * cumulative) / total);
+
+  let cumulative = 0;
+  let prev = { amount: 0, principal: 0, interest: 0, fee: 0, lateFee: 0 };
+  const rows: RefundReversalRow[] = [];
+
+  for (const r of ordered) {
+    cumulative = Math.min(total, cumulative + r.amountCents);
+    const cur = {
+      amount: share(total, cumulative),
+      principal: share(original.principalCents, cumulative),
+      interest: share(original.interestCents, cumulative),
+      fee: share(original.feeCents, cumulative),
+      lateFee: share(original.lateFeeCents, cumulative),
+    };
+    if (!alreadyReversedRefundIds.has(r.id)) {
+      const row: RefundReversalRow = {
+        refundId: r.id,
+        postedAt: new Date(r.createdIso),
+        amountCents: -(cur.amount - prev.amount),
+        principalCents: -(cur.principal - prev.principal),
+        interestCents: -(cur.interest - prev.interest),
+        feeCents: -(cur.fee - prev.fee),
+        lateFeeCents: -(cur.lateFee - prev.lateFee),
+      };
+      if (
+        row.amountCents !== 0 ||
+        row.principalCents !== 0 ||
+        row.interestCents !== 0 ||
+        row.feeCents !== 0 ||
+        row.lateFeeCents !== 0
+      ) {
+        rows.push(row);
+      }
+    }
+    prev = cur;
+  }
+
+  return rows;
+}
+
 export class WebhookHandlers {
   /**
    * Verify webhook signature and parse event.
@@ -1523,6 +1639,277 @@ export class WebhookHandlers {
       logger.error('Error processing borrower portal payment', err instanceof Error ? err : undefined);
       throw err;
     }
+  }
+
+  /**
+   * A borrower's card payment was REFUNDED on the lender's own connected
+   * account (`charge.refunded`, Connect endpoint).
+   *
+   * ── WHY THIS EXISTS ───────────────────────────────────────────────────────
+   * SCOPE, precisely: the PLATFORM dispatcher in this file already handled
+   * both `charge.refunded` (→ processChargeRefunded, which reverses AcreOS's
+   * OWN subscription revenue recognition) and `charge.dispute.*` (→
+   * processChargeDispute). Neither touches a borrower's note ledger, and
+   * neither ever saw these events: a borrower's card payment is a DIRECT
+   * charge on the LENDER'S connected account, so its `charge.refunded`
+   * arrives at the CONNECT endpoint and is dispatched by
+   * stripeConnect.handleWebhookEvent — whose switch had no refund branch.
+   * There it hit `default:` and logged "Unhandled Stripe webhook event": the
+   * `payments` row this webhook's sibling (processBorrowerPortalPayment →
+   * storage.createPayment) had written stood, the note balance stayed
+   * reduced, and Form 1098 Box 1 reported mortgage interest the borrower
+   * never ended up paying — filed with the IRS under that borrower's real
+   * TIN.
+   *
+   * ── WHAT IT DOES ──────────────────────────────────────────────────────────
+   *   1. resolves the Checkout Session behind the charge ON THE LENDER'S
+   *      ACCOUNT (the charge is direct; an unscoped lookup finds nothing);
+   *   2. finds the ledger row that session wrote;
+   *   3. APPENDS one negative row per refund — history is preserved, never
+   *      rewritten — proportioned across principal / interest / fees;
+   *   4. restores the principal to the note balance under the same optimistic
+   *      lock the payment path uses.
+   *
+   * Refusals, never guesses: if the session, the org, or the original row
+   * cannot be identified, it writes NOTHING and logs what is missing. A Stripe
+   * API failure is allowed to THROW — the connect webhook route releases its
+   * idempotency claim and returns 500, so Stripe redelivers. Swallowing it
+   * would leave the ledger permanently overstating interest received.
+   */
+  static async processBorrowerPaymentRefund(
+    charge: Stripe.Charge,
+    connectedAccountId: string | null,
+  ): Promise<void> {
+    const refundedCents = charge.amount_refunded ?? 0;
+    if (refundedCents <= 0) {
+      logger.info(`[webhook] charge.refunded carried no refunded amount — nothing to reverse (charge ${charge.id})`);
+      return;
+    }
+
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id ?? null;
+
+    if (!connectedAccountId || !paymentIntentId) {
+      logger.error(
+        '[webhook] Refund cannot be matched to a borrower payment — the ledger may now overstate interest received',
+        new Error(
+          `charge=${charge.id} missing=${!connectedAccountId ? 'connectedAccount' : 'paymentIntent'}`,
+        ),
+      );
+      return;
+    }
+
+    const { customerMoneyReadOptions } = await import('./services/customerMoneyRouting');
+    const { refundReversalTransactionId } = await import('./services/form1098Batch');
+    const stripe = await getUncachableStripeClient();
+
+    // Scoped to the lender's account — the charge lives there, not in AcreOS's.
+    const sessions = await stripe.checkout.sessions.list(
+      { payment_intent: paymentIntentId, limit: 10 },
+      customerMoneyReadOptions({ accountId: connectedAccountId }, 'borrower.card.refund.session.lookup'),
+    );
+    const session = sessions.data.find(
+      (s: Stripe.Checkout.Session) => s.metadata?.type === 'borrower_portal_payment',
+    );
+    if (!session) {
+      // Lenders refund their OWN unrelated charges on this account all the
+      // time. Not ours, nothing to reverse.
+      logger.info(`[webhook] Refund on charge ${charge.id} is not a borrower portal payment — no note ledger to reverse`);
+      return;
+    }
+
+    const { payments, notes } = await import('@shared/schema');
+    const { and, eq: eqOp, like } = await import('drizzle-orm');
+
+    const [original] = await db
+      .select()
+      .from(payments)
+      .where(eqOp(payments.transactionId, session.id))
+      .limit(1);
+
+    if (!original) {
+      logger.error(
+        '[webhook] Refund of a borrower payment AcreOS never recorded — no ledger row to reverse',
+        new Error(`checkoutSession=${session.id} charge=${charge.id}`),
+      );
+      return;
+    }
+
+    const sessionOrgId = Number(session.metadata?.organizationId ?? NaN);
+    if (Number.isFinite(sessionOrgId) && sessionOrgId !== original.organizationId) {
+      logger.error(
+        '[webhook] Refund org mismatch between the checkout session and the ledger row — refusing to write',
+        new Error(`checkoutSession=${session.id} sessionOrg=${sessionOrgId} ledgerOrg=${original.organizationId}`),
+      );
+      return;
+    }
+
+    const toCents = (v: string | null | undefined): number => {
+      const n = parseFloat(v ?? '0');
+      return Number.isFinite(n) ? Math.round(n * 100) : 0;
+    };
+
+    // Reversals already on the ledger for THIS payment. The link lives in the
+    // unique transaction id (see form1098Batch's reversal-link helpers), which
+    // is what makes redelivery idempotent without a schema column.
+    const reversalPrefix = refundReversalTransactionId(session.id, '');
+    const existingReversals = (
+      await db
+        .select({ transactionId: payments.transactionId, amount: payments.amount })
+        .from(payments)
+        .where(
+          and(
+            eqOp(payments.noteId, original.noteId),
+            like(payments.transactionId, `${reversalPrefix}%`),
+          ),
+        )
+    // `_` is a LIKE wildcard and Stripe ids are full of them, so the SQL
+    // prefix is a coarse filter; this is the exact one.
+    ).filter((r) => r.transactionId?.startsWith(reversalPrefix));
+    const existingTxIds = new Set(
+      existingReversals.map((r) => r.transactionId).filter((t): t is string => Boolean(t)),
+    );
+    const alreadyReversedCents = existingReversals.reduce((sum, r) => sum + Math.abs(toCents(r.amount)), 0);
+
+    // Prefer the refund objects on the event: each has its own id, amount and
+    // timestamp, so partial refunds post individually and idempotently.
+    let refundFacts: StripeRefundFact[] = (charge.refunds?.data ?? [])
+      .filter((r) => (r.status ?? 'succeeded') === 'succeeded' && (r.amount ?? 0) > 0)
+      .map((r) => ({
+        id: r.id,
+        amountCents: r.amount,
+        createdIso: new Date((r.created ?? charge.created) * 1000).toISOString(),
+      }));
+
+    const alreadyReversedRefundIds = new Set<string>(
+      refundFacts.filter((f) => existingTxIds.has(refundReversalTransactionId(session.id, f.id))).map((f) => f.id),
+    );
+
+    if (refundFacts.length === 0) {
+      // The event did not expand the refund list (it is a paginated sub-list).
+      // Fall back to the CUMULATIVE `amount_refunded`, and feed the portion we
+      // already reversed in as a sentinel so the proportional split is taken
+      // against the true running total and only the delta posts.
+      const sentinelId = `${charge.id}:already-reversed`;
+      const createdIso = new Date(charge.created * 1000).toISOString();
+      if (alreadyReversedCents > 0) {
+        refundFacts.push({ id: sentinelId, amountCents: alreadyReversedCents, createdIso });
+        alreadyReversedRefundIds.add(sentinelId);
+      }
+      const deltaCents = refundedCents - alreadyReversedCents;
+      if (deltaCents > 0) {
+        refundFacts.push({ id: `${charge.id}:refunded:${refundedCents}`, amountCents: deltaCents, createdIso });
+      }
+    }
+
+    const reversals = deriveRefundReversals({
+      original: {
+        amountCents: toCents(original.amount),
+        principalCents: toCents(original.principalAmount),
+        interestCents: toCents(original.interestAmount),
+        feeCents: toCents(original.feeAmount),
+        lateFeeCents: toCents(original.lateFeeAmount),
+      },
+      refunds: refundFacts,
+      alreadyReversedRefundIds,
+    });
+
+    if (reversals.length === 0) {
+      logger.info(`[webhook] Refund on charge ${charge.id} was already reversed on the ledger — nothing to post`);
+      return;
+    }
+
+    const restoredPrincipalCents = await withTransaction(async (tx) => {
+      let restored = 0;
+      for (const rev of reversals) {
+        const inserted = await tx
+          .insert(payments)
+          .values({
+            organizationId: original.organizationId,
+            noteId: original.noteId,
+            amount: (rev.amountCents / 100).toString(),
+            principalAmount: (rev.principalCents / 100).toString(),
+            interestAmount: (rev.interestCents / 100).toString(),
+            feeAmount: (rev.feeCents / 100).toString(),
+            lateFeeAmount: (rev.lateFeeCents / 100).toString(),
+            paymentDate: rev.postedAt,
+            // Same period as the payment it reverses.
+            dueDate: original.dueDate,
+            paymentMethod: 'card_refund',
+            transactionId: refundReversalTransactionId(session.id, rev.refundId),
+            // 'completed' means POSTED, not "money received". The tax
+            // collectors read only posted rows, so a reversal that is not
+            // marked completed would never reach Form 1098 and Box 1 would go
+            // on reporting interest that was handed back.
+            status: 'completed',
+            failureReason: `Refunded on the lender's Stripe account (refund ${rev.refundId})`,
+            processedAt: rev.postedAt,
+          })
+          // No conflict TARGET on purpose: `payments.transaction_id` is
+          // unique via a PARTIAL index (migration 0023, `WHERE transaction_id
+          // IS NOT NULL`), and Postgres cannot infer a partial index from a
+          // bare column list — an inferred target would raise "no unique or
+          // exclusion constraint matching the ON CONFLICT specification",
+          // 500 the webhook, and have Stripe retry it forever. The pre-check
+          // above is the primary idempotency guard; this is the race backstop.
+          .onConflictDoNothing()
+          .returning();
+        if (inserted.length === 0) continue; // already posted by a redelivery
+        restored += -rev.principalCents;
+      }
+
+      if (restored !== 0) {
+        const [locked] = await tx
+          .select()
+          .from(notes)
+          .where(eqOp(notes.id, original.noteId))
+          .for('update');
+        if (locked) {
+          const newBalance = Number(locked.currentBalance) + restored / 100;
+          const updated = await tx
+            .update(notes)
+            .set({
+              currentBalance: String(Math.max(0, newBalance)),
+              // A refund can un-pay-off a note. Leaving it 'paid_off' would
+              // tell the lender a balance they are still owed is settled.
+              //
+              // ONLY 'paid_off' may be lifted, and the guard is the whole
+              // point: `newBalance > 0 ? 'active' : …` would ALSO reset a
+              // note sitting in 'late', 'delinquent' or 'defaulted' back to
+              // 'active', silently clearing a delinquency state the product
+              // reads as truth (routes-finance.ts reads 'defaulted';
+              // routes-today.ts reads 'late'/'delinquent'). A refund says
+              // nothing about whether the borrower is current. Same guard,
+              // same reason, as achAutopay.ts's ACH-return reversal.
+              status:
+                newBalance > 0 && locked.status === 'paid_off'
+                  ? 'active'
+                  : locked.status,
+              version: (locked.version ?? 1) + 1,
+              updatedAt: new Date(),
+            })
+            .where(and(eqOp(notes.id, original.noteId), eqOp(notes.version, locked.version ?? 1)))
+            .returning();
+          if (updated.length === 0) {
+            throw new Error(`Optimistic lock conflict on note ${original.noteId} while reversing refund ${charge.id}`);
+          }
+        }
+      }
+      return restored;
+    });
+
+    logger.info('[webhook] Borrower card refund reversed on the note ledger', {
+      metadata: {
+        organizationId: original.organizationId,
+        noteId: original.noteId,
+        chargeId: charge.id,
+        reversalRows: reversals.length,
+        reversedInterestCents: reversals.reduce((s, r) => s + -r.interestCents, 0),
+        restoredPrincipalCents,
+      },
+    });
   }
 
   /**

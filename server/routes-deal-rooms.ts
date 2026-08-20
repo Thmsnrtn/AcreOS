@@ -385,6 +385,13 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
       // signed "— {org.name} Team", so sending it from the platform identity is
       // the re-front the ruling forbids: the customer's name over AcreOS's
       // envelope. No connected identity → refusal, reported below.
+      // The sign-off names the SENDING ORG or nobody. `org?.name ?? 'AcreOS'`
+      // signed the customer's invitation to the other side of their deal with
+      // OUR name whenever the org row carried no name — the same re-fronting
+      // the sender-identity enforcement closes, arriving through the body text
+      // instead of the headers. An unsigned invitation is honest; a
+      // misattributed one is not.
+      const orgSignOff = org?.name?.trim() ? `\n          <p>— ${org.name.trim()} Team</p>` : '';
       const inviteResult = await emailService.sendEmail({
         to: email,
         subject: `You've been invited to a deal room`,
@@ -393,8 +400,7 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
           <p>Hi,</p>
           <p>You have been invited to join a deal room as a <strong>${role}</strong>.</p>
           <p><a href="${dealRoomUrl}">Click here to access the deal room</a></p>
-          <p>If you don't have an account yet, you'll be prompted to create one.</p>
-          <p>— ${org?.name ?? 'AcreOS'} Team</p>
+          <p>If you don't have an account yet, you'll be prompted to create one.</p>${orgSignOff}
         `,
         text: `You've been invited to join a deal room as a ${role}. Access it here: ${dealRoomUrl}`,
         organizationId: org?.id,

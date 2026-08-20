@@ -71,26 +71,84 @@ export function formatOrgMailingAddress(
 }
 
 /**
- * Resolve the CAN-SPAM postal address to render in a campaign footer.
- * Preference order:
- *   1. The platform-wide CAN_SPAM_MAILING_ADDRESS secret (if set).
- *   2. The sending organization's own mailing address (taxAddress).
- *   3. null — caller MUST omit the address line entirely (never a placeholder).
+ * Address equality for the counterparty From: chokepoint. Case- and
+ * whitespace-insensitive, because "No-Reply@AcreOS.io " and
+ * "no-reply@acreos.io" are the same mailbox and a check that missed one of
+ * them would be decoration.
  */
-async function resolveCanSpamAddress(orgId?: number): Promise<{ address: string; brandName: string } | null> {
-  if (CAN_SPAM_MAILING_ADDRESS) return { address: CAN_SPAM_MAILING_ADDRESS, brandName: 'AcreOS' };
+function isSameEmailAddress(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** The send lane. See EmailOptions.purpose for the full contract. */
+export type SendLane = 'system' | 'counterparty';
+
+/**
+ * Resolve the CAN-SPAM postal address + brand to render in a footer, FOR A
+ * GIVEN LANE (founder decision 2026-07-17 — "no re-fronting platform send
+ * rails"; lane-awareness added 2026-08-20).
+ *
+ * THE DEFECT THIS CLOSES. This function used to take only an orgId, and its
+ * first line returned the platform secret unconditionally:
+ *
+ *     if (CAN_SPAM_MAILING_ADDRESS) return { address: …, brandName: 'AcreOS' };
+ *
+ * That short-circuited BEFORE the org was ever looked at, so whenever the
+ * platform secret is set — i.e. in production — EVERY footer carried ACREOS's
+ * postal address under the literal brand 'AcreOS', including a customer's
+ * counterparty campaign to a landowner. Two things wrong at once: it re-fronts
+ * the platform identity onto the customer's deal mail, and it violates
+ * CAN-SPAM §5(a)(5), which requires the SENDER's physical address — the sender
+ * of counterparty mail is the CUSTOMER, not AcreOS. Naming the wrong entity is
+ * not a cosmetic slip; it is an untrue statement about who sent the message.
+ *
+ * Lane contract:
+ *   counterparty — the sending ORG's own address under the org's own name, or
+ *     null. The platform secret and the literal 'AcreOS' are UNREACHABLE on
+ *     this lane. Nothing on file ⇒ the caller omits the line entirely; this
+ *     file's rule is "never a placeholder", and a substitute address is worse
+ *     than an omitted one.
+ *   system — AcreOS talking to its own users. Platform secret first, then the
+ *     org's own address branded with the org's own name (2026-07 audit), then
+ *     null.
+ *
+ * DELIBERATELY NOT EXPORTED. The rule is pinned through the surface that
+ * actually renders it — tests/unit/sendRailBrandLane.test.ts drives the real
+ * `sendEmail` and reads the real MIME message handed to SES. Exporting this
+ * for a unit test would add a public promise nobody calls (the reachability
+ * ratchet counts exactly that) AND would let the gate drift into testing a
+ * projection the product does not consume, which is the failure mode
+ * `publicMaturityOf()` demonstrated in this codebase.
+ */
+async function resolveCanSpamAddress(
+  orgId: number | undefined,
+  lane: SendLane,
+): Promise<{ address: string; brandName: string | null } | null> {
+  // The platform postal address belongs on AcreOS's OWN mail and nowhere else.
+  if (lane !== 'counterparty' && CAN_SPAM_MAILING_ADDRESS) {
+    return { address: CAN_SPAM_MAILING_ADDRESS, brandName: 'AcreOS' };
+  }
   if (!orgId) return null;
   try {
     const org = await storage.getOrganization(orgId);
     const address = formatOrgMailingAddress(org?.taxAddress);
     if (!address) return null;
+    const orgName = org?.name?.trim() || null;
+    if (lane === 'counterparty') {
+      // Brand STRICTLY the sending org. No 'AcreOS' default here: signing a
+      // customer's letter to their own seller with OUR name is exactly the
+      // re-fronting the 2026-07-17 ruling bans. An org with no name on file
+      // renders the address alone.
+      return { address, brandName: orgName };
+    }
     // 2026-07 audit: when the address comes from the SENDING ORG's own
     // records, the footer must be branded with THAT org's name — the old
     // "AcreOS · {customer address}" form printed a customer's address as if
     // it were AcreOS's postal address (misleading and, for platform
     // lifecycle mail to that very customer, their own address labeled as
     // ours).
-    return { address, brandName: org?.name?.trim() || 'AcreOS' };
+    return { address, brandName: orgName || 'AcreOS' };
   } catch (error) {
     logger.error('[EmailService] Failed to resolve org mailing address for CAN-SPAM footer', error, {
       source: 'email-config',
@@ -210,12 +268,15 @@ function getPlatformCredentials(): AWSCredentials {
     secretAccessKey,
     region,
     fromEmail,
+    // PLATFORM LANE ONLY. This display name is AcreOS's own, and the
+    // counterparty branch in performSend never reads it — see the
+    // `fromNameFinal` assignment there.
     fromName: process.env.AWS_SES_FROM_NAME || 'AcreOS',
     source: 'platform',
   };
 }
 
-async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> {
+async function getOrgCredentials(orgId: number, lane: SendLane = 'system'): Promise<AWSCredentials | null> {
   try {
     const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
     
@@ -246,6 +307,19 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
     let fromName = decrypted.fromName || defaultDomain?.fromName;
     
     if (!fromEmail) {
+      // The platform from-address is a SYSTEM-lane convenience. Lending it to
+      // a counterparty send would put @acreos.io on the customer's deal mail
+      // while the customer's own AWS keys paid for the send — re-fronting by
+      // another route (founder decision 2026-07-17). Returning null here makes
+      // the counterparty guard fall through to the org's verified sending
+      // domain, and refuse honestly if there isn't one.
+      if (lane === 'counterparty') {
+        logger.warn(
+          '[EmailService] Org SES credentials carry no verified sender — refusing the platform from-address on the counterparty lane',
+          { metadata: { organizationId: orgId, __pii_safe: true } },
+        );
+        return null;
+      }
       try {
         const platformCreds = getPlatformCredentials();
         fromEmail = platformCreds.fromEmail;
@@ -270,9 +344,31 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
   }
 }
 
+/**
+ * Resolve sending credentials: the org's OWN AWS SES keys when they carry a
+ * verified sender, else the platform keys.
+ *
+ * NO LANE PARAMETER, DELIBERATELY (2026-08-20 audit). This function and
+ * `getSESClient` used to take a `SendLane` and thread it down into
+ * `getOrgCredentials`. That threading was INERT: deleting the argument at the
+ * only non-default call site left every gate in this area green. It cannot be
+ * otherwise — the counterparty guard in `performSend` already calls
+ * `getOrgCredentials(orgId, 'counterparty')` ITSELF (that call IS load-bearing;
+ * flip it to 'system' and sendRailBrandLane's "BYO SES credentials with no
+ * verified sender" case goes red), and the single credential shape the lane
+ * changed here — org keys with no verified sender — is unreachable past that
+ * guard: either the send is refused, or an org identity exists and overrides
+ * the From: address regardless of which keys were resolved.
+ *
+ * A parameter no test can detect reads to the next author as a guarantee while
+ * guaranteeing nothing, so it is gone. The lane rule is enforced only where it
+ * is OBSERVABLE on the wire: the counterparty guard above, and the counterparty
+ * From: chokepoint in the send loop below. Both are pinned behaviourally in
+ * tests/unit/sendRailBrandLane.test.ts.
+ */
 async function getCredentials(orgId?: number): Promise<AWSCredentials> {
   if (orgId) {
-    const orgCreds = await getOrgCredentials(orgId);
+    const orgCreds = await getOrgCredentials(orgId, 'system');
     if (orgCreds) {
       return orgCreds;
     }
@@ -512,6 +608,19 @@ export class EmailService {
 
   private async performSend(options: EmailOptions): Promise<EmailResult> {
     const startTime = Date.now();
+    // ONE reading of the lane for the whole send. Everything downstream that
+    // could put AcreOS's name or address on a customer's counterparty mail —
+    // the From: display name and the CAN-SPAM footer — branches on THIS, not
+    // on `options.purpose` re-read ad hoc, so the two can never disagree.
+    // Undeclared stays 'system' by the documented default; the undeclared-lane
+    // guard below is what stops an undeclared COUNTERPARTY send from getting
+    // here at all.
+    const lane: SendLane = options.purpose ?? 'system';
+    // Display name for the counterparty lane, resolved once (below) while the
+    // org's identity is being checked, so the retry loop makes no extra DB
+    // calls. null = no honest display name available ⇒ send with a bare
+    // address rather than signing the customer's mail "AcreOS".
+    let counterpartyFromName: string | null = null;
     const config: RetryConfig = {
       ...DEFAULT_RETRY_CONFIG,
       ...options.retryConfig,
@@ -630,7 +739,7 @@ export class EmailService {
         };
       }
       const [orgCreds, orgIdentity] = await Promise.all([
-        getOrgCredentials(options.organizationId),
+        getOrgCredentials(options.organizationId, 'counterparty'),
         getIdentityForSend(options.organizationId).catch(() => null),
       ]);
       if (!orgCreds && !orgIdentity) {
@@ -701,6 +810,18 @@ export class EmailService {
           retryable: false,
         };
       }
+
+      // The DISPLAY NAME is part of the identity too. `getSESClient` falls
+      // back to `AWS_SES_FROM_NAME || 'AcreOS'` for the platform credentials,
+      // so a counterparty send riding the customer's own verified DOMAIN
+      // (orgIdentity, platform AWS creds) would otherwise go out as
+      // "AcreOS <mail@customer-domain.com>" — our name on their deal mail,
+      // which is the same re-fronting the address footer used to commit.
+      counterpartyFromName =
+        options.fromName?.trim() ||
+        orgCreds?.fromName?.trim() ||
+        (await storage.getOrganization(options.organizationId).catch(() => null))?.name?.trim() ||
+        null;
     }
 
     // ── Undeclared-lane guard — "invert the default to refuse" ────────────
@@ -908,14 +1029,78 @@ export class EmailService {
         // to actually send — SES authenticates the From: domain via the
         // identity records (DKIM/SPF/DMARC) the founder published.
         let fromAddress = options.from || defaultFromEmail;
-        let fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
+        // Did the From: address come from the ORG's own verified identity? The
+        // counterparty chokepoint below reads this — see there for why.
+        let fromAddressIsOrgIdentity = false;
+        // Lane-aware display name. On the counterparty lane the platform
+        // default ('AcreOS', or AWS_SES_FROM_NAME) is UNREACHABLE: we use the
+        // customer's own name or NO display name at all. A bare address is
+        // honest; "AcreOS" on a customer's letter to their seller is not.
+        const fromNameFinal: string | null =
+          lane === 'counterparty'
+            ? counterpartyFromName
+            : (options.fromName || defaultFromName || 'AcreOS');
         if (options.organizationId) {
           const orgIdentity = await getIdentityForSend(options.organizationId);
           if (orgIdentity) {
             fromAddress = options.from || orgIdentity.fromAddress;
+            fromAddressIsOrgIdentity = !options.from;
           }
         }
-        const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
+
+        // ── Counterparty From: chokepoint (founder decision 2026-07-17) ────
+        //
+        // The guard near the top of this function decides WHETHER a
+        // counterparty send may proceed, by asking the org for credentials or
+        // an identity. This checks the thing that actually goes on the wire,
+        // at the moment it is assembled, and the two are NOT the same check:
+        // between them sit a second credential lookup and a second identity
+        // lookup, either of which can come back empty when the first did not.
+        // `getOrgCredentials` swallows a storage failure and returns null, and
+        // `getCredentials` then falls back to the PLATFORM keys — so a
+        // transient DB blip after a passing guard would have put
+        // no-reply@acreos.io in the From: line of a customer's letter to their
+        // seller, under the customer's own display name. That is precisely the
+        // re-fronting the ruling bans, arriving by accident rather than by
+        // design.
+        //
+        // The rule enforced here is the observable one: on the counterparty
+        // lane the From: address must be the ORG's — their verified sending
+        // identity, or a sender their own credentials carry — never the
+        // address the PLATFORM credentials default to. `source === 'platform'`
+        // with an org identity in hand stays allowed on purpose: platform AWS
+        // keys sending FROM the customer's own verified domain is the
+        // documented BYO-domain path, and the From: line is theirs.
+        if (
+          lane === 'counterparty' &&
+          !fromAddressIsOrgIdentity &&
+          source === 'platform' &&
+          isSameEmailAddress(fromAddress, defaultFromEmail)
+        ) {
+          logger.error(
+            '[EmailService] Counterparty send blocked at the From: chokepoint — the sender resolved to the platform identity',
+            undefined,
+            {
+              metadata: {
+                organizationId: options.organizationId,
+                credentialSource: source,
+                __pii_safe: true,
+              },
+            },
+          );
+          return {
+            success: false,
+            error:
+              'Counterparty send blocked: the sending address resolved to the platform identity rather than this organization\'s. ' +
+              'Deal mail carries the customer\'s own identity (founder decision 2026-07-17), so nothing was sent. ' +
+              'If the organization has an email account or verified domain connected, this is a transient resolution failure — retry.',
+            errorType: 'configuration_error',
+            attempts,
+            retryable: false,
+          };
+        }
+
+        const fromFormatted = fromNameFinal ? `${fromNameFinal} <${fromAddress}>` : `<${fromAddress}>`;
 
         // Eleonora §10: every outbound message gets a per-recipient
         // List-Unsubscribe token. Reused across sends to the same
@@ -938,15 +1123,23 @@ export class EmailService {
         let htmlBody = options.html;
         if (shouldRenderCanSpamFooter(options)) {
           // CAN-SPAM §5: render a real postal address when we have one, and
-          // NEVER ship a literal placeholder. If no address is resolvable we
-          // render only the brand name on that line.
-          const resolved = await resolveCanSpamAddress(options.organizationId);
-          const brandLine = resolved ? `${resolved.brandName} &middot; ${resolved.address}` : 'AcreOS';
+          // NEVER ship a literal placeholder. If nothing is resolvable, the
+          // system lane still names AcreOS (it IS the sender there) while the
+          // counterparty lane drops the line entirely — see below.
+          const resolved = await resolveCanSpamAddress(options.organizationId, lane);
+          // On the counterparty lane an unresolvable footer OMITS the line —
+          // it must never degrade to the literal 'AcreOS', which is what the
+          // old unconditional fallback did.
+          const brandLine = resolved
+            ? (resolved.brandName ? `${resolved.brandName} &middot; ${resolved.address}` : resolved.address)
+            : lane === 'counterparty'
+              ? null
+              : 'AcreOS';
+          const brandParagraph = brandLine ? `\n  <p style="margin-top:12px;">${brandLine}</p>` : '';
           htmlBody = `${htmlBody}
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p>You are receiving this email because you are a contact in our CRM system.</p>
-  <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>
-  <p style="margin-top:12px;">${brandLine}</p>
+  <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>${brandParagraph}
 </div>`;
         }
         const textBody = options.text || this.htmlToText(htmlBody);
