@@ -199,7 +199,21 @@ let expressionsConsidered = 0;
 
 for (const file of files) {
   const rel = file.replace(REPO_ROOT + "/", "");
-  const src = maskComments(readFileSync(file, "utf8"));
+  let rawSrc;
+  try {
+    rawSrc = readFileSync(file, "utf8");
+  } catch (err) {
+    // This file's own self-test writes `__measurement_probe__.ts` into
+    // server/services and deletes it again, and vitest runs test files in
+    // parallel — so a path listed by the walk can be gone by the time it is
+    // read. Crashing on ENOENT made this and its sibling gates fail
+    // intermittently with an fs stack trace instead of a verdict. Skipped as
+    // empty; the EXPRESSION FLOOR in the vacuity guard is what catches a walk
+    // that lost enough to matter.
+    if (err && err.code === "ENOENT") continue;
+    throw err;
+  }
+  const src = maskComments(rawSrc);
   src.split("\n").forEach((line, i) => {
     EXPR.lastIndex = 0;
     let m;

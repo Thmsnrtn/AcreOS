@@ -2342,6 +2342,83 @@ the permission itself (not held by everyone, not held by no one), and a source
 case falsified by stripping the guard from a copy of the registration.
 
 
+### 41 — THE CLIENT SAID DELETED; THE SERVER SAID QUEUED; THE FULFILLER THROWS
+
+Frontier item 6, closed on the half that is unambiguous. Two customer-facing
+claims, both contradicted by the response they were reading.
+
+**The export downloaded a receipt.** `POST /api/privacy/export` returns **202**
+with `{ requestId, status: "queued", eta: "24h", message: "…queued. You will
+receive an email within 24 hours when it is ready." }`. Settings → Privacy
+called `res.blob()` on that, saved it as `acreOS-data-export-<date>.json`, and
+toasted **"Data export downloaded"**. The user got a file named as their
+personal data containing a queue receipt — worse than an error, because it is a
+plausible artefact they may never open. Under GDPR Article 15 it is also a
+subject-access request the user believes was answered.
+
+**The deletion signed them out.** `POST /api/privacy/delete` returns 202 and
+says, in its own message, *"Your account remains active until then."* The same
+page toasted **"Account anonymized — Your personal data has been deleted"** and
+called `logout()` three seconds later. It asserted the opposite of what the
+server said, and then removed the one way the user could have checked.
+
+**Nothing had been deleted, and the founder end already said so.** The erasure
+fulfiller `runErasureStub` (`routes-dsar.ts:105`) throws by design, and the
+founder fulfilment endpoint returns **501 NOT_IMPLEMENTED** with the message
+"Implement: erasure (legal-hold check + soft-delete)". Its comment reads
+"Stubbing keeps the operator UI honest about its current capability" — which it
+does. The operator surface was honest about a capability the customer surface
+was claiming.
+
+**The honest version was one page over.** `pages/privacy-settings.tsx` reads the
+JSON, toasts "Export queued" / "Deletion queued", quotes the server's own eta
+and does not sign anyone out. Both surfaces are live — `/privacy-settings` as a
+route and `PrivacyDataSettings` inside Settings — on the same two endpoints. The
+fix is the sibling's shape, adopted. This is the pattern this campaign keeps
+finding, one file further out than usual: *the correct rule is already in the
+codebase, and the defect is a second implementation of the same thing.*
+
+**Deliberately NOT changed.** The server's "within 24 hours" is a promise
+nothing currently fulfils. Softening it is a policy statement with legal weight
+— GDPR allows a month, AcreOS chose to advertise a day — and the SLA row
+(`slaDeadlineAt`) exists so a human can act. That is a founder/counsel call, not
+an engineering one, and it is on the frontier rather than in this commit.
+
+**Exit test.** `privacyRightsSurfaceIsHonest.test.tsx` MOUNTS the component
+under jsdom, stubs `fetch` to return the real 202 receipt, clicks the real
+button, and asserts the behaviour rather than the copy: `URL.createObjectURL` is
+never called and no anchor is ever clicked. Copy is asserted second ("queued",
+never "downloaded"), with a vacuity case proving the request actually went out —
+otherwise two absence checks would pass over a page that does nothing. A source
+half pins BOTH surfaces, because one being honest and one not is exactly how
+this happened.
+
+**A second thing this unit exposed, in the gates rather than the product.**
+The full suite went red on `modelPrefixGate.test.ts` with an `fs` stack trace —
+not an assertion, a crash. Three gates in this repository (`check-model-prefix`,
+`check-measurement-defaults`, `lint-reachability`) walk `server/**` and read
+every file, and three test files WRITE a probe into `server/services`, run the
+real gate, and delete it again. vitest runs test files in parallel, so a path
+listed by a walk can be gone by the time it is read. `readFileSync` threw
+ENOENT and the gate died mid-scan.
+
+The failure mode is worse than flakiness: a gate that crashes produces a RED
+that reads as a finding, and the natural response to an intermittent red is to
+stop believing the gate. All four walkers (those three plus the live
+`check-model-ids` probe) now tolerate a vanished file — and COUNT it, with a
+ceiling of five and a printed tally, because one or two is a concurrent
+self-test and dozens means the tree moved underneath the scan. A verdict over a
+moving tree is not a verdict.
+
+**And that source half caught me doing ledger 35's defect.** Its first draft
+failed — on the fix's OWN comments, which quote the old strings ("Account
+anonymized", "res.blob()") to explain what went wrong. A scanner reading prose
+as code, inside a test about honesty, hours after I extracted the stripper that
+prevents it. It now calls `stripCommentsPreservingLines`, and the incident is
+recorded in the file rather than quietly fixed: the failure mode is not rare
+enough to trust anyone to remember it, including whoever just wrote the fix.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

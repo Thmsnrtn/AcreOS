@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `353d475e` + the route-guard commit below, 2026-08-20. Working
-tree clean, 935 test files / 12,559 tests green, 26 gates green.
+Verified at: `3887c7e5` + the privacy-honesty commit below, 2026-08-20. Working
+tree clean, 936 test files / 12,565 tests green, 26 gates green.
 
 ---
 
@@ -118,14 +118,19 @@ had not verified; those are deliberately absent below.
    over the real permission table (every role denied the unit delete is denied
    the bulk one), not the one route.
 
-6. **Settings → Account claims a GDPR export and deletion that never happened.**
-   The SERVER is honest: `routes-gdpr.ts:104` and `:127` return 202 queue
-   receipts. The CLIENT lies: `settings/account-sections.tsx:208` calls
-   `res.blob()` on that 202 and saves it as a data export under a "Data export
-   downloaded" toast, and `:232` toasts "Your personal data has been deleted".
-   `anonymizeUser` has zero callers; the founder-side fulfiller `runErasureStub`
-   unconditionally throws. The client honesty fix is one file; the erasure
-   implementation behind it is separate, larger, and legal-facing.
+6. ~~**Settings → Account claims a GDPR export and deletion that never
+   happened.**~~ CLOSED as ledger 41 on the client half — the surface now says
+   "queued", downloads nothing, and does not sign the user out. Two things this
+   entry did not have: the honest implementation already existed one page over
+   (`pages/privacy-settings.tsx`), and the founder end was already honest too
+   (the erasure fulfiller returns **501 NOT_IMPLEMENTED** by design). The
+   operator UI was truthful about a capability the customer UI was claiming.
+   **Still open, and deliberately not taken there:** the server promises "within
+   24 hours" and nothing fulfils it. Softening that is a policy statement with
+   legal weight (GDPR allows a month; AcreOS advertised a day) — founder/counsel,
+   not engineering. Also open: `/privacy-settings` and Settings → Privacy are
+   two live surfaces on the same two endpoints, which is how one of them came to
+   be wrong; which is canonical is a nav question under the five-doors rule.
 
 7. **A land-OWNED surface that decides.** Land operators now get decision memory
    through the offer-letter batch (ledger 32), but that is a SHARED surface and
@@ -227,8 +232,11 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–40.
+Full reasoning in the cross-pollination ledger, entries 23–41.
 
+- **the client said deleted, the server said queued** — the privacy surface
+  downloaded a 202 receipt as the user's data export and announced a deletion
+  that nothing performs. Ledger 41.
 - **the guard did not match the authority** — a buyer-profile IDOR the tenancy
   register already named, and a whole-workspace wipe any member could call.
   Ledger 40.

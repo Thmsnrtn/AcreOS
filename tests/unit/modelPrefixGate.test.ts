@@ -57,17 +57,27 @@ describe("the gate is wired and sees a real population", () => {
     // A walk that sees nothing certifies every model id in the repo, and a
     // stripper that returned "" would produce exactly that.
     const { out } = run();
+    // The `(N vanished mid-scan)` clause is optional and expected to be 0 or 1:
+    // sibling gate self-tests write probe files into server/services and delete
+    // them again while vitest runs in parallel, so the walk can list a path that
+    // is gone by the time it is read. The gate tolerates and COUNTS that; this
+    // asserts the count stays in the "a concurrent probe" range rather than the
+    // "the tree moved underneath us" range.
     const m =
-      /walked (\d+) server files; (\d+) model literals considered; comment-stripper self-test: (\d+)\/(\d+) correct/.exec(
+      /walked (\d+) server files(?: \((\d+) vanished mid-scan\))?; (\d+) model literals considered; comment-stripper self-test: (\d+)\/(\d+) correct/.exec(
         out,
       );
     expect(m, `the coverage line is gone:\n${out}`).not.toBeNull();
     expect(Number(m![1]), "the server walk collapsed").toBeGreaterThan(900);
     expect(
-      Number(m![2]),
+      Number(m![2] ?? 0),
+      "too many files vanished mid-scan for this to be a concurrent probe",
+    ).toBeLessThanOrEqual(3);
+    expect(
+      Number(m![3]),
       "the model-literal scan found almost nothing — the pattern or the walk broke",
     ).toBeGreaterThan(30);
-    expect(Number(m![3]), "the comment stripper is failing its own cases").toBe(Number(m![4]));
+    expect(Number(m![4]), "the comment stripper is failing its own cases").toBe(Number(m![5]));
   }, 120_000);
 });
 

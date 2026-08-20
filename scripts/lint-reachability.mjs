@@ -271,9 +271,26 @@ if (existsSync(ROOT)) {
 }
 
 const fileCache = new Map();
+/** Files listed by the walk that were gone by the time they were read. */
+let vanishedDuringScan = 0;
 function read(relPath) {
   if (!fileCache.has(relPath)) {
-    fileCache.set(relPath, readFileSync(join(ROOT, relPath), "utf8"));
+    let text = "";
+    try {
+      text = readFileSync(join(ROOT, relPath), "utf8");
+    } catch (err) {
+      // A gate self-test can write a probe into server/services, run the real
+      // gate, and delete it again while vitest runs another file in parallel —
+      // so a path can vanish between the walk and the read. Crashing here made
+      // a load-bearing gate fail intermittently with an fs stack trace instead
+      // of a verdict, which reads as a finding and is not one. Treated as an
+      // empty file (it contributes no exports, no imports, no identifiers) and
+      // COUNTED, because a tree rewriting itself under the scan is not a tree
+      // this gate can certify. The count is checked against a ceiling below.
+      if (!err || err.code !== "ENOENT") throw err;
+      vanishedDuringScan += 1;
+    }
+    fileCache.set(relPath, text);
   }
   return fileCache.get(relPath);
 }
@@ -1115,9 +1132,21 @@ console.log(
 // The comment stripper feeds both import scans, so a broken one would silently
 // widen or empty them. Printed, not merely asserted, so a run's own output says
 // whether the input to those scans was trustworthy.
+if (vanishedDuringScan > 5) {
+  console.error(
+    `${TAG} ${vanishedDuringScan} files disappeared between the walk and the ` +
+      `read. One or two is a concurrent gate self-test writing its probe; this ` +
+      `many means the tree moved underneath the scan, and a verdict over a ` +
+      `moving tree is not a verdict.`,
+  );
+  process.exit(1);
+}
 {
   const [passed, total] = verifyStripper();
-  console.log(`${TAG} comment-stripper self-test: ${passed}/${total} correct`);
+  console.log(
+    `${TAG} comment-stripper self-test: ${passed}/${total} correct` +
+      (vanishedDuringScan ? ` · ${vanishedDuringScan} file(s) vanished mid-scan` : ""),
+  );
   if (passed !== total) {
     console.error(
       `${TAG} the comment stripper is WRONG, so every import scan above read ` +

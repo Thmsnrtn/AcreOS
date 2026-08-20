@@ -63,7 +63,19 @@ function sourceLiterals() {
   const found = new Map();
   for (const abs of walkTs(join(REPO, "server"))) {
     const rel = relative(REPO, abs).split("\\").join("/");
-    const code = stripCommentsPreservingLines(readFileSync(abs, "utf8"));
+    let rawSrc;
+    try {
+      rawSrc = readFileSync(abs, "utf8");
+    } catch (err) {
+      // Same reason as check-model-prefix.mjs: gate self-tests write probe
+      // files into server/services and delete them again, so a file listed by
+      // the walk can be gone by the time it is read. Skipping one file cannot
+      // hide an id — this probe FAILS on an empty literal set anyway, which is
+      // the vacuity guard for a walk that lost too much.
+      if (err && err.code === "ENOENT") continue;
+      throw err;
+    }
+    const code = stripCommentsPreservingLines(rawSrc);
     const re = /\b(?:model|modelKey|modelId|aiModel|forceModel|tierCeilingModel)\s*:\s*(["'])([a-z0-9-]+\/[^"'\n]+)\1/g;
     let m;
     while ((m = re.exec(code)) !== null) {

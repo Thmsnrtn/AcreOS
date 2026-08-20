@@ -152,10 +152,28 @@ if (strOk !== strTotal) {
 const files = walk(join(ROOT, "server"));
 const findings = [];
 let literalsSeen = 0;
+let vanished = 0;
 
 for (const abs of files) {
   const rel = relative(ROOT, abs).split("\\").join("/");
-  const code = stripCommentsPreservingLines(readFileSync(abs, "utf8"));
+  let rawSrc;
+  try {
+    rawSrc = readFileSync(abs, "utf8");
+  } catch (err) {
+    // A file listed by the walk can vanish before it is read: this repository's
+    // gate self-tests WRITE probe files into server/services, run the real
+    // gate, and delete them again, and vitest runs those files in parallel.
+    // Crashing on ENOENT made this gate fail intermittently with an fs stack
+    // trace instead of a verdict — a red that looks like a finding and is not.
+    // Tolerated, but COUNTED below: a tree rewriting itself under the scan is
+    // not a tree this gate can certify.
+    if (err && err.code === "ENOENT") {
+      vanished += 1;
+      continue;
+    }
+    throw err;
+  }
+  const code = stripCommentsPreservingLines(rawSrc);
   MODEL_KEY_RE.lastIndex = 0;
   let m;
   while ((m = MODEL_KEY_RE.exec(code)) !== null) {
@@ -178,7 +196,17 @@ for (const abs of files) {
 // MEASURED 2026-08-19: 1379 files, 62 model literals. Floors well under both.
 const FILE_FLOOR = 900;
 const LITERAL_FLOOR = 30;
-if (files.length < FILE_FLOOR || literalsSeen < LITERAL_FLOOR) {
+const VANISHED_CEILING = 5;
+if (vanished > VANISHED_CEILING) {
+  console.error(
+    `${TAG} ${vanished} files disappeared between the walk and the read (ceiling ` +
+      `${VANISHED_CEILING}). One or two is a concurrent gate self-test writing its ` +
+      `probe; this many means the tree is being rewritten underneath the scan, and ` +
+      `a verdict over a moving tree is not a verdict.`,
+  );
+  process.exit(1);
+}
+if (files.length - vanished < FILE_FLOOR || literalsSeen < LITERAL_FLOOR) {
   console.error(
     `${TAG} VACUITY — walked ${files.length} files (floor ${FILE_FLOOR}) and saw ` +
       `${literalsSeen} model literals (floor ${LITERAL_FLOOR}). A scan that sees ` +
@@ -189,7 +217,8 @@ if (files.length < FILE_FLOOR || literalsSeen < LITERAL_FLOOR) {
 }
 
 console.log(
-  `${TAG} walked ${files.length} server files; ${literalsSeen} model literals ` +
+  `${TAG} walked ${files.length - vanished} server files` +
+    `${vanished ? ` (${vanished} vanished mid-scan)` : ""}; ${literalsSeen} model literals ` +
     `considered; comment-stripper self-test: ${strOk}/${strTotal} correct; ` +
     `${Object.keys(BARE_ID_REGISTER).length} registered bare ids`,
 );

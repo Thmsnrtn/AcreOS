@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import { usd } from "@/lib/format";
 import {
   Gift,
@@ -187,7 +186,6 @@ interface PrivacyStatus {
 
 export function PrivacyDataSettings() {
   const { toast } = useToast();
-  const { logout } = useAuth();
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [showDeleteForm, setShowDeleteForm] = useState(false);
 
@@ -195,51 +193,73 @@ export function PrivacyDataSettings() {
     queryKey: ["/api/privacy/status"],
     queryFn: () => fetch("/api/privacy/status", { credentials: "include" }).then(r => r.json()),
   });
+  // Both actions QUEUE a request; the status query is what tells the user where
+  // it got to, so it is refetched instead of the page asserting an outcome.
+  const refetchPrivacyStatus = () =>
+    queryClient.invalidateQueries({ queryKey: ["/api/privacy/status"] });
 
-  // allow-no-invalidation: read-only export download — mutates nothing
+  // `POST /api/privacy/export` returns 202 with a QUEUE RECEIPT — not a file.
+  // This used to call `res.blob()` on that receipt, save it as
+  // `acreOS-data-export-<date>.json`, and toast "Data export downloaded". The
+  // user got a file named as their personal data that contained
+  // `{ requestId, status: "queued", eta: "24h" }`, which is worse than an error
+  // because it is a plausible artefact. Fixed 2026-08-20 by adopting the shape
+  // the sibling page (pages/privacy-settings.tsx) already had.
+  // allow-no-invalidation: queues a request; /api/privacy/status is refetched below
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/privacy/export", {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `acreOS-data-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message ?? `Server returned ${res.status}`);
+      return json as { requestId: string; eta: string; slaDeadlineAt: string };
     },
-    onSuccess: () => toast({ title: "Data export downloaded" }),
+    onSuccess: (data) => {
+      toast({
+        title: "Export queued",
+        // The server's own words. It knows what it promised; repeating its
+        // message rather than inventing one is what keeps the two in step.
+        description: `Your export request was received. You'll get an email within ${data.eta ?? "24h"} when it's ready.`,
+      });
+      refetchPrivacyStatus();
+    },
     onError: (err: any) =>
       toast({
-        title: "Couldn't prepare your export",
+        title: "Couldn't queue your export",
         description: err?.message || "Check your connection and try again — no data was changed.",
         variant: "destructive",
       }),
   });
 
-  // allow-no-invalidation: account anonymization signs the user out — the session (and cache) ends
+  // `POST /api/privacy/delete` returns 202 and says, in its own message, "Your
+  // account remains active until then." This used to toast "Account anonymized
+  // / Your personal data has been deleted" and then sign the user out after
+  // three seconds — asserting the opposite of what the server said, and then
+  // removing the one way the user could have checked. Nothing had been deleted:
+  // the erasure fulfiller (`runErasureStub`, routes-dsar.ts) throws and the
+  // founder surface returns 501 NOT_IMPLEMENTED, which is honest at that end and
+  // was being contradicted at this one. Fixed 2026-08-20.
+  // allow-no-invalidation: queues a request; /api/privacy/status is refetched below
   const deleteMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/privacy/delete", { confirm: "DELETE MY DATA" }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/privacy/delete", { confirm: "DELETE MY DATA" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message ?? "Delete request failed");
+      return json as { requestId: string; eta: string; slaDeadlineAt: string };
+    },
+    onSuccess: (data) => {
       toast({
-        title: "Account anonymized",
-        description: "Your personal data has been deleted. You'll be signed out in a few seconds.",
+        title: "Deletion queued",
+        description: `Your deletion request was received. You'll get an email within ${data.eta ?? "24h"} confirming completion. Your account remains active until then.`,
       });
       setShowDeleteForm(false);
-      setTimeout(() => {
-        logout();
-      }, 3000);
+      refetchPrivacyStatus();
     },
     onError: (err: any) =>
       toast({
-        title: "Couldn't delete your data",
+        title: "Couldn't queue your deletion request",
         description: err?.message || "Check your connection and try again — your account is unchanged.",
         variant: "destructive",
       }),
@@ -276,7 +296,7 @@ export function PrivacyDataSettings() {
               <CardTitle className="text-base">Export your data</CardTitle>
             </div>
             <CardDescription>
-              Download a complete copy of all personal data AcreOS holds about you (GDPR Article 15).
+              Request a complete copy of all personal data AcreOS holds about you (GDPR Article 15). We email it to you — nothing downloads here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -297,9 +317,9 @@ export function PrivacyDataSettings() {
               data-testid="btn-export-data"
             >
               {exportMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Preparing export…</>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Queueing request…</>
               ) : (
-                <><Download className="w-4 h-4 mr-2" aria-hidden="true" />Download my data</>
+                <><Download className="w-4 h-4 mr-2" aria-hidden="true" />Request my data export</>
               )}
             </Button>
           </CardContent>
