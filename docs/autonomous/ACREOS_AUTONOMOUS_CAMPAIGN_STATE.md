@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `b927130e` + the cost-honesty commit below, 2026-08-20. Working
-tree clean, 937 test files / 12,578 tests green, 26 gates green.
+Verified at: `a3e56ca8` + the land-decides commit below, 2026-08-20. Working
+tree clean, 939 test files / 12,594 tests green, 26 gates green.
 
 ---
 
@@ -132,22 +132,31 @@ had not verified; those are deliberately absent below.
    two live surfaces on the same two endpoints, which is how one of them came to
    be wrong; which is canonical is a nav question under the five-doors rule.
 
-7. **A land-OWNED surface that decides.** Land operators now get decision memory
-   through the offer-letter batch (ledger 32), but that is a SHARED surface and
-   deliberately does not promote the vertical. The blind-offer wizard is the
-   candidate: land-flavoured, computes real economics through `computeLandDeal`
-   since ledger 30, and has no commit point at all — the operator calculates and
-   the report evaporates. Giving it one would record a decision AND freeze the
-   scenario behind it, which is the full flip-analyzer shape and what
-   legitimately moves land to `decided`.
+7. ~~**A land-OWNED surface that decides.**~~ CLOSED as ledger 43. The
+   blind-offer wizard now commits: it records a canonical decision and freezes
+   the `land_deal` scenario behind it, with the two tiers not taken as real
+   alternatives. Found on the way in: `maps.tsx` and `parcel-detail.tsx` had
+   always linked in with `?propertyId=`, and the prefill contract did not carry
+   it — the parcel identity crossed the link and landed nowhere, which is
+   harmless for a calculator and fatal for a commit point.
 
-8. **`lint-reachability` does not treat `shared/**` as an export-candidate root.**
+8. **`check-org-scoped-fetch.mjs` has no `--root`, so its canary still writes
+   into the live tree.** The last probe writer. `orgScopedFetchCoverage.test.ts`
+   creates `server/services/__rule3_canary__.ts`, runs the real gate (slow — it
+   scans 2,483 methods), and deletes it; ~69 test files walk `server/**` in
+   parallel workers, and one that lists the canary and reads it after the delete
+   fails with an fs stack trace rather than an assertion. That happened twice on
+   2026-08-20 before the other two writers were moved to fixture trees
+   (ledger 43). Same fix, on a harder gate: five registers and two vacuity
+   blocks have to be told they are looking at a fixture.
+
+9. **`lint-reachability` does not treat `shared/**` as an export-candidate root.**
    `shared` IS in `PRODUCTION_ROOTS` (so it counts as a call site); it is
    `EXPORT_SOURCE_DIRS` that bounds what can be reported unreached. A new shared
    module with no production caller is invisible to the built-but-unwired gate,
    and widening `PRODUCTION_ROOTS` would change nothing.
 
-9. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
+10. **538 baselined tenancy entries are frozen DEBT, not fixed code.** Rule-2
    entries first: each is a live path where a caller-supplied id can reach
    another tenant's row (`campaignOptimizer.optimizeCampaign` UPDATEs
    `campaigns` by primary key alone with the org right there on the object).
@@ -156,7 +165,7 @@ had not verified; those are deliberately absent below.
    (ledger 40). That is the argument for working this list rather than admiring
    it — the register is not a list of theoretical shapes.
 
-10. **80 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19,
+11. **80 exports are certified "reached" by a COMMENT.** MEASURED 2026-08-19,
     not estimated. `lint-reachability`'s identifier pass tokenises raw source, so
     a symbol NAMED in prose counts as a production use of it. Stripping comments
     there moves `unreachedExports` 1398 → 1478. Ledger 35 closed the two scans
@@ -170,7 +179,7 @@ had not verified; those are deliberately absent below.
     reproduction is a one-line change to the linter (point the identifier pass
     at `code` instead of `raw`), and the whole cost is the adjudication.
 
-11. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
+12. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
     ledger 37 / OD-7 — the picker is removed, not repaired. The two defects were
     each other's camouflage: six of the seven server-side enum ids were names no
     provider serves and the seventh is the cheapest model in the registry, so
@@ -178,7 +187,7 @@ had not verified; those are deliberately absent below.
     have become reachable the moment someone made the enum match the picker,
     which is the obvious repair.
 
-12. **Five connector executors bypass the provider registry.** CLAUDE.md: "All
+13. **Five connector executors bypass the provider registry.** CLAUDE.md: "All
     external data flows through the provider registry … tier-based filtering,
     credit deduction on paid lookups, circuit breaking, response caching via
     `provider_cache`." `server/services/connectors/executor.ts` calls
@@ -189,7 +198,7 @@ had not verified; those are deliberately absent below.
     Each is a PAID third-party lookup, so the missing half is the customer's
     money.
 
-13. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
+14. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
     `openaiClient.ts`'s docblock forbids exactly this and names
     `routes-field-scout.ts` as the sanctioned pattern (read `OPENAI_API_KEY`
     directly). `voiceCallAI.ts:171` and `routes-ai.ts:1859` call
@@ -205,7 +214,7 @@ had not verified; those are deliberately absent below.
     the measurement and its limit. **Needs one provider key to settle**, then it
     is a small fix.
 
-14. ~~**`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
+15. ~~**`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
     most expensive one.**~~ CLOSED as ledger 42, and it was worse than this
     entry recorded: beneath the stale table sat `AVG_TOKENS_PER_CALL = 1000`,
     which priced calls carrying NO evidence at all and added the result to the
@@ -213,7 +222,7 @@ had not verified; those are deliberately absent below.
     to price what it cannot, and reports `unpricedCalls` so the gap is visible
     rather than filled.
 
-15. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
+16. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
     The per-org `aiCostCeiling` on `routeAITask` is the entire control.
     `userAiCostControls.ts` — the per-user daily/monthly budget — was deleted in
     ledger 35 as unwired and fail-open, and `DEFECT-0017` was corrected in the
@@ -227,8 +236,11 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–42.
+Full reasoning in the cross-pollination ledger, entries 23–43.
 
+- **land can decide, not only calculate** — the blind-offer wizard commits a
+  canonical decision with its scenario frozen behind it; land was the only
+  strategy that could produce a number and never a decision. Ledger 43.
 - **"conservative estimate" is still a number nobody spent** — the AI
   cost-savings card priced evidence-free calls at an assumed 1,000 tokens on an
   assumed model, and kept a second cost table with ids no provider serves.

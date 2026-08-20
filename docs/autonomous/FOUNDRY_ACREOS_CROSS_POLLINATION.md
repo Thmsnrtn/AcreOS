@@ -2487,6 +2487,107 @@ the second table and the thousand-token assumption have not come back — commen
 stripped, per ledger 35.
 
 
+### 43 — LAND COULD CALCULATE BUT NOT DECIDE
+
+Frontier item 7, and the one the campaign's own §19 asks for: make land
+demonstrate AcreOS's canonical thesis rather than be the strategy that misses
+it.
+
+**The gap.** `POST /api/data-intel/blind-offer` computed a full report — comp
+analysis, three offer tiers, a cash-flip exit, an owner-finance exit, a letter —
+and returned it. Nothing was persisted. Land was the only strategy in AcreOS
+that could produce a number and never a DECISION: the operator calculated, the
+report evaporated, and when the offer landed or died there was nothing to attach
+that outcome to. The fix-and-flip analyzer has written into the canonical loop
+since it became the first customer surface to do so; land had the economics
+(ledger 30 gave it `computeLandDeal`) and no commit point.
+
+**Found on the way in: the parcel identity was crossing the link and landing
+nowhere.** `maps.tsx` and `parcel-detail.tsx` have always linked in as
+`/blind-offer-wizard?propertyId=<id>`, and `SnapshotPrefill` did not carry
+`propertyId` — so the wizard read state, county and acres and dropped the one
+field identifying WHICH parcel. An operator who clicked "make an offer" on a
+specific parcel re-entered its details by hand. Harmless while the wizard only
+calculated; fatal to a commit point, because a decision is ABOUT a subject and
+that was the subject.
+
+**One mapping, two callers, deliberately.** The wizard's numbers come from
+`buildCashFlipScenario`; the commit's come from `recordScenario` running the
+registered `land_deal` engine, which recomputes rather than accepting figures
+(a caller that hands over pre-computed numbers can hand over any numbers at
+all, and the stored `engine_version` would then be a claim rather than a fact).
+Those are two paths to the same arithmetic, and if they drift the record of a
+decision does not match the screen it was made on — the single failure a frozen
+scenario exists to prevent. So `landDealEngineInputs` is shared by both rather
+than copied into the new endpoint, which is what the seven-line conversion was
+one commit away from becoming.
+
+**Three things unlike the flip analyzer's version, each on purpose.**
+
+*It is not best-effort.* There the decision record is a bonus attached to an
+offer row created regardless, so a bookkeeping failure must not cost the
+operator their draft. Here the decision IS the deliverable — the endpoint
+produces nothing else — so a failed write fails the request. Saying "Decision
+recorded" over a write that did not happen is exactly the defect ledger 41
+closed one surface over, and this is the shape that would have reproduced it.
+
+*The alternatives are real.* The report offers three tiers; committing to one
+means declining two, and `FrozenAlternative` exists precisely for that. The flip
+analyzer passes an empty array because it has no rival option to name.
+
+*The land-status guard applies.* `POST /blind-offer` refuses to CALCULATE on an
+Indian-Country or federal-trust parcel. A decision to OFFER on one is refused by
+the same `assertFeeSimpleOrThrow`. A guard covering the calculator and not the
+commitment is worse than none, because it reads as covered.
+
+**The refusal in the UI is the honest half.** A wizard session that began from a
+county rather than a parcel has nothing to decide about, and the commit card
+says so in those words instead of hiding, disabling silently, or inventing a
+subject. County-level exploration is a legitimate way to use this wizard; it is
+simply not a decision.
+
+**And a second race, found because the first fix was incomplete.** Ledger 41
+hardened four gate SCRIPTS against a file vanishing mid-walk. The next full
+suite went red anyway — in `moneyCustodyHardStop.test.ts`, whose own source walk
+hit the same ENOENT. The class is broader than the scripts: **~69 test files
+walk `server/**` and read every file**, and three test files write a probe into
+`server/services`, run the real gate, and delete it. Tolerating ENOENT in the
+readers is sixty-nine edits that will drift; not creating and destroying files
+inside the tree everything else is reading is the fix.
+
+`check-measurement-defaults.mjs` and `check-model-prefix.mjs` now take
+`--root DIR` — the flag `lint-reachability` has always had, which is exactly why
+its self-test never had this problem — and their self-tests build a throwaway
+tree. Two of the three probe writers are gone from the live tree, and their
+`.gitignore` entries with them. The third (`orgScopedFetchCoverage`'s rule-3
+canary) needs the same flag on a gate with five registers and two vacuity
+blocks; it is on the frontier rather than half-done here.
+
+Worth naming the general shape, because it recurs: a self-test that proves a
+gate FIRES has to put something wrong into the world for a moment, and "the
+world" was shared mutable state. The fixture tree is the same fix as passing a
+registry into `computeScenario` instead of reading a global — give the check its
+own world rather than borrowing everyone's.
+
+**Exit test, in two files because the risks are different.**
+`blindOfferCommitsADecision.test.ts` pins the ARITHMETIC with no mocks at all:
+the shared mapping's outputs spelled out rather than recomputed with the same
+expression, the registered engine's `profit` equal to the direct calculator's,
+an org rule visibly moving the frozen inputs and marked `user` while an untouched
+field stays `platform-default`, `marketingCents` held at zero against the
+double-count that would understate every land decision ever frozen, and a
+vacuity case proving the mapping depends on BOTH dollar figures — without it,
+one fixture could hide a mapping that ignored the sale price.
+
+`blindOfferCommitRoute.test.ts` pins the route's obligations: the scenario is
+written first and cited by the decision, the authority is
+`org_member:blind_offer_commit` and the actor the real user (a generic
+"autonomous" would be false), the review date is never manufactured, a foreign
+parcel is a 404 with nothing recorded, a trust parcel is refused, a malformed
+body never reaches the database, and — the one that matters most — **a failing
+decision write returns 5xx rather than a 201 with no decision behind it**.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

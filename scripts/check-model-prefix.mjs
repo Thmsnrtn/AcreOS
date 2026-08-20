@@ -41,13 +41,28 @@
 //   node scripts/check-model-prefix.mjs --report    # print every literal seen
 
 import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
-import { join, relative, dirname } from "node:path";
+import { join, relative, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripCommentsPreservingLines, verifyStripper } from "./lib/strip-comments.mjs";
 
 const TAG = "[model-prefix]";
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPORT = process.argv.includes("--report");
+/**
+ * `--root DIR` scans an alternate tree, so the self-test can prove this gate
+ * FIRES without writing a probe file into the real `server/services`.
+ *
+ * It used to do exactly that — write, run, delete — and vitest runs test files
+ * in parallel, so any of the ~69 other suites that walk `server/**` could list
+ * the probe and then fail to read it. That produced a RED in an unrelated test
+ * with an fs stack trace, twice in one day. Tolerating ENOENT in the readers
+ * treats the symptom; not creating and destroying files in the tree everything
+ * else is reading is the fix.
+ */
+const rootArgIndex = process.argv.indexOf("--root");
+const ROOT =
+  rootArgIndex !== -1 && process.argv[rootArgIndex + 1]
+    ? resolve(process.argv[rootArgIndex + 1])
+    : join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Ids that are deliberately BARE, with the reason. Each entry is a claim that
@@ -194,6 +209,10 @@ for (const abs of files) {
 // VACUITY GUARD, checked before the verdict. A walk that stops seeing files, or
 // a regex that stops matching, finds nothing and reports it as compliance.
 // MEASURED 2026-08-19: 1379 files, 62 model literals. Floors well under both.
+// The vacuity floors describe the REAL repository. A `--root` fixture is a
+// handful of files by design, so they are skipped there — the self-test asserts
+// the floors on the real tree in its own case.
+const SCANNING_REAL_REPO = rootArgIndex === -1;
 const FILE_FLOOR = 900;
 const LITERAL_FLOOR = 30;
 const VANISHED_CEILING = 5;
@@ -206,7 +225,7 @@ if (vanished > VANISHED_CEILING) {
   );
   process.exit(1);
 }
-if (files.length - vanished < FILE_FLOOR || literalsSeen < LITERAL_FLOOR) {
+if (SCANNING_REAL_REPO && (files.length - vanished < FILE_FLOOR || literalsSeen < LITERAL_FLOOR)) {
   console.error(
     `${TAG} VACUITY — walked ${files.length} files (floor ${FILE_FLOOR}) and saw ` +
       `${literalsSeen} model literals (floor ${LITERAL_FLOOR}). A scan that sees ` +

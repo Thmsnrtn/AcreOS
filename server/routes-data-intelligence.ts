@@ -53,6 +53,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { z } from "zod";
 import { db } from "./db";
 import { properties } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -289,6 +290,164 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
 
     res.json(report);
   } catch (err: any) {
+    if (handleLandStatusError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Blind offer → COMMIT (the land loop's missing half)
+// ---------------------------------------------------------------------------
+//
+// `POST /blind-offer` above computes and returns. Nothing was persisted, so the
+// operator calculated an offer and the reasoning evaporated: land was the only
+// strategy in AcreOS that could produce a number and not a DECISION. The
+// fix-and-flip analyzer has had this since it became the first customer surface
+// to write into the canonical loop; this is the land equivalent, and it is what
+// lets a land operator's offers be graded by an Outcome later.
+//
+// Two things are deliberately unlike the flip analyzer's version.
+//
+//   1. It is NOT best-effort. There, the decision record is a bonus attached to
+//      an offer row that is created regardless, so a bookkeeping failure must
+//      not cost the operator their draft. HERE the decision IS the deliverable
+//      — there is nothing else this endpoint produces — so a failure to record
+//      it is a failure of the request, and saying "committed" over a write that
+//      did not happen would be exactly the defect ledger 41 closed.
+//
+//   2. The alternatives are REAL. The report offers three tiers; committing to
+//      one means declining two, and `FrozenAlternative` exists for precisely
+//      that. The flip analyzer passes an empty array because it has no rival
+//      option to name.
+const commitSchema = z.object({
+  propertyId: z.number().int().positive(),
+  /** Dollars, as shown in the wizard. Converted at the boundary. */
+  offerAmount: z.number().finite().positive(),
+  salePrice: z.number().finite().positive(),
+  tier: z.enum(["aggressive", "standard", "competitive"]),
+  alternatives: z
+    .array(z.object({ choice: z.string().min(1).max(200), reason: z.string().min(1).max(400) }))
+    .max(5)
+    .optional(),
+  /**
+   * When the operator expects to know whether this landed. Explicitly nullable,
+   * never defaulted: a manufactured date would make the outcome prompt nag
+   * about every offer ever committed.
+   */
+  reviewDueAt: z.string().datetime().nullable().optional(),
+});
+
+router.post("/blind-offer/commit", async (req: Request, res: Response) => {
+  try {
+    const areq = req as AuthenticatedRequest;
+    const org = areq.organization;
+    const userId = areq.user?.id;
+    if (!org || !userId) return Errors.unauthorized(res);
+
+    const parsed = commitSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+    const input = parsed.data;
+
+    // Org-scoped, and the row is fetched rather than trusted: `propertyId`
+    // arrives from the client's query string via the wizard.
+    const [parcel] = await db
+      .select({
+        id: properties.id,
+        landStatus: properties.landStatus,
+        address: properties.address,
+        county: properties.county,
+        state: properties.state,
+      })
+      .from(properties)
+      .where(and(eq(properties.id, input.propertyId), eq(properties.organizationId, org.id)));
+    if (!parcel) return Errors.notFound(res, "Property");
+
+    // The same fee-simple guard the COMPUTE path applies. A decision to offer
+    // on an Indian-Country or federal-trust parcel must be blocked at least as
+    // hard as a calculation about one.
+    assertFeeSimpleOrThrow(parcel, "blind-offer-commit");
+
+    const { resolveLandDefaults, landDealEngineInputs, LAND_DEFAULT_LABELS, formatLandDefault } =
+      await import("./services/landDealDefaults");
+    const { LAND_DEAL_ENGINE_ID } = await import("@shared/calculators/landDeal");
+    const { recordScenario } = await import("./services/economics/scenarioStore");
+    const { recordDecision } = await import("./services/decisions/decisionStore");
+
+    const resolved = resolveLandDefaults(org.underwritingDefaults?.landDeal);
+    const engineInputs = landDealEngineInputs(input.offerAmount, input.salePrice, resolved.values);
+
+    const usd = (n: number) =>
+      `$${Math.round(n).toLocaleString("en-US")}`;
+    const where = [parcel.address, parcel.county && `${parcel.county} County`, parcel.state]
+      .filter(Boolean)
+      .join(", ");
+
+    // The engine recomputes from these inputs rather than accepting the
+    // wizard's figures: a caller that hands over pre-computed numbers can hand
+    // over any numbers at all, and the stored engine_version would then be a
+    // claim rather than a fact. The inputs themselves come from the SAME
+    // mapping `buildCashFlipScenario` uses, so what is frozen is arithmetically
+    // what the operator saw.
+    const scenario = await recordScenario(org.id, {
+      subjectType: "property",
+      subjectId: parcel.id,
+      label: `Blind offer ${usd(input.offerAmount)}, exit ${usd(input.salePrice)}`,
+      engineId: LAND_DEAL_ENGINE_ID,
+      inputs: { ...engineInputs },
+      // The org's land rules ARE assumptions, and `source` already distinguishes
+      // a rule the operator set from a platform default — mapped rather than
+      // flattened, so a default can never later read as what the customer
+      // believed.
+      assumptions: (Object.keys(resolved.values) as Array<keyof typeof resolved.values>).map(
+        (key) => ({
+          key,
+          value: formatLandDefault(key, resolved.values[key]),
+          origin:
+            resolved.sources[key] === "org_rule"
+              ? ("user" as const)
+              : ("platform-default" as const),
+          basis: LAND_DEFAULT_LABELS[key],
+        }),
+      ),
+    });
+
+    const decision = await recordDecision(
+      org.id,
+      {
+        subjectType: "property",
+        subjectId: parcel.id,
+        kind: "offer",
+        choice: `Offer ${usd(input.offerAmount)} on ${where || `property ${parcel.id}`}`,
+        rationale:
+          `Committed from the blind-offer wizard at the ${input.tier} tier, ` +
+          `underwritten to a ${usd(input.salePrice)} exit under the org's land rules ` +
+          `(${resolved.isCustomised ? "customised" : "platform defaults"}).`,
+        actorType: "user",
+        // This route sits behind isAuthenticated + getOrCreateOrg and the
+        // operator chose the tier by hand. Naming a generic "autonomous" or
+        // "system" here would be false.
+        authority: "org_member:blind_offer_commit",
+        actorRef: userId,
+        strategyPackId: null,
+        strategyPackVersion: null,
+        assumptions: [],
+        alternatives: input.alternatives ?? [],
+        reviewDueAt: input.reviewDueAt ? new Date(input.reviewDueAt) : null,
+      },
+      new Date(),
+      [scenario.id],
+    );
+
+    // 200 rather than a raw `res.status(201)`: the `res-status-raw` ratchet
+    // drives that pattern down toward the Errors.* contract, and a 201 tells
+    // the client nothing the body does not already say.
+    res.json({
+      decisionSnapshotId: decision.id,
+      scenarioId: scenario.id,
+      decidedAt: decision.decidedAt,
+      subject: { type: "property", id: parcel.id },
+    });
+  } catch (err) {
     if (handleLandStatusError(res, err)) return;
     Errors.internal(res, err);
   }

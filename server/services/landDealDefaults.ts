@@ -114,6 +114,48 @@ export function resolveLandDefaults(
   return { values, sources, isCustomised: customised };
 }
 
+/**
+ * The land-deal ENGINE's inputs, in integer cents, from two dollar figures and
+ * the org's rules.
+ *
+ * One mapping, two callers — `buildCashFlipScenario` (what the wizard shows)
+ * and the blind-offer commit endpoint (what gets frozen into a Scenario). They
+ * were about to be two copies of the same seven-line conversion, and a
+ * divergence between them would mean the record of a decision did not match the
+ * numbers the operator was looking at when they made it. That is the one
+ * failure a frozen scenario exists to prevent, so the mapping is shared rather
+ * than trusted to stay identical.
+ *
+ * Marketing is deliberately zero: `dispositionCostPct` is documented as resale
+ * closing AND marketing, so a second marketing figure would count it twice.
+ */
+export interface LandDealEngineInputs {
+  purchaseCents: number;
+  closingAtBuyCents: number;
+  holdingPerMonthCents: number;
+  holdMonths: number;
+  marketingCents: number;
+  salePriceCents: number;
+  closingAtSaleCents: number;
+}
+
+export function landDealEngineInputs(
+  purchaseDollars: number,
+  salePriceDollars: number,
+  values: LandDealDefaults,
+): LandDealEngineInputs {
+  const toCents = (dollars: number) => Math.round(dollars * 100);
+  return {
+    purchaseCents: toCents(purchaseDollars),
+    closingAtBuyCents: toCents(purchaseDollars * (values.closingAtBuyPct / 100)),
+    holdingPerMonthCents: toCents(salePriceDollars * (values.monthlyHoldingPctOfSale / 100)),
+    holdMonths: values.holdMonths,
+    marketingCents: 0,
+    salePriceCents: toCents(salePriceDollars),
+    closingAtSaleCents: toCents(salePriceDollars * (values.dispositionCostPct / 100)),
+  };
+}
+
 /** Human labels, so a badge and a scenario assumption read the same words. */
 export const LAND_DEFAULT_LABELS: Record<keyof LandDealDefaults, string> = {
   closingAtBuyPct: "Closing costs at purchase",

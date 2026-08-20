@@ -889,13 +889,23 @@ function StepExit({ report, onNext, onBack, onGoToComps }: StepExitProps) {
 
 interface StepLetterProps {
   report: OfferReport | null;
+  /**
+   * The parcel this offer is about, when the operator arrived from one.
+   * `maps.tsx` and `parcel-detail.tsx` have always linked in with it; until
+   * 2026-08-20 the wizard dropped it on the floor. Null means the operator came
+   * in cold (county-level exploration), which is a legitimate way to use this
+   * wizard and simply cannot produce a decision — a decision is ABOUT a subject.
+   */
+  propertyId: number | null;
   onBack: () => void;
   onGoToComps: () => void;
 }
 
-function StepLetter({ report, onBack, onGoToComps }: StepLetterProps) {
+function StepLetter({ report, propertyId, onBack, onGoToComps }: StepLetterProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [committing, setCommitting] = useState(false);
+  const [committed, setCommitted] = useState<{ decisionSnapshotId: number } | null>(null);
   if (!report) {
     return (
       <EmptyState
@@ -967,6 +977,62 @@ Private Real Estate Investor`;
       toast({ title: "Letter copied to clipboard" });
     } catch {
       toast({ variant: "destructive", title: "Couldn't copy letter", description: "Your browser blocked clipboard access. Select the text and copy manually." });
+    }
+  }
+
+  /**
+   * Record the decision this letter represents.
+   *
+   * Land could compute an offer and never record one: the operator calculated,
+   * the report evaporated, and nothing could grade the choice later. Every
+   * other strategy in AcreOS writes into the canonical loop at the moment a
+   * number becomes a document — this is that moment for land.
+   *
+   * The two tiers NOT taken are sent as alternatives, because they are: the
+   * wizard showed three and the operator picked one.
+   */
+  async function commitDecision() {
+    if (!report || !propertyId) return;
+    setCommitting(true);
+    try {
+      const tiers = ["aggressive", "standard", "competitive"] as const;
+      const chosen = report.recommendedTier;
+      const alternatives = tiers
+        .filter((t) => t !== chosen)
+        .map((t) => ({
+          choice: `${t} — ${fmt(report.offerTiers[t].offerTotal)}`,
+          reason: `Not taken. ${report.offerTiers[t].acceptanceRateForecast}`,
+        }));
+
+      const resp = await apiRequest("POST", "/api/data-intel/blind-offer/commit", {
+        propertyId,
+        offerAmount: report.letterVariables.offerAmount,
+        salePrice: report.cashFlipScenario.salePrice,
+        tier: chosen,
+        alternatives,
+        // Not asked here, and not manufactured: a made-up review date would
+        // make the outcome prompt nag about every offer ever committed.
+        reviewDueAt: null,
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.message ?? "The decision was not recorded");
+      setCommitted({ decisionSnapshotId: data.decisionSnapshotId });
+      toast({
+        title: "Decision recorded",
+        description:
+          "The offer, the exit you underwrote it to, and the rules behind it are frozen against this parcel.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't record the decision",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Nothing was recorded. Your letter is unaffected — try again.",
+      });
+    } finally {
+      setCommitting(false);
     }
   }
 
@@ -1076,6 +1142,43 @@ Private Real Estate Investor`;
             </div>
           </dl>
           <p className="text-xs text-muted-foreground mt-3 text-center">Mail consistently every month — sellers often respond to your 2nd or 3rd letter, months after the first campaign.</p>
+        </CardContent>
+      </Card>
+
+      {/* Close the loop: record WHY, not just what. */}
+      <Card data-testid="blind-offer-commit-card">
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <h3 className="text-base font-semibold m-0">Record this decision</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Freezes the offer, the exit you underwrote it to, and the rules behind it
+              against this parcel — so when you find out whether it landed, the answer
+              attaches to what you actually believed at the time.
+            </p>
+          </div>
+          {committed ? (
+            <p className="text-sm text-acr-pos m-0" data-testid="blind-offer-commit-done">
+              Recorded. Decision #{committed.decisionSnapshotId}.
+            </p>
+          ) : propertyId ? (
+            <Button
+              onClick={commitDecision}
+              disabled={committing}
+              className="w-full min-h-11 pointer-fine:sm:min-h-9"
+              data-testid="blind-offer-commit"
+            >
+              {committing ? "Recording…" : "Record this decision"}
+            </Button>
+          ) : (
+            <p
+              className="text-sm text-muted-foreground m-0"
+              data-testid="blind-offer-commit-no-parcel"
+            >
+              A decision is about a parcel, and this session started from a county rather
+              than one. Open the parcel and choose “Make an offer with these numbers” to
+              record it against that property.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -1258,6 +1361,7 @@ export default function BlindOfferWizardPage() {
         {currentStep === "letter" && (
           <StepLetter
             report={report}
+            propertyId={prefill.propertyId ?? null}
             onBack={() => setCurrentStep("exit")}
             onGoToComps={() => setCurrentStep("comps")}
           />

@@ -55,6 +55,7 @@ import {
   PLATFORM_LAND_DEFAULTS,
   LAND_DEFAULT_LABELS,
   formatLandDefault,
+  landDealEngineInputs,
   type LandDealDefaults,
 } from "./landDealDefaults";
 import { computeLandDeal } from "@shared/calculators/landDeal";
@@ -705,24 +706,13 @@ function buildCashFlipScenario(
 
   const salePrice = medianMarketPerAcre * acres; // Sell at median (not highest)
 
-  // The engine works in integer cents; this file works in dollars. Convert at
-  // the boundary rather than teaching the engine about dollars — every other
-  // caller of computeLandDeal is already in cents.
+  // The engine works in integer cents; this file works in dollars. The mapping
+  // is SHARED with the blind-offer commit endpoint (landDealEngineInputs), so
+  // the scenario frozen against a decision is arithmetically the one the
+  // operator was shown rather than a second implementation of it.
   const toCents = (dollars: number) => Math.round(dollars * 100);
-
-  const out = computeLandDeal({
-    purchaseCents: toCents(acquisition),
-    closingAtBuyCents: toCents(acquisition * (closingAtBuyPct / 100)),
-    holdingPerMonthCents: toCents(salePrice * (monthlyHoldingPctOfSale / 100)),
-    holdMonths,
-    // Marketing is not a separate line here: `dispositionCostPct` is documented
-    // as resale closing AND marketing, exactly as the old 8% constant was
-    // ("8% closing/marketing"). Passing a second marketing figure would count
-    // it twice.
-    marketingCents: 0,
-    salePriceCents: toCents(salePrice),
-    closingAtSaleCents: toCents(salePrice * (dispositionCostPct / 100)),
-  });
+  const engineInputs = landDealEngineInputs(acquisition, salePrice, resolved.values);
+  const out = computeLandDeal(engineInputs);
 
   const fromCents = (cents: number) => Math.round(cents / 100);
 

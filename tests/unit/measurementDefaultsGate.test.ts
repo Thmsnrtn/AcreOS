@@ -23,6 +23,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -52,23 +53,40 @@ const BASELINE_CEILING = 69;
 /** Expressions the walk must keep seeing; 2,031 measured 2026-08-18. */
 const EXPRESSION_FLOOR = 600;
 
-function run(): { out: string; ok: boolean } {
+function run(...args: string[]): { out: string; ok: boolean } {
   try {
-    return { out: execFileSync("node", [LINT], { cwd: ROOT, encoding: "utf8" }), ok: true };
+    return { out: execFileSync("node", [LINT, ...args], { cwd: ROOT, encoding: "utf8" }), ok: true };
   } catch (err) {
     const e = err as { stdout?: string | Buffer; stderr?: string | Buffer };
     return { out: String(e.stdout ?? "") + String(e.stderr ?? ""), ok: false };
   }
 }
 
-/** Writes a probe under server/services (where the walk goes), runs, removes. */
+/**
+ * Runs the REAL gate over a throwaway tree containing one file.
+ *
+ * It used to write `__measurement_probe__.ts` into the live
+ * `server/services`, run, and delete it. vitest runs test files in parallel and
+ * ~69 other suites walk `server/**`, so any of them could list the probe and
+ * then fail to read it — producing a RED in an unrelated test, with an fs stack
+ * trace rather than an assertion. That happened twice on 2026-08-20, in
+ * `modelPrefixGate` and then in `moneyCustodyHardStop`.
+ *
+ * Tolerating ENOENT in every reader treats the symptom and needs sixty-nine
+ * edits that will drift. Not creating and destroying files inside the tree
+ * everything else is reading is the fix, so the gate grew a `--root` flag —
+ * the same one `lint-reachability` has always had, which is why its self-test
+ * never had this problem.
+ */
 function withProbe(source: string): { out: string; ok: boolean } {
-  const file = path.join(ROOT, "server/services", "__measurement_probe__.ts");
-  fs.writeFileSync(file, source);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "measurement-probe-"));
+  const services = path.join(dir, "server", "services");
+  fs.mkdirSync(services, { recursive: true });
+  fs.writeFileSync(path.join(services, "probe.ts"), source);
   try {
-    return run();
+    return run("--root", dir);
   } finally {
-    fs.unlinkSync(file);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -119,7 +137,7 @@ describe("it fires on the behaviour, not on a literal", () => {
       "export function priceParcel(parcel: { acreage?: number | null }, perAcre: number) {\n" +
         "  return perAcre * (parcel.acreage || 5);\n}\n",
     );
-    expect(out).toContain("__measurement_probe__.ts");
+    expect(out).toContain("probe.ts");
     expect(out).toMatch(/parcel\.acreage \|\| 5/);
     expect(ok, "the lint reported the finding and still exited zero").toBe(false);
   });

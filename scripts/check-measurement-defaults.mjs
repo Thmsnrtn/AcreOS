@@ -60,7 +60,22 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, "..");
+/**
+ * `--root DIR` scans an alternate tree, so the self-test can prove this gate
+ * FIRES without writing a probe file into the real `server/services`.
+ *
+ * It used to do exactly that — write, run, delete — and vitest runs test files
+ * in parallel, so any of the ~69 other suites that walk `server/**` could list
+ * the probe and then fail to read it. That produced a RED in an unrelated test
+ * with an fs stack trace. Tolerating ENOENT in the readers treats the symptom;
+ * not creating and destroying files in the tree everything else is reading is
+ * the fix.
+ */
+const rootArgIndex = process.argv.indexOf("--root");
+const SCANNING_REAL_REPO = rootArgIndex === -1;
+const REPO_ROOT = SCANNING_REAL_REPO
+  ? resolve(__dirname, "..")
+  : resolve(process.argv[rootArgIndex + 1]);
 const SERVER_DIR = join(REPO_ROOT, "server");
 
 /**
@@ -238,16 +253,24 @@ for (const h of hits) {
   if (BASELINE.has(h.key)) seen.add(h.key);
   else added.push(h);
 }
-const stale = [...BASELINE].filter((k) => !seen.has(k));
+// Under `--root` the tree is a fixture of a few files, so every baseline entry
+// is trivially absent. The stale check is a claim about the REAL repository;
+// running it against a fixture would report the whole register as fixed.
+const stale = SCANNING_REAL_REPO ? [...BASELINE].filter((k) => !seen.has(k)) : [];
 
 // ── VACUITY GUARD ───────────────────────────────────────────────────────────
 // A scan that stops SEEING must FAIL. An expression walk that matches nothing
 // reads exactly like a repo with no invented numbers in it, which is the false
 // green this whole gate exists to remove.
+// The floors describe the REAL repository. A `--root` fixture is a handful of
+// files by design, so they are skipped there; the self-test asserts the floors
+// on the real tree in its own case, which is where the claim belongs.
 const vacuity = [];
-if (files.length < 500) vacuity.push(`only ${files.length} server files walked (expected >= 500)`);
-if (expressionsConsidered < 600)
-  vacuity.push(`only ${expressionsConsidered} \`x.y ?? N\` expressions considered (expected >= 600; measured 1,635 on 2026-08-18)`);
+if (SCANNING_REAL_REPO) {
+  if (files.length < 500) vacuity.push(`only ${files.length} server files walked (expected >= 500)`);
+  if (expressionsConsidered < 600)
+    vacuity.push(`only ${expressionsConsidered} \`x.y ?? N\` expressions considered (expected >= 600; measured 1,635 on 2026-08-18)`);
+}
 if (vacuity.length > 0) {
   console.error("[measurement-defaults] FAIL (VACUITY GUARD) — this scan saw far less than it should:");
   for (const v of vacuity) console.error(`  - ${v}`);

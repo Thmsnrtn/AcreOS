@@ -21,28 +21,38 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(__dirname, "../..");
 const GATE = path.join(ROOT, "scripts/check-model-prefix.mjs");
 
-function run(): { out: string; ok: boolean } {
+function run(...args: string[]): { out: string; ok: boolean } {
   try {
-    return { out: execFileSync("node", [GATE], { cwd: ROOT, encoding: "utf8" }), ok: true };
+    return { out: execFileSync("node", [GATE, ...args], { cwd: ROOT, encoding: "utf8" }), ok: true };
   } catch (err) {
     const e = err as { stdout?: string | Buffer; stderr?: string | Buffer };
     return { out: String(e.stdout ?? "") + String(e.stderr ?? ""), ok: false };
   }
 }
 
-/** Writes a probe under server/services (inside the walk), runs, removes. */
+/**
+ * Runs the REAL gate over a throwaway tree containing one file.
+ *
+ * See the same helper in measurementDefaultsGate.test.ts for why this no longer
+ * writes into the live `server/services`: vitest runs test files in parallel,
+ * ~69 suites walk `server/**`, and a probe that appears and vanishes mid-walk
+ * makes an unrelated test red with an fs stack trace instead of an assertion.
+ */
 function withProbe(source: string): { out: string; ok: boolean } {
-  const file = path.join(ROOT, "server/services", "__model_prefix_probe__.ts");
-  fs.writeFileSync(file, source);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "model-prefix-probe-"));
+  const services = path.join(dir, "server", "services");
+  fs.mkdirSync(services, { recursive: true });
+  fs.writeFileSync(path.join(services, "probe.ts"), source);
   try {
-    return run();
+    return run("--root", dir);
   } finally {
-    fs.unlinkSync(file);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -91,7 +101,7 @@ describe("it fires on the shape, not on a string it happens to name", () => {
         '    messages: [{ role: "user", content: text }],\n' +
         "  });\n}\n",
     );
-    expect(out).toContain("__model_prefix_probe__.ts");
+    expect(out).toContain("probe.ts");
     expect(out).toMatch(/model: "gpt-4o"/);
     expect(ok, "the gate reported the finding and still exited zero").toBe(false);
   }, 120_000);

@@ -334,6 +334,10 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
                 state: property.state,
                 county: property.county,
                 acres: property.sizeAcres,
+                // The parcel identity, so the wizard's commit step can record
+                // the decision against THIS property. Without it the operator
+                // reaches the letter with nothing to decide about.
+                propertyId: property.id,
               })}`;
               return (
                 <Card>

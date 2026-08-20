@@ -20,6 +20,17 @@ export interface SnapshotPrefill {
   state?: string;
   county?: string;
   acres?: number;
+  /**
+   * The parcel this offer is ABOUT, when the operator arrived from one.
+   *
+   * Added 2026-08-20. `maps.tsx` and `parcel-detail.tsx` have always linked in
+   * as `/blind-offer-wizard?propertyId=<id>` and the wizard has always dropped
+   * it: the parcel identity crossed the link and landed nowhere, so an operator
+   * who clicked "make an offer" on a specific parcel re-entered its state,
+   * county and acreage by hand. It matters more now that the wizard has a
+   * commit point — a decision is ABOUT a subject, and this is the subject.
+   */
+  propertyId?: number;
 }
 
 /**
@@ -31,6 +42,7 @@ export function buildBlindOfferPrefillSearch(input: {
   state?: string | null;
   county?: string | null;
   acres?: number | string | null;
+  propertyId?: number | string | null;
 }): string {
   const params = new URLSearchParams();
 
@@ -46,6 +58,12 @@ export function buildBlindOfferPrefillSearch(input: {
       : Number(input.acres);
   if (Number.isFinite(acres) && acres > 0) {
     params.set("acres", String(acres));
+  }
+
+  const propertyId =
+    input.propertyId == null || input.propertyId === "" ? NaN : Number(input.propertyId);
+  if (Number.isInteger(propertyId) && propertyId > 0) {
+    params.set("propertyId", String(propertyId));
   }
 
   return params.toString();
@@ -70,6 +88,15 @@ export function parseSnapshotPrefill(search: string): SnapshotPrefill {
   if (acresRaw != null && acresRaw.trim() !== "") {
     const acres = Number.parseFloat(acresRaw);
     if (Number.isFinite(acres) && acres > 0) out.acres = acres;
+  }
+
+  // A row id, so integer-and-positive rather than merely finite: "12.5" and
+  // "-3" are not parcels, and passing either through would send the commit
+  // endpoint looking for a property that cannot exist.
+  const propertyIdRaw = params.get("propertyId");
+  if (propertyIdRaw != null && propertyIdRaw.trim() !== "") {
+    const propertyId = Number(propertyIdRaw);
+    if (Number.isInteger(propertyId) && propertyId > 0) out.propertyId = propertyId;
   }
 
   return out;
