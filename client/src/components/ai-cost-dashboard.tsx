@@ -14,7 +14,18 @@ interface ProviderData {
 }
 
 interface CostSavingsData {
+  /** Calls the server could PRICE. See `unpricedCalls`. */
   totalCalls: number;
+  /**
+   * Calls it refused to price — no model recorded, an unknown model, or
+   * neither a cost nor token counts. The server used to fill that gap by
+   * assuming 1,000 tokens on the premium model and adding the result to the
+   * figures below; a dollar amount nobody spent, on the page telling the
+   * customer what they spent. Surfaced instead of hidden, because a total that
+   * silently covers fewer calls than were made is the same lie one step
+   * quieter.
+   */
+  unpricedCalls?: number;
   totalActualCost: number;
   totalPotentialCost: number;
   totalSavings: number;
@@ -100,7 +111,10 @@ export function AICostDashboard() {
           AI Cost Savings
         </CardTitle>
         <CardDescription>
-          Smart routing saves money by using efficient models for simple tasks
+          Smart routing saves money by using efficient models for simple tasks.
+          {data.unpricedCalls
+            ? ` ${data.unpricedCalls.toLocaleString()} call${data.unpricedCalls === 1 ? "" : "s"} this month had no model or token record, so they are not counted in the figures below.`
+            : ""}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -113,7 +127,17 @@ export function AICostDashboard() {
             <div className="text-2xl font-bold" data-testid="text-ai-calls">
               {data.totalCalls.toLocaleString()}
             </div>
-            <div className="text-xs text-muted-foreground">This month</div>
+            <div className="text-xs text-muted-foreground">
+              This month
+              {data.unpricedCalls ? (
+                <>
+                  {" · "}
+                  <span data-testid="text-unpriced-calls">
+                    {data.unpricedCalls.toLocaleString()} not priced
+                  </span>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <div className="p-4 rounded-card bg-muted/50">

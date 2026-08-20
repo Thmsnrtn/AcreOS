@@ -2419,6 +2419,74 @@ recorded in the file rather than quietly fixed: the failure mode is not rare
 enough to trust anyone to remember it, including whoever just wrote the fix.
 
 
+### 42 — "CONSERVATIVE ESTIMATE" IS STILL A NUMBER NOBODY SPENT
+
+Frontier item 13, closed. The Settings card that tells a customer what their AI
+cost them was computing three of its inputs.
+
+**The defect.** `GET /api/ai/cost-savings` backs `AICostDashboard` — "Actual
+Cost / What you paid", "Without smart routing / What the same work would have
+cost". Its loop:
+
+```ts
+const provider = metadata.provider || "openai";
+const model = metadata.model || "gpt-4o";
+…
+} else {
+  const AVG_TOKENS_PER_CALL = 1000; // Conservative estimate
+  actualCost = (AVG_TOKENS_PER_CALL * modelRate) / 1_000_000;
+```
+
+A usage row carrying neither a recorded cost nor token counts was priced at an
+assumed thousand tokens on an assumed model from an assumed provider, and the
+result was added to the figure labelled as money the customer actually spent.
+*Conservative* is not a defence — nobody asked for a conservative estimate of
+their bill, they were shown a number.
+
+**The two errors pointed the same way.** `MODEL_COSTS[model] || GPT4O_RATE`
+priced an unknown model at the premium rate, which inflated the spend AND the
+"savings" computed against it. The card read as both more expensive and more
+impressive than the truth.
+
+**And it was a second cost table.** Four hardcoded blended rates declared inline
+in the route, two keyed on ids no provider serves — `gpt-4o` and `gpt-4o-mini`
+are OpenAI's bare names and this platform calls OpenRouter (ledger 36) — and one
+on the retired `deepseek/deepseek-reasoner` (ledger 34). All of it sitting
+beneath `services/models.ts`, whose `priceFor` docblock reads: *"This is the
+ONLY price surface callers should use — there is no second cost table."* There
+was, and it had been wrong for two model generations, because the canonical
+table's boot guard cannot see a copy.
+
+**The fix, and why it moved out of the route.** `summariseCostSavings` in
+`services/aiCostSavings.ts` is a pure function over usage rows. It refuses to
+price a call with no model, an unknown model, no provider, or no evidence, and
+returns `unpricedCalls` alongside the totals — because a total that silently
+covers fewer calls than were made is the same lie one step quieter. The card
+now says "N not priced" and explains why. Where token counts exist it prices
+input and output at their real separate rates instead of a 1:1 blend, which the
+old code applied even when it had both counts.
+
+Extracting it was not tidying. Inline, the money arithmetic on a
+customer-facing surface could only be tested by mounting the whole AI router,
+which is why it never was. Out here every rule is checkable with no mocks at
+all, and the route is four lines.
+
+**`estimatedCost: 0` is not evidence.** It means nobody wrote a cost down, not
+that the call was free, so it is unpriced. The old code's `> 0` check already
+had this right and then fell through to the fabricating branch; now it falls
+through to the refusal.
+
+**Exit test.** `aiCostSavingsRefusesToGuess.test.ts`, thirteen cases against the
+real function and the real price table. The load-bearing ones are the refusals,
+each asserting **exactly zero** dollars — the assertion the old implementation
+could not pass. Both directions on the pricing: an input-only call and an
+output-only call must NOT cost the same (the blend is gone), the premium model
+saves nothing against itself, per-provider calls reconcile with the priced
+total, and an empty month is zeroes rather than `NaN`. Plus a source case that
+the second table and the thousand-token assumption have not come back — comments
+stripped, per ledger 35.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

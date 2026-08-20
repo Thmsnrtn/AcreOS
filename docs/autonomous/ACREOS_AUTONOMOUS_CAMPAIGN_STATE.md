@@ -8,8 +8,8 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `3887c7e5` + the privacy-honesty commit below, 2026-08-20. Working
-tree clean, 936 test files / 12,565 tests green, 26 gates green.
+Verified at: `b927130e` + the cost-honesty commit below, 2026-08-20. Working
+tree clean, 937 test files / 12,578 tests green, 26 gates green.
 
 ---
 
@@ -205,18 +205,13 @@ had not verified; those are deliberately absent below.
     the measurement and its limit. **Needs one provider key to settle**, then it
     is a small fix.
 
-14. **`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
-    most expensive one.** `models.ts` states it is "the ONLY price surface
-    callers should use — there is no second cost table"; `routes-ai.ts:1207`
-    declares a local `MODEL_COSTS` with four stale bare keys. On the same
-    customer-facing `/api/ai/cost-savings` surface, `:1243` reads
-    `metadata.model || "gpt-4o"` and prices the result at gpt-4o's rate — a
-    dollar figure derived from a model label nobody recorded, on a page whose
-    whole purpose is telling the customer what they saved. Sibling defaults at
-    `:368` and `:574` write that same fabricated label into the usage record the
-    page later reads. This is the fabrication family, one type away from the
-    `measurement-defaults` register (that gate matches numeric defaults; this one
-    is a string key that becomes a number downstream).
+14. ~~**`routes-ai.ts` keeps a SECOND cost table and prices unknown models as the
+    most expensive one.**~~ CLOSED as ledger 42, and it was worse than this
+    entry recorded: beneath the stale table sat `AVG_TOKENS_PER_CALL = 1000`,
+    which priced calls carrying NO evidence at all and added the result to the
+    customer's "what you paid". Now a pure `summariseCostSavings` that refuses
+    to price what it cannot, and reports `unpricedCalls` so the gap is visible
+    rather than filled.
 
 15. **Per-user AI spend has no cap anywhere, and `/api/va` has no cap at all.**
     The per-org `aiCostCeiling` on `routeAITask` is the entire control.
@@ -232,8 +227,12 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–41.
+Full reasoning in the cross-pollination ledger, entries 23–42.
 
+- **"conservative estimate" is still a number nobody spent** — the AI
+  cost-savings card priced evidence-free calls at an assumed 1,000 tokens on an
+  assumed model, and kept a second cost table with ids no provider serves.
+  Ledger 42.
 - **the client said deleted, the server said queued** — the privacy surface
   downloaded a 202 receipt as the user's data export and announced a deletion
   that nothing performs. Ledger 41.
