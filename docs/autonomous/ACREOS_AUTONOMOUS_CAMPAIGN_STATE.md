@@ -8,9 +8,13 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `62c5c8cd`, 2026-08-20. Working tree clean at that commit;
-940 test files / 12,609 tests green; `npm run check` 26/26 green (tsc, the
-test-typecheck ratchet, and 24 lint gates).
+Verified at: `b1dfb6b0`, 2026-08-20. Working tree clean; **941 test files /
+12,617 tests green**; `npm run check` 26/26 green.
+
+**Run BOTH.** `npm run check` does not execute the suite — its `check:tests` step
+is a TYPE ratchet over test files, not a test run. A commit went out on 2026-08-20
+on the strength of a green 26/26 with three tests failing. `npx vitest run` and
+`npm run check` are two separate obligations.
 
 ---
 

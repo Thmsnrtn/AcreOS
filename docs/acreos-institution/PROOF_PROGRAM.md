@@ -68,12 +68,23 @@ is what keeps the next steward from inferring more.
 ## The surface
 
 `npm run check` is **26 steps**: one `tsc --noEmit` plus 25 lint/check gates.
-**14 JSON-configured ratchets** live in `scripts/ratchets/`. The suite is 924
-files / 12,444 tests. "The gates" means these 25 — nothing else.
+**14 JSON-configured ratchets** live in `scripts/ratchets/`. The suite is 941
+files / 12,617 tests. "The gates" means these 25 — nothing else.
 
-`npm run check` takes about ten minutes and the suite about five. Background both;
-a foreground `sleep` is blocked. Commit with `--no-verify` — the pre-commit hook
-runs a full `tsc` and times out.
+**`npm run check` DOES NOT RUN THE TEST SUITE, and its second step is named as
+if it does.** `check:tests` is `scripts/check-tests-typecheck.mjs` — a ratchet
+over TYPE errors in test files. It never executes a test. So `npm run check`
+exiting 0 says nothing whatever about whether the suite passes, and on 2026-08-20
+a commit went out on the strength of a green 26/26 while three tests were failing.
+**Validation is two commands, and neither substitutes for the other:**
+
+```bash
+npx vitest run     # the suite — 941 files, ~5 min
+npm run check      # tsc + 25 gates — ~10 min
+```
+
+Background both; a foreground `sleep` is blocked. Commit with `--no-verify` — the
+pre-commit hook runs a full `tsc` and times out.
 
 ## Ratchet discipline
 
