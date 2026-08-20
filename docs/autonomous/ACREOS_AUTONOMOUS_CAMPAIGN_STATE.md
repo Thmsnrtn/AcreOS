@@ -129,9 +129,9 @@ had not verified; those are deliberately absent below.
    **Still open, and deliberately not taken there:** the server promises "within
    24 hours" and nothing fulfils it. Softening that is a policy statement with
    legal weight (GDPR allows a month; AcreOS advertised a day) — founder/counsel,
-   not engineering. Also open: `/privacy-settings` and Settings → Privacy are
-   two live surfaces on the same two endpoints, which is how one of them came to
-   be wrong; which is canonical is a nav question under the five-doors rule.
+   not engineering. The DUPLICATE-SURFACE half is CLOSED as ledger 48: it was
+   never a nav question, it was two implementations of one control, and Settings
+   now renders the canonical component rather than a copy of it.
 
 7. ~~**A land-OWNED surface that decides.**~~ CLOSED as ledger 43. The
    blind-offer wizard now commits: it records a canonical decision and freezes
@@ -399,8 +399,15 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–47.
+Full reasoning in the cross-pollination ledger, entries 23–48.
 
+- **one GDPR control, not two** — Settings carried a 257-line near-copy of the
+  privacy surface, on the same two endpoints; it was the copy that lied, and the
+  test written to hold the two in sync was titled "both privacy surfaces agree,
+  in source" and passed throughout. The copy is gone (three lines rendering the
+  canonical component) and the test now asserts a property instead of a chore.
+  Deduplication exposed three live divergences no source-agreement check looked
+  at: different test ids, different transports, different status shapes. Ledger 48.
 - **the repository no longer rewrites itself under a test run** — the last of
   three gate self-tests that wrote a probe into `server/services/` and deleted
   it now builds a throwaway tree, so an unrelated suite walking `server/**` can

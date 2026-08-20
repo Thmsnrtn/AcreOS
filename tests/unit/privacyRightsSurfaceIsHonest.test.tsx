@@ -28,9 +28,22 @@
  * clicked. Copy is asserted too, but second.
  *
  * The honest version already existed one page over — `pages/privacy-settings.tsx`
- * reads the JSON and toasts "Export queued" / "Deletion queued". This suite
- * pins BOTH surfaces so the two cannot drift apart again, which is how one of
- * them came to be wrong in the first place.
+ * reads the JSON and toasts "Export queued" / "Deletion queued".
+ *
+ * ── AND THEN THE COPY WAS REMOVED ───────────────────────────────────────────
+ * The first fix made the two agree. On 2026-08-20 the duplicate went away
+ * entirely: Settings now renders the same `PrivacyDataRights` component the
+ * `/settings/privacy` route does. Two implementations of a legally consequential
+ * control is the CONDITION that produced the lie, and "keep them in sync" is a
+ * promise nobody keeps — the block at the bottom of this file used to be called
+ * "both privacy surfaces agree, in source" and passed throughout the period one
+ * of them was lying.
+ *
+ * The behavioural cases below still mount through `PrivacyDataSettings`, which
+ * is the Settings entry point — so they now exercise the CANONICAL component
+ * rather than a copy of it, and the test id they click changed from
+ * `btn-export-data` to `button-export-data` for exactly that reason. Two spellings
+ * of one control is what a duplicate looks like from the outside.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,6 +95,19 @@ beforeEach(() => {
   toasts.length = 0;
   anchorClicks = 0;
   apiRequest.mockReset();
+  // A FRESH Response per call, not mockResolvedValue: `res.json()` consumes the
+  // body, so one shared Response makes the second call throw and the test would
+  // then be asserting on an error path it never meant to exercise.
+  //
+  // And it resolves a REAL Response rather than a bare object, so the
+  // component's own `res.ok` / `res.json()` parsing actually runs. A mock
+  // resolving `undefined` — which is what this was before the canonical
+  // component came into scope — makes the suite agree with any implementation,
+  // including one that never reads the body at all. That exact shape is on the
+  // record in CLAUDE.md as a nudger mock that certified a status it never read.
+  apiRequest.mockImplementation(
+    async () => new Response(JSON.stringify(QUEUE_RECEIPT), { status: 202 }),
+  );
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -128,7 +154,7 @@ describe("Settings → Privacy: export is a REQUEST, not a download", () => {
     mount(React.createElement(PrivacyDataSettings));
     await settle();
 
-    clickTestId("btn-export-data");
+    clickTestId("button-export-data");
     await settle();
 
     expect(
@@ -141,7 +167,7 @@ describe("Settings → Privacy: export is a REQUEST, not a download", () => {
   it("says the request was queued, not that anything was downloaded", async () => {
     mount(React.createElement(PrivacyDataSettings));
     await settle();
-    clickTestId("btn-export-data");
+    clickTestId("button-export-data");
     await settle();
 
     const said = toasts.map((t) => `${t.title ?? ""} ${t.description ?? ""}`).join(" | ");
@@ -156,63 +182,118 @@ describe("Settings → Privacy: export is a REQUEST, not a download", () => {
   it("vacuity: the button exists and the request actually went out", async () => {
     // Both assertions above are absence checks. If the click never reached a
     // handler they would pass over a page that does nothing.
+    //
+    // Asserted on `apiRequest`, not `fetch`: the canonical component posts
+    // through the shared client. The deleted duplicate used a bare `fetch` —
+    // one more way the two differed while a test titled "both surfaces agree"
+    // was passing.
     mount(React.createElement(PrivacyDataSettings));
     await settle();
-    clickTestId("btn-export-data");
+    clickTestId("button-export-data");
     await settle();
-    const calls = (globalThis.fetch as any).mock.calls.map((c: any[]) => String(c[0]));
-    expect(calls.some((u: string) => u.includes("/api/privacy/export"))).toBe(true);
+    const posted = apiRequest.mock.calls.map((c: unknown[]) => `${c[0]} ${c[1]}`);
+    expect(
+      posted.some((c) => c === "POST /api/privacy/export"),
+      `the export click never reached the transport. Calls seen: ${JSON.stringify(posted)}`,
+    ).toBe(true);
   });
 });
 
-describe("both privacy surfaces agree, in source", () => {
-  // The two live surfaces post to the same endpoints: Settings → Privacy
-  // (pages/settings/account-sections.tsx) and the /privacy-settings page. One
-  // was honest and one was not for as long as both existed, so the rule is
-  // pinned across both rather than on the one that was wrong.
+describe("there is ONE privacy surface, so there is nothing to keep in sync", () => {
+  // ── REWRITTEN 2026-08-20, NOT DELETED ─────────────────────────────────────
+  // This block was titled "both privacy surfaces agree, in source" and checked
+  // that two near-identical implementations of the same GDPR controls made the
+  // same claims. It passed for as long as both existed, and one of them was
+  // lying the whole time — because agreeing-in-source is a CHORE, and a chore
+  // fails the first time someone edits one copy.
+  //
+  // The duplicate is gone: `PrivacyDataSettings` now renders the same
+  // `PrivacyDataRights` component the `/settings/privacy` route renders. The
+  // original invariant survives, stated as a property instead of a chore —
+  // there is one implementation, so the two surfaces cannot disagree.
   const ROOT = path.resolve(__dirname, "../..");
-  const SURFACES = [
-    "client/src/pages/settings/account-sections.tsx",
-    "client/src/pages/privacy-settings.tsx",
-  ];
-  // COMMENTS STRIPPED, and the first draft of this file needed it: both source
+  const CANONICAL = "client/src/pages/privacy-settings.tsx";
+  const SECTION = "client/src/pages/settings/account-sections.tsx";
+
+  // COMMENTS STRIPPED, and the first draft of this file needed it: the source
   // cases below failed on the fix's OWN comments, which quote the old strings
   // ("Account anonymized", "res.blob()") to explain what went wrong. That is
   // cross-pollination ledger 35's defect — a scanner reading prose as code —
-  // reproduced by me inside a test about honesty, hours after extracting the
-  // stripper that prevents it. Left recorded rather than quietly fixed.
+  // reproduced inside a test about honesty, hours after extracting the stripper
+  // that prevents it. Left recorded rather than quietly fixed, and it matters
+  // more now: the docblocks explaining this deduplication quote both strings.
   const read = (rel: string) =>
     stripCommentsPreservingLines(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 
-  it("neither claims a completed deletion", () => {
-    for (const rel of SURFACES) {
-      const src = read(rel);
-      expect(src, `${rel} still calls the privacy endpoints`).toContain("/api/privacy/delete");
-      expect(
-        /has been deleted|Account anonymized/i.test(src),
-        `${rel} tells the user their data is deleted. The server returns 202 and ` +
-          `says the account remains active; the erasure fulfiller is a stub that ` +
-          `throws.`,
-      ).toBe(false);
-    }
+  it("the canonical surface does not claim a completed deletion", () => {
+    const src = read(CANONICAL);
+    expect(src, "the canonical surface stopped calling the privacy endpoints").toContain(
+      "/api/privacy/delete",
+    );
+    expect(
+      /has been deleted|Account anonymized/i.test(src),
+      "the canonical surface tells the user their data is deleted. The server " +
+        "returns 202 and says the account remains active; the erasure fulfiller " +
+        "is a stub that throws.",
+    ).toBe(false);
   });
 
-  it("neither downloads a blob from a privacy endpoint", () => {
-    for (const rel of SURFACES) {
-      const src = read(rel);
-      const privacyBlock = src.slice(src.indexOf("/api/privacy/export"));
-      expect(
-        privacyBlock.slice(0, 1200),
-        `${rel} calls res.blob() on the export endpoint, which returns a 202 receipt`,
-      ).not.toContain(".blob()");
-    }
+  it("the canonical surface does not download a blob from a privacy endpoint", () => {
+    const src = read(CANONICAL);
+    const privacyBlock = src.slice(src.indexOf("/api/privacy/export"));
+    expect(
+      privacyBlock.slice(0, 1200),
+      "the canonical surface calls res.blob() on the export endpoint, which " +
+        "returns a 202 receipt",
+    ).not.toContain(".blob()");
   });
 
-  it("vacuity: both files were found and both are the surfaces they claim to be", () => {
-    for (const rel of SURFACES) {
-      const src = read(rel);
-      expect(src.length, `${rel} is empty`).toBeGreaterThan(1000);
-      expect(src).toContain("/api/privacy/export");
+  it("Settings holds NO second implementation — it renders the canonical one", () => {
+    // The property that replaced the chore. If Settings ever grows its own
+    // fetch/mutation against these endpoints again, the two can disagree again,
+    // and the last time they did the user got a queue receipt saved as a file
+    // named after their personal data.
+    const section = read(SECTION);
+    expect(
+      section,
+      "Settings no longer renders the canonical privacy component",
+    ).toContain("PrivacyDataRights");
+    for (const endpoint of ["/api/privacy/export", "/api/privacy/delete", "/api/privacy/status"]) {
+      expect(
+        section,
+        `Settings talks to ${endpoint} directly again — that is a second ` +
+          `implementation of a GDPR control, which is the condition that produced ` +
+          `the defect this file exists for, not the accident.`,
+      ).not.toContain(endpoint);
     }
+    expect(
+      /useMutation|apiRequest\s*\(/.test(section),
+      "Settings grew its own mutation back",
+    ).toBe(false);
+  });
+
+  it("the canonical component is the one BOTH mount points use", () => {
+    const canonical = read(CANONICAL);
+    // Exported for reuse, and the route is a thin wrapper over it — so the page
+    // and the section cannot diverge even in chrome-adjacent behaviour.
+    expect(canonical).toContain("export function PrivacyDataRights");
+    expect(canonical).toContain("export default function PrivacySettingsPage");
+    const pageFn = canonical.slice(canonical.indexOf("export default function PrivacySettingsPage"));
+    expect(
+      pageFn,
+      "the route stopped delegating to the shared component",
+    ).toContain("<PrivacyDataRights");
+  });
+
+  it("vacuity: the canonical file is real and is the surface it claims to be", () => {
+    // Every assertion above is a `not.toContain` over `account-sections.tsx` or
+    // a `toContain` over one file. If the canonical file were empty or renamed,
+    // several would pass for the wrong reason.
+    const src = read(CANONICAL);
+    expect(src.length, `${CANONICAL} is empty`).toBeGreaterThan(1000);
+    expect(src).toContain("/api/privacy/export");
+    expect(src).toContain("/api/privacy/delete");
+    const section = read(SECTION);
+    expect(section.length, `${SECTION} is empty`).toBeGreaterThan(500);
   });
 });

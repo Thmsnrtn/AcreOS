@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState, useId } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
@@ -57,8 +58,35 @@ function fmtRelative(iso: string): string {
   }
 }
 
-export default function PrivacySettingsPage() {
-  useDocumentTitle("Privacy & data");
+/**
+ * THE ONE privacy surface. Rendered as a page at `/settings/privacy` and as the
+ * Privacy section of the main Settings page — the same component both times.
+ *
+ * It was not always one. Settings carried a 257-line near-copy in
+ * `settings/account-sections.tsx`: its own export mutation, its own delete
+ * mutation, its own confirm-text state, its own "already deleted" branch, on the
+ * same two endpoints. That copy is what shipped the defect ledger 41 closed — it
+ * called `res.blob()` on a 202 QUEUE RECEIPT and saved
+ * `{requestId, status:"queued"}` as a file named after the user's personal data,
+ * then toasted "Account anonymized" and signed them out, while this file one
+ * directory over had been honest the whole time.
+ *
+ * The immediate fix made the copy match. The copy is now GONE, because two
+ * implementations of a legally consequential control is the condition that
+ * produced the lie, and "keep them in sync" is a promise nobody can keep. Its
+ * test used to be titled "both privacy surfaces agree, in source"; it now pins
+ * that there is one.
+ *
+ * `variant` carries only CHROME — page heading and `PageShell` vs a section
+ * heading. No behaviour branches on it, deliberately: the moment it does, this
+ * is two implementations again wearing one name.
+ */
+export function PrivacyDataRights({
+  variant = "page",
+}: {
+  variant?: "page" | "section";
+}) {
+  const isPage = variant === "page";
   const { toast } = useToast();
   const qc = useQueryClient();
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -128,22 +156,32 @@ export default function PrivacySettingsPage() {
       }),
   });
 
+  // Chrome only. `Frame` is PageShell on the standalone route and a plain
+  // wrapper inside Settings, which already has its own shell — nesting a second
+  // one would double the page padding and put a second landmark on the page.
+  const Frame = ({ children }: { children: React.ReactNode }) =>
+    isPage ? <PageShell>{children}</PageShell> : <div className="space-y-6">{children}</div>;
+
   // Already-deleted (fulfilled erasure) → show completion banner.
   if (status?.deleted) {
     return (
-      <PageShell>
+      <Frame>
         <div
           className="flex flex-col items-center gap-4 py-16 text-center"
           role="status"
           aria-live="polite"
         >
           <CheckCircle2 className="w-12 h-12 text-acr-pos" aria-hidden="true" />
-          <h1 className="text-xl font-semibold">Data deletion complete</h1>
+          {isPage ? (
+            <h1 className="text-xl font-semibold">Data deletion complete</h1>
+          ) : (
+            <h2 className="text-section-h2">Data deletion complete</h2>
+          )}
           <p className="text-muted-foreground text-sm">
             Your personal data has already been anonymized.
           </p>
         </div>
-      </PageShell>
+      </Frame>
     );
   }
 
@@ -155,14 +193,21 @@ export default function PrivacySettingsPage() {
   );
 
   return (
-    <PageShell>
+    <Frame>
       <div>
-        <h1
-          className="text-2xl md:text-3xl font-bold"
-          data-testid="text-privacy-title"
-        >
-          Privacy &amp; data
-        </h1>
+        {isPage ? (
+          <h1
+            className="text-2xl md:text-3xl font-bold"
+            data-testid="text-privacy-title"
+          >
+            Privacy &amp; data
+          </h1>
+        ) : (
+          <h2 className="text-section-h2 flex items-center gap-2" data-testid="text-privacy-title">
+            <Shield className="w-5 h-5" aria-hidden="true" />
+            Privacy &amp; data rights
+          </h2>
+        )}
         <p className="text-muted-foreground text-sm md:text-base">
           Manage your personal data rights under GDPR/CCPA. All requests are
           fulfilled within 24 hours and tracked in our audit log.
@@ -498,6 +543,15 @@ export default function PrivacySettingsPage() {
           </ul>
         </CardContent>
       </Card>
-    </PageShell>
+    </Frame>
   );
+}
+
+/**
+ * The standalone route at `/settings/privacy`, linked from the public privacy
+ * policy and from the data-export page. Nothing but chrome and a title.
+ */
+export default function PrivacySettingsPage() {
+  useDocumentTitle("Privacy & data");
+  return <PrivacyDataRights variant="page" />;
 }

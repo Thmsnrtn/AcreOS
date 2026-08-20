@@ -2917,6 +2917,77 @@ defect `SYMBOL_REGISTERS` exists for one gate over, met for the third time in
 three commits, and the third time it took ten minutes instead of an afternoon.
 
 
+### 48 — TWO IMPLEMENTATIONS OF ONE GDPR CONTROL, AND THE TEST THAT HELD THEM IN SYNC
+
+Ledger 41 fixed a privacy surface that called `res.blob()` on a **202 queue
+receipt**, saved `{requestId, status:"queued"}` as a file named after the user's
+personal data, toasted *"Account anonymized — Your personal data has been
+deleted"*, and signed them out three seconds later. Nothing had been deleted; the
+erasure fulfiller throws and the founder endpoint returns 501 by design.
+
+That entry recorded the thing that mattered and stopped one step short of acting
+on it: **the honest implementation already existed one page over.**
+`pages/privacy-settings.tsx` read the JSON and said "Export queued". Both
+surfaces posted to the same two endpoints. One was right and one was lying, for
+as long as both existed.
+
+The fix made the copy match. This entry removes the copy.
+
+**WHY MATCHING WAS THE WRONG RESTING STATE.** `PrivacyDataSettings` in
+`settings/account-sections.tsx` was 257 lines carrying its own export mutation,
+its own delete mutation, its own confirm-text state, its own already-deleted
+branch. It is now three lines: it renders `PrivacyDataRights`, the component the
+`/settings/privacy` route renders. `variant` carries chrome only — page heading
+and `PageShell` versus a section heading — and the code says, in the file, that
+the moment behaviour branches on it this is two implementations wearing one name
+again.
+
+**THE TEST IS THE ENTRY.** This suite's source block was titled **"both privacy
+surfaces agree, in source"**, and it passed throughout the period one of them was
+lying — it was written after the fix, to hold them in sync going forward. That
+is a CHORE: it constrains two things to be equal and fails the first time someone
+edits one. It is now titled "there is ONE privacy surface, so there is nothing to
+keep in sync", and it asserts a PROPERTY: Settings contains no `/api/privacy/*`
+call, no `useMutation`, no `apiRequest` — it renders the canonical component, and
+the route is a thin wrapper over the same one. Two things cannot disagree when
+there is one of them.
+
+**WHAT DEDUPLICATION EXPOSED, which is the argument for doing it rather than
+policing it.** The two copies differed in ways no source-agreement test looked
+at, and each is a place a divergence was already living:
+
+- **Different test ids for the same control** — `btn-export-data` in the copy,
+  `button-export-data` in the canonical one. The behavioural cases in this file
+  clicked the copy's id, so they were exercising the duplicate, not the surface
+  the route serves.
+- **Different transports.** The copy used a bare `fetch`; the canonical
+  component posts through `apiRequest`. The suite's "the request actually went
+  out" vacuity case asserted on the `fetch` mock — so pointed at the real
+  component it proved nothing until it was rewritten to watch `apiRequest`.
+- **Different `PrivacyStatus` shapes.** The copy declared
+  `{ deleted, userId }`; the canonical one `{ deleted, email, open[], recent[] }`
+  — the copy could not have rendered open or fulfilled requests at all.
+
+**And the mock had to be made honest in the same pass.** `apiRequest` was a bare
+`vi.fn()` reset to return `undefined`, which was harmless while the component
+under test used `fetch` and became load-bearing the moment it did not: a mock
+resolving `undefined` makes the suite agree with any implementation, including
+one that never reads the body. It now resolves a real `Response` — a FRESH one
+per call, because `res.json()` consumes the body and a shared one would push the
+second call onto an error path the test never meant to exercise. That is the
+nudger-mock shape CLAUDE.md records, met head-on.
+
+**Exit test.** Three mutations, each watched failing first: give Settings its own
+`fetch("/api/privacy/export")` back (the single-implementation case fails); stop
+Settings rendering the shared component (all three behavioural cases fail);
+stop the route delegating to it (the both-mount-points case fails).
+
+**Still open, and still not engineering.** The server promises fulfilment
+"within 24 hours" and nothing fulfils it. Softening that is a policy statement
+with legal weight — GDPR allows a month, AcreOS advertised a day — and belongs
+with the founder and counsel, not in a component.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
