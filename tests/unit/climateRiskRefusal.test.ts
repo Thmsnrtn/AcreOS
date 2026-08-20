@@ -210,6 +210,39 @@ describe("due-diligence PDF — silence is not a clean bill of health", () => {
    * the buffer is cleared immediately before the call, and the text is
    * snapshotted synchronously after the await.
    */
+  /**
+   * PER-RENDER BUDGET, raised from vitest's 30s default on 2026-08-20.
+   *
+   * Measured: the three renders below cost 6.6s, 8.5s and 6.6s on an idle
+   * machine — and all three went RED with timeouts in the full-suite run the
+   * same day, while ~90 other test files competed for four cores. A budget only
+   * 4x the idle cost is not a budget, it is a coin flip.
+   *
+   * The cost is INHERENT and deliberate, not waste to be optimised away: the
+   * `vi.resetModules()` in `renderFor` gives every render its own module
+   * instance — the isolation an earlier flake fix installed, see the docblock
+   * below — and that re-imports the generator's dependency graph each time. The
+   * five pure-function cases in this file run in ~4ms and keep the default.
+   *
+   * ── WHAT THIS IS NOT ──────────────────────────────────────────────────────
+   * It is NOT the network, and that was checked rather than assumed. The obvious
+   * theory was live geospatial upstreams: this file's stderr carried
+   * `[fetchGeo] timeout from epqs.nationalmap.gov` during the red run, and
+   * `fetchGeo` is the single hardened fetch every free upstream goes through. So
+   * a `vi.mock` of it was written first — and then instrumented, which showed it
+   * was hit ZERO times. The generator never reaches it on this path; the stderr
+   * belonged to another worker and vitest attributed it to whichever test was
+   * current. The mock was deleted rather than left in place: an inert mock whose
+   * comment claims it prevents live network calls is a false statement in the
+   * codebase, which is the defect ledger 46 is about, one file over.
+   *
+   * Same reasoning as `reachabilityGate.test.ts`: retrying a slow test teaches
+   * the next reader to re-run reds until they go away, which is how a real red
+   * gets waved through. Raise the budget to what the machine can meet under load
+   * and leave the measurement here.
+   */
+  const PDF_RENDER_BUDGET_MS = 120_000;
+
   async function renderFor(state: string): Promise<string> {
     vi.resetModules();
     process.env.__TEST_DD_STATE = state;
@@ -241,14 +274,14 @@ describe("due-diligence PDF — silence is not a clean bill of health", () => {
     // And it must not print an invented level or score anywhere.
     expect(pdf).not.toMatch(/Climate Risk: Drought-Prone/);
     expect(pdf).not.toMatch(/null\/100/);
-  });
+  }, PDF_RENDER_BUDGET_MS);
 
   it("a covered high-risk state still gets its real warning", async () => {
     const pdf = await renderFor("TX"); // drought very_high + hurricane high
     expect(pdf).toMatch(/Climate Risk: Drought-Prone & Coastal/);
     expect(pdf).toMatch(/Western TX chronic drought/);
     expect(pdf).not.toMatch(/Not assessed/);
-  });
+  }, PDF_RENDER_BUDGET_MS);
 
   it("a covered LOW-risk state prints neither warning nor 'not assessed'", async () => {
     // GA: drought moderate, hurricane moderate — neither trips the warning, so
@@ -258,5 +291,5 @@ describe("due-diligence PDF — silence is not a clean bill of health", () => {
     const pdf = await renderFor("GA");
     expect(pdf).not.toMatch(/Climate Risk: Not assessed/);
     expect(pdf).not.toMatch(/△ Climate Risk/);
-  });
+  }, PDF_RENDER_BUDGET_MS);
 });
