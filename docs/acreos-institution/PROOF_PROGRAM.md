@@ -158,6 +158,20 @@ Two recurring traps, each found more than once:
   because a comment detector that swallowed a file would silently stop scanning
   it. Both mutations fire: a real leak in a string is still caught, and
   disabling the detector trips the floor.
+
+  And a THIRD face of it, closed 2026-08-20, which is the one to remember when
+  the fix looks like a one-line change. A gate that scans source has scans that
+  EXEMPT and scans that ACCUSE, and they are not the same risk: a comment
+  wrongly granting an exemption hides a finding, while a comment wrongly counted
+  as a call site clears innocent code — and stripping comments from an accusing
+  scan means every symbol it newly names must be adjudicated at once, because
+  the ratchet is down-only. `lint-reachability` therefore ran comment-free on
+  its two exempting scans for a full day while its identifier pass still read
+  prose. What unblocked it was reading the revealed population instead of
+  counting it: all 86 symbols searched by hand, zero false accusations, and two
+  thirds of them turning out to be a DIFFERENT RULE that then needed its own
+  family and its own baseline. Sizing a gate change by the count of new findings
+  is how it stays unstarted; sizing it by what the findings ARE is how it lands.
 - **A stubbed safety predicate makes a suite agree with any implementation of
   it, including an inverted one.** Import the real function into the mock.
 

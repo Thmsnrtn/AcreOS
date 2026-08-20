@@ -1,12 +1,14 @@
 # OWNER DECISIONS PENDING
 
-> **ALL SEVEN DECISIONS ARE TAKEN. NOTHING ON THIS PAGE IS WAITING ON THE OWNER.**
+> **ONE DECISION IS OPEN: OD-8, at the bottom. The other seven are taken.**
 >
 > OD-2, OD-3, OD-4 and OD-5 are DECIDED AND IMPLEMENTED. OD-1 is DECIDED (hold)
 > and stays listed because the hold is the live state. OD-6 is DECIDED (accept
 > the cascade) with nothing to build — the code already behaves that way; it is
 > recorded so the choice is deliberate rather than inherited, and it is the one
-> to revisit at Customer #1. OD-7 was opened 2026-08-19 and is at the bottom.
+> to revisit at Customer #1. OD-7 was opened and closed on 2026-08-19.
+> **OD-8** (opened 2026-08-20) asks whether AcreOS assesses late fees or only
+> advises on them; nothing is blocked on it.
 
 Genuine owner decisions only. Ordinary engineering — schemas, refactors, tests,
 migration mechanics, deletion, dependency ordering — is not escalated here.
@@ -443,3 +445,56 @@ a UI.
 **Blocked meanwhile:** nothing. Ledger 36 fixed the provider-side ids around it;
 the picker itself is untouched pending this.
 
+---
+
+## OD-8 — OPEN 2026-08-20: does AcreOS ASSESS late fees, or only advise on them?
+
+**The decision.** `server/services/lateFees/index.ts` is a complete, correct
+12 C.F.R. §1026.36(c)(2) late-fee implementation — the anti-pyramiding rule, with
+the pure predicate (`shouldAssessLateFee`), the DB writer (`assessLateFee`), a
+unique index on `(loan_id, period_start)` making re-runs a no-op, and two test
+files. **Nothing in production calls it.** It has been dead since it was written,
+and it is the ORIGINAL worked example named in the reachability gate's own
+description; the gate could not see it until 2026-08-20 because a comment
+somewhere used the symbol's name.
+
+The live path is `server/jobs/acquiredNoteAging.ts` — registered, daily,
+delinquency + RESPA §1024.39 sweep. It computes a `lateFeeAdvisory` per note and
+its header states plainly that it "touches no ledger, and moves nothing." So the
+product today OBSERVES that a late fee would be assessable and never assesses one.
+
+**Why this is not an engineering call.** Wiring the assessor writes fee rows
+against a borrower's loan. That is money charged to a real counterparty by
+software, on the customer's book, under a federal rule with a specific
+prohibition attached. Whether AcreOS does that at all — versus surfacing the
+advisory and letting the servicer act — is a product and liability posture, not a
+missing import.
+
+**Options.**
+(a) **Stay advisory.** Delete `lateFees/index.ts`, keep the advisory in the aging
+    job, and let the operator assess fees in their servicing system. Cheapest,
+    and consistent with "be the rail, not the provider" — though note that rule is
+    about MONEY MOVEMENT, and a fee assessment is a ledger entry, not a transfer,
+    so it does not decide this on its own.
+(b) **Wire it behind an explicit per-org opt-in** that defaults OFF, with the
+    assessment visible in the ledger and reversible. The reg-compliant behaviour
+    already exists; what is missing is the setting, the call site in the aging
+    job, and a surface that shows what was assessed and why.
+(c) **Wire it on by default.** Not recommended: it changes what the product does
+    to borrowers of every existing org without anyone choosing it.
+
+**Recommendation: (b).** The implementation is the expensive half and it is done
+and tested. A default-OFF opt-in makes assessment a decision an operator takes
+rather than a behaviour they discover, and the non-pyramiding guarantee — which
+is the part that is easy to get wrong and easy to be sued over — is already
+correct in code. (a) is defensible and cheaper; what argues against it is that
+the advisory already tells the operator a fee is due, so the product is doing the
+hard reasoning and stopping one step short of the useful part.
+
+**Consequence of (b):** one org setting, one call site in a job that already
+computes the inputs, one read surface. **Consequence of (a):** a deletion, and
+the §1026.36(c)(2) logic is rebuilt from scratch if this is ever revisited.
+
+**Blocked meanwhile:** nothing. The module is inert either way; it is held in
+view by the `moduleOrphans` baseline rather than allowlisted, so it cannot be
+forgotten.

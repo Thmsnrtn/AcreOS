@@ -47,6 +47,17 @@
  * statically imported, so opacity never applied to them and zero of the 859 are
  * ach symbols. A verification claim that was itself unverified.)
  *
+ * A SECOND NARROWING, 2026-08-20: opaque-exports 125 → 23. Not the same mechanism
+ * and not a reclassification of dead code — 97 of the residue were exports the
+ * dynamically-imported module ITSELF uses, and opacity was never protecting them.
+ * Opacity exempts from the DEATH accusation; `internal-only-exports` ("exported,
+ * but used only inside its own module — drop the keyword, keep the code") is a
+ * different claim whose cost when wrong is a compile error on the next build, so
+ * it looks through the exemption while the accusation never does. What is left
+ * in the family is what the name always promised: exports in a dynamically-
+ * imported module that the module does not touch, where the gate genuinely
+ * cannot say.
+ *
  * THE TRAP, recorded because the next person to touch this will step in it. The
  * first implementation simply skipped destructured imports — and `moduleOrphans`
  * jumped 45 → 217, i.e. 172 modules that ARE imported were about to be reported
@@ -151,8 +162,17 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     //
     // AND THE NEW TRUTH IS NOT WHAT THAT SENTENCE PREDICTED. The fix did not
     // make the opacity DECISION symbol-aware; it narrowed the POPULATION that
-    // feeds it. Once a module is opaque it is still opaque wholesale — which is
-    // why the residue is 125 rather than 0, and why this check still stands.
+    // feeds it. Once a module is opaque it is still opaque wholesale.
+    //
+    // REWRITTEN AGAIN 2026-08-20, and the same way: the residue fell 125 -> 23,
+    // and again the decision did not become symbol-aware. What changed is WHO
+    // ASKS. `internal-only-exports` — exported, but used only inside its own
+    // module — now skips the exemption, because opacity exempts from the DEATH
+    // accusation and "stop exporting this" is not that. So a symbol-level test
+    // sits IN FRONT of the module-level one, and this check is now written to
+    // tell those two apart: the internal-use selector is allowed there, and
+    // nothing else is. A future edit that pushes a symbol test INTO
+    // isDynamicallyImported still trips every assertion below.
     const at = gate.indexOf("function isDynamicallyImported(");
     expect(at, "isDynamicallyImported is gone — has opacity been reworked?").toBeGreaterThan(-1);
     const body = gate.slice(at, gate.indexOf("\n}", at));
@@ -168,10 +188,20 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     ).toContain("dynamicResolved.has");
     expect(body).toContain("dynamicUnresolvedTails.has");
     expect(body, "the opacity decision now inspects a symbol").not.toMatch(/\bsymbol\b/);
-    // The classifier exempts the whole module in one branch, with no symbol test.
-    const branch = gate.indexOf("if (isDynamicallyImported(c.file))");
+    // The classifier exempts the whole module in ONE branch, and the only
+    // symbol-level condition allowed to guard it is the internal-use selector.
+    const branch = gate.indexOf("isDynamicallyImported(c.file)) {");
     expect(branch, "the per-module exemption branch is gone").toBeGreaterThan(-1);
     expect(gate.slice(branch, branch + 160)).toContain("opaqueExports.push");
+    // The guard is whatever sits between the start of that LINE and the module
+    // test — no more, so a comment above it cannot satisfy or break this.
+    const guard = gate.slice(gate.lastIndexOf("\n", branch) + 1, branch);
+    expect(
+      guard,
+      "the opacity exemption grew a guard that is not the internal-use " +
+        "selector. Anything else in front of it is a symbol-aware opacity " +
+        "decision wearing a different name — see the note above.",
+    ).toMatch(/^\s*if \((?:!usedInOwnModule && )?$/);
   });
 
   it("a destructured dynamic import still counts as an IMPORT, only not as opacity", () => {
@@ -190,9 +220,9 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     expect(
       at,
       "the destructuring narrowing is gone from the gate — if opacity is back to " +
-        "exempting every dynamically-imported module, opaque-exports should be " +
-        "back near 984 and unreached-exports near 580, and both baselines must " +
-        "move in the same commit.",
+        "exempting every dynamically-imported module, opaque-exports jumps by " +
+        "roughly the 859 this narrowing reclaimed and the export families fall " +
+        "by the same, and every affected baseline must move in the same commit.",
     ).toBeGreaterThan(-1);
     // Bounded to the branch itself. An earlier version of this assertion sliced
     // to the next `continue;` in the whole file, which ran far past the block

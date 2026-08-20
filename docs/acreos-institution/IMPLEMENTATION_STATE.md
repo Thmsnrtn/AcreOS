@@ -45,16 +45,27 @@ locked into the commit that earned it.
 | `req-as-any` | 0 |
 | `storage.ts` lines | 1682 |
 | `runScheduledJobs.ts` lines | 5721 |
-| reachability: unreached exports | 1398 |
+| reachability: unreached exports (declared, referenced nowhere) | 390 |
+| reachability: internal-only exports (exported wider than used) | 1188 |
 | reachability: tables with no writer / no reader | 48 / 60 |
-| reachability: unregistered routes / opaque exports / module orphans | 4 / 120 / 28 |
+| reachability: unregistered routes / opaque exports / module orphans | 4 / 23 / 30 |
 | `FOUNDER_ROUTE_BASELINE` | 82 |
 | `OBJECTS_WITHOUT_CANONICAL_HOME` | 9 |
 
 Two of these are the honest shape of the debt rather than a target:
-`unreachedExports: 1398` and `tablesNoReader: 60` say plainly that a large part
-of this repository is written and not reached. That is the single most useful
-number in the table.
+`unreachedExports: 390` and `tablesNoReader: 60` say plainly that a large part of
+this repository is written and not reached. That is the single most useful number
+in the table.
+
+Read the reachability rows with their 2026-08-20 history or they mislead.
+`unreachedExports` was 1395 the day before and **nothing was deleted**: the family
+split in two, and 1,005 findings moved to `internalOnlyExports`, which is a
+different defect (an unnecessary `export` keyword) with a different remedy.
+`opaqueExports` 120 → 23 IS a real narrowing — 97 of the blind spot were exports
+the module itself used, which opacity was never protecting. `moduleOrphans`
+28 → 30 is the one raise, and the two files are not new debt: they were always
+orphans, and the gate could not see them because a comment used their names. Both
+are on the frontier awaiting adjudication (see OD-8 for one of them).
 
 ---
 

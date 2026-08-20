@@ -11,6 +11,10 @@
  * code + output.
  *
  * The properties locked in here:
+ *   0. A symbol NAMED IN PROSE is not a caller of it — in either direction, and
+ *      for the ACCUSING scan as well as the two exempting ones. An export used
+ *      only inside its own module is a different finding from one nothing
+ *      touches, and the two families stay separate (2026-08-20).
  *   1. An export whose only consumer is its own TEST file is flagged.
  *   2. An export used in production code is NOT flagged (no false positive).
  *   3. A dynamic `await import(...)` counts as a use — the linter refuses to
@@ -559,6 +563,56 @@ describe("lint-reachability — a comment is not code", () => {
     }
   });
 
+  it("a symbol NAMED in prose is not a caller of it", () => {
+    // ── THE HALF THAT TOOK LONGEST TO LAND ────────────────────────────────
+    // The two tests above pin the scans that grant EXEMPTIONS: a specifier in
+    // a comment must not confer opacity or suppress an orphan. This one pins
+    // the scan that ACCUSES — the identifier pass — and it was deliberately
+    // left reading raw source until 2026-08-20, because a wrong answer here
+    // names innocent code rather than hiding guilty code.
+    //
+    // The defect it certifies against is on the record: `InvestorVerification-
+    // Service` sat in this linter's own allowlist because its only consumer in
+    // the entire repository was a stale `TODO`. Measured before the fix, 88
+    // exports were held alive by prose alone.
+    //
+    // Both directions in one fixture, so the mutation is the thing the gate
+    // GOVERNS and nothing else: `mentioned` appears in a comment, `invoked`
+    // appears in code, and they sit in the same file, on adjacent lines, in the
+    // same module. Only the syntax around them differs.
+    const d = mkdtempSync(join(tmpdir(), "reach-comment-identifier-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/twoWays.ts",
+        "export function mentioned() { return 1; }\n" +
+          "export function invoked() { return 2; }\n",
+      );
+      f.write(
+        "server/routes-live.ts",
+        'import { invoked } from "./services/twoWays";\n' +
+          "// TODO: call mentioned() here once the ladder trigger fires.\n" +
+          "export function handler() { return invoked(); }\n",
+      );
+      f.ratchet({ unreachedExports: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(
+        out,
+        "a TODO naming a symbol is being counted as a call site — this is the " +
+          "InvestorVerificationService defect, reintroduced",
+      ).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("mentioned");
+      expect(
+        out,
+        "the strip over-reached and accused a symbol that IS imported and called",
+      ).not.toMatch(/✗.*\binvoked\b|• .*\binvoked\b/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
   it("prints a FULL comment-stripper self-test on every run", () => {
     // A stripper that returned "" would empty both import scans and turn the
     // whole gate green, so its correctness is reported, not merely assumed.
@@ -573,6 +627,181 @@ describe("lint-reachability — a comment is not code", () => {
       "the stripper self-test lost its cases — an empty case list passes trivially",
     ).toBeGreaterThanOrEqual(8);
   }, 120_000);
+});
+
+describe("lint-reachability — internal-only exports are a different rule", () => {
+  // ── WHY THIS FAMILY EXISTS ────────────────────────────────────────────────
+  // Landing the comment strip above revealed 86 symbols. Reading all 86 rather
+  // than counting them showed that only 20 were the thing this gate exists to
+  // shout about — code nothing anywhere touches — and 66 were something else
+  // entirely: an ordinary helper carrying an `export` keyword it does not need.
+  // Applied to the whole repo the same split moved 1,005 pre-existing findings
+  // out of `unreached-exports`.
+  //
+  // Two rules, because they have two remedies (delete the code / delete the
+  // keyword), two risk profiles (dead weight / none at runtime), and two
+  // populations three orders of magnitude apart. Merged, the 390 real
+  // accusations sit under 1,188 harmless ones and the gate teaches its readers
+  // to skim. Split, each ratchet means something.
+
+  it("separates a helper used inside its own module from one used nowhere", () => {
+    const d = mkdtempSync(join(tmpdir(), "reach-internal-split-"));
+    try {
+      const f = fixture(d);
+      // Three exports, one module, one difference between them.
+      f.write(
+        "server/services/mixed.ts",
+        "export function usedInternally() { return 1; }\n" +
+          "export function neverUsed() { return 2; }\n" +
+          "export function usedOutside() { return usedInternally() + 3; }\n",
+      );
+      f.write(
+        "server/routes-live.ts",
+        'import { usedOutside } from "./services/mixed";\n' +
+          "export function handler() { return usedOutside(); }\n",
+      );
+      f.ratchet({ unreachedExports: 1, internalOnlyExports: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(out).toContain("unreached-exports: PASS — 1");
+      expect(out).toContain("internal-only-exports: PASS — 1");
+
+      // Each symbol lands in exactly one family, and the family it lands in is
+      // the one whose remedy is right for it.
+      const unreachedLine = out
+        .split("\n")
+        .find((l) => l.includes("neverUsed") && l.includes("never referenced"));
+      expect(unreachedLine, `neverUsed is not in unreached-exports:\n${out}`).toBeTruthy();
+      const internalLine = out
+        .split("\n")
+        .find((l) => l.includes("usedInternally") && l.includes("only inside its own module"));
+      expect(internalLine, `usedInternally is not in internal-only-exports:\n${out}`).toBeTruthy();
+      expect(internalLine, "the reference count is what justifies the classification").toMatch(
+        /\(\d+ references there\)/,
+      );
+
+      // usedOutside is reached and must appear in neither.
+      expect(out).not.toMatch(/• .*usedOutside/);
+
+      // The remedy is the whole point of splitting them: one says delete the
+      // code, the other says delete the keyword. A reader who acts on the wrong
+      // one either loses a working helper or leaves dead weight in place.
+      // Remedies print on the FAILING path only, so the same tree is re-run
+      // against a zeroed baseline to read them.
+      f.ratchet({ unreachedExports: 0, internalOnlyExports: 0 });
+      const failing = f.run("--report");
+      expect(failing.code).toBe(1);
+      expect(failing.out).toMatch(/DROP THE `export` KEYWORD/);
+      expect(failing.out).toMatch(/DELETE it/);
+      expect(
+        failing.out,
+        "the death accusation must keep naming the trap that produced nine of " +
+          "the twenty symbols this split first revealed",
+      ).toContain("A GREEN UNIT TEST IS NOT A CALL SITE");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("a module NOTHING imports is still an orphan when all its exports are internal", () => {
+    // The trap this pins: `module-orphans` derives from the export findings, so
+    // moving internal-only symbols into their own family silently emptied it for
+    // any file whose exports all happened to call each other. The file is no
+    // less unimported for that. Before the fix this fixture reported 0 orphans
+    // while the file sat there with nothing loading it.
+    const d = mkdtempSync(join(tmpdir(), "reach-internal-orphan-"));
+    try {
+      const f = fixture(d);
+      // EVERY export here is internally referenced, which is the whole point:
+      // leave one declaration-only export in the file and it lands in
+      // `unreached-exports`, the file is reported through THAT family, and this
+      // test passes while the defect it exists to catch is wide open.
+      f.write(
+        "server/services/talksToItself.ts",
+        "export function inner() { return 1; }\n" +
+          "export function outer() { return inner() + 1; }\n" +
+          "function bootstrap() { return outer(); }\n" +
+          "bootstrap();\n",
+      );
+      f.write("server/routes-live.ts", "export function handler() { return 1; }\n");
+      f.ratchet({ internalOnlyExports: 2, unreachedExports: 0, moduleOrphans: 1 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(
+        out,
+        "a file nothing imports stopped being an orphan because its exports " +
+          "reference each other",
+      ).toContain("module-orphans: PASS — 1");
+      expect(out).toContain("talksToItself.ts");
+      expect(out).toContain("MODULE ORPHAN");
+      expect(
+        out,
+        "the vacuity half: if anything here landed in unreached-exports the " +
+          "orphan would be reported through that family and this test would " +
+          "pass over the defect",
+      ).toContain("unreached-exports: PASS — 0");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("sees through dynamic-import opacity, which the DEATH accusation never does", () => {
+    // ── THE ASYMMETRY, PINNED ─────────────────────────────────────────────────
+    // This linter's stated bias is that a false OPAQUE is a miss while a false
+    // UNREACHED is an accusation, so a dynamically-imported module's exports are
+    // never called dead. `internal-only` proposes something weaker — keep the
+    // code, drop the keyword — whose cost when wrong is a compile error on the
+    // next build, so it is allowed to look through the exemption.
+    //
+    // Without that, the new family would have been born with a hole: every
+    // over-export inside a dynamically-imported module would sit in the
+    // blind-spot count forever, described by neither rule. On the real repo
+    // that hole was 97 of the 120 opaque exports.
+    //
+    // Both symbols live in the SAME dynamically-imported module, so the only
+    // variable is whether the module uses what it exports.
+    const d = mkdtempSync(join(tmpdir(), "reach-internal-opaque-"));
+    try {
+      const f = fixture(d);
+      f.write(
+        "server/services/lazyMixed.ts",
+        "function seed() { return 1; }\n" +
+          "export function usedInternally() { return seed(); }\n" +
+          "export function neverUsed() { return 2; }\n" +
+          "export function entry() { return usedInternally(); }\n",
+      );
+      f.write(
+        "server/routes-lazy.ts",
+        "export async function handler(name: string) {\n" +
+          '  const mod = await import("./services/lazyMixed");\n' +
+          "  return (mod as Record<string, () => number>)[name]();\n" +
+          "}\n",
+      );
+      // `usedInternally` is called by `entry`, so it is an over-export the new
+      // family can name. `entry` and `neverUsed` are each declared and never
+      // referenced in the module, so both keep the opacity exemption — the
+      // fixture deliberately carries a symbol on each side of the asymmetry.
+      f.ratchet({ internalOnlyExports: 1, opaqueExports: 2 });
+
+      const { code, out } = f.run("--report");
+      expect(code).toBe(0);
+      expect(out).toContain("internal-only-exports: PASS — 1");
+      expect(
+        out,
+        "a declaration-only export in a dynamically-imported module must STAY " +
+          "opaque — that is the accusation the exemption exists to prevent",
+      ).toContain("opaque-exports: PASS — 2");
+      expect(out).toContain("unreached-exports: PASS — 0");
+      expect(out).toMatch(/neverUsed[\s\S]{0,200}unassertable|unassertable[\s\S]{0,200}neverUsed/);
+      // The finding warns about the one shape the tokeniser genuinely cannot
+      // see, so nobody drops a keyword a computed access needs.
+      expect(out).toContain("check for computed access");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("lint-reachability — allowlist", () => {
@@ -989,6 +1218,12 @@ describe("lint-reachability — the real repo", () => {
       })
     ).default as { baselines: Record<string, number>; allowlist: Allow[] };
     expect(Object.keys(cfg.baselines).sort()).toEqual([
+      // internalOnlyExports is "exported wider than it is used" — a separate
+      // rule from "nothing anywhere touches this", with a separate remedy (drop
+      // the keyword, not the code). Split out on 2026-08-20; on the real repo it
+      // holds 1,188 of what used to be 1,578 unreached-exports findings, which
+      // is exactly why merging them made the 390 real accusations unreadable.
+      "internalOnlyExports",
       // moduleOrphans counts whole FILES nothing imports — 228 of the unreached
       // exports resolve to 62 files, and a file is the unit a delete-or-wire
       // decision is made in (BLOCKERS B19). It is NOT a delete list: one class
@@ -997,7 +1232,9 @@ describe("lint-reachability — the real repo", () => {
       // opaqueExports is the SIZE OF THE BLIND SPOT — exports the other families
       // cannot assert on because their module is dynamically imported somewhere.
       // Nothing in it is proven dead; the point is that it may only shrink,
-      // where before it was printed as prose and could grow unwatched.
+      // where before it was printed as prose and could grow unwatched. It fell
+      // 120 → 23 in the same commit: 97 of those were over-exports the module
+      // itself used, which the new family CAN describe.
       "opaqueExports",
       "tablesNoReader",
       "tablesNoWriter",

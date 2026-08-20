@@ -54,9 +54,16 @@ entries · 154 client pages. See `IMPLEMENTATION_STATE.md` for the live counts a
 every ratchet baseline.
 
 A repository this size has one dominant failure mode, and it is not complexity:
-it is **things that exist and are never reached.** 1398 exported symbols have no
-production consumer; 60 tables have no reader. That is the honest shape of the
+it is **things that exist and are never reached.** 390 exported symbols are
+declared and referenced nowhere at all, a further 1,188 are exported wider than
+they are used, and 60 tables have no reader. That is the honest shape of the
 debt, and it is why the reachability gate is load-bearing rather than tidy.
+
+The first two of those were ONE number (1,395) until 2026-08-20, and separating
+them is the more useful fact: three quarters of what read as dead code was
+ordinary code carrying an `export` keyword it did not need. The remedies differ —
+delete the code, versus delete the keyword — and merged, the smaller and more
+serious population was unreadable underneath the larger and harmless one.
 
 ## Tenancy
 

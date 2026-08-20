@@ -38,7 +38,17 @@
 //                          server/services/** and server/jobs/**, cross-
 //                          referenced against production (non-test) code. An
 //                          export whose ONLY consumer is its own test file is
-//                          UNREACHED — that is exactly the lateFees case.
+//                          UNREACHED — that is exactly the lateFees case, and
+//                          a green unit test is the disguise that case wears:
+//                          it is the strongest possible evidence the code WORKS
+//                          and no evidence at all that anything RUNS it.
+//   1b. internal-only-      Exported, then used ONLY inside its own module.
+//       exports            Split out of family 1 on 2026-08-20 because it is a
+//                          different rule with a different remedy — drop the
+//                          `export` keyword, not the code — and because merged
+//                          it drowned family 1 four-to-one (1,188 against 390).
+//                          A gate whose findings are mostly noise trains its
+//                          readers to skim it.
 //   2. tables-no-writer    Every `pgTable("x", …)` in shared/schema* with no
 //     tables-no-reader     `.insert(`/`.update(`/`.delete(` (writer) or
 //                          `.from(`/`join(`/`db.query.x` (reader). Reported in
@@ -65,7 +75,10 @@
 //                          See FAMILY 5 near the FAMILIES array for the
 //                          measurement, and for the 2026-08-14 narrowing that
 //                          cut this family by 859 by exempting only the imports
-//                          that genuinely hide something.
+//                          that genuinely hide something. Narrowed again on
+//                          2026-08-20, 120 → 23: an export the module itself
+//                          uses was never in the blind spot at all, and family
+//                          1b can describe it exactly.
 //
 // ----------------------------------------------------------------------------
 // WHY IT IS A RATCHET, NOT A HARD GATE
@@ -423,6 +436,19 @@ const dynamicUnresolvedTails = new Set();
 
 /** symbol → Set<consumer file> (excluding the declaring file). */
 const usage = new Map();
+/**
+ * `path::symbol` → occurrences of that symbol inside its OWN declaring file.
+ *
+ * One occurrence is the declaration itself. Two or more means the module uses
+ * the thing it exports, which is a different finding from "nothing anywhere
+ * touches this" and gets its own family below.
+ *
+ * Tokens, not scopes — so a dead `export const handler` in a file that also has
+ * a local `handler` reads as internally used. That misclassification moves a
+ * finding from the ACCUSING family to the quieter one, which is the direction
+ * this linter always errs in: a miss beats naming innocent code.
+ */
+const ownRefs = new Map();
 const IDENT_RE = /[A-Za-z_$][\w$]*/g;
 
 /** Every module specifier imported anywhere in production, however imported. */
@@ -473,10 +499,10 @@ function recordImport(importerRel, spec) {
 for (const p of productionFiles) {
   const raw = read(p);
 
-  // Comments are not code: see stripCommentsPreservingLines above. The
-  // identifier pass below still reads `raw` — stripping it there is a much
-  // larger change (80 more findings, measured 2026-08-19) and is tracked
-  // separately; this closes the two EXEMPTION-granting scans only.
+  // Comments are not code: see stripCommentsPreservingLines above. Every scan
+  // in this loop — the two EXEMPTION-granting import scans and the ACCUSING
+  // identifier pass — reads the stripped text. The identifier pass came last
+  // and cost the most; see the note at its call site.
   const code = stripCommentsPreservingLines(raw);
 
   DYNAMIC_IMPORT_RE.lastIndex = 0;
@@ -538,7 +564,19 @@ for (const p of productionFiles) {
   while ((sm = STATIC_IMPORT_RE.exec(code)) !== null) recordImport(p, sm[1]);
 
   if (candidateNames.size === 0) continue;
-  const text = raw.replace(REEXPORT_RE, "");
+  // A COMMENT IS NOT A CALL SITE, and this pass is where that mattered most.
+  // It used to tokenise `raw`, so a symbol merely NAMED in prose — a stale
+  // TODO, a docblock, a header listing the very corpses a gate exists to find —
+  // certified it as REACHED. `InvestorVerificationService` sat in this file's
+  // own allowlist for precisely that reason: its only consumer was a TODO.
+  //
+  // Ledger 35 stripped the two import scans and deliberately stopped short of
+  // this one, because those two grant EXEMPTIONS (a wrong answer hides a
+  // finding) while this one produces ACCUSATIONS (a wrong answer names innocent
+  // code). Landing it needed the population read, not just counted: all 86
+  // newly-revealed symbols were searched by hand on 2026-08-20, and ZERO had an
+  // external reference this pass would now miss. That is what made it safe.
+  const text = code.replace(REEXPORT_RE, "");
   IDENT_RE.lastIndex = 0;
   let m;
   while ((m = IDENT_RE.exec(text)) !== null) {
@@ -547,6 +585,10 @@ for (const p of productionFiles) {
     let set = usage.get(tok);
     if (!set) usage.set(tok, (set = new Set()));
     set.add(p);
+    // Occurrences in the declaring file separate the two remedies: delete it,
+    // versus stop exporting it.
+    const ownKey = `${p}::${tok}`;
+    if (candidates.has(ownKey)) ownRefs.set(ownKey, (ownRefs.get(ownKey) ?? 0) + 1);
   }
 }
 
@@ -585,18 +627,68 @@ function isDynamicallyImported(relPath) {
 }
 
 const opaqueExports = [];
+/** Nothing in production references the symbol at all — not even its module. */
 const unreachedExports = [];
+/**
+ * Referenced INSIDE its declaring module and nowhere else.
+ *
+ * A separate family, and separating it is not cosmetic. These two findings have
+ * different remedies (delete the code / delete the `export` keyword), different
+ * risk (dead weight / none at runtime), and wildly different populations — the
+ * comment-strip that landed with this split revealed 20 of the first kind and
+ * 66 of the second. Dumping 66 harmless over-exports into the accusation family
+ * would have buried the 20 that matter under noise, and a gate whose findings
+ * are mostly noise teaches its readers to skim it. Each rule keeps a ratchet
+ * that means something.
+ */
+const internalOnlyExports = [];
 for (const [id, c] of candidates) {
   const consumers = usage.get(c.symbol);
   const external = consumers ? [...consumers].filter((f) => f !== c.file) : [];
   if (external.length > 0) continue; // reached in production
   consideredKeys.add(`export:${id}`);
-  if (isDynamicallyImported(c.file)) {
+  // >1 because the declaration itself is one occurrence.
+  const usedInOwnModule = (ownRefs.get(id) ?? 0) > 1;
+  // OPACITY IS AN EXEMPTION FROM THE DEATH ACCUSATION, AND ONLY THAT.
+  //
+  // This file's stated bias — a false OPAQUE is a miss, a false UNREACHED is an
+  // accusation — is why a dynamically-imported module's exports are never called
+  // dead. That bias is about DELETION. `internal-only` proposes something else
+  // entirely: keep the code, drop the `export` keyword. Its cost when wrong is
+  // bounded and immediate (tsc and the suite fail on the next build), where a
+  // wrong deletion is unbounded and silent.
+  //
+  // And the blind spot barely exists for this question. A dynamic importer that
+  // uses a NAMED export leaves the name in its own text either way —
+  // `const { judgeSafety } = await import(…)` binds a bare identifier, and
+  // `m.judgeSafety` still tokenises as `judgeSafety`. Only a COMPUTED access
+  // (`m[someVariable]`) hides it, which is as true of a static namespace import
+  // as a dynamic one, so opacity was never what protected against it.
+  //
+  // So the family that accuses keeps the exemption absolutely, and the family
+  // that merely narrows a scope sees through it. Without this the new family
+  // would have been born with a hole in it: every over-export inside a
+  // dynamically-imported module — six of them revealed by the comment strip
+  // alone — would sit in the blind-spot count forever, uncounted by the rule
+  // that actually describes them.
+  if (!usedInOwnModule && isDynamicallyImported(c.file)) {
     opaqueExports.push({ ...c, id });
     continue;
   }
+  // ONE allowlist kind for both families, on purpose. An exemption is written
+  // about a SYMBOL ("staged for the expansion ladder"), and whether that symbol
+  // currently happens to be used inside its own module is not something the
+  // author of the reason was ruling on. Keying the exemption on the family
+  // would silently expire it the day someone added an internal call.
   if (allowlisted("export", id)) continue;
-  unreachedExports.push({ ...c, id, moduleOrphan: isModuleOrphan(c.file) });
+  const finding = {
+    ...c,
+    id,
+    moduleOrphan: isModuleOrphan(c.file),
+    opaqueModule: isDynamicallyImported(c.file),
+  };
+  if (usedInOwnModule) internalOnlyExports.push(finding);
+  else unreachedExports.push(finding);
 }
 
 /**
@@ -943,16 +1035,44 @@ const FAMILIES = [
     label: "unreached-exports",
     findings: unreachedExports,
     describe: (f) =>
-      `${f.file}:${f.line}  ${f.kind} ${f.symbol} — no production consumer` +
-      (f.moduleOrphan
-        ? " [MODULE ORPHAN — nothing imports this file at all]"
-        : usage.get(f.symbol)?.size
-          ? " (only its own module/tests reference it)"
-          : ""),
+      `${f.file}:${f.line}  ${f.kind} ${f.symbol} — declared and never referenced` +
+      (f.moduleOrphan ? " [MODULE ORPHAN — nothing imports this file at all]" : ""),
     remedy:
       "DELETE it (cheapest, and the north star is a smaller codebase), or WIRE it\n" +
       "  to a route/job/service that actually calls it, or ALLOWLIST it in\n" +
-      "  scripts/ratchets/reachability.json with a real reason.",
+      "  scripts/ratchets/reachability.json with a real reason.\n" +
+      "  A GREEN UNIT TEST IS NOT A CALL SITE. Nine of the twenty symbols this\n" +
+      "  family first revealed had real behavioural tests exercising them and no\n" +
+      "  production caller at all — which is the strongest possible evidence the\n" +
+      "  code WORKS and no evidence whatever that anything RUNS it.",
+  },
+  {
+    // FAMILY 7 — exported wider than it is used.
+    //
+    // Split out of `unreached-exports` on 2026-08-20, in the commit that stopped
+    // the identifier pass reading comments. That change revealed 86 symbols;
+    // reading all 86 rather than counting them showed 66 were this — an ordinary
+    // helper that carries an `export` keyword it does not need — and only 20 were
+    // the thing the gate exists to shout about. Same count, two rules, and the
+    // loud one only stays loud if the quiet one is somewhere else.
+    //
+    // Runtime risk: none. Cost: a wider public surface than the module means,
+    // which is how a helper acquires callers its author never designed for, and
+    // dead weight in every import-graph and tree-shaking decision downstream.
+    key: "internalOnlyExports",
+    label: "internal-only-exports",
+    findings: internalOnlyExports,
+    describe: (f) =>
+      `${f.file}:${f.line}  ${f.kind} ${f.symbol} — used only inside its own module` +
+      ` (${ownRefs.get(f.id) ?? 0} references there)` +
+      (f.moduleOrphan ? " [MODULE ORPHAN — nothing imports this file at all]" : "") +
+      (f.opaqueModule ? " [module is dynamically imported — check for computed access]" : ""),
+    remedy:
+      "DROP THE `export` KEYWORD — the module keeps the helper, the codebase\n" +
+      "  loses a public promise nobody asked for. If the export is deliberate\n" +
+      "  (a seam a test or a future caller needs), ALLOWLIST it with that reason.\n" +
+      "  Note a MODULE ORPHAN here is a different animal: an unimported file whose\n" +
+      "  internals talk to each other is still a file nothing runs.",
   },
   {
     key: "tablesNoWriter",
@@ -1045,7 +1165,18 @@ const FAMILIES = [
     // block did exactly that. Same shape as unit 110's module-orphan trap:
     // answering two questions ("is it a candidate?" / "is it reported?") with one
     // expression.
-    findings: [...new Set(unreachedExports.filter((f) => f.moduleOrphan).map((f) => f.file))]
+    // BOTH export families feed this. A file nothing imports is an orphan
+    // whether or not its exports happen to call each other — and after the
+    // 2026-08-20 split, a module whose every export is internally used would
+    // otherwise have vanished from this family entirely while remaining exactly
+    // as unimported as before.
+    findings: [
+      ...new Set(
+        [...unreachedExports, ...internalOnlyExports]
+          .filter((f) => f.moduleOrphan)
+          .map((f) => f.file),
+      ),
+    ]
       .filter((file) => {
         consideredKeys.add(`module-orphan:${file}`);
         return !allowlisted("module-orphan", file);

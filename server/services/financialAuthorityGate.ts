@@ -199,8 +199,19 @@ const SPENDING_TIERS: readonly SpendingTier[] = [
  *
  * Found because the reachability gate could NOT see it: shared/governance/
  * constitution.ts names `spendIsAutonomous()` in the prose of the very entry
- * that records this hard stop, and that linter counts a name in a comment as a
+ * that records this hard stop, and that linter counted a name in a comment as a
  * use. The registry describing the enforcement is what concealed its absence.
+ *
+ * UPDATED 2026-08-20 (ledger 45), and the update is the interesting half. The
+ * linter no longer reads comments — and this symbol is STILL certified reached,
+ * by the same registry entry, because that entry is a `note:` STRING, not a
+ * comment. Prose in a string literal is prose. The identifier pass tokenises
+ * string contents, so a registry of sentences ABOUT the code counts as code
+ * using it; the concealment survived its own fix in an equivalent
+ * representation, which is precisely the failure mode CLAUDE.md's first law
+ * warns about. Recorded on the frontier: closing it needs a real tokeniser, not
+ * a regex, because a string-stripping regex trips on the first apostrophe
+ * inside a double-quoted sentence.
  */
 function tierForAmount(amountCents: number): SpendingTier {
   return (

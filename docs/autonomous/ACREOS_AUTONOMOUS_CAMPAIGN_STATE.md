@@ -174,86 +174,25 @@ had not verified; those are deliberately absent below.
    (ledger 40). That is the argument for working this list rather than admiring
    it — the register is not a list of theoretical shapes.
 
-11. **88 exports are certified "reached" by a COMMENT — and the 88 is really 20
-    accusations plus 66 items of a DIFFERENT rule.** MEASURED 2026-08-19,
-    re-measured against HEAD and then TRIAGED on 2026-08-20. Pointing
-    `lint-reachability`'s identifier pass at stripped source moves
-    unreachedExports 1395 → 1475 (+80), moduleOrphans 28 → 30 (+2),
-    opaqueExports 120 → 126 (+6). The pass tokenises raw source, so a symbol
-    NAMED in prose counts as a production use of it — documented in the
-    linter's own allowlist (`InvestorVerificationService`, whose only consumer
-    was a stale `TODO`), but never sized until now.
+11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
+    — and the triage that unblocked it is the part worth keeping. The item had
+    sat unstarted because "88 must be adjudicated in one commit" reads as one
+    indivisible cost. Reading all 86 revealed symbols rather than counting them
+    showed **0** had an external reference the strip would miss, **20** were the
+    accusation, and **66** were a DIFFERENT RULE — exported, then used only
+    inside their own module. So the strip landed with a split:
+    `internal-only-exports` is its own family with its own down-only baseline.
+    Repo-wide the split moved 1,005 pre-existing findings, leaving
+    unreachedExports 390 against internalOnlyExports 1188 — which is exactly why
+    merging them made the real accusations unreadable. A second narrowing fell
+    out of it: opacity exempts from the DEATH accusation only, so
+    `internal-only` looks through it, reclaiming 97 of the 120 opaque exports.
+    Blind spot now 23.
 
-    Ledger 35 closed the two scans that grant EXEMPTIONS from prose
-    (dynamic-import opacity, module-orphan suppression) and stopped there
-    deliberately: this direction produces ACCUSATIONS, and the down-only ratchet
-    means every newly-revealed item must be adjudicated in the commit that
-    lands the strip.
-
-    **THE TRIAGE (2026-08-20).** Each of the 86 newly-revealed symbols was
-    searched across `server/`, `client/src/`, `shared/` and `scripts/` with
-    comments stripped, tests excluded, and the two register files that
-    ENUMERATE symbols (`lint-reachability.mjs`, `check-org-scoped-fetch.mjs`)
-    excluded for the same reason the linter excludes them. Three buckets:
-
-    - **0 have an external reference the walk missed.** The strip reveals no
-      false accusations. That is the result that makes the change landable at
-      all — had this been non-zero the identifier pass would need a smarter
-      resolver, not an allowlist.
-    - **20 are DEFINITION ONLY** — the symbol appears exactly once in its own
-      module and nowhere else in production. These are the accusations, and
-      they are the whole yield.
-    - **66 are INTERNAL HELPERS** — exported, then used only inside their own
-      module (`assertWithinPlatformCostCeiling`, `evaluateFlag`, `checkOfacSdn`,
-      `SkipTracePurposeRequiredError`, `getSESClient` own:7, `REMINDER_STATUS`
-      own:27), spread over 53 files with at most three in any one of them.
-
-    **THE DESIGN CONCLUSION, which is why this cannot land as a one-line
-    change.** "Exported but only used internally" is a DIFFERENT RULE from
-    "built but never wired". The first is an over-broad export — harmless at
-    runtime, a two-character fix, and 66 of them dumped into `unreachedExports`
-    would bury the 20 that matter under noise the gate then teaches everyone to
-    ignore. So the strip must land WITH a narrowing: report internal-only
-    exports as their own family with its own baseline, so each rule keeps a
-    ratchet that means something. Do that first; the strip is then the small
-    half.
-
-    **THE 20, adjudicated as far as reading gets you** (the deletion review
-    itself is the open work):
-
-    - *Five are already-known and deliberately tolerated* — the webhook
-      convenience wrappers `webhookLeadStatusChanged`, `webhookDealCreated`,
-      `webhookDealStageChanged`, `webhookPaymentReceived`,
-      `webhookCampaignResponse` in `server/services/webhookDispatcher.ts`.
-      `tests/unit/webhookEventCatalogue.test.ts` states in its own docblock that
-      none of them is called from anywhere, and the catalogue badges those
-      events "not live" rather than hiding them. Their adjudication is
-      "allowlist, pointing at that test", not a fresh decision.
-    - *Nine are BUILT, TESTED, AND UNWIRED* — a real behavioural test invokes
-      them and no production code does: `verifyEvidencePacket`
-      (governance/evidencePacket), `sendWinback` (lifecycleProgram),
-      `buildAnnualEscrowStatement` (respaEscrowAnalysis), `growthFunnelLine`
-      (autopilot/growthEngine), `reflexHealthLine` (autopilot/reflexes),
-      `buildUserScopedPromptAppendix` (pax/userContext),
-      `enqueueAdversaryDispatch` (solene/adversarialTests),
-      `predictDispatchConflicts` (solene/agentClaims), `findDuplicateProposals`
-      (solene/capabilityDiscovery). This is the codebase's most common defect
-      wearing its most convincing disguise: a green test is the strongest
-      possible evidence that the code WORKS and no evidence at all that anything
-      CALLS it.
-    - *Six have neither a caller nor a test*: `agentOrchestration`
-      (services/agentOrchestration.ts), `runEvalSurface` (aiEvalHarness),
-      `AUDIT_CHAIN_TAMPER_EVIDENCE_COPY` (compliance/auditChain),
-      `SCREENING_ADVISORY_COPY` (compliance/ofacScreening),
-      `readTelemetrySnapshot` (telemetryDigest), and `assessLateFee`
-      (lateFees/index.ts) — whose apparent test hit is a NAME COLLISION with a
-      synthetic fixture inside the reachability gate's own test, which is a
-      small demonstration of why this list needed reading rather than counting.
-
-    Two of the copy constants are worth a second look before deletion: an
-    unreferenced `AUDIT_CHAIN_TAMPER_EVIDENCE_COPY` and `SCREENING_ADVISORY_COPY`
-    each mean a compliance surface that was written and never rendered, which is
-    a product gap wearing a dead-code costume.
+    What the 20 turned out to be is on the record in ledger 45; the one that
+    generalises is that **nine had real behavioural tests and no production
+    caller**. A green unit test is the strongest possible evidence that code
+    WORKS and no evidence whatever that anything RUNS it.
 
 12. ~~**The Pax model picker 422s on every option except Auto.**~~ CLOSED as
     ledger 37 / OD-7 — the picker is removed, not repaired. The two defects were
@@ -324,13 +263,76 @@ had not verified; those are deliberately absent below.
     caps on top of it if the founder wants them. `DEFECT-0017` in the defect
     registry was corrected on 2026-08-19 and names the same gap.
 
+17. **Two modules the gate could not see until 2026-08-20, each owed a different
+    decision.** Revealed by ledger 45's comment strip; `moduleOrphans` was raised
+    28 → 30 to hold them in view rather than allowlisted, because an allowlist
+    entry that means "TODO" is the gate laundering its own findings. They are not
+    one item and must not be batched.
+
+    - **`server/services/lateFees/index.ts` — WIRE, do not delete.** A correct
+      12 C.F.R. §1026.36(c)(2) non-pyramiding late-fee assessor with a pure
+      algorithm (`shouldAssessLateFee`), a DB writer (`assessLateFee`), a unique
+      index enforcing one fee per cycle, and two test files beside it. Zero
+      production callers. It is the ORIGINAL worked example in the reachability
+      gate's own description, still sitting there. The live path,
+      `jobs/acquiredNoteAging.ts` (registered, daily), computes a `lateFeeAdvisory`
+      and its header states it "touches no ledger, and moves nothing" — advisory
+      BY DESIGN. So the wiring is not a gate fix: turning an advisory into a
+      ledger-writing fee assessment is a product ruling with money attached, and
+      the founder's call. Frame it that way when raising it, with the reg cite.
+    - **`server/services/agentOrchestration.ts` — 1,317 lines, zero importers,
+      zero tests, DELETE probably right, cascade real.** Session/step/event
+      orchestration superseded by the live autopilot, solene and Pax surfaces.
+      It is the EXCLUSIVE toucher of `agentSessions` and `agentSessionSteps`
+      (everything else it imports — `agentEvents`, `outcomeTelemetry`,
+      `agentTasks`, `eventSubscriptions` — has other live readers). Deleting the
+      code alone makes two tables writerless AND readerless, raising two other
+      ratchets; the honest version includes a DROP migration, and dropping tables
+      whose contents nobody has inspected is founder territory under the
+      customer-data hard stop. Precedent for the shape is already in the
+      allowlist: `negotiation_sessions` is retained, un-baselined and visible for
+      exactly this reason.
+
+18. **Prose in a STRING LITERAL is still prose, and the identifier pass still
+    reads it.** Ledger 45 stopped `lint-reachability` counting a symbol named in
+    a COMMENT as a call site. The same concealment survives one representation
+    over, and there is a verified worked example — the same symbol, in the same
+    registry entry, as the case that motivated the comment fix:
+
+    `shared/governance/constitution.ts`'s hard-stop entry names
+    `spendIsAutonomous()` three times inside a `note:` STRING. That symbol has
+    exactly ONE occurrence in its own module (its declaration) and no production
+    caller anywhere; it is exported so `spendHardStop.test.ts` can pin the $500
+    autonomous-spend hard stop, which is a deliberate and documented seam. The
+    gate calls it REACHED today, on the strength of three sentences about it.
+    `financialAuthorityGate.ts`'s own docblock records the whole history and has
+    been corrected to say the concealment survived its own fix.
+
+    **Do not attempt this with a regex.** Measured and thrown away on 2026-08-20:
+    a three-line strip of `"…"` / `'…'` / `` `…` `` produced unreached 390 → 1526
+    and internal-only 1188 → 593, which is not a finding, it is the stripper
+    tripping on the first apostrophe inside a double-quoted sentence and
+    swallowing code to the next one. The population is UNMEASURED. Closing this
+    needs a real tokeniser (or TypeScript's own scanner), and the adjudication is
+    then the same all-at-once cost the comment strip had — with one difference
+    that makes it harder: some string references are GENUINE, since a
+    string-keyed registry or a computed `m[name]` really does reach a symbol, so
+    this direction produces false accusations where the comment strip produced
+    none. Read the population before landing it, exactly as ledger 45 did.
+
 ---
 
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–44.
+Full reasoning in the cross-pollination ledger, entries 23–45.
 
+- **the accusing scan was the one still reading prose** — `lint-reachability`'s
+  identifier pass counted a symbol NAMED in a comment as a call site. Landing the
+  strip meant reading all 86 revealed symbols, which showed 66 of them were a
+  different rule; `internal-only-exports` is now its own family, and the blind
+  spot fell 120 → 23. Nine of the twenty real accusations have passing unit tests
+  and no production caller. Ledger 45.
 - **two skip-trace paths, one governed** — the ungoverned one (bare `fetch`, no
   cache, no breaker, no license flag on a non-redistributable feed) was the one
   Pax could reach. Deleted; and the frontier claim that described it was itself
@@ -390,11 +392,16 @@ Full reasoning in the cross-pollination ledger, entries 23–44.
 
 ## Blocked — owner
 
-`docs/autonomous/OWNER_DECISIONS_PENDING.md`. The queue is **empty again**: all
-seven decisions are made. OD-2/3/4/5 implemented, OD-1 a live hold (0236 stays
-unregistered), OD-6 needed no code and names Customer #1 as the trigger to
-revisit, OD-7 raised and closed on 2026-08-19 — the owner returned it to the
-session to decide, and the reasoning is recorded rather than assumed.
+`docs/autonomous/OWNER_DECISIONS_PENDING.md`. **One open: OD-8** (2026-08-20) —
+does AcreOS ASSESS late fees or only advise on them? A complete, tested
+§1026.36(c)(2) non-pyramiding assessor has never had a caller, while the live
+daily job computes the advisory and says in its own header that it "touches no
+ledger, and moves nothing". Recommendation is a default-OFF per-org opt-in.
+Nothing is blocked on it. The other seven are made: OD-2/3/4/5 implemented, OD-1
+a live hold (0236 stays unregistered), OD-6 needed no code and names Customer #1
+as the trigger to revisit, OD-7 raised and closed on 2026-08-19 — the owner
+returned it to the session to decide, and the reasoning is recorded rather than
+assumed.
 
 Two items are recorded there awaiting a ruling rather than blocking work:
 `scoreCountyForTargeting` (sellerMotivationEngine.ts:703) and the five

@@ -2640,6 +2640,114 @@ export are actually gone, and that the TOOL still exists so the refusal still
 has a voice.
 
 
+### 45 — THE ACCUSING SCAN WAS THE ONE STILL READING PROSE, AND FIXING IT SPLIT THE FAMILY IN TWO
+
+Ledger 35 caught `lint-reachability` reading comments and fixed it — halfway, on
+purpose. It stripped the two scans that grant EXEMPTIONS (a dynamic-import
+specifier in a comment marked a whole module unassertable; a `from "./x"` in a
+comment suppressed an orphan) and left the identifier pass — the scan that
+ACCUSES — reading raw source. The asymmetry was deliberate and written down at
+the time: a wrong exemption hides a finding, a wrong accusation names innocent
+code, and this gate's standing posture is that a miss beats a false accusation.
+
+So for a further day the gate still counted a symbol NAMED IN PROSE as a
+production use of it. `InvestorVerificationService` had sat in this linter's own
+allowlist for exactly that reason — its only consumer anywhere in the repository
+was a stale `TODO`.
+
+**WHAT MADE IT LANDABLE WAS READING THE POPULATION, NOT COUNTING IT.** The
+frontier had carried "88 exports are certified reached by a COMMENT" since
+2026-08-19 as one indivisible cost, because the down-only ratchet means every
+revealed item must be adjudicated in the landing commit. All 86 newly-revealed
+symbols were searched by hand across `server/`, `client/src/`, `shared/` and
+`scripts/`, comments stripped, tests excluded, and the two files that ENUMERATE
+symbols excluded for the reason the linter itself excludes them. Three buckets:
+
+- **0** had an external reference the pass would now miss. That is the number
+  that mattered: the strip produces no false accusations, so it needed no
+  smarter resolver.
+- **20** were the accusation — declared, and referenced nowhere.
+- **66** were something else entirely: exported, then used only inside their own
+  module.
+
+**THE 66 ARE A DIFFERENT RULE, AND THAT IS THE ENTRY.** "Nothing anywhere
+touches this" and "exported wider than it is used" have different remedies
+(delete the code / delete the keyword), different risk (dead weight / none at
+runtime), and — applied to the whole repo, not just the newly revealed — wildly
+different sizes: **1,188 against 390**. Merged, the real accusations sat under
+harmless over-exports four to one, and a gate whose findings are mostly noise
+teaches its readers to skim it. So the strip landed WITH a split:
+`internal-only-exports` is now its own family with its own down-only baseline.
+
+`unreachedExports` therefore reads 1395 → 390 and **nothing was deleted**. The
+ratchet note says so in its first line, because a future reader finding that drop
+in the history would otherwise credit a cleanup that never happened.
+
+**THE ASYMMETRY, AGAIN, ONE LEVEL DOWN.** Opacity (a dynamically-imported module's
+exports are never called dead) is an exemption from the DEATH accusation and only
+that. `internal-only` proposes something weaker — keep the code, drop the keyword
+— whose cost when wrong is a compile error on the next build, so it looks through
+the exemption while the accusation still never does. That reclaimed **97 of the
+120 opaque exports**: they were exports the module itself used, which opacity was
+never protecting. The blind spot is now 23, and every one of those is what the
+name always promised.
+
+**THE THREE THINGS IT REVEALED.** Nine of the twenty accusations have real
+behavioural tests exercising them and no production caller at all — a green unit
+test is the strongest possible evidence that code WORKS and no evidence whatever
+that anything RUNS it, which is this codebase's most common defect wearing its
+most convincing disguise. Two are copy constants for compliance surfaces
+(`AUDIT_CHAIN_TAMPER_EVIDENCE_COPY`, `SCREENING_ADVISORY_COPY`) — a product gap
+in a dead-code costume, to be read before being deleted. And five are the webhook
+convenience wrappers whose deadness `webhookEventCatalogue.test.ts` already states
+in its own docblock, so their adjudication was already made and only needed
+finding.
+
+**THE ONE RAISE, AND WHY IT IS NOT LAUNDERING.** `moduleOrphans` 28 → 30. Two
+files stopped being certified by a sentence: `agentOrchestration.ts` (1,317 lines,
+zero importers, zero tests) and `lateFees/index.ts` — the 12 C.F.R.
+§1026.36(c)(2) non-pyramiding assessor named in this very gate's description as
+the original worked example of built-but-unwired. Both were ALWAYS orphans; the
+gate simply could not see them. Neither is allowlisted, because neither is a
+deliberately-staged seam and an allowlist entry that means "TODO" is the gate
+laundering its own findings. They are recorded on the frontier as two separate
+decisions of different kinds: deleting `agentOrchestration` orphans two tables it
+exclusively owns and the honest version includes a DROP migration on data nobody
+has inspected; `lateFees` is a REGULATED obligation whose remedy is WIRING, and
+the live path is advisory BY DESIGN — `acquiredNoteAging.ts` says in its header
+that it "touches no ledger, and moves nothing" — so turning an advisory into a
+ledger-writing assessment is a product ruling, not a gate fix.
+
+**AND IT DID NOT FULLY CLOSE.** The identifier pass now skips comments and still
+reads STRING LITERALS, so the same concealment survives one representation over —
+which is the first law of this repo's gates arriving on schedule. The worked
+example is the same symbol as the one that motivated the comment fix:
+`constitution.ts`'s hard-stop entry names `spendIsAutonomous()` three times in a
+`note:` string, and that symbol has one occurrence in its own module and no
+production caller. A regex strip of string literals was written, measured
+(unreached 390 → 1526) and thrown away in the same hour: it trips on the first
+apostrophe inside a double-quoted sentence and swallows code to the next one, so
+the number is noise, not a finding. Frontier item 18, unmeasured on purpose
+rather than measured badly, and harder than its predecessor because SOME string
+references are genuine — a string-keyed registry really does reach a symbol — so
+that direction produces false accusations where this one produced none.
+
+**Exit test.** Three fixtures, each mutating the thing the gate GOVERNS and
+watched failing first: prose vs. code for the same symbol in the same file on
+adjacent lines; the internal/unreached split (with the remedy text read off the
+FAILING path, since remedies do not print on a pass); and opacity, carrying one
+symbol on each side of the asymmetry. A fourth pins the trap the split created —
+`module-orphans` derives from the export findings, so a file whose exports all
+call each other would have silently dropped out of it. That fixture's first
+version passed against the broken code because it still contained one
+declaration-only export; it is now written so every export is internal, and the
+mutation fails it. `reachabilityBlindSpot.test.ts`'s "opacity is decided per
+MODULE" assertion was REWRITTEN rather than deleted, per the wave rule: the
+internal-use selector is now the only symbol-level condition permitted in front
+of the module test, so pushing a symbol test into `isDynamicallyImported` still
+trips it.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,
