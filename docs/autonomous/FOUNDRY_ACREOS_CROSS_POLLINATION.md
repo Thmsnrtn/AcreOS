@@ -3315,6 +3315,73 @@ REQUIRED. An optional org parameter hides its own absence; that is now the secon
 time in one session that making it required found a caller nobody knew about.
 
 
+### 52 — A THIRD OF A SECURITY LIST WAS THE GATE'S OWN BLIND SPOT
+
+Rule 3's register stood at 115 after ledger 51 fixed five real cross-tenant
+paths. The rule-3 adjudication had also returned 40 entries as "already scoped —
+free reductions", while the gate itself reported **0 stale**. Both were right, and
+that contradiction is the finding.
+
+Rule 3 tests the text sliced from `.from(table)` to the terminating `;`. The
+commonest way this repository builds a query does not put the predicate there:
+
+```ts
+const conditions: any[] = [eq(leads.organizationId, orgId)];
+if (filters?.assignedTo) conditions.push(eq(leads.assignedTo, …));
+await db.select().from(leads).where(and(...conditions))
+```
+
+The org predicate is three lines up and the chain text cannot see it. A second
+idiom hides it one step further — `const whereClause = and(...conditions);
+.where(whereClause)`. Between them, **43 of 115 baselined entries were correctly
+scoped code reported as offenders**: `leadRepo.getLeads`, `auditRepo.getAuditLogs`,
+`automationRepo.getNotifications`, `vaRepo.getVaActions` and forty more.
+
+**WHY THIS IS WORTH A COMMIT AND NOT A SHRUG.** Two reasons, and the second is the
+one that matters. The baseline overstated real tenancy debt by a third — and a
+reader working that list met a false positive one time in three. A security list
+that is mostly noise stops being read, and the real findings leave with it. This
+repo has already learned that lesson once, about flaky gates: "retrying a slow
+gate teaches the next reader to re-run reds until they go away." A noisy register
+teaches the same habit, more quietly.
+
+**THE FIX DOES NOT LOWER THE BAR; IT APPLIES THE SAME BAR TO TEXT THE CHAIN
+DEMONSTRABLY USES.** `ORG_CONTEXT_RE` is unchanged and was never table-specific —
+an inline `.where(eq(leads.organizationId, orgId))` has always passed on exactly
+this token match. The extractor now additionally reads the declaration and the
+`.push(` calls of any identifier the chain actually consumes.
+
+**AND THE RESTRICTION IS THE LOAD-BEARING PART.** Only two shapes are resolved:
+`...ident` spread into the chain, and `.where(ident)` where the identifier is the
+sole argument. Both unambiguously mean "this variable IS the predicate."
+Resolving arbitrary identifiers would drag `eq`, `and` and the table name into
+the org-token test — and the mutation proving that is the important one:
+
+  M1 — revert to plain `chain.text` → the correctly-scoped fixture is flagged
+       again (the false-positive state returns).
+  M2 — resolve every identifier instead of the two shapes → **the falsification
+       fixture fails**, i.e. an unscoped `conditions` array starts PASSING. The
+       gate goes blind.
+
+M2 is why this is safe to ship. Two fixtures pin it permanently: one proving the
+indirection is followed when the org predicate is present, one proving that
+**following a variable is not trusting it** when it is absent. The second fixture
+uses the identical indirection — same array, same spread, same clause variable —
+with the org predicate simply removed.
+
+**Result: rule-3 baseline 115 → 72, with 0 new offenders and rules 1 and 2
+untouched (147 allowlisted, 0 stale).** Read the drop correctly: five were
+defects, forty-three were the gate learning to read. The test-side ceiling
+`RULE_3_BASELINE` moved 133 → 72 and its docblock now says which half is which,
+because a future reader finding "115 → 72" in the history would otherwise credit
+61 fixes that did not happen.
+
+**What did NOT resolve, and stays flagged:** the audit named 40, the extractor
+resolved 43 — it is exhaustive where a reading pass sampled. A handful of entries
+use indirections neither shape covers and remain in the register, which is the
+safe direction: still reported, never hidden.
+
+
 ## Status
 
 **All 34 admitted candidates are now dispositioned** — implemented, adapted,

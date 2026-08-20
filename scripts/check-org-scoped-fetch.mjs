@@ -1298,18 +1298,13 @@ function loneIdPredicates(methodText, orgScopedIdents) {
  * count can only shrink.
  */
 const RULE3_BASELINE = new Set([
-  "server/services/abTestEngine.ts::getTest::outreachAbTests",
   "server/services/achAutopay.ts::postReversal::payments",
   "server/services/achAutopay.ts::postSettlement::payments",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup::achMandates",
   "server/services/achMandateSetup.ts::startAchMandateSetup::achMandates",
-  "server/services/acquisitionRadar.ts::getTopOpportunities::opportunityScores",
-  "server/services/acquisitionRadar.ts::scanParcelsForOrganization::properties",
   "server/services/agentLlmTraces.ts::listRecentTraces::agentLlmTraces",
   "server/services/agentOrchestration.ts::addStep::agentSessionSteps",
   "server/services/agentOrchestration.ts::executeStep::agentSessionSteps",
-  "server/services/agentOrchestration.ts::getEvents::agentEvents",
-  "server/services/agentOrchestration.ts::getOutcomes::outcomeTelemetry",
   "server/services/agentPromotionGate.ts::canPromoteToLive::agentTasks",
   "server/services/alerting.ts::getAlerts::systemAlerts",
   "server/services/autonomyFinalMile.ts::checkDelegationCompletions::agentEvents",
@@ -1321,12 +1316,10 @@ const RULE3_BASELINE = new Set([
   "server/services/buyerMatchingAI.ts::matchPropertyToBuyers::buyerPropertyMatches",
   "server/services/cashFlowForecaster.ts::analyzePaymentHealth::payments",
   "server/services/cashFlowForecaster.ts::compareActualVsProjected::payments",
-  "server/services/cohortAnalysis.ts::buildCohortReport::leads",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment::trackingNumberAssignments",
   "server/services/comms/tracking-pool.ts::attributeInbound::trackingNumberAssignments",
   "server/services/creditPool.ts::poolDebit::financialLedger",
   "server/services/customerNarrative.ts::deliverAllPendingLettersForMonth::customerLetters",
-  "server/services/data-cache/land-intelligence-store.ts::readStoredReport::landIntelligenceReports",
   "server/services/dataNetworkVisibility.ts::getCountyIntelligenceOverview::properties",
   "server/services/digest.ts::getSubscriptionsNeedingDigest::digestSubscriptions",
   "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch::disclosureTimingScheduled",
@@ -1350,12 +1343,7 @@ const RULE3_BASELINE = new Set([
   "server/services/offerBatchService.ts::getBatchStatus::offers",
   "server/services/onboarding/firstValueInstrumentation.ts::computeFunnelMetrics::lifecycleEvents",
   "server/services/onboardingAutonomy.ts::listJourneys::onboardingJourneys",
-  "server/services/outcomeLedger.ts::evaluateMachineCheck::decisionsInboxItems",
   "server/services/outcomeLedger.ts::scoreDueCheckIns::decisionsInboxItems",
-  "server/services/paidDataEvalHarness.ts::countCorpus::landIntelligenceReports",
-  "server/services/paidDataEvalHarness.ts::getLatestEvalRun::paidDataEvalRuns",
-  "server/services/paidDataEvalHarness.ts::runPaidDataEval::landIntelligenceReports",
-  "server/services/parcel-biography.ts::getParcelBiography::parcelObservations",
   "server/services/paymentApplication/index.ts::applyPayment::suspenseBalances",
   "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::paymentApplications",
   "server/services/periodicStatements/index.ts::generateOneAcquiredStatement::periodicStatements",
@@ -1363,8 +1351,6 @@ const RULE3_BASELINE = new Set([
   "server/services/portfolioOptimizer.ts::analyzeDiversification::properties",
   "server/services/portfolioSentinel.ts::checkCompetitorActivity::marketMetrics",
   "server/services/portfolioSentinel.ts::checkMarketChanges::marketMetrics",
-  "server/services/portfolioSentinel.ts::getActiveAlerts::portfolioAlerts",
-  "server/services/priceOptimizer.ts::recordPriceOutcome::priceRecommendations",
   "server/services/proactiveMonitor.ts::getActiveAlerts::systemAlerts",
   "server/services/propertyVisionReimaging.ts::findPropertiesDueForReimaging::properties",
   "server/services/propertyVisionReimaging.ts::reimageProperty::propertyVisionSnapshots",
@@ -1374,45 +1360,16 @@ const RULE3_BASELINE = new Set([
   "server/services/recourseDrafter.ts::collectRecourseSignals::supportCases",
   "server/services/recourseDrafter.ts::collectRecourseSignals::systemAlerts",
   "server/services/rental/leaseSigningPacket.ts::getLeaseSignatureStatus::signingConsentAudit",
-  "server/services/rental/rentChargeGenerator.ts::previewScheduledCharges::rentalLeases",
   "server/services/revenueRecognition.ts::getPeriodTotals::revenueRecognitionPeriods",
   "server/services/selfAssessmentAgent.ts::analyzeToolFailures::agentTasks",
   "server/services/sellerIntentPredictor.ts::getLeadMessageContent::messages",
-  "server/services/taxDelinquentPipeline.ts::getLeads::leads",
-  "server/services/unsubscribeTokens.ts::issueToken::unsubscribeTokens",
   "server/services/unsubscribeTokens.ts::resolveToken::unsubscribeTokens",
-  "server/services/vaManagement.ts::listTasks::vaTasks",
-  "server/storage.ts::getConversations::conversations",
   "server/storage.ts::getSubscriptionEvents::subscriptionEvents",
-  "server/storage/acquisitionRepo.ts::getOfferLetters::offerLetters",
-  "server/storage/auditRepo.ts::getAuditLogCount::auditLog",
-  "server/storage/auditRepo.ts::getAuditLogs::auditLog",
-  "server/storage/automationRepo.ts::getActivityFeed::activityLog",
-  "server/storage/automationRepo.ts::getNotifications::notifications",
-  "server/storage/commsRepo.ts::getActivityEvents::activityEvents",
-  "server/storage/commsRepo.ts::getCampaignResponses::campaignResponses",
-  "server/storage/dealRepo.ts::getDealsPaginated::deals",
-  "server/storage/documentsRepo.ts::getDocumentPackages::documentPackages",
-  "server/storage/documentsRepo.ts::getGeneratedDocuments::generatedDocuments",
-  "server/storage/documentsRepo.ts::getSignatures::signatures",
-  "server/storage/leadRepo.ts::findDuplicateLeads::leads",
-  "server/storage/leadRepo.ts::getLeads::leads",
-  "server/storage/leadRepo.ts::getLeadsByComputedStage::leads",
   "server/storage/leadRepo.ts::getLeadsCursor::leads",
-  "server/storage/leadRepo.ts::getLeadsPaginated::leads",
-  "server/storage/mailRepo.ts::getInboxMessages::inboxMessages",
-  "server/storage/mailRepo.ts::getMailingOrders::mailingOrders",
-  "server/storage/noteRepo.ts::updateNote::notes",
   "server/storage/paymentRemindersRepo.ts::findLadderReminder::paymentReminders",
   "server/storage/paymentRemindersRepo.ts::getDispatchableReminders::paymentReminders",
   "server/storage/paymentRemindersRepo.ts::getOrganizationIdsWithActiveNotes::notes",
-  "server/storage/propertyRepo.ts::getPropertiesPaginated::properties",
-  "server/storage/supportOpsRepo.ts::getSupportCases::supportCases",
   "server/storage/supportOpsRepo.ts::getSystemAlerts::systemAlerts",
-  "server/storage/tasksRepo.ts::getTasks::tasks",
-  "server/storage/vaRepo.ts::getVaActions::vaActions",
-  "server/storage/vaRepo.ts::getVaCalendarEvents::vaCalendarEvents",
-  "server/storage/vaRepo.ts::getVaTemplates::vaTemplates",
 ]);
 
 /** `.from(` → the statement's `;` at paren depth 0. */
@@ -1439,11 +1396,104 @@ function queryChainsFrom(unitText, orgScopedIdents) {
 
 const RULE3_EXCLUDED_PATH = /founder|platform|admin|telemetry|migration|backfill/i;
 
+/**
+ * The chain text PLUS any local predicate list it spreads in.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * `queryChainsFrom` slices a chain from `.from(table)` to its terminating `;`,
+ * and rule 3 then tests THAT TEXT for an organization token. The single most
+ * common way this repo builds a query is:
+ *
+ *     const conditions = [eq(leads.organizationId, orgId)];
+ *     if (filters?.assignedTo) conditions.push(eq(leads.assignedTo, …));
+ *     await db.select().from(leads).where(and(...conditions))
+ *
+ * The org predicate is right there and the chain text cannot see it, because it
+ * lives in a variable declared several lines earlier. Measured 2026-08-20 during
+ * the rule-3 adjudication: **roughly 40 of the 120 baselined entries were this
+ * shape** — `leadRepo.getLeads`, `auditRepo.getAuditLogs`,
+ * `automationRepo.getNotifications`, `vaRepo.getVaActions` and ~36 more. All
+ * correctly scoped, all reported as offenders.
+ *
+ * That is worth fixing for two reasons, and the second is the important one: the
+ * baseline overstated real tenancy debt by a third, AND a reader working the
+ * list met false positives one time in three, which is how a security list stops
+ * being read. A gate whose findings are mostly noise trains people to skim it.
+ *
+ * ── WHY THIS DOES NOT WEAKEN THE RULE ───────────────────────────────────────
+ * It does not lower the bar; it applies the SAME bar to text the chain
+ * demonstrably uses. `ORG_CONTEXT_RE` is unchanged, and it was never
+ * table-specific — an inline `.where(eq(leads.organizationId, orgId))` passes on
+ * exactly the token match used here. A predicate list is only consulted when the
+ * chain actually spreads it (`...ident`), and only that identifier's own
+ * declaration and `.push(` calls are read. A `conditions` array that does NOT
+ * carry an org predicate still fails, which is the case
+ * `orgScopedFetchCoverage.test.ts` pins with a fixture.
+ */
+function chainScopeText(chain, unitText, depth = 0) {
+  let text = chain.text;
+  if (depth > 3) return text;
+  // TWO UNAMBIGUOUS SHAPES ONLY, and the restriction is what keeps this safe.
+  //
+  //   `.where(and(...conditions))`  → the spread
+  //   `.where(whereClause)`         → the whole clause held in one variable
+  //
+  // Both mean "this identifier IS the predicate". Resolving ARBITRARY
+  // identifiers in the chain would pull in `eq`, `and` and the table name and
+  // drag unrelated text into the org-token test, which is how a scoping gate
+  // quietly starts passing everything. `leadRepo.getLeadsPaginated` is the
+  // second shape: `const whereClause = conditions.length ? and(...conditions) : …`,
+  // which is also why this recurses — one variable holds the clause, another
+  // holds the predicate list.
+  const idents = new Set([
+    ...[...chain.text.matchAll(/\.\.\.\s*([A-Za-z0-9_$]+)/g)].map((m) => m[1]),
+    ...[...chain.text.matchAll(/\.\s*where\s*\(\s*([A-Za-z0-9_$]+)\s*\)/g)].map((m) => m[1]),
+  ]);
+  for (const ident of idents) {
+    // The declaration's initializer, sliced with balanced brackets so a nested
+    // array or call cannot terminate it early — the truncating-reader defect
+    // this repo has now hit five times.
+    const declRe = new RegExp(
+      `\\b(?:const|let|var)\\s+${ident}\\s*(?::[^=\n]*)?=\\s*`,
+    );
+    const dm = declRe.exec(unitText);
+    if (dm) {
+      let i = dm.index + dm[0].length;
+      let depth = 0;
+      for (; i < unitText.length; i++) {
+        const ch = unitText[i];
+        if (ch === "[" || ch === "(" || ch === "{") depth += 1;
+        else if (ch === "]" || ch === ")" || ch === "}") {
+          depth -= 1;
+          if (depth === 0) { i += 1; break; }
+        } else if (ch === ";" && depth <= 0) break;
+      }
+      const initializer = unitText.slice(dm.index, i);
+      text += "\n" + initializer;
+      // Transitive: the clause variable's initializer may itself name the list.
+      if (/\.\.\.\s*[A-Za-z0-9_$]+/.test(initializer)) {
+        text += "\n" + chainScopeText({ text: initializer }, unitText, depth + 1);
+      }
+    }
+    // …and every `ident.push(…)`, because the org predicate is sometimes pushed
+    // conditionally rather than declared inline.
+    const pushRe = new RegExp(`\\b${ident}\\s*\\.\\s*push\\s*\\(`, "g");
+    let pm;
+    while ((pm = pushRe.exec(unitText)) !== null) {
+      const open = unitText.indexOf("(", pm.index + pm[0].length - 1);
+      const close = matchParen(unitText, open);
+      if (close === -1) continue;
+      text += "\n" + unitText.slice(pm.index, close + 1);
+    }
+  }
+  return text;
+}
+
 function unscopedChains(unitText, orgScopedIdents, rel) {
   if (RULE3_EXCLUDED_PATH.test(rel)) return [];
   const out = [];
   for (const chain of queryChainsFrom(unitText, orgScopedIdents)) {
-    if (ORG_CONTEXT_RE.test(chain.text)) continue;
+    if (ORG_CONTEXT_RE.test(chainScopeText(chain, unitText))) continue;
     // (b) primary-key resolution belongs to rule 2.
     if (new RegExp(`eq\\(\\s*${chain.table}\\.id\\s*,`).test(chain.text)) continue;
     out.push(chain.table);

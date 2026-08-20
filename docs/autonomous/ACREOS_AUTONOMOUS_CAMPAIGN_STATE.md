@@ -260,12 +260,12 @@ had not verified; those are deliberately absent below.
    `auditRepo.getAuditLogs`, `automationRepo.getNotifications` and
    `vaRepo.getVaActions` are all this shape.
 
-   That is worth fixing for two reasons, not one: the baseline overstates real
-   debt by a third, AND a reader working the list wastes a third of their effort
-   on non-defects, which is how a list stops being read. Teaching the extractor
-   to resolve a local array spread into `.where()` should drop the baseline ~40
-   in a single verifiable step. Do that BEFORE working the remainder — the
-   remaining entries only mean something once the noise is gone.
+   **DONE 2026-08-20 (ledger 52).** The extractor follows both indirections now —
+   `...ident` spread into the chain, and `.where(ident)` — and the register fell
+   115 → 72 with 0 new offenders. The restriction to those two shapes is the
+   safety property, not a simplification: the mutation that resolves arbitrary
+   identifiers makes an unscoped `conditions` array PASS, and a fixture pins
+   that. The remaining 72 are the population worth reading.
 
    **Still frozen and never adjudicated: rule 1** (`BASELINE_OFFENDERS`, 160
    method + 124 function) — "no org context at all". A different and probably
@@ -434,8 +434,16 @@ had not verified; those are deliberately absent below.
 ## Recent verified changes
 
 Most recent first. Each was falsified against the semantic defect before landing.
-Full reasoning in the cross-pollination ledger, entries 23–51.
+Full reasoning in the cross-pollination ledger, entries 23–52.
 
+- **a third of a security list was the gate's own blind spot** — rule 3 reads the
+  text between `.from(table)` and the `;`, and this repo's commonest idiom builds
+  the org predicate in a local array spread in later. 43 of 115 baselined entries
+  were correctly-scoped code reported as offenders. The extractor now follows
+  that indirection, restricted to the two shapes that unambiguously mean "this
+  variable IS the predicate" — the mutation that resolves arbitrary identifiers
+  instead makes the gate go BLIND, which is why the restriction is the fix.
+  Baseline 115 → 72. Ledger 52.
 - **Pax could tell one customer about another** — a support-agent tool ran an
   unscoped `LIKE` over every tenant's tickets, on a pattern the MODEL composes
   from the user's own message, and returned other orgs' ids to the user. The

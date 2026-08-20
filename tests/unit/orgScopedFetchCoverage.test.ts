@@ -165,12 +165,21 @@ const FUNCTION_SCAN_FLOOR = 1600;
  * so rule 1 saw `organizationId` in the body, and the query resolved by
  * county rather than primary key, so rule 2 had nothing to say either.
  *
- * Measured 127 on 2026-08-18. Set slightly above so ordinary refactoring of a
- * baselined query does not fail the suite, while a genuine new population
- * does — and every REDUCTION must be locked in here, same as the registers
- * above.
+ * Measured 127 on 2026-08-18 and set slightly above, so ordinary refactoring of
+ * a baselined query does not fail the suite while a genuine new population does.
+ * Every REDUCTION is locked in here, same as the registers above.
+ *
+ * 133 → 72 on 2026-08-20, and the drop is NOT 61 defects fixed. Five were real
+ * cross-tenant paths (ledger 51); the other 43 were the gate's own blind spot.
+ * rule 3 tests the text sliced from `.from(table)` to the terminating `;`, and
+ * the commonest way this repo builds a query puts the org predicate in a local
+ * array spread in later — `.where(and(...conditions))` — or in a variable
+ * holding the whole clause. The predicate was always there; the extractor could
+ * not see it. It follows both shapes now, and the two fixtures above pin that
+ * following a variable does not mean TRUSTING it: a spread list with no org
+ * predicate still fires.
  */
-const RULE_3_BASELINE = 133;
+const RULE_3_BASELINE = 72;
 
 /** Chains rule 3 must keep seeing; 1,060 measured 2026-08-18. */
 const RULE_3_CHAIN_FLOOR = 300;
@@ -382,6 +391,94 @@ describe("the tenancy lint covers the service layer", () => {
       /org-scoped tables: [1-9]/,
     );
     expect(out).toMatch(/rule 3 .*scanned [1-9]\d* query chains/);
+  });
+
+  it("follows a predicate list SPREAD into the query, and a clause held in a variable", () => {
+    // ── WHY THE EXTRACTOR LEARNED THIS ────────────────────────────────────
+    // rule 3 tests the text sliced from `.from(table)` to the terminating `;`.
+    // The commonest way this repo builds a query puts the org predicate in a
+    // local array declared several lines earlier and spreads it in — so the org
+    // predicate was RIGHT THERE and the chain text could not see it. Measured
+    // during the 2026-08-20 rule-3 adjudication: 43 of 115 baselined entries
+    // were this shape, all correctly scoped, all reported as offenders.
+    //
+    // A third of a security list being false positives is not merely untidy: a
+    // reader who meets noise one time in three stops reading the list, and the
+    // real finding goes with it.
+    //
+    // Both indirections are pinned here, because the repo uses both:
+    //   spreadStyle — `.where(and(...conditions))`
+    //   clauseStyle — `const whereClause = and(...conditions); .where(whereClause)`
+    const { out, failed } = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__indirect_scoped__.ts": [
+        'import { db } from "../db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export async function spreadStyle(orgId: number, onlyTx: boolean) {",
+        "  const conditions: any[] = [eq(properties.organizationId, orgId)];",
+        "  if (onlyTx) conditions.push(sql`LOWER(${properties.state}) = LOWER('TX')`);",
+        "  return db.select().from(properties).where(and(...conditions));",
+        "}",
+        "",
+        "export async function clauseStyle(orgId: number) {",
+        "  const conditions: any[] = [eq(properties.organizationId, orgId)];",
+        "  const whereClause = and(...conditions);",
+        "  return db.select().from(properties).where(whereClause);",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    expect(
+      failed,
+      "rule 3 flagged a query whose org predicate is built in a local array " +
+        "and spread in. That is a FALSE POSITIVE, and it was a third of the " +
+        "baseline:\n" + out,
+    ).toBe(false);
+    expect(out).toContain("[check-org-scoped-fetch] PASS");
+    // Vacuity: prove the fixture was actually parsed and the rule actually ran,
+    // because an unparsed tree also produces "no finding".
+    expect(out, "the fixture's org-scoped table was not recognised").toMatch(
+      /org-scoped tables: [1-9]/,
+    );
+    expect(out).toMatch(/rule 3 .*scanned [1-9]\d* query chains/);
+  });
+
+  it("still FIRES when the spread list carries no organization predicate", () => {
+    // THE FALSIFICATION, and the reason the case above is safe to ship. The
+    // indirection is identical — same array, same spread, same clause variable —
+    // and the org predicate is simply absent. If following the variable made the
+    // rule pass on THIS, the fix would have blinded the gate rather than
+    // sharpened it.
+    const { out, failed } = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__indirect_unscoped__.ts": [
+        'import { db } from "../db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export async function looksScopedIsNot(orgId: number) {",
+        "  const own = await db.select().from(properties)",
+        "    .where(eq(properties.organizationId, orgId));",
+        "  const conditions: any[] = [sql`LOWER(${properties.state}) = LOWER('TX')`];",
+        "  const whereClause = and(...conditions);",
+        "  const leaked = await db.select().from(properties).where(whereClause);",
+        "  return { own, leaked };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    expect(
+      failed,
+      "the lint EXITED ZERO on a query whose predicate list contains NO org " +
+        "predicate. Following the variable must not mean trusting it:\n" + out,
+    ).toBe(true);
+    expect(out).toContain("__indirect_unscoped__.ts");
+    expect(out).toMatch(/looksScopedIsNot\(\)\s+<- properties/);
+    expect(out).not.toContain("[check-org-scoped-fetch] PASS");
   });
 
   it("a CLEAN fixture passes — the canary above is not just 'any tree fails'", () => {
