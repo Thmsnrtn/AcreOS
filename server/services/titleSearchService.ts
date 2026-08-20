@@ -25,8 +25,9 @@ export interface LienRecord {
 }
 
 export interface DeedRecord {
-  grantee: string;
-  grantor: string;
+  /** Null when the provider did not report the party. Never a placeholder. */
+  grantee: string | null;
+  grantor: string | null;
   deedType: "warranty" | "quitclaim" | "grant" | "trustee" | "other";
   recordedDate: string;
   documentNumber?: string;
@@ -38,8 +39,17 @@ export interface TitleSearchResult {
   address?: string;
 
   // Ownership
-  currentOwner: string;
-  ownerOccupied: boolean;
+  //
+  // NULLABLE ON PURPOSE. These were `string` and `boolean`, which left no way to
+  // say "not observed" — so the mock fallback returned the NAME "Owner on
+  // Record" and the boolean `false`, and a customer read an invented owner and
+  // an occupancy fact for a real parcel. A default may help a calculation
+  // continue; it may not impersonate observed property reality. `null` is the
+  // honest value, and `dueDiligence.ts` (currentOwner: string | null) and
+  // `redemptionClockRefresh.ts` (ownerOccupiedAtSale: boolean | null) already
+  // model it that way — this file was the outlier.
+  currentOwner: string | null;
+  ownerOccupied: boolean | null;
   vestingType?: string; // "Joint Tenancy", "LLC", "Trust", etc.
   ownerMailingAddress?: string;
 
@@ -157,8 +167,10 @@ async function fetchFromPropstream(apn: string, state: string): Promise<TitleSea
     return {
       apn,
       address: [prop.addressLine1, prop.city, prop.state].filter(Boolean).join(", "),
-      currentOwner: prop.ownerName || "Unknown",
-      ownerOccupied: prop.ownerOccupied ?? false,
+      currentOwner: prop.ownerName || null,
+      // `?? false` asserted "not owner-occupied" whenever PropStream omitted the
+      // field. Absence is not a negative observation.
+      ownerOccupied: prop.ownerOccupied ?? null,
       vestingType: prop.vestingType,
       ownerMailingAddress: prop.ownerMailingAddress,
       liens,
@@ -216,8 +228,10 @@ async function fetchFromAttom(apn: string): Promise<TitleSearchResult | null> {
     const deedChain: DeedRecord[] = [];
     if (prop.sale?.saleTransDate) {
       deedChain.push({
-        grantee: prop.owner?.owner1?.fullName || "Unknown",
-        grantor: "Previous Owner",
+        grantee: prop.owner?.owner1?.fullName || null,
+        // "Previous Owner" was a manufactured party name in a chain of title.
+        // ATTOM's sale record does not carry the grantor; null says so.
+        grantor: null,
         deedType: prop.sale?.deedType?.toLowerCase().includes("quit") ? "quitclaim" : "warranty",
         recordedDate: prop.sale.saleTransDate,
         saleAmount: prop.sale.saleAmt,
@@ -227,8 +241,12 @@ async function fetchFromAttom(apn: string): Promise<TitleSearchResult | null> {
     return {
       apn,
       address: prop.address?.oneLine,
-      currentOwner: prop.owner?.owner1?.fullName || "Unknown",
-      ownerOccupied: prop.assessment?.assessed?.assdTtlValue ? false : false,
+      currentOwner: prop.owner?.owner1?.fullName || null,
+      // WAS `prop.assessment?.assessed?.assdTtlValue ? false : false` — both
+      // branches false, so occupancy was asserted `false` for every parcel even
+      // with a live provider. An assessed total value says nothing about who
+      // lives there; ATTOM does not report occupancy on this call.
+      ownerOccupied: null,
       liens,
       totalLienAmount: liens.reduce((s, l) => s + l.amount, 0),
       hasOpenLiens: liens.length > 0,
@@ -261,11 +279,16 @@ export const titleSearchService = {
     const attom = await fetchFromAttom(apn);
     if (attom) return attom;
 
-    // Mock / development fallback
+    // NO PROVIDER CONFIGURED — REFUSE, DO NOT INVENT.
+    //
+    // This returned `currentOwner: "Owner on Record"` and `ownerOccupied: false`
+    // for a real parcel, to an authenticated customer, through a mounted route.
+    // `source: "mock"` and `confidence: 0` were already honest; the two ownership
+    // fields were not, and they are the ones a consumer renders.
     return {
       apn,
-      currentOwner: "Owner on Record",
-      ownerOccupied: false,
+      currentOwner: null,
+      ownerOccupied: null,
       liens: [],
       totalLienAmount: 0,
       hasOpenLiens: false,

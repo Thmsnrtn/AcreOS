@@ -131,10 +131,12 @@ So, for every wave:
 5. **Fix the occurrence, not the baseline.** Ratchets are load-bearing; when a
    count legitimately drops, lower it in the same commit.
 
-## The two laws that cost the most to learn
+## The three laws that cost the most to learn
 
 These are not style. Each was discovered by an audit finding a green gate over
-a live defect, more than once.
+a live defect, more than once. They are three different questions about the
+same green result: is the gate measuring the right PROPERTY, does the canonical
+rule have real ADOPTION, and did the gate read the whole POPULATION.
 
 ### A load-bearing gate must be falsified against the SEMANTIC defect
 
@@ -177,3 +179,30 @@ if the product computes the same rule independently. Where practical, make the
 real surface consume the canonical projection; otherwise pin behavioural
 equivalence against actual rendered or serialized output. Static source scanning
 is defence in depth, not proof.
+
+### A gate proves its property only over the population it actually reads
+
+The population is an assumption, exactly like the predicate — and it is
+invisible in a green result. A rule installed on one file is a claim about that
+file, not about the defect it names.
+
+`paxToolsReportRealEffects.test.ts` was written to enforce "a tool may not
+report an effect it did not have," after `schedule_background_job` told a
+customer their campaign was queued and queued nothing. It read
+`server/ai/tools.ts`. `executeSupportTool` in `server/ai/supportAgent.ts` is a
+second dispatch switch with **76 more cases**, driven by a model talking to a
+paying customer, and no gate had ever looked at it — it held two handlers of the
+identical shape. The same day, the org-scope lint was found blind to Drizzle's
+relational-query API: every `db.query.*.findMany` in the repo was outside the
+population it scanned, so a third of its register was its own blind spot.
+
+Both were green. Neither was wrong about what it measured.
+
+So, when you install a rule: **enumerate every place the shape it forbids can
+occur, and put the enumeration in the test** — a `TOOL_SWITCHES` list, a
+directory glob, a registry — so that adding a seventh dispatch switch without
+adding it to the list is the thing that fails. Then add a per-member vacuity
+assertion, because a parser that silently stops matching one member reads
+exactly like that member being clean. Ask of any gate you rely on: *what would
+have to exist for this to be green and the defect still present?* Usually the
+answer is a file it never opened.

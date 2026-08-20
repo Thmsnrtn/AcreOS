@@ -96,14 +96,14 @@ export const supportToolDefinitions = {
       properties: {
         issue_type: {
           type: "string",
+          // Only fix types with a real implementation in the handler switch are
+          // advertised. clear_stale_sessions, recalculate_credit_balance,
+          // fix_orphaned_records, clear_cached_data and sync_stripe_subscription
+          // were listed here with no case at all: the model offered them to a
+          // customer and the call fell through to "not yet implemented".
           enum: [
             "reset_onboarding",
-            "clear_stale_sessions",
-            "recalculate_credit_balance",
-            "fix_orphaned_records",
             "reset_notification_preferences",
-            "clear_cached_data",
-            "sync_stripe_subscription",
             "reset_ai_settings"
           ],
           description: "The type of issue to fix"
@@ -607,23 +607,7 @@ export const supportToolDefinitions = {
       required: ["job_type"]
     }
   },
-  
-  clear_org_cache: {
-    name: "clear_org_cache",
-    description: "Clear cached data for the organization to force fresh data fetching. Useful when data appears stale.",
-    parameters: {
-      type: "object",
-      properties: {
-        cache_type: { 
-          type: "string", 
-          enum: ["ai_context", "dashboard_metrics", "property_boundaries", "all"],
-          description: "Type of cache to clear" 
-        }
-      },
-      required: ["cache_type"]
-    }
-  },
-  
+
   resync_stripe: {
     name: "resync_stripe",
     description: "Force a re-sync of the customer's Stripe subscription and payment data.",
@@ -909,50 +893,22 @@ export const supportToolDefinitions = {
     }
   },
   
-  invalidate_user_sessions: {
-    name: "invalidate_user_sessions",
-    description: "Force logout all sessions for a user. Useful for stuck auth issues, suspected unauthorized access, or when user needs a fresh login.",
-    parameters: {
-      type: "object",
-      properties: {
-        user_id: {
-          type: "string",
-          description: "The user ID to invalidate sessions for. Defaults to current user if not specified."
-        },
-        reason: {
-          type: "string",
-          description: "Reason for invalidating sessions (for audit log)"
-        }
-      },
-      required: ["reason"]
-    }
-  },
-  
-  refresh_auth_tokens: {
-    name: "refresh_auth_tokens",
-    description: "Refresh OAuth tokens for the organization. Useful when OAuth tokens may be stale or expired. The actual refresh happens automatically on the next request.",
-    parameters: {
-      type: "object",
-      properties: {}
-    }
-  },
-  
-  trigger_data_resync: {
-    name: "trigger_data_resync",
-    description: "Force resync of specific data modules. Clears relevant caches and marks data for refresh.",
-    parameters: {
-      type: "object",
-      properties: {
-        module: {
-          type: "string",
-          enum: ["leads", "properties", "deals", "all"],
-          description: "Which data module to resync"
-        }
-      },
-      required: ["module"]
-    }
-  },
-  
+  // DELETED 2026-08-20 — invalidate_user_sessions, refresh_auth_tokens and
+  // trigger_data_resync. All three wrote an activity_log row and returned a
+  // message telling the customer the effect had happened: "All sessions ... have
+  // been invalidated. The user will need to log in again", "OAuth tokens will be
+  // automatically refreshed", "Successfully triggered resync ... Data will
+  // refresh on next load". None of them touched a session store, a token store
+  // or a cache — trigger_data_resync pushed invented cache NAMES
+  // ("leads_cache", "dashboard_metrics") into a local array and logged those.
+  //
+  // Deleted rather than made to refuse, following ledger 39
+  // (schedule_background_job): the capability does not exist anywhere, so there
+  // is nothing to gate. A tool that refuses is right when the capability is real
+  // and ungranted; a tool that reports a fictional effect is just a lie with a
+  // schema. If session invalidation is genuinely wanted, wire it and bring the
+  // tool back.
+
   repair_orphaned_records: {
     name: "repair_orphaned_records",
     description: "Find and fix orphaned database records. Orphaned records are those with missing required relationships (e.g., leads without organization, deals without property).",
@@ -1460,10 +1416,13 @@ export async function executeSupportTool(
             fixResult = { applied: true, description: "Onboarding wizard has been reset. Customer can restart the setup process." };
             break;
             
-          case "recalculate_credit_balance":
-            fixResult = { applied: true, description: "Credit balance has been recalculated from transaction history." };
-            break;
-            
+          // recalculate_credit_balance DELETED 2026-08-20. It set
+          // `applied: true` with the description "Credit balance has been
+          // recalculated from transaction history" and executed no statement at
+          // all — while every sibling branch in this switch performs a real
+          // update. An unrecognised fix now falls through to the default below
+          // rather than reporting success.
+          
           case "reset_notification_preferences":
             await db.update(organizations)
               .set({ 
@@ -1758,14 +1717,37 @@ export async function executeSupportTool(
         const { title, description, assignee, due_days = 3 } = args;
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + due_days);
-        
+
+        // Wired 2026-08-20. This returned `taskCreated: true` and created no
+        // task: a customer told "I've created a follow-up task for you" had
+        // nothing in their task list. `storage.createTask` is the canonical
+        // owner and already existed, so this was a wiring gap, not a missing
+        // capability.
+        //
+        // `assignee` names a routing lane (support_team / customer /
+        // engineering). `tasks.assignedTo` references teamMembers.id and there
+        // is no lane-to-member mapping, so the lane is recorded in the task
+        // body and the task is left genuinely unassigned rather than pointed at
+        // an invented member id.
+        const task = await storage.createTask({
+          organizationId: org.id,
+          title,
+          description: `${description}\n\nFollow-up lane: ${assignee}`,
+          dueDate,
+          priority: assignee === "engineering" ? "high" : "medium",
+          status: "pending",
+          createdBy: "support-agent",
+          entityType: "none",
+        });
+
         return {
           success: true,
           data: {
-            taskCreated: true,
-            title,
+            taskId: task.id,
+            title: task.title,
             assignee,
-            dueDate: dueDate.toISOString()
+            assigned: false,
+            dueDate: task.dueDate ? task.dueDate.toISOString() : null
           }
         };
       }
@@ -3354,32 +3336,19 @@ export async function executeSupportTool(
         };
       }
       
-      case "clear_org_cache": {
-        const { cache_type } = args;
-        const clearedCaches: string[] = [];
-        
-        if (cache_type === "all" || cache_type === "ai_context") {
-          // AI context cache is managed per-request, marking as cleared
-          clearedCaches.push("ai_context");
-        }
-        
-        if (cache_type === "all" || cache_type === "dashboard_metrics") {
-          clearedCaches.push("dashboard_metrics");
-        }
-        
-        if (cache_type === "all" || cache_type === "property_boundaries") {
-          clearedCaches.push("property_boundaries");
-        }
-        
-        return {
-          success: true,
-          data: {
-            clearedCaches,
-            message: `Successfully cleared ${clearedCaches.length} cache(s). Fresh data will be loaded on next request.`
-          }
-        };
-      }
-      
+      // DELETED 2026-08-20 — clear_org_cache. It pushed the literal strings
+      // "ai_context", "dashboard_metrics" and "property_boundaries" into a
+      // local array and returned "Successfully cleared N cache(s). Fresh data
+      // will be loaded on next request." It cleared nothing.
+      //
+      // Not wired, because no coherent org-scoped operation exists behind any
+      // of the three names: `dashboard_metrics` names no cache in this repo,
+      // `ai_context` maps only to a process-wide clearCache() with no org
+      // parameter, and `property_boundaries` maps to provider_cache /
+      // cached_lookups, which are cross-tenant shared caches BY DESIGN — a
+      // per-org eviction there would discard other tenants' entries. Six
+      // troubleshooting playbook steps that prescribed it were removed with it.
+
       case "resync_stripe": {
         const { sync_type } = args;
         
@@ -4388,7 +4357,6 @@ export async function executeSupportTool(
               { step: 2, action: "Check service health for auth", tool: "check_service_health", condition: "Verify auth services are operational" },
               { step: 3, action: "Look for auth-related errors in logs", tool: "search_logs", toolArgs: { log_type: "auth_events", time_range: "6h", severity: "error" }, condition: "Check for OAuth or session errors" },
               { step: 4, action: "Check if user has active subscription", tool: "diagnose_account", toolArgs: { check_type: "subscription" }, condition: "Verify subscription is active" },
-              { step: 5, action: "Try clearing stale sessions", tool: "fix_common_issue", toolArgs: { issue_type: "clear_stale_sessions", confirm: true }, ifTrue: "Session cleared, ask user to login again", ifFalse: "Escalate if still not working" },
             ],
             commonCauses: ["Expired session", "Browser cache issues", "Subscription lapsed", "OAuth token expired", "Third-party blocker extensions"],
             escalationTriggers: ["Repeated OAuth failures in logs", "User locked out for >24h", "Database inconsistency in user record"]
@@ -4400,9 +4368,8 @@ export async function executeSupportTool(
             steps: [
               { step: 1, action: "Check for recent sync errors", tool: "search_logs", toolArgs: { log_type: "sync_events", time_range: "6h", severity: "error" }, condition: "Look for failed sync jobs" },
               { step: 2, action: "Check service health", tool: "check_service_health", condition: "Verify external services are operational" },
-              { step: 3, action: "Try clearing cached data", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, ifTrue: "Cache cleared, data should refresh", ifFalse: "Move to next step" },
-              { step: 4, action: "Retry any failed sync jobs", tool: "retry_failed_jobs", toolArgs: { job_type: "all", max_retries: 5 }, condition: "Re-queue failed background jobs" },
-              { step: 5, action: "Verify data exists after refresh", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5 } }, condition: "Check if fresh data is now available" },
+              { step: 3, action: "Retry any failed sync jobs", tool: "retry_failed_jobs", toolArgs: { job_type: "all", max_retries: 5 }, condition: "Re-queue failed background jobs" },
+              { step: 4, action: "Verify data exists after refresh", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5 } }, condition: "Check if fresh data is now available" },
             ],
             commonCauses: ["Cache staleness", "Failed background jobs", "API rate limiting", "Network timeouts", "Third-party service downtime"],
             escalationTriggers: ["Multiple external services down", "Database connection issues", "Consistent job failures after retry"]
@@ -4416,7 +4383,6 @@ export async function executeSupportTool(
               { step: 2, action: "Look for billing-related activity", tool: "get_user_activity", toolArgs: { activity_type: "billing_events", time_range: "7d" }, condition: "Check recent payment attempts" },
               { step: 3, action: "Search for payment errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "7d", search_pattern: "stripe" }, condition: "Look for Stripe API failures" },
               { step: 4, action: "Try resyncing Stripe data", tool: "resync_stripe", toolArgs: { sync_type: "all" }, ifTrue: "Stripe data refreshed", ifFalse: "Manual intervention may be needed" },
-              { step: 5, action: "Recalculate credit balance if needed", tool: "fix_common_issue", toolArgs: { issue_type: "recalculate_credit_balance", confirm: true }, condition: "Fix any credit balance discrepancies" },
             ],
             commonCauses: ["Card declined", "Subscription expired", "Stripe webhook failure", "Credit balance out of sync", "Payment method expired"],
             escalationTriggers: ["Refund requests", "Double-charged", "Subscription stuck in limbo", "Credit purchase not reflected"]
@@ -4430,8 +4396,6 @@ export async function executeSupportTool(
               { step: 2, action: "Query the entity to verify", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 10 } }, condition: "Check if data exists in database" },
               { step: 3, action: "Check data integrity", tool: "check_data_integrity", toolArgs: { module: "all" }, condition: "Look for orphaned or inconsistent records" },
               { step: 4, action: "Search for related activity", tool: "get_user_activity", toolArgs: { activity_type: "data_changes", time_range: "7d" }, condition: "See if data was recently modified or deleted" },
-              { step: 5, action: "Fix orphaned records if found", tool: "fix_common_issue", toolArgs: { issue_type: "fix_orphaned_records", confirm: true }, ifTrue: "Orphaned records repaired", ifFalse: "Data may be permanently deleted" },
-              { step: 6, action: "Clear cache to force refresh", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Ensure frontend shows latest data" },
             ],
             commonCauses: ["Browser cache showing stale data", "Import failed silently", "Accidental deletion", "Filter hiding records", "Organization scope issue"],
             escalationTriggers: ["User claims data was deleted without their action", "Import job completed but data missing", "Database inconsistencies found"]
@@ -4446,7 +4410,6 @@ export async function executeSupportTool(
               { step: 3, action: "Check user's AI activity", tool: "get_user_activity", toolArgs: { activity_type: "ai_operations", time_range: "24h" }, condition: "See recent AI interactions" },
               { step: 4, action: "Verify credits/usage limits", tool: "diagnose_account", toolArgs: { check_type: "usage" }, condition: "Check if user has exhausted AI credits" },
               { step: 5, action: "Reset AI settings if needed", tool: "fix_common_issue", toolArgs: { issue_type: "reset_ai_settings", confirm: true }, ifTrue: "AI settings reset to defaults", ifFalse: "Try again" },
-              { step: 6, action: "Clear AI context cache", tool: "clear_org_cache", toolArgs: { cache_type: "ai_context" }, condition: "Reset AI memory for fresh start" },
             ],
             commonCauses: ["AI service rate limits", "Credits exhausted", "Context too large", "API key issues", "Prompt injection blocked"],
             escalationTriggers: ["Consistent API failures", "User reports harmful/inappropriate responses", "Feature completely non-functional"]
@@ -4459,8 +4422,7 @@ export async function executeSupportTool(
               { step: 1, action: "Check external GIS service health", tool: "check_service_health", condition: "Verify Mapbox and GIS APIs are operational" },
               { step: 2, action: "Look for map-related errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "6h", search_pattern: "mapbox" }, condition: "Check for Mapbox API errors" },
               { step: 3, action: "Check for parcel boundary errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "6h", search_pattern: "regrid" }, condition: "Look for Regrid/parcel API issues" },
-              { step: 4, action: "Clear property boundary cache", tool: "clear_org_cache", toolArgs: { cache_type: "property_boundaries" }, condition: "Force refresh of parcel data" },
-              { step: 5, action: "Verify property has coordinates", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5, include_details: true } }, condition: "Check if properties have lat/lng data" },
+              { step: 4, action: "Verify property has coordinates", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5, include_details: true } }, condition: "Check if properties have lat/lng data" },
             ],
             commonCauses: ["Mapbox API rate limits", "Missing property coordinates", "Browser WebGL issues", "Regrid API credits exhausted", "CORS/network issues"],
             escalationTriggers: ["Complete map failure", "Incorrect parcel boundaries from data source", "Regrid API subscription issues"]
@@ -4472,9 +4434,8 @@ export async function executeSupportTool(
             steps: [
               { step: 1, action: "Check service health", tool: "check_service_health", condition: "Verify all services responding normally" },
               { step: 2, action: "Check for recent performance-related logs", tool: "search_logs", toolArgs: { log_type: "errors", time_range: "1h" }, condition: "Look for timeout or slow query errors" },
-              { step: 3, action: "Clear all caches", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Force fresh data loading" },
-              { step: 4, action: "Check data volume", tool: "query_user_data", toolArgs: { entity: "leads", query_type: "count" }, condition: "Large data volumes may cause slowness" },
-              { step: 5, action: "Advise browser troubleshooting", condition: "Suggest: clear browser cache, try incognito, disable extensions" },
+              { step: 3, action: "Check data volume", tool: "query_user_data", toolArgs: { entity: "leads", query_type: "count" }, condition: "Large data volumes may cause slowness" },
+              { step: 4, action: "Advise browser troubleshooting", condition: "Suggest: clear browser cache, try incognito, disable extensions" },
             ],
             commonCauses: ["Large data volumes", "Browser cache issues", "Network latency", "Background sync in progress", "Extensions interfering"],
             escalationTriggers: ["Database query timeouts", "Server error rates elevated", "Issue affects all users"]
@@ -4516,7 +4477,6 @@ export async function executeSupportTool(
               { step: 2, action: "Look for permission-related activity", tool: "search_logs", toolArgs: { log_type: "auth_events", time_range: "24h", severity: "warn" }, condition: "Check for access denied events" },
               { step: 3, action: "Query team member data", tool: "query_user_data", toolArgs: { entity: "team_members", query_type: "recent", filters: { limit: 10 } }, condition: "Review team roles and permissions" },
               { step: 4, action: "Check subscription tier", tool: "diagnose_account", toolArgs: { check_type: "subscription" }, condition: "Some features require higher tiers" },
-              { step: 5, action: "Clear cached permissions", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Force permission refresh" },
             ],
             commonCauses: ["User role changed", "Feature requires higher tier", "Invitation not accepted", "Organization scope issue", "Team seat limit reached"],
             escalationTriggers: ["Admin locked out", "Role assignments not saving", "Invitation system broken"]
@@ -4656,86 +4616,6 @@ export async function executeSupportTool(
             }
           };
         }
-      }
-      
-      case "invalidate_user_sessions": {
-        const { user_id, reason } = args;
-        const targetUserId = user_id || org.ownerId;
-        
-        await db.insert(activityLog).values({
-          organizationId: org.id,
-          action: "sessions_invalidated",
-          entityType: "user",
-          entityId: org.id,
-          userId: targetUserId,
-          description: `All sessions invalidated for user ${targetUserId}. Reason: ${reason}`,
-          metadata: { reason, invalidatedAt: new Date().toISOString() }
-        });
-        
-        return {
-          success: true,
-          data: {
-            userId: targetUserId,
-            sessionsInvalidated: true,
-            reason,
-            message: `All sessions for user ${targetUserId} have been invalidated. The user will need to log in again.`
-          }
-        };
-      }
-      
-      case "refresh_auth_tokens": {
-        await db.insert(activityLog).values({
-          organizationId: org.id,
-          action: "auth_tokens_refresh_requested",
-          entityType: "organization",
-          entityId: org.id,
-          userId: org.ownerId,
-          description: `OAuth token refresh requested for organization ${org.name}`,
-          metadata: { requestedAt: new Date().toISOString() }
-        });
-        
-        return {
-          success: true,
-          data: {
-            organizationId: org.id,
-            tokenRefreshQueued: true,
-            message: "OAuth tokens will be automatically refreshed on the next API request. No immediate action needed."
-          }
-        };
-      }
-      
-      case "trigger_data_resync": {
-        const { module } = args;
-        const syncedModules: string[] = [];
-        const clearedCaches: string[] = [];
-        
-        const modulesToSync = module === "all" ? ["leads", "properties", "deals"] : [module];
-        
-        for (const mod of modulesToSync) {
-          syncedModules.push(mod);
-          clearedCaches.push(`${mod}_cache`);
-        }
-        
-        clearedCaches.push("dashboard_metrics");
-        
-        await db.insert(activityLog).values({
-          organizationId: org.id,
-          action: "data_resync_triggered",
-          entityType: "system",
-          entityId: org.id,
-          userId: org.ownerId,
-          description: `Data resync triggered for modules: ${syncedModules.join(", ")}`,
-          metadata: { modules: syncedModules, clearedCaches }
-        });
-        
-        return {
-          success: true,
-          data: {
-            syncedModules,
-            clearedCaches,
-            message: `Successfully triggered resync for ${syncedModules.join(", ")}. Data will refresh on next load.`
-          }
-        };
       }
       
       case "repair_orphaned_records": {
@@ -5225,7 +5105,6 @@ The system monitors for issues and creates alerts. When helping a customer:
 SELF-HEALING ACTIONS:
 When appropriate, you can:
 - retry_failed_jobs: Re-queue failed emails, webhooks, payment syncs
-- clear_org_cache: Force fresh data if things appear stale
 - resync_stripe: Fix subscription discrepancies
 - check_service_health: Verify external services are working
 

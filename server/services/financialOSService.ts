@@ -521,16 +521,50 @@ export interface TaxableTransaction {
   state: string;
   acquiredDate: string;
   soldDate: string;
+  /** `properties.purchase_price`, as recorded. */
   purchasePrice: number;
+  /** `properties.sold_price`, as recorded. Never the list price. */
   salePrice: number;
-  closingCostsTotal: number;
-  improvementsAdded: number;
-  adjustedBasis: number; // purchasePrice + closingCosts + improvements
-  grossSaleProceeds: number; // salePrice - selling costs
+  /** `deals.closing_costs`, or null when the org never recorded them. Never an
+   *  assumed percentage of the purchase price. */
+  closingCostsTotal: number | null;
+  /** Always null: no column in this schema records capital improvements, so
+   *  there is no figure to report. Previously asserted as 0. */
+  improvementsAdded: number | null;
+  /** purchasePrice + closingCostsTotal (when recorded). */
+  adjustedBasis: number;
+  /** True when closing costs were not recorded, so `adjustedBasis` omits them
+   *  and `gainOrLoss` is therefore an UPPER bound, not a filing figure. */
+  basisExcludesUnrecordedCosts: boolean;
+  /** salePrice as recorded. Selling costs are not tracked anywhere, so none are
+   *  deducted — this is the gross amount realized, not net proceeds. */
+  grossSaleProceeds: number;
   gainOrLoss: number; // grossSaleProceeds - adjustedBasis
   holdingPeriodMonths: number;
-  isLongTerm: boolean; // > 12 months
+  isLongTerm: boolean; // >= 12 months
   taxTreatment: "schedule_d_long" | "schedule_d_short" | "schedule_c_dealer";
+}
+
+/**
+ * A closed deal that cannot be placed on a Schedule D line, and the specific
+ * fields that would make it reportable.
+ *
+ * These are excluded from every total. A tax report that silently substitutes a
+ * plausible number for a missing one produces a filing figure nobody can trace
+ * back to a source, which is the failure mode this whole return shape exists to
+ * prevent.
+ */
+export interface UnreportableTransaction {
+  dealId: number;
+  propertyDescription: string;
+  missing: string[];
+}
+
+/** A `numeric` column as a number, or null when absent/blank/unparseable. */
+function recordedAmount(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function generateTaxReport(
@@ -539,9 +573,17 @@ export async function generateTaxReport(
 ): Promise<{
   shortTermGains: number;
   longTermGains: number;
-  dealerIncome: number; // If classified as dealer
+  /**
+   * Always null. Dealer-vs-investor is a professional classification with a
+   * facts-and-circumstances test, made by the filer's CPA — not by AcreOS, and
+   * not by counting rows. This previously returned a hardcoded 0, which reads
+   * as "we checked and there is none" rather than "we do not make this call."
+   */
+  dealerIncome: null;
   totalTaxableGain: number;
   transactions: TaxableTransaction[];
+  /** Closed deals excluded from every total above, each naming what it lacks. */
+  unreportableTransactions: UnreportableTransaction[];
   summaryNarrative: string;
   recommendedTaxActions: string[];
 }> {
@@ -568,25 +610,76 @@ export async function generateTaxReport(
   let shortTermGains = 0;
   let longTermGains = 0;
   const transactions: TaxableTransaction[] = [];
+  const unreportableTransactions: UnreportableTransaction[] = [];
+  let anyBasisIncomplete = false;
 
   for (const deal of filteredDeals) {
-    // contractDate/purchasePrice/listPrice/title live on the related property,
-    // not the deal row. Fetch the property for these financial figures.
+    // purchasePrice/soldPrice/purchaseDate live on the related property, not
+    // the deal row. Fetch the property for these financial figures.
     const dealProperty = await db.query.properties.findFirst({
       where: eq(properties.id, deal.propertyId),
     });
-    const acquired = new Date(dealProperty?.purchaseDate || deal.offerDate || deal.createdAt || yearStart);
-    const sold = new Date(deal.closingDate || yearEnd);
+    const propertyDescription = `Land - ${dealProperty?.address || dealProperty?.apn || `deal ${deal.id}`}`;
+
+    // ── EVERY FIGURE BELOW IS READ, OR THE TRANSACTION IS NOT REPORTED ──────
+    // This loop previously manufactured all four of the numbers that determine
+    // a Schedule D line, and each real column it needed already existed:
+    //
+    //   salePrice         = properties.list_price      — the ASKING price, on a
+    //                                                    CLOSED deal, while
+    //                                                    properties.sold_price
+    //                                                    holds the real one.
+    //   adjustedBasis     = purchasePrice * 1.03       — closing costs invented
+    //                                                    at 3%, while
+    //                                                    deals.closing_costs
+    //                                                    exists.
+    //   grossSaleProceeds = salePrice * 0.96           — selling costs invented
+    //                                                    at 4%; nothing records
+    //                                                    them.
+    //   improvementsAdded = 0                          — asserted as none.
+    //   acquired          = purchaseDate || offerDate || createdAt || yearStart
+    //                                                  — the ROW CREATION date
+    //                                                    deciding short vs long
+    //                                                    term, i.e. the rate.
+    //
+    // `parseFloat(x || "0")` compounded it: a property with no recorded
+    // purchase price got a cost basis of zero, making the entire sale price a
+    // taxable gain — the single most expensive possible wrong answer, produced
+    // silently. A missing figure now excludes the deal from every total and
+    // names itself. This is a Schedule D input; no number beats a plausible one.
+    const missing: string[] = [];
+
+    const purchasePrice = recordedAmount(dealProperty?.purchasePrice);
+    if (purchasePrice === null) missing.push("property.purchasePrice (cost basis)");
+
+    const salePrice = recordedAmount(dealProperty?.soldPrice);
+    if (salePrice === null) missing.push("property.soldPrice (amount realized)");
+
+    const acquired = dealProperty?.purchaseDate ?? null;
+    if (acquired === null) missing.push("property.purchaseDate (holding period start)");
+
+    const sold = dealProperty?.soldDate ?? deal.closingDate ?? null;
+    if (sold === null) missing.push("property.soldDate or deal.closingDate (disposition date)");
+
+    if (purchasePrice === null || salePrice === null || acquired === null || sold === null) {
+      unreportableTransactions.push({ dealId: deal.id, propertyDescription, missing });
+      continue;
+    }
+
     const holdingMonths = Math.max(
       0,
       Math.floor((sold.getTime() - acquired.getTime()) / (30 * 24 * 60 * 60 * 1000))
     );
     const isLongTerm = holdingMonths >= 12;
 
-    const purchasePrice = parseFloat(dealProperty?.purchasePrice || "0");
-    const salePrice = parseFloat(dealProperty?.listPrice || "0");
-    const adjustedBasis = purchasePrice * 1.03; // Rough: add ~3% for closing costs
-    const grossSaleProceeds = salePrice * 0.96; // Rough: subtract ~4% for selling costs
+    // Recorded, or absent. Absent means the basis omits them and the gain is an
+    // upper bound — stated in the row and in the narrative, not smoothed over.
+    const closingCostsTotal = recordedAmount(deal.closingCosts);
+    const basisExcludesUnrecordedCosts = closingCostsTotal === null;
+    if (basisExcludesUnrecordedCosts) anyBasisIncomplete = true;
+
+    const adjustedBasis = purchasePrice + (closingCostsTotal ?? 0);
+    const grossSaleProceeds = salePrice;
     const gainOrLoss = grossSaleProceeds - adjustedBasis;
 
     if (isLongTerm) {
@@ -597,16 +690,17 @@ export async function generateTaxReport(
 
     transactions.push({
       dealId: deal.id,
-      propertyDescription: `Land - ${dealProperty?.address || dealProperty?.apn || "Vacant Land"}`,
+      propertyDescription,
       county: dealProperty?.county || "",
       state: dealProperty?.state || "",
       acquiredDate: format(acquired, "MM/dd/yyyy"),
       soldDate: format(sold, "MM/dd/yyyy"),
       purchasePrice,
       salePrice,
-      closingCostsTotal: purchasePrice * 0.03,
-      improvementsAdded: 0,
+      closingCostsTotal,
+      improvementsAdded: null,
       adjustedBasis,
+      basisExcludesUnrecordedCosts,
       grossSaleProceeds,
       gainOrLoss,
       holdingPeriodMonths: holdingMonths,
@@ -629,25 +723,58 @@ export async function generateTaxReport(
     recommendedTaxActions.push("High transaction volume may trigger IRS 'dealer' classification — discuss with your CPA immediately");
   }
 
+  // The narrative states the report's own coverage. A summary that reports a
+  // total without saying how many closed deals were left out of it is a
+  // different claim from the one the numbers support.
+  const coverageLines: string[] = [];
+  if (unreportableTransactions.length > 0) {
+    coverageLines.push(
+      "",
+      `EXCLUDED: ${unreportableTransactions.length} of ${filteredDeals.length} closed deal(s) are not in the totals above,`,
+      "because a figure a Schedule D line requires was never recorded. See",
+      "`unreportableTransactions` for the specific missing field on each. These",
+      "are omissions, not zeroes — the totals above are incomplete by that many",
+      "transactions.",
+    );
+  }
+  if (anyBasisIncomplete) {
+    coverageLines.push(
+      "",
+      "BASIS INCOMPLETE: one or more transactions have no recorded closing costs,",
+      "so their cost basis omits them. Gains for those rows are an UPPER bound.",
+      "Rows carrying this are flagged `basisExcludesUnrecordedCosts`.",
+    );
+  }
+  coverageLines.push(
+    "",
+    "NOT DEDUCTED: selling costs are not tracked in AcreOS, so `grossSaleProceeds`",
+    "is the gross amount realized. Capital improvements are not tracked either and",
+    "are reported as null rather than zero.",
+  );
+
   const summaryNarrative = `
 Tax Year ${taxYear} Land Investing Summary for Organization ${organizationId}:
-  - Total closed transactions: ${transactions.length}
+  - Closed transactions reported: ${transactions.length} of ${filteredDeals.length}
   - Short-term capital gains (held < 12 mo): $${shortTermGains.toLocaleString()}
   - Long-term capital gains (held 12+ mo): $${longTermGains.toLocaleString()}
   - Total net gain/loss: $${totalTaxableGain.toLocaleString()}
+${coverageLines.join("\n")}
 
-IMPORTANT: This report is for informational purposes only.
-Consult a licensed CPA or tax professional for official tax advice.
-Real estate professionals with high transaction volume may be classified as "dealers"
-by the IRS, which changes the tax treatment significantly.
+IMPORTANT: This is a worksheet assembled from figures recorded in AcreOS, not a
+tax return and not tax advice. Every amount above traces to a column a user
+filled in; AcreOS does not estimate, impute or infer any of them. Dealer-vs-
+investor classification is a facts-and-circumstances determination made by your
+CPA — AcreOS does not make it, which is why \`dealerIncome\` is null rather than 0.
+Consult a licensed CPA or tax professional before filing.
   `.trim();
 
   return {
     shortTermGains,
     longTermGains,
-    dealerIncome: 0,
+    dealerIncome: null,
     totalTaxableGain,
     transactions,
+    unreportableTransactions,
     summaryNarrative,
     recommendedTaxActions,
   };

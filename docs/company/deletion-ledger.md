@@ -1063,3 +1063,73 @@ throwing mock asserting the executor was never called; with nothing left to
 call, that assertion would have been true no matter what the gate did, so it was
 replaced by a source case asserting the branch and the export are actually gone.
 
+
+---
+
+## Four support tools with fictional effects — executed 2026-08-20
+
+**What went.** From `server/ai/supportAgent.ts`: the tool definitions, dispatch
+cases and prompt/playbook references for `invalidate_user_sessions`,
+`refresh_auth_tokens`, `trigger_data_resync` and `clear_org_cache`; the
+`recalculate_credit_balance` branch of `fix_common_issue`; and five
+`fix_common_issue` enum values with no case at all. `create_followup_task` was
+NOT deleted — it was wired, see below.
+
+**What they were.** Each returned a sentence describing a system effect it had
+not had, to a model that was talking to a paying customer:
+
+| tool | returned | actually did |
+|---|---|---|
+| `invalidate_user_sessions` | `sessionsInvalidated: true`, "The user will need to log in again" | wrote an `activity_log` row |
+| `refresh_auth_tokens` | `tokenRefreshQueued: true` | wrote an `activity_log` row |
+| `trigger_data_resync` | "Successfully triggered resync" | pushed invented cache names into a local array, wrote an `activity_log` row |
+| `clear_org_cache` | "Successfully cleared 3 cache(s). Fresh data will be loaded on next request." | pushed three string literals into a local array |
+| `recalculate_credit_balance` | "Credit balance has been recalculated from transaction history." | executed no statement at all |
+
+**Why deleted rather than wired.** Same reasoning as `schedule_background_job`
+(ledger, 2026-08-19): wiring these means BUILDING the capability, and the defect
+is that they claimed to already have it. `clear_org_cache` is the sharpest case
+— there is no coherent org-scoped operation behind any of its three advertised
+cache names. `dashboard_metrics` names no cache in this repo. `ai_context` maps
+only to a process-wide `clearCache()` that takes no org parameter. And
+`property_boundaries` maps to `provider_cache` / `cached_lookups`, which are
+**cross-tenant shared caches by design** — a per-org eviction there would
+discard other tenants' entries, so the honest version of this tool is not a
+smaller version of it. Six troubleshooting playbook steps that prescribed it
+went with it.
+
+**What was wired instead.** `create_followup_task` returned `taskCreated: true`
+and created nothing — but `storage.createTask` already existed, so this was a
+wiring gap, not a missing capability. It now inserts a real row and returns the
+real `taskId`. Its `assignee` argument names a routing lane
+(support_team / customer / engineering) and `tasks.assignedTo` references
+`teamMembers.id` with no lane-to-member mapping, so the lane is recorded in the
+task body and the task is left genuinely unassigned — `assigned: false` in the
+return value — rather than pointed at an invented member id.
+
+**The enum was lying too.** `fix_common_issue` advertised eight repair types to
+the model and implemented three. The other five fell through to a `default:`
+that refuses, so nothing broke at runtime — but the model offered a customer
+five repairs that could only fail. An enum is a promise to the model the same
+way a return value is a promise to the user, and
+`paxToolsReportRealEffects.test.ts` now checks the two lists against each other.
+
+**Residue check — and the gate that was green over all of this.**
+`paxToolsReportRealEffects.test.ts` exists to catch exactly this shape and
+missed every instance, for two independent reasons, both now fixed:
+
+1. **It read one file.** `server/ai/tools.ts` only. `executeSupportTool` is a
+   second dispatch switch with 76 cases and was never scanned. It now scans
+   both, and the vacuity case asserts each parses >50 cases.
+2. **Its predicate was `\bawait\b`.** Four of these tools await an
+   `activity_log` insert, so they read as effectful. The predicate now discounts
+   audit *writes* — an audit row records the intent, not the outcome — while
+   still counting audit *reads*, because `db.select().from(activityLog)` returns
+   rows that genuinely are a support tool's answer. Falsified by mutating
+   `invalidate_user_sessions` back in as it shipped: green under the old
+   predicate, fires under the new one, and the wired `create_followup_task` is
+   not a false positive.
+
+This is the second law in the CLAUDE.md pair, arriving from the other direction:
+not a canonical function with no callers, but a canonical gate whose population
+was smaller than the defect it named.

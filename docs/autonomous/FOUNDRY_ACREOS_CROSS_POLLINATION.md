@@ -3497,3 +3497,131 @@ Themes noted but not yet tested against AcreOS HEAD:
 
 Each still has to pass the ten-point test on its own evidence. None is admitted
 by association with the three that did.
+
+---
+
+### 54 — THE GATE THAT EXISTED TO CATCH FICTIONAL TOOLS READ ONE OF THE TWO FILES THAT HAD THEM
+
+`paxToolsReportRealEffects.test.ts` shipped on 2026-08-19 to enforce one rule: a
+tool may not report an effect it did not have. It was written after
+`schedule_background_job` told a customer their campaign was queued and queued
+nothing. It was green the whole of the next day while six tools in the same
+codebase did the same thing.
+
+**Two independent failures, each sufficient on its own.**
+
+*Population.* The gate read `server/ai/tools.ts`. `executeSupportTool` in
+`server/ai/supportAgent.ts` is a second dispatch switch with **76 more cases**,
+driven by a model in a live conversation with a paying customer, and no gate
+had ever looked at it. It held `create_followup_task`, which returned
+`taskCreated: true` and created nothing, and `clear_org_cache`, which reported
+`"Successfully cleared 3 cache(s). Fresh data will be loaded on next request."`
+having pushed three string literals into a local array.
+
+*Predicate.* The gate asked whether the handler body matched `\bawait\b`. Four
+support tools — `invalidate_user_sessions`, `refresh_auth_tokens`,
+`trigger_data_resync`, and `recalculate_credit_balance` — wrote an
+`activity_log` row and then reported a system effect they had not had. The audit
+write satisfied `await` outright. **This is what makes the audit-row shape more
+dangerous than a bare stub: it looks like I/O.** A reviewer skimming sees a
+`db.insert` and reads the handler as wired; a regex asking "did it await
+anything" agrees. `recalculate_credit_balance` didn't even need that — it sat in
+a `switch` where every sibling branch performed a real `db.update`, and its
+whole body was `fixResult = { applied: true, description: "Credit balance has
+been recalculated from transaction history." }`.
+
+**The generalisation, which is the part worth keeping.** A gate proves the
+property it MEASURES over the population it READS. Both halves are assumptions,
+and neither is visible in a green result. The two laws already in CLAUDE.md
+cover the measurement half (falsify against the semantic defect) and the
+adoption half (a canonical function needs real callers). This is the third
+face of the same solid: **the population is an assumption too, and a gate scoped
+to one file is a claim about that file, not about the defect it names.** When
+you install a rule, enumerate every place the shape it forbids can occur — then
+assert the enumeration in the test, so adding a seventh dispatch switch without
+adding it to the list is what fails.
+
+**The fix.** Both corrected in one commit. `TOOL_SWITCHES` now lists both files
+and `describe.each` runs the rule over each, with a per-file vacuity case
+requiring >50 parsed cases and >10 handlers registering a real effect — so a
+parser that silently stops matching cannot read as a clean bill of health. The
+predicate now works statement-by-statement and discounts audit *writes* while
+still counting audit *reads*, because `db.select().from(activityLog)` returns
+rows that genuinely are a support tool's answer. Falsified by mutating
+`invalidate_user_sessions` back in exactly as it shipped: **green under the old
+predicate, fires under the new one**, with the wired `create_followup_task` as
+the negative control.
+
+**Adjacent finding: the enum was lying too.** `fix_common_issue` advertised
+eight repair types to the model and implemented three. The five others fell
+through to a `default:` that refuses — nothing broke at runtime, so nothing
+surfaced — but the model offered a customer five repairs that could only fail.
+An enum is a promise to the model the same way a return value is a promise to
+the user, and the gate now checks the advertised list against the implemented
+one.
+
+**What was wired rather than deleted.** `create_followup_task` was the only one
+of the six whose capability actually existed: `storage.createTask` was right
+there. It now inserts a real row and returns the real `taskId`. Its `assignee`
+argument names a routing lane and `tasks.assignedTo` references
+`teamMembers.id` with no lane-to-member mapping, so the lane goes in the task
+body and the task is left genuinely unassigned — `assigned: false` — rather than
+pointed at an invented member id. Deleting a wireable tool would have been the
+mirror error of keeping a fictional one.
+
+---
+
+### 55 — A SCHEDULE D BUILT FROM THE ASKING PRICE, WITH THE REAL COLUMN ONE FIELD AWAY
+
+`generateTaxReport` (`server/services/financialOSService.ts`, served at
+`GET /api/financial/tax-report/:year`) produced a per-transaction capital-gains
+worksheet. Four of the five numbers that decide a Schedule D line were invented,
+and **every real column it needed already existed**:
+
+| it computed | from | while this existed |
+|---|---|---|
+| `salePrice` | `properties.list_price` — the ASKING price, on a CLOSED deal | `properties.sold_price` |
+| `adjustedBasis` | `purchasePrice * 1.03` — *"Rough: add ~3% for closing costs"* | `deals.closing_costs` |
+| `grossSaleProceeds` | `salePrice * 0.96` — *"Rough: subtract ~4% for selling costs"* | nothing; selling costs are untracked |
+| `improvementsAdded` | `0`, asserted | nothing; improvements are untracked |
+| `acquired` | `purchaseDate \|\| offerDate \|\| createdAt \|\| yearStart` | `properties.purchase_date` |
+
+The last one decides `isLongTerm`, which is the **tax rate** — so a property
+with no recorded purchase date had its rate set by when somebody typed the row
+into AcreOS. And `parseFloat(x || "0")` closed the loop: a property with no
+recorded purchase price got a cost basis of **zero**, making the entire sale
+price a taxable gain. Silently, with no flag, in a document a filer would carry
+onto a return.
+
+**The tell was the rounded percentages.** `1.03` and `0.96` are not
+measurements. They are the shape of a placeholder that outlived the sketch it
+was written in, and the report presented their output under the names
+`closingCostsTotal` and `grossSaleProceeds` — line items, not estimates. This is
+the founder's epistemic rule stated in tax form: *a default may help a
+calculation continue; it may not impersonate observed property reality.*
+
+**The fix is refusal, not better estimation.** Every figure is read or the
+transaction is excluded from every total and lands in `unreportableTransactions`
+naming the exact field it lacks. Unrecorded closing costs give
+`closingCostsTotal: null` and `basisExcludesUnrecordedCosts: true` — the gain is
+then an upper bound and says so. Untracked improvements are `null`, not `0`.
+`dealerIncome` went from a hardcoded `0` to `null`: dealer-vs-investor is a
+facts-and-circumstances determination made by the filer's CPA, and `0` read as
+*"we checked and there is none"* rather than *"we do not make this call."* That
+last change is the minimum-necessary-responsibility posture applied to a
+number — AcreOS computes the worksheet and declines the professional judgment.
+
+**Why the gate is behavioural.** A source scan asserting `listPrice` is absent
+proves one spelling is gone and cannot tell reading `sold_price` from reading
+any other plausible column. `taxReportReadsNotEstimates.test.ts` runs the
+function over a fake db and asserts outcomes, with a vacuity case first (a
+fully-recorded deal IS reported, so the exclusion assertions mean something).
+Falsified three ways — restoring the `listPrice` fallback (3 cases fire),
+restoring the 3% closing-cost estimate (1 fires), and zero-filling the basis
+instead of excluding (1 fires) — then restored green.
+
+**Residue.** The endpoint has no `client/src` caller, which is why this survived
+so long: nothing rendered it, so nobody read the numbers. Worth stating plainly,
+because it cuts against the instinct that an unused surface is a low-severity
+finding. It is a mounted JSON API returning tax figures; the absence of a caller
+meant the absence of a reader, not the absence of exposure.
