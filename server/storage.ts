@@ -211,7 +211,7 @@ export interface IStorage {
   getLeadsNeedingScoring(orgId: number, limit?: number): Promise<Lead[]>;
   getLeadsDueForFollowUp(orgId: number): Promise<Lead[]>;
   createLeadActivity(activity: InsertLeadActivity): Promise<LeadActivity>;
-  getLeadActivities(leadId: number, limit?: number): Promise<LeadActivity[]>;
+  getLeadActivities(organizationId: number, leadId: number, limit?: number): Promise<LeadActivity[]>;
   updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead>;
   
   // Paginated Leads (W5.3 SQL-scored stage/cursor variants live on LeadRepo)

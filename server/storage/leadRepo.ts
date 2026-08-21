@@ -491,9 +491,21 @@ export const leadRepo = {
     return newActivity;
   },
 
-  async getLeadActivities(this: DatabaseStorage, leadId: number, limit: number = 50): Promise<LeadActivity[]> {
+  // Tenancy: `lead_activities.organization_id` is NOT NULL, so the timeline is
+  // scoped INSIDE the statement rather than trusting the caller to have proven
+  // the lead first. This used to read `(leadId, limit)` with no org anywhere;
+  // four of its five production callers passed `(organizationId, leadId)`, and
+  // because both parameters are `number` that type-checked while the query
+  // became `where lead_id = <organizationId> limit <leadId>` — org A's agent
+  // skills read another tenant's activity rows. The org id is now the leading
+  // argument (repo convention: getLead(orgId, id), getLeadsNeedingScoring(orgId,
+  // limit)) AND a predicate, so a swap can no longer widen the read.
+  async getLeadActivities(this: DatabaseStorage, organizationId: number, leadId: number, limit: number = 50): Promise<LeadActivity[]> {
     return await db.select().from(leadActivities)
-      .where(eq(leadActivities.leadId, leadId))
+      .where(and(
+        eq(leadActivities.organizationId, organizationId),
+        eq(leadActivities.leadId, leadId),
+      ))
       .orderBy(desc(leadActivities.createdAt))
       .limit(limit);
   },

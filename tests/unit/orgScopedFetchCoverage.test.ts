@@ -95,7 +95,42 @@ const src = fs.readFileSync(LINT, "utf8");
 //     .optimizeCampaign UPDATEs `campaigns` by PRIMARY KEY ONLY while
 //     `campaign.organizationId` is on the same object and IS used for the other
 //     write in the same method. A real tenancy weakness on a live write path.
-const BASELINE_ENTRIES = 196;
+// 2026-08-21: 196 -> 195. `noteRepo.createPayment` left the register — both of
+// its `notes` queries (the SELECT … FOR UPDATE and the balance UPDATE) now
+// carry `payment.organizationId`, so the lint no longer sees an offender there
+// and its stale-entry check forced the register line out in the same commit.
+// Down-only: the ceiling moves with it.
+// 2026-08-21: 195 -> 194. `buyerMatchingAI.resolveBuyerContact` left the
+// register — it now takes the caller's organizationId and pins
+// `leads.organization_id` in the WHERE, so an org-A buyer profile carrying an
+// org-B `leadId` (caller-supplied, never ownership-checked) resolves to no row
+// instead of returning that lead's email and name into the buyer.match_created
+// payload. Pinned behaviourally by tests/unit/buyerContactTenancy.test.ts.
+// 2026-08-21: 194 -> 193. `proactiveMonitor.autoResolveAlert` left the register
+// - its UPDATE was a bare `eq(systemAlerts.id, alertId)` reached by
+// `POST /api/monitor/alerts/:id/resolve` (isAuthenticated + getOrCreateOrg, no
+// founder gate) and by the Pax `resolve_alert` tool, so an authenticated member
+// of any org could flip another org's alert to resolved and overwrite its
+// `metadata` blob. It now takes the resolution scope as a REQUIRED argument and
+// pins `organization_id` (or `IS NULL` for the platform-global lane) in the
+// WHERE. Pinned behaviourally by tests/unit/alertResolveTenancy.test.ts.
+// 2026-08-21: 193 -> 192. `paxRepo.deletePaxProjectFile` left the register — the
+// DELETE now carries the tenant predicate itself, proven through the parent
+// project (`pax_project_files` has no organization_id, so `project_id` is the
+// only ownership link and it was never asserted against the caller's org: the
+// route checked the project id in the URL while the statement deleted the file
+// id, and the fileCount decrement followed the projectId read off the deleted
+// row). Pinned behaviourally by tests/unit/paxProjectFileTenancy.test.ts.
+// 2026-08-21: 192 -> 191. `leadRepo.getLeadActivities` left the register — the
+// SELECT now binds `lead_activities.organization_id` to a REQUIRED leading org
+// argument. It took `(leadId, limit)` with no org anywhere, and four of its
+// five production callers (agent-skills scoreBuyer/scoreLead/suggestFollowUp,
+// sequenceProcessor.checkLeadResponded) passed `(organizationId, leadId)`:
+// both `number`, so the type checker was silent while the query became
+// `lead_id = <organizationId> limit <leadId>` — another tenant's lead
+// timeline, fed into the caller's output. Pinned behaviourally by
+// tests/unit/leadActivityTenancy.test.ts.
+const BASELINE_ENTRIES = 191;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,

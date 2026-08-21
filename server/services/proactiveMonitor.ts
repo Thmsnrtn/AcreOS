@@ -33,6 +33,19 @@ interface DataIntegrityIssue {
   description: string;
 }
 
+/**
+ * The resolution scope of an alert ROW that has already been read from the DB.
+ *
+ * `system_alerts.organization_id` is nullable — `createGlobalAlert` writes NULL
+ * for platform-wide alerts — so "the org this row belongs to" is `number | null`,
+ * and the null case must become `IS NULL` rather than a dropped predicate. Kept
+ * here so the only sweep that resolves rows it selected itself cannot express
+ * "any org" by accident.
+ */
+function alertScopeOfRow(alert: Pick<SystemAlert, 'organizationId'>): { organizationId: number | null } {
+  return { organizationId: alert.organizationId ?? null };
+}
+
 class ProactiveMonitorService {
   private static instance: ProactiveMonitorService;
   private monitorInterval: NodeJS.Timeout | null = null;
@@ -297,19 +310,59 @@ class ProactiveMonitorService {
   }
 
   /**
-   * Auto-resolve an alert (called by Pax or automatic resolution)
+   * Auto-resolve an alert (called by Pax or automatic resolution).
+   *
+   * ── WHY `scope` IS REQUIRED AND NOT OPTIONAL ────────────────────────────────
+   * `alertId` is CALLER-CHOSEN on two of the three paths into here — the route
+   * `POST /api/monitor/alerts/:id/resolve` (isAuthenticated + getOrCreateOrg,
+   * no founder gate) and the Pax tool `resolve_alert` — and `system_alerts.id`
+   * is a sequential serial. This UPDATE used to carry `eq(systemAlerts.id,
+   * alertId)` and nothing else, so any authenticated member of any org could
+   * flip another org's alert to `resolved` AND overwrite its `metadata` blob
+   * with their own `details` string. The same table's founder-gated siblings
+   * (`PUT /api/admin/alerts/:id/{acknowledge,resolve}`) were behind
+   * `isFounderAdmin`; this door was not.
+   *
+   * So the tenant predicate lives on the QUERY, where no caller can forget it.
+   * There is deliberately NO "any org" value: `organizationId: null` means the
+   * PLATFORM-GLOBAL lane (`createGlobalAlert` writes `organization_id NULL`),
+   * which belongs to no tenant and therefore cannot reach one. A caller-supplied
+   * id that names another org's alert now matches zero rows and returns false.
    */
-  async autoResolveAlert(alertId: number, details: string, resolvedBy: string = 'auto'): Promise<boolean> {
+  async autoResolveAlert(
+    alertId: number,
+    details: string,
+    resolvedBy: string = 'auto',
+    scope: { organizationId: number | null },
+  ): Promise<boolean> {
     try {
-      await db
+      // `false` now means "no such alert IN YOUR ORG" as well as "write failed",
+      // which is what makes the route able to answer 404 instead of reporting
+      // success over a row it never touched.
+      const resolvedRows = await db
         .update(systemAlerts)
         .set({
           status: 'resolved',
           resolvedAt: new Date(),
           metadata: { resolvedBy, resolutionDetails: details }
         })
-        .where(eq(systemAlerts.id, alertId));
-      
+        .where(and(
+          eq(systemAlerts.id, alertId),
+          scope.organizationId === null
+            ? isNull(systemAlerts.organizationId)
+            : eq(systemAlerts.organizationId, scope.organizationId),
+        ))
+        .returning({ id: systemAlerts.id });
+
+      if (resolvedRows.length === 0) {
+        logger.warn(`[proactiveMonitor] Alert ${alertId} not resolved — no such alert in that scope`, {
+          alertId,
+          organizationId: scope.organizationId,
+          resolvedBy,
+        });
+        return false;
+      }
+
       logger.info(`[proactiveMonitor] Alert ${alertId} resolved by ${resolvedBy}`);
       return true;
     } catch (error) {
@@ -449,7 +502,15 @@ class ProactiveMonitorService {
         }
 
         if (matches) {
-          await this.autoResolveAlert(alert.id, 'Service restored to healthy status', 'auto');
+          // The scope comes from the ROW THIS SWEEP ALREADY READ, never from a
+          // caller — see alertScopeOfRow. This lane is the internal health sweep
+          // and is intentionally all-org; the two caller-driven lanes are not.
+          await this.autoResolveAlert(
+            alert.id,
+            'Service restored to healthy status',
+            'auto',
+            alertScopeOfRow(alert),
+          );
           resolved++;
         }
       }

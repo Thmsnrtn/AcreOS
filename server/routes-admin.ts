@@ -3637,13 +3637,35 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // the unified-todo endpoint.
 
   // POST /api/monitor/alerts/:id/resolve — resolve an alert
-  api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  //
+  // TENANCY: this door is `isAuthenticated` + `getOrCreateOrg` only, while the
+  // same table's founder-gated siblings above (`PUT /api/admin/alerts/:id/...`)
+  // sit behind `isFounderAdmin`. `:id` is caller-chosen and alert ids are
+  // sequential serials, so the calling org MUST be pinned onto the UPDATE — it
+  // is, inside autoResolveAlert, which takes the scope as a required argument.
+  // A miss is a 404 (the alert does not exist *for you*), never `success:true`
+  // over a row that was never touched.
+  api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const alertId = parseInt(req.params.id);
-      const { details } = req.body;
+      const alertId = Number(req.params.id);
+      if (!Number.isInteger(alertId) || alertId <= 0) {
+        return Errors.badRequest(res, "Invalid alert id");
+      }
+      const org = getOrganization(req);
+      // `details` lands in the alert's jsonb `metadata`, so it is coerced to a
+      // bounded string rather than persisted as whatever JSON was posted.
+      const rawDetails = (req.body ?? {}).details;
+      const details = typeof rawDetails === "string" && rawDetails.trim().length > 0
+        ? rawDetails.slice(0, 1000)
+        : "Manually resolved";
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
-      const resolved = await proactiveMonitor.autoResolveAlert(alertId, details || "Manually resolved", "user");
-      res.json({ success: resolved });
+      const resolved = await proactiveMonitor.autoResolveAlert(alertId, details, "user", {
+        organizationId: org.id,
+      });
+      if (!resolved) {
+        return Errors.notFound(res, "Alert");
+      }
+      res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
     }

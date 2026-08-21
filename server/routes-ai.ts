@@ -877,7 +877,13 @@ export function registerAIRoutes(app: Express): void {
       if (!project || project.organizationId !== org.id) {
         return Errors.notFound(res, "Project");
       }
-      await storage.deletePaxProjectFile(parseInt(req.params.fileId));
+      // The org predicate goes to the DELETE itself (storage.deletePaxProjectFile
+      // proves project ownership inside the statement) — verifying the parent
+      // project here constrains the URL's project id, not the file's.
+      const deleted = await storage.deletePaxProjectFile(org.id, projectId, parseInt(req.params.fileId));
+      if (!deleted) {
+        return Errors.notFound(res, "File");
+      }
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);

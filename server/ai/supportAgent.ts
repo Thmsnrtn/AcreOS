@@ -3307,8 +3307,16 @@ export async function executeSupportTool(
       case "resolve_alert": {
         const { alert_id, resolution_details } = args;
         const { proactiveMonitor } = await import("../services/proactiveMonitor");
-        
-        const resolved = await proactiveMonitor.autoResolveAlert(alert_id, resolution_details, "pax");
+
+        // `alert_id` is MODEL-CHOSEN (it comes out of the tool call), so it is
+        // exactly the caller-supplied id the org predicate exists for: Pax may
+        // only resolve alerts belonging to the org it is answering for.
+        const resolved = await proactiveMonitor.autoResolveAlert(
+          Number(alert_id),
+          typeof resolution_details === "string" ? resolution_details : "Resolved by Pax",
+          "pax",
+          { organizationId: org.id },
+        );
         
         return {
           success: resolved,

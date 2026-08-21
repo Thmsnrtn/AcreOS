@@ -1017,7 +1017,7 @@ export function registerLeadRoutes(app: Express): void {
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
     const limit = Math.min(100, req.query.limit ? Number(req.query.limit) : 50);
-    const activities = await storage.getLeadActivities(leadId, limit);
+    const activities = await storage.getLeadActivities(org.id, leadId, limit);
     res.json(activities);
   });
 

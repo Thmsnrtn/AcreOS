@@ -163,16 +163,31 @@ export class BuyerMatchingAIService {
   /**
    * Resolve the real buyer contact for a match from buyer_profiles.leadId →
    * leads. Returns all-null when the profile has no linked lead (or the lead is
-   * gone) — never a fabricated recipient/name. Feeds the buyer.match_created
-   * payload (tpl_buyer_match_found's {{buyerEmail}}/{{buyerName}}/{{buyerFirstName}}).
+   * gone, or the lead is not this org's) — never a fabricated recipient/name.
+   * Feeds the buyer.match_created payload (tpl_buyer_match_found's
+   * {{buyerEmail}}/{{buyerName}}/{{buyerFirstName}}).
+   *
+   * TENANCY — the org predicate belongs on THIS query, not upstream.
+   * `buyer_profiles.leadId` is caller-supplied at profile-creation time
+   * (POST /api/ai/buyer-matching/profile validates it as `z.number().optional()`
+   * and createBuyerProfile stores it verbatim) and is never ownership-checked.
+   * So an org-scoped fetch of the PROFILE does not scope the LEAD it points at:
+   * an org-A profile carrying an org-B leadId used to resolve that org-B lead's
+   * email and name straight into the buyer.match_created payload. The caller's
+   * organizationId is therefore required and pinned in the where clause; a
+   * foreign leadId now resolves to no row, i.e. all-null, by construction.
    */
   private async resolveBuyerContact(
+    organizationId: number,
     buyerProfile: BuyerProfile | undefined
   ): Promise<{ buyerEmail: string | null; buyerName: string | null; buyerFirstName: string | null }> {
     const empty = { buyerEmail: null, buyerName: null, buyerFirstName: null };
     if (!buyerProfile?.leadId) return empty;
     try {
-      const [lead] = await db.select().from(leads).where(eq(leads.id, buyerProfile.leadId));
+      const [lead] = await db.select().from(leads).where(and(
+        eq(leads.id, buyerProfile.leadId),
+        eq(leads.organizationId, organizationId)
+      ));
       if (!lead) return empty;
       const fullName = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       return {
@@ -228,7 +243,7 @@ export class BuyerMatchingAIService {
 
     // Resolve the buyer contact once (the buyer is fixed for this matcher) and
     // index the loaded properties for the fresh-insert emit below.
-    const buyerContact = await this.resolveBuyerContact(buyerProfile);
+    const buyerContact = await this.resolveBuyerContact(organizationId, buyerProfile);
     const propertiesById = new Map(availableProperties.map((p) => [p.id, p]));
 
     const createdMatches: BuyerPropertyMatch[] = [];
@@ -379,7 +394,7 @@ export class BuyerMatchingAIService {
         // buyer.match_created. The update-existing branch above deliberately
         // does not, so a re-run of the matcher never re-fires.
         const matchedBuyer = buyersById.get(result.buyerProfileId);
-        const contact = await this.resolveBuyerContact(matchedBuyer);
+        const contact = await this.resolveBuyerContact(organizationId, matchedBuyer);
         emitBuyerMatchCreated(inserted, {
           propertyAddress: property.address ?? null,
           ...contact,

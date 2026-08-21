@@ -4,7 +4,7 @@
 // refactor. Methods are merged into DatabaseStorage.prototype at construction
 // time; `this` refers to the full DatabaseStorage instance.
 
-import { and, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -113,14 +113,40 @@ export const paxRepo = {
     return row;
   },
 
-  async deletePaxProjectFile(this: DatabaseStorage, fileId: number): Promise<void> {
-    const [file] = await db.select().from(paxProjectFiles).where(eq(paxProjectFiles.id, fileId));
-    if (file) {
-      await db.delete(paxProjectFiles).where(eq(paxProjectFiles.id, fileId));
-      await db.update(paxProjects)
-        .set({ fileCount: sql`GREATEST(${paxProjects.fileCount} - 1, 0)` })
-        .where(eq(paxProjects.id, file.projectId));
-    }
+  /**
+   * Delete one project file, org-scoped IN THE STATEMENT.
+   *
+   * `pax_project_files` carries no `organization_id` — `project_id` is the ONLY
+   * ownership link — so the tenant predicate has to be proven against
+   * `pax_projects` inside the DELETE itself. The previous version resolved the
+   * file by bare id and then took `projectId` FROM THE FETCHED ROW, so the org
+   * check the caller performed (on the project id in the URL) constrained a
+   * different row than the one being deleted: org A calling
+   * `DELETE /api/ai/projects/<its own id>/files/<org B's file id>` deleted org
+   * B's file and decremented org B's `fileCount`.
+   *
+   * Returns whether a row was actually deleted, so the route can answer 404
+   * instead of reporting success for a file it did not own.
+   */
+  async deletePaxProjectFile(this: DatabaseStorage, organizationId: number, projectId: number, fileId: number): Promise<boolean> {
+    const orgOwnedProject = db.select({ id: paxProjects.id })
+      .from(paxProjects)
+      .where(and(eq(paxProjects.id, projectId), eq(paxProjects.organizationId, organizationId)));
+
+    const deleted = await db.delete(paxProjectFiles)
+      .where(and(
+        eq(paxProjectFiles.id, fileId),
+        eq(paxProjectFiles.projectId, projectId),
+        inArray(paxProjectFiles.projectId, orgOwnedProject),
+      ))
+      .returning({ id: paxProjectFiles.id });
+
+    if (deleted.length === 0) return false;
+
+    await db.update(paxProjects)
+      .set({ fileCount: sql`GREATEST(${paxProjects.fileCount} - 1, 0)` })
+      .where(and(eq(paxProjects.id, projectId), eq(paxProjects.organizationId, organizationId)));
+    return true;
   },
 
   async setConversationProject(this: DatabaseStorage, conversationId: number, projectId: number | null): Promise<void> {

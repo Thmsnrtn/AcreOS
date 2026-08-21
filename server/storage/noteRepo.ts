@@ -276,10 +276,17 @@ export const noteRepo = {
       // Update note balance inside the same transaction with optimistic locking
       if (payment.status === "completed") {
         // SELECT FOR UPDATE locks the row until transaction commits
+        // The note must belong to the SAME organization as the payment row.
+        // `payments.organization_id` is forced to the caller's org upstream but
+        // `noteId` arrives from the request body, and nothing in the DB ties the
+        // two together (plain FKs to `organizations`/`notes`, no cross-column
+        // CHECK). Without this predicate a member of org A could post a
+        // "completed" payment against an org B note id and rewrite org B's
+        // balance/status/version. Both queries below carry the org.
         const [note] = await tx
           .select()
           .from(notes)
-          .where(eq(notes.id, payment.noteId))
+          .where(and(eq(notes.id, payment.noteId), eq(notes.organizationId, payment.organizationId)))
           .for("update");
 
         if (note) {
@@ -292,7 +299,11 @@ export const noteRepo = {
               version: (note.version ?? 1) + 1,
               updatedAt: new Date(),
             })
-            .where(and(eq(notes.id, payment.noteId), eq(notes.version, note.version ?? 1)))
+            .where(and(
+              eq(notes.id, payment.noteId),
+              eq(notes.organizationId, payment.organizationId),
+              eq(notes.version, note.version ?? 1),
+            ))
             .returning();
 
           if (updated.length === 0) {

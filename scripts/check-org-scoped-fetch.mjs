@@ -129,7 +129,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/agentOrchestration.ts::approveStep",
   "server/services/alertPolicy.ts::generateWeeklyDigest",
   "server/services/alerting.ts::runDailyAlertCheck",
-  "server/services/buyerMatchingAI.ts::resolveBuyerContact",
   "server/services/customerSupportAutoResolver.ts::attemptResolution",
   "server/services/decisionsInbox.ts::approve",
   "server/services/dunning.ts::getSummary",
@@ -154,7 +153,13 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::createMessage",
   "server/storage/paxRepo.ts::createPaxProjectFile",
   "server/storage/platformOpsRepo.ts::deleteBorrowerSession",
-  "server/storage/paxRepo.ts::deletePaxProjectFile",
+  // deletePaxProjectFile removed 2026-08-21: the DELETE now proves the file's
+  // parent project belongs to the caller's org inside the statement
+  // (`project_id IN (SELECT id FROM pax_projects WHERE id = $p AND
+  // organization_id = $o)`), and the fileCount UPDATE carries the same
+  // predicate. It used to resolve the file by bare id and then scope the
+  // project update to the projectId READ OFF THAT ROW — another org's row.
+  // Pinned behaviourally by tests/unit/paxProjectFileTenancy.test.ts.
   "server/storage/integrationsRepo.ts::findOrganizationIntegrationByCredential",
   "server/storage/sequencesRepo.ts::getAbTestByCampaign",
   "server/storage/vaEngineRepo.ts::getAdPostingsByProperty",
@@ -199,13 +204,22 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/campaignRepo.ts::getCampaignOptimizations",
   "server/storage/campaignRepo.ts::markOptimizationImplemented",
   "server/storage/dealRepo.ts::_autoGenerateClosingChecklist",
-  "server/storage/leadRepo.ts::getLeadActivities",
+  // getLeadActivities removed 2026-08-21: the SELECT now binds
+  // `lead_activities.organization_id` to a REQUIRED leading org argument
+  // alongside the lead id. It used to take `(leadId, limit)` with no org in
+  // signature or body, and four of its five callers passed
+  // `(organizationId, leadId)` — both `number`, so `npm run check` stayed
+  // green while the query read `lead_id = <organizationId> limit <leadId>`.
+  // Pinned behaviourally by tests/unit/leadActivityTenancy.test.ts.
   // The orgRepo organization-by-id/slug/stripe-id fetchers and the two
   // platform org-list methods were allowlisted only because the pre-masking
   // parser misclassified `organizations` itself as org-scoped. The
   // organizations table IS the org — fetching it by key is the tenancy
   // lookup primitive, not an offense. Entries removed 2026-06-10.
-  "server/storage/noteRepo.ts::createPayment",
+  // createPayment removed 2026-08-21: it now scopes BOTH note queries — the
+  // SELECT … FOR UPDATE and the balance UPDATE — to `payment.organizationId`,
+  // so a payment posted by org A can no longer rewrite an org B note it names
+  // by id. Pinned behaviourally by tests/unit/notePaymentTenancy.test.ts.
   "server/storage/noteRepo.ts::getNoteByAccessToken",
 
   // ── SERVICE LAYER, frozen 2026-08-13 ──────────────────────────────────────
@@ -313,7 +327,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/priceOptimizer.ts::getMarketTiming",
   "server/services/priceOptimizer.ts::getMarketVolatility",
   "server/services/priceOptimizer.ts::incorporateMarketTrends",
-  "server/services/proactiveMonitor.ts::autoResolveAlert",
   "server/services/proactiveMonitor.ts::autoResolveAlertsByMetadata",
   "server/services/proactiveMonitor.ts::cleanupOldAlerts",
   "server/services/voiceCallAI.ts::extractActionItems",
