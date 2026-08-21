@@ -267,7 +267,29 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
       "Property history",
       "Comparable sales",
     ],
-    tools: ["propstream_lookup", "propstream_comps"],
+    tools: [],
+    // PLANNED 2026-08-21. Its two tools DO dispatch — which is why
+    // connectorCatalogIsHonest passed it while quickbooks/dropbox/docusign were
+    // caught — but the repository contains TWO MUTUALLY INCOMPATIBLE contracts
+    // for this vendor and no evidence either has ever succeeded:
+    //
+    //   services/connectors/executor.ts  GET  /property/search, /comps
+    //                                    Authorization: Bearer <the org's apiKey>
+    //   services/titleSearchService.ts   POST /login {username,password} -> token
+    //                                    POST /property/detail, Bearer <that token>
+    //
+    // A static per-org API key and a login-for-token exchange cannot both be the
+    // vendor's auth model, and the executor's own comment concedes the endpoint
+    // was guessed ("simplified - actual endpoint varies by subscription"). No
+    // fixture, recorded response, telemetry or test exercises either HTTP path.
+    //
+    // This does NOT assert the vendor has no API — that cannot be established
+    // from here. `planned` means exactly what it says: unverified, so the
+    // connect route refuses BEFORE encrypting a customer's key, rather than
+    // accepting a PropStream secret and answering `status: connected`. That is
+    // the same defect 5ad1e9f7 closed for three other connectors; this one hid
+    // behind having handlers.
+    availability: "planned",
     setupUrl: "https://www.propstream.com/",
   },
   {

@@ -1133,3 +1133,57 @@ missed every instance, for two independent reasons, both now fixed:
 This is the second law in the CLAUDE.md pair, arriving from the other direction:
 not a canonical function with no callers, but a canonical gate whose population
 was smaller than the defect it named.
+
+---
+
+## `propstream_lookup` / `propstream_comps` — executed 2026-08-21
+
+**What went.** Both tool definitions in `server/ai/tools.ts`, their dispatch
+branches, their entries in the "safe to run while Pax is paused" allowlist, and
+`propstreamLookup` / `propstreamComps` in
+`server/services/connectors/executor.ts`. The PropStream connector stays in the
+catalog with `tools: []` and `availability: "planned"`.
+
+**Why.** The repository held TWO MUTUALLY INCOMPATIBLE contracts for the same
+vendor domain, and at most one can be the vendor's:
+
+| caller | credential | request |
+|---|---|---|
+| `connectors/executor.ts` | the ORG's static `apiKey`, as Bearer | `GET /property/search`, `GET /comps` |
+| `titleSearchService.ts` | PLATFORM env `PROPSTREAM_EMAIL`/`PASSWORD` → `POST /login` → token | `POST /property/detail` |
+
+The executor carried its own admission — *"simplified - actual endpoint varies by
+subscription"* — and no fixture, recorded response, telemetry or test ever
+exercised either HTTP path.
+
+**Stated precisely, because the distinction matters:** this does NOT assert that
+PropStream has no API. That cannot be established from here. What can be
+established is that AcreOS had not established it, while presenting the connector
+to customers as working and accepting their API key for it.
+
+**The gate that passed it, and why.** `connectorCatalogIsHonest` was written
+(commit `5ad1e9f7`) to stop the catalog taking credentials for rails that do not
+exist, and it caught quickbooks, dropbox and docusign. It asks whether each
+declared tool resolves to a `case` in the dispatch switch. PropStream's two did.
+**So the rule proved "a handler exists" where the property is "the integration
+works"** — the first law one level deeper than the commit that installed it.
+Deleting the handlers makes `planned` true in the gate's own terms, which is why
+this is a deletion and not a flag.
+
+**Not migrated to the provider registry**, which is what the frontier item
+originally proposed. Routing it through the registry would have bought caching,
+circuit breaking, telemetry and a license flag for an integration nobody had
+confirmed exists — governance around a guess. Same disposition as
+`batchLeadsSkipTrace`.
+
+**Reactivation criteria.** A confirmed request/response against PropStream's real
+API, from an account someone holds, settles which of the two contracts is right.
+Then it belongs in `services/providers/` as a provider, and
+`titleSearchService`'s parallel path should be reconciled to it rather than left
+as a second implementation.
+
+**Residue check.** `titleSearchService.ts` is untouched and still reaches
+`api.propstream.com` on platform-level env credentials — deliberately left,
+because it is a separate question (whether AcreOS should hold a platform-wide
+data-vendor account at all) and deleting it here would have been an unannounced
+answer to it. Recorded so the next reader finds it rather than rediscovers it.

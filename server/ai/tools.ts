@@ -767,30 +767,24 @@ export const toolDefinitions = {
     },
   },
 
-  propstream_lookup: {
-    name: "propstream_lookup",
-    description: "Look up owner info, equity, liens, and property history via PropStream.",
-    parameters: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Full property address" },
-      },
-      required: ["address"],
-    },
-  },
-
-  propstream_comps: {
-    name: "propstream_comps",
-    description: "Pull comparable sales from PropStream for a given address.",
-    parameters: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Subject property address" },
-        radius: { type: "number", description: "Search radius in miles (default: 1)" },
-      },
-      required: ["address"],
-    },
-  },
+  // DELETED 2026-08-21 — propstream_lookup and propstream_comps, with their
+  // executors. The PropStream connector is now `availability: "planned"`, which
+  // the catalog-honesty gate requires to mean "no dispatchable tools".
+  //
+  // Not a capability that was removed: a capability nothing established existed.
+  // The repository held TWO MUTUALLY INCOMPATIBLE contracts for this vendor —
+  // these two used `Authorization: Bearer <the org's static apiKey>` against
+  // GET /property/search and /comps, while titleSearchService.ts POSTs
+  // {username,password} to /login for a token and then POSTs /property/detail.
+  // Both cannot be the vendor's auth model. The executor carried its own
+  // admission: "simplified - actual endpoint varies by subscription". No
+  // fixture, recorded response, telemetry or test ever exercised either path.
+  //
+  // Same disposition as batch_leads_skip_trace (ledger 38): a bare `fetch` with
+  // no provider registry, no cache, no breaker and no license flag, reachable
+  // by a customer typing a sentence. Routing it through the registry — the
+  // plan this frontier item originally carried — would have built governance
+  // around an integration nobody had confirmed exists.
 
   batch_leads_skip_trace: {
     name: "batch_leads_skip_trace",
@@ -1003,8 +997,6 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "list_calendar_events",
   "get_stripe_customer",
   "list_stripe_payments",
-  "propstream_lookup",
-  "propstream_comps",
   // batch_leads_skip_trace was here until 2026-08-19. A consumer-report lookup
   // that spends the org's BatchLeads credits and returns a third party's phone
   // numbers and prior addresses is not "safe to run while Pax is paused"; the
@@ -2838,14 +2830,6 @@ export async function executeTool(
       case "create_calendar_event": {
         const { createCalendarEvent } = await import("../services/connectors/executor");
         return createCalendarEvent(org, args as any);
-      }
-      case "propstream_lookup": {
-        const { propstreamLookup } = await import("../services/connectors/executor");
-        return propstreamLookup(org, args as any);
-      }
-      case "propstream_comps": {
-        const { propstreamComps } = await import("../services/connectors/executor");
-        return propstreamComps(org, args as any);
       }
       // `batch_leads_skip_trace` had a dispatch branch here until 2026-08-20.
       // The FCRA gate above returns before this switch, so it was unreachable

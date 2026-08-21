@@ -261,29 +261,24 @@ export async function createCalendarEvent(org: Organization, args: {
 
 // ── PropStream ─────────────────────────────────────────────────────────────
 
-export async function propstreamLookup(org: Organization, args: { address: string }) {
-  const creds = await getCredentials(org.id, "propstream");
-  if (!creds?.apiKey) return { success: false, error: "PropStream is not connected." };
-
-  // PropStream API endpoint (simplified - actual endpoint varies by subscription)
-  const res = await fetch(`https://api.propstream.com/property/search?address=${encodeURIComponent(args.address)}`, {
-    headers: { Authorization: `Bearer ${creds.apiKey}` },
-  });
-  if (!res.ok) return { success: false, error: `PropStream error: ${res.status}` };
-  const data = await res.json();
-  return { success: true, data };
-}
-
-export async function propstreamComps(org: Organization, args: { address: string; radius?: number }) {
-  const creds = await getCredentials(org.id, "propstream");
-  if (!creds?.apiKey) return { success: false, error: "PropStream is not connected." };
-
-  const res = await fetch(`https://api.propstream.com/comps?address=${encodeURIComponent(args.address)}&radius=${args.radius ?? 1}`, {
-    headers: { Authorization: `Bearer ${creds.apiKey}` },
-  });
-  if (!res.ok) return { success: false, error: `PropStream comps error: ${res.status}` };
-  return { success: true, data: await res.json() };
-}
+// DELETED 2026-08-21 — propstream_lookup and propstream_comps, with their
+// executors. The PropStream connector is now `availability: "planned"`, which
+// the catalog-honesty gate requires to mean "no dispatchable tools".
+//
+// Not a capability that was removed: a capability nothing established existed.
+// The repository held TWO MUTUALLY INCOMPATIBLE contracts for this vendor —
+// these two used `Authorization: Bearer <the org's static apiKey>` against
+// GET /property/search and /comps, while titleSearchService.ts POSTs
+// {username,password} to /login for a token and then POSTs /property/detail.
+// Both cannot be the vendor's auth model. The executor carried its own
+// admission: "simplified - actual endpoint varies by subscription". No
+// fixture, recorded response, telemetry or test ever exercised either path.
+//
+// Same disposition as batch_leads_skip_trace (ledger 38): a bare `fetch` with
+// no provider registry, no cache, no breaker and no license flag, reachable
+// by a customer typing a sentence. Routing it through the registry — the
+// plan this frontier item originally carried — would have built governance
+// around an integration nobody had confirmed exists.
 
 // ── BatchLeads ─────────────────────────────────────────────────────────────
 //
@@ -329,22 +324,63 @@ export async function triggerMake(org: Organization, args: { data: Record<string
 
 // ── MLS ───────────────────────────────────────────────────────────────────
 
+/**
+ * An OData string literal. A single quote is escaped by DOUBLING it — the only
+ * escape the grammar has.
+ *
+ * `searchMlsListings` interpolated caller-supplied `city`/`status` straight into
+ * `$filter` inside single quotes. Pax supplies those values from a model, so an
+ * apostrophe ("Coeur d'Alene", "O'Fallon" — both real places this product is
+ * sold into) truncated the literal and produced a malformed filter, and a
+ * crafted value could append clauses of its own. The org queries its OWN MLS
+ * with its OWN token, so this is not a cross-tenant hole; it is a correctness
+ * defect that fails on ordinary American place names.
+ */
+function odataLiteral(value: string): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * The org's RESO base URL, or a refusal.
+ *
+ * This used to fall back to `https://replication.sparkplatform.com/api/v1` when
+ * `mlsUrl` was absent — a specific vendor's host, silently, for an org that had
+ * not named one. `mlsUrl` is a required credential field, so the fallback could
+ * only ever be reached in a state that should not exist, and it would then send
+ * the org's bearer token to a third party nobody chose. A default may help a
+ * calculation continue; it may not stand in for configuration the customer owns.
+ */
+function resoBaseUrl(creds: Record<string, unknown>): string | null {
+  const raw = typeof creds.mlsUrl === "string" ? creds.mlsUrl.trim() : "";
+  return raw === "" ? null : raw.replace(/\/+$/, "");
+}
+
 export async function searchMlsListings(org: Organization, args: { city?: string; state?: string; minPrice?: number; maxPrice?: number; status?: string; limit?: number }) {
   const creds = await getCredentials(org.id, "mls");
   if (!creds?.accessToken) return { success: false, error: "MLS is not connected." };
 
+  const baseUrl = resoBaseUrl(creds as Record<string, unknown>);
+  if (!baseUrl) {
+    return {
+      success: false,
+      error:
+        "No RESO API base URL is configured for this MLS connection. Add the base URL " +
+        "your MLS gave you in Settings — AcreOS will not guess a vendor's host and send " +
+        "your access token to it.",
+    };
+  }
+
   const params = new URLSearchParams({
-    $top: String(args.limit ?? 10),
+    $top: String(Math.min(Math.max(Number(args.limit ?? 10) || 10, 1), 200)),
     $filter: [
-      args.city ? `City eq '${args.city}'` : "",
-      args.state ? `StateOrProvince eq '${args.state}'` : "",
-      args.minPrice ? `ListPrice ge ${args.minPrice}` : "",
-      args.maxPrice ? `ListPrice le ${args.maxPrice}` : "",
-      args.status ? `StandardStatus eq '${args.status}'` : "",
+      args.city ? `City eq ${odataLiteral(args.city)}` : "",
+      args.state ? `StateOrProvince eq ${odataLiteral(args.state)}` : "",
+      Number.isFinite(Number(args.minPrice)) && args.minPrice ? `ListPrice ge ${Number(args.minPrice)}` : "",
+      Number.isFinite(Number(args.maxPrice)) && args.maxPrice ? `ListPrice le ${Number(args.maxPrice)}` : "",
+      args.status ? `StandardStatus eq ${odataLiteral(args.status)}` : "",
     ].filter(Boolean).join(" and ") || "StandardStatus eq 'Active'",
   });
 
-  const baseUrl = (creds as any).mlsUrl ?? "https://replication.sparkplatform.com/api/v1";
   const res = await fetch(`${baseUrl}/Property?${params}`, {
     headers: { Authorization: `Bearer ${creds.accessToken}` },
   });
@@ -353,18 +389,45 @@ export async function searchMlsListings(org: Organization, args: { city?: string
   return { success: true, data: data.value ?? data };
 }
 
+/**
+ * REFUSES 2026-08-21. It did not return comparable sales; it returned the
+ * SUBJECT PROPERTY.
+ *
+ * The query was:
+ *
+ *     $filter=StandardStatus eq 'Closed' and UnparsedAddress eq '<the address>'
+ *
+ * `UnparsedAddress eq` is an exact match on the address the caller passed, so
+ * the result set is at most one record — the subject's own closed listing — and
+ * never a comparable. The `radius` argument the tool advertises and Pax fills in
+ * appeared nowhere in the body.
+ *
+ * That is worse than a missing feature. `get_mls_comps` is a PRICING input: an
+ * operator asking Pax for comps and receiving the subject's own prior sale gets
+ * a number that looks like a comp, is labelled a comp, and is the one figure
+ * guaranteed not to be one. Refusing is strictly better than answering wrongly.
+ *
+ * WHY REFUSE RATHER THAN FIX IT HERE. A real comp set needs proximity, and RESO
+ * gives two honest ways to get it: a geo filter (`geo.distance` on Coordinates,
+ * where the MLS supports it) or same-`PostalCode` Closed listings within a
+ * recent `CloseDate` window, excluding the subject. Both need the subject's own
+ * record fetched first, and choosing between them — and choosing the window, and
+ * whether to exclude distressed sales — is a valuation methodology, not a bug
+ * fix. That is a decision to make deliberately rather than to smuggle in under a
+ * repair.
+ */
 export async function getMlsComps(org: Organization, args: { address: string; radius?: number; limit?: number }) {
   const creds = await getCredentials(org.id, "mls");
   if (!creds?.accessToken) return { success: false, error: "MLS is not connected." };
 
-  const params = new URLSearchParams({
-    $top: String(args.limit ?? 10),
-    $filter: `StandardStatus eq 'Closed' and UnparsedAddress eq '${args.address}'`,
-  });
-  const baseUrl = (creds as any).mlsUrl ?? "https://replication.sparkplatform.com/api/v1";
-  const res = await fetch(`${baseUrl}/Property?${params}`, {
-    headers: { Authorization: `Bearer ${creds.accessToken}` },
-  });
-  if (!res.ok) return { success: false, error: `MLS comps error: ${res.status}` };
-  return { success: true, data: await res.json() };
+  return {
+    success: false,
+    error:
+      "AcreOS cannot pull MLS comparable sales yet. The query behind this tool matched the " +
+      "subject property's own address, so it returned that property's prior sale rather than " +
+      "comparables — a number that reads like a comp and is the one sale that is not one. " +
+      "Rather than keep answering, it refuses: pull comps in your MLS directly, or use a " +
+      "comparable-sales provider connected under Settings.",
+    data: { subjectAddress: args.address, comparablesReturned: 0 },
+  };
 }
