@@ -385,7 +385,18 @@ const consideredKeys = new Set();
 // FAMILY 1 — exported server symbols with no production call site
 // ============================================================================
 
-const EXPORT_SOURCE_DIRS = ["server/services", "server/jobs"];
+// WIDENED 2026-08-21 to include `shared`, and the reason is the whole point of
+// this gate: `shared` was already in PRODUCTION_ROOTS (so shared files COUNT as
+// call sites) while being absent here (so shared files could never be REPORTED
+// unreached). A shared module nothing loads was therefore invisible to the
+// built-but-unwired rule — and `shared/` is where the canonical registries live.
+//
+// The newly-visible population is frozen in its OWN baselines rather than added
+// to the server ones (see PER_ROOT below). That is the precedent set by
+// check-org-scoped-fetch's 2026-08-16 widening from method-shape to
+// function-shape: the existing registers did not move at all, so the signal they
+// carry is not diluted by a one-off +54.
+const EXPORT_SOURCE_DIRS = ["server/services", "server/jobs", "shared"];
 
 const EXPORT_DECL_RE =
   /^[ \t]*export\s+(?:declare\s+)?(?:async\s+)?(function\*?|const|let|var|class|abstract\s+class)\s+([A-Za-z_$][\w$]*)/gm;
@@ -1352,7 +1363,41 @@ if (opaqueExports.length > 0) {
 const stale = staleAllowlistEntries(consideredKeys);
 let failed = false;
 
-for (const fam of FAMILIES) {
+/**
+ * PER-ROOT COUNTS.
+ *
+ * The four export families are split into a `server` half and a `shared` half,
+ * each with its own down-only baseline. Merging them would let 54 newly-visible
+ * shared findings sit in the same number as 390 server ones, so a server
+ * regression could hide inside a shared improvement and vice versa — the same
+ * reason `unreachedExports` and `internalOnlyExports` were split apart on
+ * 2026-08-20 rather than left as one number.
+ *
+ * The families that are not per-file (tables, routes) are passed through
+ * untouched.
+ */
+const EXPORT_FAMILY_KEYS = new Set([
+  "unreachedExports",
+  "internalOnlyExports",
+  "moduleOrphans",
+  "opaqueExports",
+]);
+const isSharedRooted = (f) => typeof f.file === "string" && f.file.startsWith("shared/");
+const ROOTED_FAMILIES = FAMILIES.flatMap((fam) => {
+  if (!EXPORT_FAMILY_KEYS.has(fam.key)) return [fam];
+  const all = fam.findings;
+  return [
+    { ...fam, findings: all.filter((f) => !isSharedRooted(f)) },
+    {
+      ...fam,
+      key: `${fam.key}Shared`,
+      label: `${fam.label} (shared)`,
+      findings: all.filter(isSharedRooted),
+    },
+  ];
+});
+
+for (const fam of ROOTED_FAMILIES) {
   const count = fam.findings.length;
   const baseline = ratchet.baselines[fam.key];
 
@@ -1428,6 +1473,6 @@ if (failed) {
   process.exit(1);
 }
 console.log(
-  `${TAG} PASS — all ${FAMILIES.length} reachability counts at baseline`,
+  `${TAG} PASS — all ${ROOTED_FAMILIES.length} reachability counts at baseline`,
 );
 process.exit(0);

@@ -917,7 +917,11 @@ describe("lint-reachability — ratchet semantics", () => {
     // the fifth family landed — which is how this very assertion broke. It now
     // derives from FAMILIES.length, so the check does too: whatever the number
     // is, the line must report as many counts as the run actually printed.
-    const reported = [...out.matchAll(/^\[lint-reachability\] \S+: PASS — /gm)].length;
+    // `[^:]+` rather than `\S+`: per-root labels contain a space
+    // ("unreached-exports (shared)"), and the first version of this line counted
+    // only the seven space-free labels while the summary reported eleven — the
+    // derivation broke on the very drift it exists to catch.
+    const reported = [...out.matchAll(/^\[lint-reachability\] [^:\n]+: PASS — /gm)].length;
     expect(reported, "no family lines were printed").toBeGreaterThan(0);
     expect(out).toContain(`PASS — all ${reported} reachability counts at baseline`);
   });
@@ -1217,6 +1221,15 @@ describe("lint-reachability — the real repo", () => {
         with: { type: "json" },
       })
     ).default as { baselines: Record<string, number>; allowlist: Allow[] };
+    // PER-ROOT KEYS, added 2026-08-21 with the widening of EXPORT_SOURCE_DIRS to
+    // `shared`. Each export family is counted once per root so the newly-visible
+    // shared population cannot dilute the server signal: folding +54 shared
+    // findings into the 390 server ones would let a server regression hide
+    // inside a shared improvement, which is the same reason unreachedExports and
+    // internalOnlyExports were split apart the day before. The four SERVER
+    // baselines did not move across that widening — 390 / 1187 / 30 / 23 before
+    // and after — and the separation is falsified in both directions by the
+    // fixture cases below.
     expect(Object.keys(cfg.baselines).sort()).toEqual([
       // internalOnlyExports is "exported wider than it is used" — a separate
       // rule from "nothing anywhere touches this", with a separate remedy (drop
@@ -1224,6 +1237,7 @@ describe("lint-reachability — the real repo", () => {
       // holds 1,188 of what used to be 1,578 unreached-exports findings, which
       // is exactly why merging them made the 390 real accusations unreadable.
       "internalOnlyExports",
+      "internalOnlyExportsShared",
       // moduleOrphans counts whole FILES nothing imports — 228 of the unreached
       // exports resolve to 62 files, and a file is the unit a delete-or-wire
       // decision is made in (BLOCKERS B19). It is NOT a delete list: one class
@@ -1235,10 +1249,13 @@ describe("lint-reachability — the real repo", () => {
       // where before it was printed as prose and could grow unwatched. It fell
       // 120 → 23 in the same commit: 97 of those were over-exports the module
       // itself used, which the new family CAN describe.
+      "moduleOrphansShared",
       "opaqueExports",
+      "opaqueExportsShared",
       "tablesNoReader",
       "tablesNoWriter",
       "unreachedExports",
+      "unreachedExportsShared",
       "unregisteredRoutes",
     ]);
     // Every real allowlist entry justifies itself.

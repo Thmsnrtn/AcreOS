@@ -4031,3 +4031,62 @@ parameter (the representation-equivalent defect a symbol-level gate would pass)
 fires 2 cases; reverting either route call site to the unscoped call fires the
 call-site case. Both routes are pinned, because fixing the one a report names
 and leaving its twin is this repo's signature failure.
+
+---
+
+### 62 — THE GATE COULD NOT SEE THE DIRECTORY ITS OWN CANONICAL REGISTRIES LIVE IN
+
+`shared` was in `PRODUCTION_ROOTS` — so a shared file COUNTS as a call site — and
+absent from `EXPORT_SOURCE_DIRS`, so a shared file could never be REPORTED
+unreached. A shared module nothing loads was therefore invisible to the
+built-but-unwired rule, in the one directory where the canonical registries live.
+
+**The widening is registered, not absorbed.** The newly-visible population is
+frozen in four baselines of its own — `unreachedExportsShared` 54,
+`internalOnlyExportsShared` 422, `moduleOrphansShared` 5→2, `opaqueExportsShared`
+14 — and the four SERVER baselines did not move: 390 / 1187 / 30 / 23 before and
+after. That is the precedent from `check-org-scoped-fetch`'s 2026-08-16 widening,
+and the reason matters more than the bookkeeping: **+54 folded into 390 lets a
+server regression hide inside a shared improvement.** Falsified in both
+directions — a probe export in `server/services` fires the server family and
+leaves shared at baseline; a probe in `shared/` does the exact reverse.
+
+**THE DECISION NOBODY HAD HAD TO WRITE DOWN.** `canon.ts`, `constitution.ts` and
+`statuteRegister.ts` are module orphans with zero production importers. The lazy
+reading is "three dead files." The honest one is that they are **indexes of
+enforcement, not enforcement**: every entry points at where its rule actually
+lives, and a drift test checks the pointers still resolve. That satisfies two of
+the second law's three legs — authoritative semantics and drift prevention — and
+forgoes production adoption because there is nothing at runtime to adopt. The
+product does not need to READ the index to obey the rules it indexes.
+
+The law's actual danger was never "no callers." It is production computing the
+same rule INDEPENDENTLY, which is what made `publicMaturityOf()` a defect — the
+landing re-implemented its one-line body inline, so the function and the product
+could disagree. Searched: nothing in `server/` or `client/src` enumerates these
+entries on its own, and the only production mention of `CANONICAL_OBJECTS` is a
+comment pointing AT canon rather than restating it. An index and its targets is
+the right relationship and the opposite of duplication. **The exemption names its
+own revocation condition:** if a production surface ever computes one of these
+rules independently, the fix is to make that surface consume the projection, not
+to widen the exemption.
+
+**The other two orphans stay counted, deliberately.**
+`shared/regulatory/rmloAdvisor.ts` is a 391-line RMLO / Reg-Z / state-usury
+advisory with **zero production importers — every mention of it under `server/`
+is a comment**, including a docblock in `legalDisclaimers.ts` describing callers
+that surface its output. None exist. `statuteRegister` already records the
+surrounding hazard: four independent usury tables, of which `usury.ts` is the
+only one production calls. `shared/constitution/sentinel-ids.ts` has zero
+references anywhere in the repository, built for "postvalidate, streaming
+validators, future safety gates" that were never written. Allowlisting either
+would silence the only pressure to resolve it — an allowlist is for a shape
+that is CORRECT, not for debt that is merely known.
+
+**And the gate's own test broke on the fix, in the way it was written to catch.**
+`reachabilityGate.test.ts` already derived the family count from the output
+rather than hardcoding it — the comment says the summary "used to hardcode 'four'
+and would have gone on saying it after the fifth family landed." But its regex
+was `/\S+: PASS —/`, and the per-root labels contain a space
+(`unreached-exports (shared)`), so it counted seven of eleven printed lines. A
+derivation is only as general as its parser. Widened to `[^:\n]+`.

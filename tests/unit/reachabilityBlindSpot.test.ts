@@ -136,7 +136,15 @@ describe("the summary line counts its families instead of restating a number", (
       gate,
       "the reachability summary hardcodes its family count again",
     ).not.toMatch(/all (four|five|three|\d+) reachability counts/);
-    expect(gate).toMatch(/all \$\{FAMILIES\.length\} reachability counts/);
+    // Pinned as "derived from SOME array's length", not as one variable name.
+    // The first form named `FAMILIES` specifically and broke on 2026-08-21 when
+    // the per-root split made the summary derive from `ROOTED_FAMILIES` — a
+    // change that satisfied this rule MORE completely (it counts what is
+    // actually printed) while failing an assertion written against the spelling.
+    // The invariant is that the number is computed; which array computes it is
+    // an implementation detail, and a literal digit still fails on the line
+    // above.
+    expect(gate).toMatch(/all \$\{[A-Za-z_$][\w$]*\.length\} reachability counts/);
   });
 
   it("the header does not contradict it either", () => {
