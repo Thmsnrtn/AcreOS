@@ -630,7 +630,7 @@ export interface IStorage {
   updateTask(id: number, updates: Partial<InsertTask>): Promise<Task>;
   deleteTask(id: number): Promise<void>;
   completeTask(id: number): Promise<Task>;
-  getRecurringTasksDue(): Promise<Task[]>;
+  getRecurringTasksDue(organizationId: number): Promise<Task[]>;
   createNextRecurringTask(parentTask: Task): Promise<Task>;
 
   // Audit Log (20.1)

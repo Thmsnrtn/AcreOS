@@ -2926,7 +2926,8 @@ export async function registerRoutes(
 
   app.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const recurringTasksDue = await storage.getRecurringTasksDue();
+      const org = req.organization;
+      const recurringTasksDue = await storage.getRecurringTasksDue(org.id);
       const createdTasks = [];
       
       for (const task of recurringTasksDue) {

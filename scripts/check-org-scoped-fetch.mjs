@@ -185,7 +185,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/gisRepo.ts::getParcelSnapshot",
   "server/storage/paxRepo.ts::getPaxScheduledTasksDue",
   "server/storage/paymentRemindersRepo.ts::getPendingReminders",
-  "server/storage/tasksRepo.ts::getRecurringTasksDue",
   "server/storage/paymentRemindersRepo.ts::getRemindersForNote",
   "server/storage/agentWorkflowsRepo.ts::getScheduledTask",
   "server/storage/vaEngineRepo.ts::getSellerCommunicationsByLead",

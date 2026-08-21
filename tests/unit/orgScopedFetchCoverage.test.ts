@@ -130,7 +130,7 @@ const src = fs.readFileSync(LINT, "utf8");
 // `lead_id = <organizationId> limit <leadId>` — another tenant's lead
 // timeline, fed into the caller's output. Pinned behaviourally by
 // tests/unit/leadActivityTenancy.test.ts.
-const BASELINE_ENTRIES = 191;
+const BASELINE_ENTRIES = 190;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,

@@ -3954,3 +3954,80 @@ a `?? 'AcreOS'` sign-off in `routes-deal-rooms.ts`. Fixing them one at a time
 leaves the fourth to be found the same way, so the gate is now a scan over every
 `purpose: 'counterparty'` site in `server/` for a fallback expression yielding an
 AcreOS-bearing literal. Third law, applied without being asked.
+
+---
+
+### 61 — THE LAST FROZEN TENANCY POPULATION, AND THE DEFECT THE VERIFICATION CAP ALMOST LET THROUGH
+
+Rule 1 of `check-org-scoped-fetch` — "no org context at all", 284 register
+entries, 271 unique — had never been adjudicated. Rules 2 and 3 were worked on
+2026-08-20; this closes the set.
+
+| category | n |
+|---|---|
+| DELIBERATE_CROSS_ORG | 142 |
+| SAFE_PARENT_VERIFIED | 62 |
+| NOT_REACHABLE | 52 |
+| SUSPECTED_DEFECT | 8 |
+| PLATFORM_TABLE | 4 |
+| SAFE_SELF_INSERTED | 4 |
+
+Six classifiers, then two independent skeptics per claim on different lenses
+(exploit-path, reachability). One refuted, five confirmed and fixed:
+`buyerMatchingAI.resolveBuyerContact` (a caller-supplied `leadId` resolved any
+org's lead, and the match payload carried the foreign email and name),
+`noteRepo.createPayment` (the `SELECT … FOR UPDATE` and the balance `UPDATE`
+both keyed on note id alone), `proactiveMonitor.autoResolveAlert`,
+`paxRepo.deletePaxProjectFile`, and `leadRepo.getLeadActivities`.
+
+**The coverage check mattered as much as the classification.** All 271 unique
+keys came back classified, zero unclassified — verified by diffing the keys sent
+against the keys returned, not by trusting the tally. A sweep that quietly skips
+entries produces a shorter list and reads exactly like a clean one.
+
+**THE PART WORTH KEEPING: the cap reported its own overflow, and that is the
+only reason a real defect was not filed as reviewed.** The run capped
+adversarial refutation at six claims. Claims 7 and 8 came back in
+`unrefutedOverflow` — labelled UNVERIFIED, explicitly not labelled safe. Reading
+them by hand:
+
+- `acquisitionRepo.getDueDiligenceChecklist` — REFUTED. Its one caller verifies
+  `getProperty(org.id, propertyId)` and 404s first; the sibling GET route uses
+  the org-scoped `getOrCreateDueDiligenceChecklist`. The bare-id query survives
+  but is unreachable with a foreign id.
+- `tasksRepo.getRecurringTasksDue` — **REAL, and the worst of the nine.** It took
+  no organization and returned every org's due recurring tasks. Its only callers
+  are the SAME route registered twice (`POST /api/tasks/process-recurring`, in
+  `routes.ts` and again in `routes-crm-extras.ts`), behind nothing but
+  `isAuthenticated, getOrCreateOrg`, each looping the results into
+  `createNextRecurringTask` — which inserts with the PARENT's `organizationId`
+  and then nulls the parent's `nextOccurrence`. So any authenticated user of any
+  org could, in one request, insert a task into every other organization on the
+  platform, mutate their parent tasks, and read the created rows back in the
+  response body, `title` and `description` copied verbatim from the foreign
+  parent. A cross-tenant write, mutation and read from a button any customer can
+  press.
+
+**So the lesson is about the harness, not the query.** A fan-out that truncates
+its own verification silently is indistinguishable from one that verified
+everything — the finding would have been filed under a green run with five fixes
+and a tidy tally. `log()`-ing the overflow and returning it as a named field is
+what made the difference, and it cost one line. **If a workflow bounds coverage
+anywhere — top-N, no-retry, sampling — it must say what it dropped, in the
+result, not just in a log nobody reads.**
+
+Its gate had a second, smaller lesson. The first version of the evaluator walked
+the predicate's tokens and treated every `[Column, Param]` pair as an equality —
+but this query mixes operators, and `lte(next_occurrence, now)` emits the same
+token shape as `eq`. Applying it as an equality made the VACUITY case fail
+against correct code. That is the useful direction for a harness bug to fail in,
+and it is why the vacuity case goes first: a harness that returns nothing looks
+identical to a query that leaks nothing. The operator now comes from the
+rendered SQL, and anything that is not `=` is asserted to be a genuine
+inequality rather than quietly skipped.
+
+Falsified two ways: dropping the predicate while KEEPING the `organizationId`
+parameter (the representation-equivalent defect a symbol-level gate would pass)
+fires 2 cases; reverting either route call site to the unscoped call fires the
+call-site case. Both routes are pinned, because fixing the one a report names
+and leaving its twin is this repo's signature failure.

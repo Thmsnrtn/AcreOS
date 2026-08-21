@@ -123,9 +123,25 @@ export const tasksRepo = {
     return completed;
   },
 
-  async getRecurringTasksDue(this: DatabaseStorage): Promise<Task[]> {
+  // Scoped 2026-08-21. This took no organizationId and returned every org's due
+  // recurring tasks. Its only two callers are POST /api/tasks/process-recurring
+  // (registered twice — routes.ts and routes-crm-extras.ts), behind nothing but
+  // `isAuthenticated, getOrCreateOrg`, and each looped the results into
+  // `createNextRecurringTask`. So any authenticated user of any org could insert
+  // a task row into EVERY other organization, null out their parent tasks'
+  // nextOccurrence, and read the created rows back — title, description,
+  // assignedTo and entityId are all copied from the foreign parent — in the
+  // response body. A cross-tenant read and write from one unauthenticated-in-
+  // practice button.
+  //
+  // Adjudicated by hand rather than by the refutation fleet: it was claim 7 of 8
+  // and the run capped refutation at 6, so it came back reported as UNVERIFIED,
+  // not as safe. The cap is why it is here and not in the same commit as the
+  // other five.
+  async getRecurringTasksDue(this: DatabaseStorage, organizationId: number): Promise<Task[]> {
     return await db.select().from(tasks)
       .where(and(
+        eq(tasks.organizationId, organizationId),
         eq(tasks.isRecurring, true),
         eq(tasks.status, "completed"),
         lte(tasks.nextOccurrence, new Date())

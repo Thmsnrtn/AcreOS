@@ -406,7 +406,8 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const recurringTasksDue = await storage.getRecurringTasksDue();
+      const org = req.organization;
+      const recurringTasksDue = await storage.getRecurringTasksDue(org.id);
       const createdTasks = [];
       
       for (const task of recurringTasksDue) {
