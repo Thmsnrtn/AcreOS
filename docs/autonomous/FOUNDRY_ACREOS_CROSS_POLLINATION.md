@@ -4090,3 +4090,64 @@ and would have gone on saying it after the fifth family landed." But its regex
 was `/\S+: PASS —/`, and the per-root labels contain a space
 (`unreached-exports (shared)`), so it counted seven of eleven printed lines. A
 derivation is only as general as its parser. Widened to `[^:\n]+`.
+
+---
+
+### 63 — EVERY NOTE IN EVERY ORGANIZATION WAS AUDITED AGAINST TEXAS LAW
+
+`GET /api/compliance/usury-audit` is a live, org-scoped route returning an
+organization's usury compliance: counts of compliant / warning / violation notes,
+with a per-note clearance. Its whole answer rested on this line:
+
+```ts
+const state = (note as any).propertyState || "TX"; // Try to get state from note; fallback TX
+```
+
+**`notes` has no `propertyState` column.** The identifier appears nowhere in
+`shared/schema.ts`. So the cast produced `undefined` on every row, the fallback
+fired every time, and every note in every organization was judged against Texas's
+18% cap — an operator in Arkansas (17%) or Arizona (10%) receiving a compliance
+document about a jurisdiction none of their property is in. The failure mode of
+getting usury wrong is forfeiting all interest on the note, or voiding it.
+
+`(note as any).borrowerName` was the same shape — `notes` carries `borrowerId`, a
+lead reference — so every row also reported a null borrower. **Both `as any`
+casts are the only reason `tsc` never objected**, which is the pattern CLAUDE.md
+already records from `leads.organizationId`: a cast on a field that does not
+exist reads as defensive and is the opposite.
+
+**The comment is the tell, and it is worth reading twice.** *"Try to get state
+from note; fallback TX."* The author knew the read might fail and chose a
+jurisdiction for the failure case. There is no such thing as a default
+jurisdiction — a compliance audit against a guessed state is not a weaker audit,
+it is a correct audit of a different place, which is worse, because it is
+confident.
+
+**The fix is a real join and a refusal.** The state now comes from
+`notes.propertyId -> properties.state`, org-scoped on both sides of the join so a
+note pointing at another tenant's property cannot pull that property's state. A
+note whose jurisdiction cannot be established lands in a new `indeterminate`
+bucket and is excluded from every other count. "We could not tell" and "it is
+fine" are different answers and only one of them was ever true.
+
+**How it was found, which is the part that generalises.** Not by looking for it.
+`statuteRegister` records a different, larger hazard — FOUR independent usury
+tables (`usury.ts`, `usuryCeiling.ts`, `rmloAdvisor.ts`,
+`regulatoryIntelligence.ts`) disagreeing for 25 states, with TX named as a
+three-way conflict "AND `auditOrgUsury`'s fallback state". I went to reconcile
+the 25 and stopped, because reconciling them means making per-state legal
+determinations, which is exactly the licensed-professional role the
+minimum-necessary-responsibility posture says AcreOS should not assume. Reading
+the fallback the register mentioned in passing turned up something strictly
+worse and entirely mechanical: the 25-state disagreement is about which of three
+numbers to believe; this was about auditing the wrong country's worth of notes.
+
+**A registered hazard's footnote can be larger than the hazard.** The register
+named the TX fallback as context for a conflict, not as a finding of its own.
+
+**Still open, deliberately:** the 25-state disagreement stands, and so does
+`usuryCeiling.ts` — described in the register as "the best-tested and entirely
+UNWIRED" while the weaker `usury.ts` is what production calls. That is the second
+law in its purest form, and resolving it means deciding which table is
+authoritative, which is a legal question with a founder/counsel answer, not an
+engineering one.

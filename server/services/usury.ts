@@ -103,34 +103,110 @@ export function checkUsury(state: string, annualInterestRate: number): UsuryClea
 }
 
 // Check all existing notes in an org for usury compliance
+/**
+ * Audit an org's notes against the usury cap of the state each note's property
+ * is actually in.
+ *
+ * ── WHAT THIS USED TO DO ────────────────────────────────────────────────────
+ *     const state = (note as any).propertyState || "TX"; // fallback TX
+ *
+ * `notes` has no `propertyState` column — it does not exist anywhere in
+ * shared/schema.ts — so the cast produced `undefined` on every row and the
+ * fallback fired every time. **Every note in every organization was audited
+ * against Texas law**, and `GET /api/compliance/usury-audit` served the result
+ * as that org's compliance status. An operator in Arkansas or New York received
+ * a violation count computed against a jurisdiction none of their property is
+ * in, on the one rule whose failure mode is forfeiting all interest on the note.
+ *
+ * `(note as any).borrowerName` was the same shape: `notes` carries `borrowerId`,
+ * a lead reference, so every row reported a null borrower. Both casts are why
+ * `tsc` never objected.
+ *
+ * ── WHAT IT DOES NOW ────────────────────────────────────────────────────────
+ * The jurisdiction comes from the note's property (`notes.propertyId ->
+ * properties.state`), org-scoped on both sides. A note whose state cannot be
+ * resolved — no linked property, or a property with no state on file — is NOT
+ * assigned one. It lands in `indeterminate` and is excluded from every other
+ * count, because a compliance audit that guesses the jurisdiction is not a
+ * weaker audit, it is a different document about a different place.
+ */
 export async function auditOrgUsury(orgId: number): Promise<{
   compliant: number;
   warnings: number;
   violations: number;
-  results: Array<{ noteId: number; borrowerName: string | null; rate: number; clearance: UsuryClearance }>;
+  /** Notes whose jurisdiction could not be established. Never assumed. */
+  indeterminate: number;
+  results: Array<{
+    noteId: number;
+    borrowerName: string | null;
+    rate: number;
+    state: string | null;
+    clearance: UsuryClearance | null;
+    indeterminateReason?: string;
+  }>;
 }> {
   const { db } = await import("../db");
-  const { notes, properties } = await import("@shared/schema");
-  const { eq } = await import("drizzle-orm");
+  const { notes, properties, leads } = await import("@shared/schema");
+  const { eq, and } = await import("drizzle-orm");
 
-  const orgNotes = await db.select().from(notes).where(eq(notes.organizationId, orgId));
+  // One org-scoped read; the joins carry the org predicate too, so a note
+  // pointing at another tenant's property cannot pull that property's state.
+  const rows = await db
+    .select({
+      id: notes.id,
+      interestRate: notes.interestRate,
+      propertyState: properties.state,
+      borrowerFirst: leads.firstName,
+      borrowerLast: leads.lastName,
+    })
+    .from(notes)
+    .leftJoin(
+      properties,
+      and(eq(properties.id, notes.propertyId), eq(properties.organizationId, orgId)),
+    )
+    .leftJoin(leads, and(eq(leads.id, notes.borrowerId), eq(leads.organizationId, orgId)))
+    .where(eq(notes.organizationId, orgId));
 
-  const results = orgNotes.map(note => {
-    const rate = Number(note.interestRate || 0);
-    const state = (note as any).propertyState || "TX"; // Try to get state from note; fallback TX
+  const results = rows.map((row) => {
+    const rate = Number(row.interestRate || 0);
+    const borrowerName =
+      [row.borrowerFirst, row.borrowerLast].filter(Boolean).join(" ").trim() || null;
+    const state = (row.propertyState ?? "").trim().toUpperCase();
+
+    if (!state) {
+      return {
+        noteId: row.id,
+        borrowerName,
+        rate,
+        state: null,
+        clearance: null,
+        indeterminateReason:
+          "No state on file for this note's property, so AcreOS cannot say which usury " +
+          "cap applies. Link the note to a property with a state, or check the rate " +
+          "against the governing state's limit directly.",
+      };
+    }
+
     const clearance = checkUsury(state, rate);
-    return {
-      noteId: note.id,
-      borrowerName: (note as any).borrowerName || null,
-      rate,
-      clearance,
-    };
+    if (clearance.statuteNote === "Unknown") {
+      return {
+        noteId: row.id,
+        borrowerName,
+        rate,
+        state,
+        clearance: null,
+        indeterminateReason: `AcreOS has no usury limit on file for ${state}.`,
+      };
+    }
+
+    return { noteId: row.id, borrowerName, rate, state, clearance };
   });
 
   return {
-    compliant: results.filter(r => r.clearance.warningLevel === "ok").length,
-    warnings: results.filter(r => r.clearance.warningLevel === "warning").length,
-    violations: results.filter(r => r.clearance.warningLevel === "violation").length,
+    compliant: results.filter((r) => r.clearance?.warningLevel === "ok").length,
+    warnings: results.filter((r) => r.clearance?.warningLevel === "warning").length,
+    violations: results.filter((r) => r.clearance?.warningLevel === "violation").length,
+    indeterminate: results.filter((r) => r.clearance === null).length,
     results,
   };
 }
