@@ -4151,3 +4151,69 @@ UNWIRED" while the weaker `usury.ts` is what production calls. That is the secon
 law in its purest form, and resolving it means deciding which table is
 authoritative, which is a legal question with a founder/counsel answer, not an
 engineering one.
+
+---
+
+### 64 — A PER-LEAD SCORE THAT COULD ONLY EVER RETURN TWO ANSWERS
+
+Ledger 63 fixed one cast that read a column which does not exist. The interesting
+question was whether it was an instance or a CLASS — CLAUDE.md already records a
+second (`leads.organizationId` widened by an `as any`), and two is a pattern.
+
+**The sweep.** For every `(x as any).prop` in `server/` where `x`'s name maps
+unambiguously to a schema table, check whether `prop` is a column of that table.
+90 such casts; **49 read a property that is not a column**; **19 read one
+declared nowhere in `shared/` at all**, so they are `undefined` on every row.
+Ranking those 19 by whether they carry a substantive fallback — the thing that
+turns `undefined` into a claim — put the real defects at the top.
+
+**The probe had the ledger-45 bug in its first form.** It did not strip comments,
+and its two loudest findings were the defect quoted inside the doc comment
+recording its own fix. Same mistake `lint-reachability` made. Fixed before
+reading the results, which is the only reason the list is trustworthy.
+
+**Top finding: `GET /api/seller-motivation/:leadId`.**
+`computeSellerMotivationScore` takes eleven signals. A `leads` row can supply
+TWO. The other nine were cast onto non-existent columns, each with a default:
+
+| signal | default | reality |
+|---|---|---|
+| `assessedValue` | `"5000"` | on `properties`; `leads` has no `propertyId`, so unreachable from here |
+| `ownershipYears` | `5` | on no table |
+| `estimatedCurrentValue` | `assessedValue * 1.4` | therefore always 7000 |
+| `countyCompetitionLevel` | `"medium"` | never read from anything |
+| `taxDelinquentYears` / `Amount` / `lastSalePrice` | `0` | on no table |
+| `ownerName` | `undefined` | so `isInherited` and `isCorporateOwner` were always false |
+| `ownerState` | `undefined` | so **`isOutOfState` was always false** |
+
+Only `isTaxDelinquent` varied. **The endpoint returned at most two distinct
+scores across every lead in every organization** and presented each as that
+lead's motivation. And `isOutOfState` deserves its own line: an out-of-state
+owner is one of the strongest motivation signals in land, and it could never
+fire.
+
+`getOptimalOutreachTiming` received `(lead as any).ownerState || lead.state ||
+"TX"` — **the same fabricated Texas fallback as `auditOrgUsury`**, found the same
+day, in a different file, by a different route. That is what makes this a class
+and not two accidents.
+
+**The fix refuses and names the gap.** The engine is untouched and correct given
+real input; what was wrong was feeding it invented input and calling the output a
+per-lead score. The route now returns `motivation: null`, `available: false`, and
+the list of signals AcreOS does not record — which is the actionable half. This
+becomes real by adding those columns and populating them from a provider, not by
+choosing better defaults.
+
+**The gate asserts the premise before the conclusion.** Its first cases prove the
+engine is genuinely SENSITIVE to `isOutOfState`, `ownershipYears` and delinquency
+depth — because if it were indifferent, the defect would have been harmless and
+this whole entry would be wrong. Only then does it assert the route stopped
+synthesizing. A gate that proves the fix without proving the defect mattered is
+half a gate.
+
+**Still open from the same sweep:** `autonomousDealMachine.ts` builds a
+motivation vector from six ghost fields on `deals` (`taxDelinquentYears`,
+`taxDelinquentAmount`, `isOutOfState`, `ownershipYears`, `lastSalePrice`,
+`daysOnMarket`), and `routes-campaigns.ts` reads `templateContent`/`htmlContent`/
+`textContent`/`smsBody` off `campaigns`, none of which are columns. Same shape,
+not yet adjudicated.

@@ -32,7 +32,6 @@ function getUser(req: Request) { return req.user; }
 
 router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => {
   try {
-    const { computeSellerMotivationScore, getOptimalOutreachTiming } = await import("./services/sellerMotivationEngine");
     const { db } = await import("./db");
     const { leads } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
@@ -46,38 +45,63 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
 
     if (!lead) return Errors.notFound(res, "Lead");
 
-    const assessedValue = parseFloat((lead as any).assessedValue || "5000");
-    const input = {
-      isTaxDelinquent: (lead as any).taxDelinquent ?? false,
-      taxDelinquentYears: (lead as any).taxDelinquentYears ?? 0,
-      taxDelinquentAmount: parseFloat((lead as any).taxDelinquentAmount || "0"),
-      assessedValue,
-      isOutOfState: (lead as any).ownerState && lead.state
-        ? (lead as any).ownerState.toUpperCase() !== (lead.state || "").toUpperCase()
-        : false,
-      ownershipYears: (lead as any).ownershipYears ?? 5,
-      isInherited: (lead as any).ownerName?.toLowerCase().includes("estate") || false,
-      isCorporateOwner: /llc|inc|corp|trust|ltd/i.test((lead as any).ownerName || ""),
-      lastSalePrice: parseFloat((lead as any).lastSalePrice || "0"),
-      estimatedCurrentValue: assessedValue * 1.4,
-      countyCompetitionLevel: "medium" as const,
-    };
-
-    const motivationResult = computeSellerMotivationScore(input);
-    const outreachTiming = getOptimalOutreachTiming(
-      (lead as any).ownerState || lead.state || "TX",
-      motivationResult.outreachPriority
-    );
+    // ── REFUSES 2026-08-21. It scored every lead from the same invented vector.
+    //
+    // `computeSellerMotivationScore` takes eleven signals. A `leads` row can
+    // supply TWO of them. Nine were cast through `as any` onto a column that
+    // does not exist, and each carried a default that reads like a measurement:
+    //
+    //   assessedValue          -> "5000"        `assessedValue` is on properties,
+    //                                            and leads has no propertyId, so
+    //                                            it was never reachable from here
+    //   ownershipYears         -> 5
+    //   estimatedCurrentValue  -> assessedValue * 1.4  (so: always 7000)
+    //   countyCompetitionLevel -> "medium"
+    //   taxDelinquentYears     -> 0             not a column of ANY table
+    //   taxDelinquentAmount    -> 0                    "
+    //   lastSalePrice          -> 0                    "
+    //   ownerName              -> undefined            "  (so isInherited and
+    //                                            isCorporateOwner were always false)
+    //   ownerState             -> undefined            "  (so isOutOfState was
+    //                                            ALWAYS false — the out-of-state
+    //                                            owner signal, which is one of the
+    //                                            strongest motivation indicators in
+    //                                            land, could never fire)
+    //
+    // Only `isTaxDelinquent` varied. So this endpoint returned at most TWO
+    // distinct scores across every lead in every organization, and presented
+    // each as that lead's motivation. `getOptimalOutreachTiming` was handed
+    // `(lead as any).ownerState || lead.state || "TX"` — the same fabricated
+    // Texas fallback found in auditOrgUsury the same day.
+    //
+    // The engine is not the problem and is untouched: given real signals it
+    // computes correctly. What was wrong was feeding it invented ones and
+    // labelling the output a per-lead score. Refusing names the six signals the
+    // schema does not record anywhere, which is the actionable half — this
+    // becomes real by adding those columns and populating them from a data
+    // provider, not by choosing better defaults.
+    const NEVER_RECORDED = [
+      "ownerName", "ownerState", "ownershipYears",
+      "lastSalePrice", "taxDelinquentYears", "taxDelinquentAmount",
+    ];
 
     res.json({
       leadId: lead.id,
-      ownerName: (lead as any).ownerName,
-      // leads has no `county` column; field kept for response-shape stability.
-      county: null,
       state: lead.state,
-      motivation: motivationResult,
-      outreachTiming,
+      motivation: null,
+      outreachTiming: null,
+      available: false,
+      reason:
+        "AcreOS cannot score this lead's seller motivation. The model needs eleven " +
+        "signals and this lead record carries one of them (tax-delinquent status). " +
+        "The rest are not stored anywhere in AcreOS, so any score would be computed " +
+        "from placeholder values rather than from anything observed about this owner.",
+      signalsAvailable: ["isTaxDelinquent"],
+      signalsNotRecorded: NEVER_RECORDED,
+      signalsOnAnotherTable: ["assessedValue (properties.assessed_value; a lead has no property link)"],
     });
+    return;
+
   } catch (err: any) {
     Errors.internal(res, err);
   }
