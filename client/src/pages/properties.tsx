@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import type { EnrichmentData } from "@/components/property-enrichment-widget";
 import { useTerm } from "@/hooks/use-persona";
 import { usd, plural, formatDate, formatDateTime } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
@@ -2247,170 +2248,18 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   );
 }
 
-interface EnrichmentData {
-  enrichedAt?: Date | string;
-  lookupTimeMs?: number;
-  lastEnrichedAt?: string;
-  hazards?: {
-    floodZone?: string;
-    floodRisk?: "low" | "medium" | "high";
-    wetlandsPresent?: boolean;
-    wetlandsPercentage?: number;
-    earthquakeRisk?: "low" | "medium" | "high";
-    wildfireRisk?: "low" | "medium" | "high";
-    nearbySuperfundSites?: number;
-    overallRiskScore?: number;
-    overallRiskLevel?: "low" | "medium" | "high";
-  };
-  environment?: {
-    soilType?: string;
-    soilSuitability?: string;
-    soilDrainage?: string;
-    capabilityClass?: string;
-    hydrologicGroup?: string;
-    primeFarmland?: boolean;
-    farmlandClass?: string;
-    epaFacilitiesNearby?: number;
-    epaRiskLevel?: "low" | "medium" | "high";
-  };
-  infrastructure?: {
-    nearestHospitalMiles?: number;
-    nearestFireStationMiles?: number;
-    nearestSchoolMiles?: number;
-    nearbyHospitals?: number;
-    nearbyFireStations?: number;
-    nearbySchools?: number;
-    accessScore?: number;
-  };
-  demographics?: {
-    population?: number;
-    medianIncome?: number;
-    medianHouseholdIncome?: number;
-    medianHomeValue?: number;
-    povertyRate?: number;
-    collegeEducated?: number;
-    ownerOccupancyRate?: number;
-    vacancyRate?: number;
-    avgCommuteMinutes?: number;
-    unemployment?: string;
-  };
-  publicLands?: {
-    nearBLM?: boolean;
-    nearUSFS?: boolean;
-    nearNPS?: boolean;
-    federalLandWithinMiles?: number;
-  };
-  transportation?: {
-    nearestHighwayMiles?: number;
-    nearestBridgeMiles?: number;
-    nearestRailMiles?: number;
-    roadAccessScore?: number;
-    hasPavedRoad?: boolean | null;
-    hasDirtRoad?: boolean | null;
-    localRoadCount?: number;
-  };
-  water?: {
-    nearestStreamMiles?: number;
-    nearestWaterBodyMiles?: number;
-    waterAvailabilityScore?: number;
-  };
-  scores?: {
-    investmentScore?: number;
-    developmentScore?: number;
-    riskScore?: number;
-    overallScore?: number;
-  };
-  elevation?: {
-    elevationFeet?: number;
-    elevationMeters?: number;
-    datum?: string;
-    source?: string;
-  };
-  climate?: {
-    avgHighTempF?: number;
-    avgLowTempF?: number;
-    annualPrecipInches?: number;
-    period?: string;
-    source?: string;
-  };
-  agriculturalValues?: {
-    countyAvgPerAcre?: number | null;
-    stateAvgPerAcre?: number | null;
-    nationalAvgPerAcre?: number | null;
-    dataYear?: number;
-    notes?: string;
-    source?: string;
-  };
-  landCover?: {
-    nlcdClass?: number | null;
-    className?: string;
-    isAgricultural?: boolean;
-    isDeveloped?: boolean;
-    isForested?: boolean;
-    isWetland?: boolean;
-    year?: number;
-    source?: string;
-  };
-  cropland?: {
-    cropCode?: number | null;
-    cropName?: string;
-    year?: number;
-    isAgriculturalCrop?: boolean;
-    isPastureOrHay?: boolean;
-    isCultivatedCrop?: boolean;
-    isForest?: boolean;
-    isWetland?: boolean;
-    source?: string;
-  };
-  epaFacilities?: {
-    totalCount?: number;
-    superfundCount?: number;
-    airViolationCount?: number;
-    waterViolationCount?: number;
-    hazWasteCount?: number;
-    riskLevel?: "low" | "medium" | "high";
-    searchRadiusMiles?: number;
-    source?: string;
-  };
-  stormHistory?: {
-    tornadoRisk?: string;
-    hurricaneRisk?: string;
-    hailRisk?: string;
-    countyName?: string;
-    note?: string;
-    source?: string;
-  };
-  plss?: {
-    section?: string;
-    township?: string;
-    range?: string;
-    legalDescription?: string;
-    source?: string;
-  };
-  watershed?: {
-    huc8?: string;
-    huc12?: string;
-    watershedName?: string;
-    source?: string;
-  };
-  femaNri?: {
-    compositeScore?: number;
-    riverineFloodRisk?: string;
-    hurricaneRisk?: string;
-    tornadoRisk?: string;
-    wildfireRisk?: string;
-    hailRisk?: string;
-    source?: string;
-  };
-  usdaClu?: {
-    cluId?: string;
-    farmNumber?: string;
-    tractNumber?: string;
-    calculatedAcres?: number;
-    source?: string;
-  };
-  errors?: Record<string, string>;
-}
+// EnrichmentData is imported, not redeclared.
+//
+// This file carried its own copy of the interface — a strict SUBSET of the
+// exported one, missing exactly `completenessScore` and `completenessBreakdown`.
+// Those two fields ARE part of the payload (`propertyEnrichment.ts` declares
+// completenessScore, and property-enrichment-widget renders it), so nine reads
+// here had to cast through `as any` to see data that was already arriving.
+//
+// A duplicated type does not stay a duplicate: this one drifted behind the
+// original and then forced casts to work around its own staleness, which is the
+// shape that hides real ghost reads among false ones.
+
 
 /**
  * Hold-period badge — surfaces short-term vs. long-term capital-gains
@@ -2584,6 +2433,12 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
     );
   };
 
+  // Narrowed once. The guard below used to read `(enrichmentData as any)?.
+  // completenessScore !== undefined`, and a cast cannot narrow — so every use
+  // inside the block had to be cast too, and TypeScript never checked that the
+  // value it was formatting into a width and an aria-valuenow was present.
+  const completenessScore = enrichmentData?.completenessScore;
+
   return (
     <div className="space-y-6" data-testid="property-intelligence-panel">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -2613,7 +2468,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       </div>
 
       {/* Data Completeness Widget */}
-      {hasData && (enrichmentData as any)?.completenessScore !== undefined && (
+      {hasData && completenessScore !== undefined && (
         <Card data-testid="card-completeness">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -2622,32 +2477,32 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                 <h4 className="font-semibold text-sm" id="completeness-label">Data Completeness</h4>
               </div>
               <span className="text-lg font-bold tabular-nums" aria-hidden="true">
-                {(enrichmentData as any).completenessScore}%
+                {completenessScore}%
               </span>
             </div>
             <div
               className="w-full bg-muted rounded-full h-2 mb-3"
               role="progressbar"
               aria-labelledby="completeness-label"
-              aria-valuenow={(enrichmentData as any).completenessScore}
+              aria-valuenow={completenessScore}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuetext={`${(enrichmentData as any).completenessScore}% of data sources populated`}
+              aria-valuetext={`${completenessScore}% of data sources populated`}
             >
               <div
                 className={`h-2 rounded-full transition-all ${
-                  (enrichmentData as any).completenessScore >= 80
+                  completenessScore >= 80
                     ? "bg-acr-pos"
-                    : (enrichmentData as any).completenessScore >= 50
+                    : completenessScore >= 50
                     ? "bg-acr-warn"
                     : "bg-acr-neg"
                 }`}
-                style={{ width: `${(enrichmentData as any).completenessScore}%` }}
+                style={{ width: `${completenessScore}%` }}
               />
             </div>
-            {(enrichmentData as any).completenessBreakdown && (
+            {enrichmentData.completenessBreakdown && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mt-2">
-                {Object.entries((enrichmentData as any).completenessBreakdown as Record<string, boolean>).map(
+                {Object.entries(enrichmentData.completenessBreakdown as Record<string, boolean>).map(
                   ([key, value]) => (
                     <div
                       key={key}

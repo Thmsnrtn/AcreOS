@@ -4488,3 +4488,41 @@ code, because the ghost's name is a substring of the real column
 that survived being renamed `..._RENAMED`. And I wrote "nine casts removed" into
 a ratchet note from an estimate; the gate failed stale-high and the real number
 was sixteen. **Read the count; do not predict it.**
+
+---
+
+### 70 — NINE OF THE HUNDRED WERE NOT GHOSTS AT ALL
+
+`client/src/pages/properties.tsx` carried its own `interface EnrichmentData` — a
+strict SUBSET of the exported one in `property-enrichment-widget.tsx`, missing
+exactly two fields: `completenessScore` and `completenessBreakdown`.
+
+**Both fields are real.** `server/services/propertyEnrichment.ts` declares
+`completenessScore` on the payload, and the widget renders it with a percentage
+and a progress bar. So the page was receiving the data and could not see it, and
+nine reads cast through `as any` to reach it — casts that existed solely to work
+around the page's own stale copy of a type it had no reason to own.
+
+**This is the finding that makes the ghost-field count harder to read, not
+easier.** Nine of the hundred were not ghosts in any meaningful sense: the field
+existed, the data arrived, the only thing missing was a declaration. A duplicated
+type does not stay a duplicate — it drifts, and then manufactures casts that look
+identical to the ones hiding `auditOrgUsury`'s Texas fallback. **A gate's count
+is a population, not a verdict**, and this is what the difference costs to
+establish: reading each one.
+
+**The cast was hiding something, though.** `completenessScore` is OPTIONAL, and
+the guard read `(enrichmentData as any)?.completenessScore !== undefined`. A cast
+cannot narrow, so every use inside the block had to be cast too, and TypeScript
+never checked the value being formatted into a CSS width and an `aria-valuenow`.
+Deleting the duplicate surfaced two genuine `possibly undefined` errors within
+seconds — the type doing the job the casts had been preventing it from doing.
+Narrowed once into a local; a cast at each use is not narrowing, it is silence.
+
+**A population note on the ratchets themselves.** Removing thirteen casts from
+`properties.tsx` moved `ghost-fields` by nine and `as-any` by ZERO, because the
+`as-any` ratchet globs `server/**/*.ts` while `ghost-fields` covers server,
+shared and client. Neither is wrong; they are different populations, and a
+reduction in one is not evidence about the other. Worth knowing before reading
+either number as progress — the third law applied to two gates that sit beside
+each other in the same `npm run check` run.
