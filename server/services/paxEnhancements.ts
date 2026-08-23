@@ -20,8 +20,15 @@ export async function gatherPropertyContext(propertyId: number, orgId: number): 
     `Acreage: ${prop.sizeAcres || "Unknown"}`,
     prop.marketValue ? `Estimated value: $${Number(prop.marketValue).toLocaleString()}` : null,
     prop.zoning ? `Zoning: ${prop.zoning}` : null,
-    (prop as any).purchasePrice ? `Purchase price: $${Number((prop as any).purchasePrice).toLocaleString()}` : null,
-    (prop as any).taxAssessedValue ? `Tax assessed: $${Number((prop as any).taxAssessedValue).toLocaleString()}` : null,
+    // `purchasePrice` IS a column — the cast was spurious, and a spurious cast
+    // beside a real ghost is how the ghost survives review.
+    prop.purchasePrice ? `Purchase price: $${Number(prop.purchasePrice).toLocaleString()}` : null,
+    // Was `(prop as any).taxAssessedValue`, which is not a column of properties.
+    // The real one is `assessedValue`, so Pax has never once seen the assessed
+    // value of a property it was asked about — the line was always dropped by
+    // the `.filter(Boolean)` below. Not a fabrication: an omission nobody could
+    // see, which is why it lasted.
+    prop.assessedValue ? `Tax assessed: $${Number(prop.assessedValue).toLocaleString()}` : null,
   ].filter(Boolean);
 
   return parts.join("\n");
@@ -40,11 +47,18 @@ export async function gatherDealContext(dealId: number, orgId: number): Promise<
   });
 
   return [
-    `Deal: ${(deal as any).title || `Deal #${deal.id}`}`,
+    // `deals` has no `title` column and no `name`, so this was always the id
+    // fallback. Stated directly rather than left as a read that looks like it
+    // might one day resolve.
+    `Deal #${deal.id}`,
     `Status: ${deal.status}`,
     dealProperty ? `County: ${dealProperty.county}, ${dealProperty.state}` : null,
-    (deal as any).offerAmount ? `Offer: $${Number((deal as any).offerAmount).toLocaleString()}` : null,
-    (deal as any).askingPrice ? `Asking: $${Number((deal as any).askingPrice).toLocaleString()}` : null,
+    deal.offerAmount ? `Offer: $${Number(deal.offerAmount).toLocaleString()}` : null,
+    deal.acceptedAmount ? `Accepted: $${Number(deal.acceptedAmount).toLocaleString()}` : null,
+    // Was `(deal as any).askingPrice`, not a column of `deals`. The asking price
+    // is the PROPERTY's list price, which is real and was sitting unused two
+    // lines away.
+    dealProperty?.listPrice ? `Asking: $${Number(dealProperty.listPrice).toLocaleString()}` : null,
     dealProperty?.sizeAcres ? `Acreage: ${dealProperty.sizeAcres}` : null,
   ].filter(Boolean).join("\n");
 }

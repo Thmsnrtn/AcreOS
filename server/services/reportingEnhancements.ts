@@ -55,29 +55,62 @@ export async function getPipelineVelocity(orgId: number): Promise<{
 export async function getDealPnL(dealId: number, orgId: number): Promise<{
   revenue: number;
   costs: Array<{ category: string; amount: number }>;
-  profit: number;
-  margin: number;
+  /** null when no acquisition cost is recorded — revenue minus nothing is not profit. */
+  profit: number | null;
+  margin: number | null;
+  costsComplete: boolean;
+  costsNotTracked: string[];
 } | null> {
   const deal = await db.query.deals.findFirst({
     where: and(eq(deals.id, dealId), eq(deals.organizationId, orgId)),
   });
   if (!deal) return null;
 
-  const revenue = Number((deal as any).salePrice || (deal as any).offerAmount || 0);
-  const costs = [
-    { category: "Acquisition", amount: Number((deal as any).purchasePrice || 0) },
-    { category: "Closing Costs", amount: Math.round(revenue * 0.03) },
-    { category: "Marketing", amount: Math.round(revenue * 0.02) },
-    { category: "Due Diligence", amount: 200 },
-  ];
+  // ── What this used to do, and why none of it survived ──────────────────
+  //   revenue = (deal as any).salePrice || (deal as any).offerAmount || 0
+  //   Acquisition    = (deal as any).purchasePrice || 0
+  //   Closing Costs  = revenue * 0.03
+  //   Marketing      = revenue * 0.02
+  //   Due Diligence  = 200
+  //
+  // `deals` has no `salePrice` and no `purchasePrice`, so ACQUISITION — the
+  // largest cost in any real estate deal — was ALWAYS ZERO, and the other three
+  // lines were invented. The reported profit was therefore
+  // `offerAmount * 0.95 - 200` on every deal in the system, presented as a P&L.
+  //
+  // The acquisition figure exists: `cost_basis` holds it per property, and
+  // CostBasisTracker maintains it. Closing costs, marketing spend and due
+  // diligence are not tracked per deal anywhere, so they are omitted rather
+  // than estimated — a cost line the customer can see is a claim that the money
+  // was spent.
+  const revenue = Number(deal.acceptedAmount ?? deal.offerAmount ?? 0);
+
+  const { costBasis } = await import("@shared/schema");
+  const [basis] = await db.select()
+    .from(costBasis)
+    .where(and(eq(costBasis.propertyId, deal.propertyId), eq(costBasis.organizationId, orgId)))
+    .limit(1);
+
+  const acquisition =
+    basis?.acquisitionPrice == null
+      ? null
+      : Number(basis.acquisitionPrice) + Number(basis.acquisitionCosts ?? 0);
+
+  const costs = acquisition === null ? [] : [{ category: "Acquisition", amount: acquisition }];
   const totalCost = costs.reduce((s, c) => s + c.amount, 0);
-  const profit = revenue - totalCost;
+  // Without an acquisition cost there is no profit to report. Revenue minus
+  // nothing is revenue, and calling that profit is the defect this replaces.
+  const profit = acquisition === null ? null : revenue - totalCost;
 
   return {
     revenue,
     costs,
     profit,
-    margin: revenue > 0 ? Math.round((profit / revenue) * 100) : 0,
+    margin: profit === null || revenue <= 0 ? null : Math.round((profit / revenue) * 100),
+    // Which cost lines AcreOS can actually account for. False means the figures
+    // above are revenue and a partial cost picture, not a profit statement.
+    costsComplete: acquisition !== null,
+    costsNotTracked: ["Closing costs", "Marketing", "Due diligence"],
   };
 }
 
@@ -96,23 +129,67 @@ export function cacheReport(key: string, data: any, ttlMs: number = 5 * 60 * 100
 }
 
 // Item 156: Cost basis report
+//
+// Reads the canonical `cost_basis` table, which CostBasisTracker owns. This used
+// to compute a basis of its own from two casts on the property row:
+//
+//     acquisitionCost: Number((p as any).purchasePrice || 0),
+//     improvements:    Number((p as any).improvementCost || 0),
+//     totalBasis:      purchasePrice + improvementCost
+//
+// `improvementCost` is not a column of `properties` — it is not on any table —
+// so improvements were ALWAYS 0 and every basis was reported without them.
+// Capital improvements are the thing a cost basis exists to capture, and
+// understating basis overstates gain.
+//
+// Meanwhile `cost_basis` records acquisitionPrice, acquisitionCosts,
+// improvementCosts and a maintained adjustedBasis, and CostBasisTracker
+// maintains it. This surface was computing the same rule independently and
+// worse — the second CLAUDE.md law in its documented form.
+//
+// A property with no basis record reports nulls with `basisRecorded: false`,
+// following the `timingAvailable` precedent in getPipelineVelocity above:
+// absent is stated, not rendered as zero.
 export async function getCostBasisReport(orgId: number): Promise<Array<{
   propertyId: number;
   address: string;
-  acquisitionCost: number;
-  improvements: number;
-  totalBasis: number;
+  acquisitionCost: number | null;
+  improvements: number | null;
+  totalBasis: number | null;
+  basisRecorded: boolean;
 }>> {
   const props = await db.select()
     .from(properties)
     .where(eq(properties.organizationId, orgId))
     .limit(100);
 
-  return props.map(p => ({
-    propertyId: p.id,
-    address: p.address || `${p.county}, ${p.state}`,
-    acquisitionCost: Number((p as any).purchasePrice || 0),
-    improvements: Number((p as any).improvementCost || 0),
-    totalBasis: Number((p as any).purchasePrice || 0) + Number((p as any).improvementCost || 0),
-  }));
+  const { costBasis } = await import("@shared/schema");
+  const basisRows = await db.select()
+    .from(costBasis)
+    .where(eq(costBasis.organizationId, orgId));
+  const byProperty = new Map(basisRows.map((b) => [b.propertyId, b]));
+
+  const num = (v: string | null | undefined): number | null =>
+    v === null || v === undefined || v === "" ? null : Number(v);
+
+  return props.map((p) => {
+    const b = byProperty.get(p.id);
+    const address = p.address || `${p.county}, ${p.state}`;
+    if (!b) {
+      return {
+        propertyId: p.id, address,
+        acquisitionCost: null, improvements: null, totalBasis: null,
+        basisRecorded: false,
+      };
+    }
+    const acquisition = num(b.acquisitionPrice);
+    const acqCosts = num(b.acquisitionCosts) ?? 0;
+    return {
+      propertyId: p.id, address,
+      acquisitionCost: acquisition === null ? null : acquisition + acqCosts,
+      improvements: num(b.improvementCosts),
+      totalBasis: num(b.adjustedBasis),
+      basisRecorded: true,
+    };
+  });
 }

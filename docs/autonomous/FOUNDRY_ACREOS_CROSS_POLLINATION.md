@@ -4429,3 +4429,62 @@ checking cannot tell a right read from a wrong one.
 
 Second reduction the gate caught on me: 97 → 90, failing stale-high on the
 commit that earned it.
+
+---
+
+### 69 — A P&L WHERE ACQUISITION WAS ALWAYS ZERO, BESIDE A TABLE THAT HELD THE REAL NUMBER
+
+Three ghost clusters, one root cause, and a canonical owner sitting unused the
+whole time.
+
+**`getDealPnL` reported `offerAmount × 0.95 − 200` as profit, on every deal.**
+
+```
+revenue       = (deal as any).salePrice || (deal as any).offerAmount || 0
+Acquisition   = (deal as any).purchasePrice || 0
+Closing Costs = revenue * 0.03
+Marketing     = revenue * 0.02
+Due Diligence = 200
+```
+
+`deals` has neither `salePrice` nor `purchasePrice`, so **acquisition — the
+largest cost in any real-estate deal — was always zero**, and the other three
+lines were invented outright. Revenue minus nothing is revenue; labelling it
+profit is the defect.
+
+**`getCostBasisReport` reported every basis without improvements**, because
+`improvementCost` is a column of no table. Understating basis overstates gain,
+which is the direction that costs the customer money at tax time.
+
+**Both numbers existed.** `cost_basis` records `acquisitionPrice`,
+`acquisitionCosts`, `improvementCosts` and a maintained `adjustedBasis`, and
+`CostBasisTracker` owns it. Two reporting surfaces were computing the same rule
+independently and worse — the second CLAUDE.md law, in the documented shape.
+
+**The file already knew the right answer.** One function up,
+`getPipelineVelocity` returns `timingAvailable: false` with nulls and a comment
+saying the fields are *"intentionally absent, not zero."* The two functions below
+it never followed. Both now do: `costsComplete`, `basisRecorded`, and a `profit`
+that is null when there is no acquisition cost to subtract.
+
+**Not every ghost is a fabrication.** `paxEnhancements` guarded each read
+(`x ? line : null`, then `.filter(Boolean)`), so its ghosts DROPPED lines rather
+than inventing them — capability loss, not falsehood. `(prop as any).taxAssessedValue`
+should have been `assessedValue`, so **Pax has never once seen the assessed value
+of a property it was asked about**, and the asking price it omitted was sitting
+on the linked property as `listPrice`. Worth separating: a ghost behind a guard
+makes the product quieter; a ghost behind a fallback makes it wrong. Both are
+worth fixing; only one is worth alarm.
+
+**Spurious casts came out with the real ones.** `purchasePrice` and `offerAmount`
+ARE columns and were cast anyway. A pointless `as any` beside a load-bearing one
+is how the load-bearing one survives review — the same lesson as the ninth cast
+in ledger 65.
+
+**Two of my own errors, both in the direction of over-claiming.** My first
+assertion read `not.toContain("improvementCost")` and failed against CORRECT
+code, because the ghost's name is a substring of the real column
+`improvementCosts` — precisely the trap this repo records from a trigger check
+that survived being renamed `..._RENAMED`. And I wrote "nine casts removed" into
+a ratchet note from an estimate; the gate failed stale-high and the real number
+was sixteen. **Read the count; do not predict it.**
