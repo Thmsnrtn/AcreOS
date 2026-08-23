@@ -1881,11 +1881,20 @@ export function registerCampaignRoutes(app: Express): void {
       const { emailService } = await import("./services/emailService");
 
       const subject = `[TEST] ${campaign.name || "Campaign"}`;
-      const html = (campaign as any).templateContent
-        || (campaign as any).htmlContent
-        || `<h1>${campaign.name}</h1><p>This is a test send.</p>`;
-      const text = (campaign as any).textContent
-        || `Test send for campaign: ${campaign.name}`;
+      // Same source as the real send. A test that renders a placeholder instead
+      // of the campaign's actual content cannot tell the operator what their
+      // recipients will see, which is the only thing a test send is for.
+      const testBody = (campaign.content ?? "").trim();
+      if (!testBody) {
+        return Errors.badRequest(
+          res,
+          "This campaign has no content yet, so a test send would show you a placeholder " +
+            "rather than your message. Add the content and try again.",
+          { campaignId: campaign.id },
+        );
+      }
+      const html = /<[a-z][\s\S]*>/i.test(testBody) ? testBody : `<p>${testBody}</p>`;
+      const text = testBody;
 
       const result = await emailService.sendEmail({
         to: userEmail,
@@ -1974,7 +1983,12 @@ export function registerCampaignRoutes(app: Express): void {
       // Refuse rather than invent: a campaign with nothing to put in a subject
       // line is not a campaign AcreOS should complete on the customer's behalf
       // under a name that is not theirs.
-      const subject = ((campaign as any).subject || campaign.name || "").trim();
+      // `subject` IS a real column of campaigns; the cast was spurious. Removed
+      // 2026-08-21 — an unnecessary `as any` is how the four ghost content
+      // fields beside it went unnoticed, so they do not get to stay for tidiness.
+      // Falling back to the campaign's name for a SUBJECT is legitimate (it is a
+      // title); falling back to it for the BODY is what shipped a defect.
+      const subject = (campaign.subject || campaign.name || "").trim();
       if (!subject) {
         return Errors.badRequest(
           res,
@@ -1984,7 +1998,27 @@ export function registerCampaignRoutes(app: Express): void {
           { campaignId: campaign.id },
         );
       }
-      const htmlTemplate = (campaign as any).templateContent || (campaign as any).htmlContent || `<p>${(campaign as any).textContent || campaign.name}</p>`;
+      // `campaigns.content` is the column the customer's composed body lives in —
+      // the direct-mail path in this same file reads it (see the letter/postcard
+      // send above). The email and SMS paths reached past it for
+      // `templateContent`, `htmlContent`, `textContent` and `smsBody`, NONE of
+      // which are columns of `campaigns`. Every one resolved to `undefined`, so
+      // the chain fell through to `campaign.name` and every recipient of every
+      // email and SMS campaign received the campaign's INTERNAL NAME instead of
+      // the message the customer wrote. Found 2026-08-21 by the ghost-field
+      // sweep (ledger 64).
+      const body = (campaign.content ?? "").trim();
+      if (!body) {
+        return Errors.badRequest(
+          res,
+          "This campaign has no content, so there is nothing to send. AcreOS will not " +
+            "substitute the campaign's name as the message body — add the email content " +
+            "to the campaign and send again.",
+          { campaignId: campaign.id },
+        );
+      }
+      // Already-HTML bodies pass through; a plain-text body is wrapped once.
+      const htmlTemplate = /<[a-z][\s\S]*>/i.test(body) ? body : `<p>${body}</p>`;
 
       // Send emails with rate limiting. Track in-memory to catch any
       // within-execution duplicates (e.g. duplicate leadIds in input).
@@ -2190,7 +2224,25 @@ export function registerCampaignRoutes(app: Express): void {
       // every one. TWILIO_PHONE_NUMBER is read only to label simulated sends.
       const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
 
-      const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
+      // `campaigns.content` is the column the customer's composed body lives in —
+      // the direct-mail path in this same file reads it (see the letter/postcard
+      // send above). The email and SMS paths reached past it for
+      // `templateContent`, `htmlContent`, `textContent` and `smsBody`, NONE of
+      // which are columns of `campaigns`. Every one resolved to `undefined`, so
+      // the chain fell through to `campaign.name` and every recipient of every
+      // email and SMS campaign received the campaign's INTERNAL NAME instead of
+      // the message the customer wrote. Found 2026-08-21 by the ghost-field
+      // sweep (ledger 64).
+      const messageBody = (campaign.content ?? "").trim();
+      if (!messageBody) {
+        return Errors.badRequest(
+          res,
+          "This campaign has no content, so there is nothing to text. AcreOS will not " +
+            "substitute the campaign's name as the message body — add the SMS content to " +
+            "the campaign and send again.",
+          { campaignId: campaign.id },
+        );
+      }
 
       // Send SMS messages with in-memory dedup for this execution
       const sentInExecution = new Set<number>();

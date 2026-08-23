@@ -4217,3 +4217,56 @@ motivation vector from six ghost fields on `deals` (`taxDelinquentYears`,
 `daysOnMarket`), and `routes-campaigns.ts` reads `templateContent`/`htmlContent`/
 `textContent`/`smsBody` off `campaigns`, none of which are columns. Same shape,
 not yet adjudicated.
+
+---
+
+### 65 — EVERY EMAIL AND SMS CAMPAIGN SENT THE CAMPAIGN'S INTERNAL NAME AS THE MESSAGE
+
+The second finding from ledger 64's ghost-field sweep, and the one that reached
+actual people.
+
+`campaigns.content` is the column a customer's composed body lives in. **The
+direct-mail path in `routes-campaigns.ts` reads it correctly** — that is the
+control, and it is what makes the rest unambiguous. The email and SMS paths
+reached past it:
+
+```
+email: (campaign as any).templateContent
+    || (campaign as any).htmlContent
+    || `<p>${(campaign as any).textContent || campaign.name}</p>`
+
+sms:   (campaign as any).textContent
+    || (campaign as any).smsBody
+    || campaign.name || "Message from AcreOS"
+```
+
+None of `templateContent`, `htmlContent`, `textContent`, `smsBody` is a column of
+`campaigns`. Every one was `undefined` on every row, so both chains fell all the
+way through. **Every recipient of every email campaign received `<p>{the
+campaign's internal name}</p>`. Every SMS recipient received that name as the
+entire message.** These are `purpose: 'counterparty'` sends — the customer's own
+leads, real people — and the body the customer wrote was never read.
+
+The test-send route had the same reads, so the one control an operator has for
+checking what will go out showed a placeholder too. A test that cannot show you
+what your recipients will see is worse than no test, because it is reassuring.
+
+**Why this was invisible.** Nothing threw. The chain always produced a non-empty
+string, so there was no error, no empty send, no failed delivery — just a
+successful send of the wrong text. `tsc` was silent because four `as any` casts
+told it to be. The only signal available was that the strings did not come from
+anywhere, which is exactly what the ghost-field sweep looks for and nothing else
+in the repo did.
+
+**A ninth cast came out with them:** `(campaign as any).subject`, where `subject`
+IS a real column. Spurious, and removed rather than left for tidiness — an
+unnecessary `as any` beside four load-bearing ones is how the four went
+unnoticed. `campaign.name` survives as a fallback for the SUBJECT, which is
+legitimate: a campaign's title is a reasonable subject line. As the BODY it was
+the defect. The gate draws that line explicitly, because an assertion that
+conflated them failed against the correct subject code — a reminder that
+"no fallback to name" is not the rule; "no fallback to name AS THE BODY" is.
+
+**All three send paths now refuse on empty content**, and the gate counts the
+refusals rather than checking that one exists. Fixing two of three and leaving
+the third is the failure mode this file's own history is made of.
