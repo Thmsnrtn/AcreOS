@@ -39,7 +39,7 @@ import crypto from "crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import { z } from "zod";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -205,9 +205,22 @@ function verifyHmac(
 
 /**
  * Pick a partner for an order. If titleCompanyId is set, route to that one
- * (must be active). Otherwise, return the highest-priority partner whose
- * territoryStates / territoryCounties match — with platform-default
- * partners (organizationId NULL) preferred only as a fallback.
+ * (must be active, and must be reachable BY THIS ORG). Otherwise, return the
+ * highest-priority partner whose territoryStates / territoryCounties match —
+ * with platform-default partners (organizationId NULL) preferred only as a
+ * fallback.
+ *
+ * Reachable, for both branches, means the same thing: the partner is either
+ * this org's own (`organization_id = :orgId`) or a platform default
+ * (`organization_id IS NULL` — "any org can route to it", per the column's
+ * own contract in shared/schema/accounting-ops.ts). A partner privately
+ * registered to ANOTHER org is not reachable, and the explicit-id branch is
+ * NOT an exception to that: `titleCompanyId` arrives straight off the request
+ * body (`z.number().int().positive().optional()`), so an unscoped by-id read
+ * let an authenticated caller name any tenant's partner row — and then had
+ * its buyer/seller/price payload POSTed to the webhookUrl stored on it.
+ * The predicate lives in the STATEMENT, not in a post-filter, and matches the
+ * one `wireInstructions.issueWireInstructions` already uses on this table.
  */
 async function routeTitleOrder(
   organizationId: number,
@@ -220,7 +233,14 @@ async function routeTitleOrder(
       .select()
       .from(titlePartners)
       .where(
-        and(eq(titlePartners.id, titleCompanyId), eq(titlePartners.isActive, true))
+        and(
+          eq(titlePartners.id, titleCompanyId),
+          or(
+            isNull(titlePartners.organizationId),
+            eq(titlePartners.organizationId, organizationId)
+          ),
+          eq(titlePartners.isActive, true)
+        )
       )
       .limit(1);
     return partner ?? null;
@@ -297,6 +317,13 @@ export function registerTitlePartnerRoutes(app: Express) {
           body.propertyAddress.county,
           body.titleCompanyId
         );
+
+        // An explicitly named partner the org-scoped read did not match is a
+        // 404 — never a silent downgrade to an unassigned "pending" broadcast.
+        // Naming another org's private partner must not come back 201.
+        if (body.titleCompanyId && !partner) {
+          return Errors.notFound(res, "Title partner");
+        }
 
         const estimatedDelivery = estimateDeliveryDate(body.expectedClosingDate);
 

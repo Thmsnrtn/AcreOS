@@ -4630,3 +4630,68 @@ statement itself and fails on a bare id predicate.
 
 The falsification pass is the only reason I know that. A gate that has never been
 run against the defect it names is a hypothesis.
+
+---
+
+### 73 — THE ROUTE POPULATION, ADJUDICATED: ONE DEFECT IN 64, AND IT SENT DEAL DATA TO ANOTHER TENANT'S WEBHOOK
+
+Ledger 72 measured a population no gate had ever read: 64 direct-db statements in
+route files that have org context and never name the organization, 28 of them
+writes. Adjudicated with six classifiers, then two independent refuters per
+surviving claim.
+
+| category | n |
+|---|---|
+| FOUNDER_ONLY | 18 |
+| SAFE_PARENT_VERIFIED | 17 |
+| PLATFORM_TABLE | 16 |
+| GLOBAL_CONTENT | 8 |
+| SAFE_SELF_INSERTED | 4 |
+| **SUSPECTED_DEFECT** | **1** |
+
+**One in 64, and the calibration is the point.** Rule 2's pass was 6 real out of
+42 claims because its classifiers guessed; rule 3's was 5 of 5 because they were
+given that lesson. This run was told the dominant safe pattern by name —
+`SAFE_PARENT_VERIFIED`, where an org-scoped read above establishes ownership and
+the child statement legitimately does not repeat the predicate — and told to read
+UPWARD to the route declaration before judging anything. It produced one claim,
+and the claim held. **Zero refutation overflow**, so nothing was left unverified.
+
+**The defect: `POST /api/title-orders`.** `routeTitleOrder` resolved an
+explicitly-named partner with
+`and(eq(titlePartners.id, titleCompanyId), eq(isActive, true))` — no tenant term.
+`titleCompanyId` arrives straight off the request body
+(`z.number().int().positive().optional()`), and the partner row carries a
+`webhookUrl` that then receives the order payload.
+
+So an authenticated user of org B could name org A's **private** title partner by
+id, and org B's buyer, seller and price would be POSTed to an endpoint **org A
+chose**. Not a read leak — outbound exfiltration to a third party, with the
+victim tenant selecting the destination.
+
+**The fix had to be careful in the other direction.** `title_partners.organization_id`
+is nullable, and the column's own comment says
+`// NULL = platform-default partner (any org can route to it)`. A bare
+`eq(organizationId, orgId)` would have cut every org off from the platform
+defaults. The predicate is `or(isNull(...), eq(...))`, matching what
+`issueWireInstructions` already uses on the same table — and the gate falsifies
+the over-tightening too: replacing the `or` with a bare `eq` fails the
+platform-default case. **A tenancy fix that breaks a documented sharing contract
+is not a fix.**
+
+The scoped read that matches nothing now 404s instead of silently downgrading to
+a 201 "pending" broadcast — a write that reports success for a row the caller
+cannot see is the shape ledger 72 fixed one route over.
+
+**Verified against code, not the report:** the nullable column and its comment
+read directly, the caller-supplied `titleCompanyId` and the `webhookUrl` sink
+confirmed at their line numbers, and the fix independently re-falsified —
+restoring the unscoped predicate fires 3 cases, one of them asserting the sink
+("org B's deal payload was POSTed to org A's partner webhook") rather than the
+symbol.
+
+**What the other 63 are worth.** Nothing, as findings — and that is a result. 18
+are founder-gated by `isFounderAdmin`, which 404s non-founders. 17 resolve an id
+a parent read already proved. 16 touch tables with no organization column at all.
+The population was worth reading precisely because nobody could have said which
+63 without reading them.
