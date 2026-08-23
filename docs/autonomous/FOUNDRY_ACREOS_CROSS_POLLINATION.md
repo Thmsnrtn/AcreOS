@@ -4270,3 +4270,56 @@ conflated them failed against the correct subject code — a reminder that
 **All three send paths now refuse on empty content**, and the gate counts the
 refusals rather than checking that one exists. Fixing two of three and leaving
 the third is the failure mode this file's own history is made of.
+
+---
+
+### 66 — THE CLASS GETS A GATE, AND THE GATE FINDS FIVE TIMES WHAT THE REGEX DID
+
+Three live defects in three days, all one shape: `(x as any).prop` where `prop`
+is not on x's type. It reads `undefined` on every row, forever. It never throws.
+Any fallback beside it becomes the permanent answer, and `tsc` was explicitly
+told not to look.
+
+  * `auditOrgUsury` — every note in every organization audited against Texas law
+  * `GET /api/seller-motivation/:leadId` — at most two distinct scores, ever
+  * the campaign email and SMS senders — every recipient got the campaign's
+    internal name as the message body
+
+I found these with a regex over casts whose VARIABLE NAME happened to match a
+schema table, and said so plainly at the time: 19 findings, and no way to tell
+what the other ~1,300 casts hid. **The rule was never about names.** It is a
+type-checker question, so this asks the type checker.
+
+`scripts/check-ghost-fields.mjs` builds a real `ts.Program`, and for every
+`(x as any).prop` asks the checker whether `prop` exists on x's PRE-CAST type.
+644 such reads in scope. **100 are a known shape being asked for a field it does
+not have** — five times the regex, and the regex's 19 are a subset.
+
+**The two exclusions are what make the number mean something,** and both are
+rules rather than baseline entries:
+
+* **Ambient globals** (`window.webkitSpeechRecognition`, `globalThis.__cache`,
+  an injected `window.__ENV__`). Genuine idiom: the property really is absent
+  from the ambient lib types and there is no row to read. 182 → 139.
+* **Shapeless bases** (`object`, `{}` — zero declared properties). Such a type
+  contradicts nothing; the cast is doing the job `any` would do. 139 → 100.
+
+Parking either in the baseline would have made one number mean two things, and a
+number that means two things cannot be acted on.
+
+**Falsified three ways, which is the point of building it at all.** A ghost read
+planted on a real schema type fires it. A cast reading a REAL column does not. An
+ambient-global augmentation does not. Positive and negative controls, because a
+gate that fires on everything is as useless as one that fires on nothing.
+
+**The remedy text refuses the wrong repair explicitly.** Widening the type to
+make the ghost legal would satisfy this gate permanently and is worse than the
+defect — it documents `undefined` as the contract. The gate says so, and
+`ghostFieldGate.test.ts` asserts it never starts offering "raise the baseline"
+instead.
+
+**What this does and does not do.** It stops the class: no NEW ghost read can
+land. It does not clear the 100 already there — that is a backlog, and the
+baseline is a starting position, not an allowance. Every one of those 100 is a
+read that can only ever return `undefined`, and three of the four I have opened
+so far were live customer-facing defects.
