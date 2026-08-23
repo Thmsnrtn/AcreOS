@@ -1059,13 +1059,32 @@ This requires human investigation.`,
   // Learn from user thumbs-up / thumbs-down on a message
   async learnFromRating(messageId: number, rating: 1 | -1): Promise<void> {
     try {
-      const { aiMessages } = await import("@shared/schema");
-      const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, messageId));
+      // Resolve the message AND the organization it belongs to in one read.
+      //
+      // This used to select the message by bare id and then write
+      // `organizationId: msg.organizationId` into paxMemory.
+      // `aiMessages` has NO organizationId column — it belongs to an org through
+      // its conversation — so that read was always undefined and EVERY rating
+      // wrote a memory row under organization 0: a tenant key invented from
+      // nothing, in a table whose organizationId is a NOT NULL foreign key.
+      const { aiMessages, aiConversations } = await import("@shared/schema");
+      const [msg] = await db
+        .select({
+          role: aiMessages.role,
+          content: aiMessages.content,
+          organizationId: aiConversations.organizationId,
+        })
+        .from(aiMessages)
+        .innerJoin(aiConversations, eq(aiConversations.id, aiMessages.conversationId))
+        .where(eq(aiMessages.id, messageId));
       if (!msg || msg.role !== "assistant") return;
+      // No organization, no memory. A learning row filed under an invented
+      // tenant is worse than no learning row.
+      if (typeof msg.organizationId !== "number") return;
       if (rating === -1) {
         // Negative: store as a correction pattern
         await db.insert(paxMemory).values({
-          organizationId: (msg as any).organizationId ?? 0,
+          organizationId: msg.organizationId,
           userId: "pax_feedback",
           memoryType: "correction",
           key: `feedback_negative_${messageId}`,
@@ -1076,7 +1095,7 @@ This requires human investigation.`,
       } else {
         // Positive: store as a reinforcement
         await db.insert(paxMemory).values({
-          organizationId: (msg as any).organizationId ?? 0,
+          organizationId: msg.organizationId,
           userId: "pax_feedback",
           memoryType: "reinforcement",
           key: `feedback_positive_${messageId}`,

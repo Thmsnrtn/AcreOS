@@ -4574,3 +4574,59 @@ so far, roughly half were real fabrications and half were contracts or types tha
 simply were not written down. A ghost-field count is a list of places worth
 reading, and nothing more — which is the only honest thing to say about any
 gate's baseline.
+
+---
+
+### 72 — THE TENANCY GATE HAS NEVER READ A SINGLE ROUTE FILE
+
+Found while triaging what was left of the ghost-field backlog. Rather than keep
+working file-by-file, I ranked the remaining 60 by whether the read carried a
+*value-yielding fallback* — the shape that turns `undefined` into a claim. Twelve
+did. Two of those twelve fabricated a **tenant key**.
+
+```
+paxLearning.learnFromRating:
+  organizationId: (msg as any).organizationId ?? 0
+```
+
+`aiMessages` has no `organizationId` column — it belongs to an org through its
+conversation — so that read was always undefined and **every message rating filed
+a `pax_memory` row under organization 0**, a tenant invented from nothing, in a
+column that is a NOT NULL foreign key.
+
+**The route above it was worse.** `PATCH /api/ai/messages/:id/rating`, behind
+`isAuthenticated, getOrCreateOrg`:
+
+```ts
+await db.update(aiMessages).set({ rating }).where(eq(aiMessages.id, msgId));
+```
+
+No organization predicate. **Any authenticated user could rate any
+organization's assistant message by id** — a cross-tenant WRITE into another
+tenant's conversation, from a thumbs-up button.
+
+**WHY THREE COMPLETED TENANCY ADJUDICATIONS MISSED IT.**
+`check-org-scoped-fetch` walks `server/storage.ts`, `server/storage/*.ts` and
+`server/services/**`. **Route files are outside its population entirely.** Rules
+1, 2 and 3 were each adjudicated to completion — 284, 140 and 120 entries — over
+a population that has never included a single route. This route touches `db`
+directly instead of going through a storage method, so nothing was watching it.
+
+Measured, because the number is the finding: **81 route files use `db` directly.
+163 of those statements touch an org-scoped table inside a file that HAS org
+context. 64 never name the organization — 28 of them writes.** Not all are
+defects; many resolve an id already verified by an org-scoped read above them,
+which is the SAFE_PARENT_VERIFIED shape from the rule-2 pass. But none has ever
+been examined, and the first one I read was a live cross-tenant write.
+
+**AND MY OWN GATE FAILED ITS FIRST FALSIFICATION.** I asserted the handler
+CONTAINED `organizationId`, `aiConversations`, and the org comparison. Reverting
+the update to `.where(eq(aiMessages.id, msgId))` left the now-unused `scopedToOrg`
+const declared above it — so every string was still present, the gate stayed
+green, and the write was wide open again. Proving the symbol where the property
+is semantic, in a gate written by the person who has spent this whole session
+writing that rule down. The assertion now parses the WHERE of the update
+statement itself and fails on a bare id predicate.
+
+The falsification pass is the only reason I know that. A gate that has never been
+run against the defect it names is a hypothesis.

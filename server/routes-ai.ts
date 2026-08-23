@@ -1010,9 +1010,34 @@ export function registerAIRoutes(app: Express): void {
       }
       const { rating } = parsed.data;
       const msgId = parseInt(req.params.id);
-      const { aiMessages } = await import("@shared/schema");
-      const { eq: _eq } = await import("drizzle-orm");
-      await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
+      const org = req.organization;
+      const { aiMessages, aiConversations } = await import("@shared/schema");
+      const { eq: _eq, and: _and, inArray: _inArray } = await import("drizzle-orm");
+
+      // `aiMessages` has no organizationId of its own — it belongs to an org
+      // through `conversationId -> aiConversations.organizationId`. This used to
+      // be `where(eq(aiMessages.id, msgId))` with no org predicate at all, so
+      // ANY authenticated user could rate ANY organization's assistant message
+      // by passing its id: a cross-tenant WRITE into another tenant's
+      // conversation, from a thumbs-up button.
+      //
+      // The tenancy gate never saw it because check-org-scoped-fetch walks
+      // server/storage* and server/services/** — routes are outside its
+      // population, and this route touches `db` directly rather than going
+      // through a storage method.
+      const scopedToOrg = _and(
+        _eq(aiMessages.id, msgId),
+        _inArray(
+          aiMessages.conversationId,
+          db.select({ id: aiConversations.id })
+            .from(aiConversations)
+            .where(_eq(aiConversations.organizationId, org.id)),
+        ),
+      );
+      const updated = await db.update(aiMessages).set({ rating } as any).where(scopedToOrg).returning({ id: aiMessages.id });
+      if (updated.length === 0) {
+        return Errors.notFound(res, "Message");
+      }
       // Async learning ingestion (non-blocking)
       process.nextTick(async () => {
         try {
