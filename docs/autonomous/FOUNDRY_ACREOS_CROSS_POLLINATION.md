@@ -4382,3 +4382,50 @@ returning `null` rather than `NaN` because absent is a state the caller must
 handle and `new Date(NaN)` is not a date. It takes the EARLIEST item end, which
 is when the customer is next charged — the question every one of these callers
 was actually asking.
+
+---
+
+### 68 — A TEST FIXTURE FROZE AN OLD API VERSION, AND KEPT THE BROKEN CODE PASSING
+
+Second Stripe field-migration finding, and the interesting part is not the field.
+
+`Invoice.subscription` does not exist in the pinned API version — Stripe moved it
+under `invoice.parent.subscription_details.subscription`, because an invoice's
+parent can be a subscription or a quote. Both `invoice.payment_failed` handlers
+(`webhookHandlers.ts`, `stripeConnect.ts`) read the old top-level field through
+`(invoice as any).subscription`, so the id was always undefined.
+
+**Severity, stated honestly: latent, not live.** Dunning still ran — stages,
+notifications and retry schedules are all computed from other inputs. Nothing
+queries `dunning_events.stripe_subscription_id`. What was wrong is the audit
+trail: every dunning row recorded `''` for the subscription it belonged to, and
+in a NULLABLE column `''` is a worse answer than null, because it asserts there
+IS one and it is blank. The moment anyone reconciles dunning against Stripe, the
+record joins to nothing.
+
+**THE FIXTURE IS THE FINDING.** `tests/integration/stripeWebhooks.test.ts` has
+covered this path all along, with a fixture built as
+`{ id, customer, amount_due, attempt_count, subscription: "sub_test_1" }` — the
+PRE-MIGRATION shape. It asserted dunning received `"sub_test_1"`, and it passed,
+because the code read the same obsolete field the fixture supplied. **A fixture
+written against an old API version keeps the old code passing forever.** Both
+halves moved out of date together and agreed with each other the whole way.
+
+That is the same shape as the `lobService` fixture that hardcoded
+`isLiveSendArmed: () => true` (ledger 60): a test artifact that had absorbed the
+defect and made it invisible. Two instances now, and the general form is worth
+stating — **when a test and the code under it are wrong in the same direction,
+the test is not evidence.** What breaks the tie is a THIRD source that neither
+one authored: here, the vendor's own shipped type definitions, which say plainly
+that `Invoice.subscription` is gone and `SubscriptionItem.current_period_end` is
+where periods live.
+
+The fixture is migrated to the real shape rather than deleted, and its assertion
+is unchanged — dunning must still receive the subscription id — so the original
+invariant survives while the shape it was expressed in gets corrected. The
+suite's `stripeClient` mock now uses `importOriginal`, so the payload accessors
+are the REAL ones: a suite that stubs the function whose correctness it is
+checking cannot tell a right read from a wrong one.
+
+Second reduction the gate caught on me: 97 → 90, failing stale-high on the
+commit that earned it.

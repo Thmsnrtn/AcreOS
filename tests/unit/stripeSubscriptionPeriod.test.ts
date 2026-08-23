@@ -31,7 +31,11 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { subscriptionPeriod, subscriptionPeriodIso } from "../../server/stripeClient";
+import {
+  subscriptionPeriod,
+  subscriptionPeriodIso,
+  invoiceSubscriptionId,
+} from "../../server/stripeClient";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -107,6 +111,64 @@ describe("every site that needs a period uses the accessor", () => {
         code,
         `${rel} still casts a subscription to read current_period_* — the field is on the item`,
       ).not.toMatch(/\bsub\w*\s+as\s+(any|unknown)[\s\S]{0,80}?current_period_/);
+    }
+  });
+});
+
+describe("an invoice's subscription comes from its parent", () => {
+  /**
+   * `Invoice.subscription` is gone in the pinned API version — Stripe moved it
+   * under `parent.subscription_details`, alongside `quote_details`, because an
+   * invoice's parent can be several things. Both `invoice.payment_failed`
+   * handlers read the old location and so passed `''` into every dunning event.
+   *
+   * Nothing queries `dunning_events.stripe_subscription_id`, so no behaviour was
+   * wrong: dunning ran, notifications sent, retries scheduled. What was wrong is
+   * the audit trail — and `''` in a nullable column is a worse answer than null,
+   * because it asserts there IS a subscription and it is blank.
+   */
+  const invoiceWith = (parent: unknown) => ({ parent }) as any;
+
+  it("VACUITY: a subscription invoice yields its id", () => {
+    expect(
+      invoiceSubscriptionId(invoiceWith({ subscription_details: { subscription: "sub_123" } })),
+    ).toBe("sub_123");
+  });
+
+  it("accepts an expanded subscription object, not just an id string", () => {
+    expect(
+      invoiceSubscriptionId(
+        invoiceWith({ subscription_details: { subscription: { id: "sub_exp" } } }),
+      ),
+    ).toBe("sub_exp");
+  });
+
+  it("ignores a subscription placed at the OLD top level", () => {
+    // The exact defect: the value in the removed location must not be used.
+    const legacy = { subscription: "sub_legacy", parent: null } as any;
+    expect(
+      invoiceSubscriptionId(legacy),
+      "the accessor read invoice.subscription — the field Stripe removed",
+    ).toBeNull();
+  });
+
+  it.each([
+    ["no parent", invoiceWith(null)],
+    ["a quote parent", invoiceWith({ quote_details: { quote: "qt_1" } })],
+    ["subscription_details null", invoiceWith({ subscription_details: null })],
+  ])("%s yields null, never an empty string", (_label, inv) => {
+    const got = invoiceSubscriptionId(inv);
+    expect(got).toBeNull();
+    expect(got, "'' asserts there is a subscription and it is blank").not.toBe("");
+  });
+
+  it("neither payment_failed handler reads the removed field", () => {
+    for (const rel of ["server/webhookHandlers.ts", "server/services/stripeConnect.ts"]) {
+      const code = read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect(code, `${rel} still casts an invoice to read .subscription`).not.toMatch(
+        /invoice as any\s*\)\s*\.subscription/,
+      );
+      expect(code).toMatch(/invoiceSubscriptionId\s*\(/);
     }
   });
 });

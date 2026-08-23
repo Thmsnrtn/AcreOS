@@ -644,15 +644,17 @@ export class WebhookHandlers {
         return;
       }
 
-      const subscriptionId = (invoice as any).subscription 
-        ? (typeof (invoice as any).subscription === 'string' ? (invoice as any).subscription : (invoice as any).subscription?.id)
-        : '';
+      // Was `(invoice as any).subscription`, which is not a field in the pinned
+      // API version — Stripe moved it under parent.subscription_details. It was
+      // always undefined, so every dunning row recorded '' for the subscription.
+      const { invoiceSubscriptionId } = await import('./stripeClient');
+      const subscriptionId = invoiceSubscriptionId(invoice);
 
       const { dunningService } = await import('./services/dunning');
       await dunningService.handlePaymentFailed(
         org.id,
         invoice.id,
-        subscriptionId || '',
+        subscriptionId,
         invoice.amount_due,
         invoice.attempt_count || 1
       );

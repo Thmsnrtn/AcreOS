@@ -509,7 +509,10 @@ export class StripeConnectService {
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = typeof invoice.customer === "string" ? invoice.customer : (invoice.customer as any)?.id;
-        const subscriptionId = typeof (invoice as any).subscription === "string" ? (invoice as any).subscription : (invoice as any).subscription?.id;
+        // See invoiceSubscriptionId: the old top-level field does not exist in
+        // the pinned API version, so this was always undefined.
+        const { invoiceSubscriptionId } = await import("../stripeClient");
+        const subscriptionId = invoiceSubscriptionId(invoice);
         if (customerId) {
           try {
             // Find org by Stripe customer ID

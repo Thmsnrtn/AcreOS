@@ -167,3 +167,27 @@ export function subscriptionPeriodIso(
     ? { start: new Date(p.start * 1000).toISOString(), end: new Date(p.end * 1000).toISOString() }
     : { start: null, end: null };
 }
+
+/**
+ * The subscription an invoice belongs to, or null.
+ *
+ * `Invoice.subscription` does not exist in the pinned API version — Stripe moved
+ * it under `invoice.parent.subscription_details.subscription`, alongside
+ * `quote_details`, because an invoice's parent can be several things.
+ *
+ * Both `invoice.payment_failed` handlers read the old location through
+ * `(invoice as any).subscription`, so the id was always undefined and both
+ * passed `''` into the dunning event. Nothing queries
+ * `dunning_events.stripe_subscription_id`, so no behaviour was wrong — dunning
+ * still ran, notifications still sent, retries still scheduled. What was wrong
+ * is the audit trail: every dunning row recorded an empty subscription, and `''`
+ * in a nullable column is a worse answer than null, because it asserts there IS
+ * one and it is blank. The moment anyone reconciles dunning against Stripe, the
+ * record cannot be joined back to anything.
+ */
+export function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const parent = (invoice as { parent?: Stripe.Invoice.Parent | null }).parent;
+  const sub = parent?.subscription_details?.subscription;
+  if (!sub) return null;
+  return typeof sub === "string" ? sub : (sub.id ?? null);
+}

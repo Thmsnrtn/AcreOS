@@ -129,7 +129,8 @@ class DunningService {
   async handlePaymentFailed(
     organizationId: number,
     stripeInvoiceId: string,
-    stripeSubscriptionId: string,
+    /** null when the invoice has no subscription parent — never '' . */
+    stripeSubscriptionId: string | null,
     amountDueCents: number,
     attemptNumber: number
   ): Promise<void> {

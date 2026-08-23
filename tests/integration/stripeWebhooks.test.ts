@@ -19,7 +19,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("../../server/stripeClient", () => ({
+vi.mock("../../server/stripeClient", async (importOriginal) => ({
+  // The client factories are mocked; the payload accessors are NOT. They are
+  // pure functions over the webhook body, and stubbing them would mean this
+  // suite could not tell a correct read from a wrong one — which is exactly
+  // what it exists to check.
+  ...(await importOriginal<typeof import("../../server/stripeClient")>()),
   getUncachableStripeClient: vi.fn(),
   getStripeSecretKey: vi.fn(() => "sk_test_mock"),
 }));
@@ -322,7 +327,10 @@ describe("Stripe Webhook: invoice.payment_failed (Tasks #79-82)", () => {
       customer: "cus_test_1",
       amount_due: 9900,
       attempt_count: 1,
-      subscription: "sub_test_1",
+      // Stripe moved this under parent.subscription_details for the pinned API
+      // version; the fixture carried the pre-migration shape, which is what made
+      // `(invoice as any).subscription` look like it worked.
+      parent: { type: "subscription_details", subscription_details: { subscription: "sub_test_1" } },
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(
       makeStripeEvent("invoice.payment_failed", invoice, "evt_fail_1")
@@ -348,7 +356,10 @@ describe("Stripe Webhook: invoice.payment_failed (Tasks #79-82)", () => {
       customer: "cus_test_2",
       amount_due: 4900,
       attempt_count: 3, // third attempt
-      subscription: "sub_test_2",
+      // Stripe moved this under parent.subscription_details for the pinned API
+      // version; the fixture carried the pre-migration shape, which is what made
+      // `(invoice as any).subscription` look like it worked.
+      parent: { type: "subscription_details", subscription_details: { subscription: "sub_test_2" } },
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(
       makeStripeEvent("invoice.payment_failed", invoice, "evt_fail_2")
