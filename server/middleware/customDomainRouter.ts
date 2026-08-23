@@ -87,11 +87,62 @@ function localSet(domain: string, value: TenantContext | null): void {
 const REDIS_TTL_SECONDS = 5 * 60;
 const REDIS_KEY_PREFIX = "tenant:domain:";
 
+/**
+ * The two Redis operations this tier uses. Nothing more is required of a client,
+ * and asking for less than the whole ioredis surface keeps the seam honest.
+ */
+interface DomainCacheRedis {
+  get(key: string): Promise<string | null>;
+  setex(key: string, ttlSeconds: number, value: string): Promise<unknown>;
+  del(key: string): Promise<unknown>;
+}
+
+/**
+ * The Redis client backing this tier, or null when none is attached.
+ *
+ * ── WHAT THIS REPLACED, AND WHY IT IS NOT A DELETION ────────────────────────
+ * The three call sites below probed `storage.redis` through a cast — on a property
+ * that is NOT a member of DatabaseStorage and is never assigned anywhere in the
+ * repository. So `typeof …redis?.get !== "function"` was always true, `redisGet`
+ * always returned undefined and `redisSet` always no-opped: the tier has never
+ * once cached anything.
+ *
+ * That is not a defect in the behaviour. The header above says "optional,
+ * best-effort", there is a working in-memory `localCache` in front of it and a
+ * database lookup behind it, and every path degrades correctly. What was wrong
+ * is that "optional" was indistinguishable from "impossible" — the capability
+ * was probed through a cast on an undeclared property, so nothing could tell
+ * this apart from the ghost reads that hid real defects elsewhere in this sweep.
+ *
+ * Declaring the seam states the truth in the type system: the tier accepts a
+ * client, and nothing currently provides one. Attaching a real client is an
+ * infrastructure decision (does this deployment run Redis?), which is why this
+ * declares the socket rather than wiring something into it.
+ */
+function domainCacheRedis(storage: unknown): DomainCacheRedis | null {
+  const candidate = (storage as { redis?: Partial<DomainCacheRedis> }).redis;
+  // ALL THREE, deliberately. A client with `get` but no `setex` would serve
+  // reads from a cache nothing writes; one without `del` could not be
+  // invalidated, and a domain-routing table that cannot be invalidated is worse
+  // than no cache at all — a revoked custom domain would keep resolving. The
+  // original probed each operation independently at its own call site, which is
+  // how the `del` site went unnoticed when this seam was first extracted.
+  if (
+    typeof candidate?.get !== "function" ||
+    typeof candidate?.setex !== "function" ||
+    typeof candidate?.del !== "function"
+  ) {
+    return null;
+  }
+  return candidate as DomainCacheRedis;
+}
+
 async function redisGet(domain: string): Promise<TenantContext | null | undefined> {
   try {
     const { storage } = await import("../storage");
-    if (typeof (storage as any).redis?.get !== "function") return undefined;
-    const raw = await (storage as any).redis.get(`${REDIS_KEY_PREFIX}${domain}`);
+    const redis = domainCacheRedis(storage);
+    if (!redis) return undefined;
+    const raw = await redis.get(`${REDIS_KEY_PREFIX}${domain}`);
     if (raw === null) return undefined; // miss
     if (raw === "null") return null; // cached negative
     return JSON.parse(raw) as TenantContext;
@@ -103,8 +154,9 @@ async function redisGet(domain: string): Promise<TenantContext | null | undefine
 async function redisSet(domain: string, value: TenantContext | null): Promise<void> {
   try {
     const { storage } = await import("../storage");
-    if (typeof (storage as any).redis?.setex !== "function") return;
-    await (storage as any).redis.setex(
+    const redis = domainCacheRedis(storage);
+    if (!redis) return;
+    await redis.setex(
       `${REDIS_KEY_PREFIX}${domain}`,
       REDIS_TTL_SECONDS,
       value === null ? "null" : JSON.stringify(value)
@@ -260,8 +312,9 @@ export async function evictTenantCache(domain: string): Promise<void> {
   localCache.delete(domain);
   try {
     const { storage } = await import("../storage");
-    if (typeof (storage as any).redis?.del === "function") {
-      await (storage as any).redis.del(`${REDIS_KEY_PREFIX}${domain}`);
+    const redis = domainCacheRedis(storage);
+    if (redis) {
+      await redis.del(`${REDIS_KEY_PREFIX}${domain}`);
     }
   } catch {
     // Non-fatal

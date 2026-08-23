@@ -21,6 +21,18 @@ export interface Job {
   result?: Record<string, any>;
   processingStartedAt?: Date;
   completedAt?: Date;
+  /**
+   * The `background_jobs` row this in-memory job was persisted as.
+   *
+   * Attached at four sites and read at two, all through `job._dbId`
+   * — a real contract carried outside the type, which meant the ghost-field
+   * gate could not tell it apart from a read of a column that does not
+   * exist. An attached property the code depends on IS part of the type;
+   * leaving it undeclared is what made it indistinguishable from a defect.
+   *
+   * Optional because a job exists in memory before it is persisted.
+   */
+  _dbId?: number;
 }
 
 export interface JobQueueOptions {
@@ -90,7 +102,7 @@ async function createBullMQService(): Promise<JobQueueService> {
   }
 
   async function syncJobStatusToDb(job: Job, dbId?: number): Promise<void> {
-    const id = dbId ?? (job as any)._dbId;
+    const id = dbId ?? job._dbId;
     if (!id) return;
     const dbStatus = job.status === "retrying" ? "pending" : job.status;
     await db
@@ -182,7 +194,7 @@ async function createBullMQService(): Promise<JobQueueService> {
         .returning({ id: backgroundJobs.id })
         .then(([row]) => {
           if (row) {
-            (job as any)._dbId = row.id;
+            job._dbId = row.id;
           }
         })
         .catch((err: unknown) => {
@@ -321,7 +333,7 @@ async function createBullMQService(): Promise<JobQueueService> {
               error: row.error ?? null,
               result: row.result as Record<string, any> | undefined,
             };
-            (job as any)._dbId = row.id;
+            job._dbId = row.id;
             jobCache.set(tempId, job);
             loaded++;
           }
@@ -489,7 +501,7 @@ class InMemoryJobQueueService implements JobQueueService {
       .returning({ id: backgroundJobs.id })
       .then(([row]) => {
         if (row) {
-          (job as any)._dbId = row.id;
+          job._dbId = row.id;
         }
       })
       .catch((err: unknown) => {
@@ -606,7 +618,7 @@ class InMemoryJobQueueService implements JobQueueService {
   }
 
   private async syncJobStatusToDb(job: Job): Promise<void> {
-    const dbId: number | undefined = (job as any)._dbId;
+    const dbId: number | undefined = job._dbId;
     if (!dbId) return;
     const dbStatus = job.status === "retrying" ? "pending" : job.status;
     await db
@@ -675,7 +687,7 @@ class InMemoryJobQueueService implements JobQueueService {
           error: row.error ?? null,
           result: row.result as Record<string, any> | undefined,
         };
-        (job as any)._dbId = row.id;
+        job._dbId = row.id;
         this.jobs.set(job.id, job);
         this.pendingQueue.push(job.id);
         loaded++;

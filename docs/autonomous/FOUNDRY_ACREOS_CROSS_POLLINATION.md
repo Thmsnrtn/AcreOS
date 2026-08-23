@@ -4526,3 +4526,51 @@ shared and client. Neither is wrong; they are different populations, and a
 reduction in one is not evidence about the other. Worth knowing before reading
 either number as progress — the third law applied to two gates that sit beside
 each other in the same `npm run check` run.
+
+---
+
+### 71 — A CONTRACT CARRIED OUTSIDE THE TYPE IS INDISTINGUISHABLE FROM A DEFECT
+
+The two largest remaining ghost-field clusters, and neither was a ghost. They are
+the opposite failure: something real, kept out of the type system.
+
+**`Job._dbId`** — attached at four sites, read at two, always through
+`(job as any)._dbId`. It carries the `background_jobs` row id for an in-memory
+job. Entirely real, entirely undeclared. Declared on the interface; seven casts
+gone.
+
+**`storage.redis`** — probed at three sites for the custom-domain cache. `redis`
+is not a member of `DatabaseStorage` and is assigned nowhere in the repository,
+so the probe always failed and **the tier has never cached anything**.
+
+**And that one is not a bug**, which is the part worth keeping. Its header says
+"optional, best-effort"; there is a working in-memory `localCache` in front of it
+and a database lookup behind it; every path degrades correctly. Nothing is
+broken. What was wrong is that **"optional" was indistinguishable from
+"impossible"** — the capability was probed through a cast on an undeclared
+property, so neither a reader nor a gate could tell a designed degradation from
+the reads that hid `auditOrgUsury`'s Texas fallback. Declaring the seam states
+the truth: the tier accepts a client, and nothing currently provides one.
+Attaching one is an infrastructure question, so this declares the socket rather
+than wiring something into it.
+
+**My own gate caught a site I had missed.** I converted `redisGet` and
+`redisSet`, wrote the test, and it failed: a third call site — `del`, for cache
+invalidation — still carried its cast. My earlier survey had used `head -4` and
+truncated exactly at that line. **Fixing two of three and declaring victory is
+the failure mode this repo is built around**, and the only reason it did not
+happen here is that the assertion was written against the whole file rather than
+the two functions I had just edited.
+
+The seam now requires all three operations together. A client with `get` but no
+`setex` serves reads from a cache nothing writes; one without `del` cannot be
+invalidated, **and a domain-routing table that cannot be invalidated is worse
+than no cache — a revoked custom domain would keep resolving.** The original
+probed each operation independently at its own call site, which is precisely how
+the third one got left behind.
+
+**Two reductions, two different reasons, same number.** Of the 40 findings closed
+so far, roughly half were real fabrications and half were contracts or types that
+simply were not written down. A ghost-field count is a list of places worth
+reading, and nothing more — which is the only honest thing to say about any
+gate's baseline.
