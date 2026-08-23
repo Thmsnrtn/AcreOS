@@ -241,7 +241,11 @@ registerTool({
       }
       const lines = subs.map((s) => {
         const items = s.items.map((it) => `${it.nickname ?? it.price_id} × ${it.quantity}`).join(", ");
-        const renews = new Date(s.current_period_end * 1000).toISOString().split("T")[0];
+        // current_period_end is now `number | null` — it was typed `number` and
+        // populated with undefined, so this line was `new Date(NaN)` and threw.
+        const renews = s.current_period_end
+          ? new Date(s.current_period_end * 1000).toISOString().split("T")[0]
+          : "unknown";
         const flag = s.cancel_at_period_end ? " · _cancels at period end_" : "";
         return `- \`${s.id}\` · **${s.status}** · ${items} · renews ${renews}${flag}`;
       });

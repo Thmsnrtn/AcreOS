@@ -1023,7 +1023,10 @@ This requires human investigation.`,
         });
         const sub = subscriptions.data[0];
         if (sub) {
-          const periodEnd = (sub as any).current_period_end;
+          // Was `(sub as any).current_period_end`, always undefined, so the
+          // `if (periodEnd)` below meant this renewal prediction never once fired.
+          const { subscriptionPeriod } = await import("../stripeClient");
+          const periodEnd = subscriptionPeriod(sub)?.end;
           if (periodEnd) {
             const daysUntilRenewal = Math.floor((periodEnd * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
             if (daysUntilRenewal <= 3) {

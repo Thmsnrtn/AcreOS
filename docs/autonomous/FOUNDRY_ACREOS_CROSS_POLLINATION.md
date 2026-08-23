@@ -4323,3 +4323,62 @@ land. It does not clear the 100 already there — that is a backlog, and the
 baseline is a starting position, not an allowance. Every one of those 100 is a
 read that can only ever return `undefined`, and three of the four I have opened
 so far were live customer-facing defects.
+
+---
+
+### 67 — THE SAME MISSING FIELD FAILED THREE DIFFERENT WAYS, AND ONE OF THEM THREW
+
+Two findings, and the first one is a case where the right answer was to change
+nothing.
+
+**`autonomousDealMachine`'s eleven ghost reads are inert, and every gate already
+knew.** I went there because it was the largest cluster in the ghost-field
+backlog. The scoring loop reads `scrapedDeals` — a table the reachability gate
+already lists under `tablesNoWriter`, because **nothing in the repo ever inserts
+into it** — and the three exports that would register the worker
+(`createAutonomousDealMachineQueue`, `registerAutonomousDealMachineJob`,
+`autonomousDealMachineJob`) have zero callers and are already in
+`unreachedExports`. Two independent reasons the loop cannot execute. Three gates,
+three facets, nothing hidden.
+
+I nearly "fixed" it. `distressFactors` is a typed jsonb column on the same row
+declaring `yearsDelinquent`, `absenteeOwner` and `ownershipDuration` — precisely
+what three of the six ghosts reach for — so the obvious move was to read those
+instead. Then I checked whether anything WRITES `distressFactors`. Nothing does.
+The mapping would have been real code reading a column that is never populated,
+in a loop that never runs, and it would have looked like progress. **Whether to
+wire this job is an owner call, not an engineering one**: it auto-enrolls sellers
+into outreach campaigns, which is a consequential-action decision.
+
+**Then the live one.** `current_period_start` / `current_period_end` are not on
+`Stripe.Subscription` in the pinned API version — Stripe moved them onto the
+subscription ITEM, because a subscription whose items bill on different cadences
+has no single period. Four sites read them off the subscription anyway, and the
+SAME missing field produced three different failures:
+
+| site | cast | failure |
+|---|---|---|
+| `supportAgent.diagnose_account` | `as any` | `new Date(NaN).toISOString()` **THROWS RangeError** — the support agent could never report subscription status for a customer who had one |
+| founder-chat `stripe-ops` | `as unknown as { … }` | typed the field `number`, filled it with `undefined` |
+| founder-chat `operations` | — | same throw, one layer downstream |
+| `paxLearning` | `as any` | guarded by `if (periodEnd)`, so the renewal prediction silently never fired |
+
+**A missing field is not one bug with one severity.** The same absence threw in
+one place, poisoned a type in another, and quietly disabled a feature in a third
+— and only the throw would ever have been noticed.
+
+**The double assertion is a real limit of the gate I shipped an hour earlier.**
+`as unknown as { current_period_end: number }` evades `check-ghost-fields.mjs`
+entirely: the gate matches `as any`, and this is not that. Recorded here rather
+than quietly widened, because the honest statement is that the gate covers one
+cast form and this codebase uses at least two.
+
+**The gate did work on the part it covers, and on me.** Removing three `as any`
+reads took the count from 100 to 97, and the ratchet failed **stale-high on the
+very commit that earned the reduction** — which is exactly what down-only is for.
+
+The fix is one canonical accessor in `stripeClient.ts` adopted at all four sites,
+returning `null` rather than `NaN` because absent is a state the caller must
+handle and `new Date(NaN)` is not a date. It takes the EARLIEST item end, which
+is when the customer is next charged — the question every one of these callers
+was actually asking.

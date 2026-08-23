@@ -109,3 +109,61 @@ export async function getStripePublishableKey() {
 export async function getStripeSecretKey() {
   return getSecretKey();
 }
+
+/**
+ * The current billing period of a subscription.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * `current_period_start` / `current_period_end` are NOT on `Stripe.Subscription`
+ * in the API version this repo pins (see STRIPE_API_VERSION above; SDK 20.x).
+ * Stripe moved them onto the SUBSCRIPTION ITEM, because a subscription with
+ * items on different cadences has no single period.
+ *
+ * Four call sites read them off the subscription anyway, each through a cast
+ * that silenced the compiler, and the consequences differed by site:
+ *
+ *   supportAgent.diagnose_account   `new Date(undefined * 1000).toISOString()`
+ *                                   is `new Date(NaN).toISOString()`, which
+ *                                   THROWS RangeError — so the support agent
+ *                                   could never report subscription status for a
+ *                                   customer who HAS one.
+ *   founder-chat stripe-ops         typed the field `number` and populated it
+ *                                   with undefined via `as unknown as {...}` —
+ *                                   a double assertion, which is why the
+ *                                   ghost-field gate did not see it.
+ *   founder-chat operations         same throw, one layer downstream.
+ *   paxLearning                     guarded with `if (periodEnd)`, so the
+ *                                   renewal-window prediction simply never fired.
+ *
+ * Returns null rather than NaN when no item carries a period: absent is a state
+ * the caller must handle, and `new Date(NaN)` is not a date.
+ *
+ * Uses the EARLIEST end across items, which is when the customer is next
+ * charged for anything — the question every caller here is actually asking.
+ */
+export function subscriptionPeriod(
+  sub: Stripe.Subscription,
+): { start: number; end: number } | null {
+  const items = sub.items?.data ?? [];
+  const periods = items
+    .map((it) => ({
+      start: (it as { current_period_start?: number }).current_period_start,
+      end: (it as { current_period_end?: number }).current_period_end,
+    }))
+    .filter((p): p is { start: number; end: number } =>
+      typeof p.start === "number" && typeof p.end === "number" &&
+      Number.isFinite(p.start) && Number.isFinite(p.end),
+    );
+  if (periods.length === 0) return null;
+  return periods.reduce((soonest, p) => (p.end < soonest.end ? p : soonest));
+}
+
+/** The period as ISO strings, or nulls. Never an Invalid Date. */
+export function subscriptionPeriodIso(
+  sub: Stripe.Subscription,
+): { start: string | null; end: string | null } {
+  const p = subscriptionPeriod(sub);
+  return p
+    ? { start: new Date(p.start * 1000).toISOString(), end: new Date(p.end * 1000).toISOString() }
+    : { start: null, end: null };
+}

@@ -15,6 +15,7 @@
  */
 
 import { getUncachableStripeClient } from "../../../stripeClient";
+import { subscriptionPeriod } from "../../../stripeClient";
 import { logger } from "../../../utils/logger";
 
 export interface StripeCustomerSummary {
@@ -40,7 +41,8 @@ export interface StripeInvoiceSummary {
 export interface StripeSubscriptionSummary {
   id: string;
   status: string;
-  current_period_end: number;
+  /** null when no item carries a period — never NaN. */
+  current_period_end: number | null;
   cancel_at_period_end: boolean;
   items: Array<{ price_id: string; quantity: number; nickname?: string | null }>;
 }
@@ -115,7 +117,12 @@ export async function getActiveSubscriptions(customerId: string): Promise<Stripe
     .map((s) => ({
       id: s.id,
       status: s.status,
-      current_period_end: (s as unknown as { current_period_end: number }).current_period_end,
+      // Was `(s as unknown as { current_period_end: number }).current_period_end`
+      // — a DOUBLE assertion, which is how it evaded both tsc and the
+      // ghost-field gate, and it populated a field typed `number` with
+      // undefined. The period lives on the items, which this same map already
+      // walks two lines below.
+      current_period_end: subscriptionPeriod(s)?.end ?? null,
       cancel_at_period_end: s.cancel_at_period_end,
       items: s.items.data.map((it) => ({
         price_id: it.price.id,

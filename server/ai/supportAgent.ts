@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
+import { subscriptionPeriodIso } from "../stripeClient";
 import type { Organization, SupportTicket, KnowledgeBaseArticle } from "@shared/schema";
 import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
@@ -3483,8 +3484,12 @@ export async function executeSupportTool(
               subscriptionId: sub.id,
               status: sub.status,
               tier: product?.lookup_key || org.subscriptionTier,
-              currentPeriodStart: new Date((sub as any).current_period_start * 1000).toISOString(),
-              currentPeriodEnd: new Date((sub as any).current_period_end * 1000).toISOString(),
+              // Was `new Date((sub as any).current_period_start * 1000).toISOString()`.
+              // Those fields are on the subscription ITEM, not the subscription, so
+              // this was `new Date(NaN).toISOString()` — a RangeError on every
+              // customer who actually had a subscription.
+              currentPeriodStart: subscriptionPeriodIso(sub).start,
+              currentPeriodEnd: subscriptionPeriodIso(sub).end,
               cancelAtPeriodEnd: sub.cancel_at_period_end,
               cancelAt: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
               pricePerMonth: product?.unit_amount ? (product.unit_amount / 100).toFixed(2) : null,
