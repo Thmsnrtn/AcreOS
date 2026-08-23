@@ -43,7 +43,11 @@ export function registerCohortRetentionRoutes(app: Express): void {
         // engagement event within each window. One query per window so
         // the SQL stays readable.
         const reader = await dbForReads("cohort.retention");
-        const signups = await reader.execute(sql.raw(`
+        // `execute` takes the row type, so `.rows` comes back typed and NO cast
+        // is needed. The previous form cast the RESULT OBJECT to an array —
+        // a different claim entirely, and a false one.
+        type SignupRow = { cohort: string; organization_id: number; occurred_at: string | Date };
+        const signups = await reader.execute<SignupRow>(sql.raw(`
           SELECT
             to_char(date_trunc('week', occurred_at), 'IYYY-"W"IW') AS cohort,
             organization_id,
@@ -53,8 +57,19 @@ export function registerCohortRetentionRoutes(app: Express): void {
              OR event_type LIKE 'signup.%'
         `));
 
-        type SignupRow = { cohort: string; organization_id: number; occurred_at: string | Date };
-        const signupRows = (signups as unknown as SignupRow[]) ?? [];
+
+        // `reader.execute()` returns a node-postgres QueryResult — an OBJECT with
+        // `.rows`, not an array. This read `(signups as unknown as SignupRow[])`,
+        // a double assertion that told the compiler the container was an array
+        // and then handed the QueryResult straight to the `for...of` below,
+        // which throws `signupRows is not iterable` on every request. The route
+        // has therefore never produced a cohort.
+        //
+        // The house convention is one file over: routes-platform-features reads
+        // `result.rows?.[0]`. One honest cast remains — the ROW SHAPE, which
+        // TypeScript genuinely cannot know from raw SQL — instead of a lie about
+        // the container.
+        const signupRows = signups.rows ?? [];
         const byCohort = new Map<string, SignupRow[]>();
         for (const row of signupRows) {
           if (!row.cohort || !row.organization_id) continue;
@@ -89,7 +104,11 @@ export function registerCohortRetentionRoutes(app: Express): void {
                   AND (stage IN ('engagement', 'activation') OR event_type LIKE 'engagement.%' OR event_type LIKE 'activation.%')
                 LIMIT 1
               `));
-              const matched = (probe as unknown as unknown[])?.length ?? 0;
+              // Same defect, second read: `.length` on a QueryResult is
+              // undefined, so `matched` was always 0 and `retained` was never
+              // incremented — every cohort would have reported 0% retention even
+              // if the loop above had survived to reach this line.
+              const matched = probe.rows?.length ?? 0;
               if (matched > 0) retained++;
             }
             retention[`d${window}`] = orgIds.length > 0 ? retained / orgIds.length : 0;

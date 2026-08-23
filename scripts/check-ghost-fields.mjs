@@ -91,9 +91,31 @@ for (const sf of program.getSourceFiles()) {
   const visit = (node) => {
     if (ts.isPropertyAccessExpression(node)) {
       const target = unwrap(node.expression);
-      if (ts.isAsExpression(target) && target.type.kind === ts.SyntaxKind.AnyKeyword) {
+      // TWO cast shapes reach the same defect, and the gate missed the second
+      // until a real one got through:
+      //
+      //   (x as any).prop            — erases the type outright
+      //   (x as unknown as T).prop   — a DOUBLE assertion: `as unknown` erases,
+      //                                and the second half asserts a shape the
+      //                                compiler never checks against x.
+      //
+      // founder-chat's stripe-ops used the second form to read
+      // `current_period_end` off a Stripe.Subscription that has no such field,
+      // typed the result `number`, and filled it with undefined. This gate was
+      // green over it, and said so in its own note, because it only knew the
+      // first form. Both are now resolved back to the ORIGINAL expression's
+      // type — which is the only type that was ever real.
+      const asAny = ts.isAsExpression(target) && target.type.kind === ts.SyntaxKind.AnyKeyword;
+      const inner0 = ts.isAsExpression(target) ? unwrap(target.expression) : null;
+      const asUnknownAs =
+        ts.isAsExpression(target) &&
+        !asAny &&
+        inner0 !== null &&
+        ts.isAsExpression(inner0) &&
+        inner0.type.kind === ts.SyntaxKind.UnknownKeyword;
+      if (asAny || asUnknownAs) {
         inScopeCasts++;
-        const inner = unwrap(target.expression);
+        const inner = asUnknownAs ? unwrap(inner0.expression) : unwrap(target.expression);
         const t = checker.getTypeAtLocation(inner);
         const f = t.getFlags();
         const opaque =
@@ -141,7 +163,7 @@ for (const [name, actual, floor] of [
 }
 
 console.log(
-  `${TAG} ${inScopeCasts} \`(x as any).prop\` reads in scope; ${judged} with a knowable, ` +
+  `${TAG} ${inScopeCasts} erased-cast property reads in scope (\`as any\` and \`as unknown as T\`); ${judged} with a knowable, ` +
     `non-ambient base type; ${findings.length} read a property that type does not have`,
 );
 

@@ -4695,3 +4695,55 @@ are founder-gated by `isFounderAdmin`, which 404s non-founders. 17 resolve an id
 a parent read already proved. 16 touch tables with no organization column at all.
 The population was worth reading precisely because nobody could have said which
 63 without reading them.
+
+---
+
+### 74 — THE GATE'S OWN RECORDED GAP, CLOSED, AND THE ENDPOINT BEHIND IT HAD NEVER RUN
+
+Ledger 67 recorded a limit of `check-ghost-fields.mjs` rather than quietly
+widening it: founder-chat's stripe-ops used
+`as unknown as { current_period_end: number }` to read a field
+`Stripe.Subscription` does not have, and the gate was green, because it matched
+`as any` and this is not that.
+
+**Both forms reach the same defect.** `as any` erases the type; `as unknown as T`
+erases it and then asserts a shape nothing checks. The detector now resolves both
+back to the ORIGINAL expression's type — the only type that was ever real.
+
+**What widening bought: 38 more property reads in scope, 27 judgeable, ONE new
+ghost.** That 1-in-27 is the honest number, and it cuts both ways: the gap was
+real, and the population behind it is mostly legitimate conversion between
+related types. Worth knowing before widening the next lens.
+
+**The one it found had never worked.** `routes-cohort-retention.ts`:
+
+```ts
+const signupRows = (signups as unknown as SignupRow[]) ?? [];
+for (const row of signupRows) { … }               // throws: not iterable
+const matched = (probe as unknown as unknown[])?.length ?? 0;   // always 0
+```
+
+`server/db.ts` builds drizzle on `drizzle-orm/node-postgres` with a `pg.Pool`,
+so `execute()` resolves to a node-postgres **QueryResult** — an object with
+`.rows`, `.rowCount`, `.fields`. Not an array, not iterable, no `.length`. The
+`for...of` throws on **every** request, so the cohort-retention endpoint has
+never produced a cohort; and had it survived that line, the second read
+guarantees every cohort reports **0% retention**, which is a real-looking number
+on a founder dashboard.
+
+**The fix removed the cast rather than correcting it.** `execute` takes a row
+type parameter — `reader.execute<SignupRow>(…)` — so `.rows` comes back typed and
+no assertion is needed at all. My first attempt kept
+`(signups.rows ?? []) as unknown as SignupRow[]`, and the gate I had just written
+rejected it: the assertion could not distinguish "cast the RESULT OBJECT to an
+array" (the defect) from "cast the rows array's element type" (harmless). Rather
+than loosen the assertion to admit my own patch, I removed the cast. **When a
+gate objects to your fix, the fix is the thing to reconsider first.**
+
+The house convention was one file over the whole time — `routes-platform-features`
+reads `result.rows?.[0]` — which is the third source that settles what the shape
+is, independent of both the broken code and the type annotation it lied to.
+
+Falsified three ways, including the deletion direction: casting the result to an
+array fires 2, `.length` on the result fires 2, and quietly dropping the loop —
+which would satisfy every other assertion while producing no cohorts — fires 1.
