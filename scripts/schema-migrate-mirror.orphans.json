@@ -1,0 +1,24 @@
+{
+  "_note": "Tables CREATEd by a migration that shared/schema.ts does not model. Registered, not dropped: several hold data, and dropping a production table is customer-data deletion \u2014 a founder-only hard stop (CLAUDE.md). Each entry must say WHY the ORM does not own it. This register may only SHRINK: a table leaves it by being modelled in schema.ts, or by a founder decision to drop it. Discovered 2026-08-23 by standing up a real Postgres and running the Fly release_command, which reported it could not create earnest_money_events' append-only trigger \u2014 and exited 0.",
+  "orphans": {
+    "sessions": "connect-pg-simple's express-session store. Owned by the session middleware, not the app: the ORM must not model it, and its shape is the library's to change.",
+    "users": "Pre-Clerk identity table. Auth is Clerk-backed now; the row shape is not the app's to define. Reachable only through raw SQL in legacy paths.",
+    "password_reset_tokens": "Belongs to the pre-Clerk auth flow above. Retained because it may hold rows; nothing reads it.",
+    "referrals": "Referral programme tables from an earlier growth build. Referenced in server/ only by raw SQL, never through the ORM.",
+    "autonomous_decisions": "Superseded by the decision-snapshot model in shared/decisions/. Two server references, both raw SQL reads of historical rows.",
+    "voice_calls": "Voice-call capture from the telephony build. The live path writes call_transcripts, which IS modelled; these are the older rows.",
+    "voice_call_recordings": "Sibling of voice_calls. No reader or writer anywhere in server/.",
+    "satellite_analysis": "Imagery-analysis output from the parcel-intelligence build. One raw-SQL reference; no ORM model.",
+    "satellite_snapshots": "Sibling of satellite_analysis. No reader or writer anywhere in server/.",
+    "lead_photos": "Field-capture photos from an earlier mobile build. No reader or writer anywhere in server/.",
+    "push_subscriptions": "Web-push endpoints. Nothing in server/ sends web push; the notification rails are email, SMS and in-app.",
+    "automation_executions": "Execution log for a workflow engine superseded by the outbox + scheduler. No reader or writer.",
+    "model_versions": "ML model registry from the scoring build. Superseded by shared/schema ML snapshot tables, which ARE modelled.",
+    "training_metrics": "Sibling of model_versions. No reader or writer anywhere in server/.",
+    "tenant_event_streams": "Per-tenant event stream from an earlier eventing design. Superseded by lifecycle_events, which IS modelled.",
+    "earnest_money_events": "Append-only EMD event log, with an immutability trigger installed by migration 0239. No reader or writer in server/. This is the table whose trigger the release command reported it could not create against a schema-built database \u2014 the finding that produced this register. Money-custody adjacent: see the fee tables below.",
+    "fee_audit_log": "Residue of a transaction-fee design. AcreOS taking a fee out of customer money movement is what the 2026-07-29 founder ruling forbids \u2014 customer money never moves on AcreOS's own account \u2014 so this table should stay unmodelled and unused. Registered so its existence is known, not so it is revived.",
+    "fee_payout_schedules": "Same design as fee_audit_log, same ruling. No reader or writer.",
+    "transaction_fee_settlements": "Same design as fee_audit_log, same ruling. No reader or writer. Three dead fee tables together are the clearest artefact in the database of the payments architecture the money-custody hard stop replaced."
+  }
+}

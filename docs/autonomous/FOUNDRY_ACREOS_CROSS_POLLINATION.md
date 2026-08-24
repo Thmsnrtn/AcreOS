@@ -4747,3 +4747,63 @@ is, independent of both the broken code and the type annotation it lied to.
 Falsified three ways, including the deletion direction: casting the result to an
 array fires 2, `.length` on the result fires 2, and quietly dropping the loop —
 which would satisfy every other assertion while producing no cohorts — fires 1.
+
+---
+
+### 75 — I STOOD UP A REAL POSTGRES, AND THE FIRST THING IT FOUND WAS MY OWN BUG
+
+The frontier doc says, in its own words: *"Every material finding in the
+2026-08-17/18 rebuild work came from standing one up and RUNNING the release
+command, not from reading it. The static gates were green over all four defects
+it found."* This session had been nothing but static analysis. So: Postgres 16
+with pgvector, the schema built from `shared/schema.ts` (749 tables, clean), and
+`node scripts/migrate.mjs` — the actual `release_command` in `fly.toml`.
+
+**It exits 0 while permanently skipping a statement:**
+
+```
+[migrate] SKIPPED (dependency missing — non-fatal): CREATE TRIGGER emd_events_no_update_trg
+  relation "earnest_money_events" does not exist
+```
+
+`earnest_money_events` is created by migrations 0085/0086/0239, is absent from
+`shared/schema.ts`, and is read by nothing. On the production path it exists and
+the trigger installs; on a rebuild from schema.ts it does not. **`shared/schema.ts`
+is not a complete description of the database.**
+
+**The mirror gate is one-directional, by design and by its own header.**
+`check-schema-migrate-mirror.mjs` asks whether every table in `schema.ts` has a
+CREATE TABLE — the direction that 500s. The reverse — a table in DDL the ORM does
+not model — is quieter: no crash, just tables nothing reads and a rebuild that
+differs from production. **19 of them**, and three are the clearest artefact in
+the database of the payments architecture the money-custody ruling replaced:
+`fee_audit_log`, `fee_payout_schedules`, `transaction_fee_settlements`, all dead.
+
+Registered, not dropped. Several hold data, and dropping a production table is
+customer-data deletion — founder-only. What belongs to engineering is knowing
+they exist and why, so each entry carries a written reason.
+
+**AND THEN THE PART THAT MATTERS MOST.** Adding the reverse direction meant the
+name extractor had to stop reading prose — it was contributing a table called
+`above`, from `-- see the CREATE TABLE above`. I wrote a naive
+`/\/\*[\s\S]*?\*\//` stripper, re-ran, and the FORWARD direction went from
+**0 gaps to 223**. For a moment that looked like an enormous finding: 223 tables
+in the schema with no migration, every query 500ing on deploy.
+
+It was my bug. That stripper MISPAIRED across the SQL inside the 612KB
+`migrate.mjs` and blanked 390 of its 434 `CREATE TABLE` statements. The repo's
+own history records this exact failure — *"a block-comment stripper that
+mispaired and blanked the very lines a scan was counting"* — and
+`scripts/lib/strip-comments.mjs` exists because of it. Measured against the repo
+stripper: 434 raw, 423 stripped, 44 under mine.
+
+**The 0 was right the whole time.** I nearly filed 223 phantom defects, in a
+ledger, under a claim about the deploy path. What stopped it was refusing to
+believe a 0→223 swing without measuring where it came from — the same instinct
+that has been the useful one all session, turned on my own output for once.
+
+The DR runbook's own gate now runs clean against a real database: 1,846 ok, 1
+skipped (the EMD trigger above), 0 would-fail — and it says out loud that the 7
+non-transactional statements *"are not failures, and they are not proof either"*.
+That sentence is the house style working: a gate stating the limit of what it
+measured.

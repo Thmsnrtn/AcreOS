@@ -68,11 +68,14 @@ import { dirname, join, resolve } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
 const REPO_ROOT = resolve(__dirname, "..");
 const SHARED_DIR = join(REPO_ROOT, "shared");
 const MIGRATIONS_DIR = join(REPO_ROOT, "migrations");
 const MIGRATE_MJS = join(REPO_ROOT, "scripts", "migrate.mjs");
 const ALLOWLIST_PATH = join(__dirname, "schema-migrate-mirror.allowlist.json");
+const ORPHANS_PATH = join(__dirname, "schema-migrate-mirror.orphans.json");
+
 
 const MEASURE = process.argv.includes("--measure");
 const UPDATE = process.argv.includes("--update-allowlist");
@@ -115,8 +118,26 @@ function collectMigratedTables() {
   }
   if (existsSync(MIGRATE_MJS)) sources.push(MIGRATE_MJS);
   for (const f of sources) {
-    const src = readFileSync(f, "utf8");
+    // STRIP COMMENTS FIRST — with the REPO'S stripper, not a hand-rolled one.
+    //
+    // Without any stripping the scan reads prose: a line reading
+    // "-- see the CREATE TABLE above" contributed a table named `above`. That
+    // matters beyond tidiness, because `migrated` is what the forward direction
+    // subtracts from, so a COMMENT mentioning a table name can make a genuinely
+    // missing migration look covered.
+    //
+    // The first attempt here used a naive `/\*[\s\S]*?\*\//` on migrate.mjs and
+    // took its CREATE TABLE count from 434 to 44 — it MISPAIRED across the SQL
+    // in that 612KB file and blanked 390 real statements, which would have
+    // reported 223 phantom gaps. That is the precise failure CLAUDE.md records
+    // ("a block-comment stripper that mispaired and blanked the very lines a
+    // scan was counting"), and stripCommentsPreservingLines exists because of
+    // it. SQL files get a line-comment strip only, which has no pairing to get
+    // wrong.
+    const raw = readFileSync(f, "utf8");
+    const src = f.endsWith(".sql") ? raw.replace(/--[^\n]*/g, " ") : stripCommentsPreservingLines(raw);
     let m;
+    re.lastIndex = 0;
     while ((m = re.exec(src)) !== null) names.add(m[1]);
   }
   return names;
@@ -132,6 +153,13 @@ function loadAllowlist() {
     console.error(`[schema-migrate-mirror] allowlist not valid JSON: ${err.message}`);
     process.exit(1);
   }
+}
+
+/** Tables the ORM deliberately does not model, each with a written reason. */
+function loadOrphanAllowlist() {
+  if (!existsSync(ORPHANS_PATH)) return new Set();
+  const parsed = JSON.parse(readFileSync(ORPHANS_PATH, "utf8"));
+  return new Set(Object.keys(parsed.orphans ?? {}));
 }
 
 function main() {
@@ -152,6 +180,31 @@ function main() {
     process.exit(0);
   }
 
+  // ── THE REVERSE DIRECTION (added 2026-08-23) ─────────────────────────────
+  //
+  // Everything above asks: does every table in shared/schema.ts have a
+  // CREATE TABLE somewhere? That is the direction that 500s, so it was built
+  // first and built well. It is also only HALF of "mirror".
+  //
+  // The other half — a table CREATEd by a migration that the ORM does not model
+  // — has a different and quieter failure. It does not 500. It means the
+  // database contains tables no code reads or writes, and that shared/schema.ts
+  // is not a complete description of production. Found by standing up a real
+  // Postgres and running the Fly release_command: `migrate.mjs` reported
+  // `SKIPPED (dependency missing): CREATE TRIGGER emd_events_no_update_trg ...
+  // relation "earnest_money_events" does not exist` against a database built
+  // from schema.ts — and exited 0. That table is created by migrations 0085,
+  // 0086 and 0239, is absent from schema.ts, and is read by nothing.
+  //
+  // Registered rather than dropped. Several of these hold data, and dropping a
+  // production table is customer-data deletion — a founder-only hard stop
+  // (CLAUDE.md). What belongs to engineering is knowing they exist and why.
+  const orphans = [...migrated].filter((t) => !schemaTables.has(t)).sort();
+  const orphanAllow = loadOrphanAllowlist();
+  const orphanSet = new Set(orphans);
+  const newOrphans = orphans.filter((t) => !orphanAllow.has(t));
+  const staleOrphans = [...orphanAllow].filter((t) => !orphanSet.has(t));
+
   const allow = loadAllowlist();
   const gapSet = new Set(gaps);
   const newGaps = gaps.filter((t) => !allow.has(t));
@@ -160,8 +213,32 @@ function main() {
   console.log(
     `[schema-migrate-mirror] schema tables: ${schemaTables.size}; gaps: ${gaps.length}; allowlisted: ${allow.size}; new: ${newGaps.length}; stale: ${staleAllow.length}`,
   );
+  console.log(
+    `[schema-migrate-mirror] reverse: DDL tables the ORM does not model: ${orphans.length}; registered: ${orphanAllow.size}; new: ${newOrphans.length}; stale: ${staleOrphans.length}`,
+  );
 
-  if (newGaps.length === 0 && staleAllow.length === 0) {
+  if (newOrphans.length > 0) {
+    console.error("");
+    console.error(
+      `[schema-migrate-mirror] FAIL — ${newOrphans.length} table(s) are CREATEd by a migration but declared nowhere in shared/schema.ts. They will exist in the database with no code reading or writing them, and a rebuild from schema.ts will not contain them:`,
+    );
+    for (const t of newOrphans) console.error(`  • ${t}`);
+    console.error("");
+    console.error(
+      "Model it in shared/schema.ts if the app should own it, or register it in " +
+        "scripts/schema-migrate-mirror.orphans.json WITH A REASON. Do NOT drop a production " +
+        "table to satisfy this — that is customer-data deletion, and founder-only.",
+    );
+  }
+  if (staleOrphans.length > 0) {
+    console.error("");
+    console.error(
+      `[schema-migrate-mirror] FAIL — ${staleOrphans.length} stale orphan registration(s) (now modelled in schema.ts, or the migration is gone). Remove them to tighten the ratchet:`,
+    );
+    for (const t of staleOrphans) console.error(`  • ${t}`);
+  }
+
+  if (newGaps.length === 0 && staleAllow.length === 0 && newOrphans.length === 0 && staleOrphans.length === 0) {
     console.log("[schema-migrate-mirror] PASS");
     process.exit(0);
   }
