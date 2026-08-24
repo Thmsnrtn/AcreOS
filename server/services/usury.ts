@@ -146,6 +146,7 @@ export async function auditOrgUsury(orgId: number): Promise<{
   }>;
 }> {
   const { db } = await import("../db");
+  const { usuryConsensus } = await import("./usuryConsensus");
   const { notes, properties, leads } = await import("@shared/schema");
   const { eq, and } = await import("drizzle-orm");
 
@@ -184,6 +185,24 @@ export async function auditOrgUsury(orgId: number): Promise<{
           "No state on file for this note's property, so AcreOS cannot say which usury " +
           "cap applies. Link the note to a property with a state, or check the rate " +
           "against the governing state's limit directly.",
+      };
+    }
+
+    // Founder ruling 2026-08-24: where authoritative jurisdiction-specific
+    // evidence is unresolved, classification must fail to INDETERMINATE rather
+    // than guess. AcreOS ships three tables describing the same cap and they
+    // disagree for 28 of 51 jurisdictions — Texas among them. Reporting one of
+    // three conflicting numbers as this note's legal ceiling is a guess wearing
+    // a verdict, so the audit declines to classify instead.
+    const consensus = usuryConsensus(state);
+    if (consensus.status === "indeterminate") {
+      return {
+        noteId: row.id,
+        borrowerName,
+        rate,
+        state,
+        clearance: null,
+        indeterminateReason: consensus.reason,
       };
     }
 

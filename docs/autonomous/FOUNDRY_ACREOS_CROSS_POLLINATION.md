@@ -4863,3 +4863,64 @@ by the gap between them — once by a fixture frozen at an old Stripe API versio
 (ledger 68), once by my own comment stripper (ledger 75).
 
 Cheap, and it should be the last step on anything that touches a query.
+
+---
+
+### 77 — THE REFUSAL THAT NEEDED NO LEGAL OPINION, AND WIRED TWO ORPHANS ON THE WAY
+
+Four owner decisions on 2026-08-24, reconciled into institutional state. One of
+them was directly implementable; the other three are records.
+
+**Decision 2 broke a deadlock that had stood since 2026-08-01.** Three tables in
+this repo describe a state's general civil usury cap and disagree for 25 states.
+`usuryConsistency.test.ts` has pinned that the whole time and nothing acted,
+because acting appeared to require deciding which table is right — a legal
+determination, and precisely what the minimum-necessary-responsibility posture
+forbids. The ruling dissolves it without resolving the law: *where authoritative
+jurisdiction-specific evidence is unresolved, classification must fail to
+INDETERMINATE, not guess.* "AcreOS's sources disagree" is a true statement about
+AcreOS's evidence and requires no legal opinion at all.
+
+`services/usuryConsensus.ts` consults all three and returns `agreed` or
+`indeterminate`. Measured: **23 of 51 jurisdictions agree, 28 do not** — Texas
+among the 28, which is also the state `auditOrgUsury` used to substitute for
+every note in every organization until two days ago. Both compliance surfaces now
+consult it before classifying.
+
+**THE PLAUSIBLE WRONG FIX WAS TAKING THE LOWEST CAP.** It reads as prudence and
+is still a legal claim: "this rate is usurious in your state" is an assertion
+whether it errs high or low, and an operator pricing a note off it would be
+relying on a number AcreOS invented out of a disagreement. The gate falsifies
+exactly that — implementing `Math.min` over the conflicting values fires three
+cases, including one that walks all 51 jurisdictions and fails if any `agreed`
+result has sources that do not actually agree.
+
+**AND IT WIRED TWO ORPHANS, WHICH IS THE INTERESTING PART.** To detect
+disagreement you must read all three sources — so `shared/regulatory/rmloAdvisor.ts`
+(ledger 62: 391 lines, zero production importers, every mention under `server/` a
+comment) and `server/services/usuryCeiling.ts` (the campaign frontier's "the
+best-tested and entirely UNWIRED") both acquired real production consumers.
+Reachability moved 390→389, 30→29, shared orphans 2→1.
+
+Worth being exact about what that did and did not do. **Both are now READ, not
+made AUTHORITATIVE.** Decision 3 is explicit that neither becomes canonical
+merely from usage; the eventual canonical source must be single, versioned,
+source-backed and jurisdiction/effective-date aware. So they are consulted as
+votes, and their disagreement produces a refusal rather than a verdict. An orphan
+wired as *evidence* is a different thing from an orphan promoted to *truth*, and
+the distinction is the whole reason this was implementable without waiting for
+counsel.
+
+**A gate of mine pinned the old truth and had to be rewritten, not deleted.**
+`usuryAuditJurisdiction.test.ts` used Texas for its vacuity guard and AZ/CO for
+its per-state case; TX and CO are now indeterminate by ruling. Rewritten to
+Arkansas (17) and Arizona (10) — both agreeing, both different — so the original
+invariant survives intact, plus a new case pinning the ruling itself: Texas now
+classifies nothing.
+
+**Decisions 1 and 4 are recorded, not built.** E-sign stays `planned` with the
+external setup deferred until Customer #1 needs it. The three transaction-fee
+tables become explicit deletion candidates: the precondition AcreOS can satisfy
+locally — no reachable consumer — is satisfied and written down; the two it
+cannot (historical purpose, live production rows) need production evidence this
+environment does not have. Recording that boundary is the point.

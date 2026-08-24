@@ -68,7 +68,12 @@ describe("auditOrgUsury audits each note against its own state", () => {
   it("VACUITY: a note in a known state IS classified", async () => {
     // Without this, every assertion below is satisfied by a function that
     // classifies nothing at all and reports zeroes.
-    rows = [{ id: 1, interestRate: "9", propertyState: "TX", borrowerFirst: "Dana", borrowerLast: "Ruiz" }];
+    // AR, not TX. Texas is one of the 28 jurisdictions whose sources disagree,
+    // so under the 2026-08-24 ruling it is now INDETERMINATE by design — the
+    // original fixture would make this vacuity guard assert the opposite of the
+    // rule. Arkansas' three sources agree at 17, so classification still happens
+    // and "did it classify at all" remains a real question.
+    rows = [{ id: 1, interestRate: "9", propertyState: "AR", borrowerFirst: "Dana", borrowerLast: "Ruiz" }];
     const out = await audit();
     expect(out.results).toHaveLength(1);
     expect(out.results[0].clearance).not.toBeNull();
@@ -95,14 +100,14 @@ describe("auditOrgUsury audits each note against its own state", () => {
   it("uses each note's own state within one audit", async () => {
     // The fallback made every row identical. Two rows, two caps, one call.
     rows = [
-      { id: 1, interestRate: "11", propertyState: "AZ", borrowerFirst: null, borrowerLast: null }, // AZ cap 10
-      { id: 2, interestRate: "11", propertyState: "CO", borrowerFirst: null, borrowerLast: null }, // CO cap 45
+      { id: 1, interestRate: "11", propertyState: "AZ", borrowerFirst: null, borrowerLast: null }, // AZ cap 10, sources agree
+      { id: 2, interestRate: "11", propertyState: "AR", borrowerFirst: null, borrowerLast: null }, // AR cap 17, sources agree
     ];
     const out = await audit();
 
     const byId = Object.fromEntries(out.results.map((r) => [r.noteId, r]));
     expect(byId[1].clearance?.maxAllowedRate).toBe(10);
-    expect(byId[2].clearance?.maxAllowedRate).toBe(45);
+    expect(byId[2].clearance?.maxAllowedRate).toBe(17);
     expect(byId[1].clearance?.warningLevel).toBe("violation");
     expect(byId[2].clearance?.warningLevel).toBe("ok");
   });
@@ -152,5 +157,30 @@ describe("an unresolvable jurisdiction is refused, not assumed", () => {
         "different document about a different place",
     ).not.toMatch(/\|\|\s*["'][A-Z]{2}["']/);
     expect(code, "an `as any` is back on the note row").not.toMatch(/note as any/);
+  });
+});
+
+describe("a jurisdiction AcreOS's own sources disagree about is INDETERMINATE", () => {
+  /**
+   * Founder ruling 2026-08-24: "Where authoritative jurisdiction-specific
+   * evidence is unresolved, legal/compliance classification must fail to
+   * INDETERMINATE, not guess compliant/noncompliant."
+   *
+   * Texas is the sharpest case. It is one of the 28 of 51 jurisdictions whose
+   * three AcreOS tables conflict, AND it is the state this audit used to
+   * substitute for every note in every organization. It now classifies nothing.
+   */
+  it("Texas — three conflicting sources — no longer produces a verdict", async () => {
+    rows = [{ id: 1, interestRate: "17.5", propertyState: "TX", borrowerFirst: null, borrowerLast: null }];
+    const out = await audit();
+
+    expect(out.indeterminate).toBe(1);
+    expect(out.violations).toBe(0);
+    expect(
+      out.compliant,
+      "a rate in a jurisdiction AcreOS cannot resolve was reported as compliant",
+    ).toBe(0);
+    expect(out.results[0].clearance).toBeNull();
+    expect(out.results[0].indeterminateReason).toMatch(/disagree/i);
   });
 });

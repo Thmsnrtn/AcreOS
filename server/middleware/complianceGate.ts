@@ -126,6 +126,29 @@ async function collectWarnings(
   if (checkType === "note") {
     const { interestRate, state } = req.body ?? {};
     if (interestRate && state) {
+      // Founder ruling 2026-08-24: unresolved jurisdiction evidence must fail to
+      // INDETERMINATE, not guess. Three AcreOS tables describe this cap and
+      // disagree for 28 of 51 jurisdictions, so where they conflict this gate
+      // reports that AcreOS cannot tell — it does not pick one and call the rate
+      // lawful or usurious.
+      const { usuryConsensus } = await import("../services/usuryConsensus");
+      const consensus = usuryConsensus(state);
+      if (consensus.status === "indeterminate") {
+        warnings.push({
+          type: "usury",
+          severity: "warning",
+          message:
+            `AcreOS cannot determine ${state}'s usury limit for this note. ${consensus.reason}`,
+          recommendation:
+            "Confirm the governing cap with counsel before setting this rate. AcreOS is not " +
+            "asserting that the rate is either lawful or usurious.",
+        });
+      } else {
+      // `else`, not an early `return`. Returning here would be correct today —
+      // no note-level warning follows this block — and would silently swallow
+      // the next one somebody adds. This file collects warnings; a branch that
+      // exits the collector is a trap left for a future author.
+
       const { checkUsury } = await import("../services/usury");
       const result = checkUsury(state, parseFloat(interestRate));
       if (result.warningLevel === "violation") {
@@ -142,6 +165,7 @@ async function collectWarnings(
           message: `Interest rate ${interestRate}% is near ${state} usury limit (max: ${result.maxAllowedRate}%)`,
           recommendation: "Consider reducing the rate to maintain a safety margin.",
         });
+      }
       }
     }
   }
