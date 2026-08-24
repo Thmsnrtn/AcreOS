@@ -4807,3 +4807,59 @@ skipped (the EMD trigger above), 0 would-fail — and it says out loud that the 
 non-transactional statements *"are not failures, and they are not proof either"*.
 That sentence is the house style working: a gate stating the limit of what it
 measured.
+
+---
+
+### 76 — RUNNING MY OWN FIXES: TWO CLAIMS PROVEN, NOT INFERRED
+
+Ledger 75 stood up a real Postgres and immediately caught a bug of mine. Worth
+pointing the same lens at the rest of the session's work: several fixes were
+verified with fakes and unit doubles, and never executed against a database.
+
+**COHORT RETENTION — the claim was "the endpoint has never produced a cohort".**
+That was inferred from types: `drizzle-orm/node-postgres` returns a `QueryResult`,
+which is not iterable, so the `for...of` must throw. Inference is not execution.
+Seeded two orgs signing up in the same month, one of which later engages, then
+ran the OLD code and the NEW code against the same live query:
+
+```
+isArray: false | has .rows: true | .length: undefined
+OLD CODE THREW: oldRows is not iterable
+NEW CODE: iterated 2 rows
+   cohort 2026-01 org 901
+   cohort 2026-01 org 902
+PROBE old (.length on result): 0
+PROBE new (.rows.length):      1
+```
+
+The throw is real, on the first row, every time. And the retention probe moves
+from a false 0 to a correct 1 — org 901 genuinely did engage. The claim now rests
+on a stack trace rather than a type signature.
+
+**THE USURY AUDIT — the claim was that every note in every organization was
+judged against Texas.** Proven by reading (`propertyState` is on no table, so
+`|| "TX"` fired every time), but what the reading could not show is whether it
+MATTERED. Seeded an Arkansas property with a 17.5% note:
+
+```
+AR cap: 17 | TX cap: 18
+17.5% judged in AR -> violation | judged in TX -> warning
+```
+
+**The same note, two different verdicts.** Under the old code this Arkansas note
+was reported to its owner as a *warning*; under Arkansas law it is a *violation* —
+the category whose consequence is forfeiting all interest. The fixed audit
+returns `state=AR max=17 violation`, resolves the borrower as "Dana Ruiz" through
+the `leads` join (it was hardcoded-null before, via a cast onto a column that does
+not exist), and refuses the second note — no linked property, so no jurisdiction —
+as `INDETERMINATE` rather than counting it compliant.
+
+**Why this entry exists at all.** Nothing was fixed here; both fixes were already
+committed and both were already covered by falsified unit gates. What changed is
+the KIND of evidence behind them. A gate with a db double proves the code does
+what the double expects; running it proves the double was right about the
+database. Those are different claims, and this session has now been bitten twice
+by the gap between them — once by a fixture frozen at an old Stripe API version
+(ledger 68), once by my own comment stripper (ledger 75).
+
+Cheap, and it should be the last step on anything that touches a query.
