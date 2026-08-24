@@ -160,6 +160,8 @@ had not verified; those are deliberately absent below.
    keeps the canary meaningful — and a second fixture was added that must PASS,
    because a canary satisfied by "any tree fails" is a red that means nothing.
 
+9. ~~**`lint-reachability` cannot see `shared/**`**~~ CLOSED 2026-08-23. The lens was widened and the newly-visible population frozen in FOUR PER-ROOT baselines rather than folded into the server ones (+54 into 390 would let a server regression hide inside a shared improvement); the server counts did not move. The decision the item asked for is recorded in the allowlist itself: a test-only canonical registry is the INTENDED shape for canon.ts / constitution.ts / statuteRegister.ts — they are indexes of enforcement, satisfying authoritative semantics and drift prevention while forgoing production adoption because there is nothing at runtime to adopt. The exemption names its own revocation condition. rmloAdvisor and sentinel-ids stayed COUNTED as real debt; rmloAdvisor has since been wired (ledger 77), leaving one.
+
 9. **`lint-reachability` cannot see `shared/**`, and the family split cut the
    cost of fixing that from 473 decisions to ~58.** RE-MEASURED 2026-08-20 after
    ledger 45. The old figure — "adding `shared` to `EXPORT_SOURCE_DIRS` moves
@@ -234,6 +236,8 @@ had not verified; those are deliberately absent below.
    newly-visible population was frozen in registers of its own. Do that here —
    per-root counts — rather than a +494 bump that erases the server signal.
 
+10. ~~**The tenancy register's rule 1**~~ CLOSED 2026-08-21 (ledger 61). All 271 unique entries adjudicated — 142 deliberate cross-org, 62 parent-verified, 52 unreachable, 8 platform/self-inserted, 8 suspected. Five confirmed and fixed; a sixth (getRecurringTasksDue — any authenticated user could insert a task into EVERY other organization) was caught only because the refutation cap REPORTED its overflow instead of dropping it. Coverage verified by diffing keys sent against keys returned: zero unclassified.
+
 10. **The tenancy register's two RISK rules are adjudicated in full; rule 1 and a
    gate blind spot remain.** Rule 2 (140 entries) and rule 3 (120) were both
    worked on 2026-08-20 — classifiers, two independent refuters per claim, then
@@ -301,6 +305,8 @@ had not verified; those are deliberately absent below.
     the ceiling bypass underneath was real and unreachable at once — and would
     have become reachable the moment someone made the enum match the picker,
     which is the obvious repair.
+
+13. ~~**Four connector executors bypass the provider registry**~~ CLOSED 2026-08-23 (ledger, deletion 2026-08-23). Reading them changed the answer for three of four. PropStream was DELETED, not migrated: the repo held two mutually incompatible auth contracts for one vendor and the executor conceded it guessed the endpoint, so routing it through the registry would have bought governance for a guess. MLS was real RESO and was kept and fixed — get_mls_comps returned the SUBJECT PROPERTY (an exact-address filter) and now refuses; OData literals are escaped; the silent vendor-host fallback is gone.
 
 13. **Four connector executors bypass the provider registry — and the claim in
     the previous version of this entry was partly wrong.** It said five, and
@@ -574,8 +580,46 @@ Two items are recorded there awaiting a ruling rather than blocking work:
 
 ## Blocked — external
 
-`docs/autonomous/EXTERNAL_PROOF_AND_OWNER_ACTIONS.md`. The S3 fetch half of the
-DR RTO remains unmeasured — no bucket access from this container.
+Everything here needs evidence or an account that does not exist inside this
+repository. None of it is engineering work waiting to be done; each is a fact
+AcreOS does not have.
+
+1. **E-sign validation — a DocuSign account, and per-org connected accounts.**
+   Availability stays `planned`; the connect route refuses before encrypting a
+   customer's key. Owner decision 2026-08-24 defers the setup until Customer #1
+   or production proof needs it. When that arrives, the minimum external setup
+   splits in two and the split is the whole point: the AcreOS-owned OAuth /
+   integration registration (one-time, ours) versus each customer organization's
+   own connected DocuSign account and signing identity (theirs, per org). The
+   ceremony and signer authentication stay on their rail — that is the
+   orchestrate-not-provider boundary, not an implementation detail.
+
+2. **Usury — authoritative jurisdiction evidence for 28 of 51 jurisdictions.**
+   AcreOS's three tables disagree there, and `usuryConsensus` now refuses rather
+   than guessing (ledger 77). Resolving it is legal research against actual
+   statutes, per state, with effective dates. Owner decision 2026-08-24 is
+   explicit that this is external legal proof debt and must not be settled by
+   preferring one internal implementation.
+
+3. **The canonical usury source.** Blocked behind (2). It must be single,
+   versioned, source-backed and jurisdiction/effective-date aware; the duplicate
+   is retired only after the underlying legal evidence is verified. Neither
+   `usuryCeiling.ts` nor `usury.ts` inherits authority from current usage.
+
+4. **The three transaction-fee tables — production state.** `fee_audit_log`,
+   `fee_payout_schedules`, `transaction_fee_settlements` are registered deletion
+   candidates. The precondition AcreOS can satisfy locally is satisfied and
+   written down: no reachable consumer anywhere in `server/`. The two it cannot
+   are whether they carry a required historical/migration purpose and whether
+   they hold live production rows. Unknown production state means KEEP.
+
+5. **One provider key**, to settle whether the four non-chat OpenAI endpoints
+   (whisper, dall-e, embeddings) work through the OpenRouter client. Both
+   candidate rewrites are guesses without it; the measurement and its limit are
+   recorded in `check-model-prefix.mjs`.
+
+6. **Production database access**, which (4) needs and which would also settle
+   whether the 19 registered ORM-unmodelled tables hold data.
 
 ## Proof debt
 
@@ -601,6 +645,36 @@ DR RTO remains unmeasured — no bucket access from this container.
 ---
 
 ## Next session starts here
+
+**READ THIS FIRST — the state at the close of the 2026-08-24 goal.**
+
+The frontier is thin, and that is a finding rather than a mood. Rules 1, 2 and 3
+of the tenancy register are adjudicated to completion (544 entries), and so is
+the route population the gate had never read (64 more). The ghost-field class has
+a gate covering both cast forms, and 42 of its original 100 are closed. The
+release path has been RUN, not read.
+
+**What is left locally is real but marginal**, and it is worth naming precisely
+so the next session does not mistake volume for value:
+
+  - The ghost-field backlog stands at 58. The last lens-widening returned ONE
+    ghost in 27 judgeable reads, and roughly half of everything closed so far
+    turned out to be a contract that was simply never written down rather than a
+    fabrication. Grinding the tail is honest work with a poor yield.
+  - `shared/constitution/sentinel-ids.ts` is the last shared module orphan: 54
+    lines, zero references anywhere, built for "future safety gates" never
+    written.
+  - Assorted type hygiene in ones and twos.
+
+**Do not manufacture work here to avoid the external boundary.** Six items in
+"Blocked — external" above need evidence or an account that does not exist in
+this repository. That list is the honest frontier; the local tail is not a
+substitute for it.
+
+If you do pick up local work, the highest-yield lens by a wide margin has been
+RUNNING things: a real Postgres found a one-directional mirror gate, an endpoint
+that had never once executed, and — twice — a bug of mine that static reading had
+just endorsed.
 
 **Stand up a local PostgreSQL first if the work touches schema, migrations, or
 the release path.** Every material finding in the 2026-08-17/18 rebuild work came
