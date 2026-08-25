@@ -83,7 +83,7 @@
     "lint:prompt-envelope": "node scripts/lint-prompt-envelope.mjs",
     "lint:measurement-defaults": "node scripts/check-measurement-defaults.mjs",
     "lint:model-prefix": "node scripts/check-model-prefix.mjs",
-    "lint:ghost-fields": "node scripts/check-ghost-fields.mjs"
+    "lint:ghost-fields": "NODE_OPTIONS=--max-old-space-size=6144 node scripts/check-ghost-fields.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.110.0",

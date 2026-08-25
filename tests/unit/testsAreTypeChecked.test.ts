@@ -393,12 +393,71 @@ describe("the heap ceiling reaches the process that needs it", () => {
     expect(pkg.scripts["check"]).toContain("npm run check:app");
   });
 
-  it("check:app's prefix agrees with the declared ceiling (no silent drift)", () => {
-    const inPkg = Number(/--max-old-space-size=(\d+)/.exec(pkg.scripts["check:app"])?.[1]);
+  it("every script that pins a ceiling agrees with the declared one (no drift)", () => {
+    // POPULATION = every script pinning --max-old-space-size, not check:app alone.
+    // The value lives in three places now; a third one disagreeing is the drift
+    // this catches.
+    const pinned = Object.entries(pkg.scripts)
+      .map(([name, body]) => [name, /--max-old-space-size=(\d+)/.exec(body)?.[1]] as const)
+      .filter(([, mb]) => mb !== undefined)
+      .map(([name, mb]) => [name, Number(mb)] as const);
+    const disagreeing = pinned.filter(([, mb]) => mb !== CEILING);
     expect(
-      inPkg,
-      `package.json check:app pins ${inPkg} but ${HEAP_LIB_REL} declares ${CEILING}`,
-    ).toBe(CEILING);
+      disagreeing.map(([n, mb]) => `${n} pins ${mb}`),
+      `these disagree with ${HEAP_LIB_REL}'s HEAP_CEILING_MB=${CEILING}`,
+    ).toEqual([]);
+    // Vacuity: a regex that stopped matching would report zero disagreements.
+    expect(pinned.length, "no script pins a ceiling at all — did the regex rot?").toBeGreaterThanOrEqual(2);
+  });
+
+  /**
+   * THE SECOND OOM, and the reason this test is a population and not a name.
+   *
+   * Fixing check:tests only moved the failure one step down the chain: with the
+   * tsc finally completing, `npm run check` reached lint:ghost-fields (step 7 of
+   * 27) and aborted 134 there instead. check-ghost-fields.mjs builds a full
+   * `ts.createProgram` + `getTypeChecker` IN PROCESS, so no spawn-site `env:`
+   * can reach it — the ceiling has to be on its own node command. It had never
+   * run in CI at all, because check:tests aborted before the chain got to it.
+   *
+   * MEASURED 2026-08-25 (tsconfig.json, the smaller program):
+   *   2048 -> abort 134, peak RSS 2,188 MB
+   *   4096 -> exit 0,    peak RSS 2,871 MB
+   *   6144 -> exit 0,    peak RSS 3,189 MB
+   *
+   * So: a gate that builds a TypeScript Program needs the ceiling, whoever
+   * writes it and whenever. Adding an eighth such gate without one is what fails
+   * here — which is the only version of this test that would have caught the
+   * ghost-fields case, since that file did not exist when the first one was written.
+   */
+  it("every gate that builds a TypeScript Program carries the ceiling", () => {
+    const dir = path.join(ROOT, "scripts");
+    const builders = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".mjs") || f.endsWith(".ts"))
+      .filter((f) =>
+        /\bts\.createProgram\s*\(|\bcreateIncrementalProgram\s*\(/.test(
+          fs.readFileSync(path.join(dir, f), "utf8"),
+        ),
+      );
+
+    // Vacuity FIRST: a scan that matches nothing reads exactly like being clean.
+    expect(
+      builders,
+      "no script matched ts.createProgram — the scan has rotted, not the repo cleaned up",
+    ).toContain("check-ghost-fields.mjs");
+
+    const unprotected = builders.filter((file) => {
+      const entries = Object.entries(pkg.scripts).filter(([, b]) => b.includes(file));
+      // A builder nothing invokes cannot OOM the chain; only wired ones matter.
+      return entries.length > 0 && !entries.every(([, b]) => b.includes("--max-old-space-size"));
+    });
+    expect(
+      unprotected,
+      "these build a TypeScript Program but run at Node's default heap. They are " +
+        "in-process, so withHeapCeiling() at a spawn site cannot reach them — put " +
+        "`NODE_OPTIONS=--max-old-space-size=<ceiling>` on their npm command.",
+    ).toEqual([]);
   });
 
   it("DRIVEN: the evaluator hands the ceiling to the tsc it spawns", () => {
