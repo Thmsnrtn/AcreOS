@@ -28,7 +28,25 @@ const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
 describe("the gate is wired and ratcheted", () => {
   it("runs inside npm run check", () => {
     // A gate nothing runs is a file, not a gate.
-    expect(PKG.scripts["lint:ghost-fields"]).toBe("node scripts/check-ghost-fields.mjs");
+    //
+    // This was `toBe("node scripts/check-ghost-fields.mjs")` — exact equality.
+    // The invariant it meant to hold is "the npm script actually invokes THIS
+    // gate", and exact equality over-specifies that: it also forbids any
+    // legitimate change to how the command is launched. On 2026-08-25 this gate
+    // was found to abort with 134 (V8 heap OOM) at Node's default ceiling —
+    // it builds a full `ts.createProgram` + `getTypeChecker` IN PROCESS, so it
+    // needs `NODE_OPTIONS=--max-old-space-size=…` on its own command, and the
+    // exact-equality assertion made the fix look like a regression.
+    //
+    // Rewritten to the new truth, and STRENGTHENED: the original invariant
+    // survives, plus the ceiling is now pinned too, because a gate that dies
+    // partway through reports fewer findings than exist.
+    expect(PKG.scripts["lint:ghost-fields"]).toContain("node scripts/check-ghost-fields.mjs");
+    expect(
+      PKG.scripts["lint:ghost-fields"],
+      "this gate builds a TypeScript Program in-process and OOMs at Node's " +
+        "default heap — it must carry an explicit --max-old-space-size",
+    ).toMatch(/--max-old-space-size=\d+/);
     expect(
       PKG.scripts.check,
       "lint:ghost-fields is not in the check chain — it would only ever run by hand",
