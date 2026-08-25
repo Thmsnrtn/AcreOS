@@ -48,9 +48,10 @@ jobs:
         run: npm ci
 
       # Unified gate — same `npm run check` as deploy.yml / ci.yml / test.yml.
-      # The previous bare `npx tsc --noEmit` ran without the 6144 heap ceiling
-      # and OOM-killed the runner (exit 134), making this red before the deploy
-      # step ever ran.
+      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
+      # (exit 134) before the deploy step. The ceiling lives in
+      # scripts/lib/heap-ceiling.mjs and is passed to each heavy child process —
+      # not set by this workflow, and not carried by a package.json shell prefix.
       - name: TypeScript check + ratchets
         run: npm run check
 

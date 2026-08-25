@@ -100,6 +100,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { HEAP_CEILING_MB, withHeapCeiling } from "./lib/heap-ceiling.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
@@ -190,6 +191,15 @@ try {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 64 * 1024 * 1024,
+    // THE HEAP CEILING, PASSED — not inherited and not hoped for. This is the
+    // LARGEST program in the repo (tsconfig.tests.json is a strict SUPERSET of
+    // tsconfig.json) and needs ~5.1 GB; Node's default is 2-4 GB depending on
+    // the machine. `npm run check`'s `NODE_OPTIONS=… tsc && …` prefix binds to
+    // the first tsc ONLY, so nothing here ever received it and every deploy
+    // run on main from 2026-08-17 aborted with 134.
+    // Reproduce the old failure with: env -u NODE_OPTIONS npm run check:tests
+    // See scripts/lib/heap-ceiling.mjs.
+    env: withHeapCeiling(process.env),
   }) ?? "";
 } catch (err) {
   // tsc exits non-zero when it reports errors — that is the expected path here.
@@ -207,6 +217,11 @@ try {
       `tsc exited with status ${String(status)}, outside the known-good set ` +
         `{${[...TSC_KNOWN_GOOD_EXIT].join(", ")}} (0 = no diagnostics, 2 = diagnostics reported).`,
       `Statuses outside that set mean the run ended some way other than "checked the project".`,
+      `This run was spawned with --max-old-space-size=${HEAP_CEILING_MB}. 134 is a V8 ` +
+        `heap abort (SIGABRT): if you see it, the program has outgrown that ceiling — ` +
+        `RE-MEASURE and raise HEAP_CEILING_MB in scripts/lib/heap-ceiling.mjs. Do NOT ` +
+        `add 134 to TSC_KNOWN_GOOD_EXIT: a truncated tsc prints a FRACTION of the ` +
+        `diagnostics and this gate would then read the shortfall as an improvement.`,
     );
   }
 }

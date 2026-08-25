@@ -71,7 +71,8 @@ COPY . .
 # default ~2GB cap and OOM'd intermittently on the Fly remote builder — failing
 # 3 deploys on 2026-06-18 alone, each cleared only by a manual retry. Raise the
 # build-stage heap so it has headroom. (Distinct from the runtime NODE_OPTIONS
-# in the production stage below, and from the CI `check` 8GB bump.)
+# in the production stage below, and from `npm run check`'s ceiling, which is
+# HEAP_CEILING_MB in scripts/lib/heap-ceiling.mjs — currently 6144, not 8GB.)
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 RUN npm prune --omit=dev --legacy-peer-deps
 

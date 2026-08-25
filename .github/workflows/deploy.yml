@@ -52,9 +52,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Same `npm run check` CI runs — single source of truth for the heap
-      # ceiling (6144, under the runner's ~7GB) and the schema +
-      # no-fabrication ratchets. CI and deploy can never diverge on the gate.
+      # Same `npm run check` CI runs — the schema + no-fabrication ratchets, so
+      # CI and deploy can never diverge on the gate.
+      #
+      # THE HEAP CEILING IS NOT SET HERE, and not by this workflow at all. Until
+      # 2026-08-25 this comment claimed `check`'s NODE_OPTIONS prefix was a
+      # "single source of truth for the heap ceiling". It was not: in POSIX sh
+      # `VAR=x cmd1 && cmd2` binds VAR to cmd1 only, so the prefix reached the
+      # first tsc and none of the other 26 commands. The heaviest one —
+      # check:tests over tsconfig.tests.json, a SUPERSET of the protected
+      # program — ran at Node's default ceiling and aborted with 134 on every
+      # main run from 2026-08-17, skipping vitest and the build. The ceiling now
+      # lives in scripts/lib/heap-ceiling.mjs and is PASSED to each heavy child.
+      # Do not "restore" a job-level NODE_OPTIONS here: that would green CI while
+      # leaving a bare `npm run check` on a laptop broken in the same way.
       - name: TypeScript check + ratchets
         run: npm run check
 

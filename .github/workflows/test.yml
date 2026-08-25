@@ -45,12 +45,13 @@ jobs:
         run: npm ci
 
       # Unified gate — the SAME `npm run check` the deploy gate (deploy.yml)
-      # and CI (ci.yml) run. The previous bare `npx tsc --noEmit` ran WITHOUT
-      # a heap ceiling and OOM-killed the runner (exit 134 = SIGABRT), so this
-      # workflow was chronically red even when the code was green. `check`
-      # pins NODE_OPTIONS=--max-old-space-size=6144 (under the runner's ~7GB),
-      # forces `--incremental false`, and runs the schema + no-fabrication
-      # ratchets — so Test can never disagree with the deploy gate.
+      # and CI (ci.yml) run, so Test can never disagree with the deploy gate.
+      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
+      # at exit 134 (SIGABRT), making this workflow chronically red on green
+      # code. The ceiling now lives in scripts/lib/heap-ceiling.mjs and is passed
+      # to each heavy child; it is NOT a workflow-level env, and NOT a shell
+      # prefix in package.json (a `VAR=x cmd1 && cmd2` prefix binds to cmd1 only,
+      # which is how the same 134 came back on main from 2026-08-17).
       - name: TypeScript check + ratchets
         run: npm run check
 

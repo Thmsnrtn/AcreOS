@@ -16,6 +16,51 @@ is a TYPE ratchet over test files, not a test run. A commit went out on 2026-08-
 on the strength of a green 26/26 with three tests failing. `npx vitest run` and
 `npm run check` are two separate obligations.
 
+**Run them with `env -u NODE_OPTIONS`, or you are measuring the container.**
+(2026-08-25.) This dev container exports an ambient
+`NODE_OPTIONS=--max-old-space-size=8192`. `npm run check` was written as
+`NODE_OPTIONS=…=6144 tsc … && npm run check:tests && …`, and in POSIX sh a
+`VAR=x` prefix binds to ONE simple command — so the ceiling reached the first
+tsc and nothing else. Locally the ambient 8192 covered the gap and the gate
+exited 0; on CI, where nothing sets `NODE_OPTIONS`, `check:tests` ran at Node's
+default (2,096 MB measured here) against a program needing ~5.1 GB and aborted
+with **exit 134** on *every* `main` deploy from 2026-08-17. Steps 7 (vitest) and
+8 (build) were SKIPPED behind it, so 140 commits reached `main` without their
+tests or build ever running there.
+
+Three things this cost, worth keeping:
+
+1. **A local proof of a MEMORY property is worthless without stripping the
+   environment.** X-4 in `EXTERNAL_PROOF_AND_OWNER_ACTIONS.md` was recorded as
+   "LOCAL PROOF COMPLETE — It does NOT abort" on **2026-08-17**, the same day CI
+   was aborting on that exact step. It has been corrected in place. This is the
+   third law — *a gate proves its property only over the population it actually
+   reads* — where the population was the ENVIRONMENT.
+2. **The ceiling is now a value a child RECEIVES**, not one hoped to propagate:
+   `scripts/lib/heap-ceiling.mjs` (`HEAP_CEILING_MB`, `withHeapCeiling`), passed
+   at `check-tests-typecheck.mjs`'s and `lint-eslint-ratchet.mjs`'s spawn sites.
+   Four workflow comments asserting the ceiling was global were false and are
+   corrected. `testsAreTypeChecked.test.ts` guards it, driven — it strips
+   `NODE_OPTIONS` and reads what the spawned child actually got. Falsified three
+   ways (remove the `env:`, lower the ceiling, restore the old prefix); all three
+   go red.
+3. **The refusal was the only correct actor.** `check-tests-typecheck.mjs` saw
+   status 134, refused to report a count, and said so. Had it interpreted the
+   truncated run it would have reported ~1 error against a baseline of 162 and
+   invited a baseline drop. Do NOT add 134 to `TSC_KNOWN_GOOD_EXIT`.
+
+**Production is further behind than the branch suggests.** The last deploy that
+actually reached Fly was **2026-08-09** (`fd563d70`, run 31287208551). The two
+attempts after it passed the gate and died in the Fly release command: 164
+statements applied OK against the production database, then three `CREATE TABLE`s
+failed — `cam_reconciliations`, `commercial_sales_reports`, `lease_rent_schedule`
+each declared `"lease_id" varchar REFERENCES "rental_leases"("id")` where that
+column is `uuid`, and Postgres refuses a FK across incompatible types. **That is
+already fixed in this branch** (`bbcd2c13`, 2026-08-17, `varchar` → `uuid`, plus
+the `migrateForeignKeyTypes.test.ts` gate). So production runs `fd563d70`'s image
+against a partially-applied migration set, and the next successful gate run will
+attempt the rest. Verify the live schema before assuming a clean apply.
+
 ---
 
 ## Where truth lives, in this order

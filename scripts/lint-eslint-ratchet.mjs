@@ -135,6 +135,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { dirname, relative, resolve, sep } from "node:path";
+import { HEAP_CEILING_MB, withHeapCeiling } from "./lib/heap-ceiling.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
@@ -314,6 +315,11 @@ function runEslint({ args, input, label }) {
     maxBuffer: 64 * 1024 * 1024,
     input,
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    // Same reason as check-tests-typecheck.mjs: `npm run check`'s NODE_OPTIONS
+    // prefix reached command 1 of 27 and this is command 23. The `res.signal`
+    // guard below catches a KILLED eslint, but a V8 heap abort exits 134 with
+    // NO signal — the identical blind spot that let the tsc OOM read as clean.
+    env: withHeapCeiling(process.env),
   });
 
   if (res.error) {
@@ -323,6 +329,14 @@ function runEslint({ args, input, label }) {
     fail(
       `ESLint (${label}) was killed by ${res.signal} — it did not finish. ` +
         `A killed linter reports no problems; that is not the same as no problems.`,
+    );
+  }
+  if (res.status !== 0 && res.status !== 1) {
+    fail(
+      `ESLint (${label}) exited ${String(res.status)} — not 0 (clean) or 1 (findings). ` +
+        `134 is a V8 heap abort, which carries NO signal and so slips past the check ` +
+        `above; this run was given --max-old-space-size=${HEAP_CEILING_MB}. ` +
+        `A linter that did not finish reports fewer problems than exist.`,
     );
   }
 

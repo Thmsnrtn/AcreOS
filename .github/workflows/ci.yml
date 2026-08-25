@@ -24,12 +24,17 @@ jobs:
         run: npm ci
 
       # Unified gate — same `npm run check` the deploy gate runs, so CI and
-      # deploy can never disagree on heap ceiling or which lints run.
-      # `check` pins NODE_OPTIONS=--max-old-space-size=6144 (safely under the
-      # ubuntu-latest runner's ~7GB; 8192 invited the OOM-killer that broke
-      # deploys Jun 6-8), forces `--incremental false` (a stale tsBuildInfo in
-      # node_modules produced a false-negative this session), and runs the
-      # schema + no-fabrication ratchets.
+      # deploy can never disagree on which lints run. `check` forces
+      # `--incremental false` (a stale tsBuildInfo in node_modules produced a
+      # false-negative this session) and runs the schema + no-fabrication ratchets.
+      #
+      # The heap ceiling is NOT set by this workflow. It lives in
+      # scripts/lib/heap-ceiling.mjs and is passed to each heavy child process; a
+      # `VAR=x cmd1 && cmd2` prefix in package.json reaches cmd1 only, which is
+      # what broke every deploy from 2026-08-17. The historical note is kept
+      # because it still constrains the value: 8192 invited the OOM-killer that
+      # broke deploys Jun 6-8, so raise the ceiling only against a fresh
+      # measurement, never speculatively.
       - name: TypeScript type check + ratchets
         run: npm run check
 

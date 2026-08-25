@@ -50,6 +50,8 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(__dirname, "../..");
 const EVALUATOR_PATH = path.join(ROOT, "scripts/check-tests-typecheck.mjs");
 const RATCHET_PATH = path.join(ROOT, "scripts/ratchets/tests-typecheck.json");
+const HEAP_LIB_REL = "scripts/lib/heap-ceiling.mjs";
+const HEAP_LIB_PATH = path.join(ROOT, HEAP_LIB_REL);
 
 /**
  * JSONC → JSON: drop whole-line `//` comments, and nothing else.
@@ -209,6 +211,11 @@ describe("the evaluator's guards actually fire (driven, not read)", () => {
         { mode: 0o755 },
       );
       fs.copyFileSync(EVALUATOR_PATH, path.join(dir, "scripts/check-tests-typecheck.mjs"));
+      // The evaluator imports ./lib/heap-ceiling.mjs. Copy it too, or the whole
+      // harness dies on module resolution and every refusal below reads as a
+      // pass-by-crash rather than a guard firing.
+      fs.mkdirSync(path.join(dir, "scripts/lib"), { recursive: true });
+      fs.copyFileSync(HEAP_LIB_PATH, path.join(dir, "scripts/lib/heap-ceiling.mjs"));
       // Baseline 1 so the ONLY thing that can differ between modes is a guard.
       const cfg = JSON.parse(fs.readFileSync(RATCHET_PATH, "utf8")) as Record<string, unknown>;
       cfg.baselineCount = 1;
@@ -324,5 +331,134 @@ describe("the two findings that turning it on produced", () => {
     const names = fs.readdirSync(path.join(ROOT, "tests/unit")).filter((f) => /\.test\.ts$/.test(f));
     expect(names.length, "tests/unit looks empty — the scan is broken").toBeGreaterThan(100);
     expect(names).toContain("churnEngine.test.ts");
+  });
+});
+
+/**
+ * THE CEILING MUST REACH THE CHILD — the defect that blocked every production
+ * deploy from 2026-08-17 to 2026-08-25, in gate form.
+ *
+ * `npm run check` was `NODE_OPTIONS=--max-old-space-size=6144 tsc … && npm run
+ * check:tests && …`. In POSIX sh that prefix binds to ONE simple command, so it
+ * protected the SMALLER tsc program (tsconfig.json, which excludes test files)
+ * and never reached the LARGER one (tsconfig.tests.json, a strict superset of
+ * it). The larger program needs ~5.1 GB and ran at Node's default 2-4 GB,
+ * aborting with 134 on every deploy run; vitest and the build were SKIPPED
+ * behind it.
+ *
+ * Nothing caught it because it is invisible locally: dev containers export
+ * NODE_OPTIONS=--max-old-space-size=8192 and every command after the `&&`
+ * inherited it, so `npm run check` exited 0 here at the very commit CI died on.
+ * The reproduction is `env -u NODE_OPTIONS npm run check:tests`.
+ *
+ * So the driven test below STRIPS NODE_OPTIONS from the evaluator's environment
+ * and asserts the evaluator MANUFACTURES the ceiling for the tsc it spawns.
+ * Delete `env: withHeapCeiling(process.env)` from check-tests-typecheck.mjs and
+ * it goes red. That is the point: a gate that would stay green with the defect
+ * restored is decoration.
+ */
+describe("the heap ceiling reaches the process that needs it", () => {
+  const heapLib = fs.readFileSync(HEAP_LIB_PATH, "utf8");
+  const CEILING = Number(/HEAP_CEILING_MB\s*=\s*(\d+)/.exec(heapLib)?.[1]);
+
+  it("the ceiling is a single declared number, at or above measured need", () => {
+    expect(
+      Number.isInteger(CEILING) && CEILING > 0,
+      `no HEAP_CEILING_MB found in ${HEAP_LIB_REL}`,
+    ).toBe(true);
+    // MEASURED 2026-08-25: tsconfig.tests.json reports "Memory used" 5,104 MB.
+    // 4096 aborts at 187s; 6144 completes at 222s. A ceiling below the measured
+    // need is a guaranteed 134, so this floor does not move down without a
+    // fresh measurement recorded in the same commit.
+    expect(CEILING, "ceiling is below the measured ~5.1 GB need").toBeGreaterThanOrEqual(6144);
+  });
+
+  it("no package.json script relies on a VAR=x prefix crossing an &&", () => {
+    // POPULATION = every script in package.json, enumerated — not a named few.
+    // This is the exact textual shape of the original defect, so adding a new
+    // script with it is what fails here.
+    const offenders = Object.entries(pkg.scripts)
+      .filter(([, body]) => /^\s*[A-Za-z_][A-Za-z0-9_]*=/.test(body) && body.includes("&&"))
+      .map(([name]) => name);
+    expect(
+      offenders,
+      "a script sets an env var by prefix and then chains with && — in POSIX sh " +
+        "the prefix binds to the FIRST command only. Give the later commands " +
+        "their own env, or split them into their own script.",
+    ).toEqual([]);
+    // Vacuity, per member: an empty or unparsed scripts object satisfies the
+    // assertion above at zero, which would read exactly like being clean.
+    expect(Object.keys(pkg.scripts).length).toBeGreaterThan(30);
+    expect(pkg.scripts["check:app"], "check:app is gone — where did the app tsc go?").toBeTruthy();
+    expect(pkg.scripts["check"]).toContain("npm run check:app");
+  });
+
+  it("check:app's prefix agrees with the declared ceiling (no silent drift)", () => {
+    const inPkg = Number(/--max-old-space-size=(\d+)/.exec(pkg.scripts["check:app"])?.[1]);
+    expect(
+      inPkg,
+      `package.json check:app pins ${inPkg} but ${HEAP_LIB_REL} declares ${CEILING}`,
+    ).toBe(CEILING);
+  });
+
+  it("DRIVEN: the evaluator hands the ceiling to the tsc it spawns", () => {
+    // Not "the source mentions withHeapCeiling" — that stays green against a
+    // file that imports it and never calls it. This runs the REAL evaluator
+    // with NODE_OPTIONS STRIPPED, and reads what the spawned child actually got.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ctt-heap-"));
+    try {
+      fs.mkdirSync(path.join(dir, "bin"));
+      fs.mkdirSync(path.join(dir, "scripts/ratchets"), { recursive: true });
+      fs.mkdirSync(path.join(dir, "scripts/lib"), { recursive: true });
+      const seenFile = path.join(dir, "node-options-seen.txt");
+      // The fake tsc records its OWN environment to a file, so nothing here
+      // depends on the evaluator's output parsing.
+      fs.writeFileSync(
+        path.join(dir, "bin/npx"),
+        `#!/bin/bash\n` +
+          `printf '%s' "\${NODE_OPTIONS}" > ${JSON.stringify(seenFile)}\n` +
+          `echo "tests/unit/a.test.ts(1,1): error TS2322: Type A is not assignable to type B."\n` +
+          `echo "Files:                         7836"\n` +
+          `exit 2\n`,
+        { mode: 0o755 },
+      );
+      fs.copyFileSync(EVALUATOR_PATH, path.join(dir, "scripts/check-tests-typecheck.mjs"));
+      fs.copyFileSync(HEAP_LIB_PATH, path.join(dir, "scripts/lib/heap-ceiling.mjs"));
+      const cfg = JSON.parse(fs.readFileSync(RATCHET_PATH, "utf8")) as Record<string, unknown>;
+      cfg.baselineCount = 1;
+      fs.writeFileSync(
+        path.join(dir, "scripts/ratchets/tests-typecheck.json"),
+        JSON.stringify(cfg, null, 2),
+      );
+
+      // CI conditions: no ambient NODE_OPTIONS whatsoever.
+      const env = { ...process.env, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
+      delete env.NODE_OPTIONS;
+
+      const res = spawnSync(
+        process.execPath,
+        [path.join(dir, "scripts/check-tests-typecheck.mjs")],
+        { encoding: "utf8", env },
+      );
+
+      // Vacuity first: if the evaluator never reached the spawn, the assertion
+      // below would be reasoning about a file that was never written.
+      expect(
+        fs.existsSync(seenFile),
+        `the fake tsc never ran, so nothing was measured. Evaluator output:\n` +
+          `${res.stdout ?? ""}${res.stderr ?? ""}`,
+      ).toBe(true);
+
+      const seen = fs.readFileSync(seenFile, "utf8");
+      expect(
+        seen,
+        "the tsc spawned by check-tests-typecheck.mjs received NO heap ceiling. " +
+          "It runs the LARGEST program in the repo (~5.1 GB) and will abort with " +
+          "134 on any machine whose Node default is below that — which is every " +
+          "CI runner. Restore `env: withHeapCeiling(process.env)` at its execFileSync.",
+      ).toContain(`--max-old-space-size=${CEILING}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
