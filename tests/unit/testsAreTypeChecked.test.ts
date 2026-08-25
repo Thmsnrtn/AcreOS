@@ -432,7 +432,10 @@ describe("the heap ceiling reaches the process that needs it", () => {
       );
 
       // CI conditions: no ambient NODE_OPTIONS whatsoever.
-      const env = { ...process.env, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}`,
+      };
       delete env.NODE_OPTIONS;
 
       const res = spawnSync(
