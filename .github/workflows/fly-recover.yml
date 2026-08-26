@@ -1,36 +1,37 @@
 # ============================================================================
-# Fly recovery — manual one-shot, 2026-08-25/26 production outage. ROUND 2.
+# Fly recovery — manual one-shot, 2026-08-25/26 production outage. ROUND 3.
 # ----------------------------------------------------------------------------
-# ROUND 1 (run 32912493840) established this much:
+# ROUND 2 (run 32913937976) got the cause down to one line, from
+# `flyctl machine status`:
 #
-#   App image: acreos:deployment-01M0XGXS0P4QN6DYQTE9DA0PF9   (the NEW release)
-#    app     7813202b50e6e8  v1022  stopped  1 total, 1 warning
-#    app     e827514ae34de8  v1021  stopped  1 total, 1 warning
-#    worker  e8239d1b671438  v1022  started
-#    worker# 85e209f4412938  v1022  stopped   <- standby, normal
+#   Event Logs
+#    stopped │ exit │ flyd │ 00:10:45.13Z │ exit_code=1, oom_killed=false,
+#                                           requested_stop=false
+#    started │ start│ flyd │ 00:10:12.514Z
 #
-# Restarting 7813202b50e6e8 moved it stopped -> starting -> started, then it sat
-# at 0/1 checks for ~25s and flyctl gave up:
+# The app starts, runs ~33s, then EXITS 1. Not OOM. Not a requested stop. The
+# VM is fine (HostStatus ok, machine started in 1.7s, 2 vCPU / 1024 MB,
+# Command ["node","dist/index.cjs"]) — the Node process is crashing during
+# startup, so nothing ever listens on :5000 and the edge serves 502:
 #
-#   Error: failed to restart machine 7813202b50e6e8: failed to wait for health
-#   checks to pass: context deadline exceeded
+#   "instance refused connection. is your app listening on 0.0.0.0:5000?"
 #
-# So the VM boots and the CONTAINER runs, but the health check
-# (GET :5000/api/health/cached, grace 15s, timeout 5s per fly.toml) never
-# passes, so Fly never routes to it and the edge returns 502/timeout. flyctl
-# itself is responsive throughout, and status.flyio.net reports all systems
-# operational — this is the APPLICATION failing to come up, not the platform.
+# WHAT ROUND 2 COULD NOT GET, and why. server/index.ts:863 catches a startup
+# failure and logs "[startup] Fatal error during server initialization" plus
+# Name/Message/Stack before exiting 1. That text never appeared, for two
+# compounding reasons:
+#   1. `flyctl logs --no-tail` returns the current buffer and exits — it ran in
+#      0s and the crash was outside that window.
+#   2. dist/index.cjs is a MINIFIED single-line bundle, so when Node prints
+#      source context for a startup throw it emits one ~400KB line, and Fly
+#      truncates log lines at 65,565 chars. The real error sits past the cut.
 #
-# ROUND 2 IS DIAGNOSIS ONLY. It captures the one thing round 1 lacked: the
-# app's own stdout/stderr at boot. It starts an app machine and reads the logs
-# on either side of that. It does NOT deploy, destroy, roll back, or scale —
-# the right remedy depends entirely on what the boot log says, and guessing at
-# a fleet nobody can see is how round 1's restart burned 15 minutes.
+# ROUND 3 fixes both: it STREAMS logs across a boot it triggers itself, and it
+# drops any line longer than 2,000 chars so the minified-bundle dump cannot
+# drown or truncate the messages that matter.
 #
-# Push-triggered rather than workflow_dispatch: this session's GitHub
-# integration gets 403 on actions:write (same constraint recorded in
-# ses-dkim-fix.yml). Scoped to one file on one branch, deliberately not main,
-# so pushing it cannot re-trigger deploy.yml.
+# Still diagnosis only. No deploy, destroy, rollback or scale — the remedy
+# follows from the error text, and we are one step from having it.
 # ============================================================================
 name: Fly recover (manual one-shot)
 
@@ -46,8 +47,8 @@ concurrency:
 permissions: {}
 
 jobs:
-  diagnose:
-    name: Capture the app boot log
+  boot-log:
+    name: Stream the app boot and catch the crash
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -58,45 +59,40 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Fleet state
+      - name: Stop the machine so the next start is a clean, observable boot
         run: |
-          flyctl status --app "$APP" || echo "(status failed)"
-          echo
-          echo "-------- releases (correct subcommand this time) --------"
-          flyctl releases --app "$APP" --image 2>&1 | head -15 || echo "(releases failed)"
+          flyctl machine stop "$APP_MACHINE" --app "$APP" 2>&1 | tail -3 || echo "(already stopped)"
+          sleep 5
 
-      - name: Recent logs BEFORE any action
+      - name: Stream logs across a boot
         run: |
-          # --no-tail prints the recent buffer and exits instead of streaming.
-          # timeout is belt-and-braces so a streaming flyctl cannot hang the job
-          # the way round 1's restart did.
-          timeout 90 flyctl logs --app "$APP" --no-tail 2>&1 | tail -120 || echo "(no buffered logs, or timed out)"
-
-      - name: Start the app machine and watch it boot
-        run: |
+          # Stream in the background FIRST so nothing in the boot is missed,
+          # then trigger the start. 150s covers the observed ~33s crash with
+          # wide margin, and timeout guarantees the job cannot hang.
+          timeout 150 flyctl logs --app "$APP" > boot.log 2>&1 &
+          LOGPID=$!
+          sleep 8
           echo "-------- starting $APP_MACHINE --------"
-          # `machine start` returns as soon as the VM is started; unlike
-          # `restart` it does NOT block waiting for health checks, so it cannot
-          # eat the job's clock.
-          flyctl machine start "$APP_MACHINE" --app "$APP" 2>&1 | tail -5 || echo "::warning::start returned non-zero"
-          echo "-------- waiting 45s for the process to boot and check --------"
-          sleep 45
-          echo "-------- machine status (check detail) --------"
-          flyctl machine status "$APP_MACHINE" --app "$APP" 2>&1 | tail -40 || true
+          flyctl machine start "$APP_MACHINE" --app "$APP" 2>&1 | tail -3 || echo "::warning::start non-zero"
+          echo "-------- streaming for 150s --------"
+          wait $LOGPID || true
+          echo "raw lines captured: $(wc -l < boot.log)"
 
-      - name: Boot logs AFTER start — the decisive evidence
+      - name: The crash, with the minified bundle filtered out
         run: |
-          timeout 90 flyctl logs --app "$APP" --no-tail 2>&1 | tail -200 || echo "(no logs captured)"
-
-      - name: Probe, and report state without failing the job
-        run: |
-          # This job is diagnostic: a non-200 is the expected finding, not an
-          # error to abort on. Exiting 0 keeps the log readable in the UI.
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://acreos.io/api/version" || echo "000")
-            echo "  probe $i: HTTP $code"
-            [ "$code" = "200" ] && break
-            sleep 10
-          done
+          # THE FILTER THAT MAKES THIS READABLE: drop any line over 2000 chars.
+          # Those are Node printing the one-line minified bundle as source
+          # context; every real log line is far shorter.
+          echo "======== app log, mega-lines removed ========"
+          awk 'length($0) <= 2000' boot.log | tail -150
           echo
-          echo "Diagnosis complete. Read the boot log above before choosing a remedy."
+          echo "======== lines matching startup/error markers ========"
+          awk 'length($0) <= 2000' boot.log \
+            | grep -iE '\[startup\]|Fatal error|Name:|Message:|Stack:|Error:|error\]|exit_code|refused connection|listening|Cannot find|ECONNREFUSED|ETIMEDOUT|password|permission denied|SIGTERM|SIGKILL' \
+            | tail -60 || echo "(no marker lines matched)"
+
+      - name: Exit event and check state after the boot
+        run: |
+          flyctl machine status "$APP_MACHINE" --app "$APP" 2>&1 | tail -25 || true
+          echo
+          echo "Diagnosis round 3 complete."
