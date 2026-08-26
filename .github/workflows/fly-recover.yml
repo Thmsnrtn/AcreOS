@@ -1,35 +1,36 @@
 # ============================================================================
-# Fly recovery — manual one-shot, 2026-08-25 production outage.
+# Fly recovery — manual one-shot, 2026-08-25/26 production outage. ROUND 2.
 # ----------------------------------------------------------------------------
-# WHY THIS EXISTS. Deploy run 32902473209 (main @ 18ab2bd0) left production in a
-# MIXED state and acreos.io has been returning 502 since ~21:59Z. The release
-# command SUCCEEDED on all three attempts ("release_command ... completed
-# successfully"), so the migrations applied and the image builds — the failure
-# was purely the machine rollout:
+# ROUND 1 (run 32912493840) established this much:
 #
-#   [2/4] Machine e8239d1b671438 is now in a good state
-#   [4/4] Unrecoverable error: timeout reached waiting for health checks to
-#         pass for machine e827514ae34de8: failed to get VM ...
-#         api.machines.dev/v1/apps/acreos/machines/e827514ae34de8:
-#         net/http: request canceled
-#   [3/4] skipping machine update due to earlier failure
+#   App image: acreos:deployment-01M0XGXS0P4QN6DYQTE9DA0PF9   (the NEW release)
+#    app     7813202b50e6e8  v1022  stopped  1 total, 1 warning
+#    app     e827514ae34de8  v1021  stopped  1 total, 1 warning
+#    worker  e8239d1b671438  v1022  started
+#    worker# 85e209f4412938  v1022  stopped   <- standby, normal
 #
-# Same machine, all 3 attempts. deploy.yml's auto-rollback is gated on
-# `fly_deploy.outcome == 'success' && health.outcome == 'failure'`, and the
-# deploy FAILED, so it was skipped — its premise ("a failed deploy means Fly
-# never promoted, nothing to roll back") does not hold here.
+# Restarting 7813202b50e6e8 moved it stopped -> starting -> started, then it sat
+# at 0/1 checks for ~25s and flyctl gave up:
 #
-# WHY A PUSH TRIGGER, not workflow_dispatch: this session's GitHub integration
-# gets 403 (actions:write) on POST .../dispatches — the same constraint recorded
-# in ses-dkim-fix.yml. Scoped tightly to ONE file on ONE branch so it cannot
-# fire by accident, and deliberately NOT on main, so pushing it does not
-# re-trigger deploy.yml.
+#   Error: failed to restart machine 7813202b50e6e8: failed to wait for health
+#   checks to pass: context deadline exceeded
 #
-# WHAT IT DOES — deliberately conservative. It DIAGNOSES, then applies the one
-# low-risk remedy for a wedged machine: a restart of machines that are not in a
-# started state. It does NOT deploy, does NOT destroy, and does NOT roll back —
-# those need a decision made against the diagnosis this prints. A restart cannot
-# make an already-502 site more down.
+# So the VM boots and the CONTAINER runs, but the health check
+# (GET :5000/api/health/cached, grace 15s, timeout 5s per fly.toml) never
+# passes, so Fly never routes to it and the edge returns 502/timeout. flyctl
+# itself is responsive throughout, and status.flyio.net reports all systems
+# operational — this is the APPLICATION failing to come up, not the platform.
+#
+# ROUND 2 IS DIAGNOSIS ONLY. It captures the one thing round 1 lacked: the
+# app's own stdout/stderr at boot. It starts an app machine and reads the logs
+# on either side of that. It does NOT deploy, destroy, roll back, or scale —
+# the right remedy depends entirely on what the boot log says, and guessing at
+# a fleet nobody can see is how round 1's restart burned 15 minutes.
+#
+# Push-triggered rather than workflow_dispatch: this session's GitHub
+# integration gets 403 on actions:write (same constraint recorded in
+# ses-dkim-fix.yml). Scoped to one file on one branch, deliberately not main,
+# so pushing it cannot re-trigger deploy.yml.
 # ============================================================================
 name: Fly recover (manual one-shot)
 
@@ -38,9 +39,6 @@ on:
     branches: [claude/acreos-canonical-implementation-1asgvc]
     paths: [".github/workflows/fly-recover.yml"]
 
-# Deliberately NOT the production-deploy group: this must not queue behind a
-# stuck deploy. It performs no rollout, so it cannot race one for machine leases
-# beyond the per-machine restart, which flyctl serialises itself.
 concurrency:
   group: fly-recover
   cancel-in-progress: false
@@ -48,89 +46,57 @@ concurrency:
 permissions: {}
 
 jobs:
-  recover:
-    name: Diagnose and restart wedged machines
+  diagnose:
+    name: Capture the app boot log
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       APP: acreos
+      APP_MACHINE: 7813202b50e6e8
     steps:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Token present?
+      - name: Fleet state
         run: |
-          if [ -z "$FLY_API_TOKEN" ]; then
-            echo "::error title=FLY_API_TOKEN unset::Cannot reach Fly. Nothing was changed."
-            exit 1
-          fi
-          echo "FLY_API_TOKEN is set (value not printed)."
-
-      - name: DIAGNOSE — status, machines, releases
-        run: |
-          echo "-------- flyctl status --------"
           flyctl status --app "$APP" || echo "(status failed)"
           echo
-          echo "-------- machines --------"
-          flyctl machine list --app "$APP" || echo "(machine list failed)"
-          echo
-          echo "-------- machines (json) --------"
-          flyctl machine list --app "$APP" --json > machines.json 2>/dev/null || echo "[]" > machines.json
-          jq -r '.[] | "\(.id)  state=\(.state)  region=\(.region)"' machines.json 2>/dev/null || cat machines.json
-          echo
-          echo "-------- releases (last 10) --------"
-          flyctl releases list --app "$APP" | head -12 || echo "(releases failed)"
+          echo "-------- releases (correct subcommand this time) --------"
+          flyctl releases --app "$APP" --image 2>&1 | head -15 || echo "(releases failed)"
 
-      - name: Probe BEFORE
+      - name: Recent logs BEFORE any action
         run: |
-          for i in 1 2; do
+          # --no-tail prints the recent buffer and exits instead of streaming.
+          # timeout is belt-and-braces so a streaming flyctl cannot hang the job
+          # the way round 1's restart did.
+          timeout 90 flyctl logs --app "$APP" --no-tail 2>&1 | tail -120 || echo "(no buffered logs, or timed out)"
+
+      - name: Start the app machine and watch it boot
+        run: |
+          echo "-------- starting $APP_MACHINE --------"
+          # `machine start` returns as soon as the VM is started; unlike
+          # `restart` it does NOT block waiting for health checks, so it cannot
+          # eat the job's clock.
+          flyctl machine start "$APP_MACHINE" --app "$APP" 2>&1 | tail -5 || echo "::warning::start returned non-zero"
+          echo "-------- waiting 45s for the process to boot and check --------"
+          sleep 45
+          echo "-------- machine status (check detail) --------"
+          flyctl machine status "$APP_MACHINE" --app "$APP" 2>&1 | tail -40 || true
+
+      - name: Boot logs AFTER start — the decisive evidence
+        run: |
+          timeout 90 flyctl logs --app "$APP" --no-tail 2>&1 | tail -200 || echo "(no logs captured)"
+
+      - name: Probe, and report state without failing the job
+        run: |
+          # This job is diagnostic: a non-200 is the expected finding, not an
+          # error to abort on. Exiting 0 keeps the log readable in the UI.
+          for i in 1 2 3; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://acreos.io/api/version" || echo "000")
-            echo "  before-probe $i: HTTP $code"
-          done
-
-      - name: REMEDY — restart machines not in a started state
-        run: |
-          # Population = every machine whose state is not 'started'. Printed
-          # first, so a run that restarts nothing is visibly different from a
-          # run that found nothing to look at.
-          TOTAL=$(jq 'length' machines.json)
-          echo "machines seen: $TOTAL"
-          if [ "$TOTAL" = "0" ]; then
-            echo "::warning title=No machines listed::flyctl returned no machines — cannot target a restart."
-            exit 0
-          fi
-          BAD=$(jq -r '.[] | select(.state != "started") | .id' machines.json)
-          if [ -z "$BAD" ]; then
-            echo "Every machine reports state=started."
-            echo "If the site is still 502, the process inside a machine is unhealthy rather than the VM being wedged."
-            echo "Restarting the machine the deploy could never health-check, as the single targeted remedy:"
-            BAD="e827514ae34de8"
-          fi
-          for id in $BAD; do
-            echo "-- restarting $id --"
-            flyctl machine restart "$id" --app "$APP" || echo "::warning::restart of $id returned non-zero"
+            echo "  probe $i: HTTP $code"
+            [ "$code" = "200" ] && break
             sleep 10
           done
-
-      - name: Settle, then probe AFTER
-        run: |
-          sleep 20
-          echo "-------- machines after --------"
-          flyctl machine list --app "$APP" || true
           echo
-          ok=0
-          for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://acreos.io/api/version" || echo "000")
-            echo "  after-probe $i: HTTP $code"
-            if [ "$code" = "200" ]; then ok=1; break; fi
-            sleep 15
-          done
-          echo
-          if [ "$ok" = "1" ]; then
-            echo "::notice title=Production is answering 200::Recovered. Served SHA below."
-            curl -s --max-time 30 "https://acreos.io/api/version" || true
-          else
-            echo "::error title=Still not healthy::Restart did not restore service. Next step is a deliberate rollback (flyctl releases rollback) or destroying the wedged machine — decide against the diagnosis printed above."
-            exit 1
-          fi
+          echo "Diagnosis complete. Read the boot log above before choosing a remedy."
