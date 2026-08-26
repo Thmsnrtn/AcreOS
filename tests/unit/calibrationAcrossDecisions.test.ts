@@ -327,8 +327,24 @@ describe("determinism and wiring", () => {
     expect(routes).toContain('router.get("/calibration"');
     expect(routes).toContain("calibrationForOrganization(organizationId)");
     // Registered BEFORE the id route, which is also digit-constrained.
-    expect(routes.indexOf('router.get("/calibration"')).toBeLessThan(
-      routes.indexOf('router.get("/:id(\\\\d+)"'),
+    //
+    // This used to pin the literal `router.get("/:id(\\d+)"`. Express 5
+    // (path-to-regexp v8) REMOVED inline regex params: that pattern throws at
+    // route registration and killed the process on boot, taking production down
+    // on 2026-08-25. The constraint now lives in the `numericIdOnly` guard, so
+    // the assertion tracks the mechanism rather than the spelling — and asserts
+    // the constraint still EXISTS, which the old `indexOf` pairing never did.
+    const idRoute = routes.indexOf('router.get("/:id"');
+    expect(idRoute, "the /:id route is gone — where did it go?").toBeGreaterThan(-1);
+    expect(routes.indexOf('router.get("/calibration"')).toBeLessThan(idRoute);
+    expect(
+      routes,
+      "the digit constraint disappeared — a literal path can now be swallowed by /:id",
+    ).toContain("const numericIdOnly");
+    expect(routes).toMatch(/router\.get\("\/:id",\s*numericIdOnly/);
+    // Inline regex params must never come back: they are a boot-time crash.
+    expect(routes, "inline regex param reintroduced — Express 5 throws on this").not.toMatch(
+      /router\.(get|post|put|patch|delete)\("\/:[A-Za-z_]+\(/,
     );
   });
 

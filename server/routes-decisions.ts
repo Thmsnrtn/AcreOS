@@ -16,7 +16,7 @@
  * per the five-fixed-doors doctrine in CLAUDE.md.
  */
 
-import { Router, type Response } from "express";
+import { Router, type Response, type NextFunction } from "express";
 import { BUSINESS_TYPE_IDS } from "@shared/business-types";
 import { z } from "zod";
 import { Errors } from "./utils/errors";
@@ -184,7 +184,8 @@ router.get("/due", async (req: AuthenticatedRequest, res: Response) => {
  * outcome it has recorded.
  *
  * Registered before `/:id` by convention. It is not strictly required here —
- * that route is digit-constrained (`/:id(\d+)`), so a literal path cannot be
+ * that route is digit-constrained (by the `numericIdOnly` guard — it used to be
+ * the inline `/:id(\d+)`, which Express 5 removed), so a literal path cannot be
  * swallowed by it — but the ordering is what `scripts/check-route-order.mjs`
  * looks for and what a reader expects.
  *
@@ -208,8 +209,27 @@ router.get("/calibration", async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+/**
+ * Express 5 (path-to-regexp v8) REMOVED inline regex params. `"/:id(\\d+)"`
+ * throws at ROUTE REGISTRATION — "TypeError: Unexpected ( at index 4" — which
+ * kills the process before it listens. It took production down on 2026-08-25:
+ * every app machine crash-looped with exit_code=1 and Fly reported "instance
+ * refused connection", because the throw happens while routes are being wired,
+ * long before the server binds :5000.
+ *
+ * The numeric constraint is load-bearing, so it moves into the handler rather
+ * than being dropped: a NON-numeric single segment must still FALL THROUGH to
+ * `/:subjectType/:subjectId` below, which is exactly what `(\\d+)` bought.
+ * `next()` reproduces that; deleting the constraint outright would have this
+ * route swallow `/api/decisions/anything`.
+ */
+const numericIdOnly = (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
+  if (!/^\d+$/.test(String(req.params.id ?? ""))) return next("route");
+  next();
+};
+
 // GET /api/decisions/:id
-router.get("/:id(\\d+)", async (req: AuthenticatedRequest, res: Response) => {
+router.get("/:id", numericIdOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
     const id = Number(req.params.id);
@@ -300,7 +320,7 @@ const outcomeSchema = z.object({
 });
 
 // POST /api/decisions/:id/outcomes
-router.post("/:id(\\d+)/outcomes", async (req: AuthenticatedRequest, res: Response) => {
+router.post("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
     const parsed = outcomeSchema.safeParse(req.body);
@@ -321,7 +341,7 @@ router.post("/:id(\\d+)/outcomes", async (req: AuthenticatedRequest, res: Respon
 });
 
 // GET /api/decisions/:id/outcomes — with variance against the FROZEN scenarios
-router.get("/:id(\\d+)/outcomes", async (req: AuthenticatedRequest, res: Response) => {
+router.get("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
     const list = await outcomesForDecision(organizationId, Number(req.params.id));
