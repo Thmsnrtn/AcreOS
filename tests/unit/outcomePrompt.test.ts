@@ -243,9 +243,20 @@ describe("wired end to end", () => {
     const routes = code("server/routes-decisions.ts");
     expect(routes).toContain('router.get("/due"');
     expect(routes).toContain("decisionsDueForOutcome(organizationId)");
-    expect(routes.indexOf('router.get("/due"')).toBeLessThan(
-      routes.indexOf('router.get("/:id(\\\\d+)"'),
-    );
+    // This used to pin the literal `router.get("/:id(\\d+)"`. Express 5
+    // (path-to-regexp v8) REMOVED inline regex params — that pattern throws at
+    // route registration and killed the process on boot, taking production down
+    // on 2026-08-25. The digit constraint now lives in the `numericIdOnly`
+    // guard, so the assertion tracks the mechanism rather than the spelling,
+    // and additionally asserts the constraint still EXISTS — which the old
+    // indexOf pairing never did.
+    const idRoute = routes.indexOf('router.get("/:id"');
+    expect(idRoute, "the /:id route is gone — where did it go?").toBeGreaterThan(-1);
+    expect(routes.indexOf('router.get("/due"')).toBeLessThan(idRoute);
+    expect(
+      routes,
+      "the digit constraint disappeared — /due could now be swallowed by /:id",
+    ).toMatch(/router\.get\("\/:id",\s*numericIdOnly/);
     // No POST/PUT/PATCH on the due surface: asking is not answering.
     const dueBlock = routes.slice(routes.indexOf('router.get("/due"'));
     expect(dueBlock.slice(0, 700)).not.toMatch(/router\.(post|put|patch)/);
