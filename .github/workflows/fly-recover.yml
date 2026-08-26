@@ -1,37 +1,43 @@
 # ============================================================================
-# Fly recovery — manual one-shot, 2026-08-25/26 production outage. ROUND 3.
+# Fly recovery — manual one-shot, 2026-08-25/26 production outage. ROUND 4.
 # ----------------------------------------------------------------------------
-# ROUND 2 (run 32913937976) got the cause down to one line, from
-# `flyctl machine status`:
+# ROUND 3 (run 32917545830) produced the finding that reframes this incident:
 #
-#   Event Logs
-#    stopped │ exit │ flyd │ 00:10:45.13Z │ exit_code=1, oom_killed=false,
-#                                           requested_stop=false
-#    started │ start│ flyd │ 00:10:12.514Z
+#   app[7813202b50e6e8]  exit_code=1   <- NEW image (...0PF9, v1022)
+#   app[e827514ae34de8]  exit_code=1   <- OLD image (...RD3B, v1021)
+#   health | critical | connect: connection refused
 #
-# The app starts, runs ~33s, then EXITS 1. Not OOM. Not a requested stop. The
-# VM is fine (HostStatus ok, machine started in 1.7s, 2 vCPU / 1024 MB,
-# Command ["node","dist/index.cjs"]) — the Node process is crashing during
-# startup, so nothing ever listens on :5000 and the edge serves 502:
+# BOTH app machines are crash-looping, including the one still on the OLD
+# image — the image that was serving HTTP 200 at 21:44:24Z. So:
 #
-#   "instance refused connection. is your app listening on 0.0.0.0:5000?"
+#   * a rollback would NOT fix this (the rollback target is already failing), and
+#   * the new code is NOT the cause (the old code fails identically).
 #
-# WHAT ROUND 2 COULD NOT GET, and why. server/index.ts:863 catches a startup
-# failure and logs "[startup] Fatal error during server initialization" plus
-# Name/Message/Stack before exiting 1. That text never appeared, for two
-# compounding reasons:
-#   1. `flyctl logs --no-tail` returns the current buffer and exits — it ran in
-#      0s and the crash was outside that window.
-#   2. dist/index.cjs is a MINIFIED single-line bundle, so when Node prints
-#      source context for a startup throw it emits one ~400KB line, and Fly
-#      truncates log lines at 65,565 chars. The real error sits past the cut.
+# Something EXTERNAL to the image broke. The app writes zero application log
+# lines before exiting 1 at ~32s. That silence plus that timing is the signature
+# of a connection attempt timing out, not a syntax or module error (those exit
+# in under 2s and print immediately).
 #
-# ROUND 3 fixes both: it STREAMS logs across a boot it triggers itself, and it
-# drops any line longer than 2,000 chars so the minified-bundle dump cannot
-# drown or truncate the messages that matter.
+# LEADING HYPOTHESIS: Postgres connection exhaustion. Two app machines have been
+# restarting roughly every 50s for ~3h. Each boot opens a pool (server/db.ts
+# opens pool + replicaPool). A killed process does not run its drain path, so
+# the server side keeps those backends until it reaps them. Once max_connections
+# is spent, EVERY subsequent boot fails to connect — which is exactly a failure
+# that starts after a deploy hiccup, then persists and affects both images
+# equally, and which no amount of restarting can clear because restarting is
+# what feeds it.
 #
-# Still diagnosis only. No deploy, destroy, rollback or scale — the remedy
-# follows from the error text, and we are one step from having it.
+# The worker machine staying up is consistent with this: it connected at 22:35
+# BEFORE the loop began and has held its connections since.
+#
+# REMEDY, in the only order that can work: STOP the loop on both app machines,
+# let the database reap the abandoned backends, then start exactly ONE machine.
+# Restarting into an exhausted pool is what rounds 1-3 kept doing.
+#
+# Also attempts, best-effort, to capture the real error: the startup throw's
+# message is on the same log line as the minified single-line bundle Node prints
+# as source context, past Fly's 65,565-char line truncation. Piping the process
+# output through `tail -c` over SSH bypasses the log pipeline entirely.
 # ============================================================================
 name: Fly recover (manual one-shot)
 
@@ -47,52 +53,79 @@ concurrency:
 permissions: {}
 
 jobs:
-  boot-log:
-    name: Stream the app boot and catch the crash
+  break-the-loop:
+    name: Stop the crash loop, drain, start one machine
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       APP: acreos
-      APP_MACHINE: 7813202b50e6e8
+      M_NEW: 7813202b50e6e8
+      M_OLD: e827514ae34de8
     steps:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Stop the machine so the next start is a clean, observable boot
+      - name: What else is in this org — is the database a Fly app?
         run: |
-          flyctl machine stop "$APP_MACHINE" --app "$APP" 2>&1 | tail -3 || echo "(already stopped)"
-          sleep 5
+          # If Postgres runs on Fly, its own health is inspectable and is the
+          # single most useful thing to know right now.
+          flyctl apps list 2>&1 | head -25 || echo "(apps list failed)"
 
-      - name: Stream logs across a boot
+      - name: STOP both app machines — end the restart loop
         run: |
-          # Stream in the background FIRST so nothing in the boot is missed,
-          # then trigger the start. 150s covers the observed ~33s crash with
-          # wide margin, and timeout guarantees the job cannot hang.
-          timeout 150 flyctl logs --app "$APP" > boot.log 2>&1 &
-          LOGPID=$!
-          sleep 8
-          echo "-------- starting $APP_MACHINE --------"
-          flyctl machine start "$APP_MACHINE" --app "$APP" 2>&1 | tail -3 || echo "::warning::start non-zero"
-          echo "-------- streaming for 150s --------"
-          wait $LOGPID || true
-          echo "raw lines captured: $(wc -l < boot.log)"
+          for m in "$M_NEW" "$M_OLD"; do
+            echo "-- stopping $m --"
+            flyctl machine stop "$m" --app "$APP" 2>&1 | tail -2 || echo "::warning::stop $m non-zero"
+          done
+          sleep 10
+          echo "-------- fleet after stop --------"
+          flyctl machine list --app "$APP" 2>&1 | tail -8 || true
 
-      - name: The crash, with the minified bundle filtered out
+      - name: DRAIN — give the database time to reap abandoned backends
         run: |
-          # THE FILTER THAT MAKES THIS READABLE: drop any line over 2000 chars.
-          # Those are Node printing the one-line minified bundle as source
-          # context; every real log line is far shorter.
-          echo "======== app log, mega-lines removed ========"
-          awk 'length($0) <= 2000' boot.log | tail -150
+          echo "Draining for 150s with both app machines down."
+          echo "Nothing is lost by waiting: the site is already returning 502."
+          sleep 150
+
+      - name: Start exactly ONE app machine
+        run: |
+          echo "-- starting $M_NEW (new image) --"
+          flyctl machine start "$M_NEW" --app "$APP" 2>&1 | tail -3 || echo "::warning::start non-zero"
+          echo "-- waiting 60s for boot + health check --"
+          sleep 60
+          flyctl machine status "$M_NEW" --app "$APP" 2>&1 | tail -22 || true
+
+      - name: Probe
+        run: |
+          ok=0
+          for i in 1 2 3 4 5 6 7 8; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "https://acreos.io/api/version" || echo "000")
+            echo "  probe $i: HTTP $code"
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 15
+          done
+          echo "RECOVERED=$ok" >> $GITHUB_ENV
+          if [ "$ok" = "1" ]; then
+            echo "::notice title=Production is back::acreos.io answering 200."
+            curl -s --max-time 25 "https://acreos.io/api/version" || true
+          fi
+
+      - name: If still down — capture the REAL error over SSH, bypassing log truncation
+        if: env.RECOVERED != '1'
+        run: |
+          # Fly truncates log lines at 65,565 chars and dist/index.cjs is a
+          # minified ONE-LINE bundle, so Node's source context buries the actual
+          # message past the cut. Running it over SSH and piping through
+          # `tail -c` returns only the END of the output — where the error is.
+          echo "-------- attempting ssh capture --------"
+          timeout 180 flyctl ssh console --app "$APP" --machine "$M_NEW" \
+            -C "/bin/sh -c 'cd /app 2>/dev/null || cd /; timeout 60 node dist/index.cjs 2>&1 | tail -c 4000'" \
+            2>&1 | tail -60 || echo "(ssh capture failed — machine may not be up long enough)"
+
+      - name: Final state
+        if: always()
+        run: |
+          flyctl machine list --app "$APP" 2>&1 | tail -8 || true
           echo
-          echo "======== lines matching startup/error markers ========"
-          awk 'length($0) <= 2000' boot.log \
-            | grep -iE '\[startup\]|Fatal error|Name:|Message:|Stack:|Error:|error\]|exit_code|refused connection|listening|Cannot find|ECONNREFUSED|ETIMEDOUT|password|permission denied|SIGTERM|SIGKILL' \
-            | tail -60 || echo "(no marker lines matched)"
-
-      - name: Exit event and check state after the boot
-        run: |
-          flyctl machine status "$APP_MACHINE" --app "$APP" 2>&1 | tail -25 || true
-          echo
-          echo "Diagnosis round 3 complete."
+          echo "Round 4 complete. RECOVERED=${RECOVERED:-0}"
