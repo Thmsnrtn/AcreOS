@@ -16,8 +16,22 @@ export const HARD_STOPS = [
 
 export type HardStop = (typeof HARD_STOPS)[number];
 
-/** The ">$500 spend" hard-stop, as a machine constant (USD). */
+/**
+ * The ">$500 spend" hard-stop, as machine constants. This module is the SINGLE
+ * SOURCE OF TRUTH for the ceiling across every autonomy lane.
+ *
+ * Both units are derived from ONE number so they can never drift. Before
+ * 2026-08-28 the executor lane (financialAuthorityGate.ts's
+ * AUTONOMOUS_SPEND_CEILING_CENTS = 50_000) and the autopilot lane (this file's
+ * USD constant) each hard-coded the ceiling in a different unit, agreeing only
+ * by the author's arithmetic — change one and the other silently drifts. The
+ * executor now DERIVES its cents value from HARD_STOP_SPEND_LIMIT_CENTS here.
+ * Kept a pure data module (no db/logger) so witnessGrant, the hands registry
+ * and financialAuthorityGate can all import it without a dependency cycle.
+ */
 export const HARD_STOP_SPEND_LIMIT_USD = 500;
+/** The same ceiling in cents — the unit financial gates and Stripe operate in. */
+export const HARD_STOP_SPEND_LIMIT_CENTS = HARD_STOP_SPEND_LIMIT_USD * 100;
 
 /**
  * Name/description patterns that identify an actuator implementing a

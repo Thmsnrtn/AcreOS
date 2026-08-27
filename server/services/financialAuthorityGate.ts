@@ -48,6 +48,11 @@ import {
 import { eq, and, sql, desc, lt, avg } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+// The >$500 spend ceiling has ONE source of truth: the pure hard-stops data
+// module. Deriving the cents value here (rather than re-hardcoding 50_000)
+// makes it structurally impossible for the executor lane and the autopilot
+// lane to disagree about the constitutional limit. See autopilot/hardStops.ts.
+import { HARD_STOP_SPEND_LIMIT_CENTS } from "./autopilot/hardStops";
 
 // ─── Hard global cap ─────────────────────────────────────────────────────────
 // Absolute ceiling. Any request above this amount fails immediately, even if
@@ -91,7 +96,7 @@ async function getApprovalTtlHours(): Promise<number> {
  * drift apart. spendHardStop.test.ts imports it for the same reason: a test
  * that retypes the literal agrees with a drifted table instead of catching it.
  */
-export const AUTONOMOUS_SPEND_CEILING_CENTS = 50_000; // $500
+export const AUTONOMOUS_SPEND_CEILING_CENTS = HARD_STOP_SPEND_LIMIT_CENTS; // $500, from the one source
 
 
 interface SpendingTier {

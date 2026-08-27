@@ -37,6 +37,10 @@ import {
   AUTONOMOUS_SPEND_CEILING_CENTS,
   spendIsAutonomous,
 } from "../../server/services/financialAuthorityGate";
+import {
+  HARD_STOP_SPEND_LIMIT_USD,
+  HARD_STOP_SPEND_LIMIT_CENTS,
+} from "../../server/services/autopilot/hardStops";
 
 /**
  * The tier table and its resolver stay MODULE-PRIVATE on purpose.
@@ -55,7 +59,10 @@ describe("the hard stop is observable at all (vacuity guard, first)", () => {
     // with a drifted table instead of catching it — and this constant is the
     // Tier 1 ceiling AND the Tier 2 floor AND autonomousDecisionExecutor's
     // HARD_GUARDRAIL_AMOUNT_LIMIT, so there is exactly one place to change it.
-    expect(AUTONOMOUS_SPEND_CEILING_CENTS).toBe(50_000); // $500
+    // Asserted as $500-in-cents DERIVED from the dollar figure, not the literal
+    // 50_000: retyping 50_000 here is exactly the drift the cross-lane block
+    // below exists to forbid.
+    expect(AUTONOMOUS_SPEND_CEILING_CENTS).toBe(HARD_STOP_SPEND_LIMIT_USD * 100);
   });
 
   it("answers both ways, so a constant `false` cannot pass the suite", () => {
@@ -159,5 +166,47 @@ describe("the live path resolves through the function under test", () => {
     expect(source, "the founder-approval branch is what the tier is FOR").toMatch(
       /if\s*\(\s*tier\.founderApprovalRequired\s*\)/,
     );
+  });
+});
+
+
+/**
+ * CROSS-LANE AGREEMENT — the reconciliation the master directive named as the
+ * precondition for expanding autonomy ("reconcile authority before expanding
+ * it"; docs/company/master-directive-2026-08.md).
+ *
+ * The >$500 spend hard-stop is enforced in TWO lanes that never shared a
+ * constant until 2026-08-28:
+ *   - the executor lane   — financialAuthorityGate.ts's AUTONOMOUS_SPEND_CEILING_CENTS,
+ *     consumed by autonomousDecisionExecutor's HARD_GUARDRAIL_AMOUNT_LIMIT
+ *   - the autopilot lane  — autopilot/hardStops.ts's HARD_STOP_SPEND_LIMIT_USD,
+ *     consumed by witnessGrant and gateWatcher
+ * They agreed only by the author's arithmetic (50_000 cents == 500 USD * 100).
+ * Change one and the two lanes silently governed the company at different
+ * ceilings. The executor value now DERIVES from the autopilot constant, and
+ * this block FAILS if they ever disagree — falsified against the semantic
+ * defect (a ceiling that differs between lanes), not a symbol name.
+ */
+describe("the two autonomy lanes enforce ONE spend ceiling", () => {
+  it("the executor ceiling is exactly the autopilot ceiling, in cents", () => {
+    // If a future edit sets financialAuthorityGate's ceiling to a different
+    // number than autopilot/hardStops declares, this is the assertion that goes
+    // red — before an agent can spend against a ceiling the other lane forbids.
+    expect(AUTONOMOUS_SPEND_CEILING_CENTS).toBe(HARD_STOP_SPEND_LIMIT_CENTS);
+  });
+
+  it("the cents and dollar forms of the autopilot constant are consistent", () => {
+    // Both are exported so cents-native (Stripe, financial gates) and
+    // dollar-native (studio dials, witness grants) callers each read their own
+    // unit without re-deriving it. They must stay the same ceiling.
+    expect(HARD_STOP_SPEND_LIMIT_CENTS).toBe(HARD_STOP_SPEND_LIMIT_USD * 100);
+  });
+
+  it("the ceiling is the constitutional $500, not some other number", () => {
+    // Anchors the whole chain to the founder hard-stop actually ratified in
+    // shared/governance/constitution.ts. If someone raises the limit, that is a
+    // founder decision and must change the constitution too — this catches a
+    // quiet raise in code that never touched the statute.
+    expect(HARD_STOP_SPEND_LIMIT_USD).toBe(500);
   });
 });
