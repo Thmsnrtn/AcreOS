@@ -29,6 +29,16 @@ assumption); (3) never let the branch drift dozens of commits ahead again —
 production was once 304 commits behind and nobody knew. If a deploy fails, fixing
 it becomes the immediate frontier, before new work.
 
+**Mirror CI's heap, don't just strip the ambient one (refined 2026-08-27).**
+The first form of this rule said `env -u NODE_OPTIONS`. That is right for
+`npm run check` (its heavy steps carry explicit ceilings) but WRONG for the
+suite: a GitHub 16 GB runner gives Node a ~4096 MB default, while this
+container's cgroup gives ~2096 MB — so a bare strip runs vitest's transform
+pipeline (vite:esbuild, in-process) HARSHER than CI, and it OOM'd
+timing-dependently at ~2043 MB, killing a different test file each run with
+zero assertion failures. The faithful mirror is
+`NODE_OPTIONS=--max-old-space-size=4096 npx vitest run` — CI's effective
+default, inherited by every fork. The original point stands unchanged:
 **Run them with `env -u NODE_OPTIONS`, or you are measuring the container.**
 (2026-08-25.) This dev container exports an ambient
 `NODE_OPTIONS=--max-old-space-size=8192`. `npm run check` was written as

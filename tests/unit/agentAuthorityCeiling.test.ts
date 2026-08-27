@@ -71,19 +71,31 @@ beforeEach(() => {
   };
 });
 
-/** Every hard stop, so the guard cannot be satisfied by one representative. */
-const FOUNDER_ONLY = [
-  "modify_pricing_plans",
-  "legal_document_change",
-  "process_refund_over_500",
-  "regulatory_filing",
-  "change_payment_processor",
-  "database_migration",
-];
+/**
+ * Every NEVER_PROMOTE action, EXTRACTED from the gate's own source rather than
+ * hand-copied. The previous version of this list claimed "every hard stop" and
+ * carried 6 of what were then 15 ids — so when the list grew (the two
+ * customer-data-deletion ids added 2026-08-28 after the cross-lane coverage map
+ * found the class entirely missing), a copy here would not have known. For a
+ * `const [...] as const` of string literals the source IS the runtime value;
+ * the extraction is shared with hardStopLaneCoverage.test.ts and vacuity-guarded
+ * below — an extraction returning nothing fails loudly instead of driving zero
+ * actions and passing.
+ */
+// From the LIGHT helper, not the coverage test file: importing that test
+// dragged autonomousDecisionExecutor's whole module graph into this worker
+// on top of the mocked authority-gate graph, and the fork OOM'd at the 2 GB
+// default heap. The helper imports only the pure hard-stops module and fs.
+import { extractNeverPromoteActions } from "../helpers/neverPromoteActions";
+const FOUNDER_ONLY = extractNeverPromoteActions();
 
 describe("a temporary delegation does not convey a founder-only action", () => {
   it("refuses every NEVER_PROMOTE action even with an active delegation to level 0", async () => {
     delegation = { hasDelegation: true, toLevel: 0, reason: "founder away" };
+
+    // Vacuity: an extraction that broke would drive zero actions and pass.
+    expect(FOUNDER_ONLY.length).toBeGreaterThanOrEqual(15);
+    expect(FOUNDER_ONLY).toContain("delete_customer_data");
 
     for (const action of FOUNDER_ONLY) {
       const res = await check(action);

@@ -16,6 +16,7 @@
  */
 
 import { db } from "../db";
+import { HARD_STOP_LANE_COVERAGE } from "./autopilot/hardStops";
 import { companyAgents, agentActionLog, decisionsInboxItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -67,13 +68,38 @@ export interface ActionExecution {
  * and conveyed every one of these. A ceiling that only one branch can see is not
  * a ceiling. Every path that raises authority consults this one function.
  */
-const NEVER_PROMOTE_ACTIONS = [
-  "refund_customer", "suspend_account", "process_refund_over_500",
-  "modify_pricing_plans", "infrastructure_scaling", "database_migration",
+/**
+ * OPERATIONAL never-promote ids — business conservatism this lane owns itself
+ * (infrastructure, rollbacks, feature removal, sub-$500 refunds). These are NOT
+ * constitutional hard-stops; the founder could delegate one someday without a
+ * constitutional amendment.
+ */
+const OPERATIONAL_NEVER_PROMOTE = [
+  "refund_customer", "suspend_account",
+  "infrastructure_scaling", "database_migration",
   "infrastructure_downgrade", "data_center_migration", "rollback_deployment",
-  "legal_document_change", "regulatory_filing", "major_feature_removal",
-  "pricing_tier_restructure", "change_payment_processor", "disable_feature_in_production",
+  "major_feature_removal", "change_payment_processor", "disable_feature_in_production",
 ] as const;
+
+/**
+ * The full never-promote set: CONSTITUTIONAL ids DERIVED from the cross-lane
+ * coverage map in autopilot/hardStops.ts, plus the operational list above.
+ *
+ * Derived, not retyped, for the same reason the $500 ceiling is derived there:
+ * until 2026-08-28 this list hand-carried the constitutional ids and had NO
+ * customer-data-deletion id at all — "delete_customer_data" passed
+ * isNeverPromote unchecked while the executor and hands lanes both blocked the
+ * class. With the ids flowing from the map, adding a hard-stop class (a compile
+ * error until its coverage is declared) automatically extends THIS lane too.
+ * Enforcement is driven end-to-end by agentAuthorityCeiling.test.ts, which runs
+ * every one of these ids through the real checkAuthority.
+ */
+const NEVER_PROMOTE_ACTIONS: readonly string[] = [
+  ...new Set([
+    ...Object.values(HARD_STOP_LANE_COVERAGE).flatMap((c) => c.neverPromoteIds),
+    ...OPERATIONAL_NEVER_PROMOTE,
+  ]),
+];
 
 function isNeverPromote(action: string): boolean {
   return (NEVER_PROMOTE_ACTIONS as readonly string[]).includes(action);
