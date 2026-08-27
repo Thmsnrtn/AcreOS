@@ -246,51 +246,19 @@ router.get("/:id", numericIdOnly, async (req: AuthenticatedRequest, res: Respons
   }
 });
 
-// GET /api/decisions/:subjectType/:subjectId
-router.get("/:subjectType/:subjectId", async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const organizationId = getOrganizationId(req);
-    const subjectType = req.params.subjectType;
-    if (!(DECISION_SUBJECT_TYPES as readonly string[]).includes(subjectType)) {
-      return Errors.badRequest(
-        res,
-        `Unknown decision subject type: ${subjectType}`,
-      );
-    }
-    const subjectId = Number(req.params.subjectId);
-    if (!Number.isInteger(subjectId) || subjectId <= 0) {
-      return Errors.badRequest(res, "Invalid subject id");
-    }
-
-    const history = await decisionsForSubject(
-      organizationId,
-      subjectType as (typeof DECISION_SUBJECT_TYPES)[number],
-      subjectId,
-    );
-    res.json({
-      subjectType,
-      subjectId,
-      decisions: history.map((d) => ({
-        id: d.id,
-        decidedAt: d.decidedAt,
-        kind: d.body.kind,
-        choice: d.body.choice,
-        rationale: d.body.rationale,
-        actorType: d.body.actorType,
-        authority: d.body.authority,
-        strategyPackId: d.body.strategyPackId,
-        strategyPackVersion: d.body.strategyPackVersion,
-        // The footing leads with what was NOT known — the part a reader
-        // reconstructing a past decision most needs and is least likely to be
-        // told.
-        footing: describeFooting(d.body),
-        unknowns: d.body.unknowns,
-      })),
-    });
-  } catch (err) {
-    Errors.internal(res, err);
-  }
-});
+// ORDERING IS LOAD-BEARING — the outcomes routes are registered BEFORE
+// `/:subjectType/:subjectId` on purpose.
+//
+// Both are TWO-segment patterns, and Express matches in REGISTRATION ORDER.
+// While the outcomes routes sat below it, `/:subjectType/:subjectId` matched
+// `/123/outcomes` first, took subjectType="123", failed the
+// DECISION_SUBJECT_TYPES check, and returned 400 without ever calling next().
+// So GET /api/decisions/:id/outcomes was UNREACHABLE — registered, mounted,
+// tested at the unit level, and never once able to serve a request.
+//
+// It is safe in this order because `numericIdOnly` calls next("route") for a
+// non-numeric first segment: `/property/outcomes` still falls through to the
+// subject route below and answers exactly as it did before.
 
 // ── Outcomes: what actually happened (canonical law 9) ────────────────────
 //
@@ -359,6 +327,52 @@ router.get("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, res
         // decision looks.
         variance: o.variance,
         varianceSummary: o.varianceSummary,
+      })),
+    });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// GET /api/decisions/:subjectType/:subjectId
+router.get("/:subjectType/:subjectId", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const subjectType = req.params.subjectType;
+    if (!(DECISION_SUBJECT_TYPES as readonly string[]).includes(subjectType)) {
+      return Errors.badRequest(
+        res,
+        `Unknown decision subject type: ${subjectType}`,
+      );
+    }
+    const subjectId = Number(req.params.subjectId);
+    if (!Number.isInteger(subjectId) || subjectId <= 0) {
+      return Errors.badRequest(res, "Invalid subject id");
+    }
+
+    const history = await decisionsForSubject(
+      organizationId,
+      subjectType as (typeof DECISION_SUBJECT_TYPES)[number],
+      subjectId,
+    );
+    res.json({
+      subjectType,
+      subjectId,
+      decisions: history.map((d) => ({
+        id: d.id,
+        decidedAt: d.decidedAt,
+        kind: d.body.kind,
+        choice: d.body.choice,
+        rationale: d.body.rationale,
+        actorType: d.body.actorType,
+        authority: d.body.authority,
+        strategyPackId: d.body.strategyPackId,
+        strategyPackVersion: d.body.strategyPackVersion,
+        // The footing leads with what was NOT known — the part a reader
+        // reconstructing a past decision most needs and is least likely to be
+        // told.
+        footing: describeFooting(d.body),
+        unknowns: d.body.unknowns,
       })),
     });
   } catch (err) {
