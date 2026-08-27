@@ -232,10 +232,73 @@ export function registerCRMExtrasRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // dashboard-summary — MUST stay above /api/tasks/:id in THIS file. The
+  // 2026-07-11 sweep put it above :id in routes.ts, which was inert:
+  // registerCRMExtrasRoutes(app) runs ahead of every other /api/tasks
+  // registration, so per-file order in routes.ts was not the real order.
+  // Moved here 2026-08-27 when the whole inline /api/tasks surface in
+  // routes.ts was retired as unreachable (lint:route-shadowing).
+  api.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = req.organization!.id;
+      
+      // Get all pending/in_progress tasks
+      const allTasks = await storage.getTasks(orgId);
+      const activeTasks = allTasks.filter(t => t.status === "pending" || t.status === "in_progress");
+      
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      
+      const overdue: typeof activeTasks = [];
+      const dueToday: typeof activeTasks = [];
+      
+      for (const task of activeTasks) {
+        if (!task.dueDate) continue;
+        const due = new Date(task.dueDate);
+        if (due < todayStart) {
+          overdue.push(task);
+        } else if (due >= todayStart && due < todayEnd) {
+          dueToday.push(task);
+        }
+      }
+      
+      // Sort by priority (urgent > high > medium > low), then by dueDate
+      const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+      const sortFn = (a: typeof activeTasks[0], b: typeof activeTasks[0]) => {
+        const pa = priorityOrder[a.priority] ?? 4;
+        const pb = priorityOrder[b.priority] ?? 4;
+        if (pa !== pb) return pa - pb;
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return 0;
+      };
+      
+      overdue.sort(sortFn);
+      dueToday.sort(sortFn);
+      
+      res.json({
+        overdue: overdue.slice(0, 10),
+        dueToday: dueToday.slice(0, 10),
+        overdueCount: overdue.length,
+        dueTodayCount: dueToday.length,
+      });
+    } catch (error: any) {
+      logger.error("Get dashboard tasks summary error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
+  api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res, next) => {
     try {
       const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
+      // Not a numeric id — this route does not own the request. Hand it to the
+      // next matching registration (GET /api/tasks/my in routes-analytics.ts)
+      // rather than binding NaN into an integer column. Until 2026-08-27 this
+      // guard did not exist, so the "My" tab in tasks.tsx had NEVER loaded:
+      // /api/tasks/my matched here first and died as NaN.
+      if (!Number.isInteger(id)) return next();
       
       const task = await storage.getTask(orgId, id);
       if (!task) {

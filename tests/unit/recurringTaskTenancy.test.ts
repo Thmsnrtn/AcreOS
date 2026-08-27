@@ -219,7 +219,13 @@ describe("both call sites feed it an organization", () => {
   // exactly why CLAUDE.md calls static scanning defence in depth rather than
   // proof. The behavioural block above is the proof; this block only catches the
   // narrower regression of a caller dropping the argument entirely.
-  const CALL_SITES = ["server/routes.ts", "server/routes-crm-extras.ts"] as const;
+  // The server/routes.ts twin was deleted 2026-08-27: registerCRMExtrasRoutes(app)
+  // runs ahead of the inline definitions there, so that copy had never served a
+  // request (lint:route-shadowing found the whole surface). One reachable call
+  // site now — a source scan cannot tell reachable code from dead code, any more
+  // than it can tell valid code from code that does not compile. Re-add an entry
+  // here only for a registration that can actually run.
+  const CALL_SITES = ["server/routes-crm-extras.ts"] as const;
 
   it.each(CALL_SITES)("%s calls it with the caller's org", (rel) => {
     const src = readFileSync(resolve(__dirname, "../..", rel), "utf8");
