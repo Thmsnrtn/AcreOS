@@ -190,3 +190,52 @@ After launch-week remainders clear: F1 → F2 → F3, with C1 parallel to
 F2 (different files). Each lands as its own PR under the standing
 auto-merge policy. E2E: extend existing settings/founder specs to pin
 the pulse strip's honest-empty state and one receipt round-trip.
+
+---
+
+## Epistemic-UX frontier — corrected scope (2026-08-28)
+
+The master directive (`master-directive-2026-08.md`) asks for one product-wide
+language for truth-states — *verified / observed / customer-reported /
+provider-reported / inferred / estimated / stale / conflicting / unknown /
+unavailable* — rendered consistently everywhere. A HEAD reconstruction proposed
+this as a quick "connect a dark primitive and delete the copies." **That framing
+was wrong, and the correction matters so the work is scoped rather than
+blundered into.**
+
+Measured at HEAD (importer counts are `grep -rl` across `client/src`, minus each
+component's own file):
+
+| primitive | importers | what it actually models |
+|---|---|---|
+| `data-confidence-badge.tsx` (`DataConfidenceBadge`) | **0** | numeric confidence 0–100 + a `sources` list, as 5 bars. NOT truth-states. |
+| `source-attribution-panel.tsx` (`SourceAttributionPanel`) | **0** | a full sources panel. Dark. |
+| `data-provenance-chip.tsx` (`DataProvenanceChip`) | **6** | the de-facto adopted provenance primitive. |
+| `data-provenance-tag.tsx` (`DataProvenanceTag`) | **2** | a second, competing provenance tag. |
+
+Plus ~20 components under `client/src/components` and `.../pages` that render
+their own inline confidence/provenance UI (`avm.tsx`, `today/ConfidenceBar.tsx`,
+`confidence-interval.tsx`, `CmaPanel.tsx`, and more).
+
+So this is **not** a one-file wire-up. It is a genuine design consolidation, and
+it cannot start by adopting `DataConfidenceBadge` as the truth-state token —
+that badge models a *number*, not the directive's epistemic *states*, and doing
+so would enshrine the conflation. Two dark primitives, one adopted chip, one
+competing tag, and ~20 ad-hoc copies is a landscape, not a loose wire.
+
+**The real sequence, when this frontier is taken up:**
+1. Decide the canonical truth-state vocabulary (a product-identity call — pick
+   the subset of the directive's list that AcreOS actually distinguishes, and
+   define each state's meaning). This governs everything downstream.
+2. Choose or build ONE primitive expressing it. `DataProvenanceChip` (6 callers)
+   is the incumbent to extend, not to bypass; `DataConfidenceBadge` stays the
+   numeric-confidence primitive, a different thing that should compose WITH the
+   truth-state token, not replace it.
+3. Migrate the ad-hoc surfaces to it, one at a time, each with a before/after.
+4. Delete the copies and the losing primitive; ratchet the count down-only so
+   inline confidence UI cannot regrow.
+
+Recorded here rather than acted on because step 1 is a deliberate call that
+should be made once, cleanly, not improvised mid-migration — and because a
+"connect+delete" commit built on the mischaracterized premise would have been
+activity, not the outcome the directive wants.
