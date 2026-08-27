@@ -4,7 +4,7 @@ import {
   browserAutomationJobs, 
   browserSessionCredentials 
 } from "@shared/schema";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, or } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
 import { logger } from "../utils/logger";
@@ -212,6 +212,30 @@ export async function createJob(
     triggeredByUserId?: string;
   }
 ): Promise<AutomationJob> {
+  // Verify template ownership AT THE WRITE, not at execution. The route
+  // (routes-misc.ts POST /api/browser-automation/jobs) passes req.body
+  // .templateId straight through, and executeJob loads whatever template the
+  // stored id names — so an unverified id here is a stored cross-org template
+  // execution waiting for the queue processor to be wired (rule-1 service
+  // wave, 2026-08-27). A template is usable if it is a system template
+  // (organizationId null) or belongs to the creating org.
+  if (params.templateId !== undefined && params.templateId !== null) {
+    // The ownership predicate lives IN the query (system template = org null,
+    // else the creating org's own), so a foreign org's row is never even read.
+    const [template] = await db
+      .select({ id: browserAutomationTemplates.id })
+      .from(browserAutomationTemplates)
+      .where(and(
+        eq(browserAutomationTemplates.id, params.templateId),
+        or(
+          isNull(browserAutomationTemplates.organizationId),
+          eq(browserAutomationTemplates.organizationId, organizationId),
+        ),
+      ));
+    if (!template) {
+      throw new Error("Template not found");
+    }
+  }
   const [job] = await db
     .insert(browserAutomationJobs)
     .values({

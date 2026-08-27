@@ -359,10 +359,16 @@ had not verified; those are deliberately absent below.
    unvalidated amount to another org's loan-performance column behind the
    dormant securities rails). `getPendingReminders` also got its org predicate
    moved into the WHERE (platform-wide limit was starving org lists).
-   **Remaining: 50 service-internal keys (transitively reachable in
-   principle — adjudicate by walking service chains to entry points) and 127
-   caller-less keys** (no caller found; fold into the reachability/deletion
-   program rather than reading them as tenancy risk).
+   **The service-internal 50 are DONE too (2026-08-27, ledger 79):** chains
+   walked to entry points, 0 suspects — 32 deliberate (founder-chat mount,
+   platform jobs, the documented-global email-suppression list, shared parcel
+   cache, Stripe-signature tenant resolution), 5 safe, 13 dead. One latent
+   hole closed at the write: `createJob` now ownership-checks `templateId` in
+   the query (`browserAutomationJobOwnership.test.ts`, falsified by disabling
+   the guard). Rule 1 is adjudicated everywhere anything can reach it: 151
+   units, one confirmed defect (`investInSecurity`, entry 78).
+   **Remaining: 127 caller-less keys** — reachability/deletion debt, not
+   tenancy risk; they stay in the register until actually deleted.
 
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had

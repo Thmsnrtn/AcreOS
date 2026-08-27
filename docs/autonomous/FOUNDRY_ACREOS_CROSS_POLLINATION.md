@@ -4979,3 +4979,55 @@ calls them, and reading them first would have been thoroughness pointed away
 from risk. And the five name-collision entries mean a `file::fn` register key
 is a CLAIM about which symbol the gate parsed, not which symbol a route calls
 — same-name symbols are how a register lies to its reader while staying green.
+
+### 79 — THE SERVICE-INTERNAL WAVE: ZERO LEAKS, THIRTEEN DEAD UNITS, AND ONE HOLE CLOSED BEFORE IT OPENED
+
+The 50 service-internal rule-1 keys — the population entry 78's correction said
+could in principle sit on a route's transitive path — were walked to their
+entry points, at most four hops, every hop's import verified against the
+same-name traps entry 78 warned about (they were everywhere: five `handler`
+registries, two `generateWeeklyDigest`s, two `getCacheHitRate`s, a Clerk-SDK
+`getSession`, an interface-only `createMessage`). Verdicts: **32
+DELIBERATE_CROSS_ORG** (founder-chat tools reachable only through the
+`requireFounder` mount; ETL, Solene, pax-scheduler and evolution platform
+jobs; the deliberately GLOBAL email-suppression list, whose header documents
+why one tenant's spam complaint must silence all tenants' mail to that
+address; the shared public-record parcel cache; Stripe webhook tenant
+resolution, where the signature-verified reverse lookup IS the step that
+establishes org context), **4 SAFE_PARENT_VERIFIED, 1 SAFE_SELF_INSERTED, 13
+NOT_REACHABLE** — and **0 SUSPECT**.
+
+The rule-1 register is now adjudicated end to end where anything can reach
+it: 151 units read (90 route + 11 job + 50 service), one confirmed defect
+(entry 78's `investInSecurity`), zero others. The remaining 127 caller-less
+keys are reachability debt, not tenancy risk.
+
+Two things worth the walk beyond the verdicts:
+
+**A latent hole was closed at the write, before its trigger existed.**
+`POST /api/browser-automation/jobs` persisted a client-supplied `templateId`
+with no ownership check, and `executeJob` loads whatever template the STORED
+id names. Nothing fires today only because the queue processor
+(`processJobQueue`/`startJobProcessor`) has zero callers — an unverified id
+sat in the database waiting for someone to wire the processor, at which point
+it would have become cross-org template execution. This is "built but
+unwired" as a SECURITY pattern: the defect ships disconnected, and the wiring
+commit — months later, by someone who never saw the write path — is the one
+that goes live with it. `createJob` now carries the ownership predicate IN
+the query (system template or the creating org's own; a foreign row is never
+even read), `browserAutomationJobOwnership.test.ts` drives the real function
+with a foreign-org template and was falsified by disabling the guard (2 red,
+restored, 5 green).
+
+**Thirteen units are dead code the reachability program has not yet named.**
+Seven from the route wave's C_SVC neighbours and six more here exist only as
+interface declarations or exports nothing binds (`incrementMailingOrderPieces`,
+`getCollectionEnrollmentsBySequence`, `getFieldScoutPhotosByLead`,
+`storage.createMessage`, `agentOrchestration.unsubscribe`, three ai-telemetry
+aggregates, `lookup-cache.getCacheHitRate`, `readTelemetrySnapshot`,
+`getContextDistribution`, `cleanupOldObservations` behind a monitor nothing
+starts, `tracking-pool.releaseNumber` — the last with its own note: if ever
+wired it updates by bare phone number, no org filter). They stay in the
+rule-1 register until deleted, deliberately: removing a register entry for
+being dead certifies deadness with a grep, and the reachability families
+already exist to hold that claim properly.
