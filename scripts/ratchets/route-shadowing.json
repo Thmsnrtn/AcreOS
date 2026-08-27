@@ -1,0 +1,18 @@
+{
+  "name": "route-shadowing",
+  "mode": "external",
+  "evaluator": "scripts/check-route-shadowing.mjs",
+  "direction": "down",
+  "description": "ROUTE SHADOWING ratchet. Counts routes Express can NEVER reach: an earlier registration in the global order matches the same request, and its handler never calls next(). A shadowed route is registered, mounted, unit-tested and structurally unable to serve a request — this repo's most-cited defect class ('built but unwired') in its most invisible form, because every existing gate passes over it. Found 2026-08-27 after GET /api/decisions/:id/outcomes turned out never to have run: /:subjectType/:subjectId was registered first, matched /123/outcomes, failed its own whitelist and returned 400 with no next(). check-route-order.mjs passed on that, correctly — its predicate is a :param-TAILED earlier route swallowing a LITERAL final segment, per-file; this one is cross-file and not param-tailed. The two gates guard different properties and both are needed. THE BASELINE SPLITS 9 STRUCTURAL (a :param route swallows a literal the later route was named for — callers get 400/404 from an endpoint that exists) and 24 DUPLICATE-PATH (same method+path registered in two files; first wins, second is dead code — the whole /api/tasks CRUD surface in routes.ts is shadowed by routes-crm-extras.ts, and POST /api/feedback is registered three times). Fix by ORDERING (register the specific route before the general one, as server/routes-decisions.ts now does) or by making the earlier handler next() when it does not own the request. Never by raising the baseline. NOTE the gate measures ROUTING reachability, not whether the shadower answers correctly: widening a whitelist so the shadower handles the request properly does NOT drop this count, because the later registration is still unreachable.",
+  "baseline": 33,
+  "unknownHandlerBaseline": 45,
+  "unknownHandlerNote": "Earlier registrations whose final handler is an unresolvable identifier, so the gate cannot tell whether they hide a dead route. UNKNOWN is deliberately NOT treated as falls-through — that is the direction that hides defects. Down-only, so resolving one is scored improvement rather than invisible work.",
+  "minima": {
+    "serverFiles": 1000,
+    "registrations": 2200,
+    "globalRoutes": 2000,
+    "paramRoutes": 850,
+    "terminatingEarlier": 400
+  },
+  "minimaNote": "VACUITY FLOORS, not ratchets, enforced inside the evaluator. This baseline counts BAD THINGS FOUND, so a scan that stops seeing routes finds zero and prints a reassuring PASS. paramRoutes is the predicate's LEFT-hand side and terminatingEarlier its RIGHT-hand side: if either collapses the gate is blind while `globalRoutes` still looks healthy. Seeded 2026-08-27 at ~70% of live (1,383 files / 2,693 registrations / 2,693 ordered routes / 1,232 param routes). These floors already caught a real bug during development, when terminatingEarlier was floored as one population and computed as a smaller one."
+}
