@@ -4932,9 +4932,12 @@ The last unadjudicated tenancy population — rule 1's frozen `BASELINE_OFFENDER
 in their body) — got its first pass, prioritized by reachability rather than
 worked alphabetically. A caller census split it: 90 units reachable from route
 files, 11 called only by scheduled jobs, 50 service-internal, 127 with no
-caller found. The 101 reachable-or-scheduled units were adjudicated in full,
-each against its actual calling code; the 177 others are triaged residue, not
-silence — they cannot serve a request today.
+caller found. The 101 directly-reachable-or-scheduled units were adjudicated
+in full, each against its actual calling code. (Corrected same day: the first
+version of this entry said the 177 others "cannot serve a request today" —
+true only of the 127 caller-less keys. The 50 service-internal ones CAN sit on
+a route's transitive path; they were deprioritized on defect density, not
+impossibility, and are the register's remaining open population.)
 
 The verdict distribution repeats rules 2 and 3 almost exactly: **45
 DELIBERATE_CROSS_ORG** (every one behind `requireFounder`/`isFounderAdmin`/

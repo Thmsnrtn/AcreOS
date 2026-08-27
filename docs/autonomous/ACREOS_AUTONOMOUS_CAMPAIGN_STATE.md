@@ -359,10 +359,10 @@ had not verified; those are deliberately absent below.
    unvalidated amount to another org's loan-performance column behind the
    dormant securities rails). `getPendingReminders` also got its org predicate
    moved into the WHERE (platform-wide limit was starving org lists).
-   **Remaining: 50 service-internal + 127 caller-less keys** — no request can
-   reach them today; adjudicate the 50 by walking their service chains to
-   entry points when the frontier warrants, and fold the 127 into the
-   reachability/deletion program rather than reading them as tenancy risk.
+   **Remaining: 50 service-internal keys (transitively reachable in
+   principle — adjudicate by walking service chains to entry points) and 127
+   caller-less keys** (no caller found; fold into the reachability/deletion
+   program rather than reading them as tenancy risk).
 
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had
