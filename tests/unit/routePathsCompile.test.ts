@@ -71,8 +71,28 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** `.get("/x")`, `.post('/y')`, `.use("/z")` … — the literal, not template strings. */
-const ROUTE_CALL = /\.(get|post|put|patch|delete|all|use)\(\s*(["'])(\/[^"'`]*)\2/g;
+/**
+ * `.get("/x")`, `.post('/y')`, `.use("/z")` … — the literal, not template strings.
+ *
+ * THE LEADING-SLASH BLIND SPOT, closed 2026-08-27. This pattern originally
+ * required the path to start with "/", which made the single highest-risk
+ * Express 5 hazard INVISIBLE to it:
+ *
+ *     app.use("*", handler)     <- Express 4's catch-all idiom
+ *
+ * Under path-to-regexp v8 that THROWS ("Missing parameter name at index 1"),
+ * exactly like the `/:id(\d+)` that took production down — a boot-time crash,
+ * not a bad endpoint. It is also the form every Express 4 snippet and most
+ * autocompletions reach for, so it is the likeliest way this class returns.
+ * Verified against the installed compiler: "*" and "/api/*" throw; "*splat"
+ * and "{*splat}" compile.
+ *
+ * So the alternation now also admits paths beginning with `*` or `{`. Those two
+ * shapes are unambiguously Express wildcard syntax and cannot be confused with,
+ * say, `someMap.get("key")` — measured: widening adds exactly 3 matches
+ * repo-wide, all real `app.use("{*splat}", …)` catch-alls in static.ts/vite.ts.
+ */
+const ROUTE_CALL = /\.(get|post|put|patch|delete|all|use)\(\s*(["'])((?:\/|\*|\{)[^"'`]*)\2/g;
 
 describe("every registered route path compiles under the installed path-to-regexp", () => {
   const files = walk(path.join(ROOT, "server"));
