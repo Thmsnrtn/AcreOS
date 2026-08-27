@@ -280,8 +280,69 @@ export function AnalyticsContent() {
     queryKey: [`/api/analytics/conversions?range=${dateRange}`],
   });
 
+  // Export the analytics the page already holds, as CSV, generated client-side.
+  //
+  // This button used to `window.open('/api/export/report?type=executive&format=pdf')`.
+  // That endpoint never worked: GET /api/export/:entityType is registered first
+  // and rejected "report" as an unknown entity type, so the browser tab showed
+  // raw 400 JSON. The route it fell through to was itself a placeholder that only
+  // ever returned {"message":"PDF export is a premium feature…"}. There was no
+  // real report export to wire up — so rather than resurrect a stub or open a
+  // broken tab, this exports the data AcreOS already has loaded on this page.
+  // Real, honest, and no server round-trip. (A true multi-page PDF export can
+  // replace this later; server/services/reportPdfService.ts is the starting
+  // point, but it currently has no analytics generator and no mounted route.)
   const handleExportReport = () => {
-    window.open('/api/export/report?type=executive&format=pdf', '_blank');
+    const rows: string[][] = [["Section", "Metric", "Value"]];
+    const push = (section: string, metric: string, value: unknown) => {
+      if (value === undefined || value === null) return;
+      rows.push([section, metric, String(value)]);
+    };
+
+    if (executive) {
+      push("Executive", "Total revenue", executive.totalRevenue);
+      push("Executive", "Revenue change %", executive.revenueChange);
+      push("Executive", "Active notes value", executive.activeNotesValue);
+      push("Executive", "Notes value change %", executive.notesValueChange);
+      push("Executive", "Deals in pipeline", executive.dealsInPipeline);
+      push("Executive", "Deals change %", executive.dealsChange);
+      push("Executive", "Lead conversion rate %", executive.leadConversionRate);
+      push("Executive", "Conversion change %", executive.conversionChange);
+    }
+    if (revenue) {
+      push("Revenue", "Total revenue", revenue.totalRevenue);
+      push("Revenue", "Average deal size", revenue.avgDealSize);
+      push("Revenue", "Projected revenue", revenue.projectedRevenue);
+    }
+    if (leads) {
+      push("Leads", "Total leads", leads.totalLeads);
+      push("Leads", "New leads", leads.newLeads);
+      push("Leads", "Converted leads", leads.convertedLeads);
+      push("Leads", "Conversion rate %", leads.conversionRate);
+      for (const s of leads.leadsBySource ?? []) push("Leads by source", s.source, s.count);
+    }
+    if (deals) {
+      push("Deals", "Total deals", deals.totalDeals);
+      push("Deals", "Won deals", deals.wonDeals);
+      push("Deals", "Lost deals", deals.lostDeals);
+      push("Deals", "Win rate %", deals.winRate);
+      push("Deals", "Average deal value", deals.avgDealValue);
+      for (const d of deals.dealsByStage ?? []) push("Deals by stage", d.stage, d.count);
+    }
+
+    // Every field is a number or a short server-provided label, but quote and
+    // escape defensively so a stray comma or quote in a source name cannot
+    // corrupt the file.
+    const csv = rows
+      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `acreos-analytics-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const leadSourceData = leads?.leadsBySource?.map((s, i) => ({
@@ -319,7 +380,7 @@ export function AnalyticsContent() {
               <SelectItem value="1y">Last year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={handleExportReport} data-testid="button-export-report" className="min-h-[44px]">
+          <Button variant="outline" onClick={handleExportReport} data-testid="button-export-report" className="min-h-[44px]" disabled={!executive && !revenue && !leads && !deals} title="Download the analytics on this page as CSV">
             <Download className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Export Report</span>
             <span className="sm:hidden">Export</span>

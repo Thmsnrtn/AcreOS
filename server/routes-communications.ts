@@ -853,31 +853,15 @@ export function registerCommunicationRoutes(app: Express): void {
   // because the LIVE handler serves it. This is the reassuring case: production
   // has been serving the better implementation all along.
   //
-  // /api/export/report is NOT one of them and remains below: "report" is not in
-  // that whitelist, so it is genuinely shadowed and genuinely broken. See its
-  // own note.
-
-  // GET /api/export/report - Generate PDF report (placeholder)
-  api.get("/api/export/report", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const reportType = req.query.type as string || 'executive';
-      const format = req.query.format as string || 'pdf';
-      
-      if (format === 'pdf') {
-        res.json({
-          message: "PDF export is a premium feature. Please upgrade your plan.",
-          placeholder: true,
-          reportType,
-        });
-      } else {
-        Errors.badRequest(res, "Unsupported format");
-      }
-    } catch (error: any) {
-      logger.error("Export report error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export report"));
-    }
-  });
+  // /api/export/report WAS registered here and is DELETED (2026-08-28). It was
+  // both shadowed (GET /api/export/:entityType matches /api/export/report first,
+  // rejects "report" as an unknown entity, and 400s) AND a placeholder — the
+  // handler only ever returned {"message":"PDF export is a premium feature…"}.
+  // The only caller, the analytics "Export Report" button, now generates an
+  // honest client-side CSV from the data already on the page
+  // (client/src/components/analytics-content.tsx). There was no real export to
+  // preserve. A true PDF report export can be built on reportPdfService.ts, which
+  // needs an analytics generator and a mounted route it does not yet have.
 
   // ============================================
   // WORKFLOW AUTOMATION (Event-based Triggers)
