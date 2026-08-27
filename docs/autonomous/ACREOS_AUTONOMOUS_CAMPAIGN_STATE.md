@@ -8,8 +8,19 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `b1dfb6b0`, 2026-08-20. Working tree clean; **941 test files /
-12,617 tests green**; `npm run check` 26/26 green.
+Verified at: `bbceee80`, 2026-08-27. Working tree clean; **975 test files /
+12,931 tests green**; `npm run check` green; production serves `bbceee80`
+(deploy #5, probed twice at /api/version).
+
+**Route shadowing is CLOSED at zero (2026-08-27).** The shadowing program that
+began with 34 shadowed routes ended with `scripts/ratchets/route-shadowing.json`
+at `"baseline": 0` — it must stay 0. Winners were picked by evidence (client
+callers, correct table, correct auth), never registration order, and four live
+UI bugs fell out of the last batch alone: the A/B-test create button (two
+engines collided; the UI's was the dead one), the feedback button (enum
+rejected 4 of its 7 categories), the AI-memory admin panel (read the wrong
+table), and lead bulk-delete (hard delete shadowing the soft-delete + audit
+path). Residue: `unknownHandlerBaseline` 43, down-only.
 
 **Run BOTH.** `npm run check` does not execute the suite — its `check:tests` step
 is a TYPE ratchet over test files, not a test run. A commit went out on 2026-08-20
