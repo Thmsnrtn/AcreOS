@@ -896,7 +896,13 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Buyer reservations (deposits/holds) for one property. NOT the STR booking
+  // ledger — server/routes-rent-ledger.ts owns
+  // GET /api/properties/:propertyId/reservations and registers first, so this
+  // handler lived under that path and NEVER ran; worse, promoting it there
+  // would have silently swapped STR stay data for buyer-deposit data. Renamed
+  // 2026-08-27 into the namespace every sibling in this block already uses.
+  api.get("/api/buyer-reservations/by-property/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);

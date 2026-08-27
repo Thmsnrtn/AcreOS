@@ -4341,7 +4341,20 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .where(eq(paxMemory.organizationId, org.id))
         .orderBy(desc(paxMemory.createdAt))
         .limit(100);
-      res.json({ memories });
+      // The panel (pax-memory-panel.tsx) renders memory.content; pax_memory has
+      // no content column — its human-readable field is value.summary (jsonb).
+      // Project it deliberately: summary when present, the key as the honest
+      // fallback. Never fabricate text for a memory that has none.
+      res.json({
+        memories: memories.map((m) => ({
+          id: m.id,
+          memoryType: m.memoryType,
+          key: m.key,
+          importance: m.importance,
+          createdAt: m.createdAt,
+          content: m.value?.summary ?? m.key,
+        })),
+      });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -4367,22 +4380,20 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // BETA ANALYTICS & FEEDBACK ENDPOINTS
   // ============================================
 
-  // POST /api/feedback — submit user feedback
-  api.post("/api/feedback", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const org = getOrganization(req);
-      const userId = getUserId(req);
-      const { page, feedback } = req.body as { page: string; feedback: string };
-      if (!feedback?.trim()) return Errors.badRequest(res, "Feedback required");
-      const { betaAnalytics } = await import("./services/betaAnalytics");
-      const id = await betaAnalytics.submitFeedback(userId, org.id, page || "/", feedback.trim());
-      res.json({ id, success: true });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // POST /api/feedback was ALSO defined here (a third registration) and never
+  // ran — routes-feedback.ts registers first. DELETED 2026-08-27. This copy
+  // wrote the `user_feedback` table via betaAnalytics.submitFeedback; since it
+  // was unreachable, user_feedback has received no new rows for as long as the
+  // registration order has held. GET /api/admin/feedback below still READS that
+  // table via betaAnalytics.getAllFeedback — it reads a frozen archive, stated
+  // there rather than hidden. Live submissions land in feedback_submissions
+  // (routes-feedback.ts) and surface at GET /api/founder/feedback.
 
-  // GET /api/admin/feedback — all feedback (founder only)
+  // GET /api/admin/feedback — all feedback (founder only). Reads the FROZEN
+  // user_feedback archive: its only writer (the dead third /api/feedback
+  // registration, tombstoned above) never ran, so no new rows arrive. Live
+  // submissions are in feedback_submissions via routes-feedback.ts and
+  // surface at GET /api/founder/feedback.
   api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { betaAnalytics } = await import("./services/betaAnalytics");

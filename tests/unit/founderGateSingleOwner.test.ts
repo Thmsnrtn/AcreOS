@@ -95,8 +95,12 @@ describe("founder identity has exactly one implementation", () => {
       "first, env second. A destination, not a permission.",
     "server/routes-marketplace.ts":
       "Fallback To: address when a seller org has no email on file.",
-    "server/routes.ts":
-      "Recipient of a non-blocking founder notification.",
+    "server/routes-feedback.ts":
+      "Recipient of the non-blocking founder feedback notification. Moved here " +
+      "2026-08-27 from server/routes.ts when the three /api/feedback " +
+      "registrations were consolidated onto this file's public rate-limited " +
+      "handler (the routes.ts copy was unreachable and is deleted). A " +
+      "destination, not a permission.",
   };
 
   it("no router or middleware re-implements founder IDENTITY", () => {

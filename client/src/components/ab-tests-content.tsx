@@ -90,18 +90,20 @@ export function AbTestsContent() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { test: typeof formData; variants: typeof variants }) => {
-      const res = await apiRequest("POST", "/api/ab-tests", {
+      // POST /api/campaigns/:id/ab-test — the campaign-model engine's create,
+      // which accepts the variants inline (matches ab-test-manager.tsx). The old
+      // two-step POST /api/ab-tests + per-variant POSTs never worked: no such
+      // POST existed on the campaign engine, so it hit the OUTREACH engine's
+      // router.post("/"), failed its {id,name,variants,metric} contract and
+      // 400'd — "Create A/B test" on this tab has been broken the whole time.
+      const res = await apiRequest("POST", `/api/campaigns/${parseInt(data.test.campaignId)}/ab-test`, {
         name: data.test.name,
-        campaignId: parseInt(data.test.campaignId),
         testType: data.test.testType,
         winningMetric: data.test.winningMetric,
-        sampleSize: data.test.sampleSize,
+        sampleSizePercent: data.test.sampleSize,
+        variants: data.variants,
       });
-      const test = await res.json();
-      for (const variant of data.variants) {
-        await apiRequest("POST", `/api/ab-tests/${test.id}/variants`, variant);
-      }
-      return test;
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ab-tests"] });

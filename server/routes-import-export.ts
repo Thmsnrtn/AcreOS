@@ -73,6 +73,22 @@ export function registerImportExportRoutes(app: Express): void {
   // IMPORT / EXPORT
   // ============================================
 
+  // notes/columns MUST register above /api/import/:entityType/columns: that
+  // param route whitelists leads|properties|deals and 400s everything else
+  // with no next(), so while this literal sat below it (line ~367) it never
+  // served a request (lint:route-shadowing). Moved above 2026-08-27.
+  // Notes import (standard CSV) — supports user-provided field mapping
+  api.get("/api/import/notes/columns", isAuthenticated, (_req, res) => {
+    res.json({
+      columns: [
+        "borrowerFirstName", "borrowerLastName", "borrowerEmail", "borrowerPhone",
+        "originalPrincipal", "currentBalance", "interestRate", "termMonths",
+        "monthlyPayment", "paymentDayOfMonth", "serviceFee", "lateFeeAmount",
+        "gracePeriodDays", "status", "propertyAddress", "internalNotes",
+      ],
+      columnHints: NOTE_COLUMN_MAP,
+    });
+
   api.get("/api/import/:entityType/columns", isAuthenticated, async (req, res) => {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
@@ -363,17 +379,6 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  // Notes import (standard CSV) — supports user-provided field mapping
-  api.get("/api/import/notes/columns", isAuthenticated, (_req, res) => {
-    res.json({
-      columns: [
-        "borrowerFirstName", "borrowerLastName", "borrowerEmail", "borrowerPhone",
-        "originalPrincipal", "currentBalance", "interestRate", "termMonths",
-        "monthlyPayment", "paymentDayOfMonth", "serviceFee", "lateFeeAmount",
-        "gracePeriodDays", "status", "propertyAddress", "internalNotes",
-      ],
-      columnHints: NOTE_COLUMN_MAP,
-    });
   });
 
 

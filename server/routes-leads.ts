@@ -60,14 +60,6 @@ const checkDuplicatesSchema = z.object({
   { message: "At least one search field is required" }
 );
 
-const mergeLeadsSchema = z.object({
-  primaryId: z.number().int().positive("primaryId must be a positive integer"),
-  duplicateId: z.number().int().positive("duplicateId must be a positive integer"),
-}).refine(
-  (data) => data.primaryId !== data.duplicateId,
-  { message: "primaryId and duplicateId must be different" }
-);
-
 const MAX_CSV_IMPORT_ROWS = 500;
 
 /**
@@ -380,28 +372,10 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  // Merge two leads
-  api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const parsed = mergeLeadsSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { primaryId, duplicateId } = parsed.data;
-
-      const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
-      
-      res.json({
-        success: true,
-        message: "Leads merged successfully",
-        lead: merged,
-      });
-    } catch (err) {
-      logger.error("Merge leads error", err instanceof Error ? err : undefined);
-      Errors.internal(res, err);
-    }
-  });
+  // POST /api/leads/merge was DEFINED HERE and is DELETED (2026-08-27): the
+  // inline copy in routes.ts registers first and has served every request. Its
+  // zod validation (positive ints, primaryId !== duplicateId) was ported into
+  // the live handler rather than lost. Do not re-add it here.
 
   api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
     try {
@@ -867,22 +841,34 @@ export function registerLeadRoutes(app: Express): void {
       // it did not do. Same choice routes-bulk.ts already made.
       if (refuseBulkLeadWrite(req as AuthenticatedRequest, res, "Bulk lead deletes")) return;
 
-      const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
-      
       const user = req.user as any;
-      const userId = user?.id || user?.id;
+      const userId = user?.id;
+
+      // Contract and audit shape ported 2026-08-27 from the routes.ts twin of
+      // this route as it was retired (it registered first and had served every
+      // request). Two pieces the client depends on: the soft-delete is a
+      // SOFT delete, and safe-bulk-delete-dialog.tsx renders data.message in
+      // the undo toast — a bare {deletedCount} left that toast reading
+      // "undefined". The audit row names the leads, not just their count.
+      const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
+      const deletedCount = await storage.bulkDeleteLeads(org.id, ids, userId);
+
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
-        action: "bulk_delete",
+        action: "bulk_soft_delete",
         entityType: "lead",
         entityId: 0,
-        metadata: { ids, count: deletedCount },
+        changes: { after: { ids, count: deletedCount, recoverable: true, leadNames: leadsToDelete.map((l) => `${l.firstName} ${l.lastName}`) } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
-      res.json({ deletedCount });
+
+      res.json({
+        deletedCount,
+        recoverable: true,
+        message: `${deletedCount} lead(s) moved to trash. They can be restored within 30 days.`,
+      });
     } catch (error: any) {
       logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);

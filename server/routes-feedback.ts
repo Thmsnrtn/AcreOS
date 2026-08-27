@@ -21,7 +21,12 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
-const CATEGORIES = ["support", "feedback", "question"] as const;
+// The FULL set the schema declares (shared/schema.ts feedbackSubmissions
+// comment). Until 2026-08-27 this enum held only the last three — but the
+// in-app feedback button (feedback-button.tsx) sends bug/feature_request/
+// confusion/other, written against a DEAD twin of this route: every
+// submission from that button was 400ing in production.
+const CATEGORIES = ["support", "feedback", "question", "bug", "feature_request", "confusion", "other"] as const;
 const STATUSES = ["new", "read", "replied", "archived"] as const;
 
 const submitSchema = z.object({
@@ -36,6 +41,7 @@ const submitSchema = z.object({
     .or(z.literal("")),
   message: z.string().trim().min(1, "Message is required").max(5000),
   source: z.string().trim().max(80).optional(),
+  allowFollowUp: z.boolean().optional(),
 });
 
 const updateSchema = z.object({
@@ -60,7 +66,15 @@ export function registerFeedbackRoutes(app: Express): void {
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
-        const { category, name, email, message, source } = parsed.data;
+        const { category, name, email, message, source, allowFollowUp } = parsed.data;
+
+        // Identity captured WHEN PRESENT, never required — this route is public
+        // by design (landing surfaces; see the file header) and the limiter is
+        // the abuse control. Never trust a body-supplied identity here.
+        const authedUser = (req as AuthenticatedRequest).user;
+        const userId = authedUser?.id ?? null;
+        const userEmail = authedUser?.email ?? null;
+        const pageUrl = (req.headers.referer as string | undefined)?.slice(0, 500) ?? null;
 
         const ipAddress =
           (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
@@ -79,13 +93,43 @@ export function registerFeedbackRoutes(app: Express): void {
             email: email ? email : null,
             message,
             source: source || null,
+            userId,
+            userEmail,
+            pageUrl,
+            ...(allowFollowUp === undefined ? {} : { allowFollowUp }),
             ipAddress,
             userAgent,
           })
           .returning({ id: feedbackSubmissions.id });
 
+        // Founder notification, ported 2026-08-27 from the retired routes.ts twin.
+        // Non-blocking: a mail failure must never fail the submission.
+        const founderEmail = process.env.FOUNDER_EMAIL;
+        if (founderEmail) {
+          try {
+            const { emailService } = await import("./services/emailService");
+            const categoryLabel = category.replace("_", " ");
+            const from = userEmail ?? email ?? name ?? "an anonymous visitor";
+            await emailService.sendEmail({
+              to: founderEmail,
+              subject: `[AcreOS Feedback] New ${categoryLabel} from ${from}`,
+              html: `
+                <h2>New Feedback Submission</h2>
+                <p><strong>Category:</strong> ${categoryLabel}</p>
+                <p><strong>From:</strong> ${from}</p>
+                <p><strong>Page:</strong> ${pageUrl || "N/A"}</p>
+                <p><strong>Follow-up OK:</strong> ${allowFollowUp !== false ? "Yes" : "No"}</p>
+                <hr />
+                <p>${message.replace(/\n/g, "<br />")}</p>
+              `,
+            });
+          } catch (emailErr) {
+            logger.warn("[feedback] founder notification failed", emailErr instanceof Error ? emailErr : undefined);
+          }
+        }
+
         logger.info("[feedback] new submission", {
-          metadata: { id: row.id, category, source, hasEmail: Boolean(email) },
+          metadata: { id: row.id, category, source, hasEmail: Boolean(email ?? userEmail) },
         });
 
         return res.json({ id: row.id, success: true });

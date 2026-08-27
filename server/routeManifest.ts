@@ -45,7 +45,7 @@ export interface RouteManifestEntry {
  * KNOWN_NON_MOUNTED.
  */
 export const ROUTE_MANIFEST: RouteManifestEntry[] = [
-  { file: "routes-ab-tests.ts", mountPath: "/api/ab-tests", kind: "router", export: "default" },
+  { file: "routes-ab-tests.ts", mountPath: "/api/outreach-ab-tests", kind: "router", export: "default" },
   { file: "routes-account-security.ts", mountPath: null, kind: "register", export: "registerAccountSecurityRoutes" },
   { file: "routes-accounting.ts", mountPath: "/api/accounting", kind: "router", export: "default" },
   { file: "routes-acquisition-radar.ts", mountPath: "/api/radar", kind: "router", export: "default" },

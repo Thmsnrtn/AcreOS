@@ -148,8 +148,8 @@ const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { requirePermission, attachPermissionContext } from "./utils/permissions";
-import { refuseBulkLeadWrite } from "./utils/assignedLeadGate";
+import { requirePermission } from "./utils/permissions";
+import { z } from "zod";
 // F-A04-1: Prompt injection guard
 import { promptInjectionMiddleware } from "./middleware/promptInjection";
 // SEC-004: CSRF protection for state-changing requests
@@ -1166,12 +1166,24 @@ export async function registerRoutes(
   app.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
-      const { primaryId, duplicateId } = req.body;
-      
-      if (!primaryId || !duplicateId) {
-        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
+      // Validation ported 2026-08-27 from the DEAD twin of this route in
+      // routes-leads.ts (shadowed by this one; now deleted). The old bare
+      // truthiness check let a string id or primaryId===duplicateId through to
+      // storage.mergeLeads.
+      const mergeSchema = z
+        .object({
+          primaryId: z.number().int().positive("primaryId must be a positive integer"),
+          duplicateId: z.number().int().positive("duplicateId must be a positive integer"),
+        })
+        .refine((d) => d.primaryId !== d.duplicateId, {
+          message: "primaryId and duplicateId must be different",
+        });
+      const parsed = mergeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
       }
-      
+      const { primaryId, duplicateId } = parsed.data;
+
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
       
       res.json({
@@ -1243,63 +1255,15 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const org = req.organization;
-      const { ids } = req.body;
-      
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return Errors.badRequest(res, "ids must be a non-empty array");
-      }
+  // POST /api/leads/bulk-delete was DEFINED HERE and is DELETED (2026-08-27).
+  // routes-leads.ts owns the single registration now — the copy that always
+  // carried attachPermissionContext() + refuseBulkLeadWrite() and zod id
+  // validation. THIS copy is the one that shipped the assigned-only bypass
+  // (d1e8b053): it lacked the gate until the hotfix, and keeping two copies of
+  // a destructive handler is how that class of hole happens. The richer
+  // response ({deletedCount, recoverable, message}) and the named-leads audit
+  // row moved to the surviving handler. Do not re-add it here.
 
-      // ASSIGNED-ONLY CALLERS ARE REFUSED OUTRIGHT (security fix, 2026-08-27).
-      //
-      // `viewOnlyAssignedLeads` is a PER-USER restriction an org owner layers on
-      // top of any role, so a member carrying it still has canDeleteLeads:true and
-      // sailed past requirePermission into a bulk soft-delete accepting an
-      // arbitrary id array — every lead in the org, not just their own.
-      //
-      // The guarded copy of this handler has existed all along in
-      // server/routes-leads.ts:895 and was UNREACHABLE: this inline registration
-      // is at routes.ts:1247 and registerLeadRoutes(app) runs at routes.ts:2335,
-      // so Express matched this one first. Two tests certified the dead copy —
-      // assignedLeadGateCoverage.test.ts hardcodes `const LEADS =
-      // "server/routes-leads.ts"` and proved the symbol appears in that file,
-      // never that the behaviour is unreachable. Exactly CLAUDE.md's first law.
-      //
-      // Refused rather than filtered to the caller's own leads: a bulk call that
-      // quietly does less than it was asked reports success for work it did not do.
-      if (refuseBulkLeadWrite(req, res, "Bulk lead deletes")) return;
-
-      const user = req.user as any;
-      const userId = user?.id || user?.id;
-      
-      // Get lead details before soft-delete for audit log
-      const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
-      
-      const deletedCount = await storage.bulkDeleteLeads(org.id, ids, userId);
-      
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "bulk_soft_delete",
-        entityType: "lead",
-        entityId: 0,
-        changes: { after: { ids, count: deletedCount, recoverable: true, leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`) } } as any,
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
-      });
-
-      res.json({ 
-        deletedCount,
-        recoverable: true,
-        message: `${deletedCount} lead(s) moved to trash. They can be restored within 30 days.`,
-      });
-    } catch (error: any) {
-      logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error);
-    }
-  });
   
   // Get deleted/trashed leads
   app.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
@@ -2286,7 +2250,15 @@ export async function registerRoutes(
   app.use('/api/accounting', isAuthenticated, getOrCreateOrg, accountingRouter);
   // Wave: cost — eval suites are CPU-heavy; routed to worker via outbox.
   app.use('/api/eval', isAuthenticated, evalRouter);
-  app.use('/api/ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
+  // OUTREACH A/B engine (outreach_ab_tests, string ids) — moved OFF /api/ab-tests
+  // on 2026-08-27. Two different A/B engines collided on that one prefix: this
+  // router registered first and shadowed the campaign-model handlers in
+  // routes-integrations.ts (ab_tests table, numeric ids, {test,variants} shape)
+  // — which are what the ENTIRE UI was written against. The UI's engine was the
+  // dead one; every A/B surface read the wrong engine's empty list. This prefix
+  // move makes the campaign engine live at /api/ab-tests and gives the outreach
+  // engine its own honest namespace.
+  app.use('/api/outreach-ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
   app.use('/api/dodd-frank', isAuthenticated, doddFrankRouter);
 
   // Field Scout: parcel lookup, voice transcription, photo uploads, visits, reports
@@ -2708,75 +2680,16 @@ export async function registerRoutes(
   // where the ordering actually takes effect. Do not re-add task routes here.
 
   // ============================================
-  // FEEDBACK SUBMISSIONS
+  // FEEDBACK SUBMISSIONS — MOVED, not deleted (2026-08-27)
   // ============================================
-  app.post("/api/feedback", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user?.id) {
-        return Errors.unauthorized(res);
-      }
-
-      const { category, message, allowFollowUp } = req.body;
-
-      // Validate category
-      const validCategories = ["bug", "feature_request", "confusion", "other"];
-      if (!category || !validCategories.includes(category)) {
-        return Errors.badRequest(res, "Invalid category. Must be one of: bug, feature_request, confusion, other");
-      }
-
-      // Validate message (min 10 chars)
-      if (!message || typeof message !== "string" || message.trim().length < 10) {
-        return Errors.badRequest(res, "Message must be at least 10 characters");
-      }
-
-      const pageUrl = req.headers.referer || null;
-      const userAgent = req.headers["user-agent"] || null;
-
-      const [inserted] = await db
-        .insert(feedbackSubmissions)
-        .values({
-          userId: user.id,
-          userEmail: user.email || "unknown",
-          category,
-          message: message.trim(),
-          allowFollowUp: allowFollowUp !== false,
-          pageUrl,
-          userAgent,
-        })
-        .returning({ id: feedbackSubmissions.id });
-
-      // Send email notification to founder (non-blocking)
-      const founderEmail = process.env.FOUNDER_EMAIL;
-      if (founderEmail) {
-        try {
-          const { emailService } = await import("./services/emailService");
-          const categoryLabel = category.replace("_", " ");
-          await emailService.sendEmail({
-            to: founderEmail,
-            subject: `[AcreOS Feedback] New ${categoryLabel} from ${user.email || "a user"}`,
-            html: `
-              <h2>New Feedback Submission</h2>
-              <p><strong>Category:</strong> ${categoryLabel}</p>
-              <p><strong>From:</strong> ${user.email || user.id}</p>
-              <p><strong>Page:</strong> ${pageUrl || "N/A"}</p>
-              <p><strong>Follow-up OK:</strong> ${allowFollowUp !== false ? "Yes" : "No"}</p>
-              <hr />
-              <p>${message.trim().replace(/\n/g, "<br />")}</p>
-            `,
-          });
-        } catch (emailErr) {
-          logger.warn("Failed to send feedback notification email", emailErr instanceof Error ? emailErr : undefined);
-        }
-      }
-
-      logger.info(`Feedback submitted: id=${inserted.id}, category=${category}, user=${user.id}`);
-      res.json({ success: true, id: inserted.id });
-    } catch (error) {
-      logger.error("Feedback submission error", error instanceof Error ? error : undefined);
-      return Errors.internal(res, error);
-    }
-  });
+  // POST /api/feedback was DEFINED HERE and never ran: registerFeedbackRoutes
+  // (routes-feedback.ts) registers the same path earlier. Its contract was the
+  // one the in-app feedback button actually sends (bug/feature_request/
+  // confusion/other + allowFollowUp + signed-in identity + referer pageUrl),
+  // so every press of that button 400'd against the live handler's narrower
+  // enum. The contract and the founder email notification were MERGED into the
+  // live handler in routes-feedback.ts, which stays deliberately public and
+  // IP-rate-limited. Do not re-add a second /api/feedback.
 
   // Hand the fully-mounted app to the OpenAPI reflector so the
   // generated spec covers every route registered above.

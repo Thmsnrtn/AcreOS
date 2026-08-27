@@ -1303,8 +1303,16 @@ export function registerNoteRoutes(app: Express): void {
   );
 
   // ── Create ───────────────────────────────────────────────────────────────
+  // ONE PATH, ONE OWNER, part 2 (the 2026-07-30 sweep moved the LIST to
+  // /api/notes/acquired and left this create behind). POST /api/notes belongs
+  // to the SELLER-FINANCE book in server/routes-finance.ts:171, which registers
+  // first and terminates — so this ACQUIRED-note create (acquiredNotes table,
+  // integer cents, encrypted payer TIN, ownerOrAdmin-gated) never ran; a caller
+  // posting an acquired payload to /api/notes got the finance book's 400 about
+  // originalPrincipal/interestRate/termMonths, fields this book does not have.
+  // Renamed 2026-08-27 to match its own GET. No client called the old path.
   app.post(
-    "/api/notes",
+    "/api/notes/acquired",
     isAuthenticated,
     getOrCreateOrg,
     ownerOrAdmin,

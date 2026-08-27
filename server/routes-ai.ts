@@ -1879,36 +1879,17 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // ============================================
-  // AI MEMORY VIEWER
+  // AI MEMORY VIEWER — MOVED, not deleted (2026-08-27)
   // ============================================
-
-  api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const { aiMemory: memTable } = await import("@shared/schema");
-      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
-      const memories = await db.select().from(memTable)
-        .where(_eq(memTable.organizationId, org.id))
-        .orderBy(_desc(memTable.createdAt))
-        .limit(100);
-      res.json(memories);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const { aiMemory: memTable } = await import("@shared/schema");
-      const { eq: _eq, and: _and } = await import("drizzle-orm");
-      await db.delete(memTable).where(_and(_eq(memTable.id, id), _eq(memTable.organizationId, org.id)));
-      res.json({ success: true });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  //
+  // GET/DELETE /api/ai/memory lived here reading the `ai_memory` table, and
+  // SHADOWED the pair in routes-admin.ts that reads `pax_memory` — the table
+  // the memory panel's data actually lives in and the one Pax writes. Both
+  // pairs were org-scoped (no tenancy difference); the difference was WHICH
+  // TABLE, and this one was the wrong one: the panel listed ai_memory rows
+  // while delete claimed success against a list nobody was writing to.
+  // routes-admin.ts:4334/4351 is now the single live pair. Do not re-add an
+  // /api/ai/memory route here.
 
   // ============================================
   // SCHEDULED TASK RUN HISTORY
