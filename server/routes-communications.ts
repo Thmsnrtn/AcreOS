@@ -15,7 +15,6 @@ import { requirePermission } from "./utils/permissions";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
-import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
 import { processMentions } from "./services/mentionService";
 
@@ -841,102 +840,22 @@ export function registerCommunicationRoutes(app: Express): void {
   // ============================================
   // EXPORT ROUTES (Phase 7.3)
   // ============================================
-
-  // GET /api/export/leads - Export leads to CSV
-  api.get("/api/export/leads", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const status = req.query.status as string | undefined;
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      
-      const filters: ExportFilters = {};
-      if (status) filters.status = status;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-      
-      const csv = await exportLeadsToCSV(org.id, filters);
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().split('T')[0]}.csv"`);
-      res.send(csv);
-    } catch (error: any) {
-      logger.error("Export leads error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export leads"));
-    }
-  });
-
-  // GET /api/export/properties - Export properties to CSV
-  api.get("/api/export/properties", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const status = req.query.status as string | undefined;
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      
-      const filters: ExportFilters = {};
-      if (status) filters.status = status;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-      
-      const csv = await exportPropertiesToCSV(org.id, filters);
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="properties-${new Date().toISOString().split('T')[0]}.csv"`);
-      res.send(csv);
-    } catch (error: any) {
-      logger.error("Export properties error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export properties"));
-    }
-  });
-
-  // GET /api/export/deals - Export deals to CSV
-  api.get("/api/export/deals", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const status = req.query.status as string | undefined;
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      
-      const filters: ExportFilters = {};
-      if (status) filters.status = status;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-      
-      const csv = await exportDealsToCSV(org.id, filters);
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="deals-${new Date().toISOString().split('T')[0]}.csv"`);
-      res.send(csv);
-    } catch (error: any) {
-      logger.error("Export deals error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export deals"));
-    }
-  });
-
-  // GET /api/export/notes - Export notes/finance to CSV
-  api.get("/api/export/notes", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const status = req.query.status as string | undefined;
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      
-      const filters: ExportFilters = {};
-      if (status) filters.status = status;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-      
-      const csv = await exportNotesToCSV(org.id, filters);
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="notes-${new Date().toISOString().split('T')[0]}.csv"`);
-      res.send(csv);
-    } catch (error: any) {
-      logger.error("Export notes error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export notes"));
-    }
-  });
+  //
+  // GET /api/export/{leads,properties,deals,notes} WERE DEFINED HERE and are
+  // DELETED (2026-08-27). All four were unreachable: GET /api/export/:entityType
+  // (server/routes-import-export.ts:441) registers earlier and whitelists exactly
+  // ["leads","properties","deals","notes"], so it already serves all four.
+  //
+  // They were also strictly WORSE than the live handler, which alone honours
+  // ?format=json, accepts the `type` filter, carries bulkExportLimiter, and writes
+  // the GDPR Art. 30 DATA_EXPORT audit row. The dead ones always emitted CSV — so
+  // client/src/pages/data-export.tsx offering JSON for properties only works
+  // because the LIVE handler serves it. This is the reassuring case: production
+  // has been serving the better implementation all along.
+  //
+  // /api/export/report is NOT one of them and remains below: "report" is not in
+  // that whitelist, so it is genuinely shadowed and genuinely broken. See its
+  // own note.
 
   // GET /api/export/report - Generate PDF report (placeholder)
   api.get("/api/export/report", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {

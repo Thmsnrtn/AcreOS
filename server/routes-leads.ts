@@ -840,57 +840,19 @@ export function registerLeadRoutes(app: Express): void {
     res.json({ message: "Lead restored", id: leadId });
   });
   
-  api.post("/api/leads/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const leadId = Number(req.params.id);
-      
-      if (isNaN(leadId)) {
-        return Errors.badRequest(res, "Invalid lead ID");
-      }
-
-      const lead = await storage.getLead(org.id, leadId);
-      if (!lead) {
-        return Errors.notFound(res, "Lead");
-      }
-
-      const enrichSchema = z.object({
-        latitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
-        longitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
-        forceRefresh: z.boolean().optional(),
-      });
-      const parsed = enrichSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { latitude, longitude, forceRefresh } = parsed.data;
-
-      const result = await propertyEnrichmentService.enrichLead(
-        org.id,
-        leadId,
-        { latitude, longitude },
-        forceRefresh === true
-      );
-      
-      if (!result) {
-        return Errors.badRequest(res, "Enrichment failed - coordinates required");
-      }
-
-      logger.info("Manual lead enrichment completed", { leadId, organizationId: org.id });
-      // Lenore §1 — first_lead_enriched is fired inside enrichLead()
-      // itself so every enrichment path (manual, auto-on-create, bulk)
-      // captures it. No fire here.
-
-      res.json({
-        success: true,
-        message: "Lead enriched successfully",
-        enrichment: result,
-      });
-    } catch (err) {
-      logger.error("Manual lead enrichment failed", { error: (err as Error).message });
-      Errors.internal(res, err);
-    }
-  });
+  // POST /api/leads/:id/enrich was DEFINED HERE and is DELETED (2026-08-27): it
+  // was unreachable behind server/routes-lead-enrichment.ts:20 (mounted at
+  // routes.ts:1497), which registers earlier.
+  //
+  // These are NOT the same operation, which is the interesting part. The live one
+  // is CONTACT enrichment and takes no body; this one was PROPERTY enrichment and
+  // required {latitude, longitude}. Two different features collided on one path
+  // and the second silently lost. No client called it — client/src references only
+  // /api/properties/:id/enrich, /api/properties/bulk-enrich and
+  // /api/broker/enrich-property.
+  //
+  // If lead-level PROPERTY enrichment is wanted, give it its own path
+  // (POST /api/leads/:id/enrich-property). Do not resurrect it on the colliding one.
   
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req, res) => {
     try {

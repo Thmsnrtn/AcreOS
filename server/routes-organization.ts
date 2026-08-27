@@ -953,15 +953,11 @@ export function registerOrganizationRoutes(app: Express): void {
   // ONBOARDING
   // ============================================
   
-  api.get("/api/onboarding/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const status = await onboardingService.getOnboardingStatus(org.id);
-      res.json(status);
-    } catch (error: any) {
-      Errors.internal(res, error);
-    }
-  });
+  // GET /api/onboarding/status lives in server/routes-onboarding.ts:153 — the
+  // single code path. The duplicate here was dead (the onboarding router mounts
+  // at routes.ts:1529, before this function runs); do not re-add it. The sweep
+  // that left the tombstone below for POST /api/onboarding/complete missed this
+  // GET a few lines above it.
   
   const onboardingStepSchema = z.object({
     step: z.number().int().min(0).max(4),

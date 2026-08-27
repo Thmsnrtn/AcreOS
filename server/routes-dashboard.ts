@@ -19,11 +19,9 @@ export function registerDashboardRoutes(app: Express): void {
   // DASHBOARD
   // ============================================
   
-  api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const stats = await storage.getDashboardStats(org.id);
-    res.json(stats);
-  });
+  // GET /api/dashboard/stats lives in server/routes.ts:1076 — the single code
+  // path, identical except for a 30-second per-org cache. This uncached
+  // duplicate has been unreachable since that cache was added. Do not re-add it.
 
   // Real monthly aggregates for the dashboard sparklines.
   // Returns chronologically-ordered arrays (oldest -> newest) covering

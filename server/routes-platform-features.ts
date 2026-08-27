@@ -1037,42 +1037,34 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   });
 
   // ─── Credit Benchmarking ─────────────────────────────────────────
-
-  // Compare LCS to industry benchmarks for a property
-  app.get("/api/land-credit/benchmark/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const propertyId = Number(req.params.propertyId);
-      const { CreditBenchmarkingService } = await import("./services/creditBenchmarking");
-      const benchmarking = new CreditBenchmarkingService();
-
-      // Get property's LCS and state/type
-      const { landCreditScores, properties } = await import("@shared/schema");
-      const { eq, desc } = await import("drizzle-orm");
-      const [score] = await db.select().from(landCreditScores)
-        .where(eq(landCreditScores.propertyId, propertyId))
-        .orderBy(desc(landCreditScores.createdAt)).limit(1);
-      const [property] = await db.select().from(properties)
-        .where(eq(properties.id, propertyId)).limit(1);
-
-      if (!score || !property) return Errors.notFound(res, "Property or LCS");
-
-      // 2026-06-10 (Tier 2A): comparison/benchmarks are computed from the
-      // own-network cohort (latest score per parcel, state-keyed, k>=5
-      // privacy floor). When the cohort is too small they remain typed
-      // insufficient-data results — never invented numbers.
-      const state = property.state || "";
-      const propertyType = (property as any).zoning || "";
-      const comparison = await benchmarking.compareToIndustry(score.overallScore ?? 0, propertyType, state);
-      const benchmarks = await benchmarking.getBenchmarks(propertyType, state);
-
-      res.json({
-        score: score.overallScore,
-        grade: score.grade,
-        comparison,
-        benchmarks,
-      });
-    } catch (error) { Errors.internal(res, error); }
-  });
+  //
+  // GET /api/land-credit/benchmark/:propertyId WAS DEFINED HERE and is
+  // DELETED (2026-08-27) rather than repaired or promoted.
+  //
+  // It was unreachable: server/routes-land-credit.ts:100 registers the same
+  // path and is mounted earlier (server/routes.ts:1375), so Express never
+  // reached this one. That shadowing is the only reason it was harmless.
+  //
+  // It carried a CROSS-TENANT IDOR. Neither of its two reads named an
+  // organization:
+  //     db.select().from(landCreditScores).where(eq(...propertyId, propertyId))
+  //     db.select().from(properties).where(eq(properties.id, propertyId))
+  // `land_credit_scores` has no organizationId column at all, so the org-owned
+  // `properties` row IS the tenancy boundary — and this handler skipped it. Any
+  // authenticated caller who guessed a property id would have received another
+  // organization's overallScore, grade, state and zoning.
+  //
+  // SO: promoting a dead route, or clearing a shadow by reordering a mount, is
+  // never the reflex. Either would have ACTIVATED this leak. Read what the dead
+  // handler does before deciding it was the better one.
+  //
+  // The live handler is not innocent either, but it is not a leak: it reads
+  // propertyType/state/score from the QUERY STRING and ignores req.params
+  // entirely, so it benchmarks score=0 with empty type and state on every call
+  // from client/src/components/lcs-benchmark-popover.tsx:44. Porting a real DB
+  // lookup in is correct follow-up work — and it MUST gate `properties` on
+  // eq(properties.organizationId, org.id) first, hang the score read off that,
+  // and land a negative test (org A cannot read org B's score) before the code.
 
   // ─── Voice Profile ───────────────────────────────────────────────
 

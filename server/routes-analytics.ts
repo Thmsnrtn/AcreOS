@@ -465,25 +465,11 @@ export function registerAnalyticsRoutes(app: Express): void {
     }
   });
 
-  // ============================================
-  // T91 — COHORT ANALYSIS
-  // Segment leads by source, state, campaign, import month/quarter
-  // and track them through the conversion funnel over time.
-  // ============================================
-
-  api.get("/api/analytics/cohorts", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const segmentBy = ((req.query.segmentBy as string) || "source") as any;
-      const from = req.query.from ? new Date(req.query.from as string) : undefined;
-      const to = req.query.to ? new Date(req.query.to as string) : undefined;
-      const { buildCohortReport } = await import("./services/cohortAnalysis");
-      const report = await buildCohortReport(org.id, segmentBy, from, to);
-      res.json(report);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // GET /api/analytics/cohorts lives in server/routes-cohort-analysis.ts:24
+  // (mounted at routes.ts:2262) — the single code path. The duplicate here was
+  // dead AND worse: it cast `segmentBy` to any and passed an Invalid Date
+  // straight into the service, where the live one whitelists six segment values
+  // and rejects unparseable dates. Do not re-add it.
 
   // ============================================
   // COHORT RETENTION DASHBOARD

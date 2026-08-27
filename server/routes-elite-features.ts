@@ -524,16 +524,11 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/bookkeeping/portfolio-summary", ...auth, async (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
-      const summary = await bookkeeping.getPortfolioAnnualSummary(org.id, taxYear);
-      res.json(summary);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // GET /api/bookkeeping/portfolio-summary lives in server/routes-bookkeeping.ts:107
+  // (mounted at routes.ts:2265) — the single code path. The duplicate here was
+  // dead AND worse: on `?year=abc` it silently reported last year's numbers under
+  // the caller-supplied label, where the live one returns an explicit 400. For a
+  // TAX report that difference matters. Do not re-add it.
 
   app.get("/api/bookkeeping/quickbooks/auth-url", ...auth, (req: Request, res: Response) => {
     try {
