@@ -103,7 +103,34 @@ function code(rel: string): string {
   return stripComments(read(rel));
 }
 
-const LEADS = "server/routes-leads.ts";
+/**
+ * THE POPULATION IS EVERY REGISTRATION OF THESE PATHS, IN ANY FILE — not one file.
+ *
+ * This test used to read a single hardcoded file:
+ *     const LEADS = "server/routes-leads.ts";
+ * and proved that the gate's SYMBOLS appeared in the handlers it found there.
+ * On 2026-08-27 that turned out to be a false green covering a live
+ * authorization hole.
+ *
+ * POST /api/leads/bulk-delete was registered TWICE. The guarded copy in
+ * routes-leads.ts (registered by registerLeadRoutes(app) at server/routes.ts:2335)
+ * was UNREACHABLE, because an inline, UNGUARDED copy at server/routes.ts:1247
+ * registers first and Express matches in registration order. So this file
+ * certified a handler that could never run, while the one that actually served
+ * requests carried requirePermission("canDeleteLeads") and nothing else — and
+ * `viewOnlyAssignedLeads` is a PER-USER restriction layered on top of a role, so
+ * a member carrying it kept canDeleteLeads:true and could bulk-delete every lead
+ * in the org, not just their own.
+ *
+ * That is CLAUDE.md's first law exactly: the gate proved "this symbol appears in
+ * this file" rather than "the forbidden behaviour cannot be reached".
+ *
+ * So the scan is now over EVERY server file. Every registration of a guarded
+ * path must carry the gate, wherever it lives and whether or not it is the one
+ * Express currently reaches — which also means a future duplicate cannot
+ * reintroduce the hole by being added somewhere this test was not looking.
+ */
+const SERVER_DIR = "server";
 
 /**
  * Every route in routes-leads.ts that MUTATES a lead by id (or id array).
@@ -123,26 +150,54 @@ const GUARDED_WRITES = [
   { method: "post", pattern: '"/api/leads/bulk-update"', shape: "bulk" },
 ] as const;
 
-/** The handler body for one route, bounded by the NEXT route registration. */
-function handler(src: string, method: string, pattern: string): string {
-  const start = src.indexOf(`api.${method}(${pattern}`);
-  if (start === -1) return "";
-  const next = src.slice(start + 1).search(/\n\s*api\.(get|post|put|patch|delete)\(/);
-  return next === -1 ? src.slice(start) : src.slice(start, start + 1 + next);
+/** Every non-test .ts file under server/. */
+function serverFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!/node_modules|dist|build/.test(rel)) serverFiles(rel, out);
+    } else if (/\.ts$/.test(entry.name) && !/\.(test|spec)\.ts$/.test(entry.name)) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * EVERY handler body registering `pattern`, across all of server/.
+ *
+ * Receiver-agnostic (`api.` / `app.` / `router.`): the hole this test missed was
+ * an `app.post(...)` in routes.ts while the scan only recognised `api.`.
+ */
+function handlers(method: string, pattern: string): Array<{ file: string; body: string }> {
+  const found: Array<{ file: string; body: string }> = [];
+  for (const rel of serverFiles(SERVER_DIR)) {
+    const src = code(rel);
+    const needle = new RegExp(
+      `\\b(?:api|app|router)\\.${method}\\(\\s*${pattern.replace(/[/\\^$*+?.()|[\]{}]/g, "\\$&")}`,
+    );
+    const m = needle.exec(src);
+    if (!m) continue;
+    const start = m.index;
+    const rest = src.slice(start + 1);
+    const next = rest.search(/\n\s*(?:api|app|router)\.(get|post|put|patch|delete)\(/);
+    found.push({ file: rel, body: next === -1 ? src.slice(start) : src.slice(start, start + 1 + next) });
+  }
+  return found;
 }
 
 describe("every lead write path enforces the assigned-leads restriction", () => {
-  const src = code(LEADS);
-
-  it("finds every route it claims to check (vacuity guard)", () => {
+  it("finds every route it claims to check, in at least one file (vacuity guard)", () => {
     // Without this, a renamed path would make the whole file pass by checking
     // nothing — the failure mode of every source-scanning security test.
     for (const w of GUARDED_WRITES) {
       expect(
-        handler(src, w.method, w.pattern).length,
-        `${w.method.toUpperCase()} ${w.pattern} not found — has it been renamed?`,
+        handlers(w.method, w.pattern).length,
+        `${w.method.toUpperCase()} ${w.pattern} not found anywhere under server/ — renamed?`,
       ).toBeGreaterThan(0);
     }
+    // And the scan must actually be walking the tree.
+    expect(serverFiles(SERVER_DIR).length).toBeGreaterThan(500);
   });
 
   it("attaches the permission context, or the gate reads undefined and passes", () => {
@@ -151,24 +206,27 @@ describe("every lead write path enforces the assigned-leads restriction", () => 
     // condition is falsy, and the gate silently allows everything — a guard that
     // fails OPEN when its input is missing.
     for (const w of GUARDED_WRITES) {
-      const h = handler(src, w.method, w.pattern);
-      expect(h, `${w.method.toUpperCase()} ${w.pattern}`).toContain(
-        "attachPermissionContext()",
-      );
+      for (const { file, body } of handlers(w.method, w.pattern)) {
+        expect(body, `${w.method.toUpperCase()} ${w.pattern} in ${file}`).toContain(
+          "attachPermissionContext()",
+        );
+      }
     }
   });
 
   it("calls the shared gate — a single lead is checked against its assignee", () => {
     for (const w of GUARDED_WRITES.filter((x) => x.shape === "single")) {
-      const h = handler(src, w.method, w.pattern);
-      expect(h, `${w.method.toUpperCase()} ${w.pattern}`).toMatch(
-        /assertAssignedLeadWritable\(/,
-      );
-      // ...and returns immediately on refusal. A gate whose result is computed
-      // and ignored is worse than none: it reads as protection.
-      expect(h, `${w.method.toUpperCase()} ${w.pattern} ignores the refusal`).toMatch(
-        /if \(assertAssignedLeadWritable\([^)]*\)\) return;/,
-      );
+      for (const { file, body } of handlers(w.method, w.pattern)) {
+        expect(body, `${w.method.toUpperCase()} ${w.pattern} in ${file}`).toMatch(
+          /assertAssignedLeadWritable\(/,
+        );
+        // ...and returns immediately on refusal. A gate whose result is computed
+        // and ignored is worse than none: it reads as protection.
+        expect(
+          body,
+          `${w.method.toUpperCase()} ${w.pattern} in ${file} ignores the refusal`,
+        ).toMatch(/if \(assertAssignedLeadWritable\([^)]*\)\) return;/);
+      }
     }
   });
 
@@ -176,10 +234,16 @@ describe("every lead write path enforces the assigned-leads restriction", () => 
     // A bulk call that quietly does less than it was asked reports success for
     // work it did not do. Refusal is visible; silent narrowing is not.
     for (const w of GUARDED_WRITES.filter((x) => x.shape === "bulk")) {
-      const h = handler(src, w.method, w.pattern);
-      expect(h, `${w.method.toUpperCase()} ${w.pattern}`).toMatch(
-        /if \(refuseBulkLeadWrite\([^)]*\)\) return;/,
-      );
+      const found = handlers(w.method, w.pattern);
+      for (const { file, body } of found) {
+        expect(
+          body,
+          `${w.method.toUpperCase()} ${w.pattern} in ${file} — EVERY registration of a ` +
+            `guarded path must carry the gate, not just the one that happens to be ` +
+            `reachable today. This assertion is the one that was false-green on ` +
+            `2026-08-27: the guarded copy was dead and the live one was unguarded.`,
+        ).toMatch(/if \(refuseBulkLeadWrite\([^)]*\)\) return;/);
+      }
     }
   });
 
@@ -187,21 +251,22 @@ describe("every lead write path enforces the assigned-leads restriction", () => 
     // Ordering is the whole property. The MFA defect this mirrors was a gate
     // registered below the routes it was meant to protect.
     for (const w of GUARDED_WRITES) {
-      const h = handler(src, w.method, w.pattern);
-      const gate = Math.max(
-        h.indexOf("assertAssignedLeadWritable("),
-        h.indexOf("refuseBulkLeadWrite("),
-      );
-      expect(gate, `${w.pattern} has no gate`).toBeGreaterThan(-1);
-      // The first mutation in the handler, whichever form it takes.
-      const mutations = [
-        h.indexOf("db.update(leads)"),
-        h.indexOf("storage.updateLead("),
-        h.indexOf("storage.bulkDeleteLeads("),
-        h.indexOf("storage.bulkUpdateLeads("),
-      ].filter((i) => i > -1);
-      for (const m of mutations) {
-        expect(gate, `${w.pattern}: gate runs after the write`).toBeLessThan(m);
+      for (const { file, body: h } of handlers(w.method, w.pattern)) {
+        const gate = Math.max(
+          h.indexOf("assertAssignedLeadWritable("),
+          h.indexOf("refuseBulkLeadWrite("),
+        );
+        expect(gate, `${w.pattern} in ${file} has no gate`).toBeGreaterThan(-1);
+        // The first mutation in the handler, whichever form it takes.
+        const mutations = [
+          h.indexOf("db.update(leads)"),
+          h.indexOf("storage.updateLead("),
+          h.indexOf("storage.bulkDeleteLeads("),
+          h.indexOf("storage.bulkUpdateLeads("),
+        ].filter((i) => i > -1);
+        for (const m of mutations) {
+          expect(gate, `${w.pattern} in ${file}: gate runs after the write`).toBeLessThan(m);
+        }
       }
     }
   });

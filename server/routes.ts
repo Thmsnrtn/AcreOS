@@ -148,7 +148,8 @@ const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { requirePermission } from "./utils/permissions";
+import { requirePermission, attachPermissionContext } from "./utils/permissions";
+import { refuseBulkLeadWrite } from "./utils/assignedLeadGate";
 import { activityLogger } from "./services/activityLogger";
 import { insertTaskSchema } from "@shared/schema";
 // F-A04-1: Prompt injection guard
@@ -1244,7 +1245,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids } = req.body;
@@ -1252,7 +1253,26 @@ export async function registerRoutes(
       if (!Array.isArray(ids) || ids.length === 0) {
         return Errors.badRequest(res, "ids must be a non-empty array");
       }
-      
+
+      // ASSIGNED-ONLY CALLERS ARE REFUSED OUTRIGHT (security fix, 2026-08-27).
+      //
+      // `viewOnlyAssignedLeads` is a PER-USER restriction an org owner layers on
+      // top of any role, so a member carrying it still has canDeleteLeads:true and
+      // sailed past requirePermission into a bulk soft-delete accepting an
+      // arbitrary id array — every lead in the org, not just their own.
+      //
+      // The guarded copy of this handler has existed all along in
+      // server/routes-leads.ts:895 and was UNREACHABLE: this inline registration
+      // is at routes.ts:1247 and registerLeadRoutes(app) runs at routes.ts:2335,
+      // so Express matched this one first. Two tests certified the dead copy —
+      // assignedLeadGateCoverage.test.ts hardcodes `const LEADS =
+      // "server/routes-leads.ts"` and proved the symbol appears in that file,
+      // never that the behaviour is unreachable. Exactly CLAUDE.md's first law.
+      //
+      // Refused rather than filtered to the caller's own leads: a bulk call that
+      // quietly does less than it was asked reports success for work it did not do.
+      if (refuseBulkLeadWrite(req, res, "Bulk lead deletes")) return;
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       
