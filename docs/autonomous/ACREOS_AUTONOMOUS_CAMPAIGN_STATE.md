@@ -16,6 +16,19 @@ is a TYPE ratchet over test files, not a test run. A commit went out on 2026-08-
 on the strength of a green 26/26 with three tests failing. `npx vitest run` and
 `npm run check` are two separate obligations.
 
+**Keep `main` current — standing founder directive (2026-08-28).** The founder:
+"As you continue to work through your loops I want you to always maintain an up
+to date main repo. Don't let this get tangled up like it has before and continue
+your work." This is standing, informed authorization to fast-forward `main` after
+each verified-green loop turn — informed because the founder watched this very
+session's deploy pipeline end-to-end, including the outage. Operational meaning:
+(1) a turn is not DONE until `npm run check` and the suite are green AND `main`
+is fast-forwarded; (2) pushing `main` triggers the Fly deploy — WATCH it through
+to the served SHA, never assume (this session's outage began as an unwatched
+assumption); (3) never let the branch drift dozens of commits ahead again —
+production was once 304 commits behind and nobody knew. If a deploy fails, fixing
+it becomes the immediate frontier, before new work.
+
 **Run them with `env -u NODE_OPTIONS`, or you are measuring the container.**
 (2026-08-25.) This dev container exports an ambient
 `NODE_OPTIONS=--max-old-space-size=8192`. `npm run check` was written as
