@@ -227,37 +227,15 @@ export function registerMicroFeatureRoutes(app: Express): void {
   });
 
   // ─── Unified Search (2a) ──────────────────────────────────────────
-  app.get("/api/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const q = String(req.query.q || "").trim();
-
-      if (!q || q.length < 2) {
-        return res.json({ results: [], query: q });
-      }
-
-      const { fullTextSearch } = await import("./services/fullTextSearch");
-
-      // Search across entities in parallel
-      const [searchResults] = await Promise.allSettled([
-        fullTextSearch.search(org.id, q, 25),
-      ]);
-
-      const results = searchResults.status === "fulfilled" ? searchResults.value : [];
-
-      // Group by type
-      const grouped: Record<string, typeof results> = {};
-      for (const r of results) {
-        const type = r.type || "other";
-        if (!grouped[type]) grouped[type] = [];
-        if (grouped[type].length < 5) grouped[type].push(r);
-      }
-
-      res.json({ results: grouped, query: q, total: results.length });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
+  //
+  // GET /api/search WAS registered here and is DELETED (2026-08-27). It was
+  // unreachable: routes.ts registers the same path earlier (routes.ts:943,
+  // the fullTextSearch handler) and Express matches in registration order, so
+  // this GROUPED-shape handler ({results: Record<type, SearchResult[]>}) never
+  // served a request. The command palette was written against THIS dead shape
+  // and crashed on any search with hits until 2026-08-27, when it was
+  // repointed at the live flat contract. Do not re-add a second /api/search;
+  // the live contract is {results: SearchResult[], query, total}.
 
   // ─── Priority Action (2c) ─────────────────────────────────────────
   app.get("/api/dashboard/priority", isAuthenticated, getOrCreateOrg, async (req, res) => {

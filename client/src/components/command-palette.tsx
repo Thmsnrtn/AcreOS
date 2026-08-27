@@ -369,8 +369,16 @@ export function CommandPalette() {
     rank: number;
     url: string;
   };
+  // FLAT array, matching the LIVE handler's contract. This was typed as
+  // Record<type, ServerSearchResult[]> — the shape of a SECOND /api/search
+  // registration in routes-micro-features.ts that Express never reached
+  // (routes.ts registers first; lint:route-shadowing). The palette was written
+  // against the dead handler: with real hits, Object.entries(flatArray) made
+  // `items` a single object and `for…of` over it THREW, crashing the palette on
+  // exactly the searches that found something. Zero hits short-circuited, which
+  // is why it looked fine in a thin dev database.
   const { data: serverSearchData } = useQuery<{
-    results: Record<string, ServerSearchResult[]>;
+    results: ServerSearchResult[];
     query: string;
     total: number;
   }>({
@@ -382,7 +390,7 @@ export function CommandPalette() {
         `/api/search?q=${encodeURIComponent(search.trim())}`,
         { credentials: "include" },
       );
-      if (!res.ok) return { results: {}, query: search, total: 0 };
+      if (!res.ok) return { results: [], query: search, total: 0 };
       return res.json();
     },
   });
@@ -509,16 +517,14 @@ export function CommandPalette() {
     if (query.trim().length === 0) return [];
     const serverResults = serverSearchData?.results;
     const serverFlat: Array<{ name: string; path: string; rank: number }> = [];
-    if (serverResults && Object.keys(serverResults).length) {
-      for (const [type, items] of Object.entries(serverResults)) {
-        for (const r of items) {
-          const label =
-            type === "lead" ? `Lead: ${r.title}` :
-            type === "property" ? `Property: ${r.title}` :
-            type === "deal" ? `Deal: ${r.title}` :
-            r.title;
-          serverFlat.push({ name: label, path: r.url, rank: r.rank ?? 0 });
-        }
+    if (Array.isArray(serverResults) && serverResults.length) {
+      for (const r of serverResults) {
+        const label =
+          r.type === "lead" ? `Lead: ${r.title}` :
+          r.type === "property" ? `Property: ${r.title}` :
+          r.type === "deal" ? `Deal: ${r.title}` :
+          r.title;
+        serverFlat.push({ name: label, path: r.url, rank: r.rank ?? 0 });
       }
       serverFlat.sort((a, b) => b.rank - a.rank);
     }
