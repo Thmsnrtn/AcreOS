@@ -96,6 +96,21 @@ jobs:
       # old `if: env.SENTRY_AUTH_TOKEN != ''` on the upload step could never
       # fire even with the secret set.
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      # ONE definition of "the set of images this app's machines are running",
+      # shared by the pre-deploy baseline and the post-deploy assessment. It
+      # MUST be a single program: if the two steps computed the image set even
+      # slightly differently they would disagree on every deploy and report a
+      # promotion that never happened. Tolerates both flyctl JSON casings,
+      # ignores destroyed machines and the ephemeral release_command machine.
+      # Non-JSON input (an auth error, a flyctl schema change) makes jq exit
+      # non-zero and yields an EMPTY set, which both consumers read as
+      # "unknown" rather than as "nothing changed".
+      FLY_IMAGE_SET_JQ: >-
+        [ .[]
+        | select((.state // .State // "") != "destroyed")
+        | select((.config.metadata.fly_process_group // .Config.Metadata.fly_process_group // "") != "fly_app_release_command")
+        | (.config.image // .Config.Image // empty) ]
+        | sort | unique | join(",")
 
     steps:
       - uses: actions/checkout@v7
@@ -147,6 +162,43 @@ jobs:
           MIGRATION_COUNT=$(find drizzle -name "*.sql" -newer fly.toml 2>/dev/null | wc -l)
           echo "New migrations since last deploy: $MIGRATION_COUNT"
           echo "MIGRATION_COUNT=$MIGRATION_COUNT" >> $GITHUB_ENV
+
+      # ── Pre-deploy baseline (2026-08-25, run 32902473209) ──────────────────
+      # Record WHAT production is running BEFORE we touch it. Two consumers:
+      #   1. "Assess production after deploy" compares the live machine image
+      #      set against this to decide whether this run actually PROMOTED
+      #      anything — the distinction the old rollback condition got wrong.
+      #   2. The rollback re-promotes THIS EXACT image, which makes rolling
+      #      back idempotent: re-running the job cannot walk production
+      #      backwards one release per attempt.
+      # Never fails the deploy. An unresolved baseline degrades to
+      # promoted=unknown, which still permits a rollback when production is
+      # confirmed down — the reverse default would recreate this outage.
+      - name: Capture pre-deploy release baseline
+        id: baseline
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set +e
+          set +o pipefail
+          IMAGES="$(flyctl machines list --json 2>/dev/null | jq -r "$FLY_IMAGE_SET_JQ" 2>/dev/null)"
+          IMAGE="$(flyctl releases list --json 2>/dev/null | jq -r '[.[] | select(.Status == "complete")][0].ImageRef // empty' 2>/dev/null)"
+          if [ -z "$IMAGE" ]; then
+            # Fall back to the machines' own image, but ONLY when they all agree.
+            # A pre-existing mixed set has no single correct rollback target.
+            case "$IMAGES" in
+              ""|*,*) IMAGE="" ;;
+              *)      IMAGE="$IMAGES" ;;
+            esac
+          fi
+          echo "Pre-deploy machine image set: ${IMAGES:-<unresolved>}"
+          echo "Pre-deploy rollback target:   ${IMAGE:-<unresolved>}"
+          if [ -z "$IMAGES" ]; then
+            echo "::warning title=Pre-deploy baseline unresolved::flyctl returned no machine image set. Auto-rollback degrades to promoted=unknown and to flyctl's own release rollback."
+          fi
+          echo "images=$IMAGES" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Deploy to Fly.io
         id: fly_deploy
@@ -203,49 +255,176 @@ jobs:
         # "Record FAILED deployment" ledger step, and surfaces the bad release
         # loudly.
 
-      # Tier 1E — automated rollback. Only fires on the precise signature
-      # "deploy succeeded but the new release is unhealthy" (NOT on a failed
-      # deploy — Fly never promoted, nothing to roll back; NOT on earlier
-      # build/test failures). Loop guards:
-      #   1. The health step above already burned an 8-retry × 10s budget, so
-      #      a single flaky probe can't get here.
-      #   2. We re-probe twice more (20s apart) before touching the release —
-      #      only a STILL-failing app rolls back.
-      #   3. This workflow runs once per push (concurrency: production-deploy)
-      #      and the rollback itself isn't health-checked-then-redeployed, so
-      #      there is no rollback→deploy→rollback oscillation: the run ends
-      #      red, on-call is paged by "Notify on failure", and the next push
-      #      is a deliberate human action.
-      - name: Auto-rollback on failed health check
-        if: failure() && steps.fly_deploy.outcome == 'success' && steps.health.outcome == 'failure'
+      # ── Post-deploy assessment (2026-08-25, run 32902473209) ───────────────
+      # WHY THIS STEP EXISTS. The rollback below used to be gated on
+      #   failure() && fly_deploy.outcome == 'success' && health.outcome == 'failure'
+      # on the stated premise "NOT on a failed deploy — Fly never promoted,
+      # nothing to roll back". That premise is FALSE. flyctl rolls machines ONE
+      # AT A TIME, so a rollout can promote several machines and THEN fail on a
+      # later one. On 2026-08-25 exactly that happened, and the condition was
+      # doubly false: fly_deploy.outcome was 'failure', AND — because the health
+      # step carries no `if:`, so its implicit condition is success() — health
+      # was SKIPPED, making its outcome 'skipped', never 'failure'. Fixing only
+      # the first clause would still not have fired. Production sat
+      # half-promoted and fully DOWN for hours.
+      #
+      # Step outcomes were the wrong evidence. This step gathers the right
+      # evidence — the live state of production and of the machines — and
+      # publishes it as two outputs the rollback gates on:
+      #   healthy=true|false          does production ANSWER right now
+      #                               (confirmation probes, not a step outcome)
+      #   promoted=true|false|unknown did this run change the set of images the
+      #                               app's machines are running
+      #
+      # It is an assessor, not a gate: it always exits 0. A spurious red here
+      # would be indistinguishable from a real deploy failure in the ledger and
+      # on the pager.
+      - name: Assess production after deploy
+        id: assess
+        # Runs on every path where the deploy step actually EXECUTED and the
+        # health step did not already pass:
+        #   fly_deploy success + health failure  -> the old signature
+        #   fly_deploy failure + health skipped  -> the 2026-08-25 signature
+        # The two positive equality tests are deliberate. A step that never ran
+        # at all (the build step above failed, say) has NO entry in the `steps`
+        # context, so `outcome` renders as '' — a negative test such as
+        # `!= 'skipped'` would be TRUE there and assess a deploy that never
+        # happened. Only positive tests are safe on this context.
+        if: >-
+          always()
+          && steps.health.outcome != 'success'
+          && (steps.fly_deploy.outcome == 'success' || steps.fly_deploy.outcome == 'failure')
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # Via env, never inlined into the script: a `${{ }}` expansion inside
+          # shell quotes is a code-injection seam.
+          BASE_IMAGES: ${{ steps.baseline.outputs.images }}
+          DEPLOY_OUTCOME: ${{ steps.fly_deploy.outcome }}
         run: |
-          echo "Health check failed after a successful deploy — confirming before rollback."
-          for i in 1 2; do
-            sleep 20
-            if curl --fail --silent --max-time 30 "https://acreos.io/api/health/live" > /dev/null; then
-              echo "Health recovered on confirmation probe $i — NOT rolling back (likely cold-start flake)."
-              exit 0
+          set +e
+          set +o pipefail
+          echo "Deploy step outcome: ${DEPLOY_OUTCOME}. Probing production directly."
+
+          # Guard 1 — is production ACTUALLY down? Three probes over ~40s, on
+          # top of the health step's own 8x10s budget (or, on the failed-deploy
+          # path, standing alone). One flaky probe cannot reach the rollback.
+          HEALTHY=false
+          for i in 1 2 3; do
+            if curl --fail --silent --max-time 20 "https://acreos.io/api/health/live" > /dev/null; then
+              HEALTHY=true
+              echo "Confirmation probe ${i}: production is HEALTHY."
+              break
             fi
-            echo "Confirmation probe $i still failing."
+            echo "Confirmation probe ${i}: production did NOT answer."
+            if [ "$i" -lt 3 ]; then sleep 20; fi
           done
-          echo "Release is confirmed unhealthy — rolling back to the previous image."
-          # `flyctl releases rollback` (flyctl ≥0.3.x) re-promotes the prior
-          # release. Older flyctl spells it `fly deploy --image <prev>`; try
-          # the first and fall back to resolving the previous image by hand.
-          if ! flyctl releases rollback --yes 2>/dev/null && ! flyctl releases rollback 2>/dev/null; then
-            PREV_IMAGE="$(flyctl releases list --json 2>/dev/null | jq -r '[.[] | select(.Status == "complete")][1].ImageRef // empty')"
-            if [ -z "$PREV_IMAGE" ]; then
-              echo "::error title=Auto-rollback FAILED::Could not resolve a previous release image. Roll back manually in the Fly.io dashboard NOW."
-              exit 1
-            fi
-            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 600
+
+          PROMOTED=unknown
+          if [ "$HEALTHY" = "true" ]; then
+            # Production answers, whatever the step outcomes said. Nothing to
+            # recover — skip the Fly introspection so a healthy path stays fast.
+            echo "Production is healthy — no rollback will be considered."
+            {
+              echo "healthy=true"
+              echo "promoted=unknown"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "Rollback submitted. Verifying old release health..."
+
+          # Guard 2 — did this run promote anything? A build failure, an auth
+          # failure or a failed release_command leaves the machine image set
+          # byte-identical to the pre-deploy baseline.
+          NOW_IMAGES="$(flyctl machines list --json 2>/dev/null | jq -r "$FLY_IMAGE_SET_JQ" 2>/dev/null)"
+          echo "baseline image set: ${BASE_IMAGES:-<unresolved>}"
+          echo "current  image set: ${NOW_IMAGES:-<unresolved>}"
+          if [ -n "$BASE_IMAGES" ] && [ -n "$NOW_IMAGES" ]; then
+            if [ "$NOW_IMAGES" = "$BASE_IMAGES" ]; then PROMOTED=false; else PROMOTED=true; fi
+          fi
+
+          if [ "$PROMOTED" = "false" ]; then
+            echo "::warning title=Production is DOWN but this deploy promoted nothing::The machine image set is unchanged from before the deploy, so rolling back would re-promote the image that is ALREADY running. Not rolling back. This is an outage with a cause other than this release — check Fly.io status, the database, and upstream providers."
+          fi
+          if [ "$PROMOTED" = "unknown" ]; then
+            # Deliberate asymmetry. Production is CONFIRMED down; the only
+            # question is whether a rollback helps. Defaulting "unknown" to
+            # false would reproduce 2026-08-25 (rollback structurally unable to
+            # fire during a real outage); defaulting it to true costs, at worst,
+            # one redundant re-promotion of the running image.
+            echo "::warning title=Promotion state UNKNOWN::Could not compare machine images against the pre-deploy baseline. Treating the release as PROMOTED, because production is confirmed down and doing nothing is the worse failure."
+          fi
+          {
+            echo "healthy=false"
+            echo "promoted=$PROMOTED"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # Tier 1E — automated rollback. It now fires on a signature stated in
+      # terms of OBSERVED PRODUCTION STATE rather than step outcomes:
+      # "production is confirmed down AND this run promoted machines."
+      # Guards, in order:
+      #   1. failure()          — never fires on an otherwise-green run. Implied
+      #      by the assess condition, kept as defence in depth.
+      #   2. healthy == 'false' — three confirmation probes, plus a fourth
+      #      immediately below before anything is touched. Covers BOTH the
+      #      deploy-failed and the health-failed paths, because it reads
+      #      production, not a step result.
+      #   3. promoted != 'false' — a build/auth/release_command failure promotes
+      #      nothing and is excluded. 'unknown' passes; see the assessor's note.
+      #   4. The rollback target is the EXACT image captured before THIS run's
+      #      deploy, not "one release back", so re-running the job re-promotes
+      #      the same image. Idempotent — a human re-run cannot walk production
+      #      backwards through release history.
+      #   5. The rollback is not health-checked-then-redeployed, and the
+      #      workflow runs once per push under concurrency: production-deploy.
+      #      The run ends red, "Notify on failure" pages, and the next deploy is
+      #      a deliberate human action. No rollback->deploy->rollback oscillation.
+      # Step status is itself the report: GREEN = the rollback restored health,
+      # RED = it did not (or could not run).
+      - name: Auto-rollback on confirmed-unhealthy production
+        if: >-
+          failure()
+          && steps.assess.outputs.healthy == 'false'
+          && steps.assess.outputs.promoted != 'false'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BASE_IMAGE: ${{ steps.baseline.outputs.image }}
+          PROMOTED: ${{ steps.assess.outputs.promoted }}
+          DEPLOY_OUTCOME: ${{ steps.fly_deploy.outcome }}
+        run: |
+          set +e
+          set +o pipefail
+          echo "Production confirmed unhealthy (deploy outcome=${DEPLOY_OUTCOME}, promoted=${PROMOTED}) — preparing rollback."
+          # Never act on stale evidence: the assessor's probes finished seconds
+          # ago, but this is the last moment before we touch a live release.
+          if curl --fail --silent --max-time 20 "https://acreos.io/api/health/live" > /dev/null; then
+            echo "Production recovered between assessment and rollback — NOT rolling back."
+            exit 0
+          fi
+
+          ROLLED=0
+          # 1. Deterministic and idempotent: re-promote the exact image
+          #    production was running before this run started.
+          if [ -n "$BASE_IMAGE" ]; then
+            echo "Rolling back to the pre-deploy image: $BASE_IMAGE"
+            flyctl deploy --image "$BASE_IMAGE" --wait-timeout 600 && ROLLED=1
+          fi
+          # 2. flyctl's own rollback, newer spelling then older.
+          if [ "$ROLLED" -eq 0 ]; then
+            echo "Falling back to: flyctl releases rollback"
+            flyctl releases rollback --yes 2>/dev/null && ROLLED=1
+            if [ "$ROLLED" -eq 0 ]; then
+              flyctl releases rollback 2>/dev/null && ROLLED=1
+            fi
+          fi
+          if [ "$ROLLED" -eq 0 ]; then
+            echo "::error title=Auto-rollback FAILED::Could not re-promote the previous image and flyctl releases rollback did not succeed. Roll back manually in the Fly.io dashboard NOW."
+            exit 1
+          fi
+
+          echo "Rollback submitted. Verifying production health..."
           sleep 15
           if curl --fail --retry 6 --retry-delay 10 --max-time 30 "https://acreos.io/api/health/live" > /dev/null; then
-            echo "::warning title=Auto-rollback succeeded::Bad release ${GITHUB_SHA:0:7} was rolled back automatically and the previous release is healthy. main still points at the bad commit — fix forward or revert."
+            echo "::warning title=Auto-rollback succeeded::Release ${GITHUB_SHA:0:7} was rolled back automatically and production is healthy again. main still points at the bad commit — fix forward or revert."
           else
             echo "::error title=Rollback did NOT restore health::Both the new release and the rollback are unhealthy — this is an infrastructure-level outage. Check Fly.io status + dashboard immediately."
             exit 1
