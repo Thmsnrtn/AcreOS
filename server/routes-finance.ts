@@ -836,8 +836,7 @@ export function registerFinanceRoutes(app: Express): void {
         if (!note) return Errors.notFound(res, "Note");
         reminders = await storage.getRemindersForNote(Number(noteId));
       } else {
-        reminders = await storage.getPendingReminders(100);
-        reminders = reminders.filter(r => r.organizationId === org.id);
+        reminders = await storage.getPendingReminders(org.id, 100);
       }
       
       if (status) {

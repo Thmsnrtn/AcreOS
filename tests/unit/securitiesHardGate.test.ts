@@ -129,6 +129,19 @@ describe("securities hard-gate (ENABLE_SECURITIES_RAILS)", () => {
       expect(res.status).toBe(200);
       expect(createSecuritization).toHaveBeenCalledTimes(1);
     });
+
+    it("still 501s POST /securities/:id/invest — refuse, don't fabricate", async () => {
+      // The deleted implementation fetched the security by raw client id with
+      // NO org check and added an unvalidated amount to current_balance, a
+      // loan-PERFORMANCE column. Until an offering schema exists (marketplace
+      // ladder trigger), opting in to the rails must not reopen that: the
+      // route answers 501 and calls no service method at all.
+      const app = await buildApp();
+      const res = await request(app).post("/securities/5/invest").send({ amount: 1000 });
+      expect(res.status).toBe(501);
+      expect(res.body.error).toBe("NOT_IMPLEMENTED");
+      expect(investInSecurity).not.toHaveBeenCalled();
+    });
   });
 
   it("does NOT open the gate for any other truthy-ish value (e.g. '1')", async () => {

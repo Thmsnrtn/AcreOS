@@ -4924,3 +4924,55 @@ tables become explicit deletion candidates: the precondition AcreOS can satisfy
 locally — no reachable consumer — is satisfied and written down; the two it
 cannot (historical purpose, live production rows) need production evidence this
 environment does not have. Recording that boundary is the point.
+
+### 78 — RULE 1 ADJUDICATED WHERE IT BITES: 101 UNITS, ONE CONFIRMED DEFECT, AND THE MONEY PATH WAS THE ONE
+
+The last unadjudicated tenancy population — rule 1's frozen `BASELINE_OFFENDERS`
+(278 real `file::fn` keys: units reading org-scoped tables with NO org context
+in their body) — got its first pass, prioritized by reachability rather than
+worked alphabetically. A caller census split it: 90 units reachable from route
+files, 11 called only by scheduled jobs, 50 service-internal, 127 with no
+caller found. The 101 reachable-or-scheduled units were adjudicated in full,
+each against its actual calling code; the 177 others are triaged residue, not
+silence — they cannot serve a request today.
+
+The verdict distribution repeats rules 2 and 3 almost exactly: **45
+DELIBERATE_CROSS_ORG** (every one behind `requireFounder`/`isFounderAdmin`/
+`isFounderIdentity` or reading genuinely platform-level tables), **40
+SAFE_PARENT_VERIFIED** (each with the exact verifying line — the T0-2/F-D31/
+F-D39 sweeps' fingerprints are all over these routes), **5 NOT_REACHABLE**
+(same-name different symbols: five distinct `acknowledgeAlert` implementations
+exist, and the register's key matched the one nothing calls), **1 SUSPECT —
+confirmed, and it was the money path.**
+
+`capitalMarkets.investInSecurity` accepted `investorOrgId` and never read it:
+it fetched `noteSecurities` by the raw client-supplied id, then added
+`req.body.amount` — unvalidated, so negative, NaN, or a string — to
+`current_balance`, which is a loan **performance** column (it sits in the
+schema between `paymentsReceived` and `delinquentDays`; the status enum it
+checked against doesn't even exist in that table's vocabulary). Any org could
+corrupt any other org's loan-performance figures. Two things kept it from
+being live: the fail-closed `ENABLE_SECURITIES_RAILS` kill switch and the
+ladder flag — the marketplace hold doing exactly what it was installed for.
+The fix is refusal, not repair: the method's own TODO conceded
+`note_securities` cannot record an investment (no offering/raise/investor
+columns), so "recording" one was fabricated arithmetic on a real financial
+figure. The method is deleted, the route answers **501 NOT_IMPLEMENTED**
+naming what is missing, and `securitiesHardGate.test.ts` now pins that the
+refusal holds even WITH the rails opted in — the gate that used to prove
+"blocked when off" also proves "honest when on."
+
+One correctness (non-leak) defect fell out of the SAFE pile:
+`getPendingReminders` fetched 100 due reminders platform-wide and let the
+route filter to the caller's org afterwards, so one org's list could be
+truncated by other orgs' volume. The org predicate moved into the WHERE, the
+post-filter died, and both register entries (this and investInSecurity's)
+were removed in the same change so the gate would not report them stale.
+
+What transfers: **adjudicate a frozen register in reachability order, not key
+order.** The 90 route-reachable units held the only confirmed defect; the 127
+caller-less units — 46% of the register — cannot hurt anyone until something
+calls them, and reading them first would have been thoroughness pointed away
+from risk. And the five name-collision entries mean a `file::fn` register key
+is a CLAIM about which symbol the gate parsed, not which symbol a route calls
+— same-name symbols are how a register lies to its reader while staying green.

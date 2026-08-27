@@ -72,16 +72,24 @@ router.post('/securitize', async (req: Request, res: Response) => {
 });
 
 // POST /securities/:id/invest — invest in a security offering
+//
+// 501 even behind the opt-in rails (2026-08-27, rule-1 adjudication). The
+// implementation this handler used to call fetched noteSecurities by the raw
+// client-supplied id with NO org check and "recorded the investment" by
+// adding req.body.amount (unvalidated) to current_balance — a loan
+// PERFORMANCE column (see the schema block: paymentsReceived, delinquentDays,
+// status performing/delinquent/paid_off). Any org could corrupt any other
+// org's loan-performance figures the day the rails opened. note_securities
+// has no offering/raise/investor columns to record an investment against
+// (the deleted method's own TODO said so), so until the marketplace ladder
+// trigger (~25 customers) fires and a real offering schema exists, the
+// honest answer is 501, not fabricated arithmetic.
 router.post('/securities/:id/invest', async (req: Request, res: Response) => {
-  try {
-    if (securitiesRailsBlocked(req, res)) return;
-    const org = req.organization;
-    const { amount } = req.body;
-    const result = await capitalMarkets.investInSecurity(parseInt(req.params.id), org.id, amount);
-    res.json({ result });
-  } catch (err) {
-    Errors.internal(res, err);
-  }
+  if (securitiesRailsBlocked(req, res)) return;
+  Errors.notImplemented(
+    res,
+    'Recording an investment requires an offering schema (raise target, raised amount, investor records) that note_securities does not have. No investment state was written.',
+  );
 });
 
 // GET /lenders — list lender network

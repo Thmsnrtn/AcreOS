@@ -38,10 +38,16 @@ export const paymentRemindersRepo = {
       .orderBy(notes.nextPaymentDate);
   },
 
-  async getPendingReminders(this: DatabaseStorage, limit = 50) {
+  async getPendingReminders(this: DatabaseStorage, organizationId: number, limit = 50) {
+    // The org predicate belongs IN the query, not on the caller: the previous
+    // shape (fetch 100 platform-wide, filter to org in the route) meant one
+    // org's due reminders could be pushed past the limit by other orgs'
+    // volume and silently vanish from its own list (rule-1 adjudication,
+    // 2026-08-27). Platform-wide dispatch stays on getDispatchableReminders.
     const now = new Date();
     return await db.select().from(paymentReminders)
       .where(and(
+        eq(paymentReminders.organizationId, organizationId),
         eq(paymentReminders.status, "scheduled"),
         lte(paymentReminders.scheduledFor, now)
       ))

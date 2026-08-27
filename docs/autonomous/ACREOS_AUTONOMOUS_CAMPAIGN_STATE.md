@@ -350,12 +350,19 @@ had not verified; those are deliberately absent below.
    identifiers makes an unscoped `conditions` array PASS, and a fixture pins
    that. The remaining 72 are the population worth reading.
 
-   **Still frozen and never adjudicated: rule 1** (`BASELINE_OFFENDERS`, 160
-   method + 124 function) — "no org context at all". A different and probably
-   softer population, since many are genuinely org-less platform tables, but it
-   has had no pass at all. Apply the rule-2/3 method: the signature lens
-   ("accepts `organizationId`, never puts it in the WHERE") found five of the six
-   rule-2 defects and is a grep, not a read.
+   **Rule 1: the reachable population is DONE (2026-08-27, ledger 78).** All
+   278 register keys were caller-censused; the 90 route-reachable + 11
+   job-scheduled units were adjudicated in full against their calling code:
+   45 deliberate cross-org (all founder-gated or platform tables), 40
+   parent-verified, 5 name-collision phantoms, **1 confirmed defect —
+   `investInSecurity`, deleted and replaced with a 501** (it added an
+   unvalidated amount to another org's loan-performance column behind the
+   dormant securities rails). `getPendingReminders` also got its org predicate
+   moved into the WHERE (platform-wide limit was starving org lists).
+   **Remaining: 50 service-internal + 127 caller-less keys** — no request can
+   reach them today; adjudicate the 50 by walking their service chains to
+   entry points when the frontier warrants, and fold the 127 into the
+   reachability/deletion program rather than reading them as tenancy risk.
 
 11. ~~**88 exports are certified "reached" by a COMMENT.**~~ CLOSED as ledger 45
     — and the triage that unblocked it is the part worth keeping. The item had

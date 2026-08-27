@@ -520,7 +520,7 @@ export interface IStorage {
 
   // Payment Reminders (Finance Agent)
   getDelinquentNotes(orgId: number): Promise<Note[]>;
-  getPendingReminders(limit?: number): Promise<PaymentReminder[]>;
+  getPendingReminders(organizationId: number, limit?: number): Promise<PaymentReminder[]>;
   getRemindersForNote(noteId: number): Promise<PaymentReminder[]>;
   createPaymentReminder(reminder: InsertPaymentReminder): Promise<PaymentReminder>;
   updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>): Promise<PaymentReminder>;

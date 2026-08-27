@@ -191,49 +191,12 @@ class CapitalMarkets {
     }
   }
 
-  /**
-   * Invest in a securitization
-   */
-  async investInSecurity(
-    securityId: number,
-    investorOrgId: number,
-    amount: number
-  ): Promise<void> {
-    try {
-      const security = await db.query.noteSecurities.findFirst({
-        where: eq(noteSecurities.id, securityId),
-      });
-
-      if (!security) {
-        throw new Error('Security not found');
-      }
-
-      if (security.status !== 'active') {
-        throw new Error('Security is not available for investment');
-      }
-
-      // TODO(tsc): note_securities has no minimumInvestment / targetRaise /
-      // raisedAmount columns (those are offering-level fields with no home in
-      // this per-note table). The investment-cap and raised-amount accounting
-      // cannot be enforced against this schema; we record the investment
-      // intent against currentBalance and leave the funded-status transition
-      // for a future securitization-offering table.
-      void amount;
-      const newCurrentBalance = Number(security.currentBalance ?? 0) + amount;
-
-      await db.update(noteSecurities)
-        .set({
-          currentBalance: String(newCurrentBalance),
-          status: 'active',
-        })
-        .where(eq(noteSecurities.id, securityId));
-
-      // In production, would create investor record, transfer funds, etc.
-    } catch (error) {
-      logger.error('Failed to invest in security', error);
-      throw error;
-    }
-  }
+  // investInSecurity was DELETED 2026-08-27 (rule-1 tenancy adjudication).
+  // It fetched noteSecurities by raw id with no org check and added an
+  // unvalidated amount to current_balance — a loan-performance column — so
+  // any org could corrupt any other org's figures once the rails opened. Its
+  // own TODO conceded note_securities cannot record an investment. The route
+  // now answers 501; see routes-capital-markets.ts for the full story.
 
   /**
    * Add lender to network
