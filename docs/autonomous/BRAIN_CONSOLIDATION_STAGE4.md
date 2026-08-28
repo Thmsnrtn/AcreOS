@@ -81,6 +81,19 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
 
 **Phase 0 — gates before movement (the three laws demand the ratchet exists BEFORE the migration it certifies)**
 
+- **Turn 1 — DONE 2026-08-28.** Both gates landed and were falsified by
+  mutation (growth red, unrecorded-migration red). The census corrected the
+  design twice, exactly as R3 predicted: the agent-autonomous EMAIL class is
+  **7**, not 6 — `agent-skills.ts`'s sendEmail skill sends a model-composed
+  recipient with NO autonomy gate, NO TCPA, NO rate envelope, the least
+  governed send lane in the repo (now frozen shrink-only with the other six);
+  and `supportTicketMessages` has **7 writer files / 11 sites**, not 2 — the
+  design's two are the agent-autonomous subset, and the register now
+  classifies all seven lanes (human, founder, pax-governed, cascade-gated,
+  agent-autonomous). `ai/tools.ts` is classed pax-governed, NOT
+  agent-autonomous: it runs its own draft-for-approval ladder + rate + TCPA
+  (tools.ts:1950-1985) — a parallel approval lane whose convergence with
+  pendingHands is later-stage material. Original spec follows.
 - **Turn 1 — population ratchets.** New `tests/unit/outboundEmailChokepoint.test.ts`: enumerate EVERY `emailService.sendEmail` call site in `server/` (80 occurrences / 45 files today — the population is far wider than the five planes, which is exactly why the register lives in the test). Classify each in an in-test register: `system-mail` (digests, billing, alerts, sequenceProcessor, growthAutomation, …), `witnessed-hand` (`hands/send-email.ts`), `agent-autonomous` (`agentActionExecutors.ts` ×5, `autonomousDecisionExecutor.ts` ×1). Assertions: any unregistered call site fails; per-member vacuity (a registered file whose parser finds zero calls fails — a silently-unmatched member reads exactly like a clean one); `agent-autonomous` baseline = 6, shrink-only. Second test `tests/unit/supportReplyChokepoint.test.ts` enumerating customer-visible support-message insert sites (baseline 2). Falsify by mutation before merging: add a scratch `sendEmail` call, watch red. Verify: `npm run check && npm test`. Rollback: pure test addition, revert.
 - **Turn 2 — zero-caller deletions (stage-2 pattern).** Delete `selfHealingExecutor.ts`; `actionLadder.ts` + `domainLadders.ts` (constant → `learnedGates.ts`); `crisisLeadershipEngine.adjustTrustScores`; `ceoAbsenceMode.transitionToMissionMode`. In-commit grep proof of zero callers for each. Rewrite (never delete) pinning tests: `executionEngineHonesty.test.ts`, `autopilotActionLadder.test.ts`, `autopilotLearnedGates.test.ts` — the invariant survives, the assertion changes. Rollback: revert; no data touched.
 - **Turn 3 — honest receipts.** `executionEngine` send_follow_up / send_churn_intervention become refusals naming the missing capability; the `lastContactedAt` write goes (fabricated contact). `executionEngineHonesty.test.ts` gains a mutation-hardened assertion: an executor returning a "sent" receipt without a hands proposal fails. Rollback: revert.
