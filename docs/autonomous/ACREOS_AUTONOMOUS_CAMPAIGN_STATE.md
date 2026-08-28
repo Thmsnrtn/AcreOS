@@ -8,9 +8,17 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `bbceee80`, 2026-08-27. Working tree clean; **975 test files /
-12,931 tests green**; `npm run check` green; production serves `bbceee80`
-(deploy #5, probed twice at /api/version).
+Verified at: `b22475b6`, 2026-08-28. Working tree clean; **976 test files /
+12,937 tests green**; `npm run check` green; production serves `b22475b6`
+(deploy #7, probed twice at /api/version).
+
+**Rule-1 tenancy register: adjudicated everywhere anything reaches it
+(2026-08-27, ledgers 78-79).** 151 units across three waves (90 route, 11
+job, 50 service-internal); one confirmed defect (`investInSecurity` — deleted,
+route 501s, hard-gate test pins the refusal under opt-in) and one latent hole
+closed at the write (`createJob` template ownership in the query). The 127
+caller-less keys are reachability/deletion debt, kept in the register until
+actually deleted.
 
 **Route shadowing is CLOSED at zero (2026-08-27).** The shadowing program that
 began with 34 shadowed routes ended with `scripts/ratchets/route-shadowing.json`
@@ -83,17 +91,13 @@ Three things this cost, worth keeping:
    truncated run it would have reported ~1 error against a baseline of 162 and
    invited a baseline drop. Do NOT add 134 to `TSC_KNOWN_GOOD_EXIT`.
 
-**Production is further behind than the branch suggests.** The last deploy that
-actually reached Fly was **2026-08-09** (`fd563d70`, run 31287208551). The two
-attempts after it passed the gate and died in the Fly release command: 164
-statements applied OK against the production database, then three `CREATE TABLE`s
-failed — `cam_reconciliations`, `commercial_sales_reports`, `lease_rent_schedule`
-each declared `"lease_id" varchar REFERENCES "rental_leases"("id")` where that
-column is `uuid`, and Postgres refuses a FK across incompatible types. **That is
-already fixed in this branch** (`bbcd2c13`, 2026-08-17, `varchar` → `uuid`, plus
-the `migrateForeignKeyTypes.test.ts` gate). So production runs `fd563d70`'s image
-against a partially-applied migration set, and the next successful gate run will
-attempt the rest. Verify the live schema before assuming a clean apply.
+**Production currency is RESOLVED (2026-08-28).** The "production is 304
+commits behind / partially-applied migrations" era ended with the recovery
+program: seven watched deploys have landed since (through `b22475b6`,
+deploy #7), each confirmed at the served SHA, migrations included (the
+`varchar`→`uuid` FK fix `bbcd2c13` applied cleanly during the catch-up
+deploy). The standing directive above keeps it resolved: every green turn
+fast-forwards `main` and watches the deploy through.
 
 ---
 
@@ -241,79 +245,11 @@ had not verified; those are deliberately absent below.
 
 9. ~~**`lint-reachability` cannot see `shared/**`**~~ CLOSED 2026-08-23. The lens was widened and the newly-visible population frozen in FOUR PER-ROOT baselines rather than folded into the server ones (+54 into 390 would let a server regression hide inside a shared improvement); the server counts did not move. The decision the item asked for is recorded in the allowlist itself: a test-only canonical registry is the INTENDED shape for canon.ts / constitution.ts / statuteRegister.ts — they are indexes of enforcement, satisfying authoritative semantics and drift prevention while forgoing production adoption because there is nothing at runtime to adopt. The exemption names its own revocation condition. rmloAdvisor and sentinel-ids stayed COUNTED as real debt; rmloAdvisor has since been wired (ledger 77), leaving one.
 
-9. **`lint-reachability` cannot see `shared/**`, and the family split cut the
-   cost of fixing that from 473 decisions to ~58.** RE-MEASURED 2026-08-20 after
-   ledger 45. The old figure — "adding `shared` to `EXPORT_SOURCE_DIRS` moves
-   unreached +171, orphans +5, opaque +297; 473 in one commit; do not start it
-   alongside other work" — was measured against the MERGED family and is stale.
-   Against HEAD:
-
-   | family | now | with `shared` | delta |
-   |---|---|---|---|
-   | unreached-exports | 390 | 443 | **+53** |
-   | internal-only-exports | 1188 | 1610 | +422 |
-   | module-orphans | 30 | 35 | **+5** |
-   | opaque-exports | 23 | 37 | +14 |
-
-   The +422 is `shared/` doing exactly what a shared layer does — exporting
-   helpers its own module uses — and it lands in the family whose remedy is a
-   keyword, carries no runtime risk, and is worked down over time rather than
-   adjudicated one by one. **The real adjudication is 58 items**, and the
-   reduction is not a trick: splitting the families is what made the cheap
-   population separable from the expensive one.
-
-   **WHAT IS BEHIND IT, and it is the reason to do this.** `shared` IS in
-   `PRODUCTION_ROOTS` (so shared files count as call sites); it is
-   `EXPORT_SOURCE_DIRS` that bounds what can be REPORTED unreached. So a shared
-   module nothing loads is invisible to the built-but-unwired gate — and
-   `shared/` is where the canonical registries live. Measured with the linter's
-   own comment-stripped import scan and confirmed independently:
-
-   - `shared/architecture/canon.ts` — **MODULE ORPHAN**. 7 layers, 15 laws, 18
-     canonical objects, 12 fitness functions; named in this file's own "where
-     truth lives" list as source #3 with the instruction *"Extend that registry;
-     do not re-derive it."* Production importers: **NONE**. Only
-     `canonicalArchitecture.test.ts` and `opportunity.test.ts`.
-   - `shared/governance/constitution.ts` — **MODULE ORPHAN**. Production
-     importers: **NONE**. Only four test files.
-   - `shared/governance/statuteRegister.ts` — **MODULE ORPHAN**. Same.
-
-   **DO NOT READ THAT AS "THREE DEAD FILES."** The honest reading is narrower
-   and more useful: these are INDEXES OF ENFORCEMENT, not enforcement. Each
-   entry points at where the rule actually lives (code-invariant / ratchet-test
-   / lint), and each has a drift-prevention test that checks every pointer still
-   resolves. That satisfies two of the second law's three legs — authoritative
-   semantics and drift prevention — and forgoes production adoption because
-   there may be nothing at runtime to adopt. **That is a defensible stance that
-   has never been written down as a decision**, and the gate's inability to see
-   `shared/` is why nobody has had to state it.
-
-   **(ii) IS ALREADY ANSWERED, and it answers in the registries' favour.** The
-   second law's actual danger is not "no callers" — it is production computing
-   the same rule INDEPENDENTLY, which is what made `publicMaturityOf()` a defect
-   (the landing re-implemented its one-line body inline). Searched 2026-08-20:
-   nothing in `server/` or `client/src/` enumerates `CANONICAL_LOOP`, the seven
-   layers, the fifteen laws or the eighteen objects on its own; the only
-   production mention of `CANONICAL_OBJECTS` anywhere is a comment in
-   `enrichmentToClaims.ts` pointing AT canon rather than restating it. And the
-   constitution's entries are pointers to enforcement sites
-   (`customerMoneyRouting.ts`, `PROTECTED_DOOR_ROUTES`, the ratchet tests), not
-   copies of them — an index and its targets, which is the right relationship
-   and the opposite of duplication.
-
-   So the work is two things, in order: (i) decide and RECORD that a test-only
-   canonical registry is the intended shape, and allowlist the three with that
-   reason — which is precisely what the allowlist exists for and what nobody has
-   had to write down while the gate was blind to `shared/`; (ii) widen
-   `EXPORT_SOURCE_DIRS` and adjudicate the remaining ~50, which are ordinary
-   exports, not governance.
-
-   Widening a gate's LENS is not the same operation as a count regressing, and
-   the baselines must not simply be raised to absorb it. The precedent to copy
-   is `check-org-scoped-fetch`'s 2026-08-16 widening from method-shape to
-   function-shape: the existing registers did not move at all and the
-   newly-visible population was frozen in registers of its own. Do that here —
-   per-root counts — rather than a +494 bump that erases the server signal.
+9. *(Edited out 2026-08-28: a stale OPEN copy of the item the strikethrough
+   above already records as CLOSED 2026-08-23 — the widening, the per-root
+   baselines, and the test-only-registry decision are all verified present in
+   `scripts/lint-reachability.mjs` at HEAD. The duplicate had survived one
+   revision past its own closure.)*
 
 10. ~~**The tenancy register's rule 1**~~ CLOSED 2026-08-21 (ledger 61). All 271 unique entries adjudicated — 142 deliberate cross-org, 62 parent-verified, 52 unreachable, 8 platform/self-inserted, 8 suspected. Five confirmed and fixed; a sixth (getRecurringTasksDue — any authenticated user could insert a task into EVERY other organization) was caught only because the refutation cap REPORTED its overflow instead of dropping it. Coverage verified by diffing keys sent against keys returned: zero unclassified.
 
@@ -400,23 +336,14 @@ had not verified; those are deliberately absent below.
 
 13. ~~**Four connector executors bypass the provider registry**~~ CLOSED 2026-08-23 (ledger, deletion 2026-08-23). Reading them changed the answer for three of four. PropStream was DELETED, not migrated: the repo held two mutually incompatible auth contracts for one vendor and the executor conceded it guessed the endpoint, so routing it through the registry would have bought governance for a guess. MLS was real RESO and was kept and fixed — get_mls_comps returned the SUBJECT PROPERTY (an exact-address filter) and now refuses; OData literals are escaped; the silent vendor-host fallback is gone.
 
-13. **Four connector executors bypass the provider registry — and the claim in
-    the previous version of this entry was partly wrong.** It said five, and
-    framed the gap as "the missing half is the customer's money" via credit
-    deduction. Checked: the registry explicitly supports BYO keys ("runs on
-    their account, platform COGS $0, pool never debited"), so a BYO connector
-    not debiting the credit pool is CORRECT, not a defect. What these four
-    genuinely lack is `provider_cache` (the org pays its vendor twice for the
-    same lookup), circuit breaking, telemetry, and the license flags the
-    registry carries. The fifth — `batchLeadsSkipTrace` — was deleted on
-    2026-08-20 as deletion-revealed (ledger 38's FCRA gate made it unreachable),
-    and it was the one where the framing DID hold: a proprietary,
-    non-redistributable consumer-report feed run with a bare `fetch`.
-    Remaining: `propstreamLookup`, `propstreamComps`, `searchMlsListings`,
-    `getMlsComps`, all reachable only through Pax. Routing them through the
-    registry means writing two new providers AND migrating their credentials
-    from `storage.getPaxConnector` to `byok/dataByok` — real work, correctly
-    sized here rather than under-described.
+13. *(Edited out 2026-08-28: a stale OPEN copy of the item the strikethrough
+   above closes — verified at HEAD that PropStream's executors are deleted
+   (doc-comment mentions only), `getMlsComps` refuses honestly, and
+   `searchMlsListings` is the one live executor: org-BYO RESO, OData-escaped,
+   no vendor-host fallback. Whether that one search-shaped caller should force
+   a registry `LookupInput` widening is a decision the no-interface-before-a-
+   second-consumer precedent answers NO for now; revisit when a second
+   search-shaped consumer exists.)*
 
 14. **Four non-chat OpenAI endpoints run on the OpenRouter-only client.**
     `openaiClient.ts`'s docblock forbids exactly this and names
