@@ -16,7 +16,6 @@ import { isAuthenticated, requireFounder } from "./auth";
 import { reactiveOrchestrationService } from "./services/reactiveOrchestrationV14";
 import { feedbackLoopService } from "./services/feedbackLoopV14";
 import { confidenceCascadeService } from "./services/confidenceCascadeV14";
-import { founderIntentService } from "./services/founderIntentV14";
 import { autonomyScoreService } from "./services/autonomyScoreV14";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
@@ -219,68 +218,11 @@ export function registerFounderV14Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 4. FOUNDER INTENT — Natural language goals → system config
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Intent creation
-  app.post("/api/founder/v14/intents", async (req, res) => {
-    try { res.json(await founderIntentService.createIntent(req.body.orgId, req.body.rawInput, req.body.completesAt)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/intents/:intentId/simulate", async (req, res) => {
-    try { res.json(await founderIntentService.simulateIntent(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // Activation & lifecycle
-  app.post("/api/founder/v14/intents/:intentId/activate", async (req, res) => {
-    try { res.json(await founderIntentService.activateIntent(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/intents/:intentId/pause", async (req, res) => {
-    try { res.json(await founderIntentService.pauseIntent(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/intents/:intentId/resume", async (req, res) => {
-    try { res.json(await founderIntentService.resumeIntent(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // Progress
-  app.get("/api/founder/v14/intents/:intentId/progress", async (req, res) => {
-    try { res.json(await founderIntentService.checkProgress(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/intents/:intentId/auto-adjust", async (req, res) => {
-    try { res.json(await founderIntentService.autoAdjust(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // Management
-  app.get("/api/founder/v14/intents/:orgId", async (req, res) => {
-    try { res.json(await founderIntentService.getIntents(parseInt(req.params.orgId), req.query)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/intents/:intentId/details", async (req, res) => {
-    try { res.json(await founderIntentService.getIntentDetails(req.params.intentId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/intents/:intentId/complete", async (req, res) => {
-    try { res.json(await founderIntentService.completeIntent(req.params.intentId, req.body.outcome)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/intents/:orgId/analytics", async (req, res) => {
-    try { res.json(await founderIntentService.getIntentAnalytics(parseInt(req.params.orgId))); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
+  // Section 4 (FOUNDER INTENT) was DELETED 2026-08-28 with founderIntentV14 —
+  // competing-brains stage 2: zero client fetches, zero service/job importers,
+  // zero tests. The incumbent plane owns "natural-language founder goals →
+  // system config" (autopilot/objectives, okr, standingOrders, steer).
+  // founderIntents/intentProgressLogs await the OD-8 drop decision.
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. AUTONOMY SCORE — Track and minimize founder dependency

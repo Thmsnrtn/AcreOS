@@ -572,8 +572,11 @@ still pending in that same list).
 `resourceQuotaEvents` (agentResourceGovernorV11); `decisionCausalityNodes`
 (decisionCausalityV11); `temporalPredictionPatterns`,
 `predictiveStagedActions` (predictiveOrchestrationV11);
-`autonomyScoreSnapshots`, `founderDependencyEvents` (autonomyScoreV14);
 `founderIntents`, `intentProgressLogs` (founderIntentV14).
+*(Corrected 2026-08-28 during stage-2 execution: `autonomyScoreSnapshots` and
+`founderDependencyEvents` came OFF this list — `autonomyScoreV14` is
+client-consumed via GET /api/founder/v14/autonomy/score in the sovereign
+dashboard and stays live.)*
 
 **What would make this easy to decide:** whether production holds any rows in
 these tables. The session cannot see the production database; a

@@ -143,8 +143,6 @@ const BASELINE = new Set([
   "server/services/autopilot/narrate.ts::r.outcomeScore ?? -1",
   "server/services/bidEstimateExtractor.ts::parsed.confidence ?? 0.5",
   "server/services/cashFlowForecaster.ts::note.gracePeriodDays || 10",
-  "server/services/ceoCognitiveModelV11.ts::parsed.confidence || 50",
-  "server/services/ceoCognitiveModelV11.ts::parsed.riskTolerance || 50",
   "server/services/ceoCommandBridge.ts::latest.energyScore || 50",
   "server/services/cmo/renderOrchestrator.ts::script.qualityScore ?? 70",
   "server/services/companyAgents.ts::parsed.healthScore ?? 80",

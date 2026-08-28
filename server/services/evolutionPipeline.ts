@@ -166,7 +166,7 @@ export async function checkCircuitBreaker(): Promise<boolean> {
  * Trips the circuit breaker, incrementing `consecutiveReverts` and locking
  * the pipeline for 7 days.
  */
-export async function tripCircuitBreaker(reason: string): Promise<void> {
+async function tripCircuitBreaker(reason: string): Promise<void> {
   log("tripCircuitBreaker — tripping", { reason });
 
   try {
