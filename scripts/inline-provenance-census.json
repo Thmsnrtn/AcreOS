@@ -1,0 +1,616 @@
+{
+ "_README": "Inline-provenance census + mechanical growth-stop (2026-08-28). TWO REGISTERS, TWO KINDS OF TRUTH. (1) `census`: the SEMANTIC map \u2014 every verified ad-hoc truth-state / numeric-confidence render site in client/src, produced by a 4-modality sweep (95 candidate sites, 59 files), per-file classification against what the user actually sees, and an adversarial refute pass (3 files refuted: honest-absence renders, query captions, domain outputs). It is the step-3 MIGRATION WORKLIST for docs/company/experience-legibility.md: migrate a file to DataProvenanceChip / DataConfidenceBadge, delete its entry in the same commit. The gate checks only that each census file still exists \u2014 the semantics were verified once by reading, and each migration re-verifies its file. (2) `mechanicalBaseline`: per-file counts of the SIGNAL /confiden(?!tial)/i on non-import, non-comment lines, all of client/src minus the two canonical primitives. This measures the WORD, not the defect \u2014 it exists so inline confidence UI CANNOT GROW while the census is worked down: any file above its count, or any new file with signal, fails; any file below its count must have its baseline lowered in the same commit. The 13 census files whose ad-hoc UI is purely 'source/as-of' prose have no signal \u2014 the census carries them; the mechanical half never claims to.",
+ "censusDate": "2026-08-28",
+ "census": {
+  "client/src/components/deals/CmaPanel.tsx": [
+   {
+    "line": 192,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "{valuation.score !== null && <span>Confidence {valuation.score}/100</span>} \u2014 the ATTOM AVM confidence score is rendered to the user as a bare inline text span ('Confidence 87/100') in the muted-foreg"
+   },
+   {
+    "line": 193,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{valuation.asOf && <span>As of {valuation.asOf}</span>} \u2014 a freshness/as-of date attached directly to the AVM value as a bare span, sitting beside the ad hoc confidence span and under the inline 'Esti"
+   },
+   {
+    "line": 249,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "<p className=\"text-xs text-muted-foreground\">{provenance}</p> \u2014 the server-supplied provenance string for the whole CMA result is rendered as a raw footnote paragraph the user reads as free text. Toge"
+   }
+  ],
+  "client/src/components/ab-tests-content.tsx": [
+   {
+    "line": 703,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge className={confidenceInfo.color}>{confidenceInfo.label} confidence</Badge> \u2014 renders a percent-confidence pill (\"99%\"/\"95%\"/\"90%\"/\"Not significant\" + \" confidence\") from variant.confidenceLevel"
+   },
+   {
+    "line": 51,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "const confidenceBadge = (level: number) => { if (level >= 99) return { label: '99%', color: 'bg-acr-pos-soft text-acr-pos' }; if (level >= 95) ... 'bg-primary/10 text-primary'; if (level >= 90) ... 'b"
+   }
+  ],
+  "client/src/components/ab-test-manager.tsx": [
+   {
+    "line": 551,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "In AbTestCard, non-control variants with confidence > 0 render <Badge className={confidenceInfo.color}>{confidenceInfo.label} confidence</Badge> (lines 550-554) \u2014 the user sees an ad-hoc colored perce"
+   },
+   {
+    "line": 59,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "const confidenceBadge = (level: number) => {...} (lines 59-64) is an ad-hoc percent-confidence pill helper: thresholds 99/95/90 map to labels '99%'/'95%'/'90%'/'Not significant' with hardcoded color c"
+   }
+  ],
+  "client/src/components/modals/quick-offer-modal.tsx": [
+   {
+    "line": 166,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Renders `<span className=\"capitalize\">{suggestion.confidence}</span> confidence` (confidence typed \"low\" | \"medium\" | \"high\" on line 31) as plain inline text after the suggested offer band \u2014 an ad-hoc"
+   }
+  ],
+  "client/src/components/founder/ForecastPanel.tsx": [
+   {
+    "line": 77,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Lines 77-85: `{m.confidence && (<span className={...}>{m.confidence}</span>)}` renders a high/medium/low confidence pill on each MRR milestone with hand-mapped tier colors (high -> bg-acr-pos-soft/30 "
+   },
+   {
+    "line": 78,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Same single chip as the line-77 site: the `<span className={`text-micro px-1.5 py-0.5 rounded ${m.confidence === \"high\" ? \"bg-acr-pos-soft/30 text-acr-pos\" : ...}`}>{m.confidence}</span>` at lines 78-"
+   }
+  ],
+  "client/src/components/confidence-interval.tsx": [
+   {
+    "line": 20,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "ConfidenceInterval renders an ad-hoc confidence visual: a rounded-full uncertainty band + point-estimate dot (lines 44-61) with a verbal confidence scale shown to the user in the tooltip (line 69) and"
+   },
+   {
+    "line": 28,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "confidenceLabel maps numeric spread to its own three-level verbal scale \u2014 spread < range*0.15 ? \"High confidence\" : spread < range*0.3 ? \"Moderate confidence\" : \"Wide range \u2014 limited data\" \u2014 a hand-ro"
+   }
+  ],
+  "client/src/components/ai-reasoning.tsx": [
+   {
+    "line": 39,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge variant=\"outline\" className={cn(\"text-micro\", confidenceColor)}>{confidence}% confident</Badge> \u2014 a color-coded percent-confidence pill built from a generic Badge instead of DataConfidenceBadge"
+   },
+   {
+    "line": 25,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "const confidenceColor = confidence >= 80 ? \"text-acr-pos\" : confidence >= 60 ? \"text-acr-warn\" : \"text-acr-neg\" \u2014 the ad-hoc threshold-to-color mapping that feeds the same '% confident' pill rendered "
+   }
+  ],
+  "client/src/components/deal-feed/daily-deal-feed.tsx": [
+   {
+    "line": 309,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "confidence={scores.composite === null ? 0 : Math.min(95, Math.round(scores.composite * 1.2))} (identical twin at line 485 in DealCard) synthesizes a percent 'confidence' by rescaling the composite dea"
+   }
+  ],
+  "client/src/components/deal-detail-content.tsx": [
+   {
+    "line": 439,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge className={getConfidenceBadgeColor(pricingRecommendation.confidence)} data-testid=\"badge-confidence\">{pricingRecommendation.confidence.toFixed(0)}% confidence</Badge> \u2014 user sees an ad-hoc perc"
+   },
+   {
+    "line": 169,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "const getConfidenceBadgeColor = (confidence: number) => { if (confidence >= 80) return \"bg-acr-pos-soft text-acr-pos...\"; if (confidence >= 50) return \"bg-acr-warn-soft...\"; return \"bg-acr-neg-soft..."
+   }
+  ],
+  "client/src/components/parcels/arv-calculator.tsx": [
+   {
+    "line": 148,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge variant={current.data.arv.confidence === \"high\" ? \"default\" : current.data.arv.confidence === \"medium\" ? \"outline\" : \"destructive\"}>{confidence} confidence</Badge> \u2014 a high/medium/low ARV confi"
+   }
+  ],
+  "client/src/components/ai-offer-generator.tsx": [
+   {
+    "line": 250,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "getConfidenceBadge (lines 250-254; both candidate lines ~250 and ~251 are this same site) maps a numeric confidence through ad-hoc 75/50 thresholds to <Badge variant=\"default\" className=\"bg-acr-pos\">H"
+   },
+   {
+    "line": 420,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Lines 417-421: a 'Confidence' muted label over a text-lg font-semibold `{suggestion.confidence}%` figure (data-testid text-confidence-{index}) on every suggestion card \u2014 a bare percent-confidence stat"
+   },
+   {
+    "line": 723,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Lines 722-728: <Badge variant={acceptanceData.confidenceLevel === \"high\" ? \"default\" : \"secondary\"} data-testid=\"badge-confidence-level\"> rendering `{Level} Confidence` (high/medium/low, capitalized) "
+   }
+  ],
+  "client/src/components/rehabs/bids-section.tsx": [
+   {
+    "line": 285,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "User sees an ad-hoc percent-confidence pill for the LLM bid extraction: <Badge variant={extractConfidence >= 0.7 ? \"default\" : \"outline\"}>{Math.round(extractConfidence * 100)}% confidence</Badge>. Thi"
+   }
+  ],
+  "client/src/components/today/ConfidenceBar.tsx": [
+   {
+    "line": 36,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "export function ConfidenceBar({ value, threshold }) renders a purpose-built 60px horizontal numeric-confidence bar (rail span + fill span sized `width: ${valuePct}%` in var(--acr-brand), plus a thresh"
+   },
+   {
+    "line": 47,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "aria-label={`Pax confidence ${valueLabel}%`} on the role=\"meter\" wrapper (lines 42-51, with aria-valuemin/max/now on the [50,100] scale) is the accessible surface of the same inline confidence meter: "
+   }
+  ],
+  "client/src/components/today/ConfidenceSparkline.tsx": [
+   {
+    "line": 40,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "The component itself is a second, parallel numeric-confidence primitive: a bespoke 40x16 SVG (polyline of Pax confidence history over a fixed 0.5-1.0 scale, lines 46-85) with a current-value dot fille"
+   },
+   {
+    "line": 55,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "aria-label: `Pax confidence history, latest ${Math.round(clamp(last) * 100)}%` \u2014 the accessible rendering of the same bespoke visual. A screen-reader user is presented a percent-confidence value ('lat"
+   }
+  ],
+  "client/src/components/today/DecisionQueue.tsx": [
+   {
+    "line": 510,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "<Badge variant=\"secondary\" className={`...${sourcePillStyles[item.source]}`} aria-label={hasConfidence ? `${sourcePillLabel[item.source]}, confidence ${confidencePct}%` : sourcePillLabel[item.source]}"
+   },
+   {
+    "line": 521,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "{hasConfidence && (<><span aria-hidden=\"true\">\u00b7</span><span className=\"tabular-nums\">{confidencePct}%</span></>)} \u2014 an ad-hoc percent-confidence readout ('Pax \u00b7 87%') inside the merged Badge, continue"
+   }
+  ],
+  "client/src/components/dashboard/AgentReasoningExpandable.tsx": [
+   {
+    "line": 171,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Headline row renders `{data.explanation.action.confidence}% confident` as a plain <span className=\"tabular-nums\"> inline in the agent-decision header (lines 167-174), and the same pattern repeats at l"
+   }
+  ],
+  "client/src/components/pax-why-explainer.tsx": [
+   {
+    "line": 124,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<span>{naturalConfidence(data.confidenceScore)}</span> renders a level-confidence label (Very confident/Confident/Reasonably confident/Uncertain) derived from the numeric 0-100 confidenceScore as bare"
+   },
+   {
+    "line": 45,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Private naturalConfidence(score) defines an ad-hoc verbal confidence scale (>=90 Very confident, >=75 Confident, >=60 Reasonably confident, else Uncertain) whose sole purpose is the inline render at l"
+   }
+  ],
+  "client/src/components/due-diligence-panel.tsx": [
+   {
+    "line": 357,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "AnnotationChip hand-assembles the exact provenance string DataProvenanceChip owns: `{[annotation.source, annotation.asOf ? `as of ${annotation.asOf.slice(0, 10)}` : null, confidenceLabel].filter(Boole"
+   },
+   {
+    "line": 911,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Ad-hoc source label on each checklist item: `{item.dataSource && (<span className=\"text-xs text-muted-foreground\">Source: {item.dataSource}</span>)}` (lines 909-913). User sees a bare muted 'Source: X"
+   }
+  ],
+  "client/src/components/source-attribution-panel.tsx": [
+   {
+    "line": 209,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "<Badge variant=\"secondary\" className=\"text-micro px-1.5 py-0\">{field.source}</Badge> \u2014 per-field source chip inside a panel titled 'Data Provenance' (line 124), rendered as a generic secondary Badge; "
+   },
+   {
+    "line": 213,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{field.source} \u2014 the raw source-name text rendered as the badge's content (lines 209-214): a literal 'source: X' label shown to the user per field, built from a generic Badge instead of DataProvenance"
+   },
+   {
+    "line": 217,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{getRelativeTime(field.fetchedAt)} with a Clock icon (lines 215-218) \u2014 an ad hoc as-of/fetched-at relative time attached to each field value; the user sees hand-built freshness provenance, and it is s"
+   },
+   {
+    "line": 98,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{isAmber ? \"Stale\" : \"Outdated\"} in StalenessIndicator (lines 74-101) \u2014 an amber/red color-plus-word freshness chip with AlertTriangle and title-only explanation, driven by a hand-rolled StalenessLeve"
+   },
+   {
+    "line": 131,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{staleCount} stale \u2014 aggregate destructive Badge in the panel header (lines 126-133), summarizing the same ad hoc staleness system (staleCount computed at lines 112-114 from getStalenessLevel); the us"
+   }
+  ],
+  "client/src/components/skip-trace-panel.tsx": [
+   {
+    "line": 161,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "{phone.verified && <CheckCircle className=\"w-3 h-3 text-acr-pos\" />} \u2014 provider-returned verification state on a phone number rendered as a bare, unlabeled green check icon (identical pattern for emai"
+   }
+  ],
+  "client/src/components/today/ParcelAlerts.tsx": [
+   {
+    "line": 243,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "The alert row's metadata line renders `{formatRelative(a.createdAt)}{a.source ? ` \u00b7 ${a.source}` : \"\"}` as plain muted text, so the user sees e.g. \"2 hours ago \u00b7 regrid\" \u2014 the raw provider/source name"
+   }
+  ],
+  "client/src/components/property-map.tsx": [
+   {
+    "line": 3632,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "User sees a dashed-line swatch + caption 'Approximate extent' (SinglePropertyMap, block 3624-3634) signaling the parcel footprint's epistemic state (inferred vs surveyed). It is derived from boundaryS"
+   }
+  ],
+  "client/src/pages/founder-strategy.tsx": [
+   {
+    "line": 309,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<span className=\"text-micro text-muted-foreground tabular-nums\">{proposal.confidence}% confidence</span> \u2014 ProposalRow renders the proposal's numeric confidence as a bare inline percent label in the m"
+   }
+  ],
+  "client/src/pages/founder-preview.tsx": [
+   {
+    "line": 207,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "PendingPreviewRow renders `{row.confidence}% confidence` (row.confidence is a numeric percent from the PreviewRow API shape) as a bare `<span className=\"text-micro text-muted-foreground tabular-nums\">"
+   }
+  ],
+  "client/src/pages/founder-decisions.tsx": [
+   {
+    "line": 307,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Decision rows render {naturalConfidence(row.sophieConfidenceScore)} in a bare text-micro text-muted-foreground div (guarded by typeof row.sophieConfidenceScore === \"number\" at line 305). naturalConfid"
+   }
+  ],
+  "client/src/pages/founder/cmo.tsx": [
+   {
+    "line": 529,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Expanded bundle manifest renders an ad-hoc 'Confidence' heading (line 528) over <p className=\"font-mono\">{item.sophieConfidenceScore}/100</p> \u2014 a raw numeric confidence score shown to the founder as '"
+   }
+  ],
+  "client/src/pages/founder-letter.tsx": [
+   {
+    "line": 267,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "In LetterReplyPanel's parse-confirmation card, the user sees an ad-hoc percent-confidence text \u2014 `<span className=\"text-xs text-muted-foreground tabular-nums\">{Math.round(pending.parse.confidence * 10"
+   }
+  ],
+  "client/src/pages/founder/governance.tsx": [
+   {
+    "line": 449,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Inside the Confidence-cascade tab (`cascade.map` list items), line 448-451 renders `Confidence: {item.confidence != null ? `${Math.round(item.confidence * 100)}%` : \"N/A\"} \u00b7 Layer: {item.layer ?? \"unk"
+   }
+  ],
+  "client/src/pages/founder/scenarios.tsx": [
+   {
+    "line": 171,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Agent-projection rows render an ad hoc percent-confidence pill: <Badge variant=\"secondary\" className=\"ml-auto tabular-nums\" aria-label={`Confidence ${p.confidence} percent`}>{p.confidence}%</Badge> \u2014 "
+   }
+  ],
+  "client/src/pages/price-optimizer.tsx": [
+   {
+    "line": 128,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge variant=\"outline\" className={`text-xs tabular-nums ${confidenceColor(rec.confidence)}`} aria-label={`Confidence ${confPct}%, ${confLabel}`}>{confPct}% confident</Badge> \u2014 user sees an ad-hoc pe"
+   },
+   {
+    "line": 58,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "function confidenceColor(conf: string) { const c = parseFloat(conf); if (c >= 0.8) return \"text-acr-pos\"; if (c >= 0.6) return \"text-acr-warn\"; return \"text-acr-neg\"; } plus confidenceLabel (lines 65-"
+   }
+  ],
+  "client/src/pages/agent-performance.tsx": [
+   {
+    "line": 222,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "In the Strategies tab, each adaptive-strategy card's metadata row renders `<span>Confidence: <span className=\"tabular-nums\">{Math.round(strategy.confidence * 100)}%</span></span>` \u2014 a model-produced n"
+   }
+  ],
+  "client/src/pages/maps.tsx": [
+   {
+    "line": 653,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Lines 648-657, AVM hero value: `<div className=\"h-1.5 w-16 bg-muted rounded-full overflow-hidden\"><div className=\"h-full rounded-full bg-primary\" style={{ width: `${intel.valueConfidence}%` }} /></div"
+   },
+   {
+    "line": 639,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Lines 637-641: when `intel.estimatedValueIsListPrice` is true the hero value gets `<p className=\"text-micro text-muted-foreground\">Your list price \u00b7 run an AVM for a modeled estimate</p>`. 'Your list "
+   }
+  ],
+  "client/src/pages/settings/pax-controls.tsx": [
+   {
+    "line": 469,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "{obs.confidenceScore}% confidence \u2014 the observation's numeric confidence score rendered as inline percent text inside a hand-rolled pill in the Pax replay row, where DataConfidenceBadge is the canonic"
+   },
+   {
+    "line": 468,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge variant=\"secondary\" className=\"text-[10px] border-transparent bg-muted text-muted-foreground tabular-nums\"> wrapping the percent text \u2014 an ad-hoc percent-confidence pill built from the generic "
+   }
+  ],
+  "client/src/pages/avm.tsx": [
+   {
+    "line": 346,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Page-local `function ConfidenceBar({ confidence })` (lines 346-366) renders 'Model confidence' + `{confidence}%` readout + a `Progress` bar, with its own tier logic `confidence >= 70 ? 'text-acr-pos' "
+   },
+   {
+    "line": 682,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Hand-rolled confidence-interval visual (lines 677-702): `<div className=\"relative h-4 rounded-full bg-muted overflow-hidden\">` with a bg-primary/20 range fill and a positioned estimate marker `left: ("
+   },
+   {
+    "line": 733,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Ad-hoc confidence tier verdict rows (lines 733-745) in the Valuation Details card: `latest.confidence >= 70` renders CheckCircle + 'High confidence estimate' in text-acr-pos, else AlertTriangle + `{la"
+   },
+   {
+    "line": 428,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "The server-supplied DataClassification is consumed only as `v?.classification === 'ai_estimate'` firing a transient toast ('AI estimate ready \u2026 this number is an AI model's educated guess, not a comps"
+   },
+   {
+    "line": 901,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Valuation-history rows render `<Badge variant=\"outline\">{v.confidence}% confidence</Badge>` \u2014 a percent-confidence pill built ad hoc from the generic Badge component. No tier color, no sources/freshne"
+   }
+  ],
+  "client/src/pages/avm-bulk.tsx": [
+   {
+    "line": 319,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "One site covering both candidate anchors (~319 and ~320 are the same element: <Badge> opens at 319, its variant prop is line 320). Renders {r.confidence}% as an ad-hoc pill: variant={r.confidence >= 8"
+   }
+  ],
+  "client/src/pages/closing-costs.tsx": [
+   {
+    "line": 202,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<Badge variant={CONFIDENCE_COLORS[feeInfo.confidence]} aria-label={`${feeInfo.confidence} confidence`}>{feeInfo.confidence} confidence</Badge> (lines 198-203) \u2014 user sees an inline high/medium/low con"
+   },
+   {
+    "line": 35,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "const CONFIDENCE_COLORS = { high: \"default\", medium: \"secondary\", low: \"outline\" } \u2014 a page-local variant map whose only purpose is styling the ad-hoc confidence chip rendered at lines 198-203; it is "
+   },
+   {
+    "line": 221,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "<dt className=\"text-muted-foreground\">Source</dt><dd className=\"font-medium\">{feeInfo.source.replace(/_/g, \" \")}</dd> (lines 221-222) \u2014 the fee data's source rendered as a plain 'Source: X' dt/dd row "
+   }
+  ],
+  "client/src/pages/skip-tracing.tsx": [
+   {
+    "line": 368,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<span className=\"tabular-nums\">{pct(p.confidence)} confidence</span> \u2014 provider-reported 0-1 phone confidence rendered as bare inline percent text (via local pct() helper, line 71) next to each phone "
+   },
+   {
+    "line": 379,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<span className=\"tabular-nums\">{pct(e.confidence)} confidence</span> \u2014 same ad-hoc inline percent-confidence text for each traced email address (TraceEmail.confidence, provider-reported 0-1); a numeri"
+   }
+  ],
+  "client/src/pages/portfolio-optimizer.tsx": [
+   {
+    "line": 221,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "RecDrillDownModal renders a 'Confidence' section as an ad-hoc numeric meter: <Progress value={rec.confidence} className=\"flex-1 h-2\" aria-hidden=\"true\" /> inside a role=\"progressbar\" wrapper (aria-val"
+   },
+   {
+    "line": 1058,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Recommendation card header renders inline muted text 'Priority {rec.priority}/10 \u00b7 {rec.confidence}% confidence' (lines 1057-1059) \u2014 an ad-hoc '% confidence' label attached directly to the recommendat"
+   }
+  ],
+  "client/src/pages/flip-analyzer.tsx": [
+   {
+    "line": 267,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "function SourceBadge({ source }: { source: FigureSource }) renders <Badge variant={variant}>{SOURCE_LABEL[source]}</Badge> over the page-local SOURCE_LABEL vocabulary (lines 258-265: 'Your rule' / 'Ac"
+   },
+   {
+    "line": 728,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "FigureRow note hand-joins provenance prose: `${subject.arv.compCount} comps` + `${subject.arv.confidence ? ` \u00b7 ${subject.arv.confidence} confidence` : \"\"}` + ` \u00b7 calculated ${formatDate(subject.arv.ca"
+   }
+  ],
+  "client/src/pages/zoning-lookup.tsx": [
+   {
+    "line": 230,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Hand-built provenance footer under the zoning result card: `Source: {result.source.replace(/_/g, ' ')} \u00b7 As of <span className=\"tabular-nums\">{formatDate(result.asOf)}</span>` inside a `text-xs text-m"
+   }
+  ],
+  "client/src/pages/learn/DataSnapshotBand.tsx": [
+   {
+    "line": 73,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Lines 59-74 hand-assemble a provenance footer for every public data figure \u2014 the source name (as an underlined external link when fig.sourceUrl exists, else a bold span, lines 60-72) followed by `<spa"
+   }
+  ],
+  "client/src/pages/founder/cost.tsx": [
+   {
+    "line": 189,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Local SourceBadge component (lines 185-194) renders <Badge variant=\"outline\" className=\"text-[10px] text-muted-foreground border-muted\">estimated</Badge> next to vendor names in the Vendor spend table"
+   },
+   {
+    "line": 245,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Page header renders <p>as of {fmtDate(data.asOf)}</p> \u2014 an inline as-of freshness date attached to the page's cost data, built as raw muted text next to the Refresh button rather than via the canonica"
+   }
+  ],
+  "client/src/pages/investor-analytics.tsx": [
+   {
+    "line": 140,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "opExQualifier() defines a whole local truth-state vocabulary \u2014 `return \" (est.)\"`, `\" (assumed ratio)\"`, ` (${covered}/${TRAILING_12_WINDOW_MONTHS} mo)`, `\" (op-ex not measured)\"` \u2014 appended as inline"
+   }
+  ],
+  "client/src/pages/portfolio-pnl.tsx": [
+   {
+    "line": 251,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Row in the Key metrics card is rendered as `{ label: \"Annualized IRR (estimate)\", value: view.irr != null ? `${(view.irr * 100).toFixed(1)}%` : \"\u2014\" }` \u2014 the user sees the epistemic qualifier \"(estimat"
+   }
+  ],
+  "client/src/pages/founder/life-cockpit.tsx": [
+   {
+    "line": 473,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Hand-built truth-state banner in DraftReturnPanel (lines 470-479): a raw div styled with border-acr-warn/40 bg-acr-warn/5, a ShieldCheck icon, and the bolded label \"Estimate \u2014 review & verify before f"
+   }
+  ],
+  "client/src/pages/note-detail.tsx": [
+   {
+    "line": 436,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "ReconciliationCard renders `As of {formatDateTime(data.asOf)}` plus an optional `\u00b7 last posting {data.lastPostingId.slice(0, 8)}` suffix as a hand-assembled text-xs muted <p> footer under the reconcil"
+   }
+  ],
+  "client/src/pages/founder/money.tsx": [
+   {
+    "line": 261,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "In CfoPositionBanner, the heading 'Lena's position' appends an inline span: `as of {formatDate(summary.asOf)}` (lines 259-263). This renders the runway model's freshness timestamp as an ad-hoc as-of l"
+   }
+  ],
+  "client/src/components/founder/finance-steering-sections.tsx": [
+   {
+    "line": 210,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Footnote under the Buckets bars renders `As of {new Date(data.asOf).toLocaleString()}.` as plain inline text (lines 209-212), attaching data freshness to the bucket/opex dollar figures ad hoc. This is"
+   }
+  ],
+  "client/src/pages/landing/Hero.tsx": [
+   {
+    "line": 204,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<div className=\"lp-hv-row\"><span>Confidence</span><b className=\"lp-hv-conf-high\">{f.comp.confidence}</b></div> renders 'High \u00b7 87%' (HERO_DEMO_FIXTURES.comp.confidence, line 151) as a color-coded leve"
+   },
+   {
+    "line": 205,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "<div className=\"lp-hv-bar\"><div className=\"lp-hv-bar-fill\" style={{ width: f.comp.confidenceWidth }} /></div> renders a hand-rolled confidence bar whose fill width is the confidence percent ('87%', HE"
+   }
+  ],
+  "client/src/pages/landing/Agents.tsx": [
+   {
+    "line": 39,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "Fixture row [\"Confidence\", \"High \u00b7 87%\"] in the Analysis surface's sample card, rendered at lines 179-184 as a plain lp-agent-sample-row (<span>Confidence</span><b>High \u00b7 87%</b>). The visitor sees a "
+   }
+  ],
+  "client/src/hooks/use-due-diligence.ts": [
+   {
+    "line": 62,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "The verbal high/medium/low/none confidence scale in the ChecklistAnnotation contract is rendered to the user verbatim by AnnotationChip (due-diligence-panel.tsx:345-346,362) as ad-hoc inline text `${a"
+   }
+  ],
+  "client/src/lib/trust-language.ts": [
+   {
+    "line": 159,
+    "class": "NUMERIC_CONFIDENCE_ADHOC",
+    "note": "naturalConfidence() maps a numeric confidence score to a third verbal scale (score >= 85 -> \"very sure\", >= 60 -> \"fairly sure\", else \"not sure\") distinct from both DataClassification and the DataConf"
+   }
+  ],
+  "client/src/pages/data-sources.tsx": [
+   {
+    "line": 163,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "The legend card promising 'The label travels with the number wherever it appears' renders the classification vocabulary via a locally re-declared `type Classification = \"authoritative\" | \"estimate\" | "
+   }
+  ],
+  "client/src/pages/property-enrichment.tsx": [
+   {
+    "line": 249,
+    "class": "TRUTH_STATE_ADHOC",
+    "note": "Bare muted <p> footer `Source: {result.source.replace(/_/g, ' ')} \u00b7 Enriched {new Date(result.enrichedAt).toLocaleString()}` \u2014 a source label plus as-of freshness date attached to the whole enrichment"
+   }
+  ]
+ },
+ "mechanicalBaseline": {
+  "client/src/components/ab-test-manager.tsx": 6,
+  "client/src/components/ab-tests-content.tsx": 5,
+  "client/src/components/ai-offer-generator.tsx": 13,
+  "client/src/components/ai-reasoning.tsx": 5,
+  "client/src/components/campaign-variants-panel.tsx": 2,
+  "client/src/components/confidence-interval.tsx": 7,
+  "client/src/components/dashboard/AgentReasoningExpandable.tsx": 7,
+  "client/src/components/dashboard/DecisionsInbox.tsx": 2,
+  "client/src/components/dashboard/MRRTrajectory.tsx": 1,
+  "client/src/components/deal-detail-content.tsx": 6,
+  "client/src/components/deal-feed/daily-deal-feed.tsx": 2,
+  "client/src/components/deals/CmaPanel.tsx": 1,
+  "client/src/components/due-diligence-panel.tsx": 4,
+  "client/src/components/founder/ForecastPanel.tsx": 4,
+  "client/src/components/founder/SwipeDecisionCard.tsx": 1,
+  "client/src/components/layout-sidebar.tsx": 1,
+  "client/src/components/modals/quick-offer-modal.tsx": 3,
+  "client/src/components/parcels/arv-calculator.tsx": 6,
+  "client/src/components/parcels/land-snapshot.tsx": 1,
+  "client/src/components/parcels/parcel-biography.tsx": 3,
+  "client/src/components/parcels/parcel-stream-reducer.ts": 1,
+  "client/src/components/pax-why-explainer.tsx": 6,
+  "client/src/components/property-analysis-chat.tsx": 2,
+  "client/src/components/property-enrichment-widget.tsx": 4,
+  "client/src/components/rehabs/bids-section.tsx": 8,
+  "client/src/components/seller-intent-panel.tsx": 1,
+  "client/src/components/today/ConfidenceBar.tsx": 4,
+  "client/src/components/today/ConfidenceSparkline.tsx": 5,
+  "client/src/components/today/DecisionQueue.tsx": 19,
+  "client/src/components/today/ParcelAlerts.tsx": 1,
+  "client/src/hooks/use-due-diligence.ts": 1,
+  "client/src/hooks/use-sovereign-dashboard.ts": 3,
+  "client/src/lib/glass-engine.ts": 1,
+  "client/src/lib/trust-language.ts": 1,
+  "client/src/pages/agent-performance.tsx": 2,
+  "client/src/pages/avm-bulk.tsx": 13,
+  "client/src/pages/avm.tsx": 24,
+  "client/src/pages/closing-costs.tsx": 5,
+  "client/src/pages/deals.tsx": 1,
+  "client/src/pages/flip-analyzer.tsx": 5,
+  "client/src/pages/founder-decisions.tsx": 4,
+  "client/src/pages/founder-letter.tsx": 2,
+  "client/src/pages/founder-preview.tsx": 3,
+  "client/src/pages/founder-strategy.tsx": 2,
+  "client/src/pages/founder/autopilot-story.tsx": 3,
+  "client/src/pages/founder/cmo.tsx": 3,
+  "client/src/pages/founder/governance.tsx": 8,
+  "client/src/pages/founder/money.tsx": 1,
+  "client/src/pages/founder/pax-calibration.tsx": 3,
+  "client/src/pages/founder/scenarios.tsx": 8,
+  "client/src/pages/landing/Agents.tsx": 2,
+  "client/src/pages/landing/DayInLife.tsx": 1,
+  "client/src/pages/landing/Features.tsx": 1,
+  "client/src/pages/landing/Hero.tsx": 4,
+  "client/src/pages/maps-intel.ts": 3,
+  "client/src/pages/maps.tsx": 4,
+  "client/src/pages/parcel-detail.tsx": 1,
+  "client/src/pages/portfolio-optimizer.tsx": 7,
+  "client/src/pages/price-optimizer.tsx": 8,
+  "client/src/pages/public-parcel-report.tsx": 1,
+  "client/src/pages/settings/pax-controls.tsx": 4,
+  "client/src/pages/skip-tracing.tsx": 5,
+  "client/src/pages/today.tsx": 1,
+  "client/src/pages/tools/parcel-check.tsx": 1,
+  "client/src/pages/why.tsx": 1
+ }
+}

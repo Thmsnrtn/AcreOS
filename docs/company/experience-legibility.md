@@ -258,6 +258,11 @@ Landed with the decision: the four values were declared FOUR times (provider
 `types.ts`, the chip, `EvidenceAuthority` in `shared/evidence/claim.ts`,
 `LandFieldClassification` in `shared/landProfile.ts`), each aligned by a
 comment. All four now derive from `shared/dataClassification.ts` — drift is a
-compile error. Steps 2–4 (extend `DataProvenanceChip` as the one primitive,
-migrate the ~20 inline copies one-at-a-time, ratchet, delete the losers)
-remain open and unchanged.
+compile error. Step 4's ratchet is INSTALLED (2026-08-28), and the census behind it
+corrected the landscape's size: a 4-modality workflow sweep (95 candidate
+sites, 59 files, adversarial refute pass) found **87 verified ad-hoc sites in
+54 files** — 30 truth-state, 57 numeric-confidence — four times the "~20"
+reconstruction above. The worklist and the per-file mechanical growth-stop
+live in `scripts/inline-provenance-census.json`, enforced by
+`lint:inline-provenance` (falsified three ways on install). Step 3 proceeds
+file-by-file against that census; step 2 (chip extension) as surfaces demand.

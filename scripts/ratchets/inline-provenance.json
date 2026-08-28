@@ -1,0 +1,7 @@
+{
+  "name": "inline-provenance",
+  "mode": "external",
+  "evaluator": "scripts/check-inline-provenance.mjs",
+  "direction": "down",
+  "description": "INLINE-PROVENANCE growth-stop (epistemic-UX step 4, 2026-08-28). Holds the ad-hoc confidence/provenance landscape still while the census migrates to the two canonical primitives (DataProvenanceChip for truth-states, DataConfidenceBadge for numeric confidence). The verified semantic worklist (54 files / 87 sites: 30 truth-state + 57 numeric, from a 4-modality sweep + per-file classification + adversarial refute pass) and the per-file mechanical baseline of the /confiden(?!tial)/i signal both live in scripts/inline-provenance-census.json. The evaluator is honest about its two halves: existence-checks the census (semantics were verified by reading), and pins the mechanical signal per file both directions with vacuity floors. Falsified three ways on install (growth in a clean file, unrecorded migration, census file vanishing) — all red."
+}
