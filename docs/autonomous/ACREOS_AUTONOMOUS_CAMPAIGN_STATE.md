@@ -175,7 +175,11 @@ caller proof before any deletion; table drops are founder territory):**
    doors. This is a founder-legibility question, not a code question.
 4. **The live-wired V13/V14 + eventMesh cluster**: real consolidation
    engineering — one memory store, one trust lane, one execution plane.
-   Needs its own design pass; do not start it as a side effect.
+   **DESIGNED 2026-08-28**: the adopted 19-turn strangler-fig program is
+   `docs/autonomous/BRAIN_CONSOLIDATION_STAGE4.md` (judged 34/26.5/26 over
+   two rivals; one graft, one recorded refusal). Execute its turns in
+   order — phase 0 (gates before movement) first; Decision A blocks the
+   caller flips.
 5. **companyAgents/companyMind**: the kernel-restructure step 4 already
    names this; the roster shim (`agentCodenameAlias.ts`) is the seam.
 
