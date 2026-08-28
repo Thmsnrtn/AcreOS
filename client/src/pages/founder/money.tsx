@@ -49,7 +49,8 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { staggerContainer, staggerItem } from "@/lib/animations";
-import { formatDate, formatRelative } from "@/lib/format";
+import { formatRelative } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 // ─── API contracts (provisional — Lena's surfaces land in Phase 1) ────────
 
@@ -257,9 +258,12 @@ function CfoPositionBanner({
             <h2 className="text-sm font-semibold text-foreground">
               Lena&apos;s position
               {summary?.asOf ? (
-                <span className="ml-2 font-normal text-muted-foreground">
-                  as of {formatDate(summary.asOf)}
-                </span>
+                <DataProvenanceChip
+                  source="Runway model"
+                  sourceAsOf={summary.asOf}
+                  classification="modeled"
+                  className="ml-2 align-middle"
+                />
               ) : null}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground leading-relaxed">

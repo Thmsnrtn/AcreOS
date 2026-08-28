@@ -44,7 +44,6 @@ import {
   RefreshCw,
   Info,
   CheckCircle,
-  AlertTriangle,
   DollarSign,
   Activity,
   Database,
@@ -54,6 +53,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GlossaryTerm } from '@/components/Glossary';
+import { DataProvenanceChip, type DataClassification } from '@/components/data-provenance-chip';
 
 function formatDollar(n: number) {
   // Compact display for KPI cards + chart axes. M/K bands round
@@ -343,26 +343,32 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
   );
 }
 
-function ConfidenceBar({ confidence }: { confidence: number }) {
-  const color = confidence >= 70 ? 'text-acr-pos' : confidence >= 40 ? 'text-acr-warn' : 'text-acr-neg';
-  const tier = confidence >= 70 ? 'high' : confidence >= 40 ? 'moderate' : 'low';
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">Model confidence</span>
-        <span className={`font-semibold tabular-nums ${color}`}>{confidence}%</span>
-      </div>
-      <Progress
-        value={confidence}
-        className="h-2"
-        role="progressbar"
-        aria-valuenow={confidence}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`Model confidence: ${confidence} percent (${tier})`}
-      />
-    </div>
-  );
+// ─── Valuation provenance ─────────────────────────────────────────────────────
+// Maps a valuation row's stored model version onto the canonical truth-state
+// vocabulary (shared/dataClassification.ts): comps- and ATTOM-backed values
+// are data-backed derivations → "estimate"; GBM and LLM outputs are model
+// outputs → "modeled". The long-form wording for each version lives server-side
+// in routes-avm.ts METHODOLOGY_LABELS and renders as `methodology`.
+function valuationProvenance(v: { modelVersion?: string } | null | undefined): {
+  source: string;
+  classification: DataClassification;
+} {
+  switch (v?.modelVersion) {
+    case 'hybrid_comps_ml':
+      return { source: 'AcreOS AVM (comps)', classification: 'estimate' };
+    case 'attom_avm':
+      // Founder ruling (wave V3): ATTOM's number must render as ATTOM's
+      // estimate, never as the AcreOS land model.
+      return { source: 'ATTOM AVM', classification: 'estimate' };
+    case 'gbm_model':
+      return { source: 'AcreOS trained model', classification: 'modeled' };
+    case 'ai_market_estimate':
+      return { source: 'AI estimate', classification: 'modeled' };
+    default:
+      // Legacy flat-rate rows (regional_baseline/baseline) and anything
+      // unrecognized: still an estimate — never authoritative, never modeled.
+      return { source: 'AVM', classification: 'estimate' };
+  }
 }
 
 export default function AVMPage() {
@@ -471,6 +477,7 @@ export default function AVMPage() {
   const stats = statsData?.stats;
   const history = historyData?.history ?? [];
   const latest = history[0];
+  const latestProvenance = valuationProvenance(latest);
 
   // Comparable bar chart data
   const compsData = latest?.comparables?.map((c: any, i: number) => ({
@@ -701,7 +708,14 @@ export default function AVMPage() {
                     </p>
                   </div>
 
-                  <ConfidenceBar confidence={latest.confidence} />
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Model confidence</span>
+                    <DataProvenanceChip
+                      source={latestProvenance.source}
+                      classification={latestProvenance.classification}
+                      confidence={latest.confidence}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -730,19 +744,14 @@ export default function AVMPage() {
                       {latest.createdAt ? format(new Date(latest.createdAt), 'MMM d, yyyy') : 'Today'}
                     </span>
                   </div>
-                  {latest.confidence >= 70 ? (
-                    <div className="flex items-center gap-2 text-acr-pos dark:text-acr-pos pt-2">
-                      <CheckCircle className="w-4 h-4" />
-                      <span className="text-xs">High confidence estimate</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-acr-warn dark:text-acr-warn pt-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span className="text-xs">
-                        {latest.confidence < 40 ? 'Low' : 'Moderate'} confidence — limited comps
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <span className="text-muted-foreground">Model confidence</span>
+                    <DataProvenanceChip
+                      source={latestProvenance.source}
+                      classification={latestProvenance.classification}
+                      confidence={latest.confidence}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -898,7 +907,11 @@ export default function AVMPage() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <Badge variant="outline">{v.confidence}% confidence</Badge>
+                          <DataProvenanceChip
+                            source={valuationProvenance(v).source}
+                            classification={valuationProvenance(v).classification}
+                            confidence={v.confidence}
+                          />
                           <p className="text-xs text-muted-foreground mt-1">
                             {v.comparables?.length ?? 0} comps
                           </p>

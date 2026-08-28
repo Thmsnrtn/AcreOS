@@ -13,6 +13,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { ChevronDown, ChevronUp, Brain, Lightbulb } from "lucide-react";
 import { useState } from "react";
 
@@ -40,13 +41,6 @@ interface PaxWhyExplainerProps {
   enabled?: boolean;
   /** When true, render only the expandable trigger (cards inline the rest). */
   triggerOnly?: boolean;
-}
-
-function naturalConfidence(score: number): string {
-  if (score >= 90) return "Very confident";
-  if (score >= 75) return "Confident";
-  if (score >= 60) return "Reasonably confident";
-  return "Uncertain";
 }
 
 export function PaxWhyExplainer({
@@ -120,14 +114,12 @@ export function PaxWhyExplainer({
 
           {data && (
             <>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span>{naturalConfidence(data.confidenceScore)}</span>
-                {data.modelUsed && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="tabular-nums">{data.modelUsed}</span>
-                  </>
-                )}
+              <div>
+                <DataProvenanceChip
+                  source={data.modelUsed ?? "Pax"}
+                  classification="modeled"
+                  confidence={data.confidenceScore}
+                />
               </div>
 
               {data.reasoning ? (

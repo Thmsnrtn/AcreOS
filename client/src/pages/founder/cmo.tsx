@@ -40,6 +40,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -526,7 +527,11 @@ function PendingBundleCard({
                 </div>
                 <div>
                   <div className="text-xs uppercase font-semibold text-muted-foreground mb-1">Confidence</div>
-                  <p className="font-mono">{item.sophieConfidenceScore}/100</p>
+                  <DataProvenanceChip
+                    source="Sophie"
+                    classification="modeled"
+                    confidence={item.sophieConfidenceScore}
+                  />
                 </div>
               </div>
             </div>

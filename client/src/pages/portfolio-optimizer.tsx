@@ -40,6 +40,7 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/empty-state';
 import { QueryErrorState } from '@/components/query-error-state';
+import { DataProvenanceChip } from '@/components/data-provenance-chip';
 import {
   TrendingUp,
   TrendingDown,
@@ -209,19 +210,11 @@ function RecDrillDownModal({ rec }: { rec: any }) {
           )}
           <div>
             <p className="text-sm font-medium mb-1">Confidence</p>
-            <div className="flex items-center gap-2">
-              <div
-                className="flex-1 h-2"
-                role="progressbar"
-                aria-label="Recommendation confidence"
-                aria-valuenow={rec.confidence}
-                aria-valuemin={0}
-                aria-valuemax={100}
-              >
-                <Progress value={rec.confidence} className="flex-1 h-2" aria-hidden="true" />
-              </div>
-              <span className="text-sm tabular-nums">{rec.confidence}%</span>
-            </div>
+            <DataProvenanceChip
+              source="AI analysis"
+              confidence={rec.confidence}
+              classification="modeled"
+            />
           </div>
           <div>
             <p className="text-sm font-medium mb-1">Priority score</p>
@@ -1055,8 +1048,13 @@ export default function PortfolioOptimizerPage() {
                             {rec.recommendationType}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
-                            Priority {rec.priority}/10 · {rec.confidence}% confidence
+                            Priority {rec.priority}/10
                           </span>
+                          <DataProvenanceChip
+                            source="AI analysis"
+                            confidence={rec.confidence}
+                            classification="modeled"
+                          />
                         </div>
                         <p className="text-sm">{rec.reasoning}</p>
                         {rec.expectedImpact && (

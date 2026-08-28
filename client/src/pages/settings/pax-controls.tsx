@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
@@ -465,9 +466,11 @@ export default function PaxControlsPage() {
                         <Badge variant="secondary" className={`text-[10px] border-transparent ${tone.cls}`}>
                           {tone.label}
                         </Badge>
-                        <Badge variant="secondary" className="text-[10px] border-transparent bg-muted text-muted-foreground tabular-nums">
-                          {obs.confidenceScore}% confidence
-                        </Badge>
+                        <DataProvenanceChip
+                          source="Pax"
+                          classification="modeled"
+                          confidence={obs.confidenceScore}
+                        />
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2">{obs.description}</p>
                       <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">

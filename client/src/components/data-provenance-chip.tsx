@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 // because this chip's callers import the type from here.
 export type { DataClassification } from "@shared/dataClassification";
 import type { DataClassification } from "@shared/dataClassification";
+import { formatDate } from "@/lib/format";
 
 interface DataProvenanceChipProps {
   /** Named source, e.g. "FEMA NFHL", "USDA SSURGO", "County GIS". Required to render. */
@@ -58,7 +59,17 @@ function confidenceVar(
   return "var(--acr-heat-hot)";
 }
 
-/** "as of 2024" / "as of Mar 2024" — best-effort, never throws on bad input. */
+/**
+ * "as of 2024" / "as of Mar 2024" / "as of Aug 28" — best-effort, never
+ * throws on bad input. Year-only is the honest granularity for most public
+ * datasets (a county roll stamped "2024" was not updated on any particular
+ * day the customer should rely on). But the step-3 migration brought LIVE
+ * surfaces onto this chip — model runs, enrichment snapshots — where a
+ * recent timestamp collapsed to its year reads as a stale dataset vintage
+ * (the finance-steering refusal, 2026-08-28). Precision now follows the
+ * data's own recency: within ~90 days the full house date ("Aug 28, 2026",
+ * via lib/format), else the year.
+ */
 function formatAsOf(asOf: string | Date | null | undefined): string | null {
   if (!asOf) return null;
   const d = asOf instanceof Date ? asOf : new Date(asOf);
@@ -66,7 +77,10 @@ function formatAsOf(asOf: string | Date | null | undefined): string | null {
     // Server may already send a pre-formatted string like "2024" — pass through.
     return typeof asOf === "string" ? asOf : null;
   }
-  // Year-only is the honest granularity for most public datasets.
+  const ageDays = (Date.now() - d.getTime()) / 86400000;
+  if (ageDays >= 0 && ageDays <= 90) {
+    return formatDate(d);
+  }
   return String(d.getFullYear());
 }
 

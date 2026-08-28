@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Target, Fuel, Users } from "lucide-react";
 import { usd } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 export default function ForecastPanel() {
   const { data, isLoading } = useQuery({
@@ -75,13 +76,10 @@ export default function ForecastPanel() {
                 {m.estimatedDate || "—"}
               </span>
               {m.confidence && (
-                <span className={`text-micro px-1.5 py-0.5 rounded ${
-                  m.confidence === "high" ? "bg-acr-pos-soft/30 text-acr-pos" :
-                  m.confidence === "medium" ? "bg-acr-warn-soft/30 text-acr-warn" :
-                  "bg-acr-neg-soft/30 text-acr-neg"
-                }`}>
-                  {m.confidence}
-                </span>
+                <DataProvenanceChip
+                  source={`MRR model · ${m.confidence.charAt(0).toUpperCase() + m.confidence.slice(1)} confidence`}
+                  classification="modeled"
+                />
               )}
             </div>
           ))}

@@ -55,6 +55,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { Verbs } from "@/lib/labels";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface DueDiligencePanelProps {
   propertyId: number;
@@ -342,8 +343,10 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
       unknown: { icon: HelpCircle, className: "text-muted-foreground" },
     };
     const { icon: VIcon, className } = verdictStyle[annotation.verdict];
-    const confidenceLabel =
-      annotation.confidence === "none" ? null : `${annotation.confidence} confidence`;
+    // The verbal high/medium/low band from the annotation contract stays a
+    // word — it was never a measured percentage, and inventing a number for
+    // it is forbidden (refuse-not-fabricate).
+    const tierWord = annotation.confidence === "none" ? null : `${annotation.confidence} confidence`;
     return (
       <div
         className="mt-2 flex items-start gap-2 rounded-md border border-dashed bg-muted/40 px-2 py-1.5"
@@ -354,15 +357,21 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         <VIcon className={`w-4 h-4 mt-0.5 shrink-0 ${className}`} aria-hidden="true" />
         <div className="min-w-0 text-xs">
           <p className="text-foreground">{annotation.summary}</p>
-          {(annotation.source || confidenceLabel || annotation.asOf) && (
-            <p className="text-muted-foreground mt-0.5">
-              {[
-                annotation.source,
-                annotation.asOf ? `as of ${annotation.asOf.slice(0, 10)}` : null,
-                confidenceLabel,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+          {(annotation.source || tierWord) && (
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {/* Canonical provenance render. The annotation is a data-backed
+                  derivation from open data (advisory, "verify" framing), so it
+                  classifies as an estimate — never an authoritative record. */}
+              <DataProvenanceChip
+                source={annotation.source}
+                sourceAsOf={annotation.asOf}
+                classification="estimate"
+              />
+              {tierWord && (
+                <span className="text-micro text-muted-foreground leading-none">
+                  {tierWord}
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -906,10 +915,10 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-medium">{item.name}</span>
+                              {/* Bare named-source label (present even before a
+                                  lookup runs), so no classification is claimed. */}
                               {item.dataSource && (
-                                <span className="text-xs text-muted-foreground">
-                                  Source: {item.dataSource}
-                                </span>
+                                <DataProvenanceChip source={item.dataSource} />
                               )}
                             </div>
                             {item.notes && (

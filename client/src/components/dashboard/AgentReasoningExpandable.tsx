@@ -12,6 +12,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { Brain, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
@@ -167,9 +168,11 @@ export function AgentReasoningExpandable({ decisionId }: Props) {
                 {data.explanation.action.confidence != null && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span className="tabular-nums">
-                      {data.explanation.action.confidence}% confident
-                    </span>
+                    <DataProvenanceChip
+                      source={data.explanation.action.agentCodename}
+                      confidence={data.explanation.action.confidence}
+                      classification="modeled"
+                    />
                   </>
                 )}
               </div>
@@ -217,9 +220,12 @@ export function AgentReasoningExpandable({ decisionId }: Props) {
                           {" — "}
                           {alt.rejectedBecause}
                           {alt.confidence != null && (
-                            <span className="tabular-nums ml-1 text-micro">
-                              ({alt.confidence}%)
-                            </span>
+                            <DataProvenanceChip
+                              source={data?.explanation?.action.agentCodename}
+                              confidence={alt.confidence}
+                              classification="modeled"
+                              className="ml-1"
+                            />
                           )}
                         </li>
                       ))}

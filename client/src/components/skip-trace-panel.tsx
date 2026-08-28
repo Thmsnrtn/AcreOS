@@ -6,20 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Search, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Users, 
-  Loader2, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Search,
+  Phone,
+  Mail,
+  MapPin,
+  Users,
+  Loader2,
+  XCircle,
   Clock,
   DollarSign,
   RefreshCw
 } from "lucide-react";
 import { GlossaryTerm } from "@/components/Glossary";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
 import { formatDate } from "@/lib/format";
@@ -158,7 +158,13 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <span className="font-medium">{phone.number}</span>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">{phone.type}</Badge>
-                        {phone.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
+                        {/* Provider-reported verification is a truth-state: canonical
+                            chip (verified → "authoritative" + source label saying who).
+                            completedAt is fetch time, not source-update time, so no
+                            sourceAsOf. Unverified numbers carry no claim at all. */}
+                        {phone.verified && (
+                          <DataProvenanceChip source="Skip trace" classification="authoritative" />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -175,7 +181,10 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                   {skipTrace.results.emails.map((email, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm" data-testid={`skip-trace-email-${idx}`}>
                       <span className="font-medium">{email.email}</span>
-                      {email.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
+                      {/* Same truth-state pattern as phones above. */}
+                      {email.verified && (
+                        <DataProvenanceChip source="Skip trace" classification="authoritative" />
+                      )}
                     </div>
                   ))}
                 </div>

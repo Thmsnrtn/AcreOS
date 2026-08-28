@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -248,12 +249,24 @@ export default function PortfolioPnLPage() {
                 <dl className="space-y-3">
                   {[
                     { label: "Cash-on-cash return", value: `${view.roi.toFixed(1)}%` },
-                    { label: "Annualized IRR (estimate)", value: view.irr != null ? `${(view.irr * 100).toFixed(1)}%` : "—" },
+                    // IRR is derived in-house from the org's actual deal/note
+                    // cash flows (server/services/portfolioPnl.ts) — an
+                    // estimate, carried by the canonical chip, not the label.
+                    { label: "Annualized IRR", value: view.irr != null ? `${(view.irr * 100).toFixed(1)}%` : "—", isEstimate: view.irr != null },
                     { label: "Avg sale price", value: view.avgSalePrice != null ? usd(view.avgSalePrice) : "—" },
                     { label: "Deals sold", value: String(view.dealsSold) },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex justify-between items-center">
-                      <dt className="text-sm text-muted-foreground">{label}</dt>
+                  ].map(({ label, value, isEstimate }) => (
+                    <div key={label} className="flex justify-between items-center gap-2">
+                      <dt className="text-sm text-muted-foreground">
+                        {label}
+                        {isEstimate && (
+                          <DataProvenanceChip
+                            source="Portfolio cash flows"
+                            classification="estimate"
+                            className="ml-1.5"
+                          />
+                        )}
+                      </dt>
                       <dd className="text-sm font-medium tabular-nums">{value}</dd>
                     </div>
                   ))}

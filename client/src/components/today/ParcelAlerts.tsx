@@ -12,6 +12,10 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { motion } from "framer-motion";
 import { UserRoundCheck, Landmark, Bell, Check, MapPin } from "lucide-react";
 import { formatRelative } from "@/lib/format";
+import {
+  DataProvenanceChip,
+  type DataClassification,
+} from "@/components/data-provenance-chip";
 
 // Mirrors the parcel_alerts row shape returned by GET /api/parcel-alerts.
 interface ParcelAlert {
@@ -43,6 +47,29 @@ const FIELD_LABEL: Record<string, string> = {
   owner_address: "Owner mailing address",
   tax_status: "Tax status",
   tax_amount: "Tax amount",
+};
+
+// Human labels for the observation sources that produce parcel alerts
+// (parcel_observations.source: county_gis, regrid, rapidapi, fema, fusion,
+// manual, ...). Unrecognized slugs fall through as-is rather than hiding.
+const SOURCE_LABEL: Record<string, string> = {
+  county_gis: "County GIS",
+  regrid: "Regrid",
+  rapidapi: "RapidAPI",
+  fema: "FEMA",
+  fusion: "Fusion",
+  manual: "Manually entered",
+};
+
+// Only county/federal system-of-record sources are classified
+// "authoritative". Fusion merges, manual (user-entered) values, and
+// unrecognized relays carry their source label with NO classification —
+// never a guessed one. The alert row itself carries no classification, so
+// this maps the closed set we are certain about and nothing more.
+const SOURCE_CLASSIFICATION: Partial<Record<string, DataClassification>> = {
+  county_gis: "authoritative",
+  regrid: "authoritative",
+  fema: "authoritative",
 };
 
 function alertHeadline(a: ParcelAlert): string {
@@ -240,8 +267,16 @@ export function ParcelAlerts() {
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-[11px] text-muted-foreground">
                       {formatRelative(a.createdAt)}
-                      {a.source ? ` · ${a.source}` : ""}
                     </span>
+                    {/* parcel_alerts.confidence is 0..1 (see shared/schema.ts);
+                        the chip takes 0–100. Scale, never invent. observedAt is
+                        omitted: it defaults to our fetch time, not when the
+                        source last updated — the chip's sourceAsOf contract. */}
+                    <DataProvenanceChip
+                      source={a.source ? SOURCE_LABEL[a.source] ?? a.source : null}
+                      confidence={a.confidence != null ? a.confidence * 100 : null}
+                      classification={a.source ? SOURCE_CLASSIFICATION[a.source] ?? null : null}
+                    />
                     {href && (
                       <Link
                         href={href}

@@ -27,6 +27,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Eye, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import { relative, usd } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface PreviewRow {
   id: number;
@@ -203,9 +204,11 @@ function PendingPreviewRow({
               {row.itemType}
             </Badge>
             {row.confidence != null && (
-              <span className="text-micro text-muted-foreground tabular-nums">
-                {row.confidence}% confidence
-              </span>
+              <DataProvenanceChip
+                source={row.agentCodename}
+                confidence={row.confidence}
+                classification="modeled"
+              />
             )}
             {row.estimatedImpactCents != null && (
               <span className="text-micro text-muted-foreground tabular-nums">

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { DataProvenanceChip, type DataClassification } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -28,14 +28,21 @@ interface RecordingFeeInfo {
   transferTaxPer1000: number;
   transferTaxPaidBy: "buyer" | "seller" | "split" | "none";
   specialNotes: string[];
-  source: string;
+  source: "database" | "state_default" | "estimate";
   confidence: "high" | "medium" | "low";
 }
 
-const CONFIDENCE_COLORS = {
-  high: "default" as const,
-  medium: "secondary" as const,
-  low: "outline" as const,
+/**
+ * Canonical truth-state per fee-data source (shared/dataClassification.ts):
+ * a county-specific fee of record is authoritative; a state-level default or
+ * the generic fallback is a data-backed estimate. The server's high/medium/low
+ * tier is derived 1:1 from `source`, so this map carries the same information
+ * without inventing a percentage that was never measured.
+ */
+const SOURCE_CLASSIFICATION: Record<RecordingFeeInfo["source"], DataClassification> = {
+  database: "authoritative",
+  state_default: "estimate",
+  estimate: "estimate",
 };
 
 export default function ClosingCostsPage() {
@@ -195,12 +202,10 @@ export default function ClosingCostsPage() {
                   <MapPin className="w-4 h-4" aria-hidden="true" />
                   {feeInfo.state} — {feeInfo.county}
                 </CardTitle>
-                <Badge
-                  variant={CONFIDENCE_COLORS[feeInfo.confidence]}
-                  aria-label={`${feeInfo.confidence} confidence`}
-                >
-                  {feeInfo.confidence} confidence
-                </Badge>
+                <DataProvenanceChip
+                  source={feeInfo.source.replace(/_/g, " ")}
+                  classification={SOURCE_CLASSIFICATION[feeInfo.source]}
+                />
               </div>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-2 text-sm">
@@ -216,10 +221,6 @@ export default function ClosingCostsPage() {
                 <div>
                   <dt className="text-muted-foreground">Paid by</dt>
                   <dd className="font-medium capitalize">{feeInfo.transferTaxPaidBy}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Source</dt>
-                  <dd className="font-medium">{feeInfo.source.replace(/_/g, " ")}</dd>
                 </div>
               </dl>
               {feeInfo.specialNotes.length > 0 && (

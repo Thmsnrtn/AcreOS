@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -68,7 +69,14 @@ interface BatchTraceResponse {
   message?: string;
 }
 
-const pct = (confidence: number) => `${Math.round(confidence * 100)}%`;
+/**
+ * Provider match confidences arrive 0-1; the canonical chip takes 0-100.
+ * Classification is "estimate": a skip-trace contact is a data-backed match
+ * from broker records with a provider-reported score — not an authoritative
+ * system-of-record. tracedAt is fetch time, not source-update time, so no
+ * sourceAsOf (same reasoning as skip-trace-panel.tsx).
+ */
+const toChipConfidence = (confidence: number) => Math.round(confidence * 100);
 
 /**
  * FCRA §1681b permissible purposes accepted by the server's skip-trace gate
@@ -365,7 +373,12 @@ export default function SkipTracingPage() {
                             <dd className="flex items-center gap-2">
                               <a href={`tel:${p.number.replace(/[^\d+]/g, '')}`} className="tabular-nums underline-offset-2 hover:underline">{p.number}</a>
                               {p.lineType && <span className="capitalize">{p.lineType}</span>}
-                              <span className="tabular-nums">{pct(p.confidence)} confidence</span>
+                              <DataProvenanceChip
+                                source={r.source.replace(/_/g, " ")}
+                                classification="estimate"
+                                confidence={toChipConfidence(p.confidence)}
+                                className="capitalize"
+                              />
                               {p.doNotCall && <Badge variant="destructive" className="text-[10px]">Do not call</Badge>}
                             </dd>
                           </div>
@@ -376,7 +389,12 @@ export default function SkipTracingPage() {
                             <dt className="sr-only">Email</dt>
                             <dd className="flex items-center gap-2">
                               <a href={`mailto:${e.address}`} className="underline-offset-2 hover:underline">{e.address}</a>
-                              <span className="tabular-nums">{pct(e.confidence)} confidence</span>
+                              <DataProvenanceChip
+                                source={r.source.replace(/_/g, " ")}
+                                classification="estimate"
+                                confidence={toChipConfidence(e.confidence)}
+                                className="capitalize"
+                              />
                             </dd>
                           </div>
                         ))}

@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { usd, formatDate } from "@/lib/format";
 import { Search, MapPin, Loader2, CheckCircle2, Database, Trees, Droplets, Zap } from "lucide-react";
 
@@ -245,9 +246,15 @@ export default function PropertyEnrichmentPage() {
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Source: {result.source.replace(/_/g, ' ')} · Enriched <span className="tabular-nums">{new Date(result.enrichedAt).toLocaleString()}</span>
-          </p>
+          {/* Provenance: the chip carries the source label; `enrichedAt` is when
+              WE fetched (not when the source last updated), so it stays beside
+              the chip rather than being passed as `sourceAsOf`. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <DataProvenanceChip source={result.source.replace(/_/g, " ")} />
+            <span>
+              Enriched <span className="tabular-nums">{new Date(result.enrichedAt).toLocaleString()}</span>
+            </span>
+          </div>
         </div>
       )}
     </PageShell>

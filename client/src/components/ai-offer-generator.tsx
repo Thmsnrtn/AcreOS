@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Property } from "@shared/schema";
 import { useProviderStatus } from "@/hooks/use-provider-status";
 import { Verbs } from "@/lib/labels";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface OfferSuggestion {
   strategyName: string;
@@ -247,12 +248,6 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     }
   };
 
-  const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 75) return <Badge variant="default" className="bg-acr-pos">High Confidence</Badge>;
-    if (confidence >= 50) return <Badge variant="secondary">Medium Confidence</Badge>;
-    return <Badge variant="outline">Lower Confidence</Badge>;
-  };
-
   const getImpactIcon = (impact: "positive" | "negative" | "neutral") => {
     if (impact === "positive") return <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
     if (impact === "negative") return <TrendingDown className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
@@ -405,19 +400,17 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <span className="font-medium">{suggestion.strategyName}</span>
-                                {getConfidenceBadge(suggestion.confidence)}
+                                <DataProvenanceChip
+                                  source="AI offer model"
+                                  confidence={suggestion.confidence}
+                                  classification="modeled"
+                                />
                               </div>
                               <div className="text-2xl font-bold text-primary" data-testid={`text-offer-amount-${index}`}>
                                 {formatCurrency(suggestion.offerAmount)}
                               </div>
                               <div className="text-sm text-muted-foreground mt-1">
                                 {suggestion.marketValuePercent}% of market value
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">Confidence</div>
-                              <div className="text-lg font-semibold" data-testid={`text-confidence-${index}`}>
-                                {suggestion.confidence}%
                               </div>
                             </div>
                           </div>
@@ -719,13 +712,11 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                   <div className={`text-5xl font-bold ${getProbabilityColor(acceptanceData.probability)}`} data-testid="text-acceptance-probability">
                     {acceptanceData.probability}%
                   </div>
-                  <Badge 
-                    variant={acceptanceData.confidenceLevel === "high" ? "default" : "secondary"}
+                  <DataProvenanceChip
+                    source={`AI acceptance model · ${acceptanceData.confidenceLevel.charAt(0).toUpperCase() + acceptanceData.confidenceLevel.slice(1)} confidence`}
+                    classification="modeled"
                     className="mt-2"
-                    data-testid="badge-confidence-level"
-                  >
-                    {acceptanceData.confidenceLevel.charAt(0).toUpperCase() + acceptanceData.confidenceLevel.slice(1)} Confidence
-                  </Badge>
+                  />
                 </div>
 
                 <div className="bg-muted/30 p-4 rounded-md">

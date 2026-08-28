@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { relative } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import {
   useAgentNegotiations,
   useDelegationTokens,
@@ -445,9 +446,13 @@ export default function FounderGovernancePage() {
                             {item.resolvedBy ?? (item.resolvedAt ? "Resolved" : "Pending")}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-                          Confidence: {item.confidence != null ? `${Math.round(item.confidence * 100)}%` : "N/A"} ·{" "}
-                          Layer: {item.layer ?? "unknown"}
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums flex items-center gap-2 flex-wrap">
+                          <DataProvenanceChip
+                            source="Confidence cascade"
+                            classification="modeled"
+                            confidence={item.confidence != null ? item.confidence * 100 : null}
+                          />
+                          <span>Layer: {item.layer ?? "unknown"}</span>
                         </p>
                         {item.layers && Array.isArray(item.layers) && (
                           <ul className="mt-2 flex gap-1 flex-wrap" aria-label="Resolution layers">

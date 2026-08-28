@@ -7,6 +7,7 @@ import {
   TrendingUp, Bot, DollarSign, Target,
 } from "lucide-react";
 import { relative, usd } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
@@ -219,7 +220,11 @@ export default function AgentPerformance() {
                         )}
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                           {strategy.confidence != null && (
-                            <span>Confidence: <span className="tabular-nums">{Math.round(strategy.confidence * 100)}%</span></span>
+                            <DataProvenanceChip
+                              source="Adaptive strategy model"
+                              classification="modeled"
+                              confidence={strategy.confidence * 100}
+                            />
                           )}
                           {strategy.adoptedBy && (
                             <span>Adopted by: {Array.isArray(strategy.adoptedBy) ? strategy.adoptedBy.join(", ") : strategy.adoptedBy}</span>

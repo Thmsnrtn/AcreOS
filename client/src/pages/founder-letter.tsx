@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -263,9 +264,11 @@ function LetterReplyPanel({ monthKey }: { monthKey: string }) {
           <div className="space-y-3" data-testid="letter-reply-parse-card">
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{KIND_LABELS[pending.parse.kind]}</Badge>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {Math.round(pending.parse.confidence * 100)}% confident
-              </span>
+              <DataProvenanceChip
+                source="Solene's parse"
+                classification="modeled"
+                confidence={Math.round(pending.parse.confidence * 100)}
+              />
             </div>
             <p className="text-sm text-foreground leading-relaxed">{pending.parse.restatement}</p>
             <p className="text-xs text-muted-foreground">

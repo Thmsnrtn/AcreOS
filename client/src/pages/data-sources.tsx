@@ -37,8 +37,9 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { formatDate } from "@/lib/format";
-
-type Classification = "authoritative" | "estimate" | "modeled" | "unknown";
+// THE canonical truth-state vocabulary — never re-declared locally, so this
+// legend can't drift from the labels the product actually renders.
+import type { DataClassification } from "@shared/dataClassification";
 
 interface DataSource {
   source: string;
@@ -55,7 +56,7 @@ interface DataSource {
 }
 
 interface ClassificationLegendItem {
-  id: Classification;
+  id: DataClassification;
   label: string;
   meaning: string;
 }
@@ -72,7 +73,7 @@ interface DataSourcesResponse {
   lastUpdated: string;
 }
 
-const LEGEND_ICON: Record<Classification, typeof CheckCircle2> = {
+const LEGEND_ICON: Record<DataClassification, typeof CheckCircle2> = {
   authoritative: CheckCircle2,
   estimate: Calculator,
   modeled: Sparkles,

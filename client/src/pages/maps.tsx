@@ -635,9 +635,13 @@ function PropertyIntelligencePanel({
                 )}
               </div>
               {intel.estimatedValueIsListPrice && (
-                <p className="text-micro text-muted-foreground mt-0.5">
-                  Your list price · run an AVM for a modeled estimate
-                </p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  {/* User-entered value: source label only, no classification. */}
+                  <DataProvenanceChip source="Your list price" />
+                  <span className="text-micro text-muted-foreground">
+                    · run an AVM for a modeled estimate
+                  </span>
+                </div>
               )}
               <div className="flex items-center gap-2 mt-0.5">
                 {intel.pricePerAcre && (
@@ -645,16 +649,13 @@ function PropertyIntelligencePanel({
                     {usd(intel.pricePerAcre, { noCents: true })}/ac
                   </span>
                 )}
-                {intel.valueConfidence !== undefined && (
-                  <div className="flex items-center gap-1">
-                    <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${intel.valueConfidence}%` }}
-                      />
-                    </div>
-                    <span className="text-micro text-muted-foreground">{intel.valueConfidence}% conf</span>
-                  </div>
+                {intel.source && (
+                  <DataProvenanceChip
+                    source={intel.source}
+                    sourceAsOf={intel.sourceAsOf}
+                    confidence={intel.valueConfidence}
+                    classification={intel.classification}
+                  />
                 )}
               </div>
               {acres > 0 && (

@@ -5,9 +5,11 @@
  * SSURGO dominant soil classes, USGS 3DEP elevation bands) as a band of
  * source-stamped cards. Shared by both the state×vertical primer
  * (state-vertical.tsx) and the county pages (county.tsx) so every public
- * data figure renders the SAME way: value + label + inline named source +
- * `asOf` date. That inline provenance is the truth/voice gate made visible —
- * no bare number ever reaches a stranger without a source next to it.
+ * data figure renders the SAME way: value + label + the canonical
+ * DataProvenanceChip (named source + `asOf` date). That inline provenance is
+ * the truth/voice gate made visible — no bare number ever reaches a stranger
+ * without a source next to it. No classification or confidence is asserted:
+ * LearnDataFigure carries neither, and inventing one is forbidden.
  *
  * Voice doctrine (docs/internal/marketing-os/02-voice-linter.md §3.4):
  * every numeric data claim carries a named source. This component enforces
@@ -17,6 +19,7 @@
 
 import { ExternalLink } from "lucide-react";
 
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { Card, CardContent } from "@/components/ui/card";
 import type { LearnDataSnapshot } from "./types";
 
@@ -58,19 +61,20 @@ export function DataSnapshotBand({ snapshot, placeName }: DataSnapshotBandProps)
               )}
               <p className="text-xs text-muted-foreground">
                 {fig.sourceUrl ? (
+                  // The chip has no URL prop, so the deep link to the source
+                  // dataset is preserved by wrapping the chip in the anchor.
                   <a
                     href={fig.sourceUrl}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="underline hover:text-foreground inline-flex items-center gap-1"
                   >
-                    {fig.source}
+                    <DataProvenanceChip source={fig.source} sourceAsOf={fig.asOf} />
                     <ExternalLink className="w-3 h-3" aria-hidden="true" />
                   </a>
                 ) : (
-                  <span className="font-medium text-foreground">{fig.source}</span>
+                  <DataProvenanceChip source={fig.source} sourceAsOf={fig.asOf} />
                 )}
-                <span> · as of {fig.asOf}</span>
               </p>
             </CardContent>
           </Card>

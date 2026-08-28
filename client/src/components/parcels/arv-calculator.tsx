@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -145,14 +145,17 @@ export function ArvCalculator({ propertyId, rehabId }: { propertyId: number; reh
             <CardTitle className="text-base flex items-center gap-2">
               <Calculator className="w-4 h-4" aria-hidden="true" /> Current ARV
               {current.data.arv.confidence && (
-                <Badge variant={current.data.arv.confidence === "high" ? "default" : current.data.arv.confidence === "medium" ? "outline" : "destructive"} className="text-xs">
+                <span className="text-xs font-normal text-muted-foreground">
                   {current.data.arv.confidence} confidence
-                </Badge>
+                </span>
               )}
             </CardTitle>
-            <CardDescription>
-              Based on {current.data.arv.compsUsed.length} comp{current.data.arv.compsUsed.length === 1 ? "" : "s"} ·
-              {current.data.arv.subjectSqft ? ` ${current.data.arv.subjectSqft} sqft subject` : " sqft not specified"}
+            <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>
+                Based on {current.data.arv.compsUsed.length} comp{current.data.arv.compsUsed.length === 1 ? "" : "s"} ·
+                {current.data.arv.subjectSqft ? ` ${current.data.arv.subjectSqft} sqft subject` : " sqft not specified"}
+              </span>
+              <DataProvenanceChip source="Your comps" classification="estimate" />
             </CardDescription>
           </CardHeader>
           <CardContent>

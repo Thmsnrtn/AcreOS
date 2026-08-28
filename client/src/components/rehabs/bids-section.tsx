@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 const CATEGORIES = [
   "demolition", "framing", "roof", "siding", "windows",
@@ -282,9 +283,11 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
                   </Button>
                 </div>
                 {extractConfidence !== null && (
-                  <Badge variant={extractConfidence >= 0.7 ? "default" : "outline"} className="text-xs">
-                    {Math.round(extractConfidence * 100)}% confidence
-                  </Badge>
+                  <DataProvenanceChip
+                    source="LLM extraction"
+                    classification="modeled"
+                    confidence={Math.round(extractConfidence * 100)}
+                  />
                 )}
               </div>
               {extractNotes && (

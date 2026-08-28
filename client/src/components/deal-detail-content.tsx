@@ -49,6 +49,7 @@ import {
   Sparkles, Flame, Snowflake, Minus, CheckCircle, X, Banknote, ArrowRight,
 } from "lucide-react";
 import { CarryNoteDialog } from "@/components/carry-note-dialog";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import type { Deal, Property, DealChecklistItem, DocumentPackage, Note } from "@shared/schema";
 
 type DealWithProperty = Deal & { property?: Property };
@@ -164,12 +165,6 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
         },
       });
     }
-  };
-  
-  const getConfidenceBadgeColor = (confidence: number) => {
-    if (confidence >= 80) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos";
-    if (confidence >= 50) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn";
-    return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg";
   };
   
   const getMarketConditionIcon = (condition: 'hot' | 'neutral' | 'cold') => {
@@ -436,9 +431,11 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                                 </div>
                                 
                                 <div className="flex items-center justify-center gap-3">
-                                  <Badge className={getConfidenceBadgeColor(pricingRecommendation.confidence)} data-testid="badge-confidence">
-                                    {pricingRecommendation.confidence.toFixed(0)}% confidence
-                                  </Badge>
+                                  <DataProvenanceChip
+                                    source="AI pricing model"
+                                    confidence={pricingRecommendation.confidence}
+                                    classification="modeled"
+                                  />
                                   <div className="flex items-center gap-1.5">
                                     {getMarketConditionIcon(pricingRecommendation.marketCondition)}
                                     <span className="text-xs text-muted-foreground">

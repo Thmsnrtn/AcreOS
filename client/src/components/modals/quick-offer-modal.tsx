@@ -24,11 +24,13 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Sparkles, Send, Loader2 } from "lucide-react";
 import { Verbs } from "@/lib/labels";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface AtlasSuggestion {
   recommendedOfferTotal: number;
   baseOfferTotal: number;
-  confidence: "low" | "medium" | "high";
+  /** Tier the model reported; null when the API returned none — never defaulted. */
+  confidence: "low" | "medium" | "high" | null;
   rationale?: string;
 }
 
@@ -60,7 +62,7 @@ export function QuickOfferModal() {
       return {
         recommendedOfferTotal: data.recommendedOfferTotal ?? data.suggestedOffer ?? 0,
         baseOfferTotal: data.baseOfferTotal ?? data.recommendedOfferTotal ?? 0,
-        confidence: data.confidence ?? "medium",
+        confidence: data.confidence ?? null,
         rationale: data.rationale,
       };
     },
@@ -160,10 +162,19 @@ export function QuickOfferModal() {
               data-testid="input-quick-offer-amount"
             />
             {suggestion && (
-              <p className="text-xs text-muted-foreground">
-                Suggested band: ${suggestion.baseOfferTotal.toLocaleString()}–
-                ${suggestion.recommendedOfferTotal.toLocaleString()} ·{" "}
-                <span className="capitalize">{suggestion.confidence}</span> confidence
+              <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <span>
+                  Suggested band: ${suggestion.baseOfferTotal.toLocaleString()}–
+                  ${suggestion.recommendedOfferTotal.toLocaleString()}
+                </span>
+                <DataProvenanceChip
+                  source={
+                    suggestion.confidence
+                      ? `Pax analysis · ${suggestion.confidence.charAt(0).toUpperCase() + suggestion.confidence.slice(1)} confidence`
+                      : "Pax analysis"
+                  }
+                  classification="modeled"
+                />
               </p>
             )}
           </div>

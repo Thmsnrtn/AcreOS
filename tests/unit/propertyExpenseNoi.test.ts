@@ -283,17 +283,22 @@ describe("the route wires the measured op-ex correctly", () => {
 
 describe("the client labels the op-ex honestly", () => {
   it("drops the qualifier ONLY for measured AND full coverage; thin coverage shows N/12 mo", () => {
-    expect(CLIENT).toContain("function opExQualifier");
-    // Full coverage → bare number; thin coverage → the factual month span.
+    // 2026-08-28: the string-suffix opExQualifier became the OpExProvenance
+    // component rendering the canonical DataProvenanceChip (epistemic-UX
+    // step-3 migration). The INVARIANT is unchanged and re-pinned against the
+    // new shape: full measured coverage renders nothing, thin coverage renders
+    // the factual month span, and assumptions are labeled estimates — never a
+    // bare number, never an invented percentage.
+    expect(CLIENT).toContain("function OpExProvenance");
     expect(CLIENT).toContain("isMeasuredCoverageComplete(monthsCovered)");
     expect(CLIENT).toMatch(/\(\$\{covered\}\/\$\{TRAILING_12_WINDOW_MONTHS\} mo\)/);
-    expect(CLIENT).toContain('if (source === "ratio_override") return " (assumed ratio)";');
-    expect(CLIENT).toContain('return " (est.)";');
+    expect(CLIENT).toContain('source === "ratio_override" ? "Your assumed ratio" : "40% op-ex rule"');
+    expect(CLIENT).toContain('classification="estimate"');
   });
 
   it("feeds the per-property coverage (opExMonthsCovered) into the qualifier", () => {
     expect(CLIENT).toContain("opExMonthsCovered");
-    expect(CLIENT).toContain("opExQualifier(p.opExSource, p.opExMonthsCovered)");
+    expect(CLIENT).toContain("monthsCovered={p.opExMonthsCovered}");
   });
 
   it("a 1-month (thin) measured property renders a partial marker, never a bare number", () => {

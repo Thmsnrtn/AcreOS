@@ -11,6 +11,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Search, MapPin, FileText, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface ZoningResult {
   address: string;
@@ -28,6 +29,8 @@ interface ZoningResult {
   permitRequired: boolean;
   source: string;
   asOf: string;
+  /** 0–100, scaled from the provider's 0–1 score. Absent when not reported. */
+  confidence?: number;
 }
 
 export default function ZoningLookupPage() {
@@ -65,6 +68,7 @@ export default function ZoningLookupPage() {
         permitRequired: typeof data.permitRequired === "boolean" ? data.permitRequired : false,
         source: data.source ?? "unknown",
         asOf: data.asOf ?? new Date().toISOString(),
+        confidence: typeof data.confidence === "number" ? Math.round(data.confidence * 100) : undefined,
       });
     },
     onError: () =>
@@ -226,9 +230,21 @@ export default function ZoningLookupPage() {
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Source: {result.source.replace(/_/g, ' ')} · As of <span className="tabular-nums">{formatDate(result.asOf)}</span>
-            </p>
+            {/* `asOf` is when WE fetched (zoningService reports no source
+                freshness), so it stays beside the chip rather than being
+                passed as `sourceAsOf`. Zoneomics/ATTOM relay the county's
+                zoning record (provider-reported fact → authoritative); any
+                other source is the no-data placeholder → unknown. */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <DataProvenanceChip
+                source={result.source.replace(/_/g, ' ')}
+                confidence={result.confidence}
+                classification={result.source === "zoneomics" || result.source === "attom" ? "authoritative" : "unknown"}
+              />
+              <span>
+                Checked <span className="tabular-nums">{formatDate(result.asOf)}</span>
+              </span>
+            </div>
           </CardContent>
         </Card>
       )}

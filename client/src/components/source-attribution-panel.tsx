@@ -10,6 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import {
   Collapsible,
   CollapsibleContent,
@@ -206,12 +207,11 @@ export function SourceAttributionPanel({
 
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="flex flex-col items-end gap-0.5">
-                        <Badge
-                          variant="secondary"
-                          className="text-micro px-1.5 py-0"
-                        >
-                          {field.source}
-                        </Badge>
+                        {/* Canonical source attribution. No sourceAsOf: this
+                            panel only knows fetchedAt (when WE fetched), and
+                            the chip's sourceAsOf is when the SOURCE last
+                            updated — do not pass fetch time as source time. */}
+                        <DataProvenanceChip source={field.source} />
                         <span className="flex items-center gap-1 text-micro text-muted-foreground">
                           <Clock className="h-2.5 w-2.5" />
                           {getRelativeTime(field.fetchedAt)}

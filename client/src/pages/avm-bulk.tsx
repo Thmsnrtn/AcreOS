@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface BulkResult {
   address: string;
@@ -316,13 +317,11 @@ export default function AvmBulk() {
                       <TableCell className="tabular-nums">{r.status === "success" ? usd(r.pricePerAcre) : "—"}</TableCell>
                       <TableCell>
                         {r.status === "success" && (
-                          <Badge
-                            variant={r.confidence >= 80 ? "default" : r.confidence >= 60 ? "secondary" : "destructive"}
-                            className="tabular-nums"
-                            aria-label={`Confidence ${r.confidence}%${r.confidence >= 80 ? ", high" : r.confidence >= 60 ? ", medium" : ", low"}`}
-                          >
-                            {r.confidence}%
-                          </Badge>
+                          <DataProvenanceChip
+                            source="AVM"
+                            classification="estimate"
+                            confidence={r.confidence}
+                          />
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">

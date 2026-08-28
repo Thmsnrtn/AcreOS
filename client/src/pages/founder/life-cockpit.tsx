@@ -45,6 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import {
   Select,
   SelectContent,
@@ -466,12 +467,21 @@ function DraftReturnPanel({ taxYear }: { taxYear: number }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Honesty banner — always visible */}
+        {/* Honesty banner — always visible; truth-state carried by the canonical chip */}
         <div className="rounded-lg border border-acr-warn/40 bg-acr-warn/5 p-3 text-sm">
-          <p className="font-semibold flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-acr-warn" aria-hidden />
-            Estimate — review &amp; verify before filing
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-acr-warn" aria-hidden />
+              Estimate — review &amp; verify before filing
+            </p>
+            {draft && (
+              <DataProvenanceChip
+                source="AcreOS tax engine"
+                sourceAsOf={draft.generatedAt}
+                classification="estimate"
+              />
+            )}
+          </div>
           <p className="text-muted-foreground mt-1 text-xs">
             {draft?.disclaimer ??
               "These figures are a draft to help you transcribe into IRS Free File Fillable Forms / MassTaxConnect or hand to a CPA. AcreOS Life-Cockpit is self-prepared tax software, not tax advice."}

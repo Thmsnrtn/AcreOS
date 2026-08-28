@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface PriceRecommendation {
   id: number;
@@ -53,20 +54,6 @@ interface AccuracyMetrics {
 function formatPrice(val: string | number) {
   const n = typeof val === "string" ? parseFloat(val) : val;
   return usd(n);
-}
-
-function confidenceColor(conf: string) {
-  const c = parseFloat(conf);
-  if (c >= 0.8) return "text-acr-pos";
-  if (c >= 0.6) return "text-acr-warn";
-  return "text-acr-neg";
-}
-
-function confidenceLabel(conf: string) {
-  const c = parseFloat(conf);
-  if (c >= 0.8) return "high";
-  if (c >= 0.6) return "medium";
-  return "low";
 }
 
 function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
@@ -109,8 +96,8 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
     counter_offer: <Target className="w-4 h-4 text-acr-warn" aria-hidden="true" />,
   };
 
-  const confPct = Math.round(parseFloat(rec.confidence) * 100);
-  const confLabel = confidenceLabel(rec.confidence);
+  const confRaw = Math.round(parseFloat(rec.confidence) * 100);
+  const confPct = Number.isFinite(confRaw) ? confRaw : null;
 
   return (
     <Card>
@@ -120,13 +107,11 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
             {typeIcon[rec.recommendationType] || <DollarSign className="w-4 h-4" aria-hidden="true" />}
             <CardTitle className="text-sm">{typeLabel[rec.recommendationType] || rec.recommendationType}</CardTitle>
           </div>
-          <Badge
-            variant="outline"
-            className={`text-xs tabular-nums ${confidenceColor(rec.confidence)}`}
-            aria-label={`Confidence ${confPct}%, ${confLabel}`}
-          >
-            {confPct}% confident
-          </Badge>
+          <DataProvenanceChip
+            source="Price model"
+            confidence={confPct}
+            classification="modeled"
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ContentReveal } from "@/components/ContentReveal";
 import { ClearedEmpty } from "@/components/empty-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
 import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
@@ -108,8 +109,9 @@ export interface DecisionItem {
   actionUrl: string;
   rank: number; // for sort; lower = higher priority
   // Optional Pax model-confidence (0..1). Only set for Pax-sourced rows;
-  // surfaces in the merged left-edge pill ("Pax · 87%") and drives the
-  // ConfidenceBar + ConfidenceSparkline directly under the title.
+  // surfaces on the canonical DataProvenanceChip beside the origin pill
+  // (classification "modeled") and drives the ConfidenceBar +
+  // ConfidenceSparkline directly under the title.
   confidence?: number | null;
   // Optional chronological history of confidences (oldest first) for this
   // item's class — fed into the sparkline. The server `/api/today` does
@@ -506,25 +508,25 @@ export function DecisionQueue({
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          {/* Merged source + confidence pill (one Badge). */}
+                          {/* Origin pill: which subsystem raised this item.
+                              Epistemic standing (Pax model confidence) lives
+                              on the canonical DataProvenanceChip beside it —
+                              never merged into the category pill. */}
                           <Badge
                             variant="secondary"
                             className={`text-xs border-transparent inline-flex items-center gap-1 ${sourcePillStyles[item.source]}`}
-                            aria-label={
-                              hasConfidence
-                                ? `${sourcePillLabel[item.source]}, confidence ${confidencePct}%`
-                                : sourcePillLabel[item.source]
-                            }
+                            aria-label={sourcePillLabel[item.source]}
                           >
                             <SourceIcon className="w-3 h-3" aria-hidden={true} />
                             <span>{sourcePillLabel[item.source]}</span>
-                            {hasConfidence && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span className="tabular-nums">{confidencePct}%</span>
-                              </>
-                            )}
                           </Badge>
+                          {hasConfidence && (
+                            <DataProvenanceChip
+                              source="Pax"
+                              classification="modeled"
+                              confidence={confidencePct}
+                            />
+                          )}
                           {auto && (
                             <span className="text-xs text-acr-pos inline-flex items-center gap-1">
                               <Zap className="w-3 h-3" aria-hidden="true" />

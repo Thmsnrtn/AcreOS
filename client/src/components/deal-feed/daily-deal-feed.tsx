@@ -300,21 +300,25 @@ function HeroDealCard({
             </Button>
           </div>
 
-          {/* AI Reasoning — why this deal was ranked #1 */}
-          <AIReasoning
-            feature="recommendation"
-            decision={`Ranked #1 with composite score ${scores.composite ?? "—"}`}
-            reasoning={matchReason}
-            // No composite, no confidence claim about the ranking.
-            confidence={scores.composite === null ? 0 : Math.min(95, Math.round(scores.composite * 1.2))}
-            inputs={{
-              landCredit: scores.landCredit,
-              radarScore: scores.radarScore,
-              ownerMotivation: scores.ownerMotivation,
-              countyOpportunity: scores.countyOpportunity,
-              estimatedValue: financials.estimatedValue,
-            }}
-          />
+          {/* AI Reasoning — why this deal was ranked #1. Confidence is the
+              server-measured weightCoverage (share of the model's weight
+              backed by a real pillar score) — never a rescaled deal score.
+              No measured basis, no confidence claim about the ranking. */}
+          {scores.basis != null && (
+            <AIReasoning
+              feature="recommendation"
+              decision={`Ranked #1 with composite score ${scores.composite ?? "—"}`}
+              reasoning={matchReason}
+              confidence={Math.round(scores.basis.weightCoverage * 100)}
+              inputs={{
+                landCredit: scores.landCredit,
+                radarScore: scores.radarScore,
+                ownerMotivation: scores.ownerMotivation,
+                countyOpportunity: scores.countyOpportunity,
+                estimatedValue: financials.estimatedValue,
+              }}
+            />
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -477,19 +481,24 @@ function DealCard({
 
             <p className="text-xs text-muted-foreground">{matchReason}</p>
 
-            {/* AI Reasoning — collapsed by default */}
-            <AIReasoning
-              feature="recommendation"
-              decision={`Composite score: ${scores.composite ?? "—"}`}
-              reasoning={matchReason}
-              confidence={scores.composite === null ? 0 : Math.min(95, Math.round(scores.composite * 1.2))}
-              inputs={{
-                landCredit: scores.landCredit,
-                radarScore: scores.radarScore,
-                ownerMotivation: scores.ownerMotivation,
-              }}
-              className="mt-1"
-            />
+            {/* AI Reasoning — collapsed by default. Confidence is the
+                server-measured weightCoverage (share of the model's weight
+                backed by a real pillar score) — never a rescaled deal score.
+                No measured basis, no confidence claim about the ranking. */}
+            {scores.basis != null && (
+              <AIReasoning
+                feature="recommendation"
+                decision={`Composite score: ${scores.composite ?? "—"}`}
+                reasoning={matchReason}
+                confidence={Math.round(scores.basis.weightCoverage * 100)}
+                inputs={{
+                  landCredit: scores.landCredit,
+                  radarScore: scores.radarScore,
+                  ownerMotivation: scores.ownerMotivation,
+                }}
+                className="mt-1"
+              />
+            )}
           </div>
         </CardContent>
       </Card>

@@ -15,7 +15,7 @@ import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -297,16 +297,17 @@ function ProposalRow({
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <Badge variant="secondary" className="text-micro">
-              {proposal.proposedBy}
-            </Badge>
+            <DataProvenanceChip
+              source={proposal.proposedBy}
+              confidence={proposal.confidence}
+              classification="modeled"
+            />
             <span
               className={`text-micro px-1.5 py-0.5 rounded capitalize ${catColor}`}
               aria-label={`Category: ${proposal.category}`}
             >
               {proposal.category}
             </span>
-            <span className="text-micro text-muted-foreground tabular-nums">{proposal.confidence}% confidence</span>
             {proposal.estimatedImpactCents != null && (
               <span className="text-micro text-muted-foreground tabular-nums" aria-label={`Estimated impact ${usd(proposal.estimatedImpactCents / 100)}`}>
                 {usd(proposal.estimatedImpactCents / 100)} impact

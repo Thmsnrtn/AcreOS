@@ -38,7 +38,7 @@
  * quotes no escrow, and moves no funds.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { DataProvenanceChip, type DataClassification } from "@/components/data-provenance-chip";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
@@ -264,12 +265,35 @@ const SOURCE_LABEL: Record<FigureSource, string> = {
   not_set: "Not set — excluded",
 };
 
-function SourceBadge({ source }: { source: FigureSource }) {
-  const variant = source === "org_rule" || source === "operator_input" ? "secondary" : "outline";
+/**
+ * Canonical truth-state per figure source (shared/dataClassification.ts).
+ * The org's own numbers — its rules, typed inputs, the rehab budget — are
+ * user-entered, so they carry their source label with NO classification. A
+ * saved ARV is a comp-backed derivation ("estimate"). An unset figure has no
+ * value ("unknown") and stays excluded, never defaulted. The platform default
+ * is a house heuristic, not a data-backed derivation, so its label carries
+ * the word "assumption" rather than a classification it doesn't have. No
+ * source here ever gets a percentage — none was measured.
+ */
+const SOURCE_CLASSIFICATION: Partial<Record<FigureSource, DataClassification>> = {
+  saved_arv: "estimate",
+  not_set: "unknown",
+};
+
+function SourceBadge({
+  source,
+  sourceAsOf,
+}: {
+  source: FigureSource;
+  /** When the underlying record was last updated (e.g. a saved ARV's calculation date). */
+  sourceAsOf?: string | null;
+}) {
   return (
-    <Badge variant={variant} className="font-normal">
-      {SOURCE_LABEL[source]}
-    </Badge>
+    <DataProvenanceChip
+      source={SOURCE_LABEL[source]}
+      sourceAsOf={sourceAsOf}
+      classification={SOURCE_CLASSIFICATION[source] ?? null}
+    />
   );
 }
 
@@ -282,7 +306,7 @@ function FigureRow({
 }: {
   label: string;
   value: string;
-  note?: string;
+  note?: ReactNode;
   strong?: boolean;
 }) {
   return (
@@ -723,11 +747,27 @@ export default function FlipAnalyzerPage() {
                   label="Saved ARV"
                   value={subject.arv ? dollars(subject.arv.arvCents) : "None on file"}
                   note={
-                    subject.arv
-                      ? `${subject.arv.compCount} comp${subject.arv.compCount === 1 ? "" : "s"}` +
-                        `${subject.arv.confidence ? ` · ${subject.arv.confidence} confidence` : ""}` +
-                        ` · calculated ${formatDate(subject.arv.calculatedAt)}`
-                      : "Nothing has been calculated for this parcel yet."
+                    subject.arv ? (
+                      // Truth-state in the canonical chip; the comp count and
+                      // the server's high/medium/low tier stay words beside
+                      // it — the tier was never a measured percentage.
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span>
+                          {subject.arv.compCount} comp
+                          {subject.arv.compCount === 1 ? "" : "s"}
+                          {subject.arv.confidence
+                            ? ` · ${subject.arv.confidence} confidence`
+                            : ""}
+                        </span>
+                        <DataProvenanceChip
+                          source="Your ARV calculation"
+                          sourceAsOf={subject.arv.calculatedAt}
+                          classification="estimate"
+                        />
+                      </span>
+                    ) : (
+                      "Nothing has been calculated for this parcel yet."
+                    )
                   }
                 />
                 <FigureRow
@@ -947,7 +987,12 @@ export default function FlipAnalyzerPage() {
                   placeholder="285,000"
                   data-testid="input-flip-arv"
                 />
-                {arvPrefilledFrom ? <SourceBadge source={arvPrefilledFrom} /> : null}
+                {arvPrefilledFrom ? (
+                  <SourceBadge
+                    source={arvPrefilledFrom}
+                    sourceAsOf={subject?.arv?.calculatedAt ?? null}
+                  />
+                ) : null}
               </div>
               <div className="space-y-1">
                 <Label htmlFor="flip-rehab">Rehab estimate ($)</Label>

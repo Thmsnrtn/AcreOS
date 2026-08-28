@@ -117,4 +117,8 @@ if (failures.length) {
   for (const f of failures) console.error(`  • ${f}`);
   process.exit(1);
 }
-console.log("[check-inline-provenance] PASS — the landscape holds; work the census down.");
+console.log(
+  Object.keys(REG.census).length > 0
+    ? "[check-inline-provenance] PASS — the landscape holds; work the census down."
+    : "[check-inline-provenance] PASS — census empty (migrated 2026-08-28); the growth-stop holds the landscape.",
+);

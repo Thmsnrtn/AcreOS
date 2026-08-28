@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ClearedEmpty } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { relative } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -168,7 +169,14 @@ function ScenarioWarRoom() {
                         <li key={i} className="text-xs flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">{p.agentCodename}</Badge>
                           <span className="text-muted-foreground truncate">{p.projection?.slice(0, 80)}…</span>
-                          <Badge variant="secondary" className="ml-auto tabular-nums" aria-label={`Confidence ${p.confidence} percent`}>{p.confidence}%</Badge>
+                          {p.confidence != null && (
+                            <DataProvenanceChip
+                              source={p.agentCodename}
+                              classification="modeled"
+                              confidence={Number(p.confidence)}
+                              className="ml-auto shrink-0"
+                            />
+                          )}
                         </li>
                       ))}
                     </ul>

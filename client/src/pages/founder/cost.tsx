@@ -39,7 +39,7 @@ import {
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -181,14 +181,12 @@ function SparkLine({ data }: { data: DailyPoint[] }) {
 }
 
 // ─── Source badge ─────────────────────────────────────────────────────────────
+// Only the "estimated" lane carries an epistemic caveat; the measured lanes
+// (ai_telemetry, cost_optimizer) explain themselves in the Note column.
 
 function SourceBadge({ source }: { source: VendorLine["source"] }) {
   if (source === "estimated") {
-    return (
-      <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted">
-        estimated
-      </Badge>
-    );
+    return <DataProvenanceChip source="Estimated" classification="estimate" />;
   }
   return null;
 }

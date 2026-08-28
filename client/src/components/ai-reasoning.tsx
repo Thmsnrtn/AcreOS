@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { ChevronDown, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { motion, AnimatePresence } from "framer-motion";
 import { collapsibleContent } from "@/lib/animations";
 
@@ -22,23 +22,24 @@ interface AIReasoningProps {
 export function AIReasoning({ feature, decision, reasoning, confidence, inputs, className }: AIReasoningProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const confidenceColor = confidence >= 80 ? "text-acr-pos" : confidence >= 60 ? "text-acr-warn" : "text-acr-neg";
-
   return (
     <div className={cn("border rounded-card overflow-hidden", className)}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
         aria-expanded={expanded}
-        aria-label={`AI reasoning for ${feature}`}
+        aria-label={`AI reasoning for ${feature}, ${Math.round(confidence)} percent model confidence`}
       >
         <Brain className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs text-muted-foreground flex-1">
           Why this {feature.replace(/_/g, " ")}?
         </span>
-        <Badge variant="outline" className={cn("text-micro", confidenceColor)}>
-          {confidence}% confident
-        </Badge>
+        <DataProvenanceChip
+          source="AcreOS AI"
+          confidence={confidence}
+          classification="modeled"
+          className="shrink-0"
+        />
         <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", expanded && "rotate-180")} />
       </button>
 

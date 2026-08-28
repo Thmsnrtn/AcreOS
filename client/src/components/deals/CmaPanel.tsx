@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { usd } from "@/lib/format";
 
 interface CmaComp {
@@ -189,8 +190,12 @@ function CmaResult({
                 Range {usd(valuation.low, { noCents: true })} – {usd(valuation.high, { noCents: true })}
               </span>
             )}
-            {valuation.score !== null && <span>Confidence {valuation.score}/100</span>}
-            {valuation.asOf && <span>As of {valuation.asOf}</span>}
+            <DataProvenanceChip
+              source="ATTOM AVM"
+              sourceAsOf={valuation.asOf}
+              confidence={valuation.score}
+              classification="estimate"
+            />
           </div>
         </div>
       ) : (
@@ -246,7 +251,14 @@ function CmaResult({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">{provenance}</p>
+      {/* Whole-result truth-state: comps + AVM are a data-backed derivation
+          (canonical vocabulary: "estimate"). The server's provenance prose is
+          kept verbatim below the chip because its second sentence is a domain
+          caveat (post-rehab condition) the chip cannot carry. */}
+      <div className="space-y-1">
+        <DataProvenanceChip source="ATTOM Data" classification="estimate" />
+        <p className="text-xs text-muted-foreground">{provenance}</p>
+      </div>
     </div>
   );
 }

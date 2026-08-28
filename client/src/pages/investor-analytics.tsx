@@ -18,7 +18,9 @@ import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Building2, Info } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -112,32 +114,61 @@ function fmtPct(fraction: number): string {
 }
 
 /**
- * The op-ex provenance + coverage qualifier appended to a measured NOI figure.
+ * The op-ex provenance + coverage qualifier rendered beside a NOI / cap-rate
+ * figure — the canonical DataProvenanceChip carrying what used to be this
+ * page's ad-hoc "(est.)" / "(assumed ratio)" / "(N/12 mo)" suffix vocabulary.
  *
  * The gate is on BOTH provenance and completeness, because a thin measured op-ex
  * is the exact honesty trap this stage has to avoid — a single month's expense,
  * divided by 12, understates cost, and shown bare it would read as a complete
  * measured cap rate:
- *   - measured_expenses, FULL trailing-12 coverage → "" (no qualifier: this is
- *     the operator's actual books for the year).
- *   - measured_expenses, THIN/partial coverage → " (N/12 mo)" — the FACTUAL span
- *     of the recorded data (the real month count), never a bare number. This is
- *     a data-span statement, not an arbitrary confidence threshold.
- *   - ratio_override → " (assumed ratio)"; assumed_ratio → " (est.)".
- * A property with NO stored operating expenses never reaches "measured_expenses",
- * so it always keeps a label — an assumption is never shown as a measurement.
+ *   - measured_expenses, FULL trailing-12 coverage → nothing (no qualifier:
+ *     this is the operator's actual books for the year).
+ *   - measured_expenses, THIN/partial coverage → chip with the FACTUAL span of
+ *     the recorded data ("Your recorded expenses (N/12 mo)" — the real month
+ *     count), never a bare number and NEVER a percentage nobody measured.
+ *     Operator-entered data carries its source label with no classification.
+ *   - ratio_override → chip "Your assumed ratio"; assumed_ratio → chip
+ *     "40% op-ex rule" — both classification "estimate": an assumption is
+ *     never shown as a measurement.
+ *   - commercial_unmeasured → the figure itself is absent ("—"), so there is
+ *     no datum to attribute a source to — the chip never fabricates one.
+ *     Plain factual text labels WHY rather than a bare "—".
+ * A property with NO stored operating expenses never reaches
+ * "measured_expenses", so it always keeps a label.
  */
-function opExQualifier(source: PropertyAnalytics["opExSource"], monthsCovered: number): string {
+function OpExProvenance({
+  source,
+  monthsCovered,
+  className,
+}: {
+  source: PropertyAnalytics["opExSource"];
+  monthsCovered: number;
+  className?: string;
+}) {
   if (source === "measured_expenses") {
-    if (isMeasuredCoverageComplete(monthsCovered)) return "";
+    if (isMeasuredCoverageComplete(monthsCovered)) return null;
     const covered = Math.max(0, Math.min(TRAILING_12_WINDOW_MONTHS, Math.trunc(monthsCovered)));
-    return ` (${covered}/${TRAILING_12_WINDOW_MONTHS} mo)`;
+    return (
+      <DataProvenanceChip
+        source={`Your recorded expenses (${covered}/${TRAILING_12_WINDOW_MONTHS} mo)`}
+        className={className}
+      />
+    );
   }
-  if (source === "ratio_override") return " (assumed ratio)";
   // A commercial property whose residential op-ex ratio does not apply: NOI/cap
-  // rate are not shown, and this labels why rather than a bare "—".
-  if (source === "commercial_unmeasured") return " (op-ex not measured)";
-  return " (est.)";
+  // rate are not shown, and this labels why rather than a bare "—". An absent
+  // value has no source, and the chip never invents an attribution.
+  if (source === "commercial_unmeasured") {
+    return <span className={cn("text-muted-foreground", className)}>(op-ex not measured)</span>;
+  }
+  return (
+    <DataProvenanceChip
+      source={source === "ratio_override" ? "Your assumed ratio" : "40% op-ex rule"}
+      classification="estimate"
+      className={className}
+    />
+  );
 }
 
 /** NOI cents → display, honestly showing "—" when op-ex is unavailable (never a fabricated zero). */
@@ -312,7 +343,10 @@ export default function InvestorAnalyticsPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-mono font-semibold tabular-nums">{fmtNoi(p.noiMonthlyCents)}</div>
-                        <div className="text-xs text-muted-foreground">NOI / mo{opExQualifier(p.opExSource, p.opExMonthsCovered)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          NOI / mo
+                          <OpExProvenance source={p.opExSource} monthsCovered={p.opExMonthsCovered} className="ml-1" />
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3 mt-2 text-xs text-muted-foreground tabular-nums">
@@ -323,7 +357,9 @@ export default function InvestorAnalyticsPage() {
                       </span>
                       <span>
                         Cap {p.capRatePct !== null ? `${p.capRatePct.toFixed(1)}%` : "—"}
-                        {p.capRatePct !== null ? opExQualifier(p.opExSource, p.opExMonthsCovered) : ""}
+                        {p.capRatePct !== null && (
+                          <OpExProvenance source={p.opExSource} monthsCovered={p.opExMonthsCovered} className="ml-1" />
+                        )}
                       </span>
                       <span>Vacancy {fmtPct(p.vacancyRate)}</span>
                       <span>Tenure {p.averageTenureMonths !== null ? `${p.averageTenureMonths} mo` : "—"}</span>
@@ -362,12 +398,11 @@ export default function InvestorAnalyticsPage() {
                         <td className="px-3 py-2 text-right tabular-nums">{fmtUsd(p.monthlyRentCollectedCents)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {fmtNoi(p.noiMonthlyCents)}
-                          {/* Empty span for measured AND full coverage; otherwise
-                              the honest qualifier ("N/12 mo", "(assumed ratio)" or
-                              "(est.)"). A thin measured op-ex never renders bare. */}
-                          <span className="text-muted-foreground">
-                            {opExQualifier(p.opExSource, p.opExMonthsCovered)}
-                          </span>
+                          {/* Nothing for measured AND full coverage; otherwise the
+                              honest provenance chip ("N/12 mo" coverage, assumed
+                              ratio, or the 40% rule) or the factual absent-value
+                              note. A thin measured op-ex never renders bare. */}
+                          <OpExProvenance source={p.opExSource} monthsCovered={p.opExMonthsCovered} className="ml-1.5" />
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {p.capRatePct !== null ? `${p.capRatePct.toFixed(1)}%` : "—"}
@@ -376,7 +411,7 @@ export default function InvestorAnalyticsPage() {
                               an estimate too, so it carries the same qualifier and
                               never renders as a bare measured number. */}
                           {p.capRatePct !== null && (
-                            <span className="text-muted-foreground">{opExQualifier(p.opExSource, p.opExMonthsCovered)}</span>
+                            <OpExProvenance source={p.opExSource} monthsCovered={p.opExMonthsCovered} className="ml-1.5" />
                           )}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">

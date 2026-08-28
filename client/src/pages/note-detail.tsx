@@ -37,6 +37,7 @@ import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
@@ -432,10 +433,20 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
                 sub={driftIsZero ? "Clean — no action needed" : "Investigate before posting more"}
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-3">
-              As of {formatDateTime(data.asOf)}
-              {data.lastPostingId ? ` · last posting ${data.lastPostingId.slice(0, 8)}` : ""}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-1 text-micro text-muted-foreground">
+              {/* Pre-formatted datetime (not raw ISO): the reconciliation is a
+                  live ledger snapshot, so minute-level freshness is the point —
+                  the chip passes unparseable strings through verbatim instead
+                  of reducing them to year granularity. */}
+              <DataProvenanceChip
+                source="Payment ledger"
+                sourceAsOf={formatDateTime(data.asOf)}
+                classification="authoritative"
+              />
+              {data.lastPostingId && (
+                <span>· last posting {data.lastPostingId.slice(0, 8)}</span>
+              )}
+            </div>
           </>
         )}
       </div>
