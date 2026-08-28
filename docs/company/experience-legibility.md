@@ -211,7 +211,7 @@ component's own file):
 | `data-confidence-badge.tsx` (`DataConfidenceBadge`) | **0** | numeric confidence 0–100 + a `sources` list, as 5 bars. NOT truth-states. |
 | `source-attribution-panel.tsx` (`SourceAttributionPanel`) | **0** | a full sources panel. Dark. |
 | `data-provenance-chip.tsx` (`DataProvenanceChip`) | **6** | the de-facto adopted provenance primitive. |
-| `data-provenance-tag.tsx` (`DataProvenanceTag`) | **1** | a second, competing provenance tag. comps-analysis.tsx migrated to the chip 2026-08-28 (9 sites, all `estimate`/`authoritative`); properties.tsx (8 sites, incl. a "User entered" source — first real pressure on the refused `customer-reported` state) is the remaining consumer, then the tag dies. |
+| `data-provenance-tag.tsx` (`DataProvenanceTag`) | **DELETED 2026-08-28** | was the second, competing provenance tag. comps-analysis.tsx (9 sites) and properties.tsx (8 sites) both migrated to the chip with honest classifications; the "User entered" sites carry the label with NO classification — the customer's own record of their own transaction needs no epistemic badge, and the tag's "high confidence" on it was decoration. One primitive remains. |
 
 Plus ~20 components under `client/src/components` and `.../pages` that render
 their own inline confidence/provenance UI (`avm.tsx`, `today/ConfidenceBar.tsx`,

@@ -135,7 +135,7 @@ import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { QueryErrorState } from "@/components/query-error-state";
 import { ResearchSummaryPanel } from "@/components/research-summary-panel";
-import { DataProvenanceTag } from "@/components/data-provenance-tag";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 import { Verbs } from "@/lib/labels";
@@ -1682,9 +1682,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {formatCurrency(currentProperty.marketValue || currentProperty.assessedValue)}
                   </p>
                   {(currentProperty.marketValue || currentProperty.assessedValue) && (
-                    <DataProvenanceTag
+                    <DataProvenanceChip
                       source={currentProperty.marketValue ? (currentProperty.enrichedAt ? "AcreOS estimate" : "User entered") : "County assessor"}
-                      asOf={parcelData?.lastUpdated || currentProperty.enrichedAt || currentProperty.updatedAt}
+                      sourceAsOf={parcelData?.lastUpdated || currentProperty.enrichedAt || currentProperty.updatedAt}
+                      classification={currentProperty.marketValue ? (currentProperty.enrichedAt ? "estimate" : null) : "authoritative"}
                     />
                   )}
                 </div>
@@ -1951,10 +1952,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <span className="text-muted-foreground text-xs">Assessed Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.assessedValue)}</p>
                     {currentProperty.assessedValue && Number(currentProperty.assessedValue) > 0 && (
-                      <DataProvenanceTag
+                      <DataProvenanceChip
                         source="County assessor"
-                        asOf={parcelData?.lastUpdated || currentProperty.enrichedAt}
-                        confidence="high"
+                        sourceAsOf={parcelData?.lastUpdated || currentProperty.enrichedAt}
+                        classification="authoritative"
                       />
                     )}
                   </div>
@@ -1962,10 +1963,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <span className="text-muted-foreground text-xs">Market Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.marketValue)}</p>
                     {currentProperty.marketValue && Number(currentProperty.marketValue) > 0 && (
-                      <DataProvenanceTag
+                      <DataProvenanceChip
                         source={currentProperty.enrichedAt ? "AcreOS estimate" : "User entered"}
-                        asOf={currentProperty.enrichedAt || currentProperty.updatedAt}
-                        confidence={currentProperty.enrichedAt ? "medium" : undefined}
+                        sourceAsOf={currentProperty.enrichedAt || currentProperty.updatedAt}
+                        classification={currentProperty.enrichedAt ? "estimate" : null}
                       />
                     )}
                   </div>
@@ -1973,10 +1974,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <span className="text-muted-foreground text-xs">Purchase Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.purchasePrice)}</p>
                     {currentProperty.purchasePrice && Number(currentProperty.purchasePrice) > 0 && (
-                      <DataProvenanceTag
+                      <DataProvenanceChip
                         source="User entered"
-                        asOf={currentProperty.purchaseDate || currentProperty.updatedAt}
-                        confidence="high"
+                        sourceAsOf={currentProperty.purchaseDate || currentProperty.updatedAt}
                       />
                     )}
                   </div>
@@ -1990,9 +1990,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <span className="text-muted-foreground text-xs">List Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.listPrice)}</p>
                     {currentProperty.listPrice && Number(currentProperty.listPrice) > 0 && (
-                      <DataProvenanceTag
+                      <DataProvenanceChip
                         source="User entered"
-                        asOf={currentProperty.updatedAt}
+                        sourceAsOf={currentProperty.updatedAt}
                       />
                     )}
                   </div>
@@ -2001,10 +2001,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       <div className="space-y-1">
                         <span className="text-muted-foreground text-xs">Sold Price <span className="text-muted-foreground/60">USD</span></span>
                         <p className="font-medium">{formatCurrency(currentProperty.soldPrice)}</p>
-                        <DataProvenanceTag
+                        <DataProvenanceChip
                           source="User entered"
-                          asOf={currentProperty.soldDate || currentProperty.updatedAt}
-                          confidence="high"
+                          sourceAsOf={currentProperty.soldDate || currentProperty.updatedAt}
                         />
                       </div>
                       <div className="space-y-1">
@@ -2023,10 +2022,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Annual Taxes <span className="text-muted-foreground/60">USD</span></span>
                       <p className="font-medium">{formatCurrency(parcelData.taxAmount)}</p>
-                      <DataProvenanceTag
+                      <DataProvenanceChip
                         source="County records"
-                        asOf={parcelData.lastUpdated}
-                        confidence="high"
+                        sourceAsOf={parcelData.lastUpdated}
+                        classification="authoritative"
                       />
                     </div>
                   )}
@@ -2105,10 +2104,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                           <span className="text-muted-foreground text-xs">Total Payoff</span>
                           <p className="font-semibold">{cents(totalPayoffCents)}</p>
                           {distress!.taxPayoffAsOf && (
-                            <DataProvenanceTag
+                            <DataProvenanceChip
                               source={distress!.source ?? "County records"}
-                              asOf={distress!.taxPayoffAsOf}
-                              confidence="high"
+                              sourceAsOf={distress!.taxPayoffAsOf}
+                              classification="authoritative"
                             />
                           )}
                         </div>
