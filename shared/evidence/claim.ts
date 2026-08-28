@@ -1,3 +1,4 @@
+import type { DataClassification } from "../dataClassification";
 /**
  * The Evidence Fabric — claim vocabulary and the deterministic resolution
  * policy that turns a set of source-backed claims into a current answer.
@@ -67,21 +68,18 @@ export const RESOLUTION_POLICY_VERSION = 1 as const;
 /**
  * How much standing a claim's source has for the thing it asserts.
  *
- * Deliberately the same four values as `DataClassification` in
- * server/services/providers/types.ts, so the provider adapter maps 1:1 with no
- * translation loss. Re-declared here (rather than imported) because shared/
- * must not import server/ — see scripts/check-boundaries.mjs rule S1.
+ * The same four values as `DataClassification` — since 2026-08-28 enforced
+ * by aliasing the single source (shared/dataClassification.ts) instead of by
+ * a comment. The name survives because a claim's SOURCE STANDING is this
+ * domain's word for it, and the 1:1 mapping to the provider adapter is now a
+ * compile-time fact rather than a discipline.
  *
  *  - authoritative  a system-of-record fact (county assessor, federal layer)
  *  - estimate       derived/heuristic but data-backed (comp-based valuation)
  *  - modeled        output of a computed score/model — NEVER presentable as fact
  *  - unknown        the source returned no value; recorded so we know we asked
  */
-export type EvidenceAuthority =
-  | "authoritative"
-  | "estimate"
-  | "modeled"
-  | "unknown";
+export type EvidenceAuthority = DataClassification;
 
 /** Higher wins. `unknown` never wins anything — it only records that we asked. */
 const AUTHORITY_RANK: Record<EvidenceAuthority, number> = {

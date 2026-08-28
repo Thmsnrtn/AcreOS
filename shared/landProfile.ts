@@ -1,3 +1,4 @@
+import type { DataClassification } from "./dataClassification";
 /**
  * LandProfile — the canonical, decision-grade parcel object.
  *
@@ -29,11 +30,7 @@
  *  - "unknown": we have no value. Such a field is OMITTED from the profile and
  *    surfaced in `gaps` instead; it should not appear as a populated LandField.
  */
-export type LandFieldClassification =
-  | "authoritative"
-  | "estimate"
-  | "modeled"
-  | "unknown";
+export type LandFieldClassification = DataClassification;
 
 /**
  * A single decision-grade datum with its full provenance. Generic over the

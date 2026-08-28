@@ -18,14 +18,12 @@ export type LookupInput =
 
 /**
  * Provenance classification for a datum (Quinn data-honesty lens).
- *  - "authoritative": a system-of-record fact (open-data parcel/federal layer,
- *    county assessor of record). The customer can rely on it modulo freshness.
- *  - "estimate": derived/heuristic but data-backed (e.g. comp-based valuation).
- *  - "modeled": output of a computed score/model (e.g. opportunity score).
- *    NEVER present a modeled value as authoritative.
- *  - "unknown": we have no value — render "Not yet pulled", never a default.
+ * Single-sourced from shared/dataClassification.ts since 2026-08-28 — the
+ * per-state meanings and the vocabulary decision live there. Re-exported so
+ * this module's many importers keep their import path.
  */
-export type DataClassification = "authoritative" | "estimate" | "modeled" | "unknown";
+export type { DataClassification } from "@shared/dataClassification";
+import type { DataClassification } from "@shared/dataClassification";
 
 export interface LookupResult<T = unknown> {
   provider: string;

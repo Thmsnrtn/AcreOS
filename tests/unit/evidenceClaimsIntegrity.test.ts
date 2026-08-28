@@ -90,13 +90,21 @@ describe("the SQL vocabularies match the TypeScript ones", () => {
   });
 
   it("authority", () => {
-    // EvidenceAuthority is a bare union type with no runtime array to import,
-    // so it is read from the source. If it ever gains a runtime constant,
-    // import that instead of parsing.
-    const src = read("shared/evidence/claim.ts");
-    const decl = src.slice(src.indexOf("export type EvidenceAuthority"));
+    // EvidenceAuthority became an ALIAS of the single-sourced
+    // DataClassification on 2026-08-28 (shared/dataClassification.ts), so the
+    // literals are read from THAT file — parsing claim.ts would find an alias
+    // with zero string literals, which is exactly what this vacuity guard
+    // caught when the aliasing landed. The alias itself is pinned separately
+    // below so the indirection cannot silently point elsewhere.
+    const aliasSrc = read("shared/evidence/claim.ts");
+    expect(
+      aliasSrc,
+      "EvidenceAuthority no longer aliases the single source — re-anchor this parser to wherever the literals moved",
+    ).toContain("export type EvidenceAuthority = DataClassification;");
+    const src = read("shared/dataClassification.ts");
+    const decl = src.slice(src.indexOf("export type DataClassification"));
     const declared = [...decl.slice(0, decl.indexOf(";")).matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
-    expect(declared.length, "could not parse EvidenceAuthority — the scan broke").toBeGreaterThan(2);
+    expect(declared.length, "could not parse DataClassification — the scan broke").toBeGreaterThan(2);
     expect(
       checkVocabulary(migration0238, "evidence_claims_authority_chk").sort(),
       "migrations/0238 disagrees with EvidenceAuthority",

@@ -19,7 +19,10 @@
  */
 import { cn } from "@/lib/utils";
 
-export type DataClassification = "authoritative" | "estimate" | "modeled" | "unknown";
+// Single-sourced since 2026-08-28 (shared/dataClassification.ts); re-exported
+// because this chip's callers import the type from here.
+export type { DataClassification } from "@shared/dataClassification";
+import type { DataClassification } from "@shared/dataClassification";
 
 interface DataProvenanceChipProps {
   /** Named source, e.g. "FEMA NFHL", "USDA SSURGO", "County GIS". Required to render. */

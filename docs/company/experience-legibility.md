@@ -239,3 +239,25 @@ Recorded here rather than acted on because step 1 is a deliberate call that
 should be made once, cleanly, not improvised mid-migration — and because a
 "connect+delete" commit built on the mischaracterized premise would have been
 activity, not the outcome the directive wants.
+
+### Step 1 DECIDED (2026-08-28) — the vocabulary is the four states, single-sourced
+
+The canonical truth-state vocabulary is the four-state `DataClassification`
+the product already speaks — **authoritative / estimate / modeled / unknown** —
+with staleness and source-freshness carried as ORTHOGONAL fields (`stale`,
+`sourceAsOf`), never as extra states. The directive's ten words map on:
+verified/observed/provider-reported → `authoritative` (+ the `source` label
+saying who); estimated → `estimate`; inferred → `modeled`;
+unknown/unavailable → `unknown`. **`customer-reported` and `conflicting` are
+deliberately NOT admitted**: no surface at HEAD carries either distinction,
+and the no-interface-before-a-second-consumer precedent applies — a state
+nothing renders is speculation, and adding one later is a product-identity
+change made at `shared/dataClassification.ts`, not a convenience.
+
+Landed with the decision: the four values were declared FOUR times (provider
+`types.ts`, the chip, `EvidenceAuthority` in `shared/evidence/claim.ts`,
+`LandFieldClassification` in `shared/landProfile.ts`), each aligned by a
+comment. All four now derive from `shared/dataClassification.ts` — drift is a
+compile error. Steps 2–4 (extend `DataProvenanceChip` as the one primitive,
+migrate the ~20 inline copies one-at-a-time, ratchet, delete the losers)
+remain open and unchanged.
