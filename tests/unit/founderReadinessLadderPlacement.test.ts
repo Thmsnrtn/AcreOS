@@ -34,8 +34,12 @@ const AUTOPILOT_ROUTES = read("server/routes-autopilot.ts");
  * The founder route count at the moment the ladder shipped. This MUST equal
  * FOUNDER_ROUTE_BASELINE in founderFourDoors.test.ts — the ladder is proof that
  * a whole new founder experience can ship without adding a single route.
+ * (82 at ladder ship; 81 since 2026-08-28, when /founder/memory was retired —
+ * both of its data fetches hit routes that never existed server-side, so the
+ * page was empty by construction. Deliberate consolidation, moved in lockstep
+ * with FOUNDER_ROUTE_BASELINE per this file's own failure message.)
  */
-const FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP = 82;
+const FOUNDER_ROUTE_COUNT_AT_LADDER_SHIP = 81;
 
 describe("the readiness ladder added ZERO founder routes", () => {
   it("the /founder/* route count is unchanged from the ratchet baseline", () => {

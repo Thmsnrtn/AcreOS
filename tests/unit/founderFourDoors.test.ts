@@ -17,7 +17,7 @@ const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"),
  *  2026-06-23: 88→82 — the 7 cost/economics routes (cost, ai-costs,
  *  observability-cost, cost-optimizer, unit-economics, paid-data-eval,
  *  providers) merged into the single /founder/admin/costs tabbed hub. */
-const FOUNDER_ROUTE_BASELINE = 82;
+const FOUNDER_ROUTE_BASELINE = 81;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

@@ -155,20 +155,10 @@ export function useDelegationTokens() {
   });
 }
 
-export function useCognitiveMemory() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/memory/recent"],
-    queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v13 only exposes /memory/episodes/:codename and /memory/stats, neither of
-      // which serves a cross-agent recent-memories list.)
-      const res = await fetch("/api/founder/v13/memory/recent", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-}
+// useCognitiveMemory was removed 2026-08-28 with its only consumer
+// (pages/founder/memory.tsx): it fetched /api/founder/v13/memory/recent,
+// a route that never existed, and always resolved to []. See the App.tsx
+// note at the /memory-browser redirect.
 
 export function useAdaptiveStrategies() {
   return useQuery({

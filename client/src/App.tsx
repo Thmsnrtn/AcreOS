@@ -412,12 +412,11 @@ const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashbo
 // retired (pages deleted, routes redirect). The four surviving surfaces
 // moved under /founder/* as first-class founder deep-dives:
 //   board-of-directors    → /founder/governance
-//   memory-browser        → /founder/memory
+//   memory-browser        → /founder (memory page retired 2026-08-28)
 //   event-log             → /founder/event-log
 //   conscious-organization → /founder/scenarios
 const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
 const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
-const FounderMemoryPage = React.lazy(() => import("@/pages/founder/memory"));
 const FounderEventLogPage = React.lazy(() => import("@/pages/founder/event-log"));
 const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
 const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
@@ -1808,9 +1807,6 @@ function Router() {
       <Route path="/founder/governance">
         {() => <FounderProtectedRoute component={FounderGovernancePage} />}
       </Route>
-      <Route path="/founder/memory">
-        {() => <FounderProtectedRoute component={FounderMemoryPage} />}
-      </Route>
       <Route path="/founder/event-log">
         {() => <FounderProtectedRoute component={FounderEventLogPage} />}
       </Route>
@@ -1821,8 +1817,12 @@ function Router() {
       <Route path="/board-of-directors">
         {() => <Redirect to="/founder/governance" />}
       </Route>
+      {/* /founder/memory retired 2026-08-28 (competing-brains stage 3): both of
+          its data sources fetched routes that never existed server-side and the
+          page rendered empty by construction. A memory browser can return under
+          a door if the stage-4 single-memory-store design wants one. */}
       <Route path="/memory-browser">
-        {() => <Redirect to="/founder/memory" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/event-log">
         {() => <Redirect to="/founder/event-log" />}

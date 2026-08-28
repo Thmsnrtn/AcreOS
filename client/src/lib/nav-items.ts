@@ -247,7 +247,6 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // door (/founder/decisions), which is a primary door and so not listed here.
   { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
   { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
-  { label: "Memory browser", icon: Database, href: "/founder/memory", category: "ai" },
   { label: "Agent performance", icon: Activity, href: "/agent-performance", category: "ai" },
 
   // ── Customers ───────────────────────────────────────────────────────
