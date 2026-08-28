@@ -117,6 +117,68 @@ fast-forwards `main` and watches the deploy through.
 
 ## Current coherent work
 
+### The competing-brains consolidation (surveyed 2026-08-28; the directive's centerpiece)
+
+Three independent surveys mapped every "brain" against the incumbent
+autopilot plane (`services/autopilot/` 88 modules + `services/solene/` 45).
+**Eleven capability areas are duplicated 3-4 ways**: episodic memory (three
+separate stores: `solene/memoryRetrieval` + `autopilot/memory`,
+`companyMind`, `cognitiveMemoryV13`), decision execution (four planes:
+`autopilot/act`+hands, `solene/dispatchRunner`,
+`autonomousDecisionExecutor`, `sagaOrchestratorV12`/`reactiveOrchestrationV14`),
+trust/authority (four lanes: `autopilot/domainAutonomy`+`witnessGrant`,
+`companyAgents.trustScore`, `trustEnforcementV12`, `delegationTokensV11` —
+the last two both reimplementing "time-bounded delegable authority"),
+calibration, telemetry/heartbeat, narrative/briefing, incident/immune,
+governance gates, forecasting, cost throttling, and override→learning.
+
+**The wiring is uneven, and that decides the stages:**
+
+- **Live through jobs** (consolidate, do NOT delete): `eventMeshV12`
+  (10s drain, `runScheduledJobs.ts:4572`), `adaptiveStrategyV13` /
+  `cognitiveMemoryV13` / `selfHealingMeshV13` / `reactiveOrchestrationV14`
+  (all via `autonomyBootstrap`, job at `:5040`),
+  `collaborationProtocolV13` (via `autonomyFinalMile`, job at `:4589`),
+  `delegationTokensV11` (consulted by `executionEngine.ts:436`),
+  `confidenceCascadeV14` (via `founderTodo`/`agentActionExecutors`),
+  `companyMind` (sole consumer: `autonomousDecisionExecutor`, 30-min job),
+  `companyAgents` (boot seeding `:1687`, nightly evolution `:1770`,
+  briefing `:2174` — but self-declared LEGACY fork, roster disjoint from
+  the canonical 13 codenames the live Solene tick dispatches;
+  "no new consumers" per its own header).
+- **Client-page-only**: v10's eight services (page
+  `founder/scenarios.tsx` covers 7), v11's negotiations/attribution/
+  delegations (`use-sovereign-dashboard.ts`, `founder/governance.tsx`),
+  v12/v13/v14 reads in the sovereign dashboard (several fetch paths
+  don't exist server-side; the hook documents the gap and degrades to
+  empty deliberately).
+- **Zero callers of any kind** (router-registered, nothing fetches):
+  `ceoCognitiveModelV11`, `temporalKnowledgeDecayV11`,
+  `agentResourceGovernorV11`, `decisionCausalityV11`,
+  `predictiveOrchestrationV11`; plus `autonomyScoreV14` and
+  `founderIntentV14` are router-only. Nothing schedules v10/v11 at all —
+  their "decay cycles" and "monthly reports" never run unattended.
+
+**Staged ladder (verify each claim at HEAD before acting; per-service
+caller proof before any deletion; table drops are founder territory):**
+
+1. **Record the plane.** The autopilot+solene plane is THE brain; the
+   unique capabilities that live only there (DomainPack seam, ProofReceipt
+   chain, gated self-patch, real dispatch runner) are the reasons.
+   Everything else converges toward it or leaves.
+2. **The zero-caller five (v11) + router-only v14 pair**: delete services
+   and routes after re-proving zero callers; their ~10 tables go on the
+   founder table-drop decision list (precedent: `agentOrchestration`,
+   `negotiation_sessions`). Lowers the founder-route ratchet.
+3. **The v10/v11 client surfaces**: decide per page whether the surface
+   earns feeding from the incumbent plane or retires behind the four
+   doors. This is a founder-legibility question, not a code question.
+4. **The live-wired V13/V14 + eventMesh cluster**: real consolidation
+   engineering — one memory store, one trust lane, one execution plane.
+   Needs its own design pass; do not start it as a side effect.
+5. **companyAgents/companyMind**: the kernel-restructure step 4 already
+   names this; the roster shim (`agentCodenameAlias.ts`) is the seam.
+
 **The Reality Graph is the unfinished layer.** 9 of 18 canonical objects have a
 canonical home; the 9 that do not are almost all layer 2.
 

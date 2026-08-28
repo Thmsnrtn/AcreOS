@@ -553,3 +553,32 @@ kept separate from BYO numbers is the version of (b) worth building — the
 problem in (b) is not sharing, it is sharing numbers that belong to a customer.
 
 **Blocked meanwhile:** nothing.
+
+## OD-8 — PENDING: table drops behind the competing-brains consolidation
+
+**The question.** The consolidation program (campaign doc, "competing-brains",
+2026-08-28) will retire brain services whose tables then have no writer and no
+reader. Deleting code is the session's call once zero callers are proven;
+DROPPING tables is yours under the customer-data hard stop, even though every
+table here is founder-plane telemetry, not customer data. Nothing is dropped
+until you say so; retired services' tables stay in place, visible to the
+ghost-table ratchets, exactly like `negotiation_sessions` and
+`agentSessions`/`agentSessionSteps` (the `agentOrchestration` precedent,
+still pending in that same list).
+
+**First tranche (stage-2 candidates, all zero-caller today):**
+`ceoCognitiveModel`, `ceoShadowPredictions` (ceoCognitiveModelV11);
+`knowledgeFreshness` (temporalKnowledgeDecayV11); `agentResourceQuotas`,
+`resourceQuotaEvents` (agentResourceGovernorV11); `decisionCausalityNodes`
+(decisionCausalityV11); `temporalPredictionPatterns`,
+`predictiveStagedActions` (predictiveOrchestrationV11);
+`autonomyScoreSnapshots`, `founderDependencyEvents` (autonomyScoreV14);
+`founderIntents`, `intentProgressLogs` (founderIntentV14).
+
+**What would make this easy to decide:** whether production holds any rows in
+these tables. The session cannot see the production database; a
+`SELECT count(*)` per table during any founder terminal session settles it —
+empty tables are a trivial YES, populated ones deserve a look first.
+
+**Blocked meanwhile:** nothing — code-side consolidation proceeds; only the
+DROP migrations wait.
