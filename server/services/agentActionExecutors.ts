@@ -212,7 +212,11 @@ registerExecutor("forge_revenue", "send_churn_rescue", async (ctx) => {
     return { success: false, detail: `No contact email for ${org.name}` };
   }
 
-  const result = await emailService.sendEmail({
+  // Stage-4 turn 7: frozen through the seam; the OD-9 grant or a founder
+  // tap releases it (sender-identity arg dropped — system mail, 2026-07-17).
+  const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+  const proposal = await proposeGovernedEmail({
+    organizationId: orgId,
     to: contactEmail,
     subject: `Your AcreOS account — we'd love to hear from you`,
     html: `
@@ -222,17 +226,22 @@ registerExecutor("forge_revenue", "send_churn_rescue", async (ctx) => {
       <p>Would you be open to a quick 10-minute call this week?</p>
       <p>Best,<br/>The AcreOS Team</p>
     `,
-    organizationId: orgId,
+    source: "agentActionExecutors:send_churn_rescue",
+    domain: "support",
   });
 
-  return {
-    success: result.success,
-    detail: result.success
-      ? `Churn rescue email sent to ${org.name} (risk score: ${riskScore})`
-      : `Failed to send churn rescue to ${org.name}`,
-    metrics: { orgId, orgName: org.name, riskScore, emailSent: result.success },
-    verifyAfterMs: 72 * 60 * 60 * 1000, // Check in 72h
-  };
+  return proposal.proposed
+    ? {
+        success: true,
+        detail: `Churn rescue for ${org.name} (risk ${riskScore}) frozen as pending action #${proposal.pendingActionId}${proposal.deduped ? " (deduped)" : ""} — released by grant or founder tap.`,
+        metrics: { orgId, orgName: org.name, riskScore, pendingActionId: proposal.pendingActionId, frozen: true },
+        verifyAfterMs: 72 * 60 * 60 * 1000, // Check in 72h
+      }
+    : {
+        success: false,
+        detail: `Churn rescue for ${org.name} refused at the seam: ${proposal.refusal}`,
+        metrics: { orgId, orgName: org.name, riskScore, frozen: false },
+      };
 });
 
 // ─── Beacon Marketing Executors ─────────────────────────────────────────────
@@ -502,13 +511,19 @@ registerExecutor("forge_revenue", "send_upgrade_nudge", async (ctx) => {
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
   const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
-  const result = await emailService.sendEmail({
+  // Stage-4 turn 7: frozen through the seam (see send_churn_rescue above).
+  const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+  const proposal = await proposeGovernedEmail({
+    organizationId: orgId,
     to: contactEmail,
     subject: "Unlock more from AcreOS — your account is ready for the next level",
     html: `<p>Hi ${org.name} team,</p><p>Based on your usage patterns, you're getting close to the limits of your current plan. Upgrading would unlock additional features and capacity that match how you're already using the platform.</p><p>${reason ? `<strong>Why now:</strong> ${reason}` : ""}</p><p>Check out the upgrade options in your Settings → Billing page.</p><p>Best,<br/>The AcreOS Team</p>`,
-    organizationId: orgId,
+    source: "agentActionExecutors:send_upgrade_nudge",
+    domain: "support",
   });
-  return { success: result.success, detail: result.success ? `Upgrade nudge sent to ${org.name}` : `Failed: ${result.error}`, metrics: { orgId, reason }, verifyAfterMs: 7 * 24 * 60 * 60 * 1000 };
+  return proposal.proposed
+    ? { success: true, detail: `Upgrade nudge for ${org.name} frozen as pending action #${proposal.pendingActionId}${proposal.deduped ? " (deduped)" : ""} — released by grant or founder tap.`, metrics: { orgId, reason, pendingActionId: proposal.pendingActionId, frozen: true }, verifyAfterMs: 7 * 24 * 60 * 60 * 1000 }
+    : { success: false, detail: `Upgrade nudge for ${org.name} refused at the seam: ${proposal.refusal}`, metrics: { orgId, reason, frozen: false } };
 });
 
 // ─── Sophie CSM Executors (v5) ────────────────────────────────────────────

@@ -66,7 +66,7 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/routes-inbound-email.ts": [1, "system-mail"],
   "server/routes-marketplace.ts": [1, "system-mail"],
   "server/services/agent-skills.ts": [1, "agent-autonomous"],
-  "server/services/agentActionExecutors.ts": [4, "agent-autonomous"],
+  "server/services/agentActionExecutors.ts": [2, "agent-autonomous"],
   "server/services/alertPolicy.ts": [3, "system-mail"],
   "server/services/autonomousDecisionExecutor.ts": [1, "agent-autonomous"],
   "server/services/autonomyGuardrails.ts": [1, "system-mail"],
@@ -93,9 +93,9 @@ const REGISTER: Record<string, [number, SendClass]> = {
  * The migration ratchet: turns 6-9 lower this in the SAME commit as each
  * caller flip; at zero the assertion flips to MUST-BE-ZERO forever.
  */
-// 7 at install; 6 since 2026-08-29 — turn 6 flipped send_retention_email
-// onto the outbound seam (the first caller off the direct rail).
-const AGENT_AUTONOMOUS_BASELINE = 6;
+// 7 at install; 6 after turn 6 (send_retention_email); 4 after turn 7
+// (send_churn_rescue + send_upgrade_nudge) — all onto the outbound seam.
+const AGENT_AUTONOMOUS_BASELINE = 4;
 
 const QUAL = /\bemailService\s*\.\s*sendEmail\s*\(/g;
 const BARE = /(?<![.\w])sendEmail\s*\(/g;
