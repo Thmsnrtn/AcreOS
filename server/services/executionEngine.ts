@@ -247,18 +247,20 @@ const actionRegistry: Record<string, ActionExecutor> = {
     const { memoryType, content, tags } = ctx.input;
 
     try {
-      const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-      // CognitiveMemoryService has no generic store(); a learning is persisted
-      // as a semantic fact.
-      await cognitiveMemoryService.extractFact(ctx.agentCodename, {
-        fact: content,
-        category: memoryType ?? "semantic",
-        sourceEpisodes: Array.isArray(tags) ? tags : [],
-        confidence: 80,
-        orgId: ctx.orgId,
+      // Stage-4 turn 17: learnings go to the canonical solene corpus, where
+      // the cascade's memory layer and dispatch prompts actually read. The
+      // V13 semantic store this used to write was read by nothing live.
+      const { ingestAgentMemory } = await import("./solene/agentMemoryIngest");
+      const text = `[${ctx.agentCodename}] ${memoryType ?? "learning"}: ${content}` +
+        (Array.isArray(tags) && tags.length ? ` (tags: ${tags.join(", ")})` : "");
+      const result = await ingestAgentMemory({
+        sourceRef: `learning:${ctx.agentCodename}:${String(content).slice(0, 60)}`,
+        text,
+        metadata: { agent: ctx.agentCodename, memoryType: memoryType ?? "semantic", tags: tags ?? [], orgId: ctx.orgId ?? null },
       });
+      if (!result.stored) return fail(result.detail);
       await logAgentAction(ctx, "learning_stored", { memoryType, tags });
-      return success({ stored: true }, [`Memory stored: ${memoryType}`]);
+      return success({ stored: true }, [`Memory embedded into the solene corpus (${result.detail})`]);
     } catch (err: any) {
       return fail(err.message);
     }

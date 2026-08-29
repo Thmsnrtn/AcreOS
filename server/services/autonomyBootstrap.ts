@@ -137,18 +137,7 @@ const DEFAULT_DEGRADATION_MODES = [
 
 // ─── 4. Seed Episodic Memories ───────────────────────────────────────────────
 
-const DEFAULT_MEMORIES = [
-  { type: "semantic", agent: "oracle", content: "Properties with road frontage sell 30-40% faster than landlocked parcels", tags: ["pricing", "market_knowledge"] },
-  { type: "semantic", agent: "oracle", content: "Counties with population growth >2% annual tend to have 15-20% higher land value appreciation", tags: ["market_knowledge", "growth"] },
-  { type: "semantic", agent: "forge", content: "Follow-up within 24 hours of initial contact increases conversion by 60%", tags: ["sales", "conversion"] },
-  { type: "semantic", agent: "forge", content: "Seller-financed deals with 10-15% down payment have the lowest default rate", tags: ["financing", "risk"] },
-  { type: "semantic", agent: "sophie", content: "Personalized follow-up emails have 3x response rate compared to templates", tags: ["communication", "engagement"] },
-  { type: "semantic", agent: "ledger", content: "1031 exchanges must be completed within 180 days of initial sale", tags: ["tax", "compliance", "1031"] },
-  { type: "semantic", agent: "shield", content: "Dodd-Frank requires loan origination compliance for seller-financed deals over $25K in some states", tags: ["compliance", "dodd_frank", "legal"] },
-  { type: "procedural", agent: "sentinel", content: "When API error rate exceeds 5%, activate read_only degradation mode before investigating", tags: ["operations", "incident_response"] },
-  { type: "procedural", agent: "sentinel", content: "Database connection pool alerts require immediate queue reduction — disable analytics first", tags: ["operations", "database"] },
-  { type: "procedural", agent: "forge", content: "Churn rescue sequence: 1) Empathy email, 2) Discount offer after 48h, 3) CEO personal note after 7d", tags: ["churn", "retention", "sequence"] },
-];
+// (DEFAULT_MEMORIES deleted 2026-08-29 with its seeding — stage-4 turn 17.)
 
 // ─── 5. Default Strategies ───────────────────────────────────────────────────
 
@@ -216,30 +205,11 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
     logger.info(`[autonomy-bootstrap] Degradation modes skipped: ${err.message}`);
   }
 
-  // 4. Seed cognitive memories
-  try {
-    const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-    for (const memory of DEFAULT_MEMORIES) {
-      try {
-        // CognitiveMemoryService has no generic store(); seed as semantic facts.
-        // Map agent→agentCodename, content→fact, type→category.
-        await cognitiveMemoryService.extractFact(memory.agent, {
-          fact: memory.content,
-          category: memory.type,
-          sourceEpisodes: [],
-          orgId: SYSTEM_ORG_ID,
-        });
-        memories++;
-      } catch {
-        // Memory may already exist
-      }
-    }
-    logger.info(`[autonomy-bootstrap] Seeded ${memories} cognitive memories`);
-  } catch (err: any) {
-    logger.info(`[autonomy-bootstrap] Memories skipped: ${err.message}`);
-  }
+  // (4. Cognitive-memory seeding removed 2026-08-29 — stage-4 turn 17: the
+  // V13 store is drained; the canonical corpus is seeded by real learnings,
+  // not boot defaults.)
 
-  // 5. Seed adaptive strategies
+    // 5. Seed adaptive strategies
   try {
     const { adaptiveStrategyService } = await import("./adaptiveStrategyV13");
     for (const strategy of DEFAULT_STRATEGIES) {

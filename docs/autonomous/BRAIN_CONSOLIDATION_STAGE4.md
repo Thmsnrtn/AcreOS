@@ -178,6 +178,17 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   reaction_chain_runs keeps a reader (autonomyScore) and is flagged for
   contract adjustment before any drop.
 - **Turn 16 — sagas + reactive chains.** Remove chain seeding from `autonomyBootstrap`; remove `POST /api/founder/v14/events`; delete `reactiveOrchestrationV14.ts`. Delete `sagaOrchestratorV12.ts` + `routes-founder-real-runtime.ts:183-214` (Decision E covers both route removals; the orgId-0 sentinel dies here). Lower `FOUNDER_ROUTE_BASELINE` in the same commits. Verify: grep `processEvent|startSaga` zero; boot log clean; `executionEngine` caller set is now exactly initiative + finalMile + the decisions lane. `saga_instances`, `reaction_chains` → drop list.
+- **Turn 17 — DONE 2026-08-29.** The cascade's memory layer reads the
+  canonical solene corpus (cross-namespace RAG); the outcome-based boost-25
+  is GONE rather than faked — the corpus carries similarity, not outcome
+  labels, so matches grant a smaller boost labeled "corpus-similarity (not
+  outcome-verified)". All four V13 memory writers in turn-17 scope
+  repointed through the new agentMemoryIngest (store_learning, debate
+  precedents — one record per resolution, real similarity replacing the
+  hardcoded 0.85 — and cascade founder resolutions); bootstrap
+  DEFAULT_MEMORIES seeding deleted. Remaining V13 memory importers:
+  feedbackLoopV14, trustAuthorityEscalation (die with lane 3, turn 13),
+  and the v13 router (turn 18).
 - **Turn 17 — cascade memory repoint.** `confidenceCascadeV14.ts:298` recallEpisodes → `memoryRetrieval` over the solene corpus; honest-empty fallback tested both ways (seeded fixture returns precedent; empty corpus advances the cascade without fabricating). Convert `executionEngine` store_learning and `agentDebates.ts:369` to `embedDocumentTextFailOpen`. Rollback: revert — V13 store is still intact and quasi-static (no decay cron ever ran), so reverting restores exact prior behavior.
 - **Turn 18 — V13 surface retirement.** Remove `/api/founder/v13` (`routes-founder-sentient-enterprise`) and `scpMemorySystem` episodic writes via `routes-scp-v2` (Decision F); delete `cognitiveMemoryV13.ts` after in-commit zero-caller grep; four V13 tables + `memory_access_log` → drop list; lower `FOUNDER_ROUTE_BASELINE` again.
 - **Turn 19 — independent completeness audit (wave discipline #2).** A fresh agent that built none of this, claims-as-hypotheses: hunt built-but-unwired residue (unmounted routes, orphan exports, schema-without-migration, seams with zero adopters), re-run every ratchet (`constitution.test.ts`, `founderFourDoors`, `sidebarHiddenRoutes`, `moneyCustodyHardStop`, `hardStopLaneCoverage`, `agentAuthorityCeiling`, both new chokepoint tests), verify every baseline was lowered-not-raised, run `npm run check`, `npm test`, `npm run build` directly. Only then PR.

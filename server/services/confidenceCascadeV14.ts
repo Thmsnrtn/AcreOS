@@ -12,7 +12,6 @@ import { cascadeResolutions, type CascadeResolutionEntry } from "@shared/schema"
 import { eq, and, desc, sql, gte, lte, isNull, count } from "drizzle-orm";
 import crypto from "crypto";
 
-import { cognitiveMemoryService } from "./cognitiveMemoryV13";
 import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { collaborationProtocolService } from "./collaborationProtocolV13";
 import { governanceBrainService } from "./governanceBrainV13";
@@ -290,107 +289,66 @@ class ConfidenceCascadeService {
   ): Promise<LayerAttempt> {
     const start = Date.now();
     try {
-      const tags = this.extractTagsFromContext(request.triggerContext, request.decisionNeeded);
-
-      // Query both episodic memory and institutional chronicle in parallel
-      const [episodes, chronicleEntries] = await Promise.race([
+      // Stage-4 turn 17: the layer reads the CANONICAL solene corpus
+      // (cross-namespace RAG) instead of the drained V13 episodic store.
+      // The corpus carries similarity-scored snippets, NOT outcome labels —
+      // so the old ">70% success rate → boost 25" scoring is gone rather
+      // than faked: inventing a success rate from similarity would
+      // fabricate outcome evidence. Matches now grant a SMALLER, labeled
+      // corpus-similarity boost; zero matches skip the layer honestly.
+      const [retrieval, chronicleEntries] = await Promise.race([
         Promise.all([
-          cognitiveMemoryService.recallEpisodes(request.originAgent, { tags, limit: 20 }),
+          retrieveRelevantMemories({
+            queryText: `[${request.triggerType}] ${request.decisionNeeded}`,
+            namespace: "cross:agent_memory,feedback_memory,founder_precedent",
+            topK: 8,
+            queryingAgentRole: "system",
+          }).catch(() => null),
           import("./companyChronicle").then((mod) =>
             mod.companyChronicleService.search(request.decisionNeeded),
           ).catch(() => [] as any[]),
         ]),
         this.timeout(LAYER_TIMEOUTS.memory_lookup).then(() => [null, []] as const),
-      ]) as [any[] | null, any[]];
+      ]) as [{ retrieved: Array<{ sourceRef: string; contentSnippet: string; similarityScore: number }> } | null, any[]];
 
-      const hasEpisodes = episodes && Array.isArray(episodes) && episodes.length > 0;
+      const MIN_SIMILARITY = 0.55;
+      const matches = (retrieval?.retrieved ?? []).filter((m) => m.similarityScore >= MIN_SIMILARITY);
+      const hasMatches = matches.length > 0;
       const hasChronicle = chronicleEntries && Array.isArray(chronicleEntries) && chronicleEntries.length > 0;
 
-      if (!hasEpisodes && !hasChronicle) {
+      if (!hasMatches && !hasChronicle) {
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "skipped", {
-          reason: "No matching episodic memories or chronicle entries found",
+          reason: "No corpus memories above similarity threshold and no chronicle entries",
         });
       }
 
-      // Look for episodes with similar action+context and successful outcomes
-      const relevant = hasEpisodes
-        ? episodes.filter((ep: any) => ep.outcomeSuccess === true)
-        : [];
-      const negative = hasEpisodes
-        ? episodes.filter((ep: any) => ep.outcomeSuccess === false)
-        : [];
-      const successRate = hasEpisodes && episodes.length > 0
-        ? relevant.length / episodes.length
-        : 0;
-
-      // Check for strong positive precedent (>70% success) — auto-boost 25
-      const hasWarningFlag = negative.length > 0;
-
-      if (relevant.length >= 3 && successRate > 0.7) {
-        // Precedent with positive outcome — auto-boost 25 instead of default
-        const precedentBoost = 25;
+      // Corpus-similarity boost: bounded, smaller than the old outcome-based
+      // 25, and LABELED as similarity evidence — the corpus does not carry
+      // outcome truth, so the metadata says exactly what the boost rests on.
+      if (hasMatches) {
+        const corpusBoost = Math.min(matches.length * 3, 12);
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
-          matchingEpisodes: hasEpisodes ? episodes.length : 0,
-          successfulEpisodes: relevant.length,
-          negativeEpisodes: negative.length,
-          successRate,
-          boost: precedentBoost,
+          corpusMatches: matches.length,
+          topSimilarity: matches[0]?.similarityScore ?? 0,
+          corpusRefs: matches.slice(0, 3).map((m) => m.sourceRef),
+          corpusSnippets: matches.slice(0, 3).map((m) => m.contentSnippet.slice(0, 160)),
+          boost: corpusBoost,
+          evidenceKind: "corpus-similarity (not outcome-verified)",
           chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
           chronicleContext: hasChronicle
             ? chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry")
             : [],
-          precedentMatch: true,
-          ...(hasWarningFlag && {
-            warningFlag: true,
-            warningDetail: `${negative.length} past episode(s) with negative outcomes detected alongside positive precedent`,
-          }),
-        }, Math.min(precedentBoost, 30));
+        }, corpusBoost);
       }
 
-      // Partial signal — some relevant memories but not enough for a strong boost
-      if (relevant.length > 0) {
-        const partialBoost = Math.round(relevant.length * 3);
-        return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
-          matchingEpisodes: hasEpisodes ? episodes.length : 0,
-          successfulEpisodes: relevant.length,
-          negativeEpisodes: negative.length,
-          successRate,
-          boost: partialBoost,
-          note: "Partial memory signal — insufficient for full boost",
-          chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
-          chronicleContext: hasChronicle
-            ? chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry")
-            : [],
-          ...(hasWarningFlag && {
-            warningFlag: true,
-            warningDetail: `${negative.length} past episode(s) with negative outcomes detected`,
-          }),
-        }, Math.min(partialBoost, 20));
-      }
-
-      // Chronicle-only signal — no successful episodes but chronicle has context
-      if (hasChronicle && !hasEpisodes) {
-        return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
-          matchingEpisodes: 0,
-          successfulEpisodes: 0,
-          chronicleEntriesFound: chronicleEntries.length,
-          chronicleContext: chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry"),
-          boost: 5,
-          note: "Chronicle-only signal — institutional context found but no episodic precedent",
-        }, 5);
-      }
-
-      return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "skipped", {
-        matchingEpisodes: hasEpisodes ? episodes.length : 0,
-        successfulEpisodes: 0,
-        negativeEpisodes: negative.length,
-        chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
-        reason: "No successful outcome memories matched",
-        ...(hasWarningFlag && {
-          warningFlag: true,
-          warningDetail: `${negative.length} past episode(s) with negative outcomes — no positive precedent found`,
-        }),
-      });
+      // Chronicle-only signal — institutional context but no corpus matches
+      return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
+        corpusMatches: 0,
+        chronicleEntriesFound: chronicleEntries.length,
+        chronicleContext: chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry"),
+        boost: 5,
+        note: "Chronicle-only signal — institutional context found, no corpus precedent",
+      }, 5);
     } catch (err: any) {
       return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "failed", {
         error: err.message ?? "Memory lookup failed",
@@ -622,18 +580,18 @@ class ConfidenceCascadeService {
     // Feed this back to memory for future cascade resolutions
     if (updated) {
       try {
-        await cognitiveMemoryService.recordEpisode(updated.originAgent, {
-          action: `cascade_founder_resolution:${updated.triggerType}`,
-          outcome: founderDecision,
-          outcomeSuccess: true,
-          context: {
+        // Stage-4 turn 17: founder resolutions embed into the canonical
+        // corpus, where the memory layer above actually reads them back.
+        const { ingestAgentMemory } = await import("./solene/agentMemoryIngest");
+        await ingestAgentMemory({
+          sourceRef: `cascade-resolution:${resolutionId}`,
+          text: `[${updated.triggerType}] Founder resolved for ${updated.originAgent}: ${founderDecision}`,
+          metadata: {
+            kind: "cascade_founder_resolution",
             triggerType: updated.triggerType,
-            triggerContext: updated.triggerContext,
             layersAttempted: updated.layersAttempted,
-            founderDecision,
+            orgId: updated.orgId ?? null,
           },
-          tags: ["cascade_resolution", "founder_decision", updated.triggerType],
-          orgId: updated.orgId,
         });
       } catch (_err) {
         // Non-critical — log but don't fail the resolution

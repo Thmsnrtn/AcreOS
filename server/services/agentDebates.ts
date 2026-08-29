@@ -334,21 +334,31 @@ Cast your vote. JSON:
     agentB: string,
   ): Promise<{ id: number; resolution: string; similarity: number; date: string } | null> {
     try {
-      const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-      const episodes = await cognitiveMemoryService.recallEpisodes(agentA, {
-        tags: ["disagreement", "precedent"],
-        limit: 5,
+      // Stage-4 turn 17: precedents live in the solene corpus (written by
+      // storePrecedent above as debate:<id> records). REAL similarity from
+      // the retrieval, not the old hardcoded 0.85; both agents must appear
+      // in the record's metadata for it to count as their precedent.
+      const { retrieveRelevantMemories } = await import("./solene/learningLoop");
+      const result = await retrieveRelevantMemories({
+        queryText: context,
+        namespace: "agent_memory",
+        topK: 5,
+        queryingAgentRole: "system",
       });
-
-      for (const ep of episodes || []) {
-        const epData = ep.context || ep;
-        if (epData.agents?.includes(agentA) && epData.agents?.includes(agentB)) {
-          // Simple similarity: same agents involved in same category
+      // The retrieval contract carries sourceRef + snippet + similarity —
+      // no metadata — so the match reads the STRUCTURED text storePrecedent
+      // writes ("Disagreement resolved among A, B on \"topic\": resolution").
+      // Writer and reader own the format together; both sites document it.
+      for (const m of result.retrieved ?? []) {
+        const isDebate = String(m.sourceRef).startsWith("debate:");
+        const namesBoth = m.contentSnippet.includes(agentA) && m.contentSnippet.includes(agentB);
+        if (isDebate && namesBoth && m.similarityScore >= 0.6) {
+          const resolution = m.contentSnippet.split('": ').slice(1).join('": ') || m.contentSnippet;
           return {
-            id: ep.id,
-            resolution: epData.resolution || "unknown",
-            similarity: 0.85,
-            date: ep.createdAt ? new Date(ep.createdAt).toLocaleDateString() : "unknown",
+            id: Number(String(m.sourceRef).replace("debate:", "")) || 0,
+            resolution,
+            similarity: m.similarityScore,
+            date: "unknown",
           };
         }
       }
@@ -364,14 +374,15 @@ Cast your vote. JSON:
    */
   async storePrecedent(debateId: number, resolution: string, agents: string[], topic: string) {
     try {
-      const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
-      for (const agent of agents) {
-        await cognitiveMemoryService.recordEpisode(agent, {
-          action: "disagreement_resolution",
-          outcome: resolution,
-          outcomeSuccess: true,
-          context: { debateId, agents, topic, resolution },
-          tags: ["disagreement", "precedent"],
+      // Stage-4 turn 17: one corpus record per RESOLUTION (not one per agent —
+      // the old per-agent episodes were N copies of the same fact), embedded
+      // where retrieval actually reads.
+      const { ingestAgentMemory } = await import("./solene/agentMemoryIngest");
+      {
+        await ingestAgentMemory({
+          sourceRef: `debate:${debateId}`,
+          text: `Disagreement resolved among ${agents.join(", ")} on "${topic}": ${resolution}`,
+          metadata: { debateId, agents, topic, kind: "disagreement_resolution" },
         });
       }
     } catch {
