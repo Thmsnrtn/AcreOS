@@ -175,3 +175,44 @@ export async function listPendingHands(limit = 50): Promise<AutopilotPendingActi
     return [];
   }
 }
+
+/**
+ * Frozen-send visibility counters (stage-4 turn 5, OD-9). The grants-for-all
+ * ruling only stays honest if an expiring card is a VISIBLE event: these
+ * counters feed the Story door strip and the Letter's line, so a send dying
+ * at the 24h TTL is something the founder sees counted, never a silent drop.
+ * "Auto-witnessed" is recognized by the approver attribution the sweep
+ * writes ("… via witness-grant #N") — the same string the audit carries.
+ */
+export async function pendingHandCounters(windowHours = 168): Promise<{
+  windowHours: number;
+  proposed: number;
+  tappedByFounder: number;
+  autoWitnessed: number;
+  expiredUnseen: number;
+  pendingNow: number;
+}> {
+  const since = new Date(Date.now() - windowHours * 3600_000);
+  const rows = await db
+    .select({
+      status: autopilotPendingActions.status,
+      approvedBy: autopilotPendingActions.approvedBy,
+      expiresAt: autopilotPendingActions.expiresAt,
+      createdAt: autopilotPendingActions.createdAt,
+    })
+    .from(autopilotPendingActions)
+    .where(sql`${autopilotPendingActions.createdAt} >= ${since}`);
+  const now = Date.now();
+  let tapped = 0, auto = 0, expired = 0, pendingNow = 0;
+  for (const r of rows) {
+    const viaGrant = (r.approvedBy ?? "").includes("via witness-grant #");
+    if (r.status === "approved" || r.status === "executed") {
+      if (viaGrant) auto++; else tapped++;
+    } else if (r.status === "expired" || (r.status === "pending" && r.expiresAt && r.expiresAt.getTime() <= now)) {
+      expired++;
+    } else if (r.status === "pending") {
+      pendingNow++;
+    }
+  }
+  return { windowHours, proposed: rows.length, tappedByFounder: tapped, autoWitnessed: auto, expiredUnseen: expired, pendingNow };
+}

@@ -501,7 +501,17 @@ export function registerAutopilotRoutes(app: Express): void {
         const { getRecentStory } = await import("./services/autopilot/experienceLog");
         const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
         const entries = await getRecentStory(limit);
-        return res.json({ entries });
+        // Frozen-send visibility (stage-4 turn 5, OD-9): the Story door shows
+        // what the witnessed lane did with agent sends this week — including
+        // the ones that EXPIRED unseen, which is the failure mode the
+        // grants-for-all ruling must keep visible. null = read failed; the
+        // strip stays absent rather than showing zeros it did not count.
+        let frozenSends = null;
+        try {
+          const { pendingHandCounters } = await import("./services/autopilot/pendingHands");
+          frozenSends = await pendingHandCounters();
+        } catch { /* absent, not fabricated */ }
+        return res.json({ entries, frozenSends });
       } catch (err) {
         return Errors.internal(res, err);
       }

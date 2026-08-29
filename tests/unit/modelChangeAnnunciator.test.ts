@@ -318,6 +318,7 @@ describe("plain-language translation — raw ids never reach the founder", () =>
 describe("brief + home.tsx — the notice flows to the founder surface", () => {
   it("buildFounderBrief passes modelChangeNotice through (null-safe back-compat)", () => {
     const baseInputs: FounderBriefInputs = {
+  frozenSends: null,
       partOfDay: "morning",
       founderName: "Tom",
       pulse: {

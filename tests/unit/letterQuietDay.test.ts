@@ -45,6 +45,7 @@ const quietBase = {
 };
 
 const greenInputs: FounderBriefInputs = {
+  frozenSends: null,
   partOfDay: "morning",
   founderName: "Tom",
   pulse: {

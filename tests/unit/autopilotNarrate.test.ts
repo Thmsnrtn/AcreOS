@@ -6,6 +6,7 @@ import {
 } from "../../server/services/autopilot/narrate";
 
 const base = (over: Partial<FounderBriefInputs> = {}): FounderBriefInputs => ({
+  frozenSends: null,
   partOfDay: "morning",
   founderName: "Tom",
   pulse: {
@@ -235,5 +236,31 @@ describe("autopilot narration engine — the Voice", () => {
     expect(partOfDayFromHour(8)).toBe("morning");
     expect(partOfDayFromHour(14)).toBe("afternoon");
     expect(partOfDayFromHour(21)).toBe("evening");
+  });
+});
+
+describe("the Letter's frozen-send line (stage-4 turn 5, OD-9)", () => {
+  it("stays silent when the counters were unreadable (null) or the lane is quiet", () => {
+    expect(buildFounderBrief(base({ frozenSends: null })).theWord).not.toMatch(/Witnessed sends/);
+    expect(
+      buildFounderBrief(base({ frozenSends: { proposed: 0, tappedByFounder: 0, autoWitnessed: 0, expiredUnseen: 0 } })).theWord,
+    ).not.toMatch(/Witnessed sends/);
+  });
+
+  it("renders the week's counts when the lane saw traffic", () => {
+    const { theWord: body } = buildFounderBrief(
+      base({ frozenSends: { proposed: 8, tappedByFounder: 2, autoWitnessed: 6, expiredUnseen: 0 } }),
+    );
+    expect(body).toMatch(/Witnessed sends this week: 8 frozen/);
+    expect(body).toMatch(/6 released by your grants/);
+    expect(body).toMatch(/none expired/);
+  });
+
+  it("calls out expiries LOUDLY — a send dying unseen is the failure grants-for-all must keep visible", () => {
+    const { theWord: body } = buildFounderBrief(
+      base({ frozenSends: { proposed: 5, tappedByFounder: 0, autoWitnessed: 2, expiredUnseen: 3 } }),
+    );
+    expect(body).toMatch(/3 EXPIRED unseen/);
+    expect(body).toMatch(/check the grant budgets/);
   });
 });

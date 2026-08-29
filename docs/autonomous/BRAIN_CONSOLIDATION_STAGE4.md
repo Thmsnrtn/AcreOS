@@ -101,6 +101,15 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
 **Phase 1 — the outbound seam**
 
 - **Turn 4 — build `outboundSeam.ts`, move nobody.** Facade + unit tests (fail-closed counterparty predicate identical to `send-email.ts:74-119`; suppression; attribution payload; panic-stop respected downstream by `executeHandWitnessed` re-read). Ratchet unchanged. Rollback: dead code, trivial revert.
+- **Turn 5 — DONE 2026-08-29.** Decision A RULED via the founder picker:
+  GRANTS FOR ALL (OD-9 DECIDED). Seeded by migration 0240 (+ migrate.mjs
+  mirror): one support-domain grant to solene — covers the send_email/
+  send_sms/send_push hands, 300 actions / 30-day TTL, deny_money +
+  deny_broadcast ON, idempotent by ruling tag, revocable from Controls.
+  Visibility: pendingHandCounters() feeds a frozenSends strip on the Story
+  route and a Letter line that stays silent on null/quiet and calls out
+  EXPIRED-unseen loudly (driven tests, silent/traffic/expiry). Original
+  spec follows.
 - **Turn 5 — DECISION A (no caller flips before this) + expiry telemetry.** Present the witness-grant plan (section 3). Build, in the same turn, the pending-hand visibility counters: proposed / tapped / auto-witnessed / expired-unseen, surfaced on Story (`getRecentStory` lane) and the Letter — so a frozen send can never silently die at the 24h TTL without the founder seeing the count.
 - **Turns 6–8 — move plane-5 email actions, one or two per turn** (6: send_retention_email; 7: send_churn_rescue + send_upgrade_nudge; 8: schedule_call + send_guided_walkthrough). Each turn: caller flips to the seam; direct `emailService.sendEmail` call removed; ratchet baseline lowered IN THE SAME COMMIT (wave rule 5); behavioral test asserting the action yields an `autopilot_pending_actions` row and zero direct email; the 2-min (`agentReactionEngine`) and 5-min (`agentProactiveEngine`, incl. send_churn_rescue's 3-orgs-per-run) cadences keep running as proposal producers. Rollback: revert the single-caller commit — hand path and every other caller unaffected (the strangler property).
 - **Turn 9 — move plane-3's two email branches** (`autonomousDecisionExecutor.ts:496-503`) to the seam (low live risk: `AUTONOMOUS_EXECUTOR_ENABLED` defaults off). Ratchet hits zero → flip its assertion from shrink-only to MUST-BE-ZERO. This gate now enforces "agent-initiated customer email goes through the witnessed hand" — if that covers a prose-only hard-stop in `shared/governance/constitution.ts`, reclassify it and lower the unenforced-hard-stop baseline in `constitution.test.ts` in the same commit.

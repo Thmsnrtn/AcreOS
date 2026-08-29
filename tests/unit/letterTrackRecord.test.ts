@@ -52,6 +52,7 @@ const confessionSrc = fs.readFileSync(
 const routesSrc = fs.readFileSync(path.join(ROOT, "server/routes-autopilot.ts"), "utf-8");
 
 const baseInputs: FounderBriefInputs = {
+  frozenSends: null,
   partOfDay: "morning",
   founderName: "Tom",
   pulse: {

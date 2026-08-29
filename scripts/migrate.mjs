@@ -10742,6 +10742,29 @@ $$ LANGUAGE plpgsql;`,
   BEFORE UPDATE ON "earnest_money_events"
   FOR EACH ROW EXECUTE FUNCTION "emd_events_refuse_update"()`,
 
+  // ── 0240 OD-9 grants-for-all: seed the standing witness grant ──
+  // Full reasoning lives in migrations/0240_od9_seed_standing_witness_grant.sql;
+  // the founder ruled "grants for all" via the decision picker 2026-08-29
+  // (OWNER_DECISIONS_PENDING.md OD-9 DECIDED). Idempotent via the ruling tag
+  // in the note. Belts stay ON (deny_money, deny_broadcast); revocable from
+  // Controls; 300 actions / 30-day TTL — renewal is a deliberate founder act.
+  `INSERT INTO witness_grants
+  (grantor_id, grantee_id, domains, max_cost_usd, max_actions, expires_at,
+   deny_money, deny_broadcast, note)
+SELECT
+  'founder (OD-9 picker ruling, 2026-08-29)',
+  'solene',
+  '["support"]'::jsonb,
+  0.00,
+  300,
+  now() + interval '30 days',
+  true,
+  true,
+  'OD-9 GRANTS-FOR-ALL: standing release for support-domain outward hands (email/SMS/push) as agent cadences migrate onto the witnessed lane. Seeded by migration 0240; revoke from Controls at any time. [od9-2026-08-29]'
+WHERE NOT EXISTS (
+  SELECT 1 FROM witness_grants WHERE note LIKE '%[od9-2026-08-29]%'
+)`,
+
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

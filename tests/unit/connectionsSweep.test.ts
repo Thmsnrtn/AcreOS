@@ -501,6 +501,7 @@ describe("buildConnectionsParagraph (The Letter)", () => {
 
 describe("morning pulse sentence (buildFounderBrief)", () => {
   const baseInputs = {
+  frozenSends: null,
     partOfDay: "morning" as const,
     founderName: "Tom",
     pulse: {

@@ -48,6 +48,16 @@ export interface FounderBriefInputs {
   };
   /** Open founder asks needing a decision, already ordered by urgency. */
   openAsks: FounderDecisionCard[];
+  /**
+   * Frozen-send counters (stage-4 turn 5, OD-9 grants-for-all). null = the
+   * read failed — the Letter stays silent rather than claiming zeros.
+   */
+  frozenSends: {
+    proposed: number;
+    tappedByFounder: number;
+    autoWitnessed: number;
+    expiredUnseen: number;
+  } | null;
   /** The brain's single highest-value planned focus (observational in P0). */
   plannedFocus: RankedMove | null;
   /**
@@ -410,6 +420,22 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   // The closing line mirrors the needed-line so the paragraph lands on the
   // one thing that matters.
   parts.push(isFounderNeeded ? capFirst(neededLine) : "Nothing needs you today.");
+
+  // Frozen-send visibility (stage-4 turn 5, OD-9): rendered only when the
+  // counters were actually read AND the lane saw traffic — a quiet lane says
+  // nothing rather than reciting zeros. An expired card is called out in the
+  // sentence because a send dying unseen is the one failure the
+  // grants-for-all ruling must keep loud.
+  if (inp.frozenSends && inp.frozenSends.proposed > 0) {
+    const f = inp.frozenSends;
+    let line =
+      `Witnessed sends this week: ${f.proposed} frozen — ` +
+      `${f.autoWitnessed} released by your grants, ${f.tappedByFounder} you tapped`;
+    line += f.expiredUnseen > 0
+      ? `, and ${f.expiredUnseen} EXPIRED unseen — those never went out; check the grant budgets on Controls.`
+      : `, none expired.`;
+    parts.push(line);
+  }
 
   const theWord = parts.join(" ");
 
@@ -840,11 +866,27 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     operatingMode = null;
   }
 
+  // Frozen-send counters — null on read failure (silent, never zeros).
+  let frozenSends: FounderBriefInputs["frozenSends"] = null;
+  try {
+    const { pendingHandCounters } = await import("./pendingHands");
+    const c = await pendingHandCounters();
+    frozenSends = {
+      proposed: c.proposed,
+      tappedByFounder: c.tappedByFounder,
+      autoWitnessed: c.autoWitnessed,
+      expiredUnseen: c.expiredUnseen,
+    };
+  } catch {
+    frozenSends = null;
+  }
+
   return buildFounderBrief({
     partOfDay,
     founderName,
     pulse: safePulse,
     openAsks,
+    frozenSends,
     plannedFocus,
     operatingMode,
     trustLedger,
