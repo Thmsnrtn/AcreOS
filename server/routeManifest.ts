@@ -182,7 +182,6 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-founder-real-runtime.ts", mountPath: null, kind: "register", export: "registerFounderV12Routes" },
   { file: "routes-founder-recourse.ts", mountPath: null, kind: "register", export: "registerFounderRecourseRoutes" },
   { file: "routes-founder-self-running-company.ts", mountPath: null, kind: "register", export: "registerFounderV14Routes" },
-  { file: "routes-founder-sentient-enterprise.ts", mountPath: null, kind: "register", export: "registerFounderV13Routes" },
   { file: "routes-founder-studio.ts", mountPath: null, kind: "register", export: "registerFounderStudioRoutes" },
   { file: "routes-founder-studio-dials.ts", mountPath: null, kind: "register", export: "registerFounderStudioDialRoutes" },
   { file: "routes-founder-vendor-status.ts", mountPath: "/api/founder/vendor-status", kind: "router", export: "default" },

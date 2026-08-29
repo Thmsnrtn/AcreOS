@@ -190,6 +190,14 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   feedbackLoopV14, trustAuthorityEscalation (die with lane 3, turn 13),
   and the v13 router (turn 18).
 - **Turn 17 — cascade memory repoint.** `confidenceCascadeV14.ts:298` recallEpisodes → `memoryRetrieval` over the solene corpus; honest-empty fallback tested both ways (seeded fixture returns precedent; empty corpus advances the cascade without fabricating). Convert `executionEngine` store_learning and `agentDebates.ts:369` to `embedDocumentTextFailOpen`. Rollback: revert — V13 store is still intact and quasi-static (no decay cron ever ran), so reverting restores exact prior behavior.
+- **Turn 18 — DONE 2026-08-29 (Decision F ruled via the picker; E ratified
+  retroactively — OD-10).** routes-founder-sentient-enterprise deleted
+  (~68 routes); scpMemorySystem deleted (its routes-scp-v2 helper had ZERO
+  call sites — the SCP memory lane was already dead); all six v13 client
+  hooks removed with the agent-performance Strategies tab (it fetched a
+  route that never existed and always rendered empty). Zero client v13
+  fetches remain. cognitiveMemoryV13.ts deletes at turn 13 with its last
+  two importers. Fourth OD-8 tranche recorded (~26 V13 tables).
 - **Turn 18 — V13 surface retirement.** Remove `/api/founder/v13` (`routes-founder-sentient-enterprise`) and `scpMemorySystem` episodic writes via `routes-scp-v2` (Decision F); delete `cognitiveMemoryV13.ts` after in-commit zero-caller grep; four V13 tables + `memory_access_log` → drop list; lower `FOUNDER_ROUTE_BASELINE` again.
 - **Turn 19 — independent completeness audit (wave discipline #2).** A fresh agent that built none of this, claims-as-hypotheses: hunt built-but-unwired residue (unmounted routes, orphan exports, schema-without-migration, seams with zero adopters), re-run every ratchet (`constitution.test.ts`, `founderFourDoors`, `sidebarHiddenRoutes`, `moneyCustodyHardStop`, `hardStopLaneCoverage`, `agentAuthorityCeiling`, both new chokepoint tests), verify every baseline was lowered-not-raised, run `npm run check`, `npm test`, `npm run build` directly. Only then PR.
 

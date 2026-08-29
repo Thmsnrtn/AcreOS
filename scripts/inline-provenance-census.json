@@ -168,7 +168,6 @@
   "client/src/hooks/use-sovereign-dashboard.ts": 3,
   "client/src/lib/glass-engine.ts": 1,
   "client/src/lib/trust-language.ts": 1,
-  "client/src/pages/agent-performance.tsx": 2,
   "client/src/pages/avm-bulk.tsx": 11,
   "client/src/pages/avm.tsx": 16,
   "client/src/pages/closing-costs.tsx": 1,

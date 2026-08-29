@@ -13,7 +13,6 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   useAgentRuntimeStates,
   useRevenueAttribution,
-  useAdaptiveStrategies,
 } from "@/hooks/use-sovereign-dashboard";
 
 function TrustScoreBar({ score, label }: { score: number; label: string }) {
@@ -43,7 +42,6 @@ export default function AgentPerformance() {
   useDocumentTitle("Agent performance");
   const { data: agents = [], isLoading: agentsLoading } = useAgentRuntimeStates();
   const { data: revenue } = useRevenueAttribution();
-  const { data: strategies = [] } = useAdaptiveStrategies();
 
   const isLoading = agentsLoading;
 
@@ -53,14 +51,14 @@ export default function AgentPerformance() {
         <PageHeader
           title="Agent performance"
           icon={<TrendingUp className="w-5 h-5 text-muted-foreground" aria-hidden="true" />}
-          description="Trust scores, revenue attribution, decision accuracy, and adaptive strategies."
+          description="Trust scores, revenue attribution, and decision accuracy."
         />
 
         <Tabs defaultValue="trust">
           <TabsList>
             <TabsTrigger value="trust">Trust scores</TabsTrigger>
             <TabsTrigger value="revenue">Revenue attribution</TabsTrigger>
-            <TabsTrigger value="strategies">Strategies</TabsTrigger>
+            
           </TabsList>
 
           <TabsContent value="trust" className="space-y-4">
@@ -199,53 +197,9 @@ export default function AgentPerformance() {
             )}
           </TabsContent>
 
-          <TabsContent value="strategies" className="space-y-4">
-            {Array.isArray(strategies) && strategies.length > 0 ? (
-              <ul className="space-y-4" aria-label="Adaptive strategies">
-                {strategies.map((strategy: any, i: number) => (
-                  <li key={strategy.id ?? i}>
-                    <Card>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Target className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-                            <span className="font-medium text-sm truncate">{strategy.name ?? strategy.title ?? "Strategy"}</span>
-                          </div>
-                          <Badge variant={strategy.status === "active" ? "default" : "secondary"} className="capitalize">
-                            {strategy.status ?? "draft"}
-                          </Badge>
-                        </div>
-                        {strategy.description && (
-                          <p className="text-sm text-muted-foreground mt-2">{strategy.description}</p>
-                        )}
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                          {strategy.confidence != null && (
-                            <DataProvenanceChip
-                              source="Adaptive strategy model"
-                              classification="modeled"
-                              confidence={strategy.confidence * 100}
-                            />
-                          )}
-                          {strategy.adoptedBy && (
-                            <span>Adopted by: {Array.isArray(strategy.adoptedBy) ? strategy.adoptedBy.join(", ") : strategy.adoptedBy}</span>
-                          )}
-                          {strategy.updatedAt && (
-                            <span className="tabular-nums">Updated {relative(strategy.updatedAt)}</span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No adaptive strategies active yet. The system will develop strategies as it learns from your business patterns.
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
+          {/* The Strategies tab was removed 2026-08-29 (turn 18, Decision F):
+              it fetched /api/founder/v13/strategy/active, a route that never
+              existed — the tab always rendered its empty state. */}
         </Tabs>
       </div>
     </PageShell>

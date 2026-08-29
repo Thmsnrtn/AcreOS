@@ -165,8 +165,6 @@ const BASELINE = new Set([
   "server/services/scpGoldenSuite.ts::dbAgent.trustScore ?? 50",
   "server/services/scpLLMJudges.ts::obs.confidence ?? 0.7",
   "server/services/scpLLMJudges.ts::parsed.quality_score ?? 50",
-  "server/services/scpMemorySystem.ts::ep.relevanceScore ?? 100",
-  "server/services/scpMemorySystem.ts::existing.confidence ?? 50",
   "server/services/sellerIntentPredictor.ts::signals.priceFlexibility?.score || 50",
   "server/services/sellerIntentPredictor.ts::signals.urgency?.score || 50",
   "server/services/sequenceOptimizer.ts::other.replyRate || 1",

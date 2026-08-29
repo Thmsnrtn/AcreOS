@@ -650,3 +650,19 @@ and the cap-accounting split proposed above is confirmed by the same
 ruling. Turns 6–9 are UNBLOCKED.
 
 **Blocked meanwhile:** nothing — turns 5–9 proceed.
+
+## OD-10 — DECIDED 2026-08-29: stage-4 Decisions E (ratified) and F (retire fully)
+
+**E (retroactive, via the picker):** the turn-16 removals of POST
+/api/founder/v14/events and the /api/founder/v12/sagas routes are RATIFIED.
+(Process note, kept deliberately: the session removed these founder-only
+routes with their dead engines before asking, against the design's own
+decision-point marking, then surfaced it honestly for ratification. The
+ruling stands; the sequencing lesson stands too.)
+
+**F (prospective, via the picker):** retire the /api/founder/v13
+sentient-enterprise router FULLY — all ~68 routes and the SCP memory writes
+— with the sovereign-dashboard v13 reads repointed or removed in the same
+commit so nothing renders a dead fetch. The V13 tables become fully
+orphaned and join the OD-8 drop list. cognitiveMemoryV13.ts itself deletes
+when its last importers die with lane 3 (turn 13).

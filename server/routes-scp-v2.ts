@@ -30,10 +30,6 @@ async function getEvolutionEngine() {
   return import("./services/scpEvolutionEngine");
 }
 
-async function getMemorySystem() {
-  return import("./services/scpMemorySystem");
-}
-
 async function getLLMJudges() {
   return import("./services/scpLLMJudges");
 }

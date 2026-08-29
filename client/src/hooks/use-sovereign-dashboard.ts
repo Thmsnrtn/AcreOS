@@ -2,6 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 
 // ─── Sovereign Dashboard hooks (Phase A) ─────────────────────────────────────
 
+// The v13 hooks (self-healing status, adaptive strategies, collaboration
+// sessions, governance compliance, founder intelligence — cognitive memory
+// went earlier with the memory page) were REMOVED 2026-08-29 — stage-4
+// turn 18, founder Decision F (OD-10): the /api/founder/v13 router is
+// retired, and several of these fetched paths that never existed
+// server-side (they always rendered empty). The live v12/v14 hooks below
+// are untouched.
+
 export function useAgentRuntimeStates() {
   return useQuery({
     queryKey: ["/api/founder/v12/runtime"],
@@ -46,17 +54,6 @@ export function useAutonomyScore() {
   });
 }
 
-export function useSelfHealingStatus() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/health/dashboard"],
-    queryFn: async () => {
-      const res = await fetch("/api/founder/v13/health/dashboard", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-}
 
 export function useJobHealthLogs() {
   return useQuery({
@@ -160,20 +157,6 @@ export function useDelegationTokens() {
 // a route that never existed, and always resolved to []. See the App.tsx
 // note at the /memory-browser redirect.
 
-export function useAdaptiveStrategies() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/strategy/active"],
-    queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v13 only exposes /strategies/:codename/performance and /strategies/stats —
-      // no active-strategies list.)
-      const res = await fetch("/api/founder/v13/strategy/active", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-}
 
 export function useTrustEnforcement() {
   return useQuery({
@@ -252,43 +235,8 @@ export function useEventMeshSubscriptions() {
   });
 }
 
-export function useAgentCollaborationSessions() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/dialogues"],
-    queryFn: async () => {
-      const res = await fetch("/api/founder/v13/dialogues", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-}
 
-export function useGovernanceCompliance() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/governance/stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/founder/v13/governance/stats", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-}
 
-export function useFounderIntelligence() {
-  return useQuery({
-    queryKey: ["/api/founder/v13/intelligence/briefing"],
-    queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v13 briefings are only exposed as /intelligence/briefings/:orgId, which needs an org param.)
-      const res = await fetch("/api/founder/v13/intelligence/briefing", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-}
 
 export function useNotificationPreferences() {
   return useQuery({

@@ -969,7 +969,6 @@ export async function registerRoutes(
   // v6/v7/v8 routers were deleted (audit F-17-1); their prefix guards go too.
   app.use("/api/founder/v10", promptInjectionMiddleware);
   app.use("/api/founder/v12", promptInjectionMiddleware);
-  app.use("/api/founder/v13", promptInjectionMiddleware);
   app.use("/api/founder/v14", promptInjectionMiddleware);
   app.use("/api/founder/v11", promptInjectionMiddleware);
   app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
@@ -1964,8 +1963,7 @@ export async function registerRoutes(
     app.use('/api/founder/v10', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/v11', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/v12', isAuthenticated, getOrCreateOrg, requireFounder);
-    app.use('/api/founder/v13', isAuthenticated, getOrCreateOrg, requireFounder);
-    app.use('/api/founder/v14', isAuthenticated, getOrCreateOrg, requireFounder);
+      app.use('/api/founder/v14', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/job-health', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/agent-collaboration', isAuthenticated, getOrCreateOrg, requireFounder);
     // F-D32 (2026-05-21): /api/scp/v2/* registered all 16 routes with ZERO
@@ -1987,8 +1985,9 @@ export async function registerRoutes(
     registerFounderV11Routes(app);
     const { registerFounderV12Routes } = await import("./routes-founder-real-runtime");
     registerFounderV12Routes(app);
-    const { registerFounderV13Routes } = await import("./routes-founder-sentient-enterprise");
-    registerFounderV13Routes(app);
+    // /api/founder/v13 (sentient-enterprise) RETIRED 2026-08-29 — stage-4
+    // turn 18, founder Decision F (OD-10): all ~68 routes removed with their
+    // tower; V13 tables await the OD-8 drop batch.
     const { registerFounderV14Routes } = await import("./routes-founder-self-running-company");
     registerFounderV14Routes(app);
     // CMO ad engine — native ad generation, founder approval, broadcast.
