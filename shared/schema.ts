@@ -17550,100 +17550,6 @@ export const metaLearningInsights = pgTable("meta_learning_insights", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// ─── Phase 19: Crisis Leadership & Antifragility ─────────────────────────────
-
-export const preAuthorizedTradeoffs = pgTable("pre_authorized_tradeoffs", {
-  id: serial("id").primaryKey(),
-  tradeoffId: text("tradeoff_id").notNull().unique(),
-  condition: text("condition").notNull(),
-  action: text("action").notNull(),
-  severity: text("severity").notNull(),
-  autoExecute: boolean("auto_execute").notNull().default(true),
-  executionCount: integer("execution_count").notNull().default(0),
-  lastExecutedAt: timestamp("last_executed_at"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const crisisPlaybooks = pgTable("crisis_playbooks", {
-  id: serial("id").primaryKey(),
-  playbookId: text("playbook_id").notNull().unique(),
-  crisisType: text("crisis_type").notNull(),
-  steps: jsonb("steps").$type<Array<{ action: string; owner: string; timeframe: string; priority: number }>>().default([]),
-  communicationPlan: jsonb("communication_plan").$type<Array<{ channel: string; audience: string; template: string }>>().default([]),
-  financialProtocol: jsonb("financial_protocol").$type<{ freezeDiscretionary: boolean; activateRetention: boolean; maxEmergencySpendCents: number }>(),
-  lastUsedAt: timestamp("last_used_at"),
-  usageCount: integer("usage_count").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-// ─── Phase 20: Permanent Sovereignty ─────────────────────────────────────────
-
-export const missionStatements = pgTable("mission_statements", {
-  id: serial("id").primaryKey(),
-  statement: text("statement").notNull(),
-  isActive: boolean("is_active").notNull().default(true),
-  adoptedAt: timestamp("adopted_at").notNull().defaultNow(),
-  adoptedByBoard: boolean("adopted_by_board").default(false),
-  boardMeetingId: text("board_meeting_id"),
-  previousStatementId: integer("previous_statement_id"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const regulatoryFeeds = pgTable("regulatory_feeds", {
-  id: serial("id").primaryKey(),
-  feedId: text("feed_id").notNull().unique(),
-  source: text("source").notNull(),
-  title: text("title").notNull(),
-  summary: text("summary").notNull(),
-  impactAssessment: text("impact_assessment"),
-  urgency: text("urgency").notNull().default("low"),
-  affectedAreas: jsonb("affected_areas").$type<string[]>().default([]),
-  actionRequired: text("action_required"),
-  actionTaken: text("action_taken"),
-  status: text("status").notNull().default("new"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("rf_status_idx").on(table.status),
-  index("rf_urgency_idx").on(table.urgency),
-]);
-
-export const marketAdaptations = pgTable("market_adaptations", {
-  id: serial("id").primaryKey(),
-  adaptationId: text("adaptation_id").notNull().unique(),
-  signalType: text("signal_type").notNull(),
-  signal: text("signal").notNull(),
-  analysis: text("analysis").notNull(),
-  proposedAction: text("proposed_action"),
-  boardDecisionId: text("board_decision_id"),
-  status: text("status").notNull().default("detected"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const selfAuditReports = pgTable("self_audit_reports", {
-  id: serial("id").primaryKey(),
-  reportId: text("report_id").notNull().unique(),
-  auditType: text("audit_type").notNull(),
-  period: text("period").notNull(),
-  findings: jsonb("findings").$type<Array<{ area: string; status: string; details: string; severity: string }>>().default([]),
-  overallScore: integer("overall_score").notNull(),
-  recommendations: jsonb("recommendations").$type<string[]>().default([]),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const perpetualOpsChecks = pgTable("perpetual_ops_checks", {
-  id: serial("id").primaryKey(),
-  checkType: text("check_type").notNull(),
-  status: text("status").notNull(),
-  details: jsonb("details").$type<Record<string, any>>().default({}),
-  nextCheckAt: timestamp("next_check_at"),
-  lastPassedAt: timestamp("last_passed_at"),
-  failureCount: integer("failure_count").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
 
 // ============================================
 // PLATFORM ISSUES (Atlas CTO issue tracking)
@@ -17698,13 +17604,6 @@ export type StrategicPlan = typeof strategicPlans.$inferSelect;
 export type AgentPromptEvolution = typeof agentPromptEvolutions.$inferSelect;
 export type AgentSpawnProposal = typeof agentSpawnProposals.$inferSelect;
 export type MetaLearningInsight = typeof metaLearningInsights.$inferSelect;
-export type PreAuthorizedTradeoff = typeof preAuthorizedTradeoffs.$inferSelect;
-export type CrisisPlaybook = typeof crisisPlaybooks.$inferSelect;
-export type MissionStatement = typeof missionStatements.$inferSelect;
-export type RegulatoryFeed = typeof regulatoryFeeds.$inferSelect;
-export type MarketAdaptation = typeof marketAdaptations.$inferSelect;
-export type SelfAuditReport = typeof selfAuditReports.$inferSelect;
-export type PerpetualOpsCheck = typeof perpetualOpsChecks.$inferSelect;
 
 // ─── SCP v2: Structured Memory System ──────────────────────────────────────
 

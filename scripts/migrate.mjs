@@ -9943,17 +9943,6 @@ const STATEMENTS = [
     "verified_deals" integer,
     "created_at" timestamp DEFAULT now()
   )`,
-  `CREATE TABLE IF NOT EXISTS "crisis_playbooks" (
-    "id" serial PRIMARY KEY,
-    "playbook_id" text NOT NULL,
-    "crisis_type" text NOT NULL,
-    "steps" jsonb DEFAULT '[]'::jsonb,
-    "communication_plan" jsonb DEFAULT '[]'::jsonb,
-    "financial_protocol" jsonb,
-    "last_used_at" timestamp,
-    "usage_count" integer NOT NULL DEFAULT 0,
-    "created_at" timestamp NOT NULL DEFAULT now()
-  )`,
   `CREATE TABLE IF NOT EXISTS "custom_autonomy_rules" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
@@ -10248,18 +10237,6 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "la_status_idx" ON "legal_actions" ("status")`,
   `CREATE INDEX IF NOT EXISTS "la_tier_idx" ON "legal_actions" ("tier")`,
-  `CREATE TABLE IF NOT EXISTS "market_adaptations" (
-    "id" serial PRIMARY KEY,
-    "adaptation_id" text NOT NULL,
-    "signal_type" text NOT NULL,
-    "signal" text NOT NULL,
-    "analysis" text NOT NULL,
-    "proposed_action" text,
-    "board_decision_id" text,
-    "status" text NOT NULL DEFAULT 'detected',
-    "created_at" timestamp NOT NULL DEFAULT now(),
-    "updated_at" timestamp NOT NULL DEFAULT now()
-  )`,
   `CREATE TABLE IF NOT EXISTS "meta_learning_insights" (
     "id" serial PRIMARY KEY,
     "insight_id" text NOT NULL,
@@ -10270,16 +10247,6 @@ const STATEMENTS = [
     "affected_agents" jsonb DEFAULT '[]'::jsonb,
     "recommendation" text,
     "applied_at" timestamp,
-    "created_at" timestamp NOT NULL DEFAULT now()
-  )`,
-  `CREATE TABLE IF NOT EXISTS "mission_statements" (
-    "id" serial PRIMARY KEY,
-    "statement" text NOT NULL,
-    "is_active" boolean NOT NULL DEFAULT true,
-    "adopted_at" timestamp NOT NULL DEFAULT now(),
-    "adopted_by_board" boolean DEFAULT false,
-    "board_meeting_id" text,
-    "previous_statement_id" integer,
     "created_at" timestamp NOT NULL DEFAULT now()
   )`,
   `CREATE TABLE IF NOT EXISTS "openrouter_model_catalog" (
@@ -10316,17 +10283,6 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "ovq_status_scheduled_idx" ON "outcome_verification_queue" ("status", "scheduled_for")`,
   `CREATE INDEX IF NOT EXISTS "ovq_agent_idx" ON "outcome_verification_queue" ("agent_codename")`,
   `CREATE INDEX IF NOT EXISTS "ovq_action_log_idx" ON "outcome_verification_queue" ("action_log_id")`,
-  `CREATE TABLE IF NOT EXISTS "perpetual_ops_checks" (
-    "id" serial PRIMARY KEY,
-    "check_type" text NOT NULL,
-    "status" text NOT NULL,
-    "details" jsonb DEFAULT '{}'::jsonb,
-    "next_check_at" timestamp,
-    "last_passed_at" timestamp,
-    "failure_count" integer NOT NULL DEFAULT 0,
-    "created_at" timestamp NOT NULL DEFAULT now(),
-    "updated_at" timestamp NOT NULL DEFAULT now()
-  )`,
   `CREATE TABLE IF NOT EXISTS "personal_bests" (
     "id" serial PRIMARY KEY,
     "org_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
@@ -10347,18 +10303,6 @@ const STATEMENTS = [
     "fix_prompt" text,
     "resolved_at" timestamp,
     "created_at" timestamp DEFAULT now()
-  )`,
-  `CREATE TABLE IF NOT EXISTS "pre_authorized_tradeoffs" (
-    "id" serial PRIMARY KEY,
-    "tradeoff_id" text NOT NULL,
-    "condition" text NOT NULL,
-    "action" text NOT NULL,
-    "severity" text NOT NULL,
-    "auto_execute" boolean NOT NULL DEFAULT true,
-    "execution_count" integer NOT NULL DEFAULT 0,
-    "last_executed_at" timestamp,
-    "is_active" boolean NOT NULL DEFAULT true,
-    "created_at" timestamp NOT NULL DEFAULT now()
   )`,
   `CREATE TABLE IF NOT EXISTS "provider_cache" (
     "id" serial PRIMARY KEY,
@@ -10434,23 +10378,6 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "rc_org_idx" ON "reaction_chains" ("org_id")`,
   `CREATE INDEX IF NOT EXISTS "rc_trigger_idx" ON "reaction_chains" ("trigger_event_type")`,
   `CREATE INDEX IF NOT EXISTS "rc_enabled_idx" ON "reaction_chains" ("enabled")`,
-  `CREATE TABLE IF NOT EXISTS "regulatory_feeds" (
-    "id" serial PRIMARY KEY,
-    "feed_id" text NOT NULL,
-    "source" text NOT NULL,
-    "title" text NOT NULL,
-    "summary" text NOT NULL,
-    "impact_assessment" text,
-    "urgency" text NOT NULL DEFAULT 'low',
-    "affected_areas" jsonb DEFAULT '[]'::jsonb,
-    "action_required" text,
-    "action_taken" text,
-    "status" text NOT NULL DEFAULT 'new',
-    "created_at" timestamp NOT NULL DEFAULT now(),
-    "updated_at" timestamp NOT NULL DEFAULT now()
-  )`,
-  `CREATE INDEX IF NOT EXISTS "rf_status_idx" ON "regulatory_feeds" ("status")`,
-  `CREATE INDEX IF NOT EXISTS "rf_urgency_idx" ON "regulatory_feeds" ("urgency")`,
   `CREATE TABLE IF NOT EXISTS "regulatory_filing_calendar" (
     "id" serial PRIMARY KEY,
     "filing_type" text NOT NULL,
@@ -10467,16 +10394,6 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "rfc_due_date_idx" ON "regulatory_filing_calendar" ("due_date")`,
   `CREATE INDEX IF NOT EXISTS "rfc_status_idx" ON "regulatory_filing_calendar" ("status")`,
-  `CREATE TABLE IF NOT EXISTS "self_audit_reports" (
-    "id" serial PRIMARY KEY,
-    "report_id" text NOT NULL,
-    "audit_type" text NOT NULL,
-    "period" text NOT NULL,
-    "findings" jsonb DEFAULT '[]'::jsonb,
-    "overall_score" integer NOT NULL,
-    "recommendations" jsonb DEFAULT '[]'::jsonb,
-    "created_at" timestamp NOT NULL DEFAULT now()
-  )`,
   `CREATE TABLE IF NOT EXISTS "shared_deal_links" (
     "id" serial PRIMARY KEY,
     "deal_id" integer NOT NULL REFERENCES "deals"("id") ON DELETE no action,
@@ -10787,6 +10704,57 @@ BEGIN
     array_to_string(dropped, ','), array_to_string(absent, ','),
     COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
 END $mig0241$`,
+
+  // ── 0242 OD-8 drop batch 2: the permanentSovereignty-cascade tranche ──
+  // Same founder ruling and mechanism as 0241 (approve with evidence,
+  // 2026-08-29): count in place, drop only at zero rows, survivors stay
+  // and warn loudly, one atomic summary line for the deploy watch. The
+  // seven modelled tables lost their writers when the permanentSovereignty
+  // -> crisisLeadership -> externalComms/predictiveAutoscaler chain was
+  // deleted (stage-4 turn 2); their models and CREATEs left in the same
+  // commit as this block. 'communications' has been unmodelled since the
+  // early era (migrations/0001 only) and its last raw writer died in the
+  // same cascade — the conditional drop resolves whether it ever held
+  // rows in production. Tranche corrections, recorded like batch 1's:
+  // war_room_messages came OFF (live reader+writer in warRoomService via
+  // ceoCommandBridge/attentionOptimizer); canary_deploys/migration_plans/
+  // provider_configs were never persisted anywhere — nothing to drop.
+  `DO $mig0242$
+DECLARE
+  t text;
+  n bigint;
+  dropped text[] := '{}';
+  absent text[] := '{}';
+  survivors text[] := '{}';
+  tables text[] := ARRAY[
+    'pre_authorized_tradeoffs',
+    'crisis_playbooks',
+    'mission_statements',
+    'regulatory_feeds',
+    'market_adaptations',
+    'self_audit_reports',
+    'perpetual_ops_checks',
+    'communications'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      absent := absent || t;
+      CONTINUE;
+    END IF;
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n = 0 THEN
+      EXECUTE format('DROP TABLE %I CASCADE', t);
+      dropped := dropped || t;
+    ELSE
+      survivors := survivors || format('%s=%s rows', t, n);
+      RAISE WARNING '[od8-batch2] % HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', t, n;
+    END IF;
+  END LOOP;
+  RAISE NOTICE '[od8-batch2-summary] dropped=% absent=% survivors=%',
+    array_to_string(dropped, ','), array_to_string(absent, ','),
+    COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
+END $mig0242$`,
 
 ];
 

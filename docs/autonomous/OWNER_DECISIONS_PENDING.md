@@ -613,10 +613,39 @@ removed their ten `pgTable` models, the two stale `founder_intents`/
 baselines by exactly ten (tablesNoWriter 76→66, tablesNoReader 86→76,
 internalOnlyExportsShared 448→438), and registered the eight
 0016-created tables in `schema-migrate-mirror.orphans.json` for the
-interim — each entry leaves that register when the deploy log shows its
-drop. Deploy-log read-back pending; populated survivors (if any) will be
-reported here. Second tranche (the permanentSovereignty cascade's twelve)
-waits for batch 1's evidence to come back clean.
+interim.
+
+**Batch 1 VERDICT (deploy #36, 2026-08-29):** the atomic
+`[od8-batch1-summary]` evidence line reads `dropped= absent=<all ten>
+survivors=none`. All ten tables are absent from production, zero
+populated survivors, zero data loss. The two that demonstrably existed
+(`founder_intents`, `intent_progress_logs` — migrate.mjs re-created them
+every release since v14) were dropped EMPTY by deploy #33's first run of
+0241; the eight 0016-only tables never existed in production at all,
+because 0016 was never mirrored into migrate.mjs, the only path
+production runs. Getting the evidence readable took three iterations,
+each falsified by a real deploy: #33 proved flyctl doesn't stream
+release-command stdout into the job log; #35's live-capture proved Fly's
+stream drops 9-of-10 lines under burst; #36's single atomic summary
+notice is the mechanism that works, and it re-prints on every release.
+Batch 2 (the permanentSovereignty cascade's twelve) is unblocked and
+uses the same summary-line pattern.
+
+**Batch 2 SHIPPED 2026-08-29** — migration 0242 (mirrored in
+migrate.mjs), with two tranche corrections recorded exactly like batch
+1's autonomy pair: `war_room_messages` came OFF the list (live
+reader+writer in warRoomService, reached via ceoCommandBridge and
+attentionOptimizer — the "lost its last reader" note was stale), and
+`canary_deploys`/`migration_plans`/`provider_configs` came off as
+no-ops (never persisted anywhere; in-memory constructs of the deleted
+services). What ships: the seven modelled Phase-19 tables
+(pre_authorized_tradeoffs, crisis_playbooks, mission_statements,
+regulatory_feeds, market_adaptations, self_audit_reports,
+perpetual_ops_checks — models + migrate.mjs CREATEs removed in the same
+commit) plus the long-unmodelled `communications`, whose row count the
+conditional drop resolves. Verdict pending the next deploy's
+[od8-batch2-summary] line; any populated survivor will be reported
+here.
 
 **Blocked meanwhile:** nothing.
 

@@ -310,11 +310,11 @@ jobs:
             # Fly's stream is lossy under burst (deploy #35 delivered 1 of 10
             # per-table lines), so completeness rides on the single atomic
             # summary notice the conditional-drop block RAISEs at its end.
-            if printf '%s\n' "$LOGS" | grep -q 'od8-batch1-summary'; then
-              echo "── conditional-drop summary (atomic, authoritative) ──"
-              printf '%s\n' "$LOGS" | grep -F 'od8-batch1-summary'
+            if printf '%s\n' "$LOGS" | grep -qE 'od8-batch[0-9]+-summary'; then
+              echo "── conditional-drop summaries (atomic, authoritative) ──"
+              printf '%s\n' "$LOGS" | grep -E 'od8-batch[0-9]+-summary'
             else
-              echo "::warning title=Drop summary line not captured::[migrate] lines arrived but the od8-batch1-summary notice did not survive the stream — read it on the next deploy (the block re-prints every release)."
+              echo "::warning title=Drop summary line not captured::[migrate] lines arrived but no od8-batch*-summary notice survived the stream — read it on the next deploy (the blocks re-print every release)."
             fi
           fi
 
