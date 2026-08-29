@@ -139,7 +139,9 @@ const PROTECTABLE_SENDS = [
 // a hardening: a deletion. The register tracks adoption in BOTH directions, so
 // it FAILED stale-high until this was lowered — which is the half that stops a
 // reduction being banked instead of recorded.
-const UNPROTECTED_SEND_SITES_BASELINE = 60;
+// 60 -> 59 on 2026-08-29: stage-4 turn 6 flipped send_retention_email onto
+// the witnessed outbound seam (the first agent caller off the direct rail).
+const UNPROTECTED_SEND_SITES_BASELINE = 59;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

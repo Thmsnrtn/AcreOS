@@ -129,7 +129,16 @@ registerExecutor("sophie_csm", "send_retention_email", async (ctx) => {
     return { success: false, detail: `No contact email for ${org.name}` };
   }
 
-  const result = await emailService.sendEmail({
+  // Stage-4 turn 6: the FIRST caller flip onto the witnessed lane. The
+  // direct emailService.sendEmail is gone — the send freezes as a pending
+  // witnessed action; the OD-9 support-domain grant (migration 0240)
+  // releases it within ~5 min via the autoWitness sweep, or the founder
+  // taps it on the Decisions door. The organizationId-as-sender-identity
+  // arg is dropped in the move: mail from AcreOS to an org's own operator
+  // is SYSTEM mail on platform identity (purpose-lanes ruling 2026-07-17).
+  const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+  const proposal = await proposeGovernedEmail({
+    organizationId: orgId,
     to: contactEmail,
     subject: `We miss you at AcreOS — let's make sure you're getting the most out of your account`,
     html: `
@@ -139,17 +148,22 @@ registerExecutor("sophie_csm", "send_retention_email", async (ctx) => {
       <p>Is there anything I can help with? A quick call or even a reply to this email works great.</p>
       <p>Best,<br/>Pax<br/>AcreOS Customer Success</p>
     `,
-    organizationId: orgId,
+    source: "agentActionExecutors:send_retention_email",
+    domain: "support",
   });
 
-  return {
-    success: result.success,
-    detail: result.success
-      ? `Retention email sent to ${org.name} (${contactEmail})`
-      : `Failed to send retention email to ${org.name}: ${result.error}`,
-    metrics: { orgId, orgName: org.name, emailSent: result.success },
-    verifyAfterMs: 24 * 60 * 60 * 1000, // Check in 24h if they logged in
-  };
+  return proposal.proposed
+    ? {
+        success: true,
+        detail: `Retention email for ${org.name} (${contactEmail}) frozen as pending action #${proposal.pendingActionId}${proposal.deduped ? " (deduped onto the live proposal)" : ""} — released by grant or founder tap, never sent directly.`,
+        metrics: { orgId, orgName: org.name, pendingActionId: proposal.pendingActionId, frozen: true },
+        verifyAfterMs: 24 * 60 * 60 * 1000, // Check in 24h if they logged in
+      }
+    : {
+        success: false,
+        detail: `Retention email for ${org.name} refused at the seam: ${proposal.refusal}`,
+        metrics: { orgId, orgName: org.name, frozen: false },
+      };
 });
 
 registerExecutor("sophie_csm", "resolve_stale_ticket", async (ctx) => {
