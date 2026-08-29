@@ -756,6 +756,21 @@ export function registerAdminRoutes(app: Express): void {
   // per route. Resets on process restart by design — this is a backstop
   // for early-warning observability; persistent telemetry belongs in an
   // APM (Datadog / Honeycomb / etc.).
+  // Stage-4 turn 11: the trust seam's shadow counters — how often the
+  // domain-ledger verdict agrees with the live companyAgents tier check.
+  // Read-only; the divergence LOG (logger.warn "[trustSeam] SHADOW
+  // DIVERGENCE") is the durable record; this is the live glance. The
+  // turn-12/13 flips are licensed by ~a week of this evidence, seamLooser
+  // staying at zero being the non-negotiable half.
+  api.get("/api/admin/trust-seam-shadow", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { getShadowCounters } = await import("./services/autopilot/trustSeam");
+      res.json(getShadowCounters());
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   api.get("/api/admin/telemetry", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       // L14 — read the union view by default (durable rows + current-tick

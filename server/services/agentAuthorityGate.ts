@@ -101,7 +101,7 @@ const NEVER_PROMOTE_ACTIONS: readonly string[] = [
   ]),
 ];
 
-function isNeverPromote(action: string): boolean {
+export function isNeverPromote(action: string): boolean {
   return (NEVER_PROMOTE_ACTIONS as readonly string[]).includes(action);
 }
 
@@ -111,6 +111,18 @@ function isNeverPromote(action: string): boolean {
  * Check what authority level an agent has for a given action.
  */
 export async function checkAuthority(codename: string, action: string): Promise<AuthorityCheck> {
+  const result = await checkAuthorityInner(codename, action);
+  // Stage-4 turn 11 SHADOW MODE: the domain-ledger seam computes its verdict
+  // alongside; divergences are counted and logged, behavior is UNCHANGED.
+  void import("./autopilot/trustSeam")
+    .then(({ shadowCompare }) =>
+      shadowCompare({ gate: "agentAuthorityGate", agentCodename: codename, action, legacyAllowed: result.allowed }),
+    )
+    .catch(() => {});
+  return result;
+}
+
+async function checkAuthorityInner(codename: string, action: string): Promise<AuthorityCheck> {
   const agent = await db.query.companyAgents.findFirst({
     where: eq(companyAgents.codename, codename),
   });

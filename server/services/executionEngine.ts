@@ -411,7 +411,8 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
     // derived at this read and expires with the absence, rather than being
     // written into the agent's own standing where it would outlive its grant.
     const trustScore = await companyAgentService.effectiveTrustScore(ctx.agentCodename);
-    if (!trustAuthorityEscalation.isActionAllowed(trustScore, ctx.action)) {
+    const legacyAllowed = trustAuthorityEscalation.isActionAllowed(trustScore, ctx.action);
+    if (!legacyAllowed) {
       violations.push(`Agent ${ctx.agentCodename} (trust: ${trustScore}) not authorized for action ${ctx.action}`);
       const tier = trustAuthorityEscalation.getTier(trustScore);
       suggestedAlternatives.push(
@@ -419,6 +420,14 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
         `Use escalate_to_founder to request this action be performed`,
       );
     }
+    // Stage-4 turn 11 SHADOW MODE: the domain-ledger seam computes its own
+    // verdict alongside; divergences are counted and logged, behavior is
+    // UNCHANGED. The divergence record is the evidence for the turn-12 flip.
+    void import("./autopilot/trustSeam")
+      .then(({ shadowCompare }) =>
+        shadowCompare({ gate: "executionEngine", agentCodename: ctx.agentCodename, action: ctx.action, legacyAllowed }),
+      )
+      .catch(() => {});
   } catch (err) { unevaluable("Trust authority check", err); }
 
   // Financial actions require delegation token check
