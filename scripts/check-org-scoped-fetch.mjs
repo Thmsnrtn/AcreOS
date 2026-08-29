@@ -532,7 +532,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   //   intent is STATED rather than inferred from a filename.
   "server/services/autonomousDecisionExecutor.ts::executeAlertAcknowledgement",
   "server/services/autonomousDecisionExecutor.ts::executeFeatureRequestApproval",
-  "server/services/autonomousDecisionExecutor.ts::executeSupportEscalationApproval",
   "server/services/autonomyFinalMile.ts::generateDailyAutonomousSummary",
   "server/services/autopilot/rootCause.ts::runIncidentTriage",
   "server/services/communityEnhancements.ts::getPublicRoadmap",

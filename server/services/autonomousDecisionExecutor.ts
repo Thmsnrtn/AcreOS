@@ -456,24 +456,22 @@ async function executeSupportEscalationApproval(
   if (!item.sourceTicketId) return { success: false, detail: "No ticket ID in item" };
   if (!decision.draftResponse) return { success: false, detail: "No draftResponse from AI" };
 
-  try {
-    await db.insert(supportTicketMessages).values({
-      ticketId: item.sourceTicketId,
-      senderId: "autonomous_executor",
-      senderName: "AcreOS Support (AI)",
-      content: decision.draftResponse,
-      messageType: "reply",
-      isInternal: false,
-    } as any);
-
-    await db.update(supportTickets)
-      .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
-      .where(eq(supportTickets.id, item.sourceTicketId));
-
-    return { success: true, detail: `Ticket #${item.sourceTicketId} resolved with AI response (${decision.draftResponse.length} chars)` };
-  } catch (err: any) {
-    return { success: false, detail: err.message };
-  }
+  // Stage-4 turn 10: through the canonical writer. The old inline insert
+  // wrote senderId/senderName/messageType/isInternal behind `as any` — none
+  // of those columns exist, NOT NULL `role` went unfilled, and every insert
+  // THREW: this approval flow has never successfully posted a reply.
+  if (!item.organizationId) return { success: false, detail: "No organization ID in item" };
+  const { postAgentSupportReply } = await import("./customerComms/supportReply");
+  const result = await postAgentSupportReply({
+    ticketId: item.sourceTicketId,
+    organizationId: item.organizationId,
+    content: decision.draftResponse,
+    agentName: "AcreOS Support (AI)",
+    resolveTicket: true,
+  });
+  return result.posted
+    ? { success: true, detail: `Ticket #${item.sourceTicketId} resolved with AI response (${decision.draftResponse.length} chars)` }
+    : { success: false, detail: result.detail };
 }
 
 async function executeChurnRiskApproval(

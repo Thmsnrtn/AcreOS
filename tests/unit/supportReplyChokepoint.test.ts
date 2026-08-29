@@ -32,20 +32,27 @@ type WriterClass =
   | "founder-route"
   | "pax-governed"
   | "cascade-gated"
-  | "agent-autonomous";
+  | "agent-autonomous"
+  | "canonical-writer";
 
 const REGISTER: Record<string, [number, WriterClass]> = {
   "server/ai/paxSupportResolver.ts": [1, "cascade-gated"],
   "server/ai/supportAgent.ts": [4, "pax-governed"],
   "server/routes-admin.ts": [1, "founder-route"],
   "server/routes-support-tickets.ts": [1, "human-route"],
-  "server/services/agentActionExecutors.ts": [1, "agent-autonomous"],
-  "server/services/autonomousDecisionExecutor.ts": [1, "agent-autonomous"],
+  "server/services/customerComms/supportReply.ts": [1, "canonical-writer"],
   "server/services/customerSupportAutoResolver.ts": [2, "cascade-gated"],
 };
 
-/** Turn 10 lowers this to zero when both writers converge on supportReply.ts. */
-const AGENT_AUTONOMOUS_BASELINE = 2;
+/**
+ * Turn 10 LANDED (2026-08-29): both agent-autonomous writers converged on
+ * customerComms/supportReply.ts — and the convergence found that neither had
+ * EVER posted a message (they inserted senderId/senderName/messageType/
+ * isInternal behind `as any`; none of those columns exist, NOT NULL `role`
+ * went unfilled, every insert threw). MUST-BE-ZERO forever: an
+ * agent-autonomous inline insert is a schema bug waiting to recur.
+ */
+const AGENT_AUTONOMOUS_BASELINE = 0;
 
 const PATTERN = /insert\(supportTicketMessages\)/g;
 
@@ -96,16 +103,20 @@ describe("support-reply chokepoint — every writer of supportTicketMessages is 
     expect(wrong, "writer-count drift:\n" + wrong.join("\n")).toEqual([]);
   });
 
-  it("the agent-autonomous pair only shrinks (to zero at turn 10)", () => {
+  it("agent-autonomous inline inserts are ZERO, forever", () => {
     let n = 0;
     for (const [f, [count, klass]] of Object.entries(REGISTER)) {
       if (klass === "agent-autonomous") n += found.get(f) ?? count;
     }
-    expect(n).toBeLessThanOrEqual(AGENT_AUTONOMOUS_BASELINE);
     expect(
       n,
-      `agent-autonomous writers ${n} < baseline ${AGENT_AUTONOMOUS_BASELINE} — a writer ` +
-        "converged (good!); lower AGENT_AUTONOMOUS_BASELINE in this commit",
-    ).toBeGreaterThanOrEqual(AGENT_AUTONOMOUS_BASELINE);
+      "an agent-autonomous inline supportTicketMessages insert appeared — agent replies go " +
+        "through customerComms/supportReply.ts (the last two inline writers had never " +
+        "successfully inserted a row; see the register note)",
+    ).toBe(AGENT_AUTONOMOUS_BASELINE);
+  });
+
+  it("the canonical writer exists and is exactly one site", () => {
+    expect(found.get("server/services/customerComms/supportReply.ts")).toBe(1);
   });
 });

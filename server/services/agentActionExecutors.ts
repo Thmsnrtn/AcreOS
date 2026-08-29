@@ -161,15 +161,18 @@ registerExecutor("sophie_csm", "resolve_stale_ticket", async (ctx) => {
   });
   if (!ticket) return { success: false, detail: `Ticket #${ticketId} not found` };
 
-  // Add a follow-up message
-  await db.insert(supportTicketMessages).values({
+  // Stage-4 turn 10: through the canonical writer (the old inline insert
+  // used nonexistent columns behind `as any` and threw on NOT NULL role —
+  // this follow-up never actually posted).
+  const { postAgentSupportReply } = await import("./customerComms/supportReply");
+  const result = await postAgentSupportReply({
     ticketId,
-    senderId: "sophie_csm",
-    senderName: "Pax (AcreOS Support)",
-    content: "Hi! I'm following up on this ticket. We haven't heard back in a while — if this issue is resolved, I'll go ahead and close it. If you still need help, just reply and I'll jump right in.",
-    messageType: "reply",
-    isInternal: false,
-  } as any);
+    organizationId: ticket.organizationId,
+    content:
+      "Hi! I'm following up on this ticket. We haven't heard back in a while — if this issue is resolved, I'll go ahead and close it. If you still need help, just reply and I'll jump right in.",
+    agentName: "Pax (AcreOS Support)",
+  });
+  if (!result.posted) return { success: false, detail: result.detail };
 
   return {
     success: true,

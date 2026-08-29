@@ -554,7 +554,7 @@ problem in (b) is not sharing, it is sharing numbers that belong to a customer.
 
 **Blocked meanwhile:** nothing.
 
-## OD-8 — PENDING: table drops behind the competing-brains consolidation
+## OD-8 — DECIDED 2026-08-29: APPROVE WITH EVIDENCE (founder picker ruling)
 
 **The question.** The consolidation program (campaign doc, "competing-brains",
 2026-08-28) will retire brain services whose tables then have no writer and no
@@ -595,5 +595,58 @@ forever'). Their tables join the list: `missionStatements`,
 its last writer and `warRoomMessages` its last reader (both worth a look
 before any drop).
 
-**Blocked meanwhile:** nothing — code-side consolidation proceeds; only the
-DROP migrations wait.
+**RULING (2026-08-29, via the decision picker):** approve with evidence.
+Mechanism (fits this environment — the session cannot read the production
+database, but release-command migrations run inside it): a CONDITIONAL drop
+migration per batch — for each listed table it counts rows; count 0 → DROP
+with the evidence logged; count > 0 → left in place and logged loudly. The
+deploy watch reads the release logs and reports any populated survivor to
+the founder as the one-line summary the ruling asks for; those get their
+own decision before any second attempt. Ratchet baselines drop in the same
+commit as each successful batch.
+
+**Blocked meanwhile:** nothing.
+
+## OD-9 — DECIDED 2026-08-29: GRANTS FOR ALL (founder picker ruling)
+
+**The question.** Stage-4 turns 6–9 move the seven agent-autonomous email
+senders (retention, churn-rescue, upgrade-nudge, schedule-call,
+guided-walkthrough, the autonomous executor's dunning/churn mails, and the
+ungoverned agent-skills sendEmail) onto the witnessed hands lane: instead of
+sending directly, each becomes a frozen pending action. Something must then
+RELEASE those sends, and that something is yours to choose:
+
+- **(a) Standing witness grants** — you issue a grant per class (e.g.
+  "retention emails: up to 10/day for 30 days"); the 5-minute autoWitness
+  sweep releases grant-covered sends automatically, so cadence latency stays
+  ≤5 min. The $500 clamp and panic-stop still apply above any grant. You can
+  revoke a grant at any time; expiry is visible, never silent.
+- **(b) Tap-per-send** — no grants; every agent email waits as a card on the
+  Decisions door until you tap. Maximum control, and the cadence becomes
+  your tap latency (a retention email might wait a day).
+- **(c) Mixed** — grants for the low-stakes classes (retention/nudge),
+  tap-per-send for the rest. Recommended starting point: it preserves the
+  cadences that plausibly earn money while keeping anything unusual in your
+  hands; grants can widen later per class as the counters build trust.
+
+**Also inside this decision (cap accounting):** once sends move onto the
+hands lane, `autopilot_sends` + grant budgets become the counter of record
+for that lane; `autonomyGuardrails.countTodaysSends` keeps covering
+everything still outside it. Confirm that split, or name a different one.
+
+**What is already true regardless:** the seam refuses counterparty mail
+fail-closed (system-only autopilot), refuses suppressed recipients, and
+turn 5 builds proposed/tapped/auto-witnessed/expired counters onto Story
+and the Letter so an expiring card is a visible event, not a silent drop.
+
+**RULING (2026-08-29, via the decision picker):** option (a) — standing
+witness grants for ALL migrated classes. Per-class daily budgets with TTLs;
+the 5-minute autoWitness sweep releases grant-covered sends, so cadence
+latency stays ≤5 min; the $500 clamp, panic-stop and counterparty refusals
+sit above every grant. Implementation: turn 5 seeds the per-class standing
+grants through the normal witnessGrant store (attributed to this ruling,
+conservative starter budgets, 30-day TTL so renewal is a deliberate act),
+and the cap-accounting split proposed above is confirmed by the same
+ruling. Turns 6–9 are UNBLOCKED.
+
+**Blocked meanwhile:** nothing — turns 5–9 proceed.

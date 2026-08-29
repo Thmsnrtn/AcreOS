@@ -104,6 +104,15 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
 - **Turn 5 — DECISION A (no caller flips before this) + expiry telemetry.** Present the witness-grant plan (section 3). Build, in the same turn, the pending-hand visibility counters: proposed / tapped / auto-witnessed / expired-unseen, surfaced on Story (`getRecentStory` lane) and the Letter — so a frozen send can never silently die at the 24h TTL without the founder seeing the count.
 - **Turns 6–8 — move plane-5 email actions, one or two per turn** (6: send_retention_email; 7: send_churn_rescue + send_upgrade_nudge; 8: schedule_call + send_guided_walkthrough). Each turn: caller flips to the seam; direct `emailService.sendEmail` call removed; ratchet baseline lowered IN THE SAME COMMIT (wave rule 5); behavioral test asserting the action yields an `autopilot_pending_actions` row and zero direct email; the 2-min (`agentReactionEngine`) and 5-min (`agentProactiveEngine`, incl. send_churn_rescue's 3-orgs-per-run) cadences keep running as proposal producers. Rollback: revert the single-caller commit — hand path and every other caller unaffected (the strangler property).
 - **Turn 9 — move plane-3's two email branches** (`autonomousDecisionExecutor.ts:496-503`) to the seam (low live risk: `AUTONOMOUS_EXECUTOR_ENABLED` defaults off). Ratchet hits zero → flip its assertion from shrink-only to MUST-BE-ZERO. This gate now enforces "agent-initiated customer email goes through the witnessed hand" — if that covers a prose-only hard-stop in `shared/governance/constitution.ts`, reclassify it and lower the unenforced-hard-stop baseline in `constitution.test.ts` in the same commit.
+- **Turn 10 — DONE 2026-08-29 (out of order; independent of Decision A).**
+  `customerComms/supportReply.ts` is the one agent writer; both callers
+  flipped; the chokepoint is MUST-BE-ZERO. The convergence found the lane
+  had NEVER WORKED: both inline writers inserted senderId/senderName/
+  messageType/isInternal behind `as any` — columns support_ticket_messages
+  does not have — so NOT NULL `role` went unfilled and every insert threw.
+  The `as any` was the whole defect; the canonical writer uses the real
+  schema shape uncast, so drift is a compile error. Decision B stands
+  recorded (hand-ification optional). Original spec follows.
 - **Turn 10 — support-reply consolidation.** Create `customerComms/supportReply.ts`; both writers call it; `supportReplyChokepoint.test.ts` pins the single writer. Record Decision B.
 
 **Phase 2 — trust convergence**
