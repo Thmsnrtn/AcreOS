@@ -89,14 +89,7 @@ export async function logAgentTrace(input: LogTraceInput): Promise<void> {
   }
 }
 
-export async function getTracesForDecision(decisionId: number) {
-  return db
-    .select()
-    .from(agentLlmTraces)
-    .where(eq(agentLlmTraces.decisionId, decisionId))
-    .orderBy(desc(agentLlmTraces.createdAt))
-    .limit(20);
-}
+// getTracesForDecision deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 export async function listRecentTraces(
   filter: { agentCodename?: string; organizationId?: number; limit?: number } = {},

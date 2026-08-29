@@ -43,10 +43,7 @@ export class ApiQueueService {
     return id;
   }
 
-  async getJob(id: string) {
-    const [job] = await db.select().from(apiJobs).where(eq(apiJobs.id, id));
-    return job;
-  }
+  // getJob deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async getPendingJobs(limit: number = 10) {
     const now = new Date();

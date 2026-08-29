@@ -32,7 +32,7 @@ export class CostBasisTracker {
       .limit(1);
 
     if (existing) {
-      throw new Error(`Cost basis already recorded for property ${propertyId}. Use adjustBasis instead.`);
+      throw new Error(`Cost basis already recorded for property ${propertyId}.`);
     }
 
     const adjustedBasis = acquisitionData.acquisitionPrice + acquisitionData.acquisitionCosts;
@@ -52,136 +52,7 @@ export class CostBasisTracker {
     return record;
   }
 
-  /**
-   * Add improvement costs to the property basis (capital improvements, not repairs)
-   */
-  async addImprovement(propertyId: number, improvementCost: number, description: string) {
-    const [record] = await db.select()
-      .from(costBasis)
-      .where(eq(costBasis.propertyId, propertyId))
-      .limit(1);
-
-    if (!record) throw new Error(`No cost basis record for property ${propertyId}`);
-
-    const currentImprovements = parseFloat(record.improvementCosts || "0");
-    const currentBasis = parseFloat(record.adjustedBasis || "0");
-    const newImprovements = currentImprovements + improvementCost;
-    const newBasis = currentBasis + improvementCost;
-
-    const existing_notes = record.notes || "";
-    const updated_notes = `${existing_notes}\nImprovement (${new Date().toISOString().slice(0, 10)}): +$${improvementCost.toLocaleString()} — ${description}`.trim();
-
-    const [updated] = await db.update(costBasis)
-      .set({
-        improvementCosts: newImprovements.toString(),
-        adjustedBasis: newBasis.toString(),
-        notes: updated_notes,
-      })
-      .where(eq(costBasis.propertyId, propertyId))
-      .returning();
-
-    return updated;
-  }
-
-  /**
-   * Apply a specific basis adjustment (depreciation recapture, casualty loss, etc.)
-   */
-  async adjustBasis(
-    propertyId: number,
-    adjustmentType: "depreciation" | "casualty_loss" | "insurance_recovery" | "partial_sale" | "other",
-    amount: number  // positive increases basis, negative decreases
-  ) {
-    const [record] = await db.select()
-      .from(costBasis)
-      .where(eq(costBasis.propertyId, propertyId))
-      .limit(1);
-
-    if (!record) throw new Error(`No cost basis record for property ${propertyId}`);
-
-    const currentBasis = parseFloat(record.adjustedBasis || "0");
-    const newBasis = currentBasis + amount;  // amount can be negative
-
-    const updatedNotes = (record.notes || "") +
-      `\nBasis adjustment (${adjustmentType}, ${new Date().toISOString().slice(0, 10)}): ${amount >= 0 ? "+" : ""}$${amount.toLocaleString()}`;
-
-    const [updated] = await db.update(costBasis)
-      .set({
-        adjustedBasis: newBasis.toString(),
-        notes: updatedNotes,
-      })
-      .where(eq(costBasis.propertyId, propertyId))
-      .returning();
-
-    return updated;
-  }
-
-  /**
-   * Compute realized gain or loss on sale of a property
-   */
-  async computeGainLoss(propertyId: number, salePrice: number) {
-    const [record] = await db.select()
-      .from(costBasis)
-      .where(eq(costBasis.propertyId, propertyId))
-      .limit(1);
-
-    if (!record) throw new Error(`No cost basis record for property ${propertyId}`);
-
-    const adjustedBasis = parseFloat(record.adjustedBasis || "0");
-    const gainLoss = salePrice - adjustedBasis;
-    const holdingPeriod = this.determineHoldingPeriodFromDate(record.acquisitionDate);
-    const isLongTerm = holdingPeriod === "long";
-
-    // Save disposition data
-    const [updated] = await db.update(costBasis)
-      .set({
-        dispositionDate: new Date(),
-        dispositionPrice: salePrice.toString(),
-        gainLoss: gainLoss.toString(),
-        holdingPeriod,
-      })
-      .where(eq(costBasis.propertyId, propertyId))
-      .returning();
-
-    return {
-      propertyId,
-      salePrice,
-      adjustedBasis,
-      gainLoss: Math.round(gainLoss * 100) / 100,
-      isGain: gainLoss > 0,
-      holdingPeriod,
-      isLongTerm,
-      estimatedFederalTaxRate: isLongTerm ? 0.20 : 0.37,
-      estimatedTax: gainLoss > 0
-        ? Math.round(gainLoss * (isLongTerm ? 0.238 : 0.37))  // includes NIIT
-        : 0,
-      record: updated,
-    };
-  }
-
-  /**
-   * Get the current adjusted basis for a property
-   */
-  async getAdjustedBasis(propertyId: number) {
-    const [record] = await db.select()
-      .from(costBasis)
-      .where(eq(costBasis.propertyId, propertyId))
-      .limit(1);
-
-    if (!record) return null;
-
-    const holdingPeriod = this.determineHoldingPeriodFromDate(record.acquisitionDate);
-
-    return {
-      propertyId,
-      acquisitionPrice: parseFloat(record.acquisitionPrice || "0"),
-      acquisitionCosts: parseFloat(record.acquisitionCosts || "0"),
-      improvementCosts: parseFloat(record.improvementCosts || "0"),
-      adjustedBasis: parseFloat(record.adjustedBasis || "0"),
-      holdingPeriod,
-      acquisitionDate: record.acquisitionDate,
-      notes: record.notes,
-    };
-  }
+  // addImprovement, adjustBasis, computeGainLoss, getAdjustedBasis deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   /**
    * Determine holding period (short/long) from acquisition date

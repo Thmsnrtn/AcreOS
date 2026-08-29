@@ -256,23 +256,7 @@ export async function persistAtrDetermination(input: AtrDeterminationInput): Pro
   });
 }
 
-/**
- * Read the ATR determination back for a note. Returns null if no
- * determination has been captured yet (the calling surface should
- * gate consummation in that case).
- */
-export async function getAtrDetermination(noteId: number) {
-  const [row] = await db
-    .select({
-      atrDetermination: notes.atrDetermination,
-      completed: notes.atrDeterminationCompleted,
-      completedAt: notes.atrDeterminationCompletedAt,
-    })
-    .from(notes)
-    .where(eq(notes.id, noteId))
-    .limit(1);
-  return row ?? null;
-}
+// getAtrDetermination deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 /**
  * Compute the DTI ratio (back-end DTI) from the eight-factor inputs in

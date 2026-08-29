@@ -63,9 +63,7 @@ export class DigestService {
     return sub;
   }
 
-  async updateSubscription(id: number, updates: { frequency?: string; emailEnabled?: boolean }) {
-    await db.update(digestSubscriptions).set(updates).where(eq(digestSubscriptions.id, id));
-  }
+  // updateSubscription deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async getSubscriptionsNeedingDigest(frequency: string): Promise<Array<{ userId: string; organizationId: number }>> {
     const now = new Date();

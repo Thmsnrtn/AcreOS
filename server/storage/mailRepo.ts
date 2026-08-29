@@ -59,12 +59,7 @@ export const mailRepo = {
     return identity;
   },
 
-  async getEmailSenderIdentityByEmail(this: DatabaseStorage, fromEmail: string): Promise<EmailSenderIdentity | undefined> {
-    const [identity] = await db.select()
-      .from(emailSenderIdentities)
-      .where(eq(emailSenderIdentities.fromEmail, fromEmail));
-    return identity;
-  },
+  // getEmailSenderIdentityByEmail deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async updateEmailSenderIdentity(this: DatabaseStorage, id: number, updates: Partial<InsertEmailSenderIdentity>, organizationId?: number): Promise<EmailSenderIdentity> {
     const conditions = [eq(emailSenderIdentities.id, id)];

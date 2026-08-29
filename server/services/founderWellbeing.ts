@@ -381,60 +381,7 @@ class FounderWellbeingService {
     return { hourlyOverrides, peakOverrideHour, recommendation };
   }
 
-  /**
-   * Detect decision fatigue based on resolution time and override patterns.
-   */
-  async detectDecisionFatigue(): Promise<{
-    fatigueDetected: boolean;
-    signals: string[];
-    recommendation: string;
-  }> {
-    try {
-      const { decisionsInboxItems } = await import("@shared/schema");
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-      // Count decisions resolved in last 7 days
-      const recentDecisions = await db.select()
-        .from(decisionsInboxItems)
-        .where(and(
-          gte(decisionsInboxItems.resolvedAt, sevenDaysAgo),
-          sql`${decisionsInboxItems.status} != 'pending'`,
-        ))
-        .limit(100);
-
-      const signals: string[] = [];
-
-      // Signal 1: High rejection rate without opening details
-      const rejections = recentDecisions.filter(d => d.status === "rejected");
-      if (rejections.length > recentDecisions.length * 0.6) {
-        signals.push("rejecting_everything");
-      }
-
-      // Signal 2: Override spike (>5 per day average)
-      const overrides = recentDecisions.filter(d => d.founderOverrideAction);
-      if (overrides.length > 5 * 7) {
-        signals.push("override_spike");
-      }
-
-      // Signal 3: Deferred decisions accumulating
-      const deferred = recentDecisions.filter(d => d.status === "deferred");
-      if (deferred.length > 10) {
-        signals.push("deferred_accumulation");
-      }
-
-      const fatigueDetected = signals.length >= 2;
-
-      return {
-        fatigueDetected,
-        signals,
-        recommendation: fatigueDetected
-          ? "You seem busier than usual. Only P0/P1 decisions are being shown. Your agents will auto-handle routine decisions."
-          : "Decision load is normal.",
-      };
-    } catch {
-      return { fatigueDetected: false, signals: [], recommendation: "" };
-    }
-  }
+  // detectDecisionFatigue, generateWeeklySummary deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   /**
    * Track wins for celebration.
@@ -459,63 +406,6 @@ class FounderWellbeingService {
     }
   }
 
-  /**
-   * Generate weekly wellbeing summary for the digest.
-   */
-  async generateWeeklySummary(): Promise<{
-    decisionsMade: number;
-    overrideRate: number;
-    agentSuccessRate: number;
-    wins: string[];
-    recommendation: string;
-  }> {
-    try {
-      const { decisionsInboxItems, agentActionLog } = await import("@shared/schema");
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-      const [decisionCount] = await db.select({ count: count() })
-        .from(decisionsInboxItems)
-        .where(and(
-          gte(decisionsInboxItems.resolvedAt, sevenDaysAgo),
-          sql`${decisionsInboxItems.status} != 'pending'`,
-        ));
-
-      const [overrideCount] = await db.select({ count: count() })
-        .from(decisionsInboxItems)
-        .where(and(
-          gte(decisionsInboxItems.resolvedAt, sevenDaysAgo),
-          sql`${decisionsInboxItems.founderOverrideAction} IS NOT NULL`,
-        ));
-
-      const [successActions] = await db.select({ count: count() })
-        .from(agentActionLog)
-        .where(and(
-          eq(agentActionLog.outcome, "success"),
-          gte(agentActionLog.createdAt, sevenDaysAgo),
-        ));
-
-      const [totalActions] = await db.select({ count: count() })
-        .from(agentActionLog)
-        .where(gte(agentActionLog.createdAt, sevenDaysAgo));
-
-      const decisionsMade = decisionCount?.count || 0;
-      const overrideRate = decisionsMade > 0 ? Math.round(((overrideCount?.count || 0) / decisionsMade) * 100) : 0;
-      const agentSuccessRate = (totalActions?.count || 0) > 0
-        ? Math.round(((successActions?.count || 0) / (totalActions?.count || 1)) * 100)
-        : 0;
-
-      const wins = await this.getRecentWins();
-
-      let recommendation = "";
-      if (agentSuccessRate > 90) recommendation = "Your agents are performing excellently. Consider increasing autonomy.";
-      else if (agentSuccessRate > 75) recommendation = "Agent performance is solid. Keep current autonomy levels.";
-      else recommendation = "Agent performance dipped this week. Review recent failures.";
-
-      return { decisionsMade, overrideRate, agentSuccessRate, wins, recommendation };
-    } catch {
-      return { decisionsMade: 0, overrideRate: 0, agentSuccessRate: 0, wins: [], recommendation: "" };
-    }
-  }
 }
 
 export const founderWellbeingService = new FounderWellbeingService();

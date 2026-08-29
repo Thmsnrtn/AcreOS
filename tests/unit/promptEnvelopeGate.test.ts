@@ -499,7 +499,6 @@ describe("the sites unit 112 wrapped stay wrapped", () => {
   const cases: Array<[string, RegExp]> = [
     ["server/services/documentIntelligence.ts", /wrapUntrusted\(\s*(?:doc\.)?rawText/],
     ["server/services/portfolioSentinel.ts", /sanitizePromptInline\(\s*property\?\.address/],
-    ["server/services/buyerMatchingAI.ts", /sanitizePromptInline\(\s*property\.description/],
     ["server/routes-admin.ts", /sanitizePromptInline\(\s*ticket\.subject/],
     ["server/services/founderTwin.ts", /wrapUntrusted\(\s*input\.content/],
     ["server/services/evolutionPipeline.ts", /sanitizePromptInline\(\s*proposal\.description/],
@@ -509,6 +508,23 @@ describe("the sites unit 112 wrapped stay wrapped", () => {
     // messages, which is P0-14's exact category.
     ["server/services/writingStyle.ts", /wrapUntrusted\(\s*sampleTexts/],
   ];
+
+  // buyerMatchingAI left this list on 2026-08-29: generateMatchPitch (and its
+  // default-pitch helper) — the ONLY prompt path that read property.description
+  // — was deleted as adversarially-verified dead code (rule-1 register
+  // close-out). Deletion is the strongest guard, and this pin keeps it honest:
+  // if a pitch generator returns, it must come back guarded and rejoin the
+  // cases above.
+  it("buyerMatchingAI's unguarded prompt path stays deleted", () => {
+    const src = fs.readFileSync(path.join(ROOT, "server/services/buyerMatchingAI.ts"), "utf8");
+    expect(
+      // Call/declaration shape only — the deletion tombstone COMMENT names
+      // the functions and must not trip this.
+      /generate(?:Match|Default)Pitch\s*\(/.test(src) &&
+        !/sanitizePromptInline/.test(src),
+      "a pitch generator returned to buyerMatchingAI without prompt-envelope guarding — re-add sanitizePromptInline and restore its entry in the cases list",
+    ).toBe(false);
+  });
 
   it.each(cases)("%s still guards its free-text field", (file, rx) => {
     const src = fs.readFileSync(path.join(ROOT, file), "utf8");

@@ -320,31 +320,5 @@ export async function attributeInbound(
   };
 }
 
-/**
- * Sweeper — called on a cron. Auto-releases assignments whose
- * lastInboundAt is older than the configured threshold. Returns the
- * count released for audit.
- */
-export async function autoReleaseIdle(): Promise<number> {
-  const autoReleaseDays = await getAutoReleaseDays();
-  const idleCutoff = new Date(Date.now() - autoReleaseDays * 86400 * 1000);
-  const result = await db
-    .update(trackingNumberAssignments)
-    .set({ releasedAt: new Date() })
-    .where(
-      and(
-        isNull(trackingNumberAssignments.releasedAt),
-        isNotNull(trackingNumberAssignments.lastInboundAt),
-        lt(trackingNumberAssignments.lastInboundAt, idleCutoff),
-      ),
-    )
-    .returning({ id: trackingNumberAssignments.id });
-  const count = result.length;
-  if (count > 0) {
-    logger.info(`[tracking-pool] auto-released ${count} idle number(s)`, {
-      metadata: { thresholdDays: autoReleaseDays },
-    });
-  }
-  return count;
-}
+// autoReleaseIdle deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 

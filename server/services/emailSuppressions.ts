@@ -254,12 +254,7 @@ export async function filterSuppressed(emails: string[]): Promise<{
   }
 }
 
-/** Manual unsuppress (founder/support tooling). */
-export async function unsuppress(email: string): Promise<void> {
-  const normalized = normalize(email);
-  if (!normalized) return;
-  await db.delete(emailSuppressions).where(eq(emailSuppressions.email, normalized));
-}
+// unsuppress deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 /**
  * Map a SendGrid event to a categorized suppression record, or null if

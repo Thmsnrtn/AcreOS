@@ -22,7 +22,6 @@ import { logger } from "../utils/logger";
 // re-fires) — see services/buyerEvents.ts.
 import { emitBuyerMatchCreated } from "./buyerEvents";
 
-import { sanitizePromptInline } from "../utils/sanitizePrompt";
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
 
@@ -756,99 +755,7 @@ export class BuyerMatchingAIService {
     return 60;
   }
 
-  async generateMatchPitch(matchId: number): Promise<string> {
-    const [match] = await db.select().from(buyerPropertyMatches)
-      .where(eq(buyerPropertyMatches.id, matchId));
-
-    if (!match) {
-      throw new Error(`Match ${matchId} not found`);
-    }
-
-    const [property] = await db.select().from(properties)
-      .where(eq(properties.id, match.propertyId));
-
-    const [buyerProfile] = await db.select().from(buyerProfiles)
-      .where(eq(buyerProfiles.id, match.buyerProfileId));
-
-    if (!property || !buyerProfile) {
-      throw new Error("Property or buyer profile not found");
-    }
-
-    const openai = getOpenAIClient();
-    if (!openai) {
-      return this.generateDefaultPitch(match, property, buyerProfile);
-    }
-
-    const preferences = buyerProfile.preferences as BuyerPreferences | null;
-    const intent = buyerProfile.intent as BuyerIntent | null;
-    const matchReasons = (match.matchReasons as string[]) ?? [];
-
-    try {
-      const response = await openai.chat.completions.create({
-        model: "openai/gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert land sales specialist. Create a personalized, compelling pitch to present a property to a buyer. 
-Keep it conversational, highlight why this property is a great match for their specific needs, and include a clear call to action.
-The pitch should be 2-3 short paragraphs, professional but warm.`
-          },
-          {
-            role: "user",
-            content: `Create a pitch for this property to buyer:
-
-Property Details:
-- Location: ${property.county}, ${property.state}
-- Size: ${property.sizeAcres} acres
-- Price: ${property.listPrice ?? property.marketValue ?? "Contact for pricing"}
-- Zoning: ${property.zoning ?? "Check with county"}
-- Road Access: ${property.roadAccess ?? "TBD"}
-- Description: ${sanitizePromptInline(property.description ?? "Beautiful land opportunity", { source: "property.description" })}
-
-Buyer Profile:
-- Type: ${buyerProfile.profileType}
-- Looking for: ${preferences?.useTypes?.join(", ") ?? "land investment"}
-- Budget: ${(buyerProfile.financialInfo as FinancialInfo | null)?.budget ?? "Flexible"}
-- Timeline: ${intent?.purchaseTimeline ?? "Flexible"}
-- Investment Goal: ${intent?.investmentGoal ?? "Not specified"}
-
-Why this matches:
-${matchReasons.map(r => `- ${r}`).join("\n")}
-
-Match Score: ${match.matchScore}/100`
-          }
-        ],
-        max_tokens: 500,
-        temperature: 0.7,
-      });
-
-      const pitch = response.choices[0]?.message?.content ?? this.generateDefaultPitch(match, property, buyerProfile);
-
-      await db.update(buyerPropertyMatches)
-        .set({ suggestedPitch: pitch, updatedAt: new Date() })
-        .where(eq(buyerPropertyMatches.id, matchId));
-
-      return pitch;
-    } catch (error) {
-      logger.error("Error generating AI pitch", error);
-      return this.generateDefaultPitch(match, property, buyerProfile);
-    }
-  }
-
-  private generateDefaultPitch(
-    match: BuyerPropertyMatch,
-    property: Property,
-    buyerProfile: BuyerProfile
-  ): string {
-    const preferences = buyerProfile.preferences as BuyerPreferences | null;
-    const matchReasons = (match.matchReasons as string[]) ?? [];
-
-    return `I found a property that matches what you're looking for! This ${property.sizeAcres}-acre parcel in ${property.county}, ${property.state} ${matchReasons.length > 0 ? matchReasons[0].toLowerCase() : "fits your criteria well"}.
-
-${property.description ?? `This property offers great potential for ${preferences?.useTypes?.[0] ?? "your land investment goals"}.`}
-
-${property.listPrice ? `Listed at $${parseFloat(property.listPrice).toLocaleString()}. ` : ""}Would you like to schedule a call to discuss this opportunity?`;
-  }
+  // generateMatchPitch, generateDefaultPitch deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async presentMatchToBuyer(matchId: number): Promise<BuyerPropertyMatch> {
     const [updated] = await db.update(buyerPropertyMatches)

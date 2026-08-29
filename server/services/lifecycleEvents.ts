@@ -9,9 +9,6 @@
  *     Pull every lifecycle event for an org in chronological order. Used
  *     by /api/founder/lifecycle/journey and future cohort tooling.
  *
- *   countByStageWindow(stage, since)
- *     Aggregate query for funnel + cohort dashboards.
- *
  * Convention: eventType is a dotted path so prefix-grouping works
  *   ("trial.*", "onboarding.*", "engagement.*"). Stages are coarse;
  *   eventTypes are fine.
@@ -23,7 +20,7 @@ import {
   type InsertLifecycleEvent,
   type LifecycleStage,
 } from "@shared/schema";
-import { and, count, eq, gte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 export interface LifecycleEventInput {
@@ -69,36 +66,4 @@ export async function getOrgJourney(orgId: number, limit = 200) {
     .limit(limit);
 }
 
-export async function countByStageWindow(
-  stage: LifecycleStage,
-  since: Date,
-): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(lifecycleEvents)
-    .where(
-      and(eq(lifecycleEvents.stage, stage), gte(lifecycleEvents.occurredAt, since)),
-    );
-  return Number(row?.n ?? 0);
-}
-
-/**
- * Per-day event count for a given event-type prefix. Useful for charts
- * (signups by day, trial conversions by day).
- */
-export async function dailyCount(eventTypePrefix: string, since: Date) {
-  return db
-    .select({
-      day: sql<string>`date_trunc('day', ${lifecycleEvents.occurredAt})::date::text`,
-      n: count(),
-    })
-    .from(lifecycleEvents)
-    .where(
-      and(
-        sql`${lifecycleEvents.eventType} LIKE ${eventTypePrefix + "%"}`,
-        gte(lifecycleEvents.occurredAt, since),
-      ),
-    )
-    .groupBy(sql`date_trunc('day', ${lifecycleEvents.occurredAt})`)
-    .orderBy(sql`date_trunc('day', ${lifecycleEvents.occurredAt})`);
-}
+// countByStageWindow, dailyCount deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).

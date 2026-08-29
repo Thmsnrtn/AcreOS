@@ -98,17 +98,6 @@ interface ComplianceOverview {
   byRuleType: Record<RuleType, { compliant: number; nonCompliant: number; pending: number }>;
 }
 
-interface CostEstimate {
-  propertyId: number;
-  totalEstimatedCost: number;
-  breakdown: Array<{
-    ruleId: number;
-    ruleName: string;
-    estimatedCost: number;
-    requiredActions: string[];
-  }>;
-}
-
 class ComplianceGuardianService {
   private async logAgentEvent(
     organizationId: number,
@@ -555,49 +544,7 @@ class ComplianceGuardianService {
     }));
   }
 
-  async estimateComplianceCosts(propertyId: number): Promise<CostEstimate> {
-    const checks = await db
-      .select({
-        check: complianceChecks,
-        rule: complianceRules,
-      })
-      .from(complianceChecks)
-      .leftJoin(complianceRules, eq(complianceChecks.ruleId, complianceRules.id))
-      .where(
-        and(
-          eq(complianceChecks.propertyId, propertyId),
-          eq(complianceChecks.status, "non_compliant")
-        )
-      );
-
-    let totalEstimatedCost = 0;
-    const breakdown: CostEstimate["breakdown"] = [];
-
-    for (const { check, rule } of checks) {
-      const findings = check.findings as ComplianceFindings | null;
-      const estimatedCost = findings?.estimatedCost || 0;
-      const requirements = rule?.requirements as Array<{ requirement: string; fee?: number }> | null;
-      
-      let ruleCost = estimatedCost;
-      if (!ruleCost && requirements) {
-        ruleCost = requirements.reduce((sum, r) => sum + (r.fee || 0), 0);
-      }
-
-      totalEstimatedCost += ruleCost;
-      breakdown.push({
-        ruleId: rule?.id || 0,
-        ruleName: rule?.ruleName || check.checkType,
-        estimatedCost: ruleCost,
-        requiredActions: findings?.requiredActions || [],
-      });
-    }
-
-    return {
-      propertyId,
-      totalEstimatedCost,
-      breakdown,
-    };
-  }
+  // estimateComplianceCosts deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async generateComplianceReport(
     organizationId: number,

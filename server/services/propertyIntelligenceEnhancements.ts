@@ -32,24 +32,7 @@ export async function findNearbyProperties(orgId: number, latitude: number, long
   return nearby;
 }
 
-// Item 40: Property timeline (all events for a property)
-export async function getPropertyTimeline(propertyId: number): Promise<Array<{ date: string; event: string; detail: string }>> {
-  const { activityLog } = await import("@shared/schema");
-  const events = await db.select()
-    .from(activityLog)
-    .where(and(
-      eq(activityLog.entityType, "property"),
-      eq(activityLog.entityId, propertyId),
-    ))
-    .orderBy(sql`${activityLog.createdAt} DESC`)
-    .limit(50);
-
-  return events.map(e => ({
-    date: e.createdAt?.toISOString() || "",
-    event: e.action || "",
-    detail: typeof e.metadata === "object" && e.metadata !== null ? JSON.stringify(e.metadata) : String(e.metadata ?? e.description ?? ""),
-  }));
-}
+// getPropertyTimeline deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 // Item 42: Duplicate property detection
 export async function findDuplicateProperties(orgId: number): Promise<Array<{ ids: number[]; reason: string }>> {

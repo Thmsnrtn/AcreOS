@@ -30,10 +30,7 @@
 
 import { and, count, desc, gte, sql } from "drizzle-orm";
 import { db } from "../../db";
-import {
-  errorBoundaryTrips,
-  type ErrorBoundaryTrip,
-} from "@shared/schema/error-boundary-trips";
+import { errorBoundaryTrips } from "@shared/schema/error-boundary-trips";
 import { solenePageEvents } from "@shared/schema/solene-page";
 import { sendSolenePage } from "../solene/pagerService";
 import { logger } from "../../utils/logger";
@@ -227,18 +224,4 @@ export async function getDailyPulseSegment(
   return ` · error-boundary trips: ${counts.totalTrips} in ${windowHours}h (${counts.uniqueRoutes} unique routes)`;
 }
 
-/**
- * Convenience read for the founder endpoint — last N trips as raw rows.
- */
-export async function getRecentTrips(
-  windowDays: number = 7,
-  limit: number = 500,
-): Promise<ErrorBoundaryTrip[]> {
-  const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-  return db
-    .select()
-    .from(errorBoundaryTrips)
-    .where(gte(errorBoundaryTrips.firedAt, cutoff))
-    .orderBy(desc(errorBoundaryTrips.firedAt))
-    .limit(limit);
-}
+// getRecentTrips deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).

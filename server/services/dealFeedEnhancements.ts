@@ -5,7 +5,7 @@
 
 import { db } from "../db";
 import { dailyDealFeed, dealFeedInteractions, deals, properties } from "@shared/schema";
-import { eq, and, gte, count, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 // Item 17: "Why not?" feedback categories
 export type PassReason = "too_expensive" | "wrong_area" | "wrong_size" | "low_quality" | "already_have" | "other";
@@ -42,25 +42,7 @@ export async function generateDealFeedDigest(orgId: number): Promise<Array<{ tit
   });
 }
 
-// Item 19: County comparison
-export async function compareCounties(counties: string[]): Promise<Array<{ county: string; dealCount: number; avgScore: number }>> {
-  const results = [];
-  for (const county of counties.slice(0, 5)) {
-    const [countResult] = await db.select({ count: count() })
-      .from(deals)
-      .innerJoin(properties, eq(deals.propertyId, properties.id))
-      .where(sql`LOWER(${properties.county}) = LOWER(${county})`);
-    const [scoreResult] = await db.select({ avg: sql<number>`AVG(composite_score)` })
-      .from(dailyDealFeed)
-      .where(sql`LOWER(county) = LOWER(${county})`);
-    results.push({
-      county,
-      dealCount: countResult?.count || 0,
-      avgScore: Math.round(Number(scoreResult?.avg) || 0),
-    });
-  }
-  return results;
-}
+// compareCounties, getHotStreakCounties deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 // Item 22: Saved search filters
 export interface SavedFilter {
@@ -70,25 +52,6 @@ export interface SavedFilter {
   counties?: string[];
   minScore?: number;
   maxPricePerAcre?: number;
-}
-
-// Item 23: Hot streak detection
-export async function getHotStreakCounties(days: number = 30): Promise<string[]> {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const results = await db.select({
-    county: properties.county,
-    count: count(),
-  })
-    .from(deals)
-    .innerJoin(properties, eq(deals.propertyId, properties.id))
-    .where(and(
-      gte(deals.createdAt, since),
-      sql`${deals.status} = 'closed_won'`,
-    ))
-    .groupBy(properties.county)
-    .having(sql`COUNT(*) >= 3`);
-
-  return results.map(r => r.county).filter(Boolean);
 }
 
 // Item 24: Stale opportunity detection

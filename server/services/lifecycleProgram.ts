@@ -473,8 +473,7 @@ export async function issueReactivationToken(params: {
 /**
  * Verify a reactivation token. Returns the org id if the token is valid
  * (exists, unredeemed, unexpired); null otherwise. Does NOT mark the
- * token redeemed — call markReactivationTokenRedeemed after the user
- * actually completes checkout.
+ * token redeemed.
  */
 export async function verifyReactivationToken(
   token: string,
@@ -507,23 +506,7 @@ export async function verifyReactivationToken(
   }
 }
 
-export async function markReactivationTokenRedeemed(
-  token: string,
-): Promise<void> {
-  if (!token) return;
-  const tokenHash = hashToken(token);
-  try {
-    await db
-      .update(reactivationTokens)
-      .set({ redeemedAt: new Date() })
-      .where(eq(reactivationTokens.tokenHash, tokenHash));
-  } catch (err) {
-    logger.warn(
-      "[lifecycle] markReactivationTokenRedeemed failed",
-      err instanceof Error ? err : undefined,
-    );
-  }
-}
+// markReactivationTokenRedeemed deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 // ---------------------------------------------------------------------------
 // Internal helpers

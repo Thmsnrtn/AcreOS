@@ -393,15 +393,7 @@ export async function getCredentialsForDomain(
   return cred || null;
 }
 
-export async function markCredentialUsed(credentialId: number): Promise<void> {
-  await db
-    .update(browserSessionCredentials)
-    .set({
-      lastUsedAt: new Date(),
-      usageCount: 1, // Will be incremented in SQL
-    })
-    .where(eq(browserSessionCredentials.id, credentialId));
-}
+// markCredentialUsed deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 export async function seedSystemTemplates(): Promise<void> {
   const existingCount = await db

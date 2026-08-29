@@ -4,8 +4,7 @@
  */
 
 import { db } from "../db";
-import { featureRequests } from "@shared/schema";
-import { desc, sql, eq, and } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // Item 281: In-app knowledge base articles
 export const KNOWLEDGE_BASE = [
@@ -74,11 +73,7 @@ export function getChangelog(): Array<{ week: string; entries: Array<{ title: st
   ];
 }
 
-// Item 294: Public roadmap
-export async function getPublicRoadmap(): Promise<Array<{ title: string; description: string; votes: number; status: string }>> {
-  const requests = await db.select().from(featureRequests).orderBy(desc(sql`COALESCE(${featureRequests.upvotes}, 0)`)).limit(20);
-  return requests.map(r => ({ title: r.title || "", description: r.description || "", votes: Number(r.upvotes || 0), status: r.status || "planned" }));
-}
+// getPublicRoadmap deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
 // Item 291: Page feedback
 export async function submitPageFeedback(orgId: number, page: string, helpful: boolean, suggestion?: string) {

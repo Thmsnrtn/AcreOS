@@ -152,7 +152,6 @@ const BASELINE = new Set([
   "server/services/dataIntelligenceEngine.ts::intel.countyRedemptionPeriodMonths ?? 12",
   "server/services/founderTodo.ts::p.escalationRate ?? 100",
   "server/services/founderTwin.ts::existing.confidence || 0.5",
-  "server/services/founderWellbeing.ts::totalActions?.count || 1",
   "server/services/intent-router.ts::parsed.confidence || 0.8",
   "server/services/leadScoring.ts::profile.corporateOwnerWeight || 10",
   "server/services/leadingIndicators.ts::priorActivations?.count || 1",

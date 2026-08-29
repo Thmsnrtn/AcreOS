@@ -12,8 +12,8 @@
  */
 
 import { db } from "../db";
-import { ceoAbsenceMode, companyAgents, agentActionLog, decisionsInboxItems, warRooms } from "@shared/schema";
-import { eq, desc, gte, and, sql } from "drizzle-orm";
+import { ceoAbsenceMode, companyAgents, agentActionLog } from "@shared/schema";
+import { eq, desc, gte, and } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
@@ -25,14 +25,6 @@ interface AbsenceConfig {
   trustBoost?: number;       // default 15
   emergencyOnly?: boolean;   // only break through for critical
   smartBoost?: boolean;      // default true — per-agent trust boosting based on performance
-}
-
-interface AbsenceSuggestion {
-  safe: boolean;
-  confidence: number;
-  reason: string;
-  suggestedDuration: number;
-  blockers: string[];
 }
 
 interface SafetyReport {
@@ -302,87 +294,7 @@ class CEOAbsenceService {
     return boosts;
   }
 
-  /** Suggest whether it's safe to activate absence mode */
-  async suggestAbsenceWindow(): Promise<AbsenceSuggestion> {
-    const blockers: string[] = [];
-
-    // Check pending critical decisions inbox items
-    const pendingCritical = await db.select({ count: sql<number>`count(*)` })
-      .from(decisionsInboxItems)
-      .where(
-        and(
-          eq(decisionsInboxItems.status, "pending"),
-          eq(decisionsInboxItems.riskLevel, "critical"),
-        )
-      );
-    const criticalCount = Number(pendingCritical[0]?.count ?? 0);
-
-    if (criticalCount > 0) {
-      blockers.push(`${criticalCount} critical decision(s) pending in inbox`);
-    }
-
-    // Check active war rooms
-    const activeWarRooms = await db.select({ count: sql<number>`count(*)` })
-      .from(warRooms)
-      .where(eq(warRooms.status, "active"));
-    const warRoomCount = Number(activeWarRooms[0]?.count ?? 0);
-
-    if (warRoomCount > 0) {
-      blockers.push(`${warRoomCount} active war room(s)`);
-    }
-
-    // Check overall agent success rate (last 30 days)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const allActions = await db.select({
-      outcome: agentActionLog.outcome,
-    })
-      .from(agentActionLog)
-      .where(gte(agentActionLog.createdAt, thirtyDaysAgo));
-
-    const totalActions = allActions.length;
-    const successActions = allActions.filter(a => a.outcome === "success").length;
-    const successRate = totalActions > 0 ? (successActions / totalActions) * 100 : 0;
-
-    // Decision logic
-    if (criticalCount > 0 || warRoomCount > 0) {
-      return {
-        safe: false,
-        confidence: 0.9,
-        reason: `Cannot recommend absence: ${blockers.join("; ")}`,
-        suggestedDuration: 0,
-        blockers,
-      };
-    }
-
-    if (successRate > 85) {
-      return {
-        safe: true,
-        confidence: Math.min(0.95, successRate / 100),
-        reason: `Agent success rate is strong at ${successRate.toFixed(1)}%. System is running well.`,
-        suggestedDuration: 72,
-        blockers,
-      };
-    }
-
-    if (successRate >= 70) {
-      return {
-        safe: true,
-        confidence: Math.min(0.75, successRate / 100),
-        reason: `Agent success rate is moderate at ${successRate.toFixed(1)}%. Shorter absence recommended.`,
-        suggestedDuration: 48,
-        blockers,
-      };
-    }
-
-    blockers.push(`Low agent success rate: ${successRate.toFixed(1)}%`);
-    return {
-      safe: false,
-      confidence: 0.8,
-      reason: `Agent success rate is too low at ${successRate.toFixed(1)}% for safe absence.`,
-      suggestedDuration: 0,
-      blockers,
-    };
-  }
+  // suggestAbsenceWindow deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   /** Generate a safety report during an active absence */
   async generateSafetyReport(): Promise<SafetyReport> {

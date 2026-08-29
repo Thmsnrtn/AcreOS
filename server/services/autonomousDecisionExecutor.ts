@@ -1617,19 +1617,4 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
   return runResult;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Daily autonomous decisions summary email (founder audit trail)
-// Called by the founder weekly digest job to include recent decisions
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getRecentAutonomousDecisions(hours: number = 24): Promise<any[]> {
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-  return db.select()
-    .from(decisionsInboxItems)
-    .where(and(
-      sql`resolved_by = 'autonomous_executor'`,
-      sql`resolved_at >= ${since.toISOString()}`,
-    ))
-    .orderBy(desc(decisionsInboxItems.resolvedAt))
-    .limit(50);
-}
+// getRecentAutonomousDecisions deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
