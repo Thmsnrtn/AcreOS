@@ -307,6 +307,15 @@ jobs:
             printf '%s\n' "$LOGS" | grep -F 'LEFT IN PLACE' | while IFS= read -r line; do
               echo "::warning title=Populated table survived its conditional drop::${line}"
             done
+            # Fly's stream is lossy under burst (deploy #35 delivered 1 of 10
+            # per-table lines), so completeness rides on the single atomic
+            # summary notice the conditional-drop block RAISEs at its end.
+            if printf '%s\n' "$LOGS" | grep -q 'od8-batch1-summary'; then
+              echo "── conditional-drop summary (atomic, authoritative) ──"
+              printf '%s\n' "$LOGS" | grep -F 'od8-batch1-summary'
+            else
+              echo "::warning title=Drop summary line not captured::[migrate] lines arrived but the od8-batch1-summary notice did not survive the stream — read it on the next deploy (the block re-prints every release)."
+            fi
           fi
 
       # ── Post-deploy assessment (2026-08-25, run 32902473209) ───────────────
