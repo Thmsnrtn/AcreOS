@@ -198,6 +198,18 @@ function resolveSpec(spec) {
 }
 
 const globalRoutes = [];
+/**
+ * Mount paths whose Router RESOLVED and was EXPANDED into globalRoutes
+ * (vs. unresolved mounts, which stay honestly UNKNOWN). Used by the pair
+ * loop: an expanded mount's `.use` line falls through by Express semantics
+ * (a Router calls next() when nothing inside matches), and its terminating
+ * inner routes are already enumerated individually — counting the mount
+ * line itself as an unknown earlier handler was double-counting.
+ * Conservative on ambiguity: a path that appears in BOTH sets (two mounts,
+ * one resolved) is NOT treated as expanded.
+ */
+const resolvedMountPaths = new Set();
+const unresolvedMountPaths = new Set();
 let routerMounts = 0;
 let registrarCalls = 0;
 let unresolved = 0;
@@ -227,8 +239,9 @@ for (const t of timeline) {
     const ident = /([A-Za-z_$][\w$]*)\s*$/.exec((t.e.rest || "").trim())?.[1];
     const spec = ident && importMap.get(ident);
     const target = spec && resolveSpec(spec);
-    if (!target || !srcOf.has(target)) { unresolved += 1; continue; }
+    if (!target || !srcOf.has(target)) { unresolved += 1; unresolvedMountPaths.add(t.e.mountPath); continue; }
     routerMounts += 1;
+    resolvedMountPaths.add(t.e.mountPath);
     const src = srcOf.get(target);
     const only = receiversIn(src);
     only.delete("app"); only.delete("api"); // mounted module: Router-scoped only
@@ -307,7 +320,13 @@ for (let j = 0; j < globalRoutes.length; j++) {
     pairsCompared += 1;
     const re = reOf(earlier.abs);
     if (!probes.every((s) => re.test(s))) continue;
-    const verdict = classify(earlier);
+    const expandedMount =
+      earlier.method === "use" &&
+      resolvedMountPaths.has(earlier.abs) &&
+      !unresolvedMountPaths.has(earlier.abs);
+    // An expanded mount falls through (Router next()s on no-match) and its
+    // inner routes are compared individually — see resolvedMountPaths above.
+    const verdict = expandedMount ? "FALLS_THROUGH" : classify(earlier);
     if (verdict === "TERMINATES") {
       terminatingEarlier += 1;
       offenders.push({

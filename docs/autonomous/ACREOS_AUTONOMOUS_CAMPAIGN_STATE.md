@@ -8,9 +8,13 @@ it is edited out — not struck through and kept.
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `b22475b6`, 2026-08-28. Working tree clean; **976 test files /
-12,937 tests green**; `npm run check` green; production serves `b22475b6`
-(deploy #7, probed twice at /api/version).
+Verified at: `6da56b5e`, 2026-08-29. **978 test files / 12,947 tests green**;
+`npm run check` green; production serves `6da56b5e` (deploy #30, probed twice
+at /api/version — thirty watched deploys this campaign, every one confirmed
+at the served SHA). Stage 4 of the competing-brains consolidation is deep in
+flight: phases 0-1 complete (agent email class at ZERO forever), turns
+10/11/16/17/18 done, the trust-flip shadow clock running since deploy #27,
+turns 12-13 evidence-gated, turn 19's independent audit closes the program.
 
 **Rule-1 tenancy register: adjudicated everywhere anything reaches it
 (2026-08-27, ledgers 78-79).** 151 units across three waves (90 route, 11
@@ -28,7 +32,12 @@ UI bugs fell out of the last batch alone: the A/B-test create button (two
 engines collided; the UI's was the dead one), the feedback button (enum
 rejected 4 of its 7 categories), the AI-memory admin panel (read the wrong
 table), and lead bulk-delete (hard delete shadowing the soft-delete + audit
-path). Residue: `unknownHandlerBaseline` 43, down-only.
+path). The unknown-handler residue closed 2026-08-29: all 43 were
+expanded-mount double-counting (the `.use` line of a Router the gate had
+already expanded into individual routes); the classifier now knows an
+expanded mount falls through, unresolved mounts still count UNKNOWN, and
+BOTH counters are 0 and must stay 0 (falsified by forcing one mount
+ambiguous — red — then restored).
 
 **Run BOTH.** `npm run check` does not execute the suite — its `check:tests` step
 is a TYPE ratchet over test files, not a test run. A commit went out on 2026-08-20
