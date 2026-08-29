@@ -166,7 +166,8 @@ export function registerFounderV14Routes(app: Express) {
   // competing-brains stage 2: zero client fetches, zero service/job importers,
   // zero tests. The incumbent plane owns "natural-language founder goals →
   // system config" (autopilot/objectives, okr, standingOrders, steer).
-  // founderIntents/intentProgressLogs await the OD-8 drop decision.
+  // Its tables went into OD-8 drop batch 1 (migration 0241, conditional on
+  // zero rows) under the founder's 2026-08-29 "approve with evidence" ruling.
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. AUTONOMY SCORE — Track and minimize founder dependency

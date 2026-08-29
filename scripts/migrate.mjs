@@ -10153,25 +10153,6 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "fd_type_idx" ON "founder_drafts" ("draft_type")`,
   `CREATE INDEX IF NOT EXISTS "fd_status_idx" ON "founder_drafts" ("status")`,
-  `CREATE TABLE IF NOT EXISTS "founder_intents" (
-    "id" serial PRIMARY KEY,
-    "intent_id" text NOT NULL,
-    "org_id" integer NOT NULL,
-    "raw_input" text NOT NULL,
-    "parsed_goals" jsonb NOT NULL DEFAULT '[]'::jsonb,
-    "generated_strategies" jsonb DEFAULT '[]'::jsonb,
-    "generated_policies" jsonb DEFAULT '[]'::jsonb,
-    "generated_chains" jsonb DEFAULT '[]'::jsonb,
-    "simulation_result" jsonb,
-    "status" text NOT NULL DEFAULT 'draft',
-    "progress_snapshot" jsonb DEFAULT '{}'::jsonb,
-    "founder_approved" boolean NOT NULL DEFAULT false,
-    "created_at" timestamp NOT NULL DEFAULT now(),
-    "updated_at" timestamp NOT NULL DEFAULT now(),
-    "completes_at" timestamp
-  )`,
-  `CREATE INDEX IF NOT EXISTS "fi14_org_idx" ON "founder_intents" ("org_id")`,
-  `CREATE INDEX IF NOT EXISTS "fi14_status_idx" ON "founder_intents" ("status")`,
   `CREATE TABLE IF NOT EXISTS "founder_overrides" (
     "id" serial PRIMARY KEY,
     "override_id" text NOT NULL,
@@ -10230,18 +10211,6 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "ip_name_idx" ON "institutional_patterns" ("pattern_name")`,
   `CREATE INDEX IF NOT EXISTS "ip_success_idx" ON "institutional_patterns" ("success_rate")`,
-  `CREATE TABLE IF NOT EXISTS "intent_progress_logs" (
-    "id" serial PRIMARY KEY,
-    "intent_id" text NOT NULL,
-    "org_id" integer NOT NULL,
-    "snapshot" jsonb NOT NULL DEFAULT '{}'::jsonb,
-    "adjustments_made" jsonb DEFAULT '[]'::jsonb,
-    "blockers" jsonb DEFAULT '[]'::jsonb,
-    "projected_completion" timestamp,
-    "created_at" timestamp NOT NULL DEFAULT now()
-  )`,
-  `CREATE INDEX IF NOT EXISTS "ipl_intent_idx" ON "intent_progress_logs" ("intent_id")`,
-  `CREATE INDEX IF NOT EXISTS "ipl_org_idx" ON "intent_progress_logs" ("org_id")`,
   `CREATE TABLE IF NOT EXISTS "lead_emails" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE no action,
@@ -10765,9 +10734,64 @@ WHERE NOT EXISTS (
   SELECT 1 FROM witness_grants WHERE note LIKE '%[od9-2026-08-29]%'
 )`,
 
+  // ── 0241 OD-8 drop batch 1: the stage-2 tranche, conditionally ──
+  // Founder ruling "approve with evidence" (decision picker 2026-08-29,
+  // OWNER_DECISIONS_PENDING.md OD-8 DECIDED). Each table is counted IN
+  // PLACE at release time: 0 rows → DROP with the evidence logged; rows
+  // present → left untouched and logged LOUDLY for the founder's own
+  // decision before any second attempt. The ten lost their only writers
+  // when the six zero-caller V-tower services were deleted (2026-08-27),
+  // and their founder_intents/intent_progress_logs CREATE statements were
+  // removed from this file in the same commit that added this block, so
+  // nothing can recreate them. The RAISE output reaches the release log
+  // through the notice listener on the pool below.
+  `DO $mig0241$
+DECLARE
+  t text;
+  n bigint;
+  tables text[] := ARRAY[
+    'ceo_cognitive_model',
+    'ceo_shadow_predictions',
+    'knowledge_freshness',
+    'agent_resource_quotas',
+    'resource_quota_events',
+    'decision_causality_nodes',
+    'temporal_prediction_patterns',
+    'predictive_staged_actions',
+    'founder_intents',
+    'intent_progress_logs'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      RAISE NOTICE '[od8-batch1] % already absent — nothing to drop', t;
+      CONTINUE;
+    END IF;
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n = 0 THEN
+      EXECUTE format('DROP TABLE %I CASCADE', t);
+      RAISE NOTICE '[od8-batch1] DROPPED % (0 rows — evidence per the ruling)', t;
+    ELSE
+      RAISE WARNING '[od8-batch1] % HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', t, n;
+    END IF;
+  END LOOP;
+END $mig0241$`,
+
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+
+// Postgres RAISE NOTICE/WARNING arrives as out-of-band 'notice' events that
+// node-postgres swallows unless someone listens. The OD-8 conditional drops
+// (0241) put their row-count evidence in exactly those messages, and the
+// ruling's mechanism is that the deploy watch reads them in the release log —
+// so print every notice from every migration statement.
+pool.on('connect', (client) => {
+  client.on('notice', (msg) => {
+    const sev = msg.severity || 'NOTICE';
+    console.log(`[migrate][${sev}] ${msg.message}`);
+  });
+});
 
 // 2026-05-04 (Workstream A.2 follow-on): the release_command had been
 // failing prod deploys silently for ~3 days because 4 specific statements

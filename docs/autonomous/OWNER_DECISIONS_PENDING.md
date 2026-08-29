@@ -605,6 +605,19 @@ the founder as the one-line summary the ruling asks for; those get their
 own decision before any second attempt. Ratchet baselines drop in the same
 commit as each successful batch.
 
+**Batch 1 SHIPPED 2026-08-29** — migration 0241 (mirrored in migrate.mjs,
+with a pool notice-listener so the RAISE evidence actually reaches the
+release log): the ten first-tranche tables, conditionally. The same commit
+removed their ten `pgTable` models, the two stale `founder_intents`/
+`intent_progress_logs` CREATEs in migrate.mjs, lowered the reachability
+baselines by exactly ten (tablesNoWriter 76→66, tablesNoReader 86→76,
+internalOnlyExportsShared 448→438), and registered the eight
+0016-created tables in `schema-migrate-mirror.orphans.json` for the
+interim — each entry leaves that register when the deploy log shows its
+drop. Deploy-log read-back pending; populated survivors (if any) will be
+reported here. Second tranche (the permanentSovereignty cascade's twelve)
+waits for batch 1's evidence to come back clean.
+
 **Blocked meanwhile:** nothing.
 
 ## OD-9 — DECIDED 2026-08-29: GRANTS FOR ALL (founder picker ruling)

@@ -16240,146 +16240,6 @@ export const revenueAttributionReports = pgTable("revenue_attribution_reports", 
 ]);
 export type RevenueAttributionReport = typeof revenueAttributionReports.$inferSelect;
 
-// --- CEO Cognitive Model: learned decision-making model ---
-
-export const ceoCognitiveModel = pgTable("ceo_cognitive_model", {
-  id: serial("id").primaryKey(),
-  modelVersion: integer("model_version").notNull().default(1),
-  decisionCategory: text("decision_category").notNull(),
-  learnedPreferences: jsonb("learned_preferences").$type<{
-    riskTolerance: number;
-    timeHorizon: string;
-    agentWeighting: Record<string, number>;
-    domainExpertise: Record<string, number>;
-  }>().notNull().default({ riskTolerance: 50, timeHorizon: "medium", agentWeighting: {}, domainExpertise: {} }),
-  decisionPatterns: jsonb("decision_patterns").$type<Array<{
-    pattern: string;
-    frequency: number;
-    confidence: number;
-  }>>().notNull().default([]),
-  shadowAccuracy: numeric("shadow_accuracy").notNull().default("0"),
-  shadowPredictions: integer("shadow_predictions").notNull().default(0),
-  shadowCorrect: integer("shadow_correct").notNull().default(0),
-  autopilotEligible: boolean("autopilot_eligible").notNull().default(false),
-  autopilotEnabled: boolean("autopilot_enabled").notNull().default(false),
-  lastTrainedAt: timestamp("last_trained_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("ccm_category_idx").on(table.decisionCategory),
-  index("ccm_autopilot_idx").on(table.autopilotEligible),
-]);
-export type CEOCognitiveModelEntry = typeof ceoCognitiveModel.$inferSelect;
-
-// --- CEO Shadow Predictions: model vs CEO actual ---
-
-export const ceoShadowPredictions = pgTable("ceo_shadow_predictions", {
-  id: serial("id").primaryKey(),
-  decisionCategory: text("decision_category").notNull(),
-  decisionContext: jsonb("decision_context").$type<Record<string, any>>().notNull().default({}),
-  modelPrediction: text("model_prediction").notNull(),
-  modelReasoning: text("model_reasoning").notNull(),
-  modelConfidence: integer("model_confidence").notNull().default(50),
-  ceoActualDecision: text("ceo_actual_decision"),
-  wasCorrect: boolean("was_correct"),
-  divergenceReason: text("divergence_reason"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at"),
-}, (table) => [
-  index("csp_category_idx").on(table.decisionCategory),
-  index("csp_correct_idx").on(table.wasCorrect),
-]);
-export type CEOShadowPrediction = typeof ceoShadowPredictions.$inferSelect;
-
-// --- Knowledge Freshness: temporal decay for patterns ---
-
-export const knowledgeFreshness = pgTable("knowledge_freshness", {
-  id: serial("id").primaryKey(),
-  patternId: text("pattern_id").notNull(),
-  patternName: text("pattern_name").notNull(),
-  sourceAgent: text("source_agent").notNull(),
-  freshnessScore: numeric("freshness_score").notNull().default("100"),
-  halfLifeDays: integer("half_life_days").notNull().default(90),
-  lastValidatedAt: timestamp("last_validated_at").notNull().defaultNow(),
-  lastUsedAt: timestamp("last_used_at"),
-  usageCount: integer("usage_count").notNull().default(0),
-  seasonalTags: jsonb("seasonal_tags").$type<string[]>().notNull().default([]),
-  isZombie: boolean("is_zombie").notNull().default(false),
-  lineageParentId: text("lineage_parent_id"),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("kf_pattern_idx").on(table.patternId),
-  index("kf_status_idx").on(table.status),
-  index("kf_zombie_idx").on(table.isZombie),
-  index("kf_agent_idx").on(table.sourceAgent),
-]);
-export type KnowledgeFreshnessEntry = typeof knowledgeFreshness.$inferSelect;
-
-// --- Agent Resource Quotas: per-agent limits ---
-
-export const agentResourceQuotas = pgTable("agent_resource_quotas", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull().unique(),
-  dailyActionLimit: integer("daily_action_limit").notNull().default(200),
-  dailyActionsUsed: integer("daily_actions_used").notNull().default(0),
-  dailyCostLimitCents: integer("daily_cost_limit_cents").notNull().default(50000),
-  dailyCostUsedCents: integer("daily_cost_used_cents").notNull().default(0),
-  hourlyRateLimit: integer("hourly_rate_limit").notNull().default(50),
-  hourlyActionsUsed: integer("hourly_actions_used").notNull().default(0),
-  circuitBreakerThreshold: numeric("circuit_breaker_threshold").notNull().default("30"),
-  circuitBreakerTripped: boolean("circuit_breaker_tripped").notNull().default(false),
-  circuitBreakerCooldownUntil: timestamp("circuit_breaker_cooldown_until"),
-  burstDetected: boolean("burst_detected").notNull().default(false),
-  burstThrottledUntil: timestamp("burst_throttled_until"),
-  lastResetAt: timestamp("last_reset_at").notNull().defaultNow(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("arq_agent_idx").on(table.agentCodename),
-  index("arq_circuit_idx").on(table.circuitBreakerTripped),
-]);
-export type AgentResourceQuota = typeof agentResourceQuotas.$inferSelect;
-
-// --- Resource Quota Events: enforcement log ---
-
-export const resourceQuotaEvents = pgTable("resource_quota_events", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull(),
-  eventType: text("event_type").notNull(),
-  details: jsonb("details").$type<Record<string, any>>().notNull().default({}),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("rqe_agent_idx").on(table.agentCodename),
-  index("rqe_type_idx").on(table.eventType),
-]);
-export type ResourceQuotaEvent = typeof resourceQuotaEvents.$inferSelect;
-
-// --- Decision Causality Nodes: DAG of decision dependencies ---
-
-export const decisionCausalityNodes = pgTable("decision_causality_nodes", {
-  id: serial("id").primaryKey(),
-  decisionId: text("decision_id").notNull().unique(),
-  agentCodename: text("agent_codename").notNull(),
-  decisionType: text("decision_type").notNull(),
-  decisionSummary: text("decision_summary").notNull(),
-  parentDecisionIds: jsonb("parent_decision_ids").$type<string[]>().notNull().default([]),
-  childDecisionIds: jsonb("child_decision_ids").$type<string[]>().notNull().default([]),
-  depth: integer("depth").notNull().default(0),
-  blastRadius: integer("blast_radius").notNull().default(0),
-  outcome: text("outcome"),
-  rollbackEligible: boolean("rollback_eligible").notNull().default(false),
-  rolledBackAt: timestamp("rolled_back_at"),
-  rollbackReason: text("rollback_reason"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("dcn_decision_idx").on(table.decisionId),
-  index("dcn_agent_idx").on(table.agentCodename),
-  index("dcn_outcome_idx").on(table.outcome),
-  index("dcn_depth_idx").on(table.depth),
-]);
-export type DecisionCausalityNode = typeof decisionCausalityNodes.$inferSelect;
 
 // --- Delegation Tokens: time-bounded authority grants ---
 
@@ -16411,54 +16271,6 @@ export const delegationTokens = pgTable("delegation_tokens", {
 ]);
 export type DelegationToken = typeof delegationTokens.$inferSelect;
 
-// --- Predictive Staged Actions: anticipatory execution ---
-
-export const predictiveStagedActions = pgTable("predictive_staged_actions", {
-  id: serial("id").primaryKey(),
-  predictionSource: text("prediction_source").notNull(),
-  triggerPattern: text("trigger_pattern").notNull(),
-  triggerConfidence: integer("trigger_confidence").notNull().default(50),
-  stagedAgent: text("staged_agent").notNull(),
-  stagedAction: text("staged_action").notNull(),
-  stagedActionDetails: jsonb("staged_action_details").$type<Record<string, any>>().notNull().default({}),
-  predictedTriggerWindow: jsonb("predicted_trigger_window").$type<{ from: string; to: string }>().notNull().default({ from: "", to: "" }),
-  status: text("status").notNull().default("staged"),
-  triggerDetectedAt: timestamp("trigger_detected_at"),
-  executedAt: timestamp("executed_at"),
-  executionResult: jsonb("execution_result").$type<Record<string, any>>(),
-  cancelledReason: text("cancelled_reason"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-}, (table) => [
-  index("psa_status_idx").on(table.status),
-  index("psa_agent_idx").on(table.stagedAgent),
-  index("psa_expires_idx").on(table.expiresAt),
-]);
-export type PredictiveStagedAction = typeof predictiveStagedActions.$inferSelect;
-
-// --- Temporal Prediction Patterns: learned cause-effect ---
-
-export const temporalPredictionPatterns = pgTable("temporal_prediction_patterns", {
-  id: serial("id").primaryKey(),
-  causeSignal: text("cause_signal").notNull(),
-  causeAgent: text("cause_agent").notNull(),
-  effectSignal: text("effect_signal").notNull(),
-  effectAgent: text("effect_agent").notNull(),
-  avgDelayHours: numeric("avg_delay_hours").notNull().default("48"),
-  correlationStrength: numeric("correlation_strength").notNull().default("0.5"),
-  sampleCount: integer("sample_count").notNull().default(0),
-  lastTriggeredAt: timestamp("last_triggered_at"),
-  lastCorrect: boolean("last_correct"),
-  accuracyRate: numeric("accuracy_rate").notNull().default("0"),
-  autoStageEnabled: boolean("auto_stage_enabled").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("tpp_cause_idx").on(table.causeSignal),
-  index("tpp_effect_idx").on(table.effectSignal),
-  index("tpp_auto_idx").on(table.autoStageEnabled),
-]);
-export type TemporalPredictionPattern = typeof temporalPredictionPatterns.$inferSelect;
 
 // ============================================
 // SOVEREIGN COMPANY PROTOCOL v12 — THE REAL RUNTIME
@@ -17257,7 +17069,8 @@ export const founderInteractions = pgTable("founder_interactions", {
 //   1. Reactive Orchestration — Events trigger agent chains automatically
 //   2. Feedback Loop — Founder overrides teach the system
 //   3. Confidence Cascade — Exhaust all system resources before bothering founder
-//   4. Founder Intent — Natural language goals decompose into system configuration
+//   4. Founder Intent — RETIRED 2026-08-28 (competing-brains stage 2); its
+//      tables went into OD-8 drop batch 1 (migration 0241)
 //   5. Autonomy Score — Track and minimize founder dependency
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -17393,44 +17206,6 @@ export const cascadeResolutions = pgTable("cascade_resolutions", {
   index("cr_escalated_idx").on(table.founderEscalated),
 ]);
 
-// ─── 4. Founder Intent ──────────────────────────────────────────────────────
-
-/** High-level goals expressed by founder in natural language */
-export const founderIntents = pgTable("founder_intents", {
-  id: serial("id").primaryKey(),
-  intentId: text("intent_id").notNull().unique(),
-  orgId: integer("org_id").notNull(),
-  rawInput: text("raw_input").notNull(),
-  parsedGoals: jsonb("parsed_goals").notNull().default([]),
-  generatedStrategies: jsonb("generated_strategies").default([]),
-  generatedPolicies: jsonb("generated_policies").default([]),
-  generatedChains: jsonb("generated_chains").default([]),
-  simulationResult: jsonb("simulation_result"),
-  status: text("status").notNull().default("draft"),
-  progressSnapshot: jsonb("progress_snapshot").default({}),
-  founderApproved: boolean("founder_approved").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  completesAt: timestamp("completes_at"),
-}, (table) => [
-  index("fi14_org_idx").on(table.orgId),
-  index("fi14_status_idx").on(table.status),
-]);
-
-/** Progress checkpoints for active intents */
-export const intentProgressLogs = pgTable("intent_progress_logs", {
-  id: serial("id").primaryKey(),
-  intentId: text("intent_id").notNull(),
-  orgId: integer("org_id").notNull(),
-  snapshot: jsonb("snapshot").notNull().default({}),
-  adjustmentsMade: jsonb("adjustments_made").default([]),
-  blockers: jsonb("blockers").default([]),
-  projectedCompletion: timestamp("projected_completion"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("ipl_intent_idx").on(table.intentId),
-  index("ipl_org_idx").on(table.orgId),
-]);
 
 // ─── 5. Autonomy Score ──────────────────────────────────────────────────────
 
@@ -17486,8 +17261,6 @@ export type ReactionChainLinkEntry = typeof reactionChainLinks.$inferSelect;
 export type FounderOverrideEntry = typeof founderOverrides.$inferSelect;
 export type FeedbackLearningEntry = typeof feedbackLearnings.$inferSelect;
 export type CascadeResolutionEntry = typeof cascadeResolutions.$inferSelect;
-export type FounderIntentEntry = typeof founderIntents.$inferSelect;
-export type IntentProgressLogEntry = typeof intentProgressLogs.$inferSelect;
 export type AutonomyScoreSnapshotEntry = typeof autonomyScoreSnapshots.$inferSelect;
 export type FounderDependencyEventEntry = typeof founderDependencyEvents.$inferSelect;
 
