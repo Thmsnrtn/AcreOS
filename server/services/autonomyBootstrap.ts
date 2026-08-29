@@ -23,141 +23,8 @@ import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 // a private copy is how the 0-vs-1 disagreement in indexAnalyzer came to exist,
 // and this file was one of two that a five-file allowlist never scanned.
 
-// ─── 1. Default Reaction Chains ──────────────────────────────────────────────
-
-const DEFAULT_CHAINS = [
-  {
-    name: "Payment Failed → Churn Intervention",
-    eventType: "payment.failed",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "forge", action: "send_churn_intervention", inputMapping: { orgTargetId: "$.orgId", reason: "$.payload.reason", interventionType: "email" }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "sophie", action: "create_task", inputMapping: { title: "Follow up on payment failure: $.payload.reason", priority: "high" }, governanceGate: false, timeoutMs: 10000 },
-      { agentCodename: "forge", action: "escalate_to_founder", inputMapping: { reason: "Payment failed — intervention sent, follow-up created", urgency: "normal" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "New Lead → Auto-Qualify & Assign",
-    eventType: "lead.created",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "oracle", action: "generate_report", inputMapping: { reportType: "lead_qualification", parameters: { leadId: "$.payload.leadId" } }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "sophie", action: "send_follow_up", inputMapping: { leadId: "$.payload.leadId", channel: "email" }, governanceGate: false, timeoutMs: 15000 },
-    ],
-  },
-  {
-    name: "Deal Won → Revenue Attribution & Celebration",
-    eventType: "deal.won",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "ledger", action: "generate_report", inputMapping: { reportType: "revenue_attribution", parameters: { dealId: "$.payload.dealId" } }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "forge", action: "send_alert", inputMapping: { severity: "info", title: "Deal Won!", message: "Deal $.payload.dealId closed successfully" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Deal Lost → Post-Mortem & Learning",
-    eventType: "deal.lost",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "oracle", action: "generate_report", inputMapping: { reportType: "deal_post_mortem", parameters: { dealId: "$.payload.dealId" } }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "oracle", action: "store_learning", inputMapping: { memoryType: "episodic", content: "Deal lost: $.payload.reason", tags: ["deal_lost", "post_mortem"] }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Agent Conflict → Mediation Protocol",
-    eventType: "agent:conflict",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "shield", action: "escalate_to_founder", inputMapping: { reason: "Agent conflict: $.payload.topic", context: "$.payload", urgency: "high" }, governanceGate: true, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Job Failed → Auto-Restart + Alert",
-    eventType: "job:failed",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "sentinel", action: "restart_failed_job", inputMapping: { jobName: "$.payload.jobName" }, governanceGate: false, timeoutMs: 15000 },
-      { agentCodename: "sentinel", action: "send_alert", inputMapping: { severity: "warning", title: "Job Failed", message: "$.payload.jobName failed: $.payload.error" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Market Alert → Opportunity Scan",
-    eventType: "market:alert",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "oracle", action: "generate_report", inputMapping: { reportType: "market_opportunity", parameters: { county: "$.payload.county", state: "$.payload.state" } }, governanceGate: false, timeoutMs: 30000 },
-    ],
-  },
-  {
-    name: "Approval Requested → Notification Chain",
-    eventType: "approval:requested",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "shield", action: "send_alert", inputMapping: { severity: "info", title: "Approval Needed", message: "$.payload.description" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "High-Value Lead → VIP Treatment",
-    eventType: "lead.scored",
-    triggerConditions: { "$.payload.score": { "$gte": 80 } },
-    steps: [
-      { agentCodename: "sophie", action: "send_follow_up", inputMapping: { leadId: "$.payload.leadId", channel: "sms" }, governanceGate: false, timeoutMs: 15000 },
-      { agentCodename: "sophie", action: "create_task", inputMapping: { title: "VIP lead follow-up: $.payload.leadId", priority: "urgent" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Revenue Milestone → Celebration & Report",
-    eventType: "revenue:milestone",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "ledger", action: "generate_report", inputMapping: { reportType: "revenue_milestone", parameters: "$.payload" }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "forge", action: "send_alert", inputMapping: { severity: "info", title: "Revenue Milestone!", message: "$.payload.description" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Stale Deal → Auto-Nudge",
-    eventType: "deal.stale",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "sophie", action: "send_follow_up", inputMapping: { leadId: "$.payload.leadId", channel: "email", message: "Following up on your property inquiry" }, governanceGate: false, timeoutMs: 15000 },
-      { agentCodename: "forge", action: "flag_deal_risk", inputMapping: { dealId: "$.payload.dealId", riskLevel: "medium", reason: "Deal stale for 7+ days" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Agent Trust Promotion → Unlock Authority",
-    eventType: "trust:threshold_crossed",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "shield", action: "send_alert", inputMapping: { severity: "info", title: "Trust Promotion", message: "$.payload.agent promoted to level $.payload.newLevel" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Compliance Violation → Emergency Protocol",
-    eventType: "compliance.violation",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "shield", action: "escalate_to_founder", inputMapping: { reason: "Compliance violation: $.payload.description", urgency: "critical", context: "$.payload" }, governanceGate: true, timeoutMs: 10000 },
-      { agentCodename: "sentinel", action: "activate_degradation_mode", inputMapping: { modeName: "compliance_lockdown", reason: "Compliance violation detected" }, governanceGate: true, timeoutMs: 15000 },
-    ],
-  },
-  {
-    name: "Briefing Ready → Notify Founder",
-    eventType: "briefing:ready",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "oracle", action: "send_alert", inputMapping: { severity: "info", title: "Daily Briefing Ready", message: "Your morning briefing is ready" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-  {
-    name: "Self-Healing Anomaly → Auto-Remediate",
-    eventType: "anomaly.detected",
-    triggerConditions: {},
-    steps: [
-      { agentCodename: "sentinel", action: "generate_report", inputMapping: { reportType: "anomaly_analysis", parameters: "$.payload" }, governanceGate: false, timeoutMs: 30000 },
-      { agentCodename: "sentinel", action: "send_alert", inputMapping: { severity: "$.payload.severity", title: "Anomaly Detected", message: "$.payload.metric: $.payload.deviation% deviation" }, governanceGate: false, timeoutMs: 10000 },
-    ],
-  },
-];
+// (1. Default reaction chains DELETED 2026-08-29, stage-4 turn 16 — see the
+// v14 router tombstone; nothing consumed the chains a boot re-seeded.)
 
 // ─── 2. Default Incident Playbooks ───────────────────────────────────────────
 
@@ -297,39 +164,9 @@ const DEFAULT_STRATEGIES = [
 export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: number; modes: number; memories: number; strategies: number }> {
   let chains = 0, playbooks = 0, modes = 0, memories = 0, strategies = 0;
 
-  // 1. Seed reaction chains
-  try {
-    const { reactiveOrchestrationService } = await import("./reactiveOrchestrationV14");
-    for (const chain of DEFAULT_CHAINS) {
-      try {
-        // Map the bootstrap chain shape onto CreateChainData (triggerEventType,
-        // enabled, maxConcurrentRuns) and ChainStep (governanceCheck).
-        await reactiveOrchestrationService.createChain(SYSTEM_ORG_ID, {
-          name: chain.name,
-          triggerEventType: chain.eventType,
-          triggerConditions: chain.triggerConditions,
-          steps: chain.steps.map((s) => ({
-            agentCodename: s.agentCodename,
-            action: s.action,
-            inputMapping: s.inputMapping,
-            governanceCheck: s.governanceGate,
-            timeoutMs: s.timeoutMs,
-          })),
-          enabled: true,
-          maxConcurrentRuns: 1,
-          cooldownMs: 60000,
-        });
-        chains++;
-      } catch {
-        // Chain may already exist — skip
-      }
-    }
-    logger.info(`[autonomy-bootstrap] Seeded ${chains} reaction chains`);
-  } catch (err: any) {
-    logger.info(`[autonomy-bootstrap] Reaction chains skipped: ${err.message}`);
-  }
+  // (Reaction-chain seeding removed 2026-08-29 — stage-4 turn 16.)
 
-  // 2. Seed incident playbooks
+    // 2. Seed incident playbooks
   try {
     const { selfHealingMeshService } = await import("./selfHealingMeshV13");
     for (const playbook of DEFAULT_PLAYBOOKS) {

@@ -4,7 +4,7 @@
   "evaluator": "scripts/check-ghost-fields.mjs",
   "direction": "down",
   "description": "GHOST FIELD ratchet. Counts `(x as any).prop` reads where `prop` is not on x's pre-cast type — a read that is `undefined` on every row, forever, with tsc explicitly told not to look. Three live defects of this shape were found by hand on 2026-08-21/23, each in a different file and none catchable by any other gate in this repo: auditOrgUsury judged EVERY note in EVERY organization against Texas usury law via `(note as any).propertyState || \"TX\"`; GET /api/seller-motivation/:leadId synthesized nine of eleven signals from non-existent columns and so returned at most two distinct scores across every lead in every org; and the campaign email and SMS senders read four content fields that are not columns of `campaigns`, so every recipient of every campaign received the campaign's INTERNAL NAME as the message body while `campaigns.content` went unread. Augmenting a browser/Node global (window.webkitSpeechRecognition, globalThis caches, injected window.__ENV__) is excluded BY RULE, not parked in the baseline, so this number means one thing: a domain object asked for a field it does not have. THE CHEAPEST FIX IS TO READ THE REAL FIELD, or delete the read. Widening a type to make a ghost legal is worse than the defect — it documents `undefined` as the contract.",
-  "baseline": 58,
+  "baseline": 56,
   "minima": {
     "castsInScope": 480,
     "judgedCasts": 280

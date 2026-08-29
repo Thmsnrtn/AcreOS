@@ -18,7 +18,6 @@ import { Errors } from "./utils/errors";
 import { agentLifecycleRuntimeService } from "./services/agentLifecycleRuntimeV12";
 import { eventMeshService } from "./services/eventMeshV12";
 import { outcomeVerificationService } from "./services/outcomeVerificationV12";
-import { sagaOrchestratorService } from "./services/sagaOrchestratorV12";
 import { agentVersionControlService } from "./services/agentVersionControlV12";
 import { trustEnforcementService } from "./services/trustEnforcementV12";
 import { integrationFrameworkService } from "./services/integrationFrameworkV12";
@@ -177,44 +176,10 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  // ─── 4. Saga Orchestrator ─────────────────────────────────────────────
-
-  app.post("/api/founder/v12/sagas", async (req, res) => {
-    try { res.json(await sagaOrchestratorService.createSaga(req.body)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/sagas/:sagaId/execute", async (req, res) => {
-    try { res.json(await sagaOrchestratorService.executeSaga(req.params.sagaId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/sagas/:sagaId/compensate", async (req, res) => {
-    try { res.json(await sagaOrchestratorService.compensate(req.params.sagaId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/sagas/timeout", async (_req, res) => {
-    try { res.json(await sagaOrchestratorService.timeout()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // stats — registered BEFORE /api/founder/v12/sagas/:sagaId so the literal path wins (2026-07-11 route-order sweep).
-  app.get("/api/founder/v12/sagas/stats", async (_req, res) => {
-    try { res.json(await sagaOrchestratorService.getStats()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/sagas/:sagaId", async (req, res) => {
-    try { res.json(await sagaOrchestratorService.getById(req.params.sagaId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/sagas", async (req, res) => {
-    try { res.json(await sagaOrchestratorService.getRecent()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
+  // ─── 4. (Saga Orchestrator DELETED 2026-08-29, stage-4 turn 16) ───────
+  // No job or event source ever created a saga — only these founder HTTP
+  // routes — and its platform-sentinel orgId:0 write dies by deletion.
+  // saga_instances awaits the OD-8 drop batch.
 
   // ─── 5. Agent Version Control ─────────────────────────────────────────
 

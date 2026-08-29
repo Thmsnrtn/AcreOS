@@ -13,7 +13,6 @@
 
 import { type Express, type Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
-import { reactiveOrchestrationService } from "./services/reactiveOrchestrationV14";
 import { feedbackLoopService } from "./services/feedbackLoopV14";
 import { confidenceCascadeService } from "./services/confidenceCascadeV14";
 import { autonomyScoreService } from "./services/autonomyScoreV14";
@@ -29,67 +28,12 @@ export function registerFounderV14Routes(app: Express) {
   app.use("/api/founder/v14", isAuthenticated, requireFounder);
 
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 1. REACTIVE ORCHESTRATION — Event-driven agent chain execution
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Chain management
-  app.post("/api/founder/v14/chains", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.createChain(req.body.orgId, req.body)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.put("/api/founder/v14/chains/:chainId", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.updateChain(req.params.chainId, req.body)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.delete("/api/founder/v14/chains/:chainId", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.deleteChain(req.params.chainId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/chains/:orgId", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.getChains(parseInt(req.params.orgId), req.query)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/chains/link", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.linkChains(req.body.fromChainId, req.body.toChainId, req.body.linkType, req.body.conditionFilter)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // Event processing (THE CORE)
-  app.post("/api/founder/v14/events/process", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.processEvent(req.body.orgId, req.body.eventType, req.body.payload)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v14/runs/:runId/resume", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.resumeRun(req.params.runId, req.body.resumedBy)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  // Monitoring
-  app.get("/api/founder/v14/runs/:orgId/history", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.getRunHistory(parseInt(req.params.orgId), req.query)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/runs/:runId/details", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.getRunDetails(req.params.runId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/chains/:chainId/stats", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.getChainStats(req.params.chainId)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v14/events/:orgId/coverage", async (req, res) => {
-    try { res.json(await reactiveOrchestrationService.getEventCoverage(parseInt(req.params.orgId))); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
+  // Section 1 (REACTIVE ORCHESTRATION) was DELETED 2026-08-29 (stage-4
+  // turn 16) with reactiveOrchestrationV14.ts: chains ran nothing a live
+  // event source fed (the only seeding was autonomyBootstrap's defaults,
+  // also removed), and the intents that matter live on the incumbent plane
+  // (webhookHandlers payment.failed, routes-ses-events bounce demotion,
+  // gateWatcher). reaction_chains/-runs/-links await the OD-8 drop batch.
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 2. FEEDBACK LOOP — Founder overrides teach the system

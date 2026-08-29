@@ -168,6 +168,15 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
 
 **Phase 3 — orchestrator and memory retirement**
 
+- **Turn 16 — DONE 2026-08-29.** sagaOrchestratorV12 +
+  reactiveOrchestrationV14 deleted; boot seeding removed from
+  autonomyBootstrap; the v14 REACTIVE section and the v12 SAGA section
+  replaced by tombstones naming the incumbent event intents
+  (webhookHandlers payment.failed, ses-events bounce demotion,
+  gateWatcher). The orgId:0 saga sentinel died by deletion. Zero live
+  references verified by grep. Third OD-8 tranche recorded —
+  reaction_chain_runs keeps a reader (autonomyScore) and is flagged for
+  contract adjustment before any drop.
 - **Turn 16 — sagas + reactive chains.** Remove chain seeding from `autonomyBootstrap`; remove `POST /api/founder/v14/events`; delete `reactiveOrchestrationV14.ts`. Delete `sagaOrchestratorV12.ts` + `routes-founder-real-runtime.ts:183-214` (Decision E covers both route removals; the orgId-0 sentinel dies here). Lower `FOUNDER_ROUTE_BASELINE` in the same commits. Verify: grep `processEvent|startSaga` zero; boot log clean; `executionEngine` caller set is now exactly initiative + finalMile + the decisions lane. `saga_instances`, `reaction_chains` → drop list.
 - **Turn 17 — cascade memory repoint.** `confidenceCascadeV14.ts:298` recallEpisodes → `memoryRetrieval` over the solene corpus; honest-empty fallback tested both ways (seeded fixture returns precedent; empty corpus advances the cascade without fabricating). Convert `executionEngine` store_learning and `agentDebates.ts:369` to `embedDocumentTextFailOpen`. Rollback: revert — V13 store is still intact and quasi-static (no decay cron ever ran), so reverting restores exact prior behavior.
 - **Turn 18 — V13 surface retirement.** Remove `/api/founder/v13` (`routes-founder-sentient-enterprise`) and `scpMemorySystem` episodic writes via `routes-scp-v2` (Decision F); delete `cognitiveMemoryV13.ts` after in-commit zero-caller grep; four V13 tables + `memory_access_log` → drop list; lower `FOUNDER_ROUTE_BASELINE` again.
