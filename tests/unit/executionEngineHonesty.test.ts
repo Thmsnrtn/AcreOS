@@ -68,6 +68,15 @@ vi.mock("../../server/services/companyAgents", () => ({
     effectiveTrustScore: vi.fn().mockResolvedValue(0),
   },
 }));
+// The governance gate fail-closes in this mocked environment (activePolicies
+// not iterable), which would refuse UPSTREAM of the handlers and mask a
+// phantom-send revert — the turn-3 refusal tests must reach the handler
+// itself, so the gate is mocked open here.
+vi.mock("../../server/services/governanceBrainV13", () => ({
+  governanceBrainService: {
+    evaluateAction: vi.fn().mockResolvedValue({ overallResult: "allowed", explanation: "test" }),
+  },
+}));
 vi.mock("../../server/services/eventMeshPublisher", () => ({
   eventMeshPublisher: {
     publish: vi.fn().mockResolvedValue(undefined),
@@ -133,6 +142,40 @@ describe("executionEngine honesty — unregistered actions", () => {
 
     // Regression guard: the manufactured-success outcome must never appear
     expect(insertedRows.some((r) => r.eventType === "action_succeeded")).toBe(false);
+  });
+});
+
+describe("executionEngine honesty — phantom sends refuse (stage-4 turn 3)", () => {
+  // send_follow_up stamped lastContactedAt + status "contacted" and returned
+  // "Follow-up sent" with no channel wired; send_churn_intervention logged and
+  // broadcast an intervention that never happened. Both now REFUSE. Driven
+  // against the real registry handlers: a revert to the phantom behavior
+  // makes success:true reappear and these go red.
+  it("send_follow_up refuses and fabricates no contact event", async () => {
+    const result = await executionEngine.execute({
+      ...baseCtx,
+      action: "send_follow_up",
+      input: { leadId: 123, message: "hi", channel: "email" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/refuses|cannot send/i);
+    // No "contacted" fabrication reached the store.
+    expect(insertedRows.some((r) => r.eventType === "action_succeeded")).toBe(false);
+  });
+
+  it("send_churn_intervention refuses and announces nothing", async () => {
+    broadcastFounderEvent.mockClear();
+    const result = await executionEngine.execute({
+      ...baseCtx,
+      action: "send_churn_intervention",
+      input: { orgTargetId: 7, interventionType: "email", reason: "test" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/refuses|cannot intervene/i);
+    expect(broadcastFounderEvent).not.toHaveBeenCalledWith(
+      "churn_intervention",
+      expect.anything(),
+    );
   });
 });
 

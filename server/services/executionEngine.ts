@@ -47,21 +47,19 @@ const actionRegistry: Record<string, ActionExecutor> = {
   // ── Lead Actions ─────────────────────────────────────────────────────────
 
   "send_follow_up": async (ctx) => {
-    const { leadId, message, channel } = ctx.input;
-    if (!leadId) return fail("leadId required");
-
-    // Update lead's last contacted timestamp
-    await db.update(leads)
-      .set({ lastContactedAt: new Date(), status: "contacted" })
-      .where(eq(leads.id, leadId));
-
-    // Log the follow-up action
-    await logAgentAction(ctx, "follow_up_sent", { leadId, channel: channel ?? "email" });
-
-    return success({ leadId, channel: channel ?? "email", message: "Follow-up sent" }, [
-      `Updated lead ${leadId} lastContactedAt`,
-      `Logged follow-up via ${channel ?? "email"}`,
-    ]);
+    // REFUSES (stage-4 turn 3, honest receipts). This handler sent NOTHING:
+    // it stamped lastContactedAt + status "contacted" — fabricating a contact
+    // event no channel ever carried — and returned "Follow-up sent". A lead
+    // record that says "contacted" when no message left the building poisons
+    // every downstream cadence decision. Refuse-not-fabricate: agent-initiated
+    // outreach belongs on the witnessed hands lane
+    // (docs/autonomous/BRAIN_CONSOLIDATION_STAGE4.md, phase 1).
+    const { leadId } = ctx.input;
+    return fail(
+      `send_follow_up cannot send anything today (no channel is wired), so it refuses ` +
+      `rather than record a contact that never happened${leadId ? ` for lead ${leadId}` : ""}. ` +
+      `Agent outreach goes through the witnessed send lane.`,
+    );
   },
 
   "update_lead_status": async (ctx) => {
@@ -201,22 +199,16 @@ const actionRegistry: Record<string, ActionExecutor> = {
   // ── Churn/Retention Actions ──────────────────────────────────────────────
 
   "send_churn_intervention": async (ctx) => {
-    const { orgTargetId, interventionType, reason } = ctx.input;
-
-    // Log the churn intervention
-    await logAgentAction(ctx, "churn_intervention", {
-      targetOrgId: orgTargetId,
-      interventionType: interventionType ?? "email",
-      reason,
-    });
-
-    wsServer.broadcastFounderEvent("churn_intervention", {
-      targetOrgId: orgTargetId,
-      agent: ctx.agentCodename,
-      reason,
-    });
-
-    return success({ orgTargetId, interventionType }, [`Churn intervention sent for org ${orgTargetId}`]);
+    // REFUSES (stage-4 turn 3, honest receipts). This handler logged and
+    // broadcast "Churn intervention sent" while sending nothing — the founder
+    // event stream showed retention work that never happened. The real
+    // churn-rescue path is agentActionExecutors' send_churn_rescue, which
+    // phase 1 moves onto the witnessed hands lane.
+    const { orgTargetId } = ctx.input;
+    return fail(
+      `send_churn_intervention cannot intervene today (no channel is wired), so it refuses ` +
+      `rather than announce an intervention that never happened${orgTargetId ? ` for org ${orgTargetId}` : ""}.`,
+    );
   },
 
   // ── Degradation Mode Actions ─────────────────────────────────────────────
