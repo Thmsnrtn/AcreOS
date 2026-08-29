@@ -491,26 +491,36 @@ async function executeChurnRiskApproval(
   const body = decision.retentionMessage || `Hi there,\n\nI noticed things have been a bit quiet on your AcreOS account lately and wanted to personally reach out.\n\nIf there's anything we can do to help you get more value from the platform — whether it's a walkthrough, adjusting your setup, or just answering questions — I'm here for it.\n\nJust hit reply and let me know.\n\nBest,\nAcreOS Team`;
 
   try {
-    await emailService.sendEmail({
+    // Stage-4 turn 9: the LAST executor send flips onto the seam. Frozen,
+    // attributed, released by the OD-9 grant or a founder tap. The
+    // intervention log records the FROZEN truth ("proposed"), not "sent" —
+    // executeHandWitnessed's audit records the actual send when it happens.
+    const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+    const proposal = await proposeGovernedEmail({
+      organizationId: item.organizationId,
       to: ownerEmail,
       subject: "Checking in — how can we help?",
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
         ${body.replace(/\n/g, "<br>")}
       </div>`,
-      text: body,
+      source: "autonomousDecisionExecutor:churn_risk_intervention",
+      domain: "support",
     });
+    if (!proposal.proposed) {
+      return { success: false, detail: `Churn intervention refused at the seam: ${proposal.refusal}` };
+    }
 
-    // Log the intervention
+    // Log the intervention as PROPOSED — never "sent" for a frozen action.
     await db.insert(revenueProtectionInterventions).values({
       organizationId: item.organizationId,
       interventionType: "critical_churn_autonomous",
-      status: "sent",
+      status: "proposed",
       triggeredBy: "autonomous_decision_executor",
-      notes: `Autonomous churn intervention. Risk score: ${item.urgencyScore}. AI confidence: ${decision.confidence}%`,
+      notes: `Autonomous churn intervention frozen as pending action #${proposal.pendingActionId}. Risk score: ${item.urgencyScore}. AI confidence: ${decision.confidence}%`,
       decisionsInboxItemId: item.id,
     } as any);
 
-    return { success: true, detail: `Retention email sent to ${ownerEmail}` };
+    return { success: true, detail: `Retention email for ${ownerEmail} frozen as pending action #${proposal.pendingActionId} — released by grant or founder tap.` };
   } catch (err: any) {
     return { success: false, detail: err.message };
   }

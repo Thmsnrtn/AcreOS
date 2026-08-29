@@ -36,6 +36,7 @@ type SendClass =
   | "system-mail" // AcreOS-to-its-own-customer operational mail (digests, billing, alerts, receipts)
   | "witnessed-hand" // the canonical governed lane
   | "pax-governed" // Pax's own approval ladder (tools.ts) — separate lane, converges later
+  | "counterparty-byo" // purpose:"counterparty" — emailService refuses without the org's OWN identity (no re-fronting, enforced at the service)
   | "agent-autonomous" // agent/engine-initiated with no witness — the migration's shrink-to-zero class
   | "dead-helper"; // a wrapper nothing calls
 
@@ -65,10 +66,10 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/routes-founder-intelligence.ts": [1, "system-mail"],
   "server/routes-inbound-email.ts": [1, "system-mail"],
   "server/routes-marketplace.ts": [1, "system-mail"],
-  "server/services/agent-skills.ts": [1, "agent-autonomous"],
+  "server/services/agent-skills.ts": [1, "counterparty-byo"],
   "server/services/agentActionExecutors.ts": [0, "agent-autonomous"],
   "server/services/alertPolicy.ts": [3, "system-mail"],
-  "server/services/autonomousDecisionExecutor.ts": [1, "agent-autonomous"],
+  "server/services/autonomousDecisionExecutor.ts": [0, "agent-autonomous"],
   "server/services/autonomyGuardrails.ts": [1, "system-mail"],
   "server/services/autopilot/hands/send-email.ts": [1, "witnessed-hand"],
   "server/services/communications.ts": [1, "system-mail"],
@@ -93,11 +94,20 @@ const REGISTER: Record<string, [number, SendClass]> = {
  * The migration ratchet: turns 6-9 lower this in the SAME commit as each
  * caller flip; at zero the assertion flips to MUST-BE-ZERO forever.
  */
-// 7 at install; 6 after turn 6; 4 after turn 7; 2 after turn 8
-// (schedule_call + send_guided_walkthrough) — agentActionExecutors is now
-// FULLY off the direct rail; the remaining 2 are autonomousDecisionExecutor
-// and agent-skills (turn 9, which flips this to MUST-BE-ZERO).
-const AGENT_AUTONOMOUS_BASELINE = 2;
+/**
+ * ZERO, forever (turn 9, 2026-08-29). The path here: 7 at install; 6/4/2
+ * through turns 6-8; then turn 9 flipped autonomousDecisionExecutor's churn
+ * branch onto the seam and RECLASSIFIED agent-skills — reading it for the
+ * flip showed its send carries purpose:"counterparty", which emailService
+ * REFUSES without the org's own BYO identity (emailService.ts, "no silent
+ * fallback"): a counterparty lane on the org's own rail, not ungoverned
+ * platform mail, and the seam (whose counterparty check refuses such
+ * recipients) is the WRONG chokepoint for it. Its real residual gap — no
+ * autonomy/TCPA gate on a model-composed recipient — is recorded in the
+ * design doc as skill-lane follow-up, not laundered into this class.
+ * An agent-autonomous direct send appearing anywhere is now a red test.
+ */
+const AGENT_AUTONOMOUS_BASELINE = 0;
 
 const QUAL = /\bemailService\s*\.\s*sendEmail\s*\(/g;
 const BARE = /(?<![.\w])sendEmail\s*\(/g;
@@ -168,22 +178,16 @@ describe("outbound email chokepoint — the population is enumerated and frozen"
     ).toEqual([]);
   });
 
-  it("the agent-autonomous class only shrinks", () => {
+  it("agent-autonomous direct sends are ZERO, forever", () => {
     let n = 0;
     for (const [f, [count, klass]] of Object.entries(REGISTER)) {
       if (klass === "agent-autonomous") n += found.get(f) ?? count;
     }
     expect(
       n,
-      `agent-autonomous sendEmail sites: ${n} > baseline ${AGENT_AUTONOMOUS_BASELINE} — ` +
-        "ungoverned agent sends may never grow",
-    ).toBeLessThanOrEqual(AGENT_AUTONOMOUS_BASELINE);
-    // Stale-high: lock reductions into the commit that earns them.
-    expect(
-      n,
-      `agent-autonomous count ${n} < baseline ${AGENT_AUTONOMOUS_BASELINE} — a caller ` +
-        "migrated (good!); lower AGENT_AUTONOMOUS_BASELINE in this commit",
-    ).toBeGreaterThanOrEqual(AGENT_AUTONOMOUS_BASELINE);
+      "an agent-autonomous direct emailService.sendEmail appeared — agent email goes " +
+        "through the witnessed outbound seam (proposeGovernedEmail); see the baseline note",
+    ).toBe(AGENT_AUTONOMOUS_BASELINE);
   });
 
   it("the witnessed hand is exactly one file", () => {
