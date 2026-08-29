@@ -255,6 +255,34 @@ jobs:
         # "Record FAILED deployment" ledger step, and surfaces the bad release
         # loudly.
 
+      # ── Migration evidence read-back (2026-08-29, OD-8 "approve with
+      # evidence") ─────────────────────────────────────────────────────────
+      # flyctl streams the release machine's LIFECYCLE into this job log but
+      # not its STDOUT — so migrate.mjs's row-count evidence for conditional
+      # drops (the [od8-*] NOTICE/WARNING lines, surfaced by the notice
+      # listener on its pool) was landing only in Fly's short-retention log
+      # buffer, which nothing read. The founder's ruling is that the deploy
+      # watch READS the evidence; this step makes that true by dumping the
+      # recent [migrate] lines here, minutes after the release command ran.
+      # A populated survivor becomes a workflow warning annotation — visible
+      # on the run page without opening the log. Never fails the deploy:
+      # evidence is for reading, and a survivor is by design left in place.
+      - name: Surface release-command migration evidence
+        if: always() && steps.fly_deploy.outcome == 'success'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "── [migrate] lines from the release machine (recent log buffer) ──"
+          LOGS="$(timeout 60 flyctl logs --no-tail 2>/dev/null | grep -F '[migrate]' || true)"
+          if [ -z "$LOGS" ]; then
+            echo "::warning title=Migration evidence not in buffer::flyctl logs returned no [migrate] lines — the buffer may have rotated. The evidence still printed on the release machine; check 'fly logs' promptly after the next deploy."
+          else
+            printf '%s\n' "$LOGS"
+            printf '%s\n' "$LOGS" | grep -F 'LEFT IN PLACE' | while IFS= read -r line; do
+              echo "::warning title=Populated table survived its conditional drop::${line}"
+            done
+          fi
+
       # ── Post-deploy assessment (2026-08-25, run 32902473209) ───────────────
       # WHY THIS STEP EXISTS. The rollback below used to be gated on
       #   failure() && fly_deploy.outcome == 'success' && health.outcome == 'failure'
