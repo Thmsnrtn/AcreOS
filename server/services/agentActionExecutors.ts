@@ -535,13 +535,19 @@ registerExecutor("sophie_csm", "schedule_call", async (ctx) => {
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
   const contactEmail = await resolveOrgContactEmail(org);
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
-  const result = await emailService.sendEmail({
+  // Stage-4 turn 8: frozen through the seam (same shape as turns 6-7).
+  const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+  const proposal = await proposeGovernedEmail({
+    organizationId: orgId,
     to: contactEmail,
     subject: "Let's schedule a quick call — Pax from AcreOS",
     html: `<p>Hi ${org.name} team,</p><p>I'd love to jump on a quick 15-minute call to make sure everything is going well.${reason ? ` Specifically, I wanted to discuss: ${reason}` : ""}</p><p>Would any of these times work this week? Just reply with your preference and I'll send a calendar invite.</p><p>Best,<br/>Pax<br/>AcreOS Customer Success</p>`,
-    organizationId: orgId,
+    source: "agentActionExecutors:schedule_call",
+    domain: "support",
   });
-  return { success: result.success, detail: result.success ? `Call scheduling email sent to ${org.name}` : `Failed: ${result.error}`, metrics: { orgId, reason }, verifyAfterMs: 48 * 60 * 60 * 1000 };
+  return proposal.proposed
+    ? { success: true, detail: `Call-scheduling email for ${org.name} frozen as pending action #${proposal.pendingActionId}${proposal.deduped ? " (deduped)" : ""} — released by grant or founder tap.`, metrics: { orgId, reason, pendingActionId: proposal.pendingActionId, frozen: true }, verifyAfterMs: 48 * 60 * 60 * 1000 }
+    : { success: false, detail: `Call-scheduling email for ${org.name} refused at the seam: ${proposal.refusal}`, metrics: { orgId, reason, frozen: false } };
 });
 
 registerExecutor("sophie_csm", "unlock_feature_temporarily", async (ctx) => {
@@ -573,13 +579,19 @@ registerExecutor("sophie_csm", "send_guided_walkthrough", async (ctx) => {
     default: "Getting started: Check your Today page for personalized recommendations on what to do next.",
   };
   const guide = featureGuides[stuckFeature || "default"] || featureGuides.default;
-  const result = await emailService.sendEmail({
+  // Stage-4 turn 8: frozen through the seam (same shape as turns 6-7).
+  const { proposeGovernedEmail } = await import("./autopilot/outboundSeam");
+  const proposal = await proposeGovernedEmail({
+    organizationId: orgId,
     to: contactEmail,
     subject: `Quick guide: Getting the most from ${stuckFeature || "AcreOS"}`,
     html: `<p>Hi ${org.name} team,</p><p>I noticed you might be looking for help with ${stuckFeature || "getting started"}. Here's a quick walkthrough:</p><p><strong>${guide}</strong></p><p>Need more help? Just reply to this email — I'm here for you.</p><p>Best,<br/>Pax<br/>AcreOS Customer Success</p>`,
-    organizationId: orgId,
+    source: "agentActionExecutors:send_guided_walkthrough",
+    domain: "support",
   });
-  return { success: result.success, detail: result.success ? `Guided walkthrough sent to ${org.name} for "${stuckFeature || "general"}"` : `Failed: ${result.error}`, metrics: { orgId, stuckFeature }, verifyAfterMs: 72 * 60 * 60 * 1000 };
+  return proposal.proposed
+    ? { success: true, detail: `Guided walkthrough for ${org.name} ("${stuckFeature || "general"}") frozen as pending action #${proposal.pendingActionId}${proposal.deduped ? " (deduped)" : ""} — released by grant or founder tap.`, metrics: { orgId, stuckFeature, pendingActionId: proposal.pendingActionId, frozen: true }, verifyAfterMs: 72 * 60 * 60 * 1000 }
+    : { success: false, detail: `Guided walkthrough for ${org.name} refused at the seam: ${proposal.refusal}`, metrics: { orgId, stuckFeature, frozen: false } };
 });
 
 // ─── Sentinel DevOps Executors (v5) ───────────────────────────────────────
