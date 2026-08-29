@@ -218,15 +218,29 @@ jobs:
         # retries skip straight back to the release step.
         run: |
           set +e
+          # Live-capture the app log stream for the whole deploy window. The
+          # release machine's stdout (migrate.mjs's [migrate] lines, incl. the
+          # OD-8 conditional-drop evidence) reaches Fly's stream while the
+          # deploy runs but rotates out of the buffer within minutes — deploy
+          # #34 proved a post-deploy `flyctl logs --no-tail` arrives too late.
+          # So tail DURING the deploy, into a file the evidence step reads.
+          # stdout goes to the file (not this step's pipe) so the runner never
+          # waits on the lingering tail; timeout bounds it regardless.
+          ( timeout 2400 flyctl logs > "$RUNNER_TEMP/fly-deploy-window.log" 2>"$RUNNER_TEMP/fly-tail-err.log" ) &
+          TAIL_PID=$!
           code=1
           for attempt in 1 2 3; do
             echo "── flyctl deploy attempt ${attempt}/3 ──"
             flyctl deploy --remote-only --wait-timeout 600 --build-arg GIT_SHA=${{ github.sha }}
             code=$?
-            if [ "$code" -eq 0 ]; then exit 0; fi
+            if [ "$code" -eq 0 ]; then break; fi
             echo "::warning::flyctl deploy attempt ${attempt}/3 failed (exit ${code})"
             if [ "$attempt" -lt 3 ]; then sleep $((attempt * 120)); fi
           done
+          # Give the stream a moment to flush the release machine's last lines,
+          # then stop the tail. kill is best-effort; timeout is the backstop.
+          sleep 10
+          kill "$TAIL_PID" 2>/dev/null
           exit "$code"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -272,10 +286,22 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          echo "── [migrate] lines from the release machine (recent log buffer) ──"
-          LOGS="$(timeout 60 flyctl logs --no-tail 2>/dev/null | grep -F '[migrate]' || true)"
+          echo "── [migrate] lines captured live during the deploy window ──"
+          LOGS=""
+          if [ -s "$RUNNER_TEMP/fly-deploy-window.log" ]; then
+            LOGS="$(grep -F '[migrate]' "$RUNNER_TEMP/fly-deploy-window.log" || true)"
+          fi
           if [ -z "$LOGS" ]; then
-            echo "::warning title=Migration evidence not in buffer::flyctl logs returned no [migrate] lines — the buffer may have rotated. The evidence still printed on the release machine; check 'fly logs' promptly after the next deploy."
+            # Distinguish "tail broke" from "release printed nothing" — deploy
+            # #34's first version of this step conflated the two behind a
+            # swallowed stderr, which is exactly the false-green shape the
+            # three-laws doctrine warns about.
+            if [ ! -s "$RUNNER_TEMP/fly-deploy-window.log" ]; then
+              echo "::warning title=Deploy-window log capture empty::the live tail wrote nothing at all. Tail stderr follows."
+              [ -f "$RUNNER_TEMP/fly-tail-err.log" ] && tail -20 "$RUNNER_TEMP/fly-tail-err.log"
+            else
+              echo "::warning title=No [migrate] lines in deploy window::the capture worked (file has content) but the release machine printed no [migrate] lines — check migrate.mjs's notice listener."
+            fi
           else
             printf '%s\n' "$LOGS"
             printf '%s\n' "$LOGS" | grep -F 'LEFT IN PLACE' | while IFS= read -r line; do
