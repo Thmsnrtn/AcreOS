@@ -1,9 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { learnedAutoResolveThreshold } from "../../server/services/autopilot/learnedGates";
-import { chooseSupportAction, DEFAULT_AUTO_RESOLVE_THRESHOLD, type SupportCtx } from "../../server/services/autopilot/domainLadders";
+import {
+  learnedAutoResolveThreshold,
+  DEFAULT_AUTO_RESOLVE_THRESHOLD,
+} from "../../server/services/autopilot/learnedGates";
 import type { SignalOutcome } from "../../server/services/autopilot/learnedPolicy";
 
-const earnAll = () => true;
+/**
+ * Rewritten 2026-08-28 (stage-4 turn 2), not deleted. The original drove the
+ * domainLadders chooseSupportAction ladder, which was deleted as zero-caller
+ * code; the invariant that SURVIVES is the threshold learning itself, which
+ * IS production: customerSupportAutoResolver consults
+ * currentSupportAutoResolveThreshold (learnedGates) before auto-resolving,
+ * with its own add-caution-only floor (never below the env threshold) and a
+ * billing hard-floor of 90 — those live gates are asserted where they live.
+ * Here: the pure learner's cold-start honesty and calibration direction.
+ */
 
 /** History where auto-resolves succeed reliably from confidence `cut` upward. */
 function historyFrom(cut: number, n: number): SignalOutcome[] {
@@ -13,30 +24,24 @@ function historyFrom(cut: number, n: number): SignalOutcome[] {
   });
 }
 
-describe("learnedGates — the auto-resolve gate self-calibrates end-to-end (Leap 1)", () => {
-  it("cold start: keeps the typed default, so 0.65 confidence does NOT auto-resolve", () => {
+describe("learnedGates — the auto-resolve threshold self-calibrates", () => {
+  it("cold start: keeps the typed default and says so", () => {
     const lt = learnedAutoResolveThreshold(historyFrom(0.6, 10)); // too few samples
     expect(lt.source).toBe("default");
     expect(lt.threshold).toBe(DEFAULT_AUTO_RESOLVE_THRESHOLD);
-
-    const ctx: SupportCtx = { aiConfidence: 0.65, reopened: false, complexity: "low", autoResolveThreshold: lt.threshold };
-    expect(chooseSupportAction(ctx, earnAll).chosen?.id).toBe("drafted_reply"); // 0.65 < 0.8
   });
 
-  it("with supporting history it LEARNS a lower bar, and 0.65 confidence now auto-resolves (free)", () => {
+  it("with supporting history it LEARNS a lower bar from real outcomes", () => {
     const lt = learnedAutoResolveThreshold(historyFrom(0.6, 200)); // success holds from 0.6
     expect(lt.source).toBe("learned");
     expect(lt.threshold).toBeLessThanOrEqual(0.65);
-
-    const ctx: SupportCtx = { aiConfidence: 0.65, reopened: false, complexity: "low", autoResolveThreshold: lt.threshold };
-    // The SAME ticket that was drafted under the typed default now auto-resolves
-    // under the learned threshold — the gate calibrated from real outcomes.
-    expect(chooseSupportAction(ctx, earnAll).chosen?.id).toBe("auto_resolve");
+    expect(lt.threshold).toBeGreaterThan(0.5);
   });
 
-  it("a complex/reopened ticket still escalates regardless of the learned bar (safety preserved)", () => {
-    const lt = learnedAutoResolveThreshold(historyFrom(0.6, 200));
-    const ctx: SupportCtx = { aiConfidence: 0.99, reopened: true, complexity: "high", autoResolveThreshold: lt.threshold };
-    expect(chooseSupportAction(ctx, earnAll).chosen?.id).toBe("escalate_founder");
+  it("contradictory history refuses to lower the bar", () => {
+    // Successes only from 0.9 up — learning must never hand back a bar below
+    // what the outcomes support.
+    const lt = learnedAutoResolveThreshold(historyFrom(0.9, 200));
+    expect(lt.threshold).toBeGreaterThanOrEqual(DEFAULT_AUTO_RESOLVE_THRESHOLD);
   });
 });

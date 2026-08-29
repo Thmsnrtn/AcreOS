@@ -14,7 +14,13 @@
  * outcomes accrue. Pure selection over the history; the DB read is thin.
  */
 import { learnThreshold, type SignalOutcome, type LearnedThreshold } from "./learnedPolicy";
-import { DEFAULT_AUTO_RESOLVE_THRESHOLD } from "./domainLadders";
+/**
+ * Moved here 2026-08-28 (stage-4 turn 2) from domainLadders.ts when the
+ * ladder primitives were deleted as zero-caller code — this module was the
+ * constant's only production importer. The typed cold-start bar: below it,
+ * a support resolution is drafted, not auto-sent.
+ */
+export const DEFAULT_AUTO_RESOLVE_THRESHOLD = 0.8;
 import { logger } from "../../utils/logger";
 
 /** Learn the auto-resolve confidence threshold from (confidence → success)

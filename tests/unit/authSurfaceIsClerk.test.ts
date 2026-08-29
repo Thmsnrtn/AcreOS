@@ -208,16 +208,20 @@ describe("the documented and reported auth surface matches the real one", () => 
     );
   });
 
-  it("the security report names Clerk, not a stack this app does not run", () => {
-    // "Passport.js with bcrypt, 2FA available" was the previous answer. A
-    // security report that names the wrong mechanism is worse than one that
-    // says nothing — it is the sentence someone quotes in a questionnaire.
-    const sov = read("server/services/permanentSovereignty.ts");
-    const at = sov.indexOf('area: "Authentication"');
-    expect(at, "the Authentication finding is gone").toBeGreaterThan(-1);
-    const line = sov.slice(at, sov.indexOf("\n", at));
-    expect(line, "the report claims Passport.js again").not.toMatch(/passport/i);
-    expect(line).toMatch(/Clerk/);
+  it("the self-audit \"security report\" generator stays deleted", () => {
+    // "Passport.js with bcrypt, 2FA available" was the previous answer this
+    // test corrected: permanentSovereignty.ts's self-audit generated a
+    // security report naming a stack the app does not run. On 2026-08-29 the
+    // whole module was deleted (stage-4 turn 2 cascade — zero callers,
+    // founder-displacing endgame machinery), so there is no report left to
+    // lie. The invariant survives in its strongest form: the generator is
+    // GONE, and this pin makes its silent return a red test. If a security
+    // self-report is ever rebuilt, it must name Clerk (the premise test
+    // below still pins that Clerk IS the auth surface).
+    expect(
+      fs.existsSync(path.join(ROOT, "server/services/permanentSovereignty.ts")),
+      "permanentSovereignty.ts is back — its security report claimed an auth stack the app does not run; do not revive it without this test's scrutiny",
+    ).toBe(false);
   });
 
   it("Clerk really is the auth provider (the premise)", () => {

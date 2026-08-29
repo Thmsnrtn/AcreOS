@@ -4,7 +4,7 @@
  * The engine used to return { success: true, note: "Action logged (no specific
  * executor)" } when actionRegistry had no executor for an action — so five live
  * callers (autonomyFinalMile, reactiveOrchestrationV14, agentInitiativeEngine,
- * sagaOrchestratorV12, selfHealingExecutor) could report completed work that
+ * sagaOrchestratorV12; selfHealingExecutor, deleted 2026-08-28 as zero-caller) could report completed work that
  * never ran. That is fabricated activity, forbidden by the no-fabrication
  * hard-stop. This suite pins the honest behavior: unregistered action →
  * success:false + "no_executor_registered", audited as NOT run; registered

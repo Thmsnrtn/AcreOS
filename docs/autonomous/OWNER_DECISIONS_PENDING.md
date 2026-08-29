@@ -583,5 +583,17 @@ these tables. The session cannot see the production database; a
 `SELECT count(*)` per table during any founder terminal session settles it —
 empty tables are a trivial YES, populated ones deserve a look first.
 
+**Second tranche (stage-4 turn 2's cascade, 2026-08-29):** the dead
+transitionToMissionMode method turned out to be the only thread holding a
+founder-displacing endgame chain: permanentSovereignty -> crisisLeadershipEngine
+-> externalCommunicationsManager + predictiveAutoscaler (~2,200 lines, zero
+callers at every link, deleted consistent with 'hard-stops stay founder-only
+forever'). Their tables join the list: `missionStatements`,
+`perpetualOpsChecks`, `selfAuditReports`, `marketAdaptations`,
+`regulatoryFeeds`, `crisisPlaybooks`, `preAuthorizedTradeoffs`,
+`canaryDeploys`, `migrationPlans`, `providerConfigs`; `communications` lost
+its last writer and `warRoomMessages` its last reader (both worth a look
+before any drop).
+
 **Blocked meanwhile:** nothing — code-side consolidation proceeds; only the
 DROP migrations wait.
