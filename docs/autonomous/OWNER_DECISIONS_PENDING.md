@@ -697,7 +697,18 @@ Decision D. Both are 0017-created like saga_instances, so they likely
 exist in production; trust_enforcement_log is the one table in the whole
 program that plausibly holds rows (it was the enforcement ledger) — a
 populated survivor goes to the founder exactly like reaction_chains did.
-Verdict pending the deploy's [od8-batch6-summary] line.
+
+**Batch 6 verdict still unread after deploys #42–#44** — Fly's log
+stream drops individual notice lines by lottery (three deploys, three
+different loss patterns; batches 1/2/3/5 are each multiply confirmed
+clean). Migration 0247 added the countermeasure: a read-only
+[od8-ledger] line re-checking all 23 program tables in ONE atomic
+notice, re-printed every release, with the deploy evidence step turning
+any survivor into a run-page warning automatically. No further
+dedicated deploy cycles are spent on evidence fishing — the ledger
+lands on an ordinary upcoming deploy and this entry gets its final
+verdict then. Meanwhile the two tables simply persist, unreferenced by
+any code.
 
 **Batch 5 SHIPPED 2026-08-30 — VERDICT (deploy #41):**
 `dropped=delegation_tokens survivors=none`. The table existed in
