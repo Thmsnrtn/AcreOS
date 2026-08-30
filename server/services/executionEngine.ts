@@ -432,17 +432,18 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
       .catch(() => {});
   } catch (err) { unevaluable("Trust authority check", err); }
 
-  // Financial actions require delegation token check
+  // Financial actions are founder-gated by STRUCTURE, not by a token lookup.
+  // Stage-4 turn 14: delegationTokensV11 retired. The service never granted
+  // a token outside a founder curl, so its live verdict was a constant deny
+  // wearing a lookup's clothes — the deny is now explicit and cannot be
+  // unevaluable. temporaryDelegation and witnessGrant are the two surviving
+  // delegation rails.
   const financialActions = ["advance_deal_stage", "flag_deal_risk"];
   if (financialActions.includes(ctx.action)) {
-    try {
-      const { delegationTokenService } = await import("./delegationTokensV11");
-      const check = await delegationTokenService.checkDelegation(ctx.agentCodename, ctx.action);
-      if (!check?.hasDelegation) {
-        violations.push(`No delegation token for ${ctx.agentCodename} to perform ${ctx.action}`);
-        suggestedAlternatives.push("Request delegation token from founder");
-      }
-    } catch (err) { unevaluable("Delegation token check", err); }
+    violations.push(
+      `${ctx.action} is structurally founder-gated: no autonomous path for financial actions — use escalate_to_founder (a witnessed hand or temporary delegation is the founder's to grant)`,
+    );
+    suggestedAlternatives.push("Use escalate_to_founder — a witnessed hand or temporary delegation is the founder's to grant");
   }
 
   // Deal actions require LTV check if deal involves financing

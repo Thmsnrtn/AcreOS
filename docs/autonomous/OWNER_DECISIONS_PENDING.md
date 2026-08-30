@@ -688,8 +688,14 @@ batch 2 + 2 batch 3/4), zero unauthorized data loss, one populated
 survivor handled exactly per the ruling. Everything still on the drop
 list is gated on unexecuted code turns: the four V13 memory tables +
 memory_access_log (turn 13), trust_enforcement_log/tenant_agent_config
-(turn 15), delegation_tokens (turn 14), plus the census-discovered
-reaction_chain_links candidate awaiting its own tranche decision.
+(turn 15), plus the census-discovered reaction_chain_links candidate
+awaiting its own tranche decision.
+
+**Batch 5 SHIPPED 2026-08-30** — migration 0245: `delegation_tokens`,
+whose writer/reader (delegationTokensV11) retired with stage-4 turn 14
+in the same commit. Created only by 0016 (never applied to production),
+so 'absent' is the expected verdict. Verdict pending the deploy's
+[od8-batch5-summary] line.
 
 **Blocked meanwhile:** nothing.
 

@@ -15,7 +15,6 @@
 import { type Express } from "express";
 import { agentNegotiationService } from "./services/agentNegotiationV11";
 import { revenueAttributionService } from "./services/revenueAttributionV11";
-import { delegationTokenService } from "./services/delegationTokensV11";
 import { Errors } from "./utils/errors";
 
 export function registerFounderV11Routes(app: Express) {
@@ -134,57 +133,12 @@ export function registerFounderV11Routes(app: Express) {
   // never staged unattended. Their tables await the OD-8 drop decision.
   // The incumbent plane owns these capabilities (autopilot/forecast,
   // contextualForecast, cognitionBudget; solene/cognitionThrottle).
-  // ─── 7. Delegation Tokens ─────────────────────────────────────────────
-
-  app.post("/api/founder/v11/delegations", async (req, res) => {
-    try {
-      const token = await delegationTokenService.grant({
-        agentCodename: req.body.agentCodename,
-        scope: req.body.scope,
-        authorityLevel: req.body.authorityLevel,
-        spendingLimitCents: req.body.spendingLimitCents,
-        conditions: req.body.conditions,
-        reason: req.body.reason,
-        expiresAt: new Date(req.body.expiresAt),
-        isStanding: req.body.isStanding,
-        autoRenewDays: req.body.autoRenewDays,
-      });
-      res.json(token);
-    } catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v11/delegations/check/:codename/:scope", async (req, res) => {
-    try {
-      const amount = req.query.amount ? parseInt(String(req.query.amount)) : undefined;
-      res.json(await delegationTokenService.checkDelegation(req.params.codename, req.params.scope, amount));
-    } catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v11/delegations/:id/revoke", async (req, res) => {
-    try {
-      await delegationTokenService.revoke(parseInt(req.params.id), req.body.reason);
-      res.json({ success: true });
-    } catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v11/delegations/process-expirations", async (_req, res) => {
-    try { res.json({ processed: await delegationTokenService.processExpirations() }); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v11/delegations/active", async (_req, res) => {
-    try { res.json(await delegationTokenService.getAllActive()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v11/delegations/agent/:codename", async (req, res) => {
-    try { res.json(await delegationTokenService.getActiveForAgent(req.params.codename)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v11/delegations", async (req, res) => {
-    try { res.json(await delegationTokenService.getRecent()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
+  // ─── 7. Delegation Tokens — RETIRED 2026-08-30 (stage-4 turn 14) ───────
+  // delegationTokensV11 never granted a token outside a founder curl; its
+  // constant deny is now an explicit structural escalate in
+  // executionEngine.validateSafetyGates (advance_deal_stage /
+  // flag_deal_risk have no autonomous path). temporaryDelegation and
+  // witnessGrant are the two surviving delegation rails; delegation_tokens
+  // joined the OD-8 conditional-drop list (migration 0245).
 
 }

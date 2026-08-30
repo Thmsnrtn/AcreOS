@@ -10801,6 +10801,33 @@ BEGIN
   END IF;
 END $mig0244$`,
 
+  // ── 0245 OD-8 drop batch 5: delegation_tokens (stage-4 turn 14) ──
+  // Same ruling and mechanism as 0241-0243. delegationTokensV11 retired
+  // this commit: its constant deny became an explicit structural escalate
+  // in executionEngine.validateSafetyGates, so the table lost its only
+  // writer and reader. Created only by migrations/0016 (never applied to
+  // production), so 'absent' is the expected verdict; a populated survivor
+  // would mean a founder curl once granted a token and stays for review.
+  `DO $mig0245$
+DECLARE
+  n bigint;
+  verdict text;
+BEGIN
+  IF to_regclass('public.delegation_tokens') IS NULL THEN
+    verdict := 'absent=delegation_tokens survivors=none';
+  ELSE
+    EXECUTE 'SELECT count(*) FROM delegation_tokens' INTO n;
+    IF n = 0 THEN
+      EXECUTE 'DROP TABLE delegation_tokens CASCADE';
+      verdict := 'dropped=delegation_tokens survivors=none';
+    ELSE
+      verdict := format('survivors=delegation_tokens=%s rows', n);
+      RAISE WARNING '[od8-batch5] delegation_tokens HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', n;
+    END IF;
+  END IF;
+  RAISE NOTICE '[od8-batch5-summary] %', verdict;
+END $mig0245$`,
+
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

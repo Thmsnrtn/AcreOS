@@ -163,7 +163,17 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
 - **Turn 11 — `trustSeam.ts` in SHADOW mode.** On every gate evaluation in `executionEngine.validateSafetyGates` and `agentAuthorityGate.checkAuthority`, compute BOTH verdicts (companyAgents tier vs. domain-ledger mapping) and log divergence via structured `logger` with a counter readable in the `/founder/admin/*` namespace. Zero behavior change. Run ≥1 week against the real 2-min/5-min/30-min cadences. Verify: divergence telemetry populating; gates green.
 - **Turn 12 — flip `executionEngine.validateSafetyGates` (:415-430) to the seam.** Fail-closed preserved: unknown agent, unmapped action, seam error ⇒ block/escalate — a check that cannot run is not a check that passed. Mutation-test per law 1: set the mapped domain to observe → refusal appears; to execute_gated → pass; delete a mapping entry → escalate. Rollback: revert (shadow logs retained as evidence either way).
 - **Turn 13 — flip `agentAuthorityGate`; retire lane-3 mutation machinery; fix the UI in the same turn.** The flip is behavior-preserving by construction (every live proactive/reaction action is unclassified → level-2 escalate today; assert exactly that survives). Then: unregister `trustEvolution` weekly job (`runScheduledJobs.ts:2301-2321`); retire `trustAuthorityEscalation.ts`; remove `/api/scp/v2/trust` promote/demote (Decision C); repoint or remove client `trustScore` renderings (`agent-performance.tsx`, `agent-detail.tsx`, `founder/inspector.tsx`, `founder-trends.tsx`, `command-palette.tsx`) — SAME turn as the job retirement, so no surface ever renders a frozen score as live (fabrication-adjacent). ceoAbsence boosts retire or re-express per Decision C.
-- **Turn 14 — retire `delegationTokensV11`.** `executionEngine:433-443` → explicit structural escalate for the two financial actions (test asserts they still cannot execute autonomously); delete service + v11 delegation routes; `delegation_tokens` → drop list. `temporaryDelegation` + `witnessGrant` stay as the two surviving rails.
+- **Turn 14 — DONE 2026-08-30.** `delegationTokensV11` retired: the
+  delegation check in `executionEngine.validateSafetyGates` became an
+  explicit structural escalate for advance_deal_stage / flag_deal_risk
+  (`safetyGateFailClosed.test.ts` pins that both still cannot execute
+  autonomously with every dependency healthy, and that the gate cannot be
+  unevaluable — it names no service). Service deleted, seven v11
+  delegation routes replaced by a tombstone, `delegation_tokens` model
+  removed, migration 0245 (OD-8 batch 5) drops the table conditionally.
+  `temporaryDelegation` + `witnessGrant` remain the two delegation rails.
+  Original spec: `executionEngine:433-443` → structural escalate; delete
+  service + v11 delegation routes; `delegation_tokens` → drop list.
 - **Turn 15 — delete lane 2.** `trustEnforcementV12.ts`, `tenantFabricV12.ts`, `/api/founder/v12/trust/*` + `/api/founder/v12/tenants/*` (`routes-founder-real-runtime.ts:258-295, :348-379`), governance.tsx Trust-log tab + hook slice (Decision D). In-commit grep: `trustFloor|trustCeiling|trustEnforcement` zero outside deleted files. `trust_enforcement_log`, `tenant_agent_config` → drop list.
 
 **Phase 3 — orchestrator and memory retirement**

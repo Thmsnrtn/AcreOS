@@ -51,8 +51,8 @@ const CTX = {
 interface Deps {
   governanceThrows?: boolean;
   trustThrows?: boolean;
-  delegationThrows?: boolean;
   dbSelectThrows?: boolean;
+  action?: string;
 }
 
 async function runExecute(deps: Deps) {
@@ -115,17 +115,8 @@ async function runExecute(deps: Deps) {
       effectiveTrustScore: async () => 95,
     },
   }));
-  vi.doMock("../../server/services/delegationTokensV11", () => {
-    if (deps.delegationThrows) throw new Error("delegation service offline");
-    return {
-      delegationTokenService: {
-        checkDelegation: async () => ({ hasDelegation: true }),
-      },
-    };
-  });
-
   const { executionEngine } = await import("../../server/services/executionEngine");
-  return executionEngine.execute(CTX as never);
+  return executionEngine.execute({ ...CTX, action: deps.action ?? CTX.action } as never);
 }
 
 describe("safety gates fail CLOSED when they cannot be evaluated", () => {
@@ -134,7 +125,10 @@ describe("safety gates fail CLOSED when they cannot be evaluated", () => {
   });
 
   it("vacuity guard: with every dependency healthy the action is NOT blocked by these gates", async () => {
-    const result = await runExecute({});
+    // A non-financial action: the structural founder-gate on
+    // advance_deal_stage / flag_deal_risk (stage-4 turn 14) is a deliberate
+    // refusal, not an unevaluable one, and would muddy this guard.
+    const result = await runExecute({ action: "send_churn_intervention" });
     const err = result.error ?? "";
     // The action may still fail downstream (no real handler), but it must not
     // be refused by an unevaluable-gate violation — otherwise every assertion
@@ -145,7 +139,6 @@ describe("safety gates fail CLOSED when they cannot be evaluated", () => {
   it.each([
     ["governanceThrows", /Governance policy check could not be evaluated/],
     ["trustThrows", /Trust authority check could not be evaluated/],
-    ["delegationThrows", /Delegation token check could not be evaluated/],
   ] as const)("an unavailable dependency (%s) refuses the action", async (key, pattern) => {
     const result = await runExecute({ [key]: true });
     expect(result.success, "the action ran with an unevaluable authority gate").toBe(false);
@@ -160,5 +153,32 @@ describe("safety gates fail CLOSED when they cannot be evaluated", () => {
     const alternatives = JSON.stringify((result as { output?: unknown }).output ?? "") + (result.error ?? "");
     expect(alternatives).toMatch(/Trust authority check/);
     expect(result.success).toBe(false);
+  });
+});
+
+describe("financial actions are structurally founder-gated (stage-4 turn 14)", () => {
+  // delegationTokensV11 is retired. Its live verdict was a constant deny —
+  // no token was ever granted outside a founder curl — and this block pins
+  // that the deny SURVIVED the retirement as an explicit structural
+  // escalate: the two financial actions cannot execute autonomously even
+  // with every dependency healthy and every legacy gate satisfied.
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it.each(["advance_deal_stage", "flag_deal_risk"])(
+    "%s is refused with healthy dependencies and a route to the founder",
+    async (action) => {
+      const result = await runExecute({ action });
+      expect(result.success, `${action} executed autonomously`).toBe(false);
+      const all = (result.error ?? "") + JSON.stringify((result as { output?: unknown }).output ?? "");
+      expect(all).toMatch(/structurally founder-gated/);
+      expect(all).toMatch(/escalate_to_founder/);
+    },
+  );
+
+  it("the structural gate names no service — it cannot be unevaluable", async () => {
+    const result = await runExecute({ action: "advance_deal_stage" });
+    expect(result.error ?? "").not.toMatch(/Delegation token check could not be evaluated/);
   });
 });

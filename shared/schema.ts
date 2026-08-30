@@ -16241,37 +16241,6 @@ export const revenueAttributionReports = pgTable("revenue_attribution_reports", 
 export type RevenueAttributionReport = typeof revenueAttributionReports.$inferSelect;
 
 
-// --- Delegation Tokens: time-bounded authority grants ---
-
-export const delegationTokens = pgTable("delegation_tokens", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull(),
-  scope: text("scope").notNull(),
-  authorityLevel: integer("authority_level").notNull().default(1),
-  spendingLimitCents: integer("spending_limit_cents"),
-  conditions: jsonb("conditions").$type<Record<string, any>>().notNull().default({}),
-  grantedBy: text("granted_by").notNull().default("ceo"),
-  reason: text("reason").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  isStanding: boolean("is_standing").notNull().default(false),
-  autoRenewDays: integer("auto_renew_days"),
-  actionsTaken: integer("actions_taken").notNull().default(0),
-  actionsSucceeded: integer("actions_succeeded").notNull().default(0),
-  actionsFailed: integer("actions_failed").notNull().default(0),
-  revoked: boolean("revoked").notNull().default(false),
-  revokedAt: timestamp("revoked_at"),
-  revocationReason: text("revocation_reason"),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("dt_agent_idx").on(table.agentCodename),
-  index("dt_status_idx").on(table.status),
-  index("dt_scope_idx").on(table.scope),
-  index("dt_expires_idx").on(table.expiresAt),
-]);
-export type DelegationToken = typeof delegationTokens.$inferSelect;
-
-
 // ============================================
 // SOVEREIGN COMPANY PROTOCOL v12 — THE REAL RUNTIME
 // ============================================
