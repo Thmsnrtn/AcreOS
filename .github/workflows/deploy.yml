@@ -300,7 +300,13 @@ jobs:
               echo "::warning title=Deploy-window log capture empty::the live tail wrote nothing at all. Tail stderr follows."
               [ -f "$RUNNER_TEMP/fly-tail-err.log" ] && tail -20 "$RUNNER_TEMP/fly-tail-err.log"
             else
-              echo "::warning title=No [migrate] lines in deploy window::the capture worked (file has content) but the release machine printed no [migrate] lines — check migrate.mjs's notice listener."
+              # Deploy #42: the tail held app logs but no release-machine
+              # lines at all — the stream dropped that machine's feed, not
+              # the listener. Surface the capture's shape + tail stderr so
+              # the two causes are distinguishable from the run page.
+              echo "::warning title=No [migrate] lines in deploy window::the capture worked ($(wc -l < "$RUNNER_TEMP/fly-deploy-window.log") lines) but carried no release-machine [migrate] lines — stream dropped the release feed, or the notice listener broke. Evidence re-prints next release."
+              echo "── capture last lines ──"; tail -3 "$RUNNER_TEMP/fly-deploy-window.log"
+              if [ -s "$RUNNER_TEMP/fly-tail-err.log" ]; then echo "── tail stderr ──"; tail -5 "$RUNNER_TEMP/fly-tail-err.log"; fi
             fi
           else
             printf '%s\n' "$LOGS"

@@ -1,203 +1,203 @@
 {
- "_README": "Inline-provenance census + mechanical growth-stop (2026-08-28). TWO REGISTERS, TWO KINDS OF TRUTH. (1) `census`: the SEMANTIC map \u2014 every verified ad-hoc truth-state / numeric-confidence render site in client/src, produced by a 4-modality sweep (95 candidate sites, 59 files), per-file classification against what the user actually sees, and an adversarial refute pass (3 files refuted: honest-absence renders, query captions, domain outputs). It is the step-3 MIGRATION WORKLIST for docs/company/experience-legibility.md: migrate a file to DataProvenanceChip / DataConfidenceBadge, delete its entry in the same commit. The gate checks only that each census file still exists \u2014 the semantics were verified once by reading, and each migration re-verifies its file. (2) `mechanicalBaseline`: per-file counts of the SIGNAL /confiden(?!tial)/i on non-import, non-comment lines, all of client/src minus the two canonical primitives. This measures the WORD, not the defect \u2014 it exists so inline confidence UI CANNOT GROW while the census is worked down: any file above its count, or any new file with signal, fails; any file below its count must have its baseline lowered in the same commit. The 13 census files whose ad-hoc UI is purely 'source/as-of' prose have no signal \u2014 the census carries them; the mechanical half never claims to. MIGRATION WAVE 2026-08-28: 67 sites migrated by a 54-agent workflow (one agent per file, per-file adversarial verification, 6 files hand-verified after verifier deaths); the census worklist is now EMPTY and the `adjudicated` register holds the 24 sites deliberately KEPT with their reasons \u2014 statistical-significance pills (a domain metric neither primitive can honestly render), measured confidence-interval bands, query captions, map legend keys, marketing prose. An adjudicated site is a decided exception: re-litigating one is a product-identity change, and ADDING ad-hoc confidence UI anywhere is still stopped by mechanicalBaseline.",
- "censusDate": "2026-08-28",
- "migrationDate": "2026-08-28",
- "census": {},
- "adjudicated": {
-  "client/src/components/ab-test-manager.tsx": [
-   {
-    "line": 59,
-    "reason": "confidenceBadge(level) formats variant.confidenceLevel, which is the STATISTICAL SIGNIFICANCE of the A/B test (server computes a z-score of variant vs. control conversions and stores the discrete level 90/95/99 \u2014 see server/routes-integrations.ts ~1150-1160 and the schema comment 'Statistical significance level' at shared/schema.ts:5201). This is a domain metric of the experiment, not the source/f"
-   },
-   {
-    "line": 551,
-    "reason": "Render site of the same mechanism: <Badge className={confidenceInfo.color}>{confidenceInfo.label} confidence</Badge> on non-control variants. Same refusal as line 59 \u2014 statistical significance vs. control, not data provenance/confidence-of-a-datum. Migrating to DataConfidenceBadge would actively mislead: its data-quality tiers (>=70 green 'High', >=40 amber 'Medium') contradict statistical convent"
-   }
-  ],
-  "client/src/components/ab-tests-content.tsx": [
-   {
-    "line": 51,
-    "reason": "confidenceBadge(level) tiers variant.confidenceLevel, which shared/schema.ts:5201 documents as 'Statistical significance level' of the A/B test \u2014 a domain experiment statistic, not data provenance or provider-fetch confidence (the brief's 'domain metric that only looks like confidence'). The 99/95/90/'Not significant' tiers are the standard significance cut points. DataConfidenceBadge cannot expre"
-   },
-   {
-    "line": 703,
-    "reason": "Render site of the same statistical-significance pill (uses the line-51 helper on variant.confidenceLevel). Same refusal: statistical significance of an experiment result, not provenance/fetch-confidence of a datum. Presenting it via DataConfidenceBadge would relabel 'probability this variant's lift is not chance' as data-fetch confidence and require an invented sources array; DataProvenanceChip's"
-   }
-  ],
-  "client/src/components/confidence-interval.tsx": [
-   {
-    "line": 20,
-    "reason": "The ConfidenceInterval band+dot visual is a statistical uncertainty-interval chart of real, caller-supplied measured values (value/lower/upper \u2014 mirroring server/services/outcomeCalibrationLoop.ts ConfidenceInterval { mean, stdDev, lower95, upper95, sampleSize }), not a numeric-confidence or truth-state primitive case (brief rule 5: domain metric that only looks like confidence). No 0-100 confiden"
-   },
-   {
-    "line": 28,
-    "reason": "confidenceLabel maps MEASURED interval spread to a three-word tier. Rule 2 explicitly permits a tier to 'stay a word' and forbids it becoming a percentage never measured, which is the only way DataConfidenceBadge could consume it. It cannot map to DataProvenanceChip's classification: every value this component displays (LCS scores, offer predictions, market values) is uniformly 'modeled', so class"
-   }
-  ],
-  "client/src/components/founder/finance-steering-sections.tsx": [
-   {
-    "line": 210,
-    "reason": "The 'As of {new Date(data.asOf).toLocaleString()}' footnote is a query caption, not a source vintage, and migrating it to DataProvenanceChip would degrade truthful information (brief rule 3). Evidence: (a) data.asOf is stamped `asOf: new Date().toISOString()` at response time of a live SUM over financial_ledger (server/routes-finance-ledger.ts:131) \u2014 literally 'when we fetched it', which the chip'"
-   }
-  ],
-  "client/src/components/property-map.tsx": [
-   {
-    "line": 3632,
-    "reason": "This is a map LEGEND KEY, not an ad-hoc provenance chip, and migrating it to either primitive would make the UI less honest, not more. (1) The dashed-line SVG swatch exists to bind the caption to the dashed stroke drawn on the map canvas (layer 'property-outline-approximate', APPROXIMATE_DASH_ARRAY at line 759); DataProvenanceChip has no swatch, so replacing the legend severs the symbol-to-meaning"
-   }
-  ],
-  "client/src/components/source-attribution-panel.tsx": [
-   {
-    "line": 217,
-    "reason": "The only timestamp in this component's props is fetchedAt \u2014 when WE fetched. The canon (brief + DataProvenanceChip JSDoc) defines sourceAsOf as when the SOURCE last updated, 'NOT when we fetched it'; passing fetch time would fabricate source freshness. The Clock + getRelativeTime(fetchedAt) line is cache-freshness supporting the panel's Refresh All / per-field refresh controls \u2014 an operational met"
-   },
-   {
-    "line": 98,
-    "reason": "StalenessIndicator's Stale/Outdated words measure fetch age (getDaysSince(fetchedAt) vs per-category thresholds: real-time >30d, annual >400d) \u2014 cache staleness driving the refresh workflow, not the source's freshness. The canon carries staleness via sourceAsOf, which this component does not have; migrating would mean passing fetchedAt as sourceAsOf (dishonest per the chip contract) or inventing a"
-   },
-   {
-    "line": 131,
-    "reason": "The '{staleCount} stale' destructive header badge aggregates the same fetch-age system as line 98 \u2014 same refusal: no sourceAsOf exists to carry it canonically, and neither primitive can express an aggregate cache-age count without fabricating source freshness or a never-measured number."
-   }
-  ],
-  "client/src/components/today/ConfidenceBar.tsx": [
-   {
-    "line": 36,
-    "reason": "Genuine numeric-confidence UI, but the canonical target cannot carry its load-bearing content without violating rules 2/3. DataConfidenceBadge requires sources: DataSource[] and its popover is a data-fetch source breakdown ('N/M sources returned data', per-source OK/Miss rows); Pax decision confidence is a model score with no fetch sources \u2014 sources={[]} renders a popover claiming '0/0 sources ret"
-   },
-   {
-    "line": 47,
-    "reason": "Same widget as line 36 \u2014 the aria-label on the role='meter' wrapper is the accessible surface of the identical meter, not a separate render site. It cannot be migrated independently of the bar it describes; refusing for the same primitive-mismatch reasons (required sources[] would fabricate a source breakdown for a model score; no threshold affordance in DataConfidenceBadge; caller contract frozen"
-   }
-  ],
-  "client/src/components/today/ConfidenceSparkline.tsx": [
-   {
-    "line": 40,
-    "reason": "The component is a chronological trend chart of Pax model-confidence history (history: number[] from item.confidenceHistory), not a numeric-confidence-on-a-value case. Neither canonical primitive can render a time series, so migration deletes real information (rule 3). Wrapping DataConfidenceBadge inside this file would also require fabricating its mandatory sources prop: sources={[]} renders a po"
-   },
-   {
-    "line": 55,
-    "reason": "The aria-label is the accessible rendering of the same chart refused at line 40 \u2014 it announces a real API-supplied value ('Pax confidence history, latest N%'), not an invented one, and its empty state ('No Pax confidence history yet') already follows the refuse-not-fabricate rule. It cannot be migrated separately from the component; replacing it with a primitive's aria would misdescribe the visual"
-   }
-  ],
-  "client/src/hooks/use-due-diligence.ts": [
-   {
-    "line": 62,
-    "reason": "Not a UI-primitive site: this is a wire-format type contract in a JSX-free hooks file, mirroring the server's canonical AnnotationConfidence type (server/services/checklistAnnotation.ts:53) that the /api/due-diligence/:propertyId/annotations endpoint literally serializes ('high'|'medium'|'low'|'none'). Retyping it client-side would falsify the contract (the server still sends those strings), conve"
-   }
-  ],
-  "client/src/lib/trust-language.ts": [
-   {
-    "line": 159,
-    "reason": "naturalConfidence() lives in a pure .ts string-utility module with no JSX; the canonical primitive DataConfidenceBadge is a React component and cannot be hosted here. The real UI site is its only production consumer, founder-decisions.tsx:305-309 (renders the string for row.sophieConfidenceScore), which is outside my assigned file \u2014 deleting or re-shaping the function here would break that consume"
-   }
-  ],
-  "client/src/pages/avm.tsx": [
-   {
-    "line": 682,
-    "reason": "This is a hand-rolled visualization of the valuation's low-high DOLLAR interval (confidenceInterval.low/high with a positioned estimate marker), i.e. a domain metric that only looks like confidence - not an epistemic confidence percent or truth-state. Neither DataProvenanceChip nor DataConfidenceBadge can represent a value interval; forcing either would delete real information (the range bounds an"
-   }
-  ],
-  "client/src/pages/founder-decisions.tsx": [
-   {
-    "line": 307,
-    "reason": "Not a data-provenance/data-confidence case: sophieConfidenceScore is an AI agent's self-assessed decision confidence (trust-surface metric), not the epistemic standing of a sourced datum. It already renders through its own canonical vocabulary (naturalConfidence, client/src/lib/trust-language.ts), and that exact form is pinned by a ratchet test enforcing a dated founder decision (tests/unit/decisi"
-   }
-  ],
-  "client/src/pages/founder/cost.tsx": [
-   {
-    "line": 245,
-    "reason": "The page-header \"as of {fmtDate(data.asOf)}\" is a fetch-time freshness marker, not source provenance: the server sets asOf to new Date().toISOString() at response-build time (server/routes-founder-cost.ts line 166). DataProvenanceChip's sourceAsOf prop is documented as \"when the SOURCE last updated the fact (NOT when we fetched it)\", so passing asOf would misuse the contract. Worse, the chip rende"
-   }
-  ],
-  "client/src/pages/investor-analytics.tsx": [
-   {
-    "line": 139,
-    "reason": "One branch of the census site retained as plain text rather than a chip: the commercial_unmeasured case, ' (op-ex not measured)'. It annotates an ABSENT value (NOI renders em-dash, capRatePct is null so the cap-rate call sites never reach it) \u2014 there is no datum to attribute a source to. DataProvenanceChip's own honesty contract renders nothing without a source and forbids inventing an attribution"
-   }
-  ],
-  "client/src/pages/landing/Agents.tsx": [
-   {
-    "line": 39,
-    "reason": "Marketing fixture, not a UI-primitive case (brief rule 5). The row [\"Confidence\", \"High \u00b7 87%\"] is invented illustrative content inside a wholly fabricated sample card (\"Pax just finished APN 304-12-456\", \"$2,840 / acre\", \"$11,200 \u2013 $14,800\") on the public landing page, illustrating the advertised bullet \"Suggests an offer band with confidence\". No datum, no measurement, no source exists behind th"
-   }
-  ],
-  "client/src/pages/landing/Hero.tsx": [
-   {
-    "line": 204,
-    "reason": "Marketing decoration, not a data surface: this 'High \u00b7 87%' level renders HERO_DEMO_FIXTURES.comp.confidence \u2014 a hand-authored illustrative literal (file doc-block lines 136-145: 'ILLUSTRATIVE, NOT REAL DATA') inside <div className=\"lp-hero-visual\" aria-hidden=\"true\">, on a card carrying an 'Example \u00b7 representative output' chip. The canonical target for NUMERIC_CONFIDENCE_ADHOC, DataConfidenceBad"
-   },
-   {
-    "line": 205,
-    "reason": "Companion visual of the line-204 datum: the hand-rolled bar's fill width IS the same fixture percent (HERO_DEMO_FIXTURES.comp.confidenceWidth = '87%'), in the same aria-hidden, 'Example'-chipped marketing card. It stands or falls with line 204 \u2014 migrating only the bar to DataConfidenceBadge has the identical blockers (required `sources` prop with no honest value \u2192 fabricated telemetry in a portale"
-   }
-  ]
- },
- "mechanicalBaseline": {
-  "client/src/components/ab-test-manager.tsx": 6,
-  "client/src/components/ab-tests-content.tsx": 5,
-  "client/src/components/ai-offer-generator.tsx": 4,
-  "client/src/components/ai-reasoning.tsx": 4,
-  "client/src/components/campaign-variants-panel.tsx": 2,
-  "client/src/components/confidence-interval.tsx": 7,
-  "client/src/components/dashboard/AgentReasoningExpandable.tsx": 7,
-  "client/src/components/dashboard/DecisionsInbox.tsx": 2,
-  "client/src/components/dashboard/MRRTrajectory.tsx": 1,
-  "client/src/components/deal-detail-content.tsx": 2,
-  "client/src/components/deal-feed/daily-deal-feed.tsx": 6,
-  "client/src/components/deals/CmaPanel.tsx": 1,
-  "client/src/components/due-diligence-panel.tsx": 1,
-  "client/src/components/founder/ForecastPanel.tsx": 2,
-  "client/src/components/founder/SwipeDecisionCard.tsx": 1,
-  "client/src/components/layout-sidebar.tsx": 1,
-  "client/src/components/modals/quick-offer-modal.tsx": 4,
-  "client/src/components/parcels/arv-calculator.tsx": 5,
-  "client/src/components/parcels/land-snapshot.tsx": 1,
-  "client/src/components/parcels/parcel-biography.tsx": 3,
-  "client/src/components/parcels/parcel-stream-reducer.ts": 1,
-  "client/src/components/pax-why-explainer.tsx": 2,
-  "client/src/components/property-analysis-chat.tsx": 2,
-  "client/src/components/property-enrichment-widget.tsx": 4,
-  "client/src/components/rehabs/bids-section.tsx": 7,
-  "client/src/components/seller-intent-panel.tsx": 1,
-  "client/src/components/today/ConfidenceBar.tsx": 4,
-  "client/src/components/today/ConfidenceSparkline.tsx": 5,
-  "client/src/components/today/DecisionQueue.tsx": 17,
-  "client/src/components/today/ParcelAlerts.tsx": 3,
-  "client/src/hooks/use-due-diligence.ts": 1,
-  "client/src/hooks/use-sovereign-dashboard.ts": 3,
-  "client/src/lib/glass-engine.ts": 1,
-  "client/src/lib/trust-language.ts": 1,
-  "client/src/pages/avm-bulk.tsx": 11,
-  "client/src/pages/avm.tsx": 16,
-  "client/src/pages/closing-costs.tsx": 1,
-  "client/src/pages/deals.tsx": 1,
-  "client/src/pages/flip-analyzer.tsx": 6,
-  "client/src/pages/founder-decisions.tsx": 4,
-  "client/src/pages/founder-letter.tsx": 2,
-  "client/src/pages/founder-preview.tsx": 3,
-  "client/src/pages/founder-strategy.tsx": 2,
-  "client/src/pages/founder/autopilot-story.tsx": 3,
-  "client/src/pages/founder/cmo.tsx": 3,
-  "client/src/pages/founder/governance.tsx": 9,
-  "client/src/pages/founder/money.tsx": 1,
-  "client/src/pages/founder/pax-calibration.tsx": 3,
-  "client/src/pages/founder/scenarios.tsx": 9,
-  "client/src/pages/landing/Agents.tsx": 2,
-  "client/src/pages/landing/DayInLife.tsx": 1,
-  "client/src/pages/landing/Features.tsx": 1,
-  "client/src/pages/landing/Hero.tsx": 4,
-  "client/src/pages/maps-intel.ts": 3,
-  "client/src/pages/maps.tsx": 2,
-  "client/src/pages/parcel-detail.tsx": 1,
-  "client/src/pages/portfolio-optimizer.tsx": 4,
-  "client/src/pages/price-optimizer.tsx": 3,
-  "client/src/pages/public-parcel-report.tsx": 1,
-  "client/src/pages/settings/pax-controls.tsx": 4,
-  "client/src/pages/skip-tracing.tsx": 5,
-  "client/src/pages/today.tsx": 1,
-  "client/src/pages/tools/parcel-check.tsx": 1,
-  "client/src/pages/why.tsx": 1,
-  "client/src/pages/zoning-lookup.tsx": 3
- }
+  "_README": "Inline-provenance census + mechanical growth-stop (2026-08-28). TWO REGISTERS, TWO KINDS OF TRUTH. (1) `census`: the SEMANTIC map \u2014 every verified ad-hoc truth-state / numeric-confidence render site in client/src, produced by a 4-modality sweep (95 candidate sites, 59 files), per-file classification against what the user actually sees, and an adversarial refute pass (3 files refuted: honest-absence renders, query captions, domain outputs). It is the step-3 MIGRATION WORKLIST for docs/company/experience-legibility.md: migrate a file to DataProvenanceChip / DataConfidenceBadge, delete its entry in the same commit. The gate checks only that each census file still exists \u2014 the semantics were verified once by reading, and each migration re-verifies its file. (2) `mechanicalBaseline`: per-file counts of the SIGNAL /confiden(?!tial)/i on non-import, non-comment lines, all of client/src minus the two canonical primitives. This measures the WORD, not the defect \u2014 it exists so inline confidence UI CANNOT GROW while the census is worked down: any file above its count, or any new file with signal, fails; any file below its count must have its baseline lowered in the same commit. The 13 census files whose ad-hoc UI is purely 'source/as-of' prose have no signal \u2014 the census carries them; the mechanical half never claims to. MIGRATION WAVE 2026-08-28: 67 sites migrated by a 54-agent workflow (one agent per file, per-file adversarial verification, 6 files hand-verified after verifier deaths); the census worklist is now EMPTY and the `adjudicated` register holds the 24 sites deliberately KEPT with their reasons \u2014 statistical-significance pills (a domain metric neither primitive can honestly render), measured confidence-interval bands, query captions, map legend keys, marketing prose. An adjudicated site is a decided exception: re-litigating one is a product-identity change, and ADDING ad-hoc confidence UI anywhere is still stopped by mechanicalBaseline.",
+  "censusDate": "2026-08-28",
+  "migrationDate": "2026-08-28",
+  "census": {},
+  "adjudicated": {
+    "client/src/components/ab-test-manager.tsx": [
+      {
+        "line": 59,
+        "reason": "confidenceBadge(level) formats variant.confidenceLevel, which is the STATISTICAL SIGNIFICANCE of the A/B test (server computes a z-score of variant vs. control conversions and stores the discrete level 90/95/99 \u2014 see server/routes-integrations.ts ~1150-1160 and the schema comment 'Statistical significance level' at shared/schema.ts:5201). This is a domain metric of the experiment, not the source/f"
+      },
+      {
+        "line": 551,
+        "reason": "Render site of the same mechanism: <Badge className={confidenceInfo.color}>{confidenceInfo.label} confidence</Badge> on non-control variants. Same refusal as line 59 \u2014 statistical significance vs. control, not data provenance/confidence-of-a-datum. Migrating to DataConfidenceBadge would actively mislead: its data-quality tiers (>=70 green 'High', >=40 amber 'Medium') contradict statistical convent"
+      }
+    ],
+    "client/src/components/ab-tests-content.tsx": [
+      {
+        "line": 51,
+        "reason": "confidenceBadge(level) tiers variant.confidenceLevel, which shared/schema.ts:5201 documents as 'Statistical significance level' of the A/B test \u2014 a domain experiment statistic, not data provenance or provider-fetch confidence (the brief's 'domain metric that only looks like confidence'). The 99/95/90/'Not significant' tiers are the standard significance cut points. DataConfidenceBadge cannot expre"
+      },
+      {
+        "line": 703,
+        "reason": "Render site of the same statistical-significance pill (uses the line-51 helper on variant.confidenceLevel). Same refusal: statistical significance of an experiment result, not provenance/fetch-confidence of a datum. Presenting it via DataConfidenceBadge would relabel 'probability this variant's lift is not chance' as data-fetch confidence and require an invented sources array; DataProvenanceChip's"
+      }
+    ],
+    "client/src/components/confidence-interval.tsx": [
+      {
+        "line": 20,
+        "reason": "The ConfidenceInterval band+dot visual is a statistical uncertainty-interval chart of real, caller-supplied measured values (value/lower/upper \u2014 mirroring server/services/outcomeCalibrationLoop.ts ConfidenceInterval { mean, stdDev, lower95, upper95, sampleSize }), not a numeric-confidence or truth-state primitive case (brief rule 5: domain metric that only looks like confidence). No 0-100 confiden"
+      },
+      {
+        "line": 28,
+        "reason": "confidenceLabel maps MEASURED interval spread to a three-word tier. Rule 2 explicitly permits a tier to 'stay a word' and forbids it becoming a percentage never measured, which is the only way DataConfidenceBadge could consume it. It cannot map to DataProvenanceChip's classification: every value this component displays (LCS scores, offer predictions, market values) is uniformly 'modeled', so class"
+      }
+    ],
+    "client/src/components/founder/finance-steering-sections.tsx": [
+      {
+        "line": 210,
+        "reason": "The 'As of {new Date(data.asOf).toLocaleString()}' footnote is a query caption, not a source vintage, and migrating it to DataProvenanceChip would degrade truthful information (brief rule 3). Evidence: (a) data.asOf is stamped `asOf: new Date().toISOString()` at response time of a live SUM over financial_ledger (server/routes-finance-ledger.ts:131) \u2014 literally 'when we fetched it', which the chip'"
+      }
+    ],
+    "client/src/components/property-map.tsx": [
+      {
+        "line": 3632,
+        "reason": "This is a map LEGEND KEY, not an ad-hoc provenance chip, and migrating it to either primitive would make the UI less honest, not more. (1) The dashed-line SVG swatch exists to bind the caption to the dashed stroke drawn on the map canvas (layer 'property-outline-approximate', APPROXIMATE_DASH_ARRAY at line 759); DataProvenanceChip has no swatch, so replacing the legend severs the symbol-to-meaning"
+      }
+    ],
+    "client/src/components/source-attribution-panel.tsx": [
+      {
+        "line": 217,
+        "reason": "The only timestamp in this component's props is fetchedAt \u2014 when WE fetched. The canon (brief + DataProvenanceChip JSDoc) defines sourceAsOf as when the SOURCE last updated, 'NOT when we fetched it'; passing fetch time would fabricate source freshness. The Clock + getRelativeTime(fetchedAt) line is cache-freshness supporting the panel's Refresh All / per-field refresh controls \u2014 an operational met"
+      },
+      {
+        "line": 98,
+        "reason": "StalenessIndicator's Stale/Outdated words measure fetch age (getDaysSince(fetchedAt) vs per-category thresholds: real-time >30d, annual >400d) \u2014 cache staleness driving the refresh workflow, not the source's freshness. The canon carries staleness via sourceAsOf, which this component does not have; migrating would mean passing fetchedAt as sourceAsOf (dishonest per the chip contract) or inventing a"
+      },
+      {
+        "line": 131,
+        "reason": "The '{staleCount} stale' destructive header badge aggregates the same fetch-age system as line 98 \u2014 same refusal: no sourceAsOf exists to carry it canonically, and neither primitive can express an aggregate cache-age count without fabricating source freshness or a never-measured number."
+      }
+    ],
+    "client/src/components/today/ConfidenceBar.tsx": [
+      {
+        "line": 36,
+        "reason": "Genuine numeric-confidence UI, but the canonical target cannot carry its load-bearing content without violating rules 2/3. DataConfidenceBadge requires sources: DataSource[] and its popover is a data-fetch source breakdown ('N/M sources returned data', per-source OK/Miss rows); Pax decision confidence is a model score with no fetch sources \u2014 sources={[]} renders a popover claiming '0/0 sources ret"
+      },
+      {
+        "line": 47,
+        "reason": "Same widget as line 36 \u2014 the aria-label on the role='meter' wrapper is the accessible surface of the identical meter, not a separate render site. It cannot be migrated independently of the bar it describes; refusing for the same primitive-mismatch reasons (required sources[] would fabricate a source breakdown for a model score; no threshold affordance in DataConfidenceBadge; caller contract frozen"
+      }
+    ],
+    "client/src/components/today/ConfidenceSparkline.tsx": [
+      {
+        "line": 40,
+        "reason": "The component is a chronological trend chart of Pax model-confidence history (history: number[] from item.confidenceHistory), not a numeric-confidence-on-a-value case. Neither canonical primitive can render a time series, so migration deletes real information (rule 3). Wrapping DataConfidenceBadge inside this file would also require fabricating its mandatory sources prop: sources={[]} renders a po"
+      },
+      {
+        "line": 55,
+        "reason": "The aria-label is the accessible rendering of the same chart refused at line 40 \u2014 it announces a real API-supplied value ('Pax confidence history, latest N%'), not an invented one, and its empty state ('No Pax confidence history yet') already follows the refuse-not-fabricate rule. It cannot be migrated separately from the component; replacing it with a primitive's aria would misdescribe the visual"
+      }
+    ],
+    "client/src/hooks/use-due-diligence.ts": [
+      {
+        "line": 62,
+        "reason": "Not a UI-primitive site: this is a wire-format type contract in a JSX-free hooks file, mirroring the server's canonical AnnotationConfidence type (server/services/checklistAnnotation.ts:53) that the /api/due-diligence/:propertyId/annotations endpoint literally serializes ('high'|'medium'|'low'|'none'). Retyping it client-side would falsify the contract (the server still sends those strings), conve"
+      }
+    ],
+    "client/src/lib/trust-language.ts": [
+      {
+        "line": 159,
+        "reason": "naturalConfidence() lives in a pure .ts string-utility module with no JSX; the canonical primitive DataConfidenceBadge is a React component and cannot be hosted here. The real UI site is its only production consumer, founder-decisions.tsx:305-309 (renders the string for row.sophieConfidenceScore), which is outside my assigned file \u2014 deleting or re-shaping the function here would break that consume"
+      }
+    ],
+    "client/src/pages/avm.tsx": [
+      {
+        "line": 682,
+        "reason": "This is a hand-rolled visualization of the valuation's low-high DOLLAR interval (confidenceInterval.low/high with a positioned estimate marker), i.e. a domain metric that only looks like confidence - not an epistemic confidence percent or truth-state. Neither DataProvenanceChip nor DataConfidenceBadge can represent a value interval; forcing either would delete real information (the range bounds an"
+      }
+    ],
+    "client/src/pages/founder-decisions.tsx": [
+      {
+        "line": 307,
+        "reason": "Not a data-provenance/data-confidence case: sophieConfidenceScore is an AI agent's self-assessed decision confidence (trust-surface metric), not the epistemic standing of a sourced datum. It already renders through its own canonical vocabulary (naturalConfidence, client/src/lib/trust-language.ts), and that exact form is pinned by a ratchet test enforcing a dated founder decision (tests/unit/decisi"
+      }
+    ],
+    "client/src/pages/founder/cost.tsx": [
+      {
+        "line": 245,
+        "reason": "The page-header \"as of {fmtDate(data.asOf)}\" is a fetch-time freshness marker, not source provenance: the server sets asOf to new Date().toISOString() at response-build time (server/routes-founder-cost.ts line 166). DataProvenanceChip's sourceAsOf prop is documented as \"when the SOURCE last updated the fact (NOT when we fetched it)\", so passing asOf would misuse the contract. Worse, the chip rende"
+      }
+    ],
+    "client/src/pages/investor-analytics.tsx": [
+      {
+        "line": 139,
+        "reason": "One branch of the census site retained as plain text rather than a chip: the commercial_unmeasured case, ' (op-ex not measured)'. It annotates an ABSENT value (NOI renders em-dash, capRatePct is null so the cap-rate call sites never reach it) \u2014 there is no datum to attribute a source to. DataProvenanceChip's own honesty contract renders nothing without a source and forbids inventing an attribution"
+      }
+    ],
+    "client/src/pages/landing/Agents.tsx": [
+      {
+        "line": 39,
+        "reason": "Marketing fixture, not a UI-primitive case (brief rule 5). The row [\"Confidence\", \"High \u00b7 87%\"] is invented illustrative content inside a wholly fabricated sample card (\"Pax just finished APN 304-12-456\", \"$2,840 / acre\", \"$11,200 \u2013 $14,800\") on the public landing page, illustrating the advertised bullet \"Suggests an offer band with confidence\". No datum, no measurement, no source exists behind th"
+      }
+    ],
+    "client/src/pages/landing/Hero.tsx": [
+      {
+        "line": 204,
+        "reason": "Marketing decoration, not a data surface: this 'High \u00b7 87%' level renders HERO_DEMO_FIXTURES.comp.confidence \u2014 a hand-authored illustrative literal (file doc-block lines 136-145: 'ILLUSTRATIVE, NOT REAL DATA') inside <div className=\"lp-hero-visual\" aria-hidden=\"true\">, on a card carrying an 'Example \u00b7 representative output' chip. The canonical target for NUMERIC_CONFIDENCE_ADHOC, DataConfidenceBad"
+      },
+      {
+        "line": 205,
+        "reason": "Companion visual of the line-204 datum: the hand-rolled bar's fill width IS the same fixture percent (HERO_DEMO_FIXTURES.comp.confidenceWidth = '87%'), in the same aria-hidden, 'Example'-chipped marketing card. It stands or falls with line 204 \u2014 migrating only the bar to DataConfidenceBadge has the identical blockers (required `sources` prop with no honest value \u2192 fabricated telemetry in a portale"
+      }
+    ]
+  },
+  "mechanicalBaseline": {
+    "client/src/components/ab-test-manager.tsx": 6,
+    "client/src/components/ab-tests-content.tsx": 5,
+    "client/src/components/ai-offer-generator.tsx": 4,
+    "client/src/components/ai-reasoning.tsx": 4,
+    "client/src/components/campaign-variants-panel.tsx": 2,
+    "client/src/components/confidence-interval.tsx": 7,
+    "client/src/components/dashboard/AgentReasoningExpandable.tsx": 7,
+    "client/src/components/dashboard/DecisionsInbox.tsx": 2,
+    "client/src/components/dashboard/MRRTrajectory.tsx": 1,
+    "client/src/components/deal-detail-content.tsx": 2,
+    "client/src/components/deal-feed/daily-deal-feed.tsx": 6,
+    "client/src/components/deals/CmaPanel.tsx": 1,
+    "client/src/components/due-diligence-panel.tsx": 1,
+    "client/src/components/founder/ForecastPanel.tsx": 2,
+    "client/src/components/founder/SwipeDecisionCard.tsx": 1,
+    "client/src/components/layout-sidebar.tsx": 1,
+    "client/src/components/modals/quick-offer-modal.tsx": 4,
+    "client/src/components/parcels/arv-calculator.tsx": 5,
+    "client/src/components/parcels/land-snapshot.tsx": 1,
+    "client/src/components/parcels/parcel-biography.tsx": 3,
+    "client/src/components/parcels/parcel-stream-reducer.ts": 1,
+    "client/src/components/pax-why-explainer.tsx": 2,
+    "client/src/components/property-analysis-chat.tsx": 2,
+    "client/src/components/property-enrichment-widget.tsx": 4,
+    "client/src/components/rehabs/bids-section.tsx": 7,
+    "client/src/components/seller-intent-panel.tsx": 1,
+    "client/src/components/today/ConfidenceBar.tsx": 4,
+    "client/src/components/today/ConfidenceSparkline.tsx": 5,
+    "client/src/components/today/DecisionQueue.tsx": 17,
+    "client/src/components/today/ParcelAlerts.tsx": 3,
+    "client/src/hooks/use-due-diligence.ts": 1,
+    "client/src/hooks/use-sovereign-dashboard.ts": 2,
+    "client/src/lib/glass-engine.ts": 1,
+    "client/src/lib/trust-language.ts": 1,
+    "client/src/pages/avm-bulk.tsx": 11,
+    "client/src/pages/avm.tsx": 16,
+    "client/src/pages/closing-costs.tsx": 1,
+    "client/src/pages/deals.tsx": 1,
+    "client/src/pages/flip-analyzer.tsx": 6,
+    "client/src/pages/founder-decisions.tsx": 4,
+    "client/src/pages/founder-letter.tsx": 2,
+    "client/src/pages/founder-preview.tsx": 3,
+    "client/src/pages/founder-strategy.tsx": 2,
+    "client/src/pages/founder/autopilot-story.tsx": 3,
+    "client/src/pages/founder/cmo.tsx": 3,
+    "client/src/pages/founder/governance.tsx": 9,
+    "client/src/pages/founder/money.tsx": 1,
+    "client/src/pages/founder/pax-calibration.tsx": 3,
+    "client/src/pages/founder/scenarios.tsx": 9,
+    "client/src/pages/landing/Agents.tsx": 2,
+    "client/src/pages/landing/DayInLife.tsx": 1,
+    "client/src/pages/landing/Features.tsx": 1,
+    "client/src/pages/landing/Hero.tsx": 4,
+    "client/src/pages/maps-intel.ts": 3,
+    "client/src/pages/maps.tsx": 2,
+    "client/src/pages/parcel-detail.tsx": 1,
+    "client/src/pages/portfolio-optimizer.tsx": 4,
+    "client/src/pages/price-optimizer.tsx": 3,
+    "client/src/pages/public-parcel-report.tsx": 1,
+    "client/src/pages/settings/pax-controls.tsx": 4,
+    "client/src/pages/skip-tracing.tsx": 5,
+    "client/src/pages/today.tsx": 1,
+    "client/src/pages/tools/parcel-check.tsx": 1,
+    "client/src/pages/why.tsx": 1,
+    "client/src/pages/zoning-lookup.tsx": 3
+  }
 }

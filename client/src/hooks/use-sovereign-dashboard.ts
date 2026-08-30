@@ -131,15 +131,38 @@ export function useRevenueAttribution() {
   });
 }
 
+/** Resolve the session org, then fetch an org-parameterized founder route.
+ * Both v14 read routes below are :orgId-shaped; the founder's governance page
+ * operates in the session org, so the org lookup rides inside the queryFn.
+ * Real failures THROW (QueryErrorState renders them) — the previous versions
+ * of these two hooks fetched routes that never existed and silently returned
+ * [], so both tabs were empty by construction while their copy promised
+ * logging. Discovered and fixed 2026-08-30 (stage-4 turn-15 follow-up). */
+async function fetchForSessionOrg(pathFor: (orgId: number) => string) {
+  const orgRes = await fetch("/api/organization", { credentials: "include" });
+  if (!orgRes.ok) throw new Error(`Failed to resolve organization (${orgRes.status})`);
+  const org = await orgRes.json();
+  if (!org?.id) throw new Error("Session has no organization");
+  const res = await fetch(pathFor(org.id), { credentials: "include" });
+  if (!res.ok) throw new Error(`Failed to load (${res.status})`);
+  return res.json();
+}
+
 export function useFounderOverrides() {
   return useQuery({
-    queryKey: ["/api/founder/v14/feedback/overrides"],
+    queryKey: ["/api/founder/v14/overrides", "session-org"],
     queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v14 overrides are only exposed as /overrides/:orgId, which needs an org param.)
-      const res = await fetch("/api/founder/v14/feedback/overrides", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
+      const rows = await fetchForSessionOrg((orgId) => `/api/founder/v14/overrides/${orgId}`);
+      if (!Array.isArray(rows)) return [];
+      // Server rows are founder_overrides entries; the tab reads
+      // reason/type/agent/learningApplied.
+      return rows.map((row: any) => ({
+        ...row,
+        reason: row.founderReason ?? `${row.originalAction} → ${row.founderAction}`,
+        type: row.category,
+        agent: row.agentCodename,
+        learningApplied: row.learningExtracted,
+      }));
     },
     staleTime: 30_000,
   });
@@ -147,13 +170,28 @@ export function useFounderOverrides() {
 
 export function useConfidenceCascade() {
   return useQuery({
-    queryKey: ["/api/founder/v14/confidence/recent"],
+    queryKey: ["/api/founder/v14/cascade/resolutions", "session-org"],
     queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v14 cascade resolutions are only exposed as /cascade/:orgId/resolutions.)
-      const res = await fetch("/api/founder/v14/confidence/recent", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
+      const rows = await fetchForSessionOrg((orgId) => `/api/founder/v14/cascade/${orgId}/resolutions`);
+      if (!Array.isArray(rows)) return [];
+      // Server rows are cascade_resolutions entries; the tab reads
+      // question/decision, resolvedBy, confidence (0-1), layer, layers[].
+      return rows.map((row: any) => ({
+        ...row,
+        question: row.triggerType,
+        decision: row.finalDecision,
+        resolvedBy: row.founderEscalated ? "Founder" : row.resolvedAtLayer ?? undefined,
+        confidence: row.finalConfidence ?? null,
+        layer: row.resolvedAtLayer ?? (row.founderEscalated ? "founder" : undefined),
+        // layersAttempted elements are the engine's LayerAttempt shape:
+        // { layer, layerIndex, status: "resolved"|"skipped"|"failed"|"blocked", … }
+        layers: Array.isArray(row.layersAttempted)
+          ? row.layersAttempted.map((l: any) => ({
+              name: l?.layer ?? "layer",
+              resolved: l?.status === "resolved",
+            }))
+          : undefined,
+      }));
     },
     staleTime: 30_000,
   });
