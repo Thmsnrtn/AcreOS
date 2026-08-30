@@ -698,17 +698,27 @@ exist in production; trust_enforcement_log is the one table in the whole
 program that plausibly holds rows (it was the enforcement ledger) — a
 populated survivor goes to the founder exactly like reaction_chains did.
 
-**Batch 6 verdict still unread after deploys #42–#44** — Fly's log
-stream drops individual notice lines by lottery (three deploys, three
-different loss patterns; batches 1/2/3/5 are each multiply confirmed
-clean). Migration 0247 added the countermeasure: a read-only
-[od8-ledger] line re-checking all 23 program tables in ONE atomic
-notice, re-printed every release, with the deploy evidence step turning
-any survivor into a run-page warning automatically. No further
-dedicated deploy cycles are spent on evidence fishing — the ledger
-lands on an ordinary upcoming deploy and this entry gets its final
-verdict then. Meanwhile the two tables simply persist, unreferenced by
-any code.
+**PROGRAM COMPLETE — FINAL VERDICT (deploy #47, 2026-08-30):**
+`[od8-ledger] absent=23/23 present=none`. Every table the six batches
+govern is absent from production; zero survivors. This settled batch
+6's open question: trust_enforcement_log and tenant_agent_config
+dropped EMPTY on deploy #42 — the verdict existed all along but
+end-of-run notices died with the release machine before Fly's log
+forwarder flushed (deploys #42–#46 proved the loss positional, not
+random). The 0247 ledger now runs FIRST in the release and migrate.mjs
+settles 3s before exit, so the whole-program verdict re-lands on every
+release and any regression becomes a run-page warning automatically.
+
+Program totals: 23 tables resolved across six batches + one
+founder-authorized populated drop (reaction_chains, 6,510 boot-seeded
+rows, count preserved in evidence); zero unauthorized data loss; every
+drop conditional on a zero row count read in place, exactly as ruled.
+The evidence mechanism itself took four falsified iterations to build
+(job-log-only → post-deploy buffer → live capture → atomic
+summary/ledger positioned first) — each falsified by a real deploy,
+each iteration recorded. Remaining drop candidates (four V13 memory
+tables + memory_access_log after turn 13; reaction_chain_links) join
+future batches under this same, now-proven mechanism.
 
 **Batch 5 SHIPPED 2026-08-30 — VERDICT (deploy #41):**
 `dropped=delegation_tokens survivors=none`. The table existed in
