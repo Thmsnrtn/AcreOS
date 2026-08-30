@@ -678,11 +678,18 @@ authorship; no run history (runs live in reaction_chain_runs, which
 stays live under autonomyScoreV14). Founder decision requested via the
 picker 2026-08-30.
 
-**Survivor RULED 2026-08-30 (picker): DROP.** Migration 0244 ships the
-founder-authorized populated drop — the one deliberate exception to the
-zero-rows condition, authorization inline in the migration itself, row
-count preserved in the [od8-batch4-summary] evidence line. Verdict on
-the next deploy.
+**Survivor RULED 2026-08-30 (picker): DROP — and EXECUTED (deploy
+#39):** `DROPPED reaction_chains WITH 6510 ROWS — founder-authorized
+populated drop`. The dropped count matched batch 3's evidence exactly,
+confirming nothing was still writing between the two deploys.
+
+**OD-8 state after four batches:** 20 tables resolved (10 batch 1 + 8
+batch 2 + 2 batch 3/4), zero unauthorized data loss, one populated
+survivor handled exactly per the ruling. Everything still on the drop
+list is gated on unexecuted code turns: the four V13 memory tables +
+memory_access_log (turn 13), trust_enforcement_log/tenant_agent_config
+(turn 15), delegation_tokens (turn 14), plus the census-discovered
+reaction_chain_links candidate awaiting its own tranche decision.
 
 **Blocked meanwhile:** nothing.
 
