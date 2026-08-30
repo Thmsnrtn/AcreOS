@@ -184,9 +184,14 @@ test.describe("wedge journey (lead → mail → reply → offer)", () => {
         const res = await page.request.post("/api/campaigns", {
           headers: apiHeaders,
           data: {
-            // The send route falls back to campaign.name as the message body.
-            name: "Would you consider an offer on your Wickenburg acreage? Reply YES/STOP.",
+            // The send route reads campaign.content as the message body and
+            // REFUSES a contentless campaign (2026-08-21, ledger 64: the old
+            // fallback texted recipients the campaign's INTERNAL NAME). This
+            // journey exercises the honest contract: message in content,
+            // internal label in name.
+            name: "Wickenburg acreage outreach (e2e)",
             type: "sms",
+            content: "Would you consider an offer on your Wickenburg acreage? Reply YES/STOP.",
           },
         });
         expect(res.status(), await res.text()).toBe(201);
