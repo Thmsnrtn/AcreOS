@@ -316,12 +316,17 @@ jobs:
             # Fly's stream is lossy under burst (deploy #35 delivered 1 of 10
             # per-table lines), so completeness rides on the single atomic
             # summary notice the conditional-drop block RAISEs at its end.
-            if printf '%s\n' "$LOGS" | grep -qE 'od8-batch[0-9]+-summary'; then
-              echo "── conditional-drop summaries (atomic, authoritative) ──"
-              printf '%s\n' "$LOGS" | grep -E 'od8-batch[0-9]+-summary'
+            if printf '%s\n' "$LOGS" | grep -qE 'od8-(batch[0-9]+-summary|ledger)'; then
+              echo "── conditional-drop evidence (atomic, authoritative) ──"
+              printf '%s\n' "$LOGS" | grep -E 'od8-(batch[0-9]+-summary|ledger)'
             else
-              echo "::warning title=Drop summary line not captured::[migrate] lines arrived but no od8-batch*-summary notice survived the stream — read it on the next deploy (the blocks re-print every release)."
+              echo "::warning title=Drop evidence not captured::[migrate] lines arrived but no od8 summary/ledger notice survived the stream — read it on the next deploy (the blocks re-print every release)."
             fi
+            # The single-line ledger (0247) is the program's whole verdict; a
+            # present= entry other than 'none' is a survivor for the founder.
+            printf '%s\n' "$LOGS" | grep -F '[od8-ledger]' | grep -v 'present=none' | while IFS= read -r line; do
+              echo "::warning title=OD-8 ledger shows surviving table(s)::${line}"
+            done
           fi
 
       # ── Post-deploy assessment (2026-08-25, run 32902473209) ───────────────
