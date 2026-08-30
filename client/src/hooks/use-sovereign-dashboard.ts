@@ -54,7 +54,6 @@ export function useAutonomyScore() {
   });
 }
 
-
 export function useJobHealthLogs() {
   return useQuery({
     queryKey: ["/api/founder/job-health"],
@@ -132,53 +131,6 @@ export function useRevenueAttribution() {
   });
 }
 
-export function useDelegationTokens() {
-  return useQuery({
-    queryKey: ["/api/founder/v11/delegations/active"],
-    queryFn: async () => {
-      const res = await fetch("/api/founder/v11/delegations/active", { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to load delegation tokens (${res.status})`);
-      const rows = await res.json();
-      if (!Array.isArray(rows)) return [];
-      // Server rows are delegation_tokens entries; consumers read
-      // `maxAmountCents`/`usageCount`.
-      return rows.map((token: any) => ({
-        ...token,
-        maxAmountCents: token.spendingLimitCents,
-        usageCount: token.actionsTaken,
-      }));
-    },
-    staleTime: 30_000,
-  });
-}
-
-// useCognitiveMemory was removed 2026-08-28 with its only consumer
-// (pages/founder/memory.tsx): it fetched /api/founder/v13/memory/recent,
-// a route that never existed, and always resolved to []. See the App.tsx
-// note at the /memory-browser redirect.
-
-
-export function useTrustEnforcement() {
-  return useQuery({
-    queryKey: ["/api/founder/v12/trust/history"],
-    queryFn: async () => {
-      const res = await fetch("/api/founder/v12/trust/history", { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to load trust log (${res.status})`);
-      const rows = await res.json();
-      if (!Array.isArray(rows)) return [];
-      // Server rows are trust_enforcement_log entries; consumers read
-      // `agent`/`action`/`description`.
-      return rows.map((entry: any) => ({
-        ...entry,
-        agent: entry.agentCodename,
-        action: entry.decision,
-        description: entry.actionType,
-      }));
-    },
-    staleTime: 30_000,
-  });
-}
-
 export function useFounderOverrides() {
   return useQuery({
     queryKey: ["/api/founder/v14/feedback/overrides"],
@@ -234,9 +186,6 @@ export function useEventMeshSubscriptions() {
     staleTime: 30_000,
   });
 }
-
-
-
 
 export function useNotificationPreferences() {
   return useQuery({

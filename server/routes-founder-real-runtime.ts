@@ -19,9 +19,7 @@ import { agentLifecycleRuntimeService } from "./services/agentLifecycleRuntimeV1
 import { eventMeshService } from "./services/eventMeshV12";
 import { outcomeVerificationService } from "./services/outcomeVerificationV12";
 import { agentVersionControlService } from "./services/agentVersionControlV12";
-import { trustEnforcementService } from "./services/trustEnforcementV12";
 import { integrationFrameworkService } from "./services/integrationFrameworkV12";
-import { tenantFabricService } from "./services/tenantFabricV12";
 
 export function registerFounderV12Routes(app: Express) {
   // Defense-in-depth (2026-07 security sweep): these routes were protected
@@ -218,46 +216,11 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  // ─── 6. Trust Enforcement Layer ───────────────────────────────────────
-
-  app.post("/api/founder/v12/trust/enforce", async (req, res) => {
-    try {
-      const result = await trustEnforcementService.enforce(
-        req.body.agentCodename, req.body.actionType, req.body.requiredTrust, req.body.orgId,
-      );
-      res.json(result);
-    } catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/trust/:id/approve", async (req, res) => {
-    try { await trustEnforcementService.approve(parseInt(req.params.id), req.body.approvedBy || "ceo"); res.json({ success: true }); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/trust/:id/deny", async (req, res) => {
-    try { await trustEnforcementService.deny(parseInt(req.params.id), req.body.reason); res.json({ success: true }); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/trust/:id/outcome", async (req, res) => {
-    try { await trustEnforcementService.recordOutcome(parseInt(req.params.id), req.body.outcome); res.json({ success: true }); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/trust/pending", async (req, res) => {
-    try { res.json(await trustEnforcementService.getPendingApprovals(req.query.orgId ? parseInt(String(req.query.orgId)) : undefined)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/trust/history", async (req, res) => {
-    try { res.json(await trustEnforcementService.getEnforcementHistory(req.query.agent as string)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/trust/stats", async (_req, res) => {
-    try { res.json(await trustEnforcementService.getStats()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
+  // ─── 6. Trust Enforcement Layer — RETIRED 2026-08-30 (stage-4 turn 15) ──
+  // Lane 2 deleted with Decision D: ledger-only, one HTTP call site, zero
+  // engine callers; trustFloor/trustCeiling were read nowhere live. The
+  // Trust-log tab on /founder/governance retired in the same commit;
+  // trust_enforcement_log joined the OD-8 conditional-drop list (0246).
 
   // ─── 7. Integration Execution Framework ───────────────────────────────
 
@@ -305,44 +268,9 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  // ─── 8. Tenant Context Fabric ─────────────────────────────────────────
-  // NOTE: specific paths must come BEFORE parameterized /:orgId routes
-  // or Express will match /stats against :orgId.
-
-  app.get("/api/founder/v12/tenants/stats", async (_req, res) => {
-    try { res.json(await tenantFabricService.getStats()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/tenants", async (_req, res) => {
-    try { res.json(await tenantFabricService.getAllTenants()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/tenants/:orgId/initialize", async (req, res) => {
-    try { res.json(await tenantFabricService.initializeTenant(parseInt(req.params.orgId))); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/tenants/:orgId", async (req, res) => {
-    try { res.json(await tenantFabricService.getTenantOverview(parseInt(req.params.orgId))); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.get("/api/founder/v12/tenants/:orgId/agent/:codename", async (req, res) => {
-    try { res.json(await tenantFabricService.getTenantConfig(parseInt(req.params.orgId), req.params.codename)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.put("/api/founder/v12/tenants/:orgId/agent/:codename", async (req, res) => {
-    try { res.json(await tenantFabricService.updateTenantConfig(parseInt(req.params.orgId), req.params.codename, req.body)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
-  app.post("/api/founder/v12/tenants/:orgId/agent/:codename/trust", async (req, res) => {
-    try {
-      const trust = await tenantFabricService.adjustTenantTrust(parseInt(req.params.orgId), req.params.codename, req.body.delta);
-      res.json({ trust });
-    } catch (err: any) { Errors.internal(res, err); }
-  });
+  // ─── 8. Tenant Context Fabric — RETIRED 2026-08-30 (stage-4 turn 15) ──
+  // tenantFabricV12 deleted with lane 2 (Decision D): per-tenant agent
+  // config that nothing live read; tenant_agent_config joined the OD-8
+  // conditional-drop list (0246). The v12 auth gate above survives — it
+  // covers the six remaining sections.
 }

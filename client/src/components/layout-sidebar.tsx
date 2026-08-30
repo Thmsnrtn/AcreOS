@@ -764,7 +764,7 @@ const NAV_MODULES: NavModule[] = [
       // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
       // anticipatory-enterprise, and agent-collaboration retired.
       // The refit survivors live under /founder/* (memory browser retired 2026-08-28 — empty by construction).
-      { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides" },
+      { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, founder overrides, escalation cascade" },
       { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy)" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
       { label: "Event log", icon: FileCode, href: "/founder/event-log", description: "Agent-event firehose — every decision and side effect" },

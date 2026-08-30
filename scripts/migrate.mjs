@@ -10741,8 +10741,8 @@ END $mig0242$`,
   // boot seeding deleted, turn 16). The four V13 memory tables +
   // memory_access_log stay OFF until turn 13 retires lane 3 and
   // cognitiveMemoryV13.ts (their live writer/reader) deletes;
-  // trust_enforcement_log / tenant_agent_config / delegation_tokens wait
-  // for turns 14-15. reaction_chain_runs stays (live reader:
+  // trust_enforcement_log / tenant_agent_config dropped by 0246 (turn 15);
+  // delegation_tokens by 0245 (turn 14). reaction_chain_runs stays (live reader:
   // autonomyScoreV14.ts:738); its chain_id is plain text — no FK — so
   // dropping the parent leaves it structurally untouched.
   // reaction_chain_links discovered zero-caller during this batch's
@@ -10827,6 +10827,43 @@ BEGIN
   END IF;
   RAISE NOTICE '[od8-batch5-summary] %', verdict;
 END $mig0245$`,
+
+  // ── 0246 OD-8 drop batch 6: lane 2's tables (stage-4 turn 15) ──
+  // Same ruling and mechanism as 0241-0245. trustEnforcementV12 and
+  // tenantFabricV12 deleted this commit under Decision D (founder picker
+  // 2026-08-30): ledger-only lane, one HTTP call site, zero engine
+  // callers; the governance Trust-log tab retired in the same commit so
+  // no surface renders a dead fetch.
+  `DO $mig0246$
+DECLARE
+  t text;
+  n bigint;
+  dropped text[] := '{}';
+  absent text[] := '{}';
+  survivors text[] := '{}';
+  tables text[] := ARRAY[
+    'trust_enforcement_log',
+    'tenant_agent_config'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      absent := absent || t;
+      CONTINUE;
+    END IF;
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n = 0 THEN
+      EXECUTE format('DROP TABLE %I CASCADE', t);
+      dropped := dropped || t;
+    ELSE
+      survivors := survivors || format('%s=%s rows', t, n);
+      RAISE WARNING '[od8-batch6] % HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', t, n;
+    END IF;
+  END LOOP;
+  RAISE NOTICE '[od8-batch6-summary] dropped=% absent=% survivors=%',
+    array_to_string(dropped, ','), array_to_string(absent, ','),
+    COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
+END $mig0246$`,
 
 ];
 

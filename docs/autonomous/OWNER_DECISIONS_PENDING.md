@@ -687,15 +687,23 @@ confirming nothing was still writing between the two deploys.
 batch 2 + 2 batch 3/4), zero unauthorized data loss, one populated
 survivor handled exactly per the ruling. Everything still on the drop
 list is gated on unexecuted code turns: the four V13 memory tables +
-memory_access_log (turn 13), trust_enforcement_log/tenant_agent_config
-(turn 15), plus the census-discovered reaction_chain_links candidate
-awaiting its own tranche decision.
+memory_access_log (turn 13), plus the census-discovered
+reaction_chain_links candidate awaiting its own tranche decision.
 
-**Batch 5 SHIPPED 2026-08-30** — migration 0245: `delegation_tokens`,
-whose writer/reader (delegationTokensV11) retired with stage-4 turn 14
-in the same commit. Created only by 0016 (never applied to production),
-so 'absent' is the expected verdict. Verdict pending the deploy's
-[od8-batch5-summary] line.
+**Batch 6 SHIPPED 2026-08-30** — migration 0246:
+`trust_enforcement_log` + `tenant_agent_config`, whose lane
+(trustEnforcementV12/tenantFabricV12) deleted with stage-4 turn 15 under
+Decision D. Both are 0017-created like saga_instances, so they likely
+exist in production; trust_enforcement_log is the one table in the whole
+program that plausibly holds rows (it was the enforcement ledger) — a
+populated survivor goes to the founder exactly like reaction_chains did.
+Verdict pending the deploy's [od8-batch6-summary] line.
+
+**Batch 5 SHIPPED 2026-08-30 — VERDICT (deploy #41):**
+`dropped=delegation_tokens survivors=none`. The table existed in
+production after all (early push era), held zero rows, dropped with
+evidence. Running total: 22 tables resolved across five batches, zero
+unauthorized data loss, one populated survivor founder-ruled.
 
 **Blocked meanwhile:** nothing.
 

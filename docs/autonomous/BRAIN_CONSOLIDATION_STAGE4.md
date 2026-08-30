@@ -174,7 +174,30 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   `temporaryDelegation` + `witnessGrant` remain the two delegation rails.
   Original spec: `executionEngine:433-443` → structural escalate; delete
   service + v11 delegation routes; `delegation_tokens` → drop list.
-- **Turn 15 — delete lane 2.** `trustEnforcementV12.ts`, `tenantFabricV12.ts`, `/api/founder/v12/trust/*` + `/api/founder/v12/tenants/*` (`routes-founder-real-runtime.ts:258-295, :348-379`), governance.tsx Trust-log tab + hook slice (Decision D). In-commit grep: `trustFloor|trustCeiling|trustEnforcement` zero outside deleted files. `trust_enforcement_log`, `tenant_agent_config` → drop list.
+- **Turn 15 — DONE 2026-08-30.** Lane 2 deleted whole under Decision D
+  (founder picker: "Remove tab + lane"): trustEnforcementV12.ts,
+  tenantFabricV12.ts, the 7 trust + 7 tenant v12 routes (tombstoned; the
+  shared v12 auth gate survives for the six remaining sections), the
+  governance Trust-log tab and its useTrustEnforcement slice, both schema
+  models. In-commit grep clean (only tombstone prose remains). Migration
+  0246 (OD-8 batch 6) drops trust_enforcement_log + tenant_agent_config
+  conditionally. An adversarial re-proof workflow ran BEFORE deletion and
+  enumerated every tripwire (inline-provenance signal lines, ratchet
+  deltas −14 colon-any / −2 tables, route-manifest and smoke-test
+  survivability) — and its client-lens hunt exposed a TURN-14 MISS, fixed
+  in this same commit: useDelegationTokens still fetched
+  /api/founder/v11/delegations/active (deleted with turn 14), so the
+  governance Delegation tab had been error-carding in production for one
+  deploy cycle. Symbol greps miss URL-string consumers; every route
+  retirement must grep the PATH too — recorded as method. DISCOVERED,
+  deferred with a pointer: the governance Overrides and Confidence tabs
+  fetch /api/founder/v14/feedback/overrides and
+  /api/founder/v14/confidence/recent, neither of which exists server-side
+  (fail-soft empty renders, per their hooks' own comments) — the
+  governance page's remaining fix is its own turn.
+  Original spec: delete lane 2; `trust_enforcement_log`,
+  `tenant_agent_config` → drop list (doc's cited line ranges were stale;
+  the audit's ranges were used).
 
 **Phase 3 — orchestrator and memory retirement**
 

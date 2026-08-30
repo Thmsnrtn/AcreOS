@@ -30,8 +30,6 @@ import { relative } from "@/lib/format";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import {
   useAgentNegotiations,
-  useDelegationTokens,
-  useTrustEnforcement,
   useFounderOverrides,
   useConfidenceCascade,
 } from "@/hooks/use-sovereign-dashboard";
@@ -199,8 +197,6 @@ function ListSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
 export default function FounderGovernancePage() {
   useDocumentTitle("Governance");
   const { data: negotiations = [], isLoading: negLoading, error: negError, refetch: refetchNeg } = useAgentNegotiations();
-  const { data: tokens = [], isLoading: tokensLoading, error: tokensError, refetch: refetchTokens } = useDelegationTokens();
-  const { data: trustLog = [], isLoading: trustLoading, error: trustError, refetch: refetchTrust } = useTrustEnforcement();
   const { data: overrides = [], isLoading: overridesLoading, error: overridesError, refetch: refetchOverrides } = useFounderOverrides();
   const { data: cascade = [], isLoading: cascadeLoading, error: cascadeError, refetch: refetchCascade } = useConfidenceCascade();
 
@@ -240,8 +236,6 @@ export default function FounderGovernancePage() {
                 <Badge variant="secondary" className="ml-1 tabular-nums">{negotiations.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="delegation">Delegation</TabsTrigger>
-            <TabsTrigger value="trust">Trust log</TabsTrigger>
             <TabsTrigger value="overrides">Overrides</TabsTrigger>
             <TabsTrigger value="cascade">Confidence</TabsTrigger>
           </TabsList>
@@ -269,116 +263,7 @@ export default function FounderGovernancePage() {
             )}
           </TabsContent>
 
-          <TabsContent value="delegation" className="space-y-4">
-            {tokensLoading ? (
-              <ListSkeleton label="Loading delegation tokens…" />
-            ) : tokensError ? (
-              <QueryErrorState
-                error={tokensError as Error}
-                onRetry={() => refetchTokens()}
-                testId="governance-delegation-error"
-              />
-            ) : Array.isArray(tokens) && tokens.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Active delegation tokens</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-3" aria-label="Active delegation tokens">
-                    {tokens.map((token: any) => (
-                      <li key={token.id} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 gap-3 flex-wrap">
-                        <div className="min-w-0">
-                          <p className="font-medium">{token.agentCodename ?? token.grantedTo}</p>
-                          <p className="text-xs text-muted-foreground tabular-nums">
-                            Scope: {token.scope ?? "general"} · Max: {token.maxAmountCents ? usd(token.maxAmountCents / 100) : "N/A"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={token.status === "active" ? "default" : "secondary"} className="capitalize">
-                            {token.status}
-                          </Badge>
-                          {token.usageCount != null && (
-                            <span className="text-xs text-muted-foreground tabular-nums">Used {token.usageCount}x</span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ) : (
-              <EmptyState
-                framed
-                icon={Shield}
-                headline="No delegation tokens active"
-                subtitle="Grant tokens to give agents bounded autonomous spending authority. Tokens are issued from agent conversations when an agent asks for budget."
-                // TODO(cta): read-only governance ledger — tokens are granted
-                // from agent conversations, not from this surface.
-                cta={{ label: "", _noOp: true }}
-                testId="governance-delegation-empty"
-              />
-            )}
-          </TabsContent>
 
-          <TabsContent value="trust" className="space-y-4">
-            {trustLoading ? (
-              <ListSkeleton label="Loading trust enforcement log…" />
-            ) : trustError ? (
-              <QueryErrorState
-                error={trustError as Error}
-                onRetry={() => refetchTrust()}
-                testId="governance-trust-error"
-              />
-            ) : Array.isArray(trustLog) && trustLog.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Trust enforcement events</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ol className="space-y-2 max-h-96 overflow-y-auto" aria-label="Trust enforcement log, newest first">
-                    {trustLog.slice(0, 30).map((entry: any, i: number) => {
-                      const isAllowed = entry.action === "allowed" || entry.action === "approved";
-                      const isBlocked = entry.action === "blocked" || entry.action === "denied";
-                      const actionLabel = isAllowed ? "Allowed" : isBlocked ? "Blocked" : "Pending";
-                      return (
-                        <li key={entry.id ?? i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 gap-3 flex-wrap">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {isAllowed ? (
-                              <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-label={actionLabel} />
-                            ) : isBlocked ? (
-                              <XCircle className="w-3.5 h-3.5 text-acr-neg" aria-label={actionLabel} />
-                            ) : (
-                              <Clock className="w-3.5 h-3.5 text-acr-warn" aria-label={actionLabel} />
-                            )}
-                            <div className="min-w-0">
-                              <span className="font-medium">{entry.agent ?? entry.subject}</span>
-                              <span className="text-muted-foreground"> · {entry.description ?? entry.reason ?? entry.action}</span>
-                            </div>
-                          </div>
-                          {entry.createdAt && (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {relative(entry.createdAt)}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </CardContent>
-              </Card>
-            ) : (
-              <EmptyState
-                framed
-                icon={CheckCircle}
-                headline="No trust enforcement events yet"
-                subtitle="Every allowed or blocked agent action is recorded here as agents operate against their trust tiers."
-                // TODO(cta): read-only audit log — populated by the trust
-                // enforcement layer, no user action available.
-                cta={{ label: "", _noOp: true }}
-                testId="governance-trust-empty"
-              />
-            )}
-          </TabsContent>
 
           <TabsContent value="overrides" className="space-y-4">
             {overridesLoading ? (

@@ -16382,26 +16382,6 @@ export type AgentVersion = typeof agentVersions.$inferSelect;
 
 // --- Trust Enforcement Log ---
 
-export const trustEnforcementLog = pgTable("trust_enforcement_log", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull(),
-  actionType: text("action_type").notNull(),
-  requiredTrust: integer("required_trust").notNull(),
-  actualTrust: integer("actual_trust").notNull(),
-  decision: text("decision").notNull(),
-  approvalRequestedAt: timestamp("approval_requested_at"),
-  approvalResolvedAt: timestamp("approval_resolved_at"),
-  approvedBy: text("approved_by"),
-  actionOutcome: text("action_outcome"),
-  trustDelta: integer("trust_delta"),
-  orgId: integer("org_id"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("tel_agent_idx").on(table.agentCodename),
-  index("tel_decision_idx").on(table.decision),
-  index("tel_org_idx").on(table.orgId),
-]);
-export type TrustEnforcementLogEntry = typeof trustEnforcementLog.$inferSelect;
 
 // --- Integration Credentials: secure vault ---
 
@@ -16456,24 +16436,6 @@ export type IntegrationExecutionLogEntry = typeof integrationExecutionLog.$infer
 
 // --- Tenant Agent Config: per-org agent customization ---
 
-export const tenantAgentConfig = pgTable("tenant_agent_config", {
-  id: serial("id").primaryKey(),
-  orgId: integer("org_id").notNull(),
-  agentCodename: text("agent_codename").notNull(),
-  trustScore: integer("trust_score").notNull().default(50),
-  trustFloor: integer("trust_floor").notNull().default(20),
-  trustCeiling: integer("trust_ceiling").notNull().default(100),
-  enabled: boolean("enabled").notNull().default(true),
-  customPersonalityOverride: text("custom_personality_override"),
-  customQuotas: jsonb("custom_quotas").$type<Record<string, any>>().notNull().default({}),
-  customPermissions: jsonb("custom_permissions").$type<string[]>().notNull().default([]),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("tac_org_idx").on(table.orgId),
-  index("tac_agent_idx").on(table.agentCodename),
-]);
-export type TenantAgentConfigEntry = typeof tenantAgentConfig.$inferSelect;
 
 // ============================================
 // SOVEREIGN COMPANY PROTOCOL V13 — THE SENTIENT ENTERPRISE
