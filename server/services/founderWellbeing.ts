@@ -16,8 +16,7 @@ import {
   founderWellbeing, agentActionLog,
   type FounderWellbeing,
 } from "@shared/schema";
-import { eq, desc, gte, and, count, avg, sql } from "drizzle-orm";
-import { routeAITask, TaskComplexity } from "./aiRouter";
+import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { ceoAbsenceService } from "./ceoAbsenceMode";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -381,30 +380,11 @@ class FounderWellbeingService {
     return { hourlyOverrides, peakOverrideHour, recommendation };
   }
 
-  // detectDecisionFatigue, generateWeeklySummary deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
-
-  /**
-   * Track wins for celebration.
-   */
-  async getRecentWins(): Promise<string[]> {
-    try {
-      const { agentActionLog } = await import("@shared/schema");
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-
-      const wins = await db.select()
-        .from(agentActionLog)
-        .where(and(
-          eq(agentActionLog.outcome, "success"),
-          gte(agentActionLog.createdAt, threeDaysAgo),
-        ))
-        .orderBy(desc(agentActionLog.createdAt))
-        .limit(5);
-
-      return wins.map(w => `${w.agentCodename.replace(/_/g, " ")}: ${w.actionName.replace(/_/g, " ")}`);
-    } catch {
-      return [];
-    }
-  }
+  // detectDecisionFatigue, generateWeeklySummary deleted 2026-08-29; getRecentWins
+  // deleted 2026-08-30 — zero callers each, adversarially verified (rule-1
+  // register close-outs). Still zero-caller but UNADJUDICATED (needs its own
+  // verified pass before deletion): monitorRealTime, suggestAbsenceMode,
+  // predictBurnoutTrajectory (+ its private getRecent), getDecisionQualityByHour.
 
 }
 

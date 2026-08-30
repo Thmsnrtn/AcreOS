@@ -135,93 +135,16 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
-  // BROWSER AUTOMATION
+  // BROWSER AUTOMATION queue routes — RETIRED 2026-08-30
   // ============================================
-
-  const browserAutomationService = await import("./services/browserAutomation");
-
-  api.get("/api/browser-automation/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const systemTemplates = await browserAutomationService.getSystemTemplates();
-      const orgTemplates = await browserAutomationService.getOrganizationTemplates(org.id);
-      res.json({ system: systemTemplates, organization: orgTemplates });
-    } catch (error: any) {
-      logger.error("Get automation templates error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const { status, limit } = req.query;
-      const jobs = await browserAutomationService.getOrganizationJobs(org.id, {
-        status: status as string,
-        limit: limit ? parseInt(limit as string) : undefined,
-      });
-      res.json(jobs);
-    } catch (error: any) {
-      logger.error("Get automation jobs error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/browser-automation/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const job = await browserAutomationService.getJobById(id);
-      if (!job) {
-        return Errors.notFound(res, "Job");
-      }
-      if (job.organizationId !== org.id) {
-        return Errors.notFound(res, "Job");
-      }
-      res.json(job);
-    } catch (error: any) {
-      logger.error("Get automation job error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.post("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user;
-      const { templateId, name, inputData, priority } = req.body;
-      const job = await browserAutomationService.createJob(org.id, {
-        templateId,
-        name,
-        inputData,
-        priority,
-        triggeredByUserId: user.id,
-      });
-      res.status(201).json(job);
-    } catch (error: any) {
-      logger.error("Create automation job error", error);
-      Errors.badRequest(res, error.message ?? "Failed to create job");
-    }
-  });
-
-  api.post("/api/browser-automation/jobs/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const job = await browserAutomationService.getJobById(id);
-      if (!job) {
-        return Errors.notFound(res, "Job");
-      }
-      if (job.organizationId !== org.id) {
-        return Errors.notFound(res, "Job");
-      }
-      await browserAutomationService.cancelJob(id);
-      res.json({ success: true });
-    } catch (error: any) {
-      logger.error("Cancel automation job error", error);
-      Errors.badRequest(res, error.message || "Failed to cancel job");
-    }
-  });
+  // The six /api/browser-automation/* routes fronted a job QUEUE whose
+  // processor was never started anywhere: every POST returned a 'queued'
+  // receipt for work that would never run — a success that was only an
+  // acknowledgment. Zero client callers (verified: no reference in
+  // client/src). Adversarially re-proved before removal, with the queue
+  // chain deleted from browserAutomation.ts in the same commit. The LIVE
+  // browser automation stays: Pax's browse_web tool and the
+  // browserResearchSkill, which run jobs inline through the service.
 
   // ============================================
   // SMS MESSAGING

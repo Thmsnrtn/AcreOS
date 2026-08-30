@@ -1,11 +1,14 @@
 /**
  * createJob verifies template ownership AT THE WRITE.
  *
- * POST /api/browser-automation/jobs passes req.body.templateId straight into
- * createJob, and executeJob loads whatever template the STORED id names. The
- * queue processor is unwired today, which made an unverified id a stored
- * cross-org template execution waiting for someone to wire it (rule-1 service
- * wave, 2026-08-27). This drives the REAL createJob against a mocked db: a
+ * createJob stores a templateId and executeJob loads whatever template the
+ * STORED id names. When this pinned the fix (rule-1 service wave, 2026-08-27)
+ * the exposure was POST /api/browser-automation/jobs feeding an unverified id
+ * into a queue nothing processed — a stored cross-org template execution
+ * waiting for someone to wire it. The queue chain and those routes were
+ * DELETED 2026-08-30; createJob/executeJob stay live through the
+ * browserResearchSkill's inline path, so the ownership-at-the-write invariant
+ * still matters. This drives the REAL createJob against a mocked db: a
  * foreign org's template is refused, a system template (organizationId null)
  * and the caller's own template are accepted, and the no-template job shape
  * stays legal. If the ownership check is deleted, the foreign case inserts

@@ -7,6 +7,16 @@ it is edited out — not struck through and kept.
 
 Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 
+> **STANDING AMENDMENT (founder, 2026-08-30):** when the consolidation arc
+> closes (shadow window ~09-05 → turns 12-13 if evidence warrants → turn-19
+> audit), transition AUTOMATICALLY into the **Production Experience & Quality
+> Program** — `docs/company/master-directive-amendment-2026-08-30-quality.md`
+> (verbatim mandate inside). Its first two evidence items are already given:
+> the ~1,200-item founder Decision queue (a failure until understood; never
+> bulk-dismissed) and real iOS Safari slowness despite green e2e (measure
+> first). Read-only reconnaissance on both is permitted during consolidation
+> quiet cycles; product changes wait for the transition.
+
 Branch: `claude/acreos-canonical-implementation-1asgvc`
 Verified at: `6da56b5e`, 2026-08-29. **978 test files / 12,947 tests green**;
 `npm run check` green; production serves `6da56b5e` (deploy #30, probed twice

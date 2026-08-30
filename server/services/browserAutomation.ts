@@ -253,18 +253,18 @@ export async function createJob(
   return job as AutomationJob;
 }
 
-export async function getQueuedJobs(limit: number = 10): Promise<AutomationJob[]> {
-  const jobs = await db
-    .select()
-    .from(browserAutomationJobs)
-    .where(eq(browserAutomationJobs.status, "queued"))
-    .orderBy(browserAutomationJobs.priority, browserAutomationJobs.createdAt)
-    .limit(limit);
-  
-  return jobs as AutomationJob[];
-}
+// The job-QUEUE chain (getQueuedJobs, processJobQueue, startJobProcessor,
+// and its isProcessingQueue flag) was deleted 2026-08-30 — nothing ever
+// STARTED the processor, so queued jobs never ran in the product's whole
+// life; adversarially verified zero callers (dynamic, string-keyed, boot,
+// cron, tests). The live thirds of this file stay: browseWeb (Pax's
+// browse_web tool), executeAdHocAutomation/createJob/executeJob and the
+// template reads (browserResearchSkill runs jobs INLINE, never via a queue).
+// The /api/browser-automation/* queue routes retired in the same commit —
+// zero client callers, and their receipts promised processing that never
+// existed.
 
-export async function getJobById(jobId: number): Promise<AutomationJob | null> {
+async function getJobById(jobId: number): Promise<AutomationJob | null> {
   const [job] = await db
     .select()
     .from(browserAutomationJobs)
@@ -274,7 +274,7 @@ export async function getJobById(jobId: number): Promise<AutomationJob | null> {
   return (job as AutomationJob) || null;
 }
 
-export async function updateJobStatus(
+async function updateJobStatus(
   jobId: number,
   status: "queued" | "running" | "completed" | "failed" | "cancelled",
   updates?: {
@@ -309,46 +309,6 @@ export async function updateJobStatus(
     .where(eq(browserAutomationJobs.id, jobId));
 }
 
-export async function getOrganizationJobs(
-  organizationId: number,
-  options?: {
-    status?: string;
-    limit?: number;
-  }
-): Promise<AutomationJob[]> {
-  let query = db
-    .select()
-    .from(browserAutomationJobs)
-    .where(eq(browserAutomationJobs.organizationId, organizationId))
-    .orderBy(desc(browserAutomationJobs.createdAt));
-  
-  if (options?.status) {
-    query = db
-      .select()
-      .from(browserAutomationJobs)
-      .where(
-        and(
-          eq(browserAutomationJobs.organizationId, organizationId),
-          eq(browserAutomationJobs.status, options.status)
-        )
-      )
-      .orderBy(desc(browserAutomationJobs.createdAt));
-  }
-  
-  const jobs = await query.limit(options?.limit ?? 50);
-  
-  return jobs as AutomationJob[];
-}
-
-export async function cancelJob(jobId: number): Promise<void> {
-  await db
-    .update(browserAutomationJobs)
-    .set({
-      status: "cancelled",
-      completedAt: new Date(),
-    })
-    .where(eq(browserAutomationJobs.id, jobId));
-}
 
 export async function saveCredentials(
   organizationId: number,
@@ -739,45 +699,6 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
   }
 }
 
-export async function processJobQueue(): Promise<number> {
-  const jobs = await getQueuedJobs(1);
-  
-  if (jobs.length === 0) {
-    return 0;
-  }
-  
-  for (const job of jobs) {
-    logger.info(`[browser-automation] Processing job: ${job.id} - ${job.name}`);
-    await executeJob(job.id);
-  }
-  
-  return jobs.length;
-}
-
-let isProcessingQueue = false;
-
-export async function startJobProcessor(intervalMs: number = 30000): Promise<void> {
-  logger.info(`[browser-automation] Starting job processor (interval: ${intervalMs}ms)`);
-  
-  setInterval(async () => {
-    if (isProcessingQueue) {
-      logger.info("[browser-automation] Queue processor already running, skipping");
-      return;
-    }
-    
-    isProcessingQueue = true;
-    try {
-      const processed = await processJobQueue();
-      if (processed > 0) {
-        logger.info(`[browser-automation] Processed ${processed} job(s)`);
-      }
-    } catch (error) {
-      logger.error("[browser-automation] Error processing queue", error);
-    } finally {
-      isProcessingQueue = false;
-    }
-  }, intervalMs);
-}
 
 export interface BrowseWebResult {
   success: boolean;
