@@ -132,8 +132,16 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   purpose:"counterparty", which emailService refuses without the org's own
   BYO identity — a counterparty lane on the org's own rail, wrong chokepoint
   for the system-mail seam. Its residual gap (no autonomy/TCPA gate on a
-  model-composed recipient) is SKILL-LANE FOLLOW-UP, recorded here, adjacent
-  to the supportAgent 76-case switch named out-of-scope at the top.
+  model-composed recipient) was SKILL-LANE FOLLOW-UP — EXECUTED 2026-08-30:
+  the skill now wears the pax lane's exact belts (autonomy level, daily
+  envelope, TCPA-on-lead, recordAutonomousSend into the audit envelope),
+  with one deliberate difference — at assisted it REFUSES naming the
+  route, because every skill caller is an autonomous engine and a draft
+  would queue where nobody looks. `skillLaneSendGovernance.test.ts` pins
+  all four belts and was mutation-falsified (disabling the level gate
+  kills exactly its case). The supportAgent 76-case switch is separately
+  covered by paxToolsReportRealEffects' TOOL_SWITCHES enumeration
+  (verified 2026-08-30).
   Chokepoint: agent-autonomous = 0, forever. Outward-coverage 55 -> 54.
 - **Turn 9 — move plane-3's two email branches** (`autonomousDecisionExecutor.ts:496-503`) to the seam (low live risk: `AUTONOMOUS_EXECUTOR_ENABLED` defaults off). Ratchet hits zero → flip its assertion from shrink-only to MUST-BE-ZERO. This gate now enforces "agent-initiated customer email goes through the witnessed hand" — if that covers a prose-only hard-stop in `shared/governance/constitution.ts`, reclassify it and lower the unenforced-hard-stop baseline in `constitution.test.ts` in the same commit.
 - **Turn 10 — DONE 2026-08-29 (out of order; independent of Decision A).**

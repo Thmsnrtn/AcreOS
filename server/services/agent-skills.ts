@@ -289,6 +289,42 @@ const sendEmailSkill: Skill = {
         };
       }
 
+      // ── Skill-lane governance (2026-08-30, stage-4 turn-9 follow-up) ──────
+      // This was the least governed send lane in the repo: a model-composed
+      // free-form recipient with no autonomy gate, no rate envelope, no TCPA
+      // check — while the SAME recipients reached through pax's send_email
+      // wear all three (ai/tools.ts:1950-1985). The belts are now identical.
+      // One deliberate difference: pax chat returns a draft-for-approval at
+      // the assisted level because a human is present to tap Send; every
+      // skill caller is an autonomous engine (task-runner, workflow-engine,
+      // autonomousTaskProcessor, companyAgents), so there is nobody to show
+      // a draft to — at assisted the skill REFUSES, naming the route, rather
+      // than queueing a draft where no one looks (refuse-not-fabricate).
+      const { getOrgAutonomyLevel, unattendedSendPermitted, checkSendRateLimit, checkTcpaBeforeSend, recordAutonomousSend } =
+        await import("./autonomyGuardrails");
+
+      const autonomyLevel = await getOrgAutonomyLevel(context.organizationId);
+      if (!unattendedSendPermitted(autonomyLevel)) {
+        return {
+          success: false,
+          error:
+            `Autonomous email is not permitted at the "${autonomyLevel}" autonomy level — ` +
+            `no send was made. Raise the org's autonomy level, or send via Pax where a draft can be approved by a person.`,
+        };
+      }
+
+      const rateCheck = await checkSendRateLimit(context.organizationId, "email");
+      if (!rateCheck.allowed) {
+        return { success: false, error: rateCheck.reason ?? "Daily send envelope reached — no send was made." };
+      }
+
+      if (leadId) {
+        const tcpaCheck = await checkTcpaBeforeSend(context.organizationId, leadId);
+        if (!tcpaCheck.allowed) {
+          return { success: false, error: `Cannot send email: ${tcpaCheck.reason}` };
+        }
+      }
+
       const result = await emailService.sendEmail({
         to,
         subject,
@@ -312,6 +348,9 @@ const sendEmailSkill: Skill = {
       });
 
       if (result.success) {
+        // Same audit envelope as the pax lane: the rate limiter and the daily
+        // briefing must see this send, or the envelope undercounts.
+        await recordAutonomousSend(context.organizationId, "email", leadId ?? 0, `${subject} — ${body.slice(0, 200)}`);
         return {
           success: true,
           data: {
