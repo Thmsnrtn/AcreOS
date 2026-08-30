@@ -16385,40 +16385,6 @@ export const outcomeVerificationContracts = pgTable("outcome_verification_contra
 ]);
 export type OutcomeVerificationContract = typeof outcomeVerificationContracts.$inferSelect;
 
-// --- Saga Instances: distributed transactions ---
-
-export const sagaInstances = pgTable("saga_instances", {
-  id: serial("id").primaryKey(),
-  sagaId: text("saga_id").notNull().unique(),
-  sagaName: text("saga_name").notNull(),
-  initiatorAgent: text("initiator_agent").notNull(),
-  status: text("status").notNull().default("running"),
-  steps: jsonb("steps").$type<Array<{
-    order: number;
-    agent: string;
-    action: string;
-    compensatingAction: string;
-    status: string;
-    result?: Record<string, any>;
-    compensationResult?: Record<string, any>;
-  }>>().notNull().default([]),
-  currentStep: integer("current_step").notNull().default(0),
-  totalSteps: integer("total_steps").notNull().default(0),
-  idempotencyKey: text("idempotency_key").notNull(),
-  timeoutMs: integer("timeout_ms").notNull().default(300000),
-  parentSagaId: text("parent_saga_id"),
-  orgId: integer("org_id"),
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
-  compensatedAt: timestamp("compensated_at"),
-  error: text("error"),
-}, (table) => [
-  index("si_status_idx").on(table.status),
-  index("si_initiator_idx").on(table.initiatorAgent),
-  index("si_idempotency_idx").on(table.idempotencyKey),
-  index("si_parent_idx").on(table.parentSagaId),
-]);
-export type SagaInstance = typeof sagaInstances.$inferSelect;
 
 // --- Agent Versions: personality versioning ---
 
@@ -17076,30 +17042,6 @@ export const founderInteractions = pgTable("founder_interactions", {
 
 // ─── 1. Reactive Orchestration ──────────────────────────────────────────────
 
-/** Defines a reusable event→agent chain template */
-export const reactionChains = pgTable("reaction_chains", {
-  id: serial("id").primaryKey(),
-  chainId: text("chain_id").notNull().unique(),
-  orgId: integer("org_id").notNull(),
-  name: text("name").notNull(),
-  description: text("description"),
-  triggerEventType: text("trigger_event_type").notNull(),
-  triggerConditions: jsonb("trigger_conditions").default({}),
-  steps: jsonb("steps").notNull().default([]),
-  enabled: boolean("enabled").notNull().default(true),
-  priority: integer("priority").notNull().default(50),
-  maxConcurrentRuns: integer("max_concurrent_runs").notNull().default(5),
-  cooldownMs: integer("cooldown_ms").default(0),
-  totalRuns: integer("total_runs").notNull().default(0),
-  successfulRuns: integer("successful_runs").notNull().default(0),
-  avgDurationMs: integer("avg_duration_ms"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("rc_org_idx").on(table.orgId),
-  index("rc_trigger_idx").on(table.triggerEventType),
-  index("rc_enabled_idx").on(table.enabled),
-]);
 
 /** Tracks each execution of a reaction chain */
 export const reactionChainRuns = pgTable("reaction_chain_runs", {
@@ -17255,7 +17197,6 @@ export const founderDependencyEvents = pgTable("founder_dependency_events", {
 
 // ─── V14 Inferred Types ────────────────────────────────────────────────────
 
-export type ReactionChainEntry = typeof reactionChains.$inferSelect;
 export type ReactionChainRunEntry = typeof reactionChainRuns.$inferSelect;
 export type ReactionChainLinkEntry = typeof reactionChainLinks.$inferSelect;
 export type FounderOverrideEntry = typeof founderOverrides.$inferSelect;

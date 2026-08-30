@@ -643,9 +643,28 @@ services). What ships: the seven modelled Phase-19 tables
 regulatory_feeds, market_adaptations, self_audit_reports,
 perpetual_ops_checks — models + migrate.mjs CREATEs removed in the same
 commit) plus the long-unmodelled `communications`, whose row count the
-conditional drop resolves. Verdict pending the next deploy's
-[od8-batch2-summary] line; any populated survivor will be reported
-here.
+conditional drop resolves. **Batch 2 VERDICT (deploy #37, 2026-08-29):** `dropped=<all seven
+Phase-19 tables> absent=communications survivors=none`. The seven
+existed in production (migrate.mjs created them each release), all held
+zero rows, all dropped with evidence; `communications` never existed in
+production (migrations/0001 was never applied there). Zero data loss.
+The summary-line mechanism has now delivered a complete verdict on both
+of its first two releases.
+
+**Batch 3 SHIPPED 2026-08-30** — migration 0243: stage-4 item G's
+currently-eligible slice only. `saga_instances` (sagaOrchestratorV12,
+turn 16) and `reaction_chains` (reactiveOrchestrationV14, turn 16).
+Explicitly deferred with reasons, discovered by this batch's census:
+the four V13 memory tables + `memory_access_log` stay until turn 13
+deletes `cognitiveMemoryV13.ts`, their still-live writer/reader (item
+G's list is the program deliverable, not the currently-eligible set);
+`trust_enforcement_log`/`tenant_agent_config`/`delegation_tokens` wait
+for turns 14–15; `reaction_chain_runs` stays live
+(autonomyScoreV14.ts:738 reads it; plain-text chain_id, no FK to the
+dropped parent). NEW tranche candidate found during census:
+`reaction_chain_links` — zero callers anywhere — recorded here for a
+future batch rather than silently appended to this one. Verdict pending
+deploy's [od8-batch3-summary].
 
 **Blocked meanwhile:** nothing.
 

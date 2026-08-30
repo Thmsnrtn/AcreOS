@@ -10356,28 +10356,6 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "rr_chain_idx" ON "reaction_chain_runs" ("chain_id")`,
   `CREATE INDEX IF NOT EXISTS "rr_org_idx" ON "reaction_chain_runs" ("org_id")`,
   `CREATE INDEX IF NOT EXISTS "rr_status_idx" ON "reaction_chain_runs" ("status")`,
-  `CREATE TABLE IF NOT EXISTS "reaction_chains" (
-    "id" serial PRIMARY KEY,
-    "chain_id" text NOT NULL,
-    "org_id" integer NOT NULL,
-    "name" text NOT NULL,
-    "description" text,
-    "trigger_event_type" text NOT NULL,
-    "trigger_conditions" jsonb DEFAULT '{}'::jsonb,
-    "steps" jsonb NOT NULL DEFAULT '[]'::jsonb,
-    "enabled" boolean NOT NULL DEFAULT true,
-    "priority" integer NOT NULL DEFAULT 50,
-    "max_concurrent_runs" integer NOT NULL DEFAULT 5,
-    "cooldown_ms" integer DEFAULT 0,
-    "total_runs" integer NOT NULL DEFAULT 0,
-    "successful_runs" integer NOT NULL DEFAULT 0,
-    "avg_duration_ms" integer,
-    "created_at" timestamp NOT NULL DEFAULT now(),
-    "updated_at" timestamp NOT NULL DEFAULT now()
-  )`,
-  `CREATE INDEX IF NOT EXISTS "rc_org_idx" ON "reaction_chains" ("org_id")`,
-  `CREATE INDEX IF NOT EXISTS "rc_trigger_idx" ON "reaction_chains" ("trigger_event_type")`,
-  `CREATE INDEX IF NOT EXISTS "rc_enabled_idx" ON "reaction_chains" ("enabled")`,
   `CREATE TABLE IF NOT EXISTS "regulatory_filing_calendar" (
     "id" serial PRIMARY KEY,
     "filing_type" text NOT NULL,
@@ -10755,6 +10733,50 @@ BEGIN
     array_to_string(dropped, ','), array_to_string(absent, ','),
     COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
 END $mig0242$`,
+
+  // ── 0243 OD-8 drop batch 3: stage-4 item G, the turns-16/18 slice ──
+  // Same ruling and mechanism as 0241/0242. Only the item-G tables whose
+  // CODE retirement has fully shipped: saga_instances (sagaOrchestratorV12
+  // deleted, turn 16) and reaction_chains (reactiveOrchestrationV14 +
+  // boot seeding deleted, turn 16). The four V13 memory tables +
+  // memory_access_log stay OFF until turn 13 retires lane 3 and
+  // cognitiveMemoryV13.ts (their live writer/reader) deletes;
+  // trust_enforcement_log / tenant_agent_config / delegation_tokens wait
+  // for turns 14-15. reaction_chain_runs stays (live reader:
+  // autonomyScoreV14.ts:738); its chain_id is plain text — no FK — so
+  // dropping the parent leaves it structurally untouched.
+  // reaction_chain_links discovered zero-caller during this batch's
+  // census; recorded as a future tranche candidate, not dropped here.
+  `DO $mig0243$
+DECLARE
+  t text;
+  n bigint;
+  dropped text[] := '{}';
+  absent text[] := '{}';
+  survivors text[] := '{}';
+  tables text[] := ARRAY[
+    'saga_instances',
+    'reaction_chains'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      absent := absent || t;
+      CONTINUE;
+    END IF;
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n = 0 THEN
+      EXECUTE format('DROP TABLE %I CASCADE', t);
+      dropped := dropped || t;
+    ELSE
+      survivors := survivors || format('%s=%s rows', t, n);
+      RAISE WARNING '[od8-batch3] % HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', t, n;
+    END IF;
+  END LOOP;
+  RAISE NOTICE '[od8-batch3-summary] dropped=% absent=% survivors=%',
+    array_to_string(dropped, ','), array_to_string(absent, ','),
+    COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
+END $mig0243$`,
 
 ];
 

@@ -7,13 +7,13 @@
   "baselines": {
     "unreachedExports": 375,
     "internalOnlyExports": 1176,
-    "tablesNoWriter": 59,
-    "tablesNoReader": 69,
+    "tablesNoWriter": 57,
+    "tablesNoReader": 67,
     "unregisteredRoutes": 4,
     "opaqueExports": 21,
     "moduleOrphans": 29,
     "unreachedExportsShared": 54,
-    "internalOnlyExportsShared": 431,
+    "internalOnlyExportsShared": 429,
     "moduleOrphansShared": 1,
     "opaqueExportsShared": 15
   },
