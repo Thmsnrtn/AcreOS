@@ -4,7 +4,12 @@
 -- re-checks every table the six conditional-drop batches govern and RAISEs
 -- a single compact line: 'present=none' is the full clean verdict; any
 -- surviving table lists its row count for the founder. Re-prints on every
--- release. Authoritative copy runs from scripts/migrate.mjs.
+-- release. Authoritative copy runs from scripts/migrate.mjs, where it is
+-- POSITIONED FIRST in the statement array: end-of-run notices die with the
+-- release machine before the log forwarder flushes (deploys #44-#46), and
+-- state-at-start equals state-at-end-of-the-previous-run, so leading loses
+-- nothing. migrate.mjs also settles 3s before exit so failure evidence at
+-- the end of a run can land too.
 DO $mig0247$
 DECLARE
   t text;

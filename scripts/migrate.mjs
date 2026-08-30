@@ -30,6 +30,49 @@ if (!process.env.DATABASE_URL) {
 }
 
 const STATEMENTS = [
+  // ── 0247 OD-8 LEDGER: one line carrying the whole program's state ──
+  // POSITIONED FIRST deliberately (2026-08-30): notices printed at the END
+  // of the run die with the release machine before Fly's log forwarder
+  // flushes them — deploys #44-#46 lost every end-of-run line while
+  // early-run notices survived. State-at-start equals state-at-end-of-the-
+  // previous-run, so the ledger loses nothing by leading.
+  // Read-only. Fly's log stream loses individual notice lines under burst
+  // (deploys #35, #42, #43 each dropped different batch summaries), so
+  // per-batch evidence lands by lottery. This block re-checks every table
+  // the six batches govern and RAISEs a SINGLE compact line: tables still
+  // present list their row counts; 'present=none' is the program's full
+  // clean verdict in one atomic read. Re-prints every release.
+  `DO $mig0247$
+DECLARE
+  t text;
+  n bigint;
+  present text[] := '{}';
+  absent_count int := 0;
+  tables text[] := ARRAY[
+    'ceo_cognitive_model','ceo_shadow_predictions','knowledge_freshness',
+    'agent_resource_quotas','resource_quota_events','decision_causality_nodes',
+    'temporal_prediction_patterns','predictive_staged_actions',
+    'founder_intents','intent_progress_logs',
+    'pre_authorized_tradeoffs','crisis_playbooks','mission_statements',
+    'regulatory_feeds','market_adaptations','self_audit_reports',
+    'perpetual_ops_checks','communications',
+    'saga_instances','reaction_chains',
+    'delegation_tokens',
+    'trust_enforcement_log','tenant_agent_config'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      absent_count := absent_count + 1;
+    ELSE
+      EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+      present := present || format('%s(%s rows)', t, n);
+    END IF;
+  END LOOP;
+  RAISE NOTICE '[od8-ledger] absent=%/% present=%',
+    absent_count, array_length(tables, 1),
+    COALESCE(NULLIF(array_to_string(present, ','), ''), 'none');
+END $mig0247$`,
   // notes: columns that never got a proper Drizzle migration applied in prod.
   // All idempotent — re-running is a no-op.
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "owning_entity" text',
@@ -10865,44 +10908,6 @@ BEGIN
     COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
 END $mig0246$`,
 
-  // ── 0247 OD-8 LEDGER: one line carrying the whole program's state ──
-  // Read-only. Fly's log stream loses individual notice lines under burst
-  // (deploys #35, #42, #43 each dropped different batch summaries), so
-  // per-batch evidence lands by lottery. This block re-checks every table
-  // the six batches govern and RAISEs a SINGLE compact line: tables still
-  // present list their row counts; 'present=none' is the program's full
-  // clean verdict in one atomic read. Re-prints every release.
-  `DO $mig0247$
-DECLARE
-  t text;
-  n bigint;
-  present text[] := '{}';
-  absent_count int := 0;
-  tables text[] := ARRAY[
-    'ceo_cognitive_model','ceo_shadow_predictions','knowledge_freshness',
-    'agent_resource_quotas','resource_quota_events','decision_causality_nodes',
-    'temporal_prediction_patterns','predictive_staged_actions',
-    'founder_intents','intent_progress_logs',
-    'pre_authorized_tradeoffs','crisis_playbooks','mission_statements',
-    'regulatory_feeds','market_adaptations','self_audit_reports',
-    'perpetual_ops_checks','communications',
-    'saga_instances','reaction_chains',
-    'delegation_tokens',
-    'trust_enforcement_log','tenant_agent_config'
-  ];
-BEGIN
-  FOREACH t IN ARRAY tables LOOP
-    IF to_regclass('public.' || t) IS NULL THEN
-      absent_count := absent_count + 1;
-    ELSE
-      EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
-      present := present || format('%s(%s rows)', t, n);
-    END IF;
-  END LOOP;
-  RAISE NOTICE '[od8-ledger] absent=%/% present=%',
-    absent_count, array_length(tables, 1),
-    COALESCE(NULLIF(array_to_string(present, ','), ''), 'none');
-END $mig0247$`,
 
 ];
 
@@ -11156,5 +11161,13 @@ try {
 } finally {
   await pool.end().catch(() => {});
 }
+
+// Give Fly's log forwarder time to flush the final stdout lines before the
+// release machine is destroyed. Without this, every end-of-run line — batch
+// summaries, the skipped-statements report, and any FAILURE detail — dies
+// with the machine (observed on deploys #44-#46: early-run notices survived,
+// end-of-run notices never arrived). Three seconds against a 10-minute
+// release window is a fair price for failure evidence that actually lands.
+await new Promise((resolve) => setTimeout(resolve, 3000));
 
 process.exit(exitCode);
