@@ -663,8 +663,26 @@ for turns 14–15; `reaction_chain_runs` stays live
 (autonomyScoreV14.ts:738 reads it; plain-text chain_id, no FK to the
 dropped parent). NEW tranche candidate found during census:
 `reaction_chain_links` — zero callers anywhere — recorded here for a
-future batch rather than silently appended to this one. Verdict pending
-deploy's [od8-batch3-summary].
+future batch rather than silently appended to this one. **Batch 3 VERDICT (deploy #38, 2026-08-30):** `dropped=saga_instances
+absent= survivors=reaction_chains=6510 rows`. saga_instances existed
+(0017 reached production after all — the census had missed its
+unquoted CREATE until the mirror gate flagged it), held zero rows,
+dropped with evidence. **reaction_chains is the ruling's first
+populated survivor: 6,510 rows, LEFT IN PLACE**, warned on the run
+page, awaiting the founder's own decision before any second attempt.
+Reading of the rows without DB access: the deleted
+reactiveOrchestrationV14 bootstrap re-seeded DEFAULT_CHAINS per org on
+every boot, and chain_id uniqueness was per generated id — months of
+boots accumulate as duplicate machine-written template rows. No human
+authorship; no run history (runs live in reaction_chain_runs, which
+stays live under autonomyScoreV14). Founder decision requested via the
+picker 2026-08-30.
+
+**Survivor RULED 2026-08-30 (picker): DROP.** Migration 0244 ships the
+founder-authorized populated drop — the one deliberate exception to the
+zero-rows condition, authorization inline in the migration itself, row
+count preserved in the [od8-batch4-summary] evidence line. Verdict on
+the next deploy.
 
 **Blocked meanwhile:** nothing.
 

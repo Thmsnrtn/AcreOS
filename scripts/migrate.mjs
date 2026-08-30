@@ -10778,6 +10778,29 @@ BEGIN
     COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
 END $mig0243$`,
 
+  // ── 0244 OD-8: founder-authorized drop of the batch-3 survivor ──
+  // reaction_chains survived 0243 with 6,510 rows (deploy #38 evidence,
+  // the ruling's first populated survivor). The founder ruled DROP via the
+  // decision picker on 2026-08-30, on the reading that the rows are
+  // machine-reseeded DEFAULT_CHAINS duplicates from the deleted V14
+  // bootstrap — no human authorship, no run history (reaction_chain_runs
+  // stays live under autonomyScoreV14). This is the ONE deliberate
+  // exception to 0241-0243's zero-rows condition, and it carries its
+  // authorization inline; the dropped row count is preserved in the
+  // evidence line.
+  `DO $mig0244$
+DECLARE
+  n bigint;
+BEGIN
+  IF to_regclass('public.reaction_chains') IS NULL THEN
+    RAISE NOTICE '[od8-batch4-summary] reaction_chains already absent — nothing to drop';
+  ELSE
+    EXECUTE 'SELECT count(*) FROM reaction_chains' INTO n;
+    EXECUTE 'DROP TABLE reaction_chains CASCADE';
+    RAISE NOTICE '[od8-batch4-summary] DROPPED reaction_chains WITH % ROWS — founder-authorized populated drop (picker ruling 2026-08-30, OD-8 batch-3 survivor)', n;
+  END IF;
+END $mig0244$`,
+
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
