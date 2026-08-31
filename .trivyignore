@@ -12,13 +12,41 @@
 # Assessment — EXPOSURE NIL:
 #   • This is npm's OWN vendored undici, NOT our application's. Our app's undici
 #     is pinned to ^7.28.0 (patched) via package.json `overrides`.
-#   • npm is never invoked at RUNTIME — the production image runs the prebuilt
-#     `node dist/index.cjs`; npm is used only at build time. The DoS requires an
-#     attacker-controlled WebSocket peer talking to undici, which npm's CLI does
-#     not expose in our build or runtime.
+#   • npm IS invoked at runtime, narrowly (corrected 2026-08-31): the daily
+#     immune job spawns `npm audit --json` (npmWatch.ts:273) and
+#     codebaseMonitor execs `npm outdated --json` — both talk only to the
+#     npm registry. The DoS requires an attacker-controlled WebSocket peer
+#     talking to undici, which neither invocation exposes.
 #   • The latest Node 22 LTS (22.23.1) still bundles this npm/undici, and npm
 #     vendors undici transitively (no clean version-pin fix); upgrading global
 #     npm in the image is unverifiable pre-build and churns the toolchain.
 # Re-review trigger: drop this line once a node:22-slim ships an npm whose
 # bundled undici is >= 6.27.0 (then the bump alone clears it).
 CVE-2026-12151
+
+# ── CVE-2026-14257 — brace-expansion ReDoS ──────────────────────────────────
+# Affected: brace-expansion 5.0.7 BUNDLED INSIDE the npm CLI installed by the
+#   Dockerfile's `npm install -g npm@latest` (the refresh that exists to chase
+#   exactly this class — npm's own bundle now trails its fix).
+# Assessment — EXPOSURE NIL:
+#   • The APP's copies are patched (1.1.18 / 2.1.4 / 5.0.9 in the lockfile;
+#     verified across every instance).
+#   • npm runs at runtime only as `npm audit` / `npm outdated` subprocesses
+#     against registry JSON; the ReDoS needs attacker-supplied glob/brace
+#     patterns, which those invocations never take from external input.
+# Re-review trigger: drop when `npm install -g npm@latest` pulls a bundle
+# with brace-expansion >= 5.0.8 (re-run the container scan after any npm or
+# base-image bump).
+CVE-2026-14257
+
+# ── CVE-2026-69192 — ip-address parsing flaw ────────────────────────────────
+# Affected: ip-address 10.2.0 BUNDLED INSIDE the npm CLI (same global
+#   npm@latest as above). Fixed in 10.3.1.
+# Assessment — EXPOSURE NIL:
+#   • The APP's ip-address is 10.7.0 (patched) in the lockfile.
+#   • Reachable only through npm's registry/proxy plumbing in the two
+#     runtime subprocess calls above; no attacker-controlled address strings
+#     flow into them.
+# Re-review trigger: same as CVE-2026-14257 — clears on npm's next bundle
+# refresh.
+CVE-2026-69192
