@@ -50,3 +50,32 @@ CVE-2026-14257
 # Re-review trigger: same as CVE-2026-14257 — clears on npm's next bundle
 # refresh.
 CVE-2026-69192
+
+# ── CVE-2026-69152 — brace-expansion (second CVE on the same npm bundle) ────
+# Same vendored brace-expansion 5.0.7 inside the global npm CLI as
+# CVE-2026-14257 above; identical assessment and identical re-review
+# trigger (npm's next bundle refresh). App copies verified patched.
+CVE-2026-69152
+
+# ── CVE-2026-73566 — tar, npm-bundled copy ──────────────────────────────────
+# Affected: tar 7.5.19 INSIDE the npm CLI's vendored tree. The APP's tar is
+# 7.5.22 (>= the 7.5.21 fix) via the package.json override, verified in the
+# lockfile. Same npm-bundle disposition and re-review trigger as above.
+CVE-2026-73566
+
+# ── CVE-2026-56852 / 56864 / 56865 — Go modules embedded in the gh binary ──
+# Affected: golang.org/x/text v0.38.0 and x/mod v0.37.0 compiled into the
+# gh CLI (built from GH_VERSION=v2.96.0 in the Dockerfile's gh-build stage).
+# Assessment — EXPOSURE NIL:
+#   • gh runs only as a subprocess of the evolution PR generator
+#     (evolutionPrGenerator.ts) talking to api.github.com with our own
+#     token; the x/mod CVE requires a malicious GOSUMDB serving module
+#     data — gh performs no Go-module fetching at all — and the x/text
+#     path never receives attacker-controlled input in our invocations.
+#   • The Go STDLIB CVEs previously flagged are gone (base bumped to
+#     golang 1.26.6); these three are gh's own go.mod pins.
+# Re-review trigger: drop these three on the next GH_VERSION bump — check
+# whether the release's go.mod carries x/mod >= 0.40.0 and x/text >= 0.39.0.
+CVE-2026-56852
+CVE-2026-56864
+CVE-2026-56865
