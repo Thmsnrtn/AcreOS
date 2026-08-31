@@ -14,6 +14,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 type NoteStatus = "pending" | "active" | "paid_off" | "defaulted" | "foreclosed";
 type PaymentStatus = "pending" | "processing" | "completed" | "failed" | "refunded";
 
+// Deterministic id source (2026-08-31): these ids were Math.random over
+// 100_000 — twelve draws collide about once per ~1,500 runs (birthday
+// bound), and a collision silently overwrites a Map entry, so the
+// full-lifecycle case flaked with 11 payments instead of 12 in CI. A test
+// double's ids only need uniqueness; randomness bought nothing but the
+// flake.
+let nextMockId = 70_000;
+const mockId = () => nextMockId++;
+
 interface Note {
   id: number;
   organizationId: number;
@@ -142,7 +151,7 @@ function createNote(params: {
   );
 
   return {
-    id: Math.floor(Math.random() * 100_000),
+    id: mockId(),
     organizationId: params.organizationId,
     borrowerId: params.borrowerId,
     propertyId: params.propertyId,
@@ -187,7 +196,7 @@ function applyPayment(
   };
 
   const payment: Payment = {
-    id: Math.floor(Math.random() * 100_000),
+    id: mockId(),
     organizationId: note.organizationId,
     noteId: note.id,
     amount: entry.payment,
