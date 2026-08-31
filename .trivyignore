@@ -79,3 +79,7 @@ CVE-2026-73566
 CVE-2026-56852
 CVE-2026-56864
 CVE-2026-56865
+# …and google.golang.org/grpc v1.81.1 (fixed 1.82.1) in the same gh binary —
+# xDS RBAC / HTTP/2 SERVER vulnerabilities; gh runs no gRPC server, ever.
+# Same re-review trigger: the next GH_VERSION bump.
+GHSA-hrxh-6v49-42gf
