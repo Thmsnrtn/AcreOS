@@ -42,9 +42,13 @@ vi.mock("drizzle-orm", () => ({
   eq: (col: string, val: string) => ({ col, val }),
 }));
 
+vi.mock("../../server/services/founder", () => ({
+  isFounderEmail: (e?: string) => e === "founder@test.local",
+}));
+
 // ── Import after mocks ─────────────────────────────────────────────────────────
 
-import { featureGate } from "../../server/middleware/featureGate";
+import { featureGate, requireLadderFlag } from "../../server/middleware/featureGate";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +118,91 @@ describe("featureGate middleware", () => {
     const { req, res, next } = mockReqRes();
     await featureGate("feature_marketplace")(req, res, next);
 
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("enterprise tier bypasses an ORDINARY flag (the documented back-compat hatch)", async () => {
+    const { req, res, next } = mockReqRes();
+    (req as any).organization = { subscriptionTier: "enterprise" };
+    await featureGate("feature_marketplace")(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(mockSelect).not.toHaveBeenCalled(); // bypass happens before any lookup
+  });
+
+  it("an UNEXPECTED error fails OPEN — requireFlag's documented posture", async () => {
+    const { req, res, next } = mockReqRes();
+    // Poison a property only buildFlagContext reads (INSIDE the try) so the
+    // middleware's own catch — not the service's swallow — decides the
+    // outcome. req.user/req.organization are read before the try begins.
+    Object.defineProperty(req, "isFounder", {
+      get() { throw new Error("poisoned request"); },
+    });
+    await featureGate("feature_marketplace")(req, res, next);
+    expect(next).toHaveBeenCalled();
+  });
+});
+
+/**
+ * requireLadderFlag — the GOVERNANCE variant enforcing founder decisions
+ * (expansion ladder: "no marketplace before ~25 customers").
+ *
+ * WHY THESE CASES EXIST (2026-08-31): the CI coverage ratchet had been red
+ * for three weeks because this entire function — the fail-closed
+ * founder-decision gate — had ZERO behavioral coverage. Its own doc-comment
+ * cited expansionLadder.test.ts as enforcement, but that test pins
+ * source-shape (export exists, not mounted), never behavior: a gate whose
+ * fail-closed branch was rewritten to fail OPEN would have stayed green.
+ * These cases pin the two properties that make it a governance gate rather
+ * than a feature flag.
+ */
+describe("requireLadderFlag — the governance variant", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReturnValue({ where: mockWhere });
+    mockWhere.mockReturnValue({ limit: mockLimit });
+  });
+
+  it("the founder passes — they must be able to see the surface they rule on", async () => {
+    const { req, res, next } = mockReqRes();
+    (req as any).user = { email: "founder@test.local" };
+    await requireLadderFlag("expansion.marketplace")(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("enterprise tier does NOT bypass — a paid plan cannot buy past a founder decision", async () => {
+    mockLimit.mockResolvedValueOnce([]); // flag absent → off
+    const { req, res, next } = mockReqRes();
+    (req as any).organization = { subscriptionTier: "enterprise" };
+    await requireLadderFlag("expansion.marketplace")(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("an enabled flag passes a non-founder through", async () => {
+    mockLimit.mockResolvedValueOnce([
+      { key: "expansion.marketplace", state: "on", enabled: true },
+    ]);
+    const { req, res, next } = mockReqRes();
+    await requireLadderFlag("expansion.marketplace")(req, res, next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it("a disabled flag refuses", async () => {
+    mockLimit.mockResolvedValueOnce([]);
+    const { req, res, next } = mockReqRes();
+    await requireLadderFlag("expansion.marketplace")(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("an UNEXPECTED error fails CLOSED — an expansion gate that opens on an error is not a gate", async () => {
+    const { req, res, next } = mockReqRes();
+    Object.defineProperty(req, "isFounder", {
+      get() { throw new Error("poisoned request"); },
+    });
+    await requireLadderFlag("expansion.marketplace")(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(404);
   });
