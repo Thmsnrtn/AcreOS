@@ -12,8 +12,14 @@
 
 /* ─── Shell ─────────────────────────────────────────────────────────────── */
 .ob2-shell {
+  /* ORDER MATTERS (fixed 2026-08-31, E-2 recon): the fallback must come
+     FIRST so 100dvh wins wherever it is supported. Reversed, the later
+     100vh declaration won in every modern browser — on iOS Safari that is
+     the toolbar-inclusive height, and with overflow:hidden below it pushed
+     the wizard's bottom CTA under the toolbar, unreachable: the first
+     thing a new customer touches, broken. */
+  min-height: 100vh; /* fallback for pre-dvh engines */
   min-height: 100dvh;
-  min-height: 100vh; /* fallback */
   display: flex;
   flex-direction: column;
   background: var(--acr-bg);

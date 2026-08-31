@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
@@ -573,6 +573,22 @@ export async function registerRoutes(
     res.status(200).json({ sha: process.env.VITE_GIT_SHA || "unknown" });
   });
 
+  // ANONYMOUS CALLERS GET STATUS ONLY (2026-08-31, E-2 recon finding).
+  // The full health payload enumerates the vendor stack — every provider's
+  // name, configured/unconfigured state, and live failure detail (at the
+  // time of the finding it was advertising a regrid 401 to the open
+  // internet). Uptime monitors and CI need only the status code; the
+  // per-service detail is for signed-in operators. clerkMiddleware runs
+  // globally, so req.auth?.userId is the authenticated signal without
+  // forcing 401s that would break --fail probes.
+  const redactHealthForAnonymous = (
+    req: AuthenticatedRequest,
+    result: { overall: string; timestamp?: unknown },
+  ) => {
+    if (getClerkAuth(req)?.userId) return null; // authenticated — no redaction
+    return { overall: result.overall, timestamp: result.timestamp ?? new Date() };
+  };
+
   app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
@@ -586,42 +602,45 @@ export async function registerRoutes(
         "Cache-Control",
         "public, max-age=10, s-maxage=10, stale-while-revalidate=60",
       );
-      res.status(statusCode).json({
+      const terse = redactHealthForAnonymous(req, result);
+      const body = terse ?? {
         ...result,
         version: process.env.npm_package_version || "1.0.0",
         uptime: process.uptime(),
-      });
+      };
+      res.status(statusCode).json(body);
     } catch (err: any) {
       res.status(503).json({
         overall: "degraded",
         services: [],
         timestamp: new Date(),
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-        error: err?.message || "health check failed",
+        error: getClerkAuth(req)?.userId ? err?.message || "health check failed" : undefined,
       });
     }
   });
 
-  app.get("/api/health/live", async (_req: Request, res: Response) => {
+  app.get("/api/health/live", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = await healthCheckService.checkAll();
       const statusCode = result.overall === "unavailable" ? 503 : 200;
       res.setHeader("Cache-Control", "no-store");
-      res.status(statusCode).json({
+      // Same anonymous redaction as /api/health: the deploy pipeline's
+      // post-deploy probe only reads the status code (--fail), so a terse
+      // body changes nothing for it while ending the stack enumeration.
+      const terse = redactHealthForAnonymous(req, result);
+      const body = terse ?? {
         ...result,
         version: process.env.npm_package_version || "1.0.0",
         uptime: process.uptime(),
-      });
+      };
+      res.status(statusCode).json(body);
     } catch (err: any) {
       res.status(503).json({
         overall: "degraded",
         services: [],
         timestamp: new Date(),
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-        error: err?.message || "live health check failed",
+        error: getClerkAuth(req)?.userId ? err?.message || "live health check failed" : undefined,
       });
     }
   });

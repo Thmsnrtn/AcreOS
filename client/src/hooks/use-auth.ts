@@ -128,6 +128,29 @@ export function useAuth() {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch { /* best-effort — fall through */ }
 
+    // TENANT ISOLATION (2026-08-31, E-2 recon finding): the service worker's
+    // network-then-cache strategy keeps the last-seen /api/leads,
+    // /api/properties, /api/deals, /api/team-members responses in Cache
+    // Storage, and the offline queue (IndexedDB "acreos-offline") can hold
+    // un-replayed tenant mutations. Neither was cleared on logout, so on a
+    // shared device the NEXT person could read the previous tenant's data
+    // straight out of the caches. Purge every acreos-*-api cache and the
+    // offline queue; the static cache stays (no tenant data — deleting it
+    // would only force asset re-downloads).
+    try {
+      if ("caches" in window) {
+        const names = await caches.keys();
+        await Promise.all(
+          names
+            .filter((n) => n.startsWith("acreos-") && n.endsWith("-api"))
+            .map((n) => caches.delete(n)),
+        );
+      }
+    } catch { /* best-effort — Cache Storage unavailable */ }
+    try {
+      if ("indexedDB" in window) indexedDB.deleteDatabase("acreos-offline");
+    } catch { /* best-effort */ }
+
     // Clear every Clerk-shaped cookie visible to client JS, including the
     // suffixed instance names. HttpOnly cookies remain server-cleared above.
     for (const raw of document.cookie.split(";")) {
