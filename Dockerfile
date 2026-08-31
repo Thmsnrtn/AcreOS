@@ -47,7 +47,7 @@ ENV NODE_ENV="production"
 # (Known residual: in-toto-golang v0.9.0 is vendored by gh upstream —
 # GHSA-pmwq-pjrm-6p5r, MEDIUM, below the image scan's CRITICAL/HIGH gate;
 # clears when gh bumps the dep.)
-FROM golang:1.26.5-bookworm AS gh-build
+FROM golang:1.26.6-bookworm AS gh-build
 ARG GH_VERSION=v2.96.0
 RUN CGO_ENABLED=0 go install github.com/cli/cli/v2/cmd/gh@${GH_VERSION}
 
