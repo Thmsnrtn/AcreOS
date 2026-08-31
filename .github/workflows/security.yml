@@ -133,9 +133,11 @@ jobs:
       # added path-input validation its own default then failed ('path must
       # be a literal path'), taking the fs-scan AND container-scan jobs red
       # with zero repo changes. A moving branch is not a dependency; all
-      # three usages now pin 0.28.0 (has skip-setup-trivy/token-setup-trivy).
+      # three usages pin the exact SHA the last GREEN run downloaded
+      # (d2a0b607, from that run's own setup log — the repo's release tags
+      # were not resolvable from this environment to pick one by name).
       - name: Print Trivy findings table (non-gating, for the job log)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
         with:
           image-ref: "acreos:scan-${{ github.sha }}"
           format: "table"
@@ -146,7 +148,7 @@ jobs:
           skip-setup-trivy: false
 
       - name: Run Trivy vulnerability scanner (image)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
         with:
           image-ref: "acreos:scan-${{ github.sha }}"
           format: "sarif"
@@ -181,7 +183,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Run Trivy filesystem scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
         with:
           scan-type: "fs"
           scan-ref: "."
