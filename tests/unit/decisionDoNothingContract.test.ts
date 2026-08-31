@@ -43,7 +43,6 @@ import {
   HARD_STOP_DO_NOTHING,
   isHardStopItemType,
 } from "@shared/decisions/doNothing";
-import { FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS } from "@shared/schema/solene-founder-collab";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf-8");
@@ -126,10 +125,29 @@ describe("doNothingContract — load-bearing truths per class", () => {
     expect(s).toContain("nothing is applied");
   });
 
-  it("asks: agents never act on an unanswered ask; timeout matches the schema default", () => {
+  it("asks: the hours match the ladder's REAL constants, and non-yes/no asks are honest about staying open", () => {
+    // CORRECTED 2026-08-31 (E-1 recon): this case used to pin the sentence to
+    // FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS — the schema's timeout_at default,
+    // which NOTHING enforces (expireOverdueAsks has zero production callers).
+    // The real closer is the escalation ladder, which drains only
+    // yes/no-format asks on its urgency schedule. Pin the sentence to the
+    // enforcing constants so a ladder change breaks this test, not the
+    // founder's trust.
     const s = doNothingContract("founder_ask");
     expect(s).toContain("never acts on an unanswered question");
-    expect(s).toContain(`${FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS} hours`);
+    const ladderSrc = read("server/services/autopilot/escalationLadder.ts");
+    const m = ladderSrc.match(
+      /AUTO_RESOLVE_HOURS[^=]*=\s*\{\s*urgent:\s*(\d+),\s*normal:\s*(\d+),\s*low:\s*(\d+)\s*\}/,
+    );
+    expect(m, "ladder constants not found — repin this test").toBeTruthy();
+    const [, urgent, normal, low] = m!;
+    expect(s).toContain(`${urgent} hours`);
+    expect(s).toContain(`${normal} hours`);
+    expect(s).toContain(`${low} hours`);
+    expect(s).toContain("stays open until you answer or supersede");
+    // The old false claim must not come back: no unconditional
+    // "after the timeout" promise tied to the unenforced schema default.
+    expect(s).not.toContain("unless the ask set its own");
   });
 
   it("executor-eligible classes are honest about the opt-in autonomous executor", () => {

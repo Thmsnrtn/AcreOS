@@ -26,11 +26,17 @@
  *     fresh draft + fresh approval). The single delegated path is
  *     autoWitness.ts, which acts only under a live witness grant the founder
  *     issued themselves (zero grants → sweep is a no-op).
- *   founder_ask — server/services/solene/founderCollab.ts: agents never act
- *     on an unanswered ask; the escalation ladder re-pages and auto-resolves
- *     only TO THE SAFE SIDE (timed_out = the system did NOT act);
- *     expireOverdueAsks flips open→timed_out after the timeout
- *     (FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS = 24 unless the ask set its own).
+ *   founder_ask — server/services/solene/founderCollab.ts +
+ *     server/services/autopilot/escalationLadder.ts: agents never act on an
+ *     unanswered ask; the escalation ladder re-pages and auto-resolves only
+ *     TO THE SAFE SIDE (timed_out = the system did NOT act). CORRECTED
+ *     2026-08-31 (E-1 recon): the real closer is the ladder's
+ *     AUTO_RESOLVE_HOURS by urgency (urgent 24h / normal 72h / low 168h),
+ *     and it drains ONLY yes/no-format asks — free-text and multiple-choice
+ *     asks stay open until the founder answers or supersedes them. The
+ *     row's timeout_at column and expireOverdueAsks are NOT enforced
+ *     anywhere (the sweeper has zero production callers); the previous
+ *     sentence promised a 24h close that did not exist.
  *   executor-eligible types — server/services/autonomousDecisionExecutor.ts:
  *     runAutonomousDecisionExecutor scans ALL pending inbox items on a
  *     half-hourly tick, but ONLY when AUTONOMOUS_EXECUTOR_ENABLED === "true"
@@ -82,8 +88,10 @@ export const DO_NOTHING_CONTRACTS: Record<string, string> = {
 
   founder_ask:
     "If you never answer: the agent never acts on an unanswered question — it does the " +
-    "safe thing instead. It may page you again; after the timeout (24 hours unless the " +
-    "ask set its own) it closes as timed out with nothing done.",
+    "safe thing instead. It may page you again; a yes/no question closes as timed out " +
+    "with nothing done after 24 hours if urgent, 72 hours if normal, or 168 hours if " +
+    "low. A free-text or multiple-choice question stays open until you answer or " +
+    "supersede it.",
 
   support_escalation:
     `If you never answer: the customer's ticket stays open and this card waits. ${EXECUTOR_CAVEAT}`,

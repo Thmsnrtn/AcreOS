@@ -252,6 +252,10 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   two importers. Fourth OD-8 tranche recorded (~26 V13 tables).
 - **Turn 18 — V13 surface retirement.** Remove `/api/founder/v13` (`routes-founder-sentient-enterprise`) and `scpMemorySystem` episodic writes via `routes-scp-v2` (Decision F); delete `cognitiveMemoryV13.ts` after in-commit zero-caller grep; four V13 tables + `memory_access_log` → drop list; lower `FOUNDER_ROUTE_BASELINE` again.
 - **Turn 19 — independent completeness audit (wave discipline #2).** A fresh agent that built none of this, claims-as-hypotheses: hunt built-but-unwired residue (unmounted routes, orphan exports, schema-without-migration, seams with zero adopters), re-run every ratchet (`constitution.test.ts`, `founderFourDoors`, `sidebarHiddenRoutes`, `moneyCustodyHardStop`, `hardStopLaneCoverage`, `agentAuthorityCeiling`, both new chokepoint tests), verify every baseline was lowered-not-raised, run `npm run check`, `npm test`, `npm run build` directly. Only then PR.
+  **PREPARED 2026-08-31:** charter + ready-to-fire workflow script committed
+  (`docs/autonomous/TURN19_AUDIT_CHARTER.md`,
+  `docs/autonomous/workflows/stage4-turn19-audit.workflow.js`). Fires after
+  turns 12–13 resolve on the durable shadow window (~2026-09-07).
 
 ---
 
