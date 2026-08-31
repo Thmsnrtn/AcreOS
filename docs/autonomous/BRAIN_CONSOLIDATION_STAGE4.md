@@ -163,11 +163,22 @@ Two customer-visible writers today (`autonomousDecisionExecutor.ts:460-471`, `ag
   via a wrapper), fire-and-forget, zero behavior change. Fail-closed at
   every edge (hard-stop ids structurally blocked; unmapped escalates; ledger
   failure escalates), 6 driven tests including the direction accounting.
-  Counters at GET /api/admin/trust-seam-shadow (founder-gated); every
-  divergence also logger.warn'd with full context (the durable record).
-  THE FLIP RULE: turns 12-13 are licensed by ≥1 week of cadence evidence
-  with seamLooser = 0; any seam-LOOSER divergence blocks the flip and
-  reopens the ACTION_DOMAIN_MAP. Original spec follows.
+  Counters at GET /api/admin/trust-seam-shadow (founder-gated).
+  EVIDENCE-PERSISTENCE CORRECTION (2026-08-31): the original design called
+  the divergence logger.warn "the durable record" — false. Fly log
+  retention is minutes-scale and the counters were process memory zeroed on
+  every deploy; at several deploys/day the ≥1-week window was structurally
+  unreadable (the same positional log-loss the OD-8 evidence mechanism had
+  already proven on deploys #42-#46). shadowCompare now persists every
+  divergence and periodic boot-keyed counter flushes into jobHealthLogs,
+  and the admin endpoint aggregates them across boot sessions
+  (`durable.{comparisons,seamLooser,seamStricter,bootSessions}` over
+  ?sinceDays). CONSEQUENCE: durable evidence accrues only from this
+  change's deploy — the flip window restarts, maturing ~2026-09-07.
+  THE FLIP RULE: turns 12-13 are licensed by ≥1 week of DURABLE cadence
+  evidence with seamLooser = 0 and a non-vacuous comparison count; any
+  seam-LOOSER divergence blocks the flip and reopens the
+  ACTION_DOMAIN_MAP. Original spec follows.
 - **Turn 11 — `trustSeam.ts` in SHADOW mode.** On every gate evaluation in `executionEngine.validateSafetyGates` and `agentAuthorityGate.checkAuthority`, compute BOTH verdicts (companyAgents tier vs. domain-ledger mapping) and log divergence via structured `logger` with a counter readable in the `/founder/admin/*` namespace. Zero behavior change. Run ≥1 week against the real 2-min/5-min/30-min cadences. Verify: divergence telemetry populating; gates green.
 - **Turn 12 — flip `executionEngine.validateSafetyGates` (:415-430) to the seam.** Fail-closed preserved: unknown agent, unmapped action, seam error ⇒ block/escalate — a check that cannot run is not a check that passed. Mutation-test per law 1: set the mapped domain to observe → refusal appears; to execute_gated → pass; delete a mapping entry → escalate. Rollback: revert (shadow logs retained as evidence either way).
 - **Turn 13 — flip `agentAuthorityGate`; retire lane-3 mutation machinery; fix the UI in the same turn.** The flip is behavior-preserving by construction (every live proactive/reaction action is unclassified → level-2 escalate today; assert exactly that survives). Then: unregister `trustEvolution` weekly job (`runScheduledJobs.ts:2301-2321`); retire `trustAuthorityEscalation.ts`; remove `/api/scp/v2/trust` promote/demote (Decision C); repoint or remove client `trustScore` renderings (`agent-performance.tsx`, `agent-detail.tsx`, `founder/inspector.tsx`, `founder-trends.tsx`, `command-palette.tsx`) — SAME turn as the job retirement, so no surface ever renders a frozen score as live (fabrication-adjacent). ceoAbsence boosts retire or re-express per Decision C.

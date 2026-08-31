@@ -758,14 +758,86 @@ export function registerAdminRoutes(app: Express): void {
   // APM (Datadog / Honeycomb / etc.).
   // Stage-4 turn 11: the trust seam's shadow counters — how often the
   // domain-ledger verdict agrees with the live companyAgents tier check.
-  // Read-only; the divergence LOG (logger.warn "[trustSeam] SHADOW
-  // DIVERGENCE") is the durable record; this is the live glance. The
-  // turn-12/13 flips are licensed by ~a week of this evidence, seamLooser
-  // staying at zero being the non-negotiable half.
-  api.get("/api/admin/trust-seam-shadow", isAuthenticated, isFounderAdmin, async (_req, res) => {
+  // Read-only. HISTORY (2026-08-31): this comment once called the
+  // divergence LOG "the durable record" — false; Fly log retention is
+  // minutes-scale and in-memory counters reset on every deploy, so with a
+  // several-deploys-per-day cadence the ≥1-week flip evidence was
+  // structurally unreadable. trustSeam now persists every divergence and a
+  // periodic counter snapshot into jobHealthLogs; `durable` below
+  // aggregates them across boot sessions (max-per-boot on the cumulative
+  // flush counters, then summed) over ?sinceDays (default 7). The
+  // turn-12/13 flips are licensed by ~a week of `durable` evidence with
+  // seamLooser at zero AND a non-vacuous comparison count.
+  api.get("/api/admin/trust-seam-shadow", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { getShadowCounters } = await import("./services/autopilot/trustSeam");
-      res.json(getShadowCounters());
+      const { jobHealthLogs } = await import("@shared/schema");
+      const { and, eq, gte, inArray, desc: descOp } = await import("drizzle-orm");
+      const sinceDays = Math.max(1, Math.min(90, Number(req.query.sinceDays ?? 7)));
+      const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+
+      const rows = await db
+        .select()
+        .from(jobHealthLogs)
+        .where(
+          and(
+            inArray(jobHealthLogs.jobName, [
+              "trustSeamShadow:flush",
+              "trustSeamShadow:divergence",
+            ]),
+            gte(jobHealthLogs.runStartedAt, since),
+          ),
+        )
+        .orderBy(descOp(jobHealthLogs.runStartedAt));
+
+      // Flush rows carry CUMULATIVE per-boot counters — take the max per
+      // bootId, then sum across boots.
+      const perBoot = new Map<string, { comparisons: number; agreements: number }>();
+      let seamLooser = 0;
+      let seamStricter = 0;
+      const recentDivergences: unknown[] = [];
+      for (const r of rows) {
+        const m = (r.runMetrics ?? {}) as Record<string, any>;
+        if (r.jobName === "trustSeamShadow:flush") {
+          const boot = String(m.bootId ?? "unknown");
+          const prev = perBoot.get(boot);
+          if (!prev || (m.comparisons ?? 0) > prev.comparisons) {
+            perBoot.set(boot, {
+              comparisons: Number(m.comparisons ?? 0),
+              agreements: Number(m.agreements ?? 0),
+            });
+          }
+        } else {
+          if (m.direction === "seam-LOOSER") seamLooser += 1;
+          else seamStricter += 1;
+          if (recentDivergences.length < 20) recentDivergences.push(m);
+        }
+      }
+      let comparisons = 0;
+      let agreements = 0;
+      for (const b of perBoot.values()) {
+        comparisons += b.comparisons;
+        agreements += b.agreements;
+      }
+
+      res.json({
+        live: getShadowCounters(),
+        durable: {
+          sinceDays,
+          bootSessions: perBoot.size,
+          comparisons,
+          agreements,
+          seamLooser,
+          seamStricter,
+          recentDivergences,
+          // The two named flip conditions, as data, not a verdict:
+          // evidence is the founder's to read.
+          flipConditions: {
+            seamLooserIsZero: seamLooser === 0,
+            comparisonsNonVacuous: comparisons > 0,
+          },
+        },
+      });
     } catch (err) {
       Errors.internal(res, err);
     }

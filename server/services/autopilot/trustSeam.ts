@@ -34,6 +34,8 @@ import { logger } from "../../utils/logger";
 import { getDomainLevel } from "./domainAutonomy";
 import type { AutopilotDomain } from "./policyGate";
 import { isNeverPromote } from "../agentAuthorityGate";
+import { db } from "../../db";
+import { jobHealthLogs } from "@shared/schema";
 
 export type SeamVerdict = "allow" | "escalate" | "block";
 
@@ -124,8 +126,44 @@ const counters: ShadowCounters = {
 };
 
 /**
+ * DURABLE EVIDENCE (2026-08-31). The counters above are process memory and
+ * the divergence log lives in Fly's minutes-scale retention — this session
+ * proved repeatedly (deploys #42-#46) that log lines do not survive. With a
+ * deploy cadence of several per day, the in-memory window could never span
+ * the ≥1-week evidence period the turn-12/13 flips require: the licensing
+ * condition was structurally unverifiable. Every divergence and a periodic
+ * counter snapshot now land in jobHealthLogs (platform-plane, jsonb
+ * runMetrics, already rendered by the job-health surfaces):
+ *   jobName "trustSeamShadow:divergence" — one row per divergence, status
+ *     "failed" for seam-LOOSER (the flip-blocking class) and "success" for
+ *     seam-stricter (safe direction), full context in runMetrics.
+ *   jobName "trustSeamShadow:flush" — the counter snapshot on each boot's
+ *     FIRST comparison and every 200th thereafter, keyed by bootId
+ *     (startedAt) so the reader can take max-per-boot and sum across boots
+ *     without double-counting cumulative values.
+ * Inserts are fire-and-forget: the seam's first law is that shadow
+ * machinery never disturbs the live gate.
+ */
+const FLUSH_EVERY = 200;
+
+function persistShadowRow(jobName: string, status: string, metrics: Record<string, unknown>): void {
+  const now = new Date();
+  void db
+    .insert(jobHealthLogs)
+    .values({
+      jobName,
+      runStartedAt: now,
+      runCompletedAt: now,
+      durationMs: 0,
+      status,
+      runMetrics: metrics,
+    })
+    .catch(() => {});
+}
+
+/**
  * Record one shadow comparison. NEVER throws, never changes behavior —
- * callers fire-and-forget it after computing their legacy verdict.
+ * callers fire-and-forget it after computing their legacy verdicts.
  */
 export async function shadowCompare(input: {
   gate: "executionEngine" | "agentAuthorityGate";
@@ -137,6 +175,12 @@ export async function shadowCompare(input: {
     const seam = await seamVerdict(input.action);
     const seamAllowed = seam.verdict === "allow";
     counters.comparisons += 1;
+    if (counters.comparisons === 1 || counters.comparisons % FLUSH_EVERY === 0) {
+      persistShadowRow("trustSeamShadow:flush", "success", {
+        ...getShadowCounters(),
+        bootId: counters.startedAt,
+      });
+    }
     const slot = (counters.byAction[input.action] ??= { comparisons: 0, divergences: 0 });
     slot.comparisons += 1;
     if (seamAllowed === input.legacyAllowed) {
@@ -147,6 +191,23 @@ export async function shadowCompare(input: {
     slot.divergences += 1;
     if (input.legacyAllowed && !seamAllowed) counters.seamStricter += 1;
     else counters.seamLooser += 1;
+    const direction = input.legacyAllowed ? "seam-stricter" : "seam-LOOSER";
+    persistShadowRow(
+      "trustSeamShadow:divergence",
+      input.legacyAllowed ? "success" : "failed",
+      {
+        gate: input.gate,
+        agent: input.agentCodename,
+        action: input.action,
+        legacyAllowed: input.legacyAllowed,
+        seamVerdict: seam.verdict,
+        seamDomain: seam.domain,
+        seamLevel: seam.level,
+        seamReason: seam.reason,
+        direction,
+        bootId: counters.startedAt,
+      },
+    );
     logger.warn("[trustSeam] SHADOW DIVERGENCE", {
       metadata: {
         gate: input.gate,
