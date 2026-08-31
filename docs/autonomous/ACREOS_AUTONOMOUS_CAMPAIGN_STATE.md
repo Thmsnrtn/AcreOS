@@ -18,13 +18,42 @@ Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 > quiet cycles; product changes wait for the transition.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `6da56b5e`, 2026-08-29. **978 test files / 12,947 tests green**;
-`npm run check` green; production serves `6da56b5e` (deploy #30, probed twice
-at /api/version — thirty watched deploys this campaign, every one confirmed
-at the served SHA). Stage 4 of the competing-brains consolidation is deep in
-flight: phases 0-1 complete (agent email class at ZERO forever), turns
-10/11/16/17/18 done, the trust-flip shadow clock running since deploy #27,
-turns 12-13 evidence-gated, turn 19's independent audit closes the program.
+Verified at: `cf9944a4`, 2026-08-31. **981 test files / 12,976 tests green**;
+`npm run check` green; production serves `cf9944a4` (deploy #60, probed twice
+at /api/version — sixty watched deploys this campaign, every one confirmed at
+the served SHA; the one deploy failure, #50, was a Fly builder outage that
+never touched production). **The ENTIRE workflow board is green** — including
+Security Scanning and the ci.yml coverage ratchet, both red since 2026-08-08
+until diagnosed and driven green on 2026-08-31 (governance-gate behavioral
+coverage; 16 vulns → 0 gating incl. the tar critical and a puppeteer major;
+abandoned Tailwind-v4 residue that made docker builds ambient-dependent;
+an upstream action pinned off @master; golang base bump; reasoned dated
+`.trivyignore` dispositions for npm-bundle/gh-binary findings).
+
+Stage 4 of the competing-brains consolidation: phases 0-1 complete (agent
+email class at ZERO forever), turns 10/11/14/15/16/17/18 done (14: the
+delegation constant-deny made structural; 15: lane 2 deleted whole under
+Decision D). Turns 12-13 are gated on the DURABLE shadow window — the
+original in-memory/log evidence was structurally unreadable across deploys,
+persistence shipped 2026-08-31 (jobHealthLogs rows + boot-keyed flushes,
+aggregated at GET /api/admin/trust-seam-shadow `durable`), so the window
+matures ~2026-09-07; turn 19's independent audit closes the program, then
+the quality-program transition fires automatically.
+
+**OD-8 drop program: COMPLETE.** Ledger verdict `absent=23/23
+present=none` re-verified atomically on every release; 23 tables across
+six conditional batches plus one founder-ruled populated drop
+(reaction_chains, 6,510 rows, count preserved); zero unauthorized data
+loss.
+
+**Quality-program evidence in hand** (recon docs in this directory): E-1
+DECISION_OVERLOAD_RECON.md — the ~1,200 headline was ~600 real asks
+double-counted by the Letter (FIXED; deeper lifecycle work mapped with
+production probes); E-2 IOS_SAFARI_PERF_RECON.md — measured causal chain
+(554KB br blocking / 2.42MiB parse, ORM schema bundled into the client
+entry, 2-RTT boot waterfall) with budgets; its three standing-law fixes
+(signup-shell height, anonymous health redaction, logout tenant-cache
+purge) shipped and live-verified.
 
 **Rule-1 tenancy register: adjudicated everywhere anything reaches it
 (2026-08-27, ledgers 78-79).** 151 units across three waves (90 route, 11
