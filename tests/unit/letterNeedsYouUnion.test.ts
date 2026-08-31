@@ -82,6 +82,37 @@ describe("home.tsx — the card block keys on needsYouCount, never on decision a
   });
 });
 
+describe("the union's two stores are actually two stores (double-count lock, 2026-08-31)", () => {
+  // THE DEFECT THIS PINS: until 2026-08-31 continuousLoop set BOTH
+  // decisionsWaitingCount (:212) and asksOpenCount (:221) from the same
+  // collab.openCount, while narrate.ts summed them believing they were
+  // separate stores — every open ask counted TWICE in the Letter's
+  // "N things need your call". The founder's observed ~1,200 headline was
+  // ~600 real asks doubled. This suite was green over that defect because
+  // it pinned only the SUM's shape, never the operands' provenance —
+  // Law 1's exact failure. These cases pin the operands.
+  const loopSrc = fs.readFileSync(
+    path.join(ROOT, "server/services/solene/continuousLoop.ts"),
+    "utf-8",
+  );
+
+  it("decisionsWaitingCount is NOT fed from the ask store", () => {
+    expect(loopSrc).not.toMatch(/decisionsWaitingCount:\s*collab\.openCount/);
+  });
+
+  it("decisionsWaitingCount is fed from the decisions-inbox store", () => {
+    expect(loopSrc).toMatch(/decisionsWaitingCount:\s*inboxPendingCount/);
+    // and the loader really reads the inbox table's pending rows
+    expect(loopSrc).toMatch(/decisionsInboxItems/);
+    expect(loopSrc).toMatch(/safeLoadDecisionsInboxPending/);
+    expect(loopSrc).toMatch(/eq\(decisionsInboxItems\.status,\s*"pending"\)/);
+  });
+
+  it("asksOpenCount still carries the ask store — the fix moved one wire, not both", () => {
+    expect(loopSrc).toMatch(/asksOpenCount:\s*collab\.openCount/);
+  });
+});
+
 describe("failed checks are never pixel-identical to calm ones", () => {
   it("PulseStrip renders an honest line on query error instead of returning null", () => {
     expect(pulseStripSrc).toContain("Couldn't check the heartbeat just now");

@@ -341,12 +341,18 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   const decision = inp.openAsks[0] ?? null;
 
   // ── The needed-line: the single most important thing on the page. ─────────
-  // It must agree with the Decisions door. Asks (questions Solene posed) and
-  // queued decisions (decisionsWaitingCount from the pulse) are separate
-  // stores; the Letter reads the UNION — it may never say "nothing needs
-  // you" while the Decisions door holds work (2026-07 design-panel finding:
-  // the Letter said exactly that over 17 waiting items, which is fatal for
-  // a product whose thesis is "trust the one letter").
+  // It must agree with the Decisions door. Asks (solene_founder_asks, live)
+  // and queued decisions (pending decisions_inbox_items via the pulse's
+  // decisionsWaitingCount) are separate stores; the Letter reads the UNION —
+  // it may never say "nothing needs you" while the Decisions door holds work
+  // (2026-07 design-panel finding: the Letter said exactly that over 17
+  // waiting items, fatal for a product whose thesis is "trust the one
+  // letter"). HISTORY (2026-08-31): until today the pulse set
+  // decisionsWaitingCount from the SAME ask count as asksOpenCount, so this
+  // sum double-counted every open ask — the founder's ~1,200 headline was
+  // ~600 real asks shown twice. The union is only honest because
+  // continuousLoop now feeds this field from the inbox store;
+  // letterNeedsYouUnion.test.ts pins that wiring.
   const asksCount = inp.openAsks.length;
   const queueCount = Math.max(0, inp.pulse.decisionsWaitingCount);
   const needsYouCount = asksCount + queueCount;

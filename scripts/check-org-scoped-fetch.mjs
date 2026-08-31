@@ -1361,6 +1361,17 @@ function queryChainsFrom(unitText, orgScopedIdents) {
   while ((m = re.exec(unitText)) !== null) {
     const table = m[1];
     if (!orgScopedIdents.has(table)) continue;
+    // Sanctioned-root exemption (2026-08-31): a chain whose ROOT is
+    // unscopedForPlatformOps(...) is the explicit, logged, greppable escape
+    // hatch — rules 1/2 already treat that token as satisfying org context,
+    // but this slicer starts at `.from(` and could not see the root, so the
+    // hatch's OWN presence made the unit "org-having" for rule 3 while the
+    // chain text stayed orgless: using the sanctioned form tripped the gate
+    // the form exists to satisfy. Look back to the chain's start (the
+    // previous statement boundary) and skip chains rooted in the hatch.
+    // A plain db.select() in the same unit still answers to rule 3.
+    const stmtStart = unitText.lastIndexOf(";", m.index) + 1;
+    if (unitText.slice(stmtStart, m.index).includes("unscopedForPlatformOps(")) continue;
     let depth = 0;
     let end = -1;
     for (let j = m.index; j < unitText.length; j++) {

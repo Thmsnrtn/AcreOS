@@ -53,6 +53,13 @@ const SOURCES = {
     asks: [] as Array<{ urgency: string }>,
     throw: false,
   },
+  inbox: {
+    // Distinct from the ask count on purpose: the happy path asserts
+    // decisionsWaitingCount === this and asksOpenCount === asks.length,
+    // proving the two pulse fields read different stores.
+    pendingCount: 2,
+    throw: false,
+  },
   dispatchActivity: {
     rows: [] as Array<{ queue: { status: string; completedAt: Date | null } }>,
     throw: false,
@@ -113,6 +120,7 @@ vi.mock("../../db", () => {
         else if (matchesTable(t, "beatrice_reg_events")) this._table = "regwatch";
         else if (matchesTable(t, "solene_agent_identity_decisions"))
           this._table = "identity";
+        else if (matchesTable(t, "decisions_inbox_items")) this._table = "inbox";
         else this._table = "unknown";
         return this;
       },
@@ -160,6 +168,16 @@ vi.mock("../../db", () => {
             throw new Error("regwatch simulated failure");
           }
           return [{ n: SOURCES.compliance.openCount }];
+        }
+        if (this._table === "inbox") {
+          // decisionsWaitingCount's store since 2026-08-31 — the pending
+          // decisions-inbox COUNT, deliberately different from the ask count
+          // so the happy-path assertion proves the two pulse fields read
+          // different stores (the double-count fix).
+          if (SOURCES.inbox.throw) {
+            throw new Error("inbox simulated failure");
+          }
+          return [{ n: SOURCES.inbox.pendingCount }];
         }
         if (this._table === "identity") {
           if (SOURCES.agentActivity.throw) {
@@ -334,7 +352,11 @@ describe("composeMorningPulse", () => {
     expect(snap.envelopeStatus).toBe("green");
     expect(snap.asksOpenCount).toBe(3);
     expect(snap.asksUrgentCount).toBe(1);
-    expect(snap.decisionsWaitingCount).toBe(3);
+    // The double-count fix (2026-08-31): decisionsWaitingCount reads the
+    // decisions-inbox store, NOT the ask store — asserted UNEQUAL to the
+    // ask count so a regression to one store cannot pass.
+    expect(snap.decisionsWaitingCount).toBe(2);
+    expect(snap.decisionsWaitingCount).not.toBe(snap.asksOpenCount);
     expect(snap.dispatchesCompletedLast24h).toBe(1);
     expect(snap.dispatchesFlaggedLast24h).toBe(1);
     expect(snap.complianceOpenCount).toBe(1);

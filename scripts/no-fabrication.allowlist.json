@@ -222,14 +222,14 @@
     },
     {
       "file": "server/services/solene/continuousLoop.ts",
-      "line": 928,
+      "line": 935,
       "token": "makeSeededRng(",
       "category": "weighted-pick",
       "note": "Per-tick-seeded RNG feeding selectPlay() — Thompson sampling over each growth play's REAL recorded successes/failures. What comes back is a playId (WHICH play the autopilot runs next), never a number. Verified by hand 2026-08-16: scorePlays() is the only consumer of the draw, selectPlay() is scorePlays()' only non-test caller, and it returns scored[0].playId — the `sample` and `posteriorMean` fields never leave the module, so no route or component can render the draw as a score. The number that IS displayed alongside the pick (trackRecord successes/total) comes from getPlayStats, real outcomes. Randomness is the selection mechanism, which is the same judgment already made for promptRegistry:193 and leadAssigner:135."
     },
     {
       "file": "server/services/solene/continuousLoop.ts",
-      "line": 931,
+      "line": 938,
       "token": "makeSeededRng(",
       "category": "weighted-pick",
       "note": "Same selectPlay call in the catch branch — the best-effort fallback when the exploration governor is unavailable. Same reasoning, same verification as line 919."

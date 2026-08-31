@@ -139,6 +139,7 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
   // logged + replaced with a default.
   const capital = await safeLoadCapital();
   const collab = await safeLoadFounderCollab();
+  const inboxPendingCount = await safeLoadDecisionsInboxPending();
   const dispatchActivity = await safeLoadDispatchActivity();
   const onboarding = await safeLoadOnboardingFunnel();
   const compliance = await safeLoadComplianceFindings();
@@ -209,7 +210,13 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     prodVersion,
     complianceOpenCount: compliance.openCount,
     weeklySpendUsd: capital.weeklySpendUsd,
-    decisionsWaitingCount: collab.openCount,
+    // GENUINELY SEPARATE STORE from asksOpenCount below — this is the
+    // decisions-inbox (pending decisions_inbox_items), not the Solene ask
+    // queue. Until 2026-08-31 BOTH fields were set from collab.openCount,
+    // so the Letter's "needs you" union (narrate.ts) counted every open ask
+    // TWICE — the founder's ~1,200 headline was ~600 real asks doubled.
+    // letterNeedsYouUnion.test.ts now pins these fields to different stores.
+    decisionsWaitingCount: inboxPendingCount,
     autonomyHorizonDays,
     envelopeStatus: capital.envelopeStatus,
     founderDecisionsUsedThisWeek,
@@ -1457,6 +1464,36 @@ async function safeLoadCapital(): Promise<{
       err instanceof Error ? err : undefined,
     );
     return { weeklySpendUsd: 0, envelopeStatus: "green" };
+  }
+}
+
+/**
+ * Count of pending decisions-inbox items — the founder decision store that
+ * is NOT the Solene ask queue. COUNT in the database, not a full load: the
+ * inbox can hold hundreds of rows and this runs every 30-minute tick.
+ * Fail-soft to 0 like every other pulse source (kernel step 5).
+ */
+async function safeLoadDecisionsInboxPending(): Promise<number> {
+  try {
+    const { decisionsInboxItems } = await import("@shared/schema");
+    const { eq, sql } = await import("drizzle-orm");
+    const { unscopedForPlatformOps } = await import("../../utils/orgScopedDb");
+    // Deliberately cross-org: the decisions inbox is the FOUNDER's single
+    // queue across the whole platform (rows carry org ids only as
+    // provenance), and this count feeds the founder Letter's headline.
+    const [row] = await unscopedForPlatformOps(
+      "founder-plane pulse: platform-wide pending decisions-inbox count for the Letter's needs-you union",
+    )
+      .select({ n: sql<number>`count(*)::int` })
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.status, "pending"));
+    return row?.n ?? 0;
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] safeLoadDecisionsInboxPending failed",
+      err instanceof Error ? err : undefined,
+    );
+    return 0;
   }
 }
 
