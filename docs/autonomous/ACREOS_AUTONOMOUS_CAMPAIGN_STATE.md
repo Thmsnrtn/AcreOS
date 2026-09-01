@@ -18,11 +18,16 @@ Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 > quiet cycles; product changes wait for the transition.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `cf9944a4`, 2026-08-31. **981 test files / 12,976 tests green**;
-`npm run check` green; production serves `cf9944a4` (deploy #60, probed twice
-at /api/version — sixty watched deploys this campaign, every one confirmed at
-the served SHA; the one deploy failure, #50, was a Fly builder outage that
-never touched production). **The ENTIRE workflow board is green** — including
+Verified at: `04df47fc`, 2026-08-31. **981 test files / 12,976 tests green**
+(12,989 with the deposit-deadline gate added after that count); `npm run
+check` green; production serves `04df47fc` (deploy #62, probed twice at
+/api/version — sixty-two watched deploys this campaign, every one confirmed
+at the served SHA; the one deploy failure, #50, was a Fly builder outage that
+never touched production). Since `cf9944a4`: deploy #61 (founder_ask
+do-nothing sentence repinned to the enforcing ladder constants) and #62
+(turn-19 audit charter + ready-to-fire workflow committed under
+docs/autonomous/workflows/ — the durable home, since .claude/ dies with the
+container). **The ENTIRE workflow board is green** — including
 Security Scanning and the ci.yml coverage ratchet, both red since 2026-08-08
 until diagnosed and driven green on 2026-08-31 (governance-gate behavioral
 coverage; 16 vulns → 0 gating incl. the tar critical and a puppeteer major;

@@ -422,9 +422,12 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
       "server/services/rental/depositDisposition.ts",
     ],
     enforcement: {
-      kind: "prose-only",
-      refs: ["shared/regulatory/depositReturnRules.ts"],
-      note: "NO TEST covers depositReturnRules.ts or the clock/disposition services built on it. The registry's own posture is honest — a state it is not confident about is ABSENT and the absence is surfaced verbatim rather than defaulted to 30 days — but nothing pins the deadlines that ARE encoded. (A separate, overlapping deposit table in server/services/landlordCompliance.ts IS tested; see state.eviction-notice-and-retaliation.)",
+      kind: "unit-test",
+      refs: [
+        "tests/unit/depositReturnDeadlines.test.ts",
+        "tests/unit/depositRegistriesAgree.test.ts",
+      ],
+      note: "depositReturnDeadlines.test.ts (2026-08-31) pins the registry's internal coherence ('Encoded at N' prose must equal deadlineDays), the two-branch deduction selection, calendar and business-day arithmetic, the calendar-rollover refusal (2026-02-30 is refused, never March 2), and the honest-unknown contract (unknown jurisdiction ⇒ reason, never a date) — mutation-probed against a registry-value regression and an inverted branch. depositRegistriesAgree.test.ts holds single ownership. STILL UNTESTED: server/services/rental/depositClock.ts and depositDisposition.ts built on top; and no test can pin that the encoded numbers are the correct reading of each statute — that is attorney review, tracked by reviewStatus.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:

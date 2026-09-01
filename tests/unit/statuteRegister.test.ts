@@ -289,7 +289,7 @@ describe("statute register ratchet — UNREVIEWED may only shrink", () => {
     // "false assurance ships green" shape. Freeze the count down-only (mirrors
     // constitution.ts unenforcedHardStops): a NEW prose-only statute fails, and
     // adding a real test/gate + reclassifying is the only way to lower it.
-    const PROSE_ONLY_BASELINE = 4;
+    const PROSE_ONLY_BASELINE = 3;
     const REFUSAL_ONLY_BASELINE = 1;
     expect(
       prose.length,
