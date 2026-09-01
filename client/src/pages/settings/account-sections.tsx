@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import {
   Gift,
   Link2,
@@ -45,7 +45,22 @@ export function ReferralSettings() {
     },
   });
 
-  const statsQuery = useQuery<{ signups: number; conversions: number; creditsEarned: number; creditBalance: number }>({
+  const statsQuery = useQuery<{
+    signups: number;
+    conversions: number;
+    pending: Array<{ id: number; paidAt: string; maturesAt: string }>;
+    creditsEarned: number;
+    creditBalance: number;
+    // Served from the SAME constants the reward machine enforces
+    // (server/services/referralReward.ts via /api/referral/stats), so the
+    // numbers this card renders cannot drift from the enforced terms.
+    terms: {
+      rewardCents: number;
+      annualBonusCents: number;
+      retentionHoldDays: number;
+      milestones: Record<string, number>;
+    };
+  }>({
     queryKey: ["/api/referral/stats"],
     queryFn: async () => {
       const res = await fetch("/api/referral/stats", { credentials: "include" });
@@ -76,23 +91,49 @@ export function ReferralSettings() {
             Refer &amp; earn
           </CardTitle>
           <CardDescription>
-            Give a month, get a month. Their first month is on us when they become a paying subscriber — and you earn a $49 account credit once they've been aboard 30 days.
+            Give a month, get a month — credits land automatically as your referrals become paying subscribers.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Offer callout */}
-          <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
-            <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-            <div className="space-y-1">
-              <p className="font-semibold text-sm">Give a month, get a month</p>
-              <p className="text-xs text-muted-foreground">
-                When someone signs up with your code and becomes a paying subscriber, they get a $49 account
-                credit — their first month, on us. Once they've stayed aboard 30 days, you get a $49 credit
-                too ($98 if they chose annual billing), applied to your next invoice. Bonus credits land at
-                your 5th and 10th successful referral. Credits apply to AcreOS invoices only.
-              </p>
+          {/* Offer callout — every number below renders from stats.terms,
+              which the server fills from the SAME constants the reward
+              machine enforces. No hardcoded term can drift here. */}
+          {statsQuery.isLoading ? (
+            <Skeleton className="h-24 w-full" announceText="Loading referral terms" />
+          ) : stats?.terms ? (
+            <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
+              <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="space-y-1">
+                <p className="font-semibold text-sm">Give a month, get a month</p>
+                <p className="text-xs text-muted-foreground" data-testid="text-referral-terms">
+                  When someone signs up with your code and becomes a paying subscriber, they get a{" "}
+                  {usd(stats.terms.rewardCents / 100, { noCents: true })} account credit — their first month, on
+                  us. Once they've stayed aboard {stats.terms.retentionHoldDays} days, you get a{" "}
+                  {usd(stats.terms.rewardCents / 100, { noCents: true })} credit too (
+                  {usd((stats.terms.rewardCents + stats.terms.annualBonusCents) / 100, { noCents: true })} if they
+                  chose annual billing), applied to your next invoice. Bonus credits land at your{" "}
+                  {Object.keys(stats.terms.milestones)
+                    .map((n) => `${n}th`)
+                    .join(" and ")}{" "}
+                  successful referral. Credits apply to AcreOS invoices only.
+                </p>
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {/* Pending holds — referrals paid, inside the retention window. */}
+          {stats?.pending && stats.pending.length > 0 && (
+            <div
+              className="rounded-card border border-border/60 bg-card p-3 text-xs text-muted-foreground"
+              data-testid="text-referral-pending"
+            >
+              {stats.pending.length === 1
+                ? `1 referral is in the ${stats.terms?.retentionHoldDays ?? 30}-day hold — your credit matures ${formatDate(stats.pending[0].maturesAt)}.`
+                : `${stats.pending.length} referrals are in the ${stats.terms?.retentionHoldDays ?? 30}-day hold — next credit matures ${formatDate(
+                    [...stats.pending].sort((a, b) => a.maturesAt.localeCompare(b.maturesAt))[0].maturesAt,
+                  )}.`}
+            </div>
+          )}
 
           {/* Referral link */}
           <div className="space-y-2">
@@ -169,7 +210,8 @@ export function ReferralSettings() {
           )}
 
           <p className="text-xs text-muted-foreground">
-            Credits are applied automatically to your subscription invoice once a referee has been a paying subscriber for 30+ days.
+            Credits are applied automatically to your subscription invoice
+            {stats?.terms ? ` once a referee has been a paying subscriber for ${stats.terms.retentionHoldDays}+ days.` : "."}
           </p>
         </CardContent>
       </Card>

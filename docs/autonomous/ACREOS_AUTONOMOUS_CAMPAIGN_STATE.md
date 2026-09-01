@@ -18,22 +18,21 @@ Read `docs/acreos-institution/DEVELOPMENT_INSTITUTION.md` first if you have not.
 > quiet cycles; product changes wait for the transition.
 
 Branch: `claude/acreos-canonical-implementation-1asgvc`
-Verified at: `0cdf1ab5`, 2026-09-01. **13,016 passing tests / 985 files**;
-`npm run check` green; production serves `0cdf1ab5` (deploy #67, probed twice
-at /api/version — 66 of 67 watched deploys confirmed at the served SHA; the
-one failure, #50, was a Fly builder outage that never touched production).
-Since `04df47fc`: deploys #63-#67 shipped the TRUTH & ENFORCEMENT PROGRAM —
-43 adversarially-verified user-facing false promises fixed (referral offer,
-trial length, DSAR emails, aging thresholds, landing latency claims, the
-Letter's needs-you union gaining frozen sends, deposit-restore window), the
-Pax pause gate extended to executeSupportTool (5th enforcement point,
-population-pinned), the deposit-return and lease-notice statute gates (with
-the calendar-rollover parser fix), and the redemption-clock math fix (clamped
-months on both doors, refusal paths, dated cross-registry conflict register).
-statuteRegister: 28/31 unit-test, 1 prose-only (scra — founder decision).
-PROSE_ONLY_BASELINE 4→1. Turn-19 audit charter + workflow and the turns-12/13
-cutover map (135 touchpoints) are committed. Founder report published
-(State of the Institution artifact, independently fact-checked). **The ENTIRE workflow board is green** — including
+Verified at: `b17ea3c1`, 2026-09-02. Production serves `b17ea3c1`
+(deploy #71, probed twice at /api/version — 70 of 71 watched deploys
+confirmed at the served SHA; the one failure, #50, never touched
+production). Since `0cdf1ab5`: deploy #68 made the public-claim audit a
+real three-pass gate (fabricated source removed, population-enforced);
+#69 shipped the learn-pages truth program (circular self-source audit
+replaced, nine fabricated statute-feature valueProps rewritten from a
+code-verified inventory, county pages joined the population, SCRA caveat
+on the redemption clock); #70 shipped the founder-approved MARKET-MATCH
+referral program (payment-gated, 30-day retention hold, annual + milestone
+bonuses, terms served from the enforcing constants); #71 executed the
+founder-ordered negotiation_sessions drop (OD-8 tranche 0249, ledger now
+24 tables, four gates each carrying their record). All three founder
+picker decisions (2026-09-01) shipped end-to-end. Trust-seam evidence
+window matures ~2026-09-07. **The ENTIRE workflow board is green** — including
 Security Scanning and the ci.yml coverage ratchet, both red since 2026-08-08
 until diagnosed and driven green on 2026-08-31 (governance-gate behavioral
 coverage; 16 vulns → 0 gating incl. the tar critical and a puppeteer major;
