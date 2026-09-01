@@ -121,6 +121,13 @@ Each item below is a FINDER HYPOTHESIS that has NOT survived adversarial verific
   dropped), table-count 729→728, internalOnlyExportsShared 429→427, two
   stale reachability allowlist entries removed. The founder ruling covers
   surviving rows; the drop prints rows_at_drop as evidence.
+  **EVIDENCE CLOSED (release logs, fetched 2026-09-02):** deploy #71
+  ledger-first printed `absent=23/24 present=negotiation_sessions(0 rows)`
+  then `[od8-0249-summary] dropped=negotiation_sessions rows_at_drop=0` —
+  the table held ZERO rows, so the deletion order deleted no actual
+  customer data. Deploy #72 standing verdict: `[od8-ledger] absent=24/24
+  present=none` — the OD-8 program's full clean state, re-printed every
+  release.
 
 ## Learn-pages truth program (2026-09-01, this commit)
 
