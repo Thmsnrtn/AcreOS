@@ -33,8 +33,13 @@
  *   - "14 comps per parcel" removed from hero sub; engine caps at 25 and
  *     returns however many ATTOM finds per county/acreage band. No fixed
  *     number is defensible as a blanket claim.
- *   - "90 seconds" for buy-box filtering and Pax reply drafts retained —
- *     these are system latency targets baked into the job queue.
+ *   - CORRECTED 2026-09-01: the "90 seconds" Pax reply-draft claim was
+ *     REMOVED from Features/Quotes — drafting is operator-initiated
+ *     (POST /api/ai/draft-reply is the only producer; the inbound webhook
+ *     stores the message and drafts nothing), so no latency number is
+ *     defensible. The earlier note certifying it as a "job queue latency
+ *     target" was itself unverified. Buy-box "90 seconds" claims are under
+ *     separate review (truth-sweep queue).
  *   - "10 minutes" for first list retained — setup time, not processing.
  */
 

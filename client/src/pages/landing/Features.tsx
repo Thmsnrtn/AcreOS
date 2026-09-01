@@ -23,7 +23,7 @@ const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
   { cat: "Analyze", t: "Comp engine", d: "Real comparable sales from county records, not Zillow estimates. Ranked by acreage band and recency. Confidence score on every result.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },
   { cat: "Reach", t: "Mail platform", d: "Multi-touch campaigns. Tracked. A/B tested. Full creative control.", i: "mail" },
-  { cat: "Reach", t: "Lead inbox with Pax drafts", d: "SMS, email, voicemail in one thread. Pax drafts a reply within 90 seconds of the inbound.", i: "inbox" },
+  { cat: "Reach", t: "Lead inbox with Pax drafts", d: "SMS, email, voicemail in one thread. One tap and Pax drafts the reply for your review.", i: "inbox" },
   { cat: "Close", t: "Offer composer", d: "Generate written offers in 30 seconds. Pax defends the price.", i: "doc" },
   { cat: "Close", t: "E-sign + escrow", d: "Send contracts, track signatures, hand off to title — without leaving the app.", i: "pen" },
   { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices, 1098s. Seller-finance back office.", i: "ledger" },

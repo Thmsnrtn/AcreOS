@@ -867,7 +867,7 @@ export function registerLeadRoutes(app: Express): void {
       res.json({
         deletedCount,
         recoverable: true,
-        message: `${deletedCount} lead(s) moved to trash. They can be restored within 30 days.`,
+        message: `${deletedCount} lead(s) moved to trash. They can be restored from there.`,
       });
     } catch (error: any) {
       logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);

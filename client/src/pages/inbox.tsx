@@ -844,7 +844,7 @@ function SMSConversationDetail({
           <EmptyState
             icon={MessageSquare}
             headline="Thread starts the moment you hit send"
-            subtitle="Pax threads every reply against this lead and pings you if the seller goes 5 days quiet."
+            subtitle="Pax threads every reply against this lead and raises an aging alert after 3 quiet days on a hot lead."
             cta={{ label: "Send a message", onClick: () => document.querySelector<HTMLTextAreaElement>('[data-testid="input-sms-message"]')?.focus() }}
             actionIcon={null}
             testId="sms-empty-thread"

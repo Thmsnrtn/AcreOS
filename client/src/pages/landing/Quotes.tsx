@@ -28,9 +28,9 @@ type MechCard = {
 
 const MECHANICS: MechCard[] = [
   {
-    q: "Replies drafted within 60 seconds of an inbound message, queued for operator review before send.",
+    q: "One tap on any inbound message drafts the reply — reviewed by the operator before anything sends.",
     n: "Lead reply pipeline",
-    r: "Inbox → Pax draft queue",
+    r: "Inbox → Pax draft on demand",
     tag: "01",
   },
   {

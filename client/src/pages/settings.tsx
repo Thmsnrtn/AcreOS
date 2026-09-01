@@ -610,10 +610,10 @@ export default function Settings() {
                               <Gift className="w-5 h-5 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />
                               <div>
                                 <p className="font-medium text-acr-pos" data-testid="text-trial-available">
-                                  7-day free trial available
+                                  14-day free trial available
                                 </p>
                                 <p className="text-sm text-muted-foreground mt-1">
-                                  Start your subscription with a 7-day free trial. No charge until the trial ends.
+                                  Start your subscription with a 14-day free trial. No charge until the trial ends.
                                 </p>
                               </div>
                             </div>

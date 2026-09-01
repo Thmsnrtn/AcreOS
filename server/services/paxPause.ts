@@ -8,14 +8,19 @@
  * active team member pauses Pax for the whole org. That is deliberately the
  * fail-safe direction — one panicked human stops the machine for everyone.
  *
- * This module is the single source of truth consulted by the three
+ * This module is the single source of truth consulted by the five
  * enforcement points:
  *   - server/ai/tools.ts (executeTool) — refuses side-effecting tool calls
  *     while paused (read-only lookups and drafts still run).
+ *   - server/ai/supportAgent.ts (executeSupportTool) — same allowlist gate
+ *     over the support agent's dispatch switch (added 2026-09-01; it was the
+ *     population blind spot CLAUDE.md documents).
  *   - server/services/paxScheduler.ts — skips scheduled Pax tasks for paused
  *     orgs with a logged skip reason, never silently.
  *   - server/services/autonomousDecisionExecutor.ts — defers org-scoped
  *     inbox items for paused orgs until the pause lifts.
+ *   - server/services/financeAgent.ts — skips the finance sweep for paused
+ *     orgs.
  *
  * Expiry is implicit: every read compares `pausedUntil` against now, so
  * behavior resumes automatically the moment the timestamp passes — no cron.

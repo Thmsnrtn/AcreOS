@@ -188,7 +188,7 @@ export function SafeBulkDeleteDialog({
               <div className="flex items-start gap-2 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/30 border border-acr-warn-soft dark:border-acr-warn-soft rounded-md">
                 <Info className="w-4 h-4 text-acr-warn dark:text-acr-warn mt-0.5 shrink-0" aria-hidden="true" />
                 <p className="text-sm text-acr-warn dark:text-acr-warn">
-                  These leads will be moved to trash and can be restored within 30 days.
+                  These leads will be moved to trash and can be restored from there.
                 </p>
               </div>
 

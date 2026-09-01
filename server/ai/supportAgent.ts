@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
@@ -1206,6 +1207,96 @@ export const supportToolDefinitions = {
   },
 };
 
+/**
+ * Support tools that stay available while Pax is paused: read-only lookups,
+ * diagnostics, drafts, the support system's own bookkeeping, and escalation
+ * to a human. Everything NOT on this list is refused while paused — a new
+ * tool added without classification is gated by default, and
+ * paxPauseSupportGate.test.ts forces every case label in this file's switch
+ * to be classified explicitly.
+ *
+ * Nested sub-switch labels (by_id, stripe, twilio, …) are included so the
+ * test's flat case-label extraction stays simple; only top-level tool names
+ * ever arrive as `toolName` at runtime.
+ */
+export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
+  "analyze_screenshot",
+  "analyze_user_sentiment",
+  "by_id",
+  "by_status",
+  "check_data_integrity",
+  "check_external_service_status",
+  "check_integration_health",
+  "check_service_health",
+  "count",
+  "detect_bulk_issue",
+  "detect_data_integrity_issues",
+  "detect_onboarding_stuck",
+  "diagnose_account",
+  // Drafting stays available while paused, exactly like tools.ts — "Pax
+  // will still draft and ask, it just won't act."
+  "draft_customer_response",
+  // A paused org must always be able to reach a person.
+  "escalate_to_human",
+  "estimate_resolution_confidence",
+  "generate_tutorial",
+  "geocode_address",
+  "get_account_health_score",
+  "get_account_summary",
+  "get_active_alerts",
+  "get_best_resolution_approach",
+  "get_billing_issues",
+  "get_contextual_suggestions",
+  "get_feature_walkthrough",
+  "get_payment_history",
+  "get_resolution_stats",
+  "get_similar_resolutions",
+  "get_subscription_details",
+  "get_troubleshooting_steps",
+  "get_user_activity",
+  // The support system's own bookkeeping — internal records of the
+  // conversation, not automation acting on the customer's business.
+  "learn_from_human_resolution",
+  "log_resolution",
+  "log_resolution_variant",
+  "record_customer_feedback",
+  "save_user_memory",
+  "lob",
+  "lookup_agricultural_values",
+  "lookup_climate",
+  "lookup_cropland",
+  "lookup_demographics",
+  "lookup_elevation",
+  "lookup_epa_facilities",
+  "lookup_fema_nri",
+  "lookup_flood_zone",
+  "lookup_land_cover",
+  "lookup_plss",
+  "lookup_public_lands",
+  "lookup_soil_data",
+  "lookup_storm_history",
+  "lookup_usda_clu",
+  "lookup_watershed",
+  "lookup_wetlands",
+  "predict_potential_issues",
+  "predict_user_issues",
+  "query_user_data",
+  "recall_user_memory",
+  "recent",
+  "regrid",
+  "relationships",
+  "reverse_geocode",
+  "run_account_health_check",
+  "search",
+  "search_knowledge_base",
+  "search_logs",
+  "search_resolved_tickets",
+  "stripe",
+  "suggest_next_steps",
+  "trace_root_cause",
+  "twilio",
+]);
+
 export async function executeSupportTool(
   toolName: string,
   args: Record<string, any>,
@@ -1213,6 +1304,32 @@ export async function executeSupportTool(
   ticketId?: number
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    // ── Pax pause gate (2026-09-01) ──────────────────────────────────────
+    // The /settings/pax kill-switch promises "stops EVERY auto-execution
+    // path", and this switch is a dispatch path a model drives while talking
+    // to a customer — it was the population blind spot CLAUDE.md documents.
+    // Mirrors tools.ts: tools NOT on the PAUSE_SAFE allowlist are refused
+    // while paused, so a new tool added without classification is gated by
+    // default (fail closed). Read-only lookups, drafts, and escalation to a
+    // human stay available — pausing the machine must never block reaching
+    // a person.
+    if (!PAUSE_SAFE_SUPPORT_TOOLS.has(toolName)) {
+      const pause = await getPaxPauseState(org.id);
+      if (pause.paused) {
+        logger.info(
+          "[executeSupportTool] Refused side-effecting support tool — Pax is paused for this org",
+          {
+            orgId: org.id,
+            metadata: {
+              toolName,
+              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+              checkFailed: pause.checkFailed,
+            },
+          },
+        );
+        return { success: false, error: paxPauseRefusalMessage(pause) };
+      }
+    }
     switch (toolName) {
       case "search_knowledge_base": {
         const { query, category } = args;

@@ -209,8 +209,8 @@ export function PrivacyDataRights({
           </h2>
         )}
         <p className="text-muted-foreground text-sm md:text-base">
-          Manage your personal data rights under GDPR/CCPA. All requests are
-          fulfilled within 24 hours and tracked in our audit log.
+          Manage your personal data rights under GDPR/CCPA. Every request is
+          tracked in our audit log against a 24-hour fulfillment target.
         </p>
       </div>
 
@@ -226,8 +226,8 @@ export function PrivacyDataRights({
               <CardTitle className="text-base">Your open requests</CardTitle>
             </div>
             <CardDescription>
-              Requests are processed within 24 hours. You'll receive an email
-              when each one completes.
+              Requests are worked against a 24-hour target — track each one's
+              status right here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">

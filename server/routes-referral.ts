@@ -190,7 +190,7 @@ export function registerReferralRoutes(app: Express): void {
 
       return res.json({
         rewarded: true,
-        message: "Congratulations! You both earned a free month.",
+        message: "Congratulations! You both earned a $1 account credit.",
       });
     } catch (err) {
       logger.error("[referral] POST /activate error", err);

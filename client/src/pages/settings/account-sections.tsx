@@ -76,7 +76,7 @@ export function ReferralSettings() {
             Refer &amp; earn
           </CardTitle>
           <CardDescription>
-            Share AcreOS with fellow Land Investors. They get 30 days free — you get $20 account credit when they subscribe.
+            Share AcreOS with fellow Land Investors. They start with the standard 14-day free trial — you earn an account credit when their first deal closes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -84,10 +84,10 @@ export function ReferralSettings() {
           <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
             <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <div className="space-y-1">
-              <p className="font-semibold text-sm">Give 30 days free, get $20 credit</p>
+              <p className="font-semibold text-sm">Refer an investor, earn account credit</p>
               <p className="text-xs text-muted-foreground">
-                Your referral code gives new users their first 30 days on us.
-                Once they become a paying subscriber, you'll automatically receive a $20 account credit — applied to your next invoice.
+                New users who sign up with your code get the standard 14-day free trial.
+                When their first deal closes won, you both automatically receive a $1 account credit — applied to your next invoice.
               </p>
             </div>
           </div>

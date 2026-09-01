@@ -774,7 +774,7 @@ const defaultBackgroundAgents: Omit<BackgroundAgent, "status" | "lastRunAt" | "p
     id: "lead_nurturer",
     name: "Lead Nurturer",
     description: "Scores leads and generates personalized follow-up sequences",
-    frequency: "Every 30 minutes",
+    frequency: "Every 15 minutes",
     icon: Users,
   },
   {
@@ -788,14 +788,14 @@ const defaultBackgroundAgents: Omit<BackgroundAgent, "status" | "lastRunAt" | "p
     id: "finance_agent",
     name: "Finance Agent",
     description: "Handles delinquency detection and payment reminders",
-    frequency: "Every 4 hours",
+    frequency: "Every 30 minutes",
     icon: DollarSign,
   },
   {
     id: "alerting_service",
     name: "Alerting Service",
     description: "Monitors system health and detects issues",
-    frequency: "Every 15 minutes",
+    frequency: "Every hour",
     icon: Bell,
   },
   {
