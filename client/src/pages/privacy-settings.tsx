@@ -269,7 +269,8 @@ export function PrivacyDataRights({
             </div>
             <CardDescription>
               Request a complete copy of all personal data AcreOS holds about
-              you (GDPR Article 15). Delivered by email within 24 hours.
+              you (GDPR Article 15). Tracked against a 24-hour fulfillment
+              target — follow its status above.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -324,9 +325,9 @@ export function PrivacyDataRights({
             </div>
             <CardDescription>
               Request permanent anonymization of your personal data (GDPR
-              Article 17 — Right to Erasure). Processed within 24 hours.
-              Business records required for legal compliance are retained in
-              anonymized form.
+              Article 17 — Right to Erasure). Tracked against a 24-hour
+              fulfillment target. Business records required for legal
+              compliance are retained in anonymized form.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
