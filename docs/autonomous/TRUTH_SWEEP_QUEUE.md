@@ -105,3 +105,35 @@ Each item below is a FINDER HYPOTHESIS that has NOT survived adversarial verific
 ### Also queued from batch-1 verifier corroboration
 - `server/services/growthAutomation.ts:387-391` — power-user invite email offers a third inconsistent referral deal ('1 month free per paying referral', '20% off first 3 months'); align with the real program (or the founder's chosen offer).
 
+
+## Founder decisions (picker, 2026-09-01)
+
+- **Referral program**: research competitor incentives and bring AcreOS's to
+  parity — research workflow running; exact terms return to the founder for
+  confirmation before implementation (pricing hard-stop).
+- **SCRA**: caveat NOW (shipped on redemption-clock.tsx, pinned in
+  redemptionDeadlines.test.ts), tolling implementation later with attorney
+  input. Register entry stays prose-only.
+- **negotiation_sessions**: DROP authorized — next OD-8-style tranche.
+
+## Learn-pages truth program (2026-09-01, this commit)
+
+- audit-learn-pages.ts was a gate that could not fail (self-source
+  circularity; planted fake statute passed 536/536) AND its loader missed
+  the 3 county pages entirely. Reworked: citation-declaration pass +
+  product-claim-vs-register pass over all 13 pages, probe-verified.
+- Nine valueProps advertised statute-specific product features with NO
+  implementation (Tex §5.077 generator, Cal §2923.55 workflow, etc. — full
+  list in the capability inventory). All nine rewritten to
+  inventory-verified plain-language capabilities. FL per-county fee-schedule
+  FAQ overclaim corrected (state defaults + Miami-Dade override is the truth).
+
+## Register findings for the turn-19 audit / quality program
+
+- **Register growth tension**: statuteRegister's UNREVIEWED ratchet is
+  down-only, so an honestly-implemented statute (TX §5.069/§5.072
+  contract-for-deed disclosure blocking — REAL code: disclosureRegistry.ts,
+  routes-doc-system.ts:1210, contractAssembly.ts:771) cannot be ADDED to the
+  register without breaching the baseline. The register under-reports real
+  enforcement; needs a deliberate mechanism (e.g. baseline bump allowed only
+  with a dated decision note) — do not resolve unilaterally.

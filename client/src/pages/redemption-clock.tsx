@@ -187,6 +187,16 @@ export default function RedemptionClockPage() {
                 on the dollar figure. Attorney review for the top 15 states ships
                 in TD-3.
               </p>
+              {/* SCRA caveat (founder decision 2026-09-01: caveat now, tolling
+                  later with attorney input). The clock computes as though the
+                  redemption period ran — federal law says it pauses for a
+                  borrower on active duty, and nothing here models that. */}
+              <p className="text-xs text-muted-foreground mt-1.5" data-testid="text-scra-caveat">
+                Deadlines shown assume no active-duty tolling: the Servicemembers
+                Civil Relief Act pauses redemption for a borrower on active duty
+                (plus a period after discharge), and this clock does not model
+                it. Check the owner's SCRA status before acting on any date here.
+              </p>
             </div>
           </div>
         </Card>

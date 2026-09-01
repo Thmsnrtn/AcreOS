@@ -5,8 +5,7 @@
   "headline": "Note investing in California: CFL licensure, anti-deficiency limits, and how California note operators actually run the book",
   "metaDescription": "A working primer on note investing in California — California Financing Law (CFL §22000), Cal. Civ. Code §2924 trustee’s-sale process, §580b anti-deficiency, and the gotchas California note operators run into.",
   "intro": "California has the most regulated and the most operator-aware note-investing environment in the country. Three statutory regimes touch every California note: the California Financing Law (CFL, Fin. Code §22000 et seq.) governs who can make consumer and commercial loans, the trustee’s-sale process under Cal. Civ. Code §2924 governs non-judicial foreclosure, and the anti-deficiency rules under Cal. Code Civ. Proc. §580b/§580d limit what a defaulted-loan note holder can collect. A note investor moving into California needs to understand all three before the first acquisition.",
-  "mechanics": "California is a trust-deed state: virtually every recorded residential security instrument is a Deed of Trust naming a third-party trustee with power of sale. The county recorder records deeds and trust deeds in each of 58 counties. Servicing on a California note involves Reg Z periodic statements (federal), Civ. Code §2954 (escrow accountings), and the §2924 foreclosure timeline on default. The §2924 timeline is roughly: Notice of Default recorded after the borrower is 30+ days late; 90-day cure period during which the borrower can reinstate; if not cured, Notice of Trustee’s Sale recorded; sale at least 21 days later. Minimum total: about 110 days from NOD to sale. The borrower’s reinstatement right runs through the 90-day NOD period plus 5 business days before the actual sale (Civ. Code §2924c). California also overlays the Homeowner Bill of Rights (HBOR, §2923.55 et seq.) which adds pre-NOD contact, single-point-of-contact, and dual-tracking restrictions on residential mortgage loans secured by owner-occupied 1-4 unit properties."
-,
+  "mechanics": "California is a trust-deed state: virtually every recorded residential security instrument is a Deed of Trust naming a third-party trustee with power of sale. The county recorder records deeds and trust deeds in each of 58 counties. Servicing on a California note involves Reg Z periodic statements (federal), Civ. Code §2954 (escrow accountings), and the §2924 foreclosure timeline on default. The §2924 timeline is roughly: Notice of Default recorded after the borrower is 30+ days late; 90-day cure period during which the borrower can reinstate; if not cured, Notice of Trustee’s Sale recorded; sale at least 21 days later. Minimum total: about 110 days from NOD to sale. The borrower’s reinstatement right runs through the 90-day NOD period plus 5 business days before the actual sale (Civ. Code §2924c). California also overlays the Homeowner Bill of Rights (HBOR, §2923.55 et seq.) which adds pre-NOD contact, single-point-of-contact, and dual-tracking restrictions on residential mortgage loans secured by owner-occupied 1-4 unit properties.",
   "statutes": [
     {
       "headline": "California Financing Law — Fin. Code §22000 et seq.",
@@ -51,7 +50,7 @@
       "body": "Cal. Gov. Code §27388.1 adds a $75-per-document recording surcharge on most real-estate-related instruments, capped at $225 per single transaction. The surcharge funds the Building Homes & Jobs Act trust fund. Note investors recording multiple assignments and reconveyances in a year should budget the surcharge into per-transaction closing costs."
     }
   ],
-  "valueProp": "AcreOS pre-loads the California county recorder data for all 58 counties and surfaces the CFL licensing screening prompt the first time a California-secured loan is added to a portfolio. The §2924 foreclosure timeline calculator tracks every required notice and waiting period from NOD through Trustee’s Deed Upon Sale, with the HBOR §2923.55 pre-NOD contact log built in. The §2954.8 escrow-interest calculation runs automatically on California-secured loans with escrow accounts. Pax flags any consumer loan secured by California residential property with a balloon under §2966 and surfaces the 90-150 day notice window before the balloon maturity.",
+  "valueProp": "AcreOS services California notes on the same refuse-first rails as every state: usury checked against the 50-state table before a note can be created, Reg-Z periodic statements generated monthly with each exclusion recorded rather than guessed, RESPA escrow analysis on originated notes, and a five-rung borrower dunning ladder built from deterministic templates. The borrower portal handles payments on your own connected processor, ACH autopay mandates, payoff quotes recorded with their inputs, and 1098 batches at year end. What AcreOS does not do is automate California foreclosure — loss-mitigation case files track that process; the filings are yours and your counsel's.",
   "faq": [
     {
       "q": "Do I need a California Financing Law license to buy notes?",
@@ -122,6 +121,10 @@
       "name": "California Government Code — Recording Surcharge",
       "citation": "Cal. Gov. Code §27388.1",
       "url": "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?lawCode=GOV"
+    },
+    {
+      "name": "California Financing Law (licensing)",
+      "citation": "Cal. Fin. Code §22050, §22057, §22100"
     }
   ]
 }

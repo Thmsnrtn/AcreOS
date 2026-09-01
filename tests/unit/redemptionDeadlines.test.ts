@@ -117,6 +117,24 @@ describe("anchor semantics", () => {
   });
 });
 
+describe("the SCRA caveat is on the surface (founder decision 2026-09-01)", () => {
+  it("redemption-clock.tsx warns that deadlines assume no active-duty tolling", () => {
+    // Founder ruling (picker, 2026-09-01): SCRA-specific caveat NOW,
+    // tolling implementation later with attorney input. The register's
+    // scra.tolling-and-rate-cap entry stays prose-only; this pin keeps the
+    // caveat from silently vanishing while the gap exists.
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const page = fs.readFileSync(
+      path.resolve(__dirname, "../../client/src/pages/redemption-clock.tsx"),
+      "utf-8",
+    );
+    expect(page).toContain("assume no active-duty tolling");
+    expect(page).toContain("Servicemembers");
+    expect(page).toContain("does not model");
+  });
+});
+
 describe("amount models (spot pins on the encoded semantics)", () => {
   it("TX flat_first_period: redeeming on day 1 still owes the full 25%", () => {
     const amt = computeRedemptionAmount({

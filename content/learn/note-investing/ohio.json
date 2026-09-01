@@ -5,8 +5,7 @@
   "headline": "Note investing in Ohio: judicial foreclosure, the Residential Mortgage Lending Act, and how Ohio note operators actually run the book",
   "metaDescription": "A working primer on note investing in Ohio — Ohio R.C. §2323.07 judicial foreclosure, R.C. Chapter 1322 mortgage broker/originator licensing, and the gotchas Ohio note operators run into.",
   "intro": "Ohio is a judicial-foreclosure state with a deep secondary-market for low-balance residential paper, especially in the Rust Belt urban cores (Cleveland, Akron, Youngstown, Toledo, Dayton). The combination of cheap underlying property values, contested judicial timelines, and the Ohio Residential Mortgage Lending Act (R.C. Chapter 1322) shapes what a note investor in Ohio actually does day-to-day. Note operators acquiring Ohio paper need to understand the county sheriff’s sale process, the 8-month-to-2-year foreclosure timeline, and the Ohio Department of Commerce Division of Financial Institutions’ licensing reach.",
-  "mechanics": "Ohio note investors typically acquire paper through three channels: secondary marketplaces, direct purchase from small-bank or credit-union sellers, or origination from Ohio-licensed mortgage lenders. On default, the lender (note holder) files a foreclosure complaint in the county court of common pleas. Service runs through the standard civil-procedure track. Once the complaint is filed, the borrower has 28 days to answer; if no answer, default judgment can follow; if contested, the case proceeds. After judgment of foreclosure, the property is appraised by three court-appointed appraisers, and the county sheriff conducts a public sale at the courthouse. The sale price floor is two-thirds of the appraised value (R.C. §2329.20). Total time from filing to sheriff’s sale typically runs 8-12 months in clean cases, 18-36+ months in contested or vacant-property cases. After sheriff’s sale, the court confirms the sale and the sheriff issues a Sheriff’s Deed; the deed is recorded with the county recorder."
-,
+  "mechanics": "Ohio note investors typically acquire paper through three channels: secondary marketplaces, direct purchase from small-bank or credit-union sellers, or origination from Ohio-licensed mortgage lenders. On default, the lender (note holder) files a foreclosure complaint in the county court of common pleas. Service runs through the standard civil-procedure track. Once the complaint is filed, the borrower has 28 days to answer; if no answer, default judgment can follow; if contested, the case proceeds. After judgment of foreclosure, the property is appraised by three court-appointed appraisers, and the county sheriff conducts a public sale at the courthouse. The sale price floor is two-thirds of the appraised value (R.C. §2329.20). Total time from filing to sheriff’s sale typically runs 8-12 months in clean cases, 18-36+ months in contested or vacant-property cases. After sheriff’s sale, the court confirms the sale and the sheriff issues a Sheriff’s Deed; the deed is recorded with the county recorder.",
   "statutes": [
     {
       "headline": "Ohio R.C. Chapter 1322 — Residential Mortgage Lending Act",
@@ -47,7 +46,7 @@
       "body": "Ohio R.C. §319.54 sets the state conveyance fee at $1 per $1,000 of consideration on most real-property transfers, with each county able to add a permissive fee up to $3 per $1,000 (most do). A flipper or note investor recording a sheriff’s deed pays the conveyance fee plus standard recording. Note assignments do not trigger the conveyance fee but do incur recording fees."
     }
   ],
-  "valueProp": "AcreOS pre-loads the Ohio county recorder data for all 88 counties and surfaces the chain-of-title and chain-of-endorsement audit on every Ohio loan acquisition so the standing-to-foreclose question is resolved before default ever occurs. The judicial-foreclosure timeline calculator under R.C. Chapter 2323 tracks every required step: complaint filed, service, answer deadline, judgment, appraisal, sale-date setting, sheriff’s sale, confirmation, Sheriff’s Deed. The §5301.36 cancellation tracker watches for paid-off Ohio loans approaching the 90-day satisfaction-recording deadline. The two-thirds appraisal-floor calculation under §2329.20 surfaces on every Ohio sale-projection worksheet. RMLA licensing screening prompts surface on Ohio originations and servicing additions.",
+  "valueProp": "AcreOS runs Ohio note servicing mechanics-first: usury screening at creation, monthly Reg-Z periodic statements with recorded skip reasons, nightly delinquency aging with alerts only on real worsening, and a deterministic five-rung dunning ladder carrying the federal debt-collection notice automatically. Borrowers get a portal with payments on your own connected processor, ACH autopay, and payoff quotes recorded to a durable ledger; 1098s batch for IRS e-file. Ohio's judicial foreclosure is not automated — AcreOS tracks the loss-mitigation case file while the filings stay with your counsel.",
   "faq": [
     {
       "q": "How long does an Ohio foreclosure take?",
@@ -118,6 +117,18 @@
       "name": "Ohio Revised Code — UCC Article 3",
       "citation": "Ohio R.C. Chapter 1303",
       "url": "https://codes.ohio.gov/ohio-revised-code/chapter-1303"
+    },
+    {
+      "name": "Ohio Revised Code §2323.07 / Chapter 2323 (judicial foreclosure)",
+      "citation": "Ohio R.C. §2323.07, Chapter 2323"
+    },
+    {
+      "name": "Ohio Revised Code §1349.27",
+      "citation": "Ohio R.C. §1349.27"
+    },
+    {
+      "name": "Ohio Revised Code §2329.08 (execution sales)",
+      "citation": "Ohio R.C. §2329.08"
     }
   ]
 }

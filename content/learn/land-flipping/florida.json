@@ -5,8 +5,7 @@
   "headline": "Land flipping in Florida: documentary stamps, the SAFE-Act loan-originator rule, and how Florida operators actually close",
   "metaDescription": "A working primer on land flipping in Florida — Florida’s documentary stamp tax on deeds and notes, F.S. §494 mortgage broker licensing, and the gotchas Florida operators run into.",
   "intro": "Florida is a high-volume state for vacant-land flipping, particularly in the rural interior counties (Putnam, Citrus, Levy, Highlands) and the cheap northwest panhandle. Florida’s legal framework around closings is friendlier than Texas’s in some ways — no annual statement requirement equivalent to Tex. Prop. Code §5.077 — but heavier in others. The documentary stamp tax (F.S. §201.02) hits every recorded deed at the closing table, and Florida’s licensing regime for anyone who originates a residential mortgage loan is enforced by the Office of Financial Regulation.",
-  "mechanics": "A Florida land flip moves the same way: pull a list (the property appraiser’s office in each of 67 counties publishes a parcel roll), run mail, take inbound calls, run comps off the property appraiser’s recent sales tab, write offers. Florida closings happen either at a title company or a real-estate attorney’s office — both are common — and use a Florida-form general warranty deed or a special warranty deed. When seller financing comes in, the operator can use either a note + mortgage (recorded as a mortgage with the clerk of court) or an agreement-for-deed (Florida’s analog to Texas’s executory contract). Florida case law has historically been less protective of agreement-for-deed buyers than Texas statute, but Mid-State Investment v. O’Steen and subsequent cases pushed Florida courts toward treating long-term agreements-for-deed as equitable mortgages — meaning a defaulted buyer with substantial equity in is owed a foreclosure rather than self-help cancellation."
-,
+  "mechanics": "A Florida land flip moves the same way: pull a list (the property appraiser’s office in each of 67 counties publishes a parcel roll), run mail, take inbound calls, run comps off the property appraiser’s recent sales tab, write offers. Florida closings happen either at a title company or a real-estate attorney’s office — both are common — and use a Florida-form general warranty deed or a special warranty deed. When seller financing comes in, the operator can use either a note + mortgage (recorded as a mortgage with the clerk of court) or an agreement-for-deed (Florida’s analog to Texas’s executory contract). Florida case law has historically been less protective of agreement-for-deed buyers than Texas statute, but Mid-State Investment v. O’Steen and subsequent cases pushed Florida courts toward treating long-term agreements-for-deed as equitable mortgages — meaning a defaulted buyer with substantial equity in is owed a foreclosure rather than self-help cancellation.",
   "statutes": [
     {
       "headline": "F.S. §201.02 — documentary stamp tax on deeds",
@@ -47,7 +46,7 @@
       "body": "A Florida tax-deed acquisition is technically merchantable but most title insurers will not insure it for 3-4 years post-deed without a quiet-title action under F.S. §65.011. Operators flipping tax-deed acquisitions should budget for a quiet-title suit (~$1,500-$3,500 in attorney fees + court costs) if they want to deliver a title-insurable parcel to the next buyer quickly."
     }
   ],
-  "valueProp": "AcreOS ships with the Florida-specific closing-cost worksheet built into the deal record — doc stamps on deeds, doc stamps on notes, recording fees, and non-ad-valorem assessment lookup are all pulled from F.S. §201 and the clerk-of-court fee schedule per county. The mortgage-vs-agreement-for-deed decision surfaces in the deal worksheet with the equitable-mortgage risk flagged. Pax watches the Florida county tax-deed calendars and surfaces auction dates 30 days out per county. The Florida county registry is pre-loaded across all 67 counties.",
+  "valueProp": "Florida runs on a live-verified statewide parcel layer — every county queryable — with a Land Credit Score recomputed nightly on every parcel. The closing-cost worksheet computes doc stamps on deeds and notes, recording fees from state defaults with a Miami-Dade override, and prorated taxes, labeled as estimates. Workflow templates fire on real events — lead stored, payment missed, deal closed — and seller-finance deals are usury-checked at creation before the note-servicing stack (Reg-Z statements, deterministic dunning, borrower portal) takes over.",
   "faq": [
     {
       "q": "Do I need a license to flip land in Florida?",
@@ -71,7 +70,7 @@
     },
     {
       "q": "Are there county-by-county recording fee differences in Florida?",
-      "a": "Yes — F.S. §28.24 sets the floor at $10 for the first page, $8.50 each additional page, but counties layer service charges. Miami-Dade and Broward routinely run higher. AcreOS pre-loads the per-county fee schedule into the closing worksheet."
+      "a": "Yes — F.S. §28.24 sets the floor at $10 for the first page, $8.50 each additional page, but counties layer service charges. Miami-Dade and Broward routinely run higher. AcreOS's closing worksheet computes from statewide fee defaults with a Miami-Dade county override; other county surcharges are yours to verify with the clerk."
     },
     {
       "q": "Do I owe Florida sales tax on a vacant-land flip?",
@@ -128,6 +127,22 @@
       "name": "FEMA — National Flood Hazard Layer (NFHL)",
       "citation": "Special Flood Hazard Area mapping; low statewide elevation puts large areas in mapped flood zones",
       "url": "https://www.fema.gov/flood-maps"
+    },
+    {
+      "name": "Florida Statutes Chapter 199 (intangible tax)",
+      "citation": "F.S. Chapter 199, §199"
+    },
+    {
+      "name": "Florida Statutes §697.061",
+      "citation": "F.S. §697.061"
+    },
+    {
+      "name": "Florida Statutes Chapter 702 (foreclosure)",
+      "citation": "F.S. Chapter 702"
+    },
+    {
+      "name": "Florida Statutes Chapter 83 (landlord and tenant)",
+      "citation": "F.S. Chapter 83, §83"
     }
   ],
   "dataSnapshot": {

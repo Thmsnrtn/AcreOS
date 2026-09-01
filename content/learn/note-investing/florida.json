@@ -5,8 +5,7 @@
   "headline": "Note investing in Florida: judicial foreclosure, F.S. §494 servicing rules, and how Florida note operators actually run the book",
   "metaDescription": "A working primer on note investing in Florida — F.S. §494 loan-servicer licensing, F.S. Chapter 702 judicial foreclosure, the intangible-tax history, and the gotchas Florida note operators run into.",
   "intro": "Florida is a judicial-foreclosure state — every defaulted residential mortgage runs through the circuit court. That single fact reshapes the Florida note investor’s playbook: timelines are measured in months not weeks, attorney fees are budgeted into every loan, and the borrower’s right to contest the foreclosure is robust. Florida also runs an aggressive licensing regime for both loan originators and loan servicers under F.S. Chapter 494, enforced by the Office of Financial Regulation. Note investors who acquire Florida paper without understanding the servicer-licensing trigger can find themselves operating without a license they didn’t know they needed.",
-  "mechanics": "Florida note investors source paper from owner-financed sales in the rural interior counties (Putnam, Citrus, Levy, Highlands), from secondary marketplaces, and from acquisitions out of small Florida community-bank portfolios. Closings on origination happen at title companies or attorneys; the note is delivered along with a recorded mortgage in the clerk of court’s mortgage book. Servicing means collecting payments, posting them to the ledger, sending periodic statements (federal Reg Z timing on closed-end residential mortgages applies), handling escrows for property tax (county tax-collector portal in each of 67 counties) and hazard insurance (Florida’s wind/hail insurance market makes this nontrivial), and managing defaults. Default management runs through F.S. Chapter 702: the lender files a foreclosure complaint, the borrower has 20 days to answer, summary judgment may follow if undefended, and a clerk’s public sale typically occurs 35-60 days after final judgment. Total time from first missed payment to clerk’s sale runs 8-14 months in the median Florida county."
-,
+  "mechanics": "Florida note investors source paper from owner-financed sales in the rural interior counties (Putnam, Citrus, Levy, Highlands), from secondary marketplaces, and from acquisitions out of small Florida community-bank portfolios. Closings on origination happen at title companies or attorneys; the note is delivered along with a recorded mortgage in the clerk of court’s mortgage book. Servicing means collecting payments, posting them to the ledger, sending periodic statements (federal Reg Z timing on closed-end residential mortgages applies), handling escrows for property tax (county tax-collector portal in each of 67 counties) and hazard insurance (Florida’s wind/hail insurance market makes this nontrivial), and managing defaults. Default management runs through F.S. Chapter 702: the lender files a foreclosure complaint, the borrower has 20 days to answer, summary judgment may follow if undefended, and a clerk’s public sale typically occurs 35-60 days after final judgment. Total time from first missed payment to clerk’s sale runs 8-14 months in the median Florida county.",
   "statutes": [
     {
       "headline": "F.S. Chapter 494 — Loan Originator, Mortgage Broker, and Loan Servicer licensing",
@@ -47,7 +46,7 @@
       "body": "F.S. §718.116 (condos) and §720.3085 (HOAs) give the association a limited super-lien for unpaid assessments that can have priority over the first mortgage on foreclosure. A note investor foreclosing in a Florida condo or HOA community should pull the association’s estoppel certificate before bidding so the association’s lien is on the close sheet, not a post-foreclosure surprise."
     }
   ],
-  "valueProp": "AcreOS pre-loads the Florida county clerk of court mortgage-book lookup so note investors can pull the recorded mortgage and any subsequent assignments from any of 67 counties in one workflow. The §494.00611 servicer-licensing screening prompts surface the licensing question when an operator adds Florida paper to their book. The judicial-foreclosure timeline calculator under F.S. Chapter 702 tracks each phase: complaint filed, service, default-or-answer deadline, summary judgment date, sale date, and Certificate of Title date — with reminders at each transition. Force-placed insurance escrow tracking is built into the loan servicing workflow with Florida-specific carrier patterns.",
+  "valueProp": "AcreOS runs Florida note servicing mechanics-first: usury screening at note creation, monthly Reg-Z periodic statements with recorded skip reasons, delinquency aging recomputed nightly with alerts that fire only on real changes, and a deterministic five-rung dunning ladder with the federal debt-collection notice auto-injected. Borrowers pay through a portal on your own connected processor with ACH autopay; payoff quotes are recorded with the inputs that produced them, and 1098s batch for IRS e-file. Foreclosure itself stays with you and counsel — AcreOS tracks loss-mitigation case files and statuses, and does not compute foreclosure timelines.",
   "faq": [
     {
       "q": "Do I need a Florida license to buy and hold notes?",
@@ -113,6 +112,22 @@
       "name": "Florida Statutes — HOA and Condo Liens",
       "citation": "F.S. §718.116, §720.3085",
       "url": "http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0700-0799/0718/0718.html"
+    },
+    {
+      "name": "Florida Statutes §697.06",
+      "citation": "F.S. §697.06"
+    },
+    {
+      "name": "Florida Statutes Chapter 726",
+      "citation": "F.S. Chapter 726, §726"
+    },
+    {
+      "name": "Florida Statutes §45.0315 (judicial sales)",
+      "citation": "F.S. §45.0315"
+    },
+    {
+      "name": "United States Bankruptcy Code (automatic stay)",
+      "citation": "11 U.S.C. §362; Chapters 7 and 13"
     }
   ]
 }

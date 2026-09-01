@@ -5,8 +5,7 @@
   "headline": "Note investing in Texas: SAFE Act licensure, executory-contract servicing, and how Texas note operators actually run the book",
   "metaDescription": "A working primer on note investing in Texas — SAFE Act + Finance Code §156/180 licensing, the §5.077 annual-statement rule, and the gotchas Texas note operators run into.",
   "intro": "Texas note investors operate at the intersection of two distinct legal regimes: the federal SAFE Act overlay (implemented in Texas through Finance Code Chapter 156 and Chapter 180) for residential mortgage loan origination, and the Texas executory-contract regime (Tex. Prop. Code §5.061-§5.085) for the installment land contracts that still dominate the seller-financed rural land book. Note investors buying or servicing Texas paper need to know which regulator covers what they hold — the Texas Department of Savings and Mortgage Lending, the Office of Consumer Credit Commissioner, or neither — before the first payment posts.",
-  "mechanics": "Texas note investors source paper three ways: direct origination from a related land flip, secondary purchase from another Texas operator, or marketplace acquisitions (Paperstac, NotesDirect, etc.). The structure of the underlying paper drives almost everything that follows. A recorded Deed of Trust with a real promissory note is the cleanest instrument: non-judicial trustee’s foreclosure is fast (21 days notice plus posting) under Tex. Prop. Code §51.002, and the Texas Property Code chapters on liens apply cleanly. An executory contract (contract-for-deed) is heavier administratively: the §5.077 annual statement, the §5.063 30-day cure notice, the §5.076 recording requirement, and the 40%-paid threshold all kick in. Texas note investors holding a mixed book — some trust deeds, some executory contracts — typically segment the servicing workflow by instrument type because the regulatory burden is asymmetric."
-,
+  "mechanics": "Texas note investors source paper three ways: direct origination from a related land flip, secondary purchase from another Texas operator, or marketplace acquisitions (Paperstac, NotesDirect, etc.). The structure of the underlying paper drives almost everything that follows. A recorded Deed of Trust with a real promissory note is the cleanest instrument: non-judicial trustee’s foreclosure is fast (21 days notice plus posting) under Tex. Prop. Code §51.002, and the Texas Property Code chapters on liens apply cleanly. An executory contract (contract-for-deed) is heavier administratively: the §5.077 annual statement, the §5.063 30-day cure notice, the §5.076 recording requirement, and the 40%-paid threshold all kick in. Texas note investors holding a mixed book — some trust deeds, some executory contracts — typically segment the servicing workflow by instrument type because the regulatory burden is asymmetric.",
   "statutes": [
     {
       "headline": "Tex. Finance Code Chapter 156 + Chapter 180 — Texas SAFE Act",
@@ -47,7 +46,7 @@
       "body": "Texas has no state property tax. Each county tax assessor-collector runs its own portal, deadlines, and payment formats. A note servicer escrowing taxes on a 30-county Texas book is reconciling against 30 different web systems. The default due date is January 31; penalties cascade from February 1."
     }
   ],
-  "valueProp": "AcreOS ships dedicated Texas note-investor workflows: the §5.077 annual-statement generator runs from the loan record every January with audit logging for the proof-of-mailing requirement, the §5.066 paid-in-threshold calculator flags any executory contract crossing the 40%/48-payment line, and the §51.002 trustee-sale timeline auto-calculates earliest sale dates when a borrower defaults on a deed-of-trust note. The dunning workflow is pre-checked against Tex. Fin. Code §392 — every script is reviewed for the Debt Collection Act language requirements. Pax surfaces the Texas community-property warning on any single-signature note where the borrower’s marital status is on file.",
+  "valueProp": "AcreOS runs the Texas note book end to end on rails that refuse before they fabricate: note creation is hard-blocked when the rate breaches the state usury table and when no ability-to-repay determination is on file, monthly Reg-Z periodic statements generate with every skip reason recorded, and the borrower dunning ladder escalates through five deterministic rungs with the federal debt-collection notice injected automatically at 30 days. Texas contract-for-deed paperwork is dispatch-blocked until the statutory disclosure language is verified present in the document. Borrowers get a portal with payments on your own connected processor, ACH autopay, payoff quotes recorded to a durable ledger, and year-end 1098s batched for IRS e-file.",
   "faq": [
     {
       "q": "Do I need a Texas Residential Mortgage Loan Originator license to buy notes?",
@@ -113,6 +112,10 @@
       "name": "Texas Finance Code — Residential Mortgage Loan Servicer Registration Act",
       "citation": "Tex. Fin. Code §158",
       "url": "https://statutes.capitol.texas.gov/Docs/FI/htm/FI.158.htm"
+    },
+    {
+      "name": "Texas Finance Code Chapter 342 (consumer loans)",
+      "citation": "Tex. Fin. Code Chapter 342, §342.005"
     }
   ]
 }
