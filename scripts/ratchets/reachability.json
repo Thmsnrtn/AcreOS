@@ -13,7 +13,7 @@
     "opaqueExports": 20,
     "moduleOrphans": 28,
     "unreachedExportsShared": 54,
-    "internalOnlyExportsShared": 429,
+    "internalOnlyExportsShared": 427,
     "moduleOrphansShared": 1,
     "opaqueExportsShared": 15
   },
@@ -34,16 +34,6 @@
       "kind": "export",
       "id": "server/services/investorVerification.ts::InvestorVerificationService",
       "reason": "Exported for the injectable-storage seam the module header describes; production consumes the singleton declared four lines below it (`export const investorVerificationService = new InvestorVerificationService()`), so the class has no EXTERNAL production consumer by construction and never can. It was not on this list before unit 53 for a reason worth recording: its only \"consumer\" was a STALE COMMENT \u2014 `// TODO(tsc): InvestorVerificationService exposes no listAllVerifications()` in routes-investor-verification.ts. This linter tokenises identifiers across production files and never distinguishes code from prose, so a comment naming a symbol makes it look reached. (The same mechanism, from the other side, is why scripts/check-org-scoped-fetch.mjs is now in SYMBOL_REGISTERS: its tenancy debt register named a module orphan and resurrected it.) Unit 53 deleted that TODO (it was false: the DB-backing wave HAD added listVerifications(orgId), which is now wired), and the deletion revealed the export. Deletion-revealed, not built-unwired \u2014 the same category the table-count notes below already carve out. Verified by re-adding the comment: the gate goes back to PASS at 654 with no code change."
-    },
-    {
-      "kind": "table-writer",
-      "id": "negotiation_sessions",
-      "reason": "The standalone negotiation copilot was KILLed and deleted 2026-08-13 (founder ruling; deletion-ledger row 'Negotiation copilot (standalone)'), and negotiationCopilot.ts was this table's only writer and only reader. The table is NOT dropped, deliberately: it holds customer negotiation sessions, and deleting customer data is a founder-only hard stop \u2014 so a DROP migration stays a decision someone makes on purpose rather than a side effect of a deletion wave. Retained here, not baselined, so the choice is visible in every gate run. When the founder authorises the drop, remove BOTH entries and lower both counts."
-    },
-    {
-      "kind": "table-reader",
-      "id": "negotiation_sessions",
-      "reason": "The standalone negotiation copilot was KILLed and deleted 2026-08-13 (founder ruling; deletion-ledger row 'Negotiation copilot (standalone)'), and negotiationCopilot.ts was this table's only writer and only reader. The table is NOT dropped, deliberately: it holds customer negotiation sessions, and deleting customer data is a founder-only hard stop \u2014 so a DROP migration stays a decision someone makes on purpose rather than a side effect of a deletion wave. Retained here, not baselined, so the choice is visible in every gate run. When the founder authorises the drop, remove BOTH entries and lower both counts."
     },
     {
       "kind": "module-orphan",

@@ -157,7 +157,6 @@ const BASELINE_OFFENDERS = new Set([
   "market_predictions",
   "marketing_lists",
   "ml_training_snapshots",
-  "negotiation_sessions",
   "notes_receivable",
   "notification_preferences",
   "notifications",

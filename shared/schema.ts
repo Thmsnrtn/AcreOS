@@ -11177,67 +11177,10 @@ export type DealPatternMatch = typeof dealPatternMatches.$inferSelect;
 // ============================================
 
 // Negotiation Sessions - AI-assisted negotiation tracking
-export const negotiationSessions = pgTable("negotiation_sessions", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  dealId: integer("deal_id").references(() => deals.id).notNull(),
-  leadId: integer("lead_id").references(() => leads.id).notNull(),
-  
-  status: text("status").notNull().default("active"), // active, paused, won, lost, stalled
-  
-  // Current negotiation state
-  currentOfferAmount: numeric("current_offer_amount"),
-  sellerAskAmount: numeric("seller_ask_amount"),
-  lastCounterAmount: numeric("last_counter_amount"),
-  negotiationRound: integer("negotiation_round").default(1),
-  
-  // Objection handling
-  objections: jsonb("objections").$type<Array<{
-    id: string;
-    text: string;
-    category: string; // price, timing, trust, emotional, competitive
-    detectedAt: string;
-    responseUsed?: string;
-    resolved: boolean;
-    effectiveness?: number;
-  }>>(),
-  
-  // AI-generated responses
-  suggestedResponses: jsonb("suggested_responses").$type<Array<{
-    id: string;
-    text: string;
-    strategy: string; // empathy, logic, urgency, anchor, silence
-    confidence: number;
-    generatedAt: string;
-    used: boolean;
-    outcome?: string;
-  }>>(),
-  
-  // Counter-offer history
-  counterOfferHistory: jsonb("counter_offer_history").$type<Array<{
-    round: number;
-    ourOffer: number;
-    theirCounter?: number;
-    timestamp: string;
-    notes?: string;
-  }>>(),
-  
-  // Sentiment tracking
-  sentimentHistory: jsonb("sentiment_history").$type<Array<{
-    timestamp: string;
-    score: number; // -1 to 1
-    indicators: string[];
-  }>>(),
-  
-  // Outcome tracking
-  outcome: text("outcome"), // accepted, rejected, walked_away, ghosted
-  finalAmount: numeric("final_amount"),
-  profitMargin: numeric("profit_margin"),
-  lessonsLearned: text("lessons_learned"),
-  
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// negotiation_sessions DROPPED (founder drop order, picker 2026-09-01;
+// OD-8 tranche 0249). The retired negotiation copilot's session table —
+// zero production readers/writers since the feature was removed; the
+// migrate.mjs od8-ledger prints the program verdict each release.
 
 // Message Sequence Performance - which messages work best
 export const sequencePerformance = pgTable("sequence_performance", {
@@ -11378,13 +11321,6 @@ export const callTranscripts = pgTable("call_transcripts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertNegotiationSessionSchema = createInsertSchema(negotiationSessions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type InsertNegotiationSession = z.infer<typeof insertNegotiationSessionSchema>;
-export type NegotiationSession = typeof negotiationSessions.$inferSelect;
 
 export const insertSequencePerformanceSchema = createInsertSchema(sequencePerformance).omit({
   id: true,

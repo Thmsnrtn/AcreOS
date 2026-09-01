@@ -114,7 +114,13 @@ Each item below is a FINDER HYPOTHESIS that has NOT survived adversarial verific
 - **SCRA**: caveat NOW (shipped on redemption-clock.tsx, pinned in
   redemptionDeadlines.test.ts), tolling implementation later with attorney
   input. Register entry stays prose-only.
-- **negotiation_sessions**: DROP authorized — next OD-8-style tranche.
+- **negotiation_sessions**: DROP authorized — EXECUTED as OD-8 tranche 0249
+  (2026-09-02): schema model + insert schema + types removed (zero refs
+  verified), guarded DROP with row-count evidence in migrate.mjs, table
+  added to the od8-ledger array (verdict becomes absent=24/24 once
+  dropped), table-count 729→728, internalOnlyExportsShared 429→427, two
+  stale reachability allowlist entries removed. The founder ruling covers
+  surviving rows; the drop prints rows_at_drop as evidence.
 
 ## Learn-pages truth program (2026-09-01, this commit)
 

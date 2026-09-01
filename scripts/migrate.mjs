@@ -58,7 +58,8 @@ DECLARE
     'perpetual_ops_checks','communications',
     'saga_instances','reaction_chains',
     'delegation_tokens',
-    'trust_enforcement_log','tenant_agent_config'
+    'trust_enforcement_log','tenant_agent_config',
+    'negotiation_sessions'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
@@ -9279,6 +9280,26 @@ END $mig0247$`,
   // stay NULL (they predate the paid-trigger machine and keep their
   // deal_won-era statuses).
   'ALTER TABLE "referrals" ADD COLUMN IF NOT EXISTS "paid_at" timestamp',
+
+  // ── 0249 OD-8 tranche: negotiation_sessions (founder drop order) ──
+  // Founder ruling (picker, 2026-09-01): DROP — customer-data deletion is
+  // a hard stop and this is its explicit authorization. The retired
+  // negotiation copilot's session table; zero production readers/writers
+  // since the feature's removal (reachability tables-no-reader/no-writer
+  // registers). Unlike the hold-for-review batches, the ruling covers any
+  // surviving rows — the count is printed as evidence, then the drop runs.
+  `DO $mig0249$
+DECLARE
+  n bigint;
+BEGIN
+  IF to_regclass('public.negotiation_sessions') IS NULL THEN
+    RAISE NOTICE '[od8-0249-summary] absent=negotiation_sessions';
+  ELSE
+    EXECUTE 'SELECT count(*) FROM negotiation_sessions' INTO n;
+    EXECUTE 'DROP TABLE negotiation_sessions CASCADE';
+    RAISE NOTICE '[od8-0249-summary] dropped=negotiation_sessions rows_at_drop=% (founder order, picker 2026-09-01)', n;
+  END IF;
+END $mig0249$`,
 
   // ── 0231 outcomes: the learning layer, closing the canonical loop ──────────
   // ONE new table — scripts/ratchets/table-count.json 760 -> 761. Mirrors
