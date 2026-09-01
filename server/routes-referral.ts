@@ -74,15 +74,44 @@ export function registerReferralRoutes(app: Express): void {
         .from(referrals)
         .where(eq(referrals.referrerId, userId));
 
-      const signups = rows.filter((r) => r.status === "signed_up" || r.status === "converted").length;
+      const signups = rows.filter((r) =>
+        r.status === "signed_up" || r.status === "paid" || r.status === "converted",
+      ).length;
       const conversions = rows.filter((r) => r.status === "converted").length;
       const creditsEarned = rows.reduce((sum, r) => sum + (r.creditAmount ?? 0), 0);
+      // Market-match terms: referrals whose referee has paid sit in the
+      // 30-day retention hold — shown with the date the reward matures.
+      // The terms block is served from the SAME constants the reward
+      // machine enforces, so a rendered term can never drift from the
+      // enforced one.
+      const {
+        REFERRAL_RETENTION_HOLD_DAYS,
+        REFERRAL_REWARD_CENTS,
+        REFERRAL_ANNUAL_BONUS_CENTS,
+        REFERRAL_MILESTONES,
+      } = await import("./services/referralReward");
+      const pending = rows
+        .filter((r) => r.status === "paid" && r.paidAt)
+        .map((r) => ({
+          id: r.id,
+          paidAt: r.paidAt,
+          maturesAt: new Date(
+            (r.paidAt as Date).getTime() + REFERRAL_RETENTION_HOLD_DAYS * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        }));
 
       return res.json({
         signups,
         conversions,
+        pending,             // paid, inside the retention hold
         creditsEarned,       // cents total ever earned
         creditBalance: org?.referralCredits ?? 0, // cents currently available
+        terms: {
+          rewardCents: REFERRAL_REWARD_CENTS,
+          annualBonusCents: REFERRAL_ANNUAL_BONUS_CENTS,
+          retentionHoldDays: REFERRAL_RETENTION_HOLD_DAYS,
+          milestones: REFERRAL_MILESTONES,
+        },
       });
     } catch (err) {
       logger.error("[referral] GET /stats error", err);
@@ -139,15 +168,18 @@ export function registerReferralRoutes(app: Express): void {
 
   /**
    * POST /api/referral/activate
-   * Called when a referred user reaches deal_won activation event.
-   * Rewards BOTH referrer and referred with one free month.
+   * HISTORY: this used to be a second, divergent reward implementation
+   * ($1, instant convert on request). Under the market-match terms
+   * (founder decision 2026-09-01) rewards flow ONLY through the paid +
+   * 30-day-retention machine in services/referralReward.ts — an instant
+   * manual convert would bypass the fraud gates. The route now reports
+   * the caller's referral status instead of mutating anything.
    */
   app.post("/api/referral/activate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
-      // Find referral where this user is the referee
       const [referral] = await db
         .select()
         .from(referrals)
@@ -155,42 +187,15 @@ export function registerReferralRoutes(app: Express): void {
         .limit(1);
 
       if (!referral) return res.json({ rewarded: false, message: "No referral found" });
-      if (referral.status === "converted") return res.json({ rewarded: false, message: "Already rewarded" });
-
-      // Update status to converted and set credit
-      const creditAmount = 100; // $1.00 credit (or 1 month free depending on plan)
-      await db
-        .update(referrals)
-        .set({ status: "converted", creditAmount, creditedAt: new Date() })
-        .where(eq(referrals.id, referral.id));
-
-      // Credit the referrer's org
-      if (referral.referrerId) {
-        const [referrerUser] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, referral.referrerId))
-          .limit(1);
-
-        if (referrerUser) {
-          // Add referral credit to referrer's org
-          await db.execute(
-            sql`UPDATE organizations SET referral_credits = COALESCE(referral_credits, 0) + ${creditAmount}
-                WHERE id = (SELECT organization_id FROM users WHERE id = ${referral.referrerId} LIMIT 1)`
-          );
-        }
-      }
-
-      // Credit the referee's org
-      const org = req.organization;
-      await db.execute(
-        sql`UPDATE organizations SET referral_credits = COALESCE(referral_credits, 0) + ${creditAmount}
-            WHERE id = ${org.id}`
-      );
-
       return res.json({
-        rewarded: true,
-        message: "Congratulations! You both earned a $1 account credit.",
+        rewarded: referral.status === "converted",
+        status: referral.status,
+        message:
+          referral.status === "converted"
+            ? "This referral has converted — both sides were credited."
+            : referral.status === "paid"
+              ? "First payment received — the referrer's credit matures after the 30-day retention hold."
+              : "Rewards apply automatically when the referred account becomes a paying subscriber.",
       });
     } catch (err) {
       logger.error("[referral] POST /activate error", err);

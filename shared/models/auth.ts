@@ -255,9 +255,14 @@ export const referrals = pgTable(
     referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     refereeId: varchar("referee_id").references(() => users.id, { onDelete: "set null" }),
     code: varchar("code", { length: 16 }).notNull().unique(),
-    status: text("status").notNull().default("pending"), // pending | signed_up | converted
+    // pending | signed_up | paid (referee's first invoice landed; 30-day
+    // retention clock running) | converted (referrer credited) | voided
+    // (subscription died inside the hold) — market-match terms 2026-09-01.
+    status: text("status").notNull().default("pending"),
     creditAmount: integer("credit_amount").notNull().default(0), // cents
     creditedAt: timestamp("credited_at"),
+    /** First paid invoice timestamp — starts the retention hold. */
+    paidAt: timestamp("paid_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

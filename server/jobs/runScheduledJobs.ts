@@ -26,6 +26,8 @@ import { wsServer } from "../websocket";
 import { jobSupervisor } from "../services/jobSupervisor";
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs"; // S3 decomposition slice 1
+import { startReferralMaturityJob } from "./referralMaturityJob"; // S3 slice
+import { startLandCreditScoreRecalcJob } from "./landCreditScoreRecalcJob"; // S3 slice
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
@@ -3215,23 +3217,6 @@ function startIndexAnalyzerJob() {
 // Pure compute: finds properties with stale land-credit scores and recomputes
 // them, flagging >10pt drops. Idempotent — re-running on fresh scores is a
 // no-op. Writes a backgroundJobs audit row per run via the service.
-function startLandCreditScoreRecalcJob() {
-  log('Registering land credit-score recalculation (daily ~01:00 UTC)', 'land-credit-recalc');
-  trackInterval(() => {
-    const now = new Date();
-    if (now.getUTCHours() !== 1 || now.getUTCMinutes() >= 5) {
-      return;
-    }
-    void withJobLock('land_credit_score_recalc', 23 * 60 * 60, async () => {
-      const { runLandCreditScoreRecalculation } = await import('./landCreditScoreRecalculation');
-      await runLandCreditScoreRecalculation();
-      log('Land credit-score recalculation complete', 'land-credit-recalc');
-    }).catch((err) => {
-      log(`Land credit-score recalc run failed: ${err}`, 'land-credit-recalc');
-    });
-  }, 5 * 60 * 1000);
-}
-
 // ── Tess #3 — feature-engineering precompute (weekly Sun ~02:30 UTC) ────────
 // Pure compute: precomputes location + market ML features per property (capped
 // at 1000/run). Weekly cadence keeps the rolling cost bounded; idempotent —
@@ -4223,6 +4208,7 @@ export async function runScheduledJobs(): Promise<void> {
   // across the low-traffic 01:00–08:00 UTC band; the two cred-dependent ones
   // (backup / course-completion) self-skip cleanly until creds land.
   startLandCreditScoreRecalcJob();   // daily ~01:00 UTC
+  startReferralMaturityJob();        // daily ~02:10 UTC
   startIndexAnalyzerJob();           // daily ~02:00 UTC
   startFeatureEngineeringJob();      // weekly Sun ~02:30 UTC
   startDbBackupJob();                // daily ~07:00 UTC (dormant w/o DB_BACKUP_S3_BUCKET)

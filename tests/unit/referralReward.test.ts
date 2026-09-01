@@ -1,13 +1,22 @@
 /**
- * S2 — referral reward revival. The audit found the loop dead: the activate
- * endpoint had zero callers and referral_credits was never redeemed against a
- * bill. applyReferralRewardForOrg is the server-side reward path fired from
- * the deal_won hook. These tests pin:
- *   1. a pending referral converts exactly once (idempotent claim) and
- *      credits BOTH orgs + redeems Stripe balance for orgs with a customer;
- *   2. an already-converted referral never rewards again;
- *   3. an org with no referral is a silent no-op;
- *   4. Stripe being down does NOT lose the ledger credit.
+ * Referral rewards — MARKET-MATCH terms (founder decision, picker 2026-09-01).
+ *
+ * The machine: pending → signed_up → paid (referee credited $49 at first
+ * paid invoice; 30-day retention clock starts) → converted (referrer
+ * credited $49, or $98 on annual, + milestone bonuses at 5 and 10) |
+ * voided (subscription not active at maturity — nothing credited).
+ *
+ * HISTORY: the previous terms credited $1 to both sides on the referred
+ * org's first WON DEAL. deal_won alone is gameable at real reward sizes
+ * (a trial org can fabricate a closed-won deal for $0), so payment became
+ * the gate and retention the hold. This suite pins:
+ *   1. markReferralPaid claims signed_up/pending → paid exactly once and
+ *      credits ONLY the referee ($49); redelivery and races are no-ops.
+ *   2. matureReferralRewards converts retained referrals (referrer $49;
+ *      $98 when the referee bills yearly) and VOIDS unretained ones with
+ *      zero credit.
+ *   3. The milestone bonus fires exactly at the crossing conversion.
+ *   4. Stripe being down never loses the ledger credit.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -16,10 +25,13 @@ const state = {
   orgUsers: [{ id: "user_ref_1" }] as Array<{ id: string }>,
   referralRow: null as any,
   claimSucceeds: true,
+  dueRows: [] as Array<{ id: number; referrer_id: string; referee_id: string | null }>,
+  refereeOrg: { id: 7, subscription_status: "active", billing_interval: "monthly" } as any,
+  convertedCount: 1,
   referrerOrgId: 42 as number | null,
   stripeCustomerId: "cus_x" as string | null,
   stripeThrows: false,
-  executed: [] as string[],
+  executed: [] as Array<{ text: string; values: any[] }>,
   balanceTxs: [] as Array<{ customer: string; amount: number }>,
 };
 
@@ -32,9 +44,14 @@ vi.mock("@shared/schema", () => ({
 vi.mock("drizzle-orm", () => ({
   eq: (a: any, b: any) => ({ op: "eq", a, b }),
   inArray: (a: any, b: any) => ({ op: "in", a, b }),
-  sql: Object.assign((strings: TemplateStringsArray, ..._v: any[]) => ({ op: "sql", text: strings.join("?") }), {
-    raw: (s: string) => ({ op: "sql.raw", s }),
-  }),
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: any[]) => ({
+      op: "sql",
+      text: strings.join("?"),
+      values,
+    }),
+    { raw: (s: string) => ({ op: "sql.raw", s }) },
+  ),
 }));
 
 vi.mock("../../server/db", () => ({
@@ -55,9 +72,16 @@ vi.mock("../../server/db", () => ({
     }),
     execute: (q: any) => {
       const text: string = q?.text ?? "";
-      state.executed.push(text);
+      state.executed.push({ text, values: q?.values ?? [] });
       if (text.includes("SELECT id FROM users")) return Promise.resolve({ rows: state.orgUsers });
-      if (text.includes("UPDATE referrals")) return Promise.resolve({ rows: state.claimSucceeds ? [{ id: 1 }] : [] });
+      if (text.includes("FROM referrals") && text.includes("status = 'paid'"))
+        return Promise.resolve({ rows: state.dueRows });
+      if (text.includes("UPDATE referrals"))
+        return Promise.resolve({ rows: state.claimSucceeds ? [{ id: 1 }] : [] });
+      if (text.includes("o.subscription_status"))
+        return Promise.resolve({ rows: state.refereeOrg ? [state.refereeOrg] : [] });
+      if (text.includes("count(*)"))
+        return Promise.resolve({ rows: [{ n: String(state.convertedCount) }] });
       if (text.includes("SELECT organization_id FROM users"))
         return Promise.resolve({ rows: state.referrerOrgId ? [{ organization_id: state.referrerOrgId }] : [] });
       return Promise.resolve({ rows: [] });
@@ -81,11 +105,17 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+const orgCreditCalls = () => state.executed.filter((e) => e.text.includes("UPDATE organizations"));
+const referralClaims = () => state.executed.filter((e) => e.text.includes("UPDATE referrals"));
+
 beforeEach(() => {
   vi.resetModules();
   state.orgUsers = [{ id: "user_ref_1" }];
   state.referralRow = { id: 1, referrerId: "user_referrer", refereeId: "user_ref_1", status: "signed_up" };
   state.claimSucceeds = true;
+  state.dueRows = [{ id: 1, referrer_id: "user_referrer", referee_id: "user_ref_1" }];
+  state.refereeOrg = { id: 7, subscription_status: "active", billing_interval: "monthly" };
+  state.convertedCount = 1;
   state.referrerOrgId = 42;
   state.stripeCustomerId = "cus_x";
   state.stripeThrows = false;
@@ -93,47 +123,105 @@ beforeEach(() => {
   state.balanceTxs = [];
 });
 
-describe("applyReferralRewardForOrg", () => {
-  it("converts a signed_up referral: credits BOTH orgs and redeems both Stripe balances", async () => {
-    const { applyReferralRewardForOrg, REFERRAL_REWARD_CENTS } = await import("../../server/services/referralReward");
-    const r = await applyReferralRewardForOrg(7);
-    expect(r.rewarded).toBe(true);
-    const orgCredits = state.executed.filter((t) => t.includes("UPDATE organizations"));
-    expect(orgCredits).toHaveLength(2); // referee org + referrer org
-    expect(state.balanceTxs).toHaveLength(2); // both redeemed on Stripe
-    for (const tx of state.balanceTxs) expect(tx.amount).toBe(-REFERRAL_REWARD_CENTS); // negative = credit
+describe("markReferralPaid — the referee's moment", () => {
+  it("claims signed_up → paid and credits ONLY the referee ($49)", async () => {
+    const { markReferralPaid, REFERRAL_REWARD_CENTS } = await import("../../server/services/referralReward");
+    const r = await markReferralPaid(7);
+    expect(r.marked).toBe(true);
+    expect(orgCreditCalls()).toHaveLength(1); // referee only — referrer waits for maturity
+    expect(state.balanceTxs).toHaveLength(1);
+    expect(state.balanceTxs[0].amount).toBe(-REFERRAL_REWARD_CENTS);
+    expect(REFERRAL_REWARD_CENTS).toBe(4_900);
   });
 
-  it("an already-converted referral never rewards again", async () => {
-    state.referralRow = { ...state.referralRow, status: "converted" };
-    const { applyReferralRewardForOrg } = await import("../../server/services/referralReward");
-    const r = await applyReferralRewardForOrg(7);
-    expect(r.rewarded).toBe(false);
-    expect(state.executed.filter((t) => t.includes("UPDATE organizations"))).toHaveLength(0);
+  it("is a no-op for already-paid and converted referrals (webhook redelivery)", async () => {
+    for (const status of ["paid", "converted", "voided"]) {
+      state.executed = [];
+      state.referralRow = { ...state.referralRow, status };
+      const { markReferralPaid } = await import("../../server/services/referralReward");
+      const r = await markReferralPaid(7);
+      expect(r.marked, `status=${status} must not re-mark`).toBe(false);
+      expect(orgCreditCalls()).toHaveLength(0);
+      vi.resetModules();
+    }
   });
 
-  it("a raced claim (another caller converted first) does not double-credit", async () => {
-    state.claimSucceeds = false; // UPDATE ... WHERE status != 'converted' returns no rows
-    const { applyReferralRewardForOrg } = await import("../../server/services/referralReward");
-    const r = await applyReferralRewardForOrg(7);
-    expect(r.rewarded).toBe(false);
-    expect(state.executed.filter((t) => t.includes("UPDATE organizations"))).toHaveLength(0);
+  it("a raced claim credits nothing", async () => {
+    state.claimSucceeds = false;
+    const { markReferralPaid } = await import("../../server/services/referralReward");
+    const r = await markReferralPaid(7);
+    expect(r.marked).toBe(false);
+    expect(orgCreditCalls()).toHaveLength(0);
   });
 
   it("an org with no referral is a silent no-op", async () => {
     state.referralRow = null;
-    const { applyReferralRewardForOrg } = await import("../../server/services/referralReward");
-    const r = await applyReferralRewardForOrg(7);
-    expect(r.rewarded).toBe(false);
+    const { markReferralPaid } = await import("../../server/services/referralReward");
+    const r = await markReferralPaid(7);
+    expect(r.marked).toBe(false);
+  });
+});
+
+describe("matureReferralRewards — the referrer's moment, after the hold", () => {
+  it("converts a retained referral and credits the referrer $49 (monthly)", async () => {
+    const { matureReferralRewards, REFERRAL_REWARD_CENTS } = await import("../../server/services/referralReward");
+    const r = await matureReferralRewards();
+    expect(r.converted).toBe(1);
+    expect(r.voided).toBe(0);
+    const claim = referralClaims()[0];
+    expect(claim.values).toContain("converted");
+    expect(claim.values).toContain(REFERRAL_REWARD_CENTS);
+    expect(orgCreditCalls()).toHaveLength(1); // referrer only — referee was credited at payment
+    expect(state.balanceTxs[0].amount).toBe(-REFERRAL_REWARD_CENTS);
+  });
+
+  it("pays the annual bonus when the referee bills yearly ($98 total)", async () => {
+    state.refereeOrg = { ...state.refereeOrg, billing_interval: "yearly" };
+    const { matureReferralRewards, REFERRAL_REWARD_CENTS, REFERRAL_ANNUAL_BONUS_CENTS } =
+      await import("../../server/services/referralReward");
+    await matureReferralRewards();
+    expect(state.balanceTxs[0].amount).toBe(-(REFERRAL_REWARD_CENTS + REFERRAL_ANNUAL_BONUS_CENTS));
+  });
+
+  it("VOIDS an unretained referral — no credit to anyone", async () => {
+    state.refereeOrg = { ...state.refereeOrg, subscription_status: "canceled" };
+    const { matureReferralRewards } = await import("../../server/services/referralReward");
+    const r = await matureReferralRewards();
+    expect(r.converted).toBe(0);
+    expect(r.voided).toBe(1);
+    const claim = referralClaims()[0];
+    expect(claim.values).toContain("voided");
+    expect(claim.values).toContain(0);
+    expect(orgCreditCalls()).toHaveLength(0);
+    expect(state.balanceTxs).toHaveLength(0);
+  });
+
+  it("grants the milestone bonus exactly at the crossing conversion", async () => {
+    state.convertedCount = 5; // this conversion IS the 5th
+    const { matureReferralRewards, REFERRAL_MILESTONES } = await import("../../server/services/referralReward");
+    await matureReferralRewards();
+    expect(orgCreditCalls()).toHaveLength(2); // base + milestone
+    expect(state.balanceTxs.map((t) => t.amount)).toContain(-REFERRAL_MILESTONES[5]);
+  });
+
+  it("no milestone bonus off the crossing (4th or 6th conversion)", async () => {
+    for (const n of [4, 6]) {
+      state.executed = [];
+      state.balanceTxs = [];
+      state.convertedCount = n;
+      const { matureReferralRewards } = await import("../../server/services/referralReward");
+      await matureReferralRewards();
+      expect(orgCreditCalls(), `count=${n}`).toHaveLength(1); // base only
+      vi.resetModules();
+    }
   });
 
   it("Stripe being down does NOT lose the ledger credit", async () => {
     state.stripeThrows = true;
-    const { applyReferralRewardForOrg } = await import("../../server/services/referralReward");
-    const r = await applyReferralRewardForOrg(7);
-    expect(r.rewarded).toBe(true);
-    // Ledger credits still written for both orgs even though redemption failed.
-    expect(state.executed.filter((t) => t.includes("UPDATE organizations"))).toHaveLength(2);
+    const { matureReferralRewards } = await import("../../server/services/referralReward");
+    const r = await matureReferralRewards();
+    expect(r.converted).toBe(1);
+    expect(orgCreditCalls()).toHaveLength(1);
     expect(state.balanceTxs).toHaveLength(0);
   });
 });

@@ -680,6 +680,20 @@ export class WebhookHandlers {
         return;
       }
 
+      // Referral market-match terms (founder decision 2026-09-01): a paid
+      // invoice is the referee's reward moment and starts the referrer's
+      // 30-day retention clock. Idempotent inside markReferralPaid — Stripe
+      // redelivery, duplicate events, and later invoices are no-ops.
+      // Best-effort: never lets a referral error 5xx the webhook.
+      try {
+        const { markReferralPaid } = await import('./services/referralReward');
+        await markReferralPaid(org.id);
+      } catch (err) {
+        logger.warn('[webhook] referral paid-marking failed (non-fatal)', {
+          metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+
       // Only process if org was in dunning
       if (org.dunningStage && org.dunningStage !== 'none') {
         const { dunningService } = await import('./services/dunning');
@@ -1152,6 +1166,20 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) {
         return;
+      }
+
+      // Referral market-match terms (founder decision 2026-09-01): a paid
+      // invoice is the referee's reward moment and starts the referrer's
+      // 30-day retention clock. Idempotent inside markReferralPaid — Stripe
+      // redelivery, duplicate events, and later invoices are no-ops.
+      // Best-effort: never lets a referral error 5xx the webhook.
+      try {
+        const { markReferralPaid } = await import('./services/referralReward');
+        await markReferralPaid(org.id);
+      } catch (err) {
+        logger.warn('[webhook] referral paid-marking failed (non-fatal)', {
+          metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+        });
       }
 
       // Only process if org was in dunning

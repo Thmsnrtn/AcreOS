@@ -48,6 +48,11 @@ const SCANNED_FILES = [
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",
+  // S3 slices (2026-09-02): referral maturity sweep (market-match terms) and
+  // the land-credit recalc start wrapper — both carved out of
+  // runScheduledJobs.ts under the strictly-DOWN line ratchet.
+  "../../server/jobs/referralMaturityJob.ts",
+  "../../server/jobs/landCreditScoreRecalcJob.ts",
 ];
 
 function extractWithJobLockNames(): Set<string> {

@@ -9272,6 +9272,14 @@ END $mig0247$`,
   // truth for all of them.
   `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "scenarios" jsonb NOT NULL DEFAULT '[]'::jsonb`,
 
+  // ── 0248 referral market-match terms (founder decision, picker 2026-09-01) ──
+  // The retention-hold clock: referrals.paid_at stamps the referee org's
+  // first paid invoice; the daily maturity sweep converts (referrer
+  // credited) or voids 30 days later. Additive + idempotent; existing rows
+  // stay NULL (they predate the paid-trigger machine and keep their
+  // deal_won-era statuses).
+  'ALTER TABLE "referrals" ADD COLUMN IF NOT EXISTS "paid_at" timestamp',
+
   // ── 0231 outcomes: the learning layer, closing the canonical loop ──────────
   // ONE new table — scripts/ratchets/table-count.json 760 -> 761. Mirrors
   // migrations/0231_outcomes.sql + shared/schema/outcomes.ts.

@@ -348,6 +348,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // ── Tess infra / data ──────────────────────────────────────────────────────
   { name: "index_analyzer", intervalMs: DAY, critical: false },
   { name: "land_credit_score_recalc", intervalMs: DAY, critical: false },
+  { name: "referral_reward_maturity", intervalMs: DAY, critical: false },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
   // Tier 3F — cross-org data co-op: monthly privacy-preserving county
   // rollups (k>=5 floor enforced in the aggregation). Production check on

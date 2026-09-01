@@ -76,7 +76,7 @@ export function ReferralSettings() {
             Refer &amp; earn
           </CardTitle>
           <CardDescription>
-            Share AcreOS with fellow Land Investors. They start with the standard 14-day free trial — you earn an account credit when their first deal closes.
+            Give a month, get a month. Their first month is on us when they become a paying subscriber — and you earn a $49 account credit once they've been aboard 30 days.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -84,10 +84,12 @@ export function ReferralSettings() {
           <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
             <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <div className="space-y-1">
-              <p className="font-semibold text-sm">Refer an investor, earn account credit</p>
+              <p className="font-semibold text-sm">Give a month, get a month</p>
               <p className="text-xs text-muted-foreground">
-                New users who sign up with your code get the standard 14-day free trial.
-                When their first deal closes won, you both automatically receive a $1 account credit — applied to your next invoice.
+                When someone signs up with your code and becomes a paying subscriber, they get a $49 account
+                credit — their first month, on us. Once they've stayed aboard 30 days, you get a $49 credit
+                too ($98 if they chose annual billing), applied to your next invoice. Bonus credits land at
+                your 5th and 10th successful referral. Credits apply to AcreOS invoices only.
               </p>
             </div>
           </div>
