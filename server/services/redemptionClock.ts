@@ -58,10 +58,23 @@ interface StateRedemptionRule {
 }
 
 /**
- * Per-state redemption rules — fallback for states not in
- * tax_jurisdiction_rules (TD-3). The DB version takes priority via
- * loadRulesFromDb() in routes-tax-certificates / routes-tax-rules; this
- * map is the safety net so the math never fails open.
+ * Per-state redemption rules — the ONLY source the math reads.
+ * computeRedemptionDeadline and computeRedemptionAmount index this map
+ * directly; neither takes an override, and no caller feeds them anything
+ * else.
+ *
+ * The comment that stood here until 2026-09-01 said the tax_jurisdiction_rules
+ * (TD-3) DB version "takes priority via loadRulesFromDb()". **No such function
+ * was ever written** — loadRulesFromDb() exists nowhere in the repo, and the
+ * production math callers (routes-tax-certificates.ts, the nightly
+ * jobs/redemptionClockRefresh.ts recompute) never consult
+ * tax_jurisdiction_rules. That table is read for display and notice scheduling
+ * only (routes-tax-rules.ts, routes-quiet-title.ts). So an attorney-corrected
+ * DB row changes the /state-rules page while every persisted deadline and
+ * redemption quote keeps running on this hardcoded map — the two surfaces are
+ * free to disagree about the same certificate. Wiring the DB rows into the
+ * math changes legally consequential deadlines and is a founder decision, not
+ * a refactor — same rule as the SCRA note in computeRedemptionDeadline below.
  */
 export const STATE_REDEMPTION_RULES: Record<string, StateRedemptionRule> = {
   TX: {

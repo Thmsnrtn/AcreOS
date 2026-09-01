@@ -70,7 +70,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
       return res.status(201).json({
         id: row.id,
         slaDeadlineAt: row.slaDeadlineAt,
-        next: "Identity verification email sent. Response within 24h of verification.",
+        next: "Request received and logged for operator review, tracked against a 24-hour target from receipt (see slaDeadlineAt).",
       });
     } catch (err) {
       return Errors.internal(res, err);

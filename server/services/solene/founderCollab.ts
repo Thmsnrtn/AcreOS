@@ -19,7 +19,15 @@
  *   - yes_no         — answerText must be 'yes' or 'no' (case-insensitive)
  *   - numeric        — answerText must parse as a number
  *
- * Default timeout: 24h. expireOverdueAsks() runs daily to flip open->timed_out.
+ * Lifecycle closer: runAskEscalationLadder() (below), invoked on the
+ * continuous loop's 30-minute tick (continuousLoop.ts). It re-pages open asks
+ * and auto-resolves ONLY yes/no asks to timed_out — the safe side — at
+ * AUTO_RESOLVE_HOURS by urgency (urgent 24h / normal 72h / low 168h,
+ * escalationLadder.ts). Free-text, multi-choice, and numeric asks stay open
+ * until the founder answers or supersedes them. The timeout_at column and
+ * expireOverdueAsks() are NOT enforced — the sweeper has zero production
+ * callers (see its NOTE below and the corrected founder_ask record in
+ * shared/decisions/doNothing.ts).
  */
 
 import { and, desc, eq, lte, sql } from "drizzle-orm";

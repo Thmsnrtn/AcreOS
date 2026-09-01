@@ -38,8 +38,22 @@
  *     (POST /api/ai/draft-reply is the only producer; the inbound webhook
  *     stores the message and drafts nothing), so no latency number is
  *     defensible. The earlier note certifying it as a "job queue latency
- *     target" was itself unverified. Buy-box "90 seconds" claims are under
- *     separate review (truth-sweep queue).
+ *     target" was itself unverified.
+ *   - CORRECTED 2026-09-01: the buy-box "90 seconds of ingest" claims
+ *     (Features buy-box card + How step 1) and the "Monday at 6am"
+ *     weekly-list promise (Pulled-lists card) were removed — this
+ *     resolves the "under separate review" note above. No buy-box scan
+ *     engine, latency SLA, or scheduled customer list job exists; the
+ *     enforced mechanics are new-lead ingest firing customer-defined
+ *     workflows (emitLeadCreated — server/routes-leads.ts:446,
+ *     server/services/importExport.ts:451) and lead scoring computed at
+ *     read time (routes-leads.ts:175-188). The copy now describes
+ *     those, plus on-demand skip-trace (the FCRA-gated
+ *     POST /api/skip-traces door). scripts/audit-public-claims.ts still
+ *     lists the retired 90-seconds sentence against a self-authored
+ *     "job queue latency targets" source — that list needs the same
+ *     correction (it scans no real surface, so it stays green either
+ *     way).
  *   - "10 minutes" for first list retained — setup time, not processing.
  */
 
@@ -146,7 +160,7 @@ export const LANDING_COPY = {
       {
         n: 1,
         t: "Define the buy-box",
-        b: "Counties, price band, property type, owner profile. AcreOS filters new leads against it within 90 seconds of ingest.",
+        b: "Counties, price band, property type, owner profile. Wire it into workflow conditions and every new lead is checked against it the moment it's stored.",
       },
       {
         n: 2,

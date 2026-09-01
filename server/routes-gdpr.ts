@@ -16,8 +16,11 @@
  * As of 2026-05-11 these endpoints CREATE a row in dsar_requests_lifecycle
  * with a 24h SLA deadline, write a DSAR_INTAKE audit event, and return
  * `{ requestId, eta: '24h', status: 'queued' }` instead of executing
- * inline. The customer sees "your request is queued" and gets an email
- * once the founder fulfils it via /founder/compliance-ops.
+ * inline. The customer sees "your request is queued" and can follow the
+ * request on GET /status; the founder fulfils it via /founder/compliance-ops
+ * and delivers the response out-of-band (no automated requester email
+ * exists — delivery automation is a future iteration, see
+ * routes-privacy-dsar.ts).
  *
  * Kept as a separate router (not deleted) so any older client cache that
  * still POSTs to /api/privacy/export gets a meaningful queued response,
@@ -97,7 +100,7 @@ router.post("/export", isAuthenticated, async (req, res: Response) => {
       eta: "24h",
       slaDeadlineAt: enqueued.slaDeadlineAt,
       message:
-        "Your data export request is queued. You will receive an email within 24 hours when it is ready.",
+        "Your data export request is queued and tracked against a 24-hour fulfillment target. Follow its status on the Privacy & data page.",
       canonical: "/api/privacy/dsar",
     });
   } catch (err) {
@@ -128,7 +131,7 @@ router.post("/delete", isAuthenticated, async (req, res: Response) => {
       eta: "24h",
       slaDeadlineAt: enqueued.slaDeadlineAt,
       message:
-        "Your data deletion request is queued. You will receive an email within 24 hours confirming completion. Your account remains active until then.",
+        "Your data deletion request is queued and tracked against a 24-hour fulfillment target. Your account remains active until the deletion is fulfilled — follow its status on the Privacy & data page.",
       canonical: "/api/privacy/dsar",
     });
   } catch (err) {

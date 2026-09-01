@@ -118,7 +118,7 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     canonical: "/founder/decisions",
     sunsetOn: "2026-07-27",
     reason:
-      "Two differently-named 'things that need me' queues violated the four-door doctrine. The Decisions door embeds OpenAsksSection with the same /api/founder/asks answer/supersede flows, so the standalone Agent-asks page was deleted. The redirect preserves the query string so ?id= deep links keep working.",
+      "Two differently-named 'things that need me' queues violated the four-door doctrine, so the standalone Agent-asks page was deleted; the Decisions door embeds OpenAsksSection and the redirect preserves the query string. CORRECTED 2026-09-01: OpenAsksSection embeds only the read-only ask LIST — the answer/supersede dialogs (answer-ask-dialog.tsx, supersede-ask-dialog.tsx) lost their only mount in the deletion and have zero importers, so asks can currently be answered only via the /api/founder/asks API. And the preserved ?id= is consumed by the decisions page's handler keyed to decision-log ids, not ask ids, so ask deep links land on the Decisions door but do not open the ask. The original record certified flows the deletion had orphaned.",
   },
   {
     legacy: "/founder/solene-chat",

@@ -1730,9 +1730,12 @@ export async function executeSupportTool(
         }
         
         if (ticketId) {
+          // "in_progress", not "waiting_on_customer": escalation puts the
+          // ball with support, not the customer (the old value parked
+          // escalated tickets in a status nothing else set or read).
           await db.update(supportTickets)
             .set({
-              status: "waiting_on_customer",
+              status: "in_progress",
               assignedAgent: null,
               priority: priority,
               escalationBundle: diagnosticBundle,
@@ -1805,7 +1808,10 @@ export async function executeSupportTool(
               serviceHealth: diagnosticBundle.serviceHealth?.overall,
               previousIssuesRecorded: diagnosticBundle.previousIssues?.length || 0
             } : null,
-            message: "This ticket has been escalated to our human support team with full diagnostic context. They will respond within 24 hours."
+            // No response-time promise: nothing tracks or enforces an SLA on
+            // escalations (the truth-sweep found the old "within 24 hours"
+            // claim had no mechanism behind it).
+            message: "This ticket has been escalated with full diagnostic context and is now in the support review queue. You'll hear back as soon as it's picked up."
           }
         };
       }

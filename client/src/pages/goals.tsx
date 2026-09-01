@@ -232,8 +232,8 @@ export default function GoalsPage() {
       ) : goals.length === 0 ? (
         <EmptyState
           icon={Target}
-          headline="Set a target — Pax tracks the pace"
-          subtitle="Wire up a revenue target, deal count, or offer-sent number — Pax recalculates your weekly pace overnight and flags the morning you fall off track."
+          headline="Set a target — see progress from your pipeline"
+          subtitle="Wire up a revenue target, deal count, or offer-sent number — progress is computed from your live pipeline each time you open this page."
           cta={{
             label: "Create your first goal",
             onClick: () => setCreateOpen(true),
@@ -241,7 +241,7 @@ export default function GoalsPage() {
           }}
           actionIcon={null}
           tips={[
-            "Tie revenue goals to a deadline to see weekly pace.",
+            "Add a deadline to see overdue and days-left status on each goal.",
             "Mix outcome goals (closed deals) with leading-indicator goals (offers sent).",
           ]}
           testId="goals-empty"

@@ -14,7 +14,45 @@ trial); whether to enrich the offer to what the old copy promised is a
 FOUNDER PRICING DECISION, queued in the picker. `growthAutomation.ts:387-391`
 emails a THIRD inconsistent referral offer — queued below.
 
-## Refuted (1)
+## Batch 2 — SHIPPED 2026-09-01 (29 of the 36 hypotheses confirmed by the 72-agent verification round; 7 refuted)
+
+14 copy-edits, 9 register-truth updates (incl. five BUILT-NOT-WIRED disclosures:
+late-fee non-pyramiding guard, fair-housing scanner, eviction-notice math,
+lead-paint predicate duplicate, lease-notice UI), the Letter's needs-you union
+now includes frozen sends (narrate.ts + pins), the calibration sentence credits
+founder verdicts, escalate_to_human drops its phantom 24h SLA (+ status fixed
+to in_progress), the unmounted "Never shared" data-network panel is DELETED
+(dead route, zero importers), and leaseNoticeRules got the rollover-parser fix
++ its gate (`leaseNoticeWindows.test.ts`; register entry unit-test;
+PROSE_ONLY_BASELINE 3 -> 2).
+
+## Open items after batch 2
+
+- **[HIGH, quality-program] Founder asks are unanswerable in the UI.** The
+  Agent-asks page deletion orphaned answer-ask-dialog.tsx /
+  supersede-ask-dialog.tsx (zero importers); OpenAsksSection on the Decisions
+  door is read-only, and ?id= deep links land unopened. Asks can be answered
+  only via /api/founder/asks. Remount the dialogs on the Decisions door
+  (route-redirects.ts records the honest state, 2026-09-01).
+- **[NEXT CYCLE, in-lane] Item 19 — redemptionClock work package**: clamped
+  month arithmetic (export taxRuleCoverage.addMonthsIso; TX 2025-08-31+6mo
+  must be 2026-02-28 not 2026-03-03), parseCalendarDate refusal, anchor
+  population pins (first_monday_after_sale exercised, deed_recordation must
+  refuse), cross-registry agreement gate over STATE_REDEMPTION_RULES vs
+  STATE_TAX_LIEN_RULES with dated conflict allowlist (TN 1200 vs 1000 bps;
+  TX 6/24 vs flat 24; DE 60mo vs "60-day" note — LEGAL-JUDGMENT conflicts to
+  pin honestly, never adjudicate from memory), amount-model pins, then
+  reclassify + PROSE_ONLY_BASELINE 2 -> 1.
+- **[quality-program] rent-roll deposit clock vs persisted statutoryDeadline**:
+  the page computes from lease.endDate and ignores startDepositClock's
+  persisted deadline (inspection-date basis) — reconcile the page onto the
+  persisted clock (comment records the divergence, 2026-09-01).
+- **[founder-attention] BUILT-NOT-WIRED cluster** now honestly recorded in the
+  register: wiring any of them (late-fee assessment, fair-housing scan,
+  eviction-notice/retaliation math, DB-driven redemption rules) changes
+  consequential behavior and is a founder decision.
+
+## Refuted (8)
 
 - `client/src/components/founder-chat/artifacts/trigger_card.tsx` — Card reports "Deferred 7 days." (and "Approved.") after tapping Defer/Approve, posting `{ days: 7 }` to /api/founder/triggers/:id/defer and 
 

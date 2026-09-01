@@ -338,7 +338,7 @@ const FIRST_HELLO_CONTENT: Record<
     icon: Users,
     headline: "Tell Pax which counties to watch",
     subtitle:
-      "You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am.",
+      "You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — every record lands scored hot to cold, and each new lead fires the workflows you've built.",
     testIdSuffix: "leads",
   },
   properties: {

@@ -529,7 +529,7 @@ export default function CapitalMarketsPage() {
             <EmptyState
               icon={Users}
               headline="No lenders in your network yet"
-              subtitle="Run a lender match on one of your deals — matched lenders join your network automatically."
+              subtitle="Lender matches come from your own network — the Match tab searches only the lenders listed here."
               cta={{
                 label: "Match lenders to a deal",
                 onClick: () => setActiveTab("match"),
@@ -749,7 +749,7 @@ export default function CapitalMarketsPage() {
                 <EmptyState
                   icon={Building}
                   headline="Find lenders for your next deal"
-                  subtitle="Enter the deal amount, state, and LTV — matches are pulled from the full lender network."
+                  subtitle="Enter the deal amount, state, and LTV — matches are pulled from your lender network."
                   cta={{
                     label: "Enter deal details",
                     onClick: () => document.getElementById(matchAmountId)?.focus(),

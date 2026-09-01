@@ -25,9 +25,11 @@
  *   6. POST /api/skip-tracing/batch (server/routes-skip-tracing.ts) —
  *      GUARDED (since 2026-08-01): gates ONCE per request and stamps the
  *      one claimed purpose + justification onto every persisted trace row.
- *   7. POST /api/tenants (create) — UNGUARDED SIBLING: accepts all five
- *      screening fields with no attestation check. Pinned below as a known
- *      statute-register finding, not blessed as correct.
+ *   7. POST /api/tenants (create) — GUARDED (closed, audit F-15-1): gates
+ *      all five screening fields plus approved/denied status via
+ *      assertScreeningPermitted before the insert; the gate-before-write
+ *      case below pins it. (This header called it "UNGUARDED SIBLING"
+ *      until 2026-09-01, long after the gap closed.)
  *
  * What this suite pins:
  *   - every refusal is honest and named (FCRA_ATTESTATION_REQUIRED /

@@ -57,6 +57,10 @@ export interface FounderBriefInputs {
     tappedByFounder: number;
     autoWitnessed: number;
     expiredUnseen: number;
+    /** Sends frozen RIGHT NOW awaiting the founder's tap — part of the
+     * needs-you union (2026-09-01: the Letter said "Nothing needs you" while
+     * the Decisions door showed "Waiting on you to send (N)"). */
+    pendingNow: number;
   } | null;
   /** The brain's single highest-value planned focus (observational in P0). */
   plannedFocus: RankedMove | null;
@@ -255,8 +259,11 @@ export const MAX_MISSES = 5;
  *  - null input (calibration unreadable) → null: render NOTHING, never a guess.
  *  - below CALIBRATION_MIN_N → the small-n guard: "Too early to score…".
  *  - at/above it, the grade is stated plainly; "over-confident" is a caution
- *    stated at full severity, never softened. The basis is labeled because
- *    these are automatic prediction-vs-outcome checks, not founder judgments.
+ *    stated at full severity, never softened. The basis is labeled honestly:
+ *    outcomes come from outcomeOf(), whose PRIORITY-1 signal is the founder's
+ *    own recorded verdict (experienceLog.ts) — automatic checks fill in only
+ *    where no verdict exists. CORRECTED 2026-09-01: this line used to claim
+ *    "not your judgment", which the priority order contradicts.
  */
 export function calibrationLine(
   cal: { grade: string; n: number; brier: number | null } | null,
@@ -265,7 +272,7 @@ export function calibrationLine(
   if (cal.n < CALIBRATION_MIN_N || cal.grade === "unproven") {
     return `Too early to score my own predictions — ${cal.n} checked so far (I need ${CALIBRATION_MIN_N} before a score means anything).`;
   }
-  const basis = "based on automatic outcome checks, not your judgment";
+  const basis = "graded against recorded outcomes — your explicit verdicts first, automatic checks where you haven't ruled";
   switch (cal.grade) {
     case "well-calibrated":
       return `When I say how confident I am, reality has matched — checked against ${cal.n} predictions (${basis}).`;
@@ -341,32 +348,43 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   const decision = inp.openAsks[0] ?? null;
 
   // ── The needed-line: the single most important thing on the page. ─────────
-  // It must agree with the Decisions door. Asks (solene_founder_asks, live)
-  // and queued decisions (pending decisions_inbox_items via the pulse's
-  // decisionsWaitingCount) are separate stores; the Letter reads the UNION —
-  // it may never say "nothing needs you" while the Decisions door holds work
-  // (2026-07 design-panel finding: the Letter said exactly that over 17
-  // waiting items, fatal for a product whose thesis is "trust the one
-  // letter"). HISTORY (2026-08-31): until today the pulse set
-  // decisionsWaitingCount from the SAME ask count as asksOpenCount, so this
-  // sum double-counted every open ask — the founder's ~1,200 headline was
-  // ~600 real asks shown twice. The union is only honest because
-  // continuousLoop now feeds this field from the inbox store;
-  // letterNeedsYouUnion.test.ts pins that wiring.
+  // It must agree with the Decisions door. Asks (solene_founder_asks, live),
+  // queued decisions (pending decisions_inbox_items via the pulse's
+  // decisionsWaitingCount) and frozen sends awaiting a tap
+  // (autopilot_pending_actions via frozenSends.pendingNow) are three separate
+  // stores; the Letter reads the UNION — it may never say "nothing needs you"
+  // while the Decisions door holds work (2026-07 design-panel finding: the
+  // Letter said exactly that over 17 waiting items, fatal for a product whose
+  // thesis is "trust the one letter"). HISTORY (2026-08-31): until then the
+  // pulse set decisionsWaitingCount from the SAME ask count as asksOpenCount,
+  // double-counting every open ask. HISTORY (2026-09-01): the witnessed-send
+  // queue was in NO part of the union — the Letter said quiet while the door
+  // showed "Waiting on you to send (N)". letterNeedsYouUnion.test.ts pins all
+  // three operands' provenance.
   const asksCount = inp.openAsks.length;
   const queueCount = Math.max(0, inp.pulse.decisionsWaitingCount);
-  const needsYouCount = asksCount + queueCount;
+  // frozenSends null = the read failed; degrade to the pre-wiring behavior
+  // (no claim about sends either way) rather than inventing a zero.
+  const sendsCount = Math.max(0, inp.frozenSends?.pendingNow ?? 0);
+  const needsYouCount = asksCount + queueCount + sendsCount;
   const isFounderNeeded = needsYouCount > 0;
+
+  const neededPieces: string[] = [];
+  if (asksCount > 0) neededPieces.push(`${countNoun(asksCount, "question", "questions")} below`);
+  if (queueCount > 0) neededPieces.push(`${countNoun(queueCount, "decision", "decisions")} waiting in Decisions`);
+  if (sendsCount > 0) neededPieces.push(`${countNoun(sendsCount, "send frozen", "sends frozen")} until you approve`);
 
   const neededLine = !isFounderNeeded
     ? "Nothing needs you today."
-    : asksCount > 0 && queueCount > 0
-      ? `${asksCount + queueCount} things need your call — ${countNoun(asksCount, "question", "questions")} below, plus ${countNoun(queueCount, "decision", "decisions")} waiting in Decisions.`
+    : neededPieces.length > 1
+      ? `${needsYouCount} things need your call — ${neededPieces.join(", plus ")}.`
       : asksCount === 1
         ? "One thing needs your call — below."
         : asksCount > 1
           ? `${asksCount} things need your call — below.`
-          : `${countNoun(queueCount, "decision is", "decisions are")} waiting for you in Decisions.`;
+          : queueCount > 0
+            ? `${countNoun(queueCount, "decision is", "decisions are")} waiting for you in Decisions.`
+            : `${countNoun(sendsCount, "send is frozen", "sends are frozen")} until you approve — in Decisions.`;
 
   // ── The Word: an honest, editorial paragraph from real fields only. ───────
   const parts: string[] = [];
@@ -882,6 +900,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
       tappedByFounder: c.tappedByFounder,
       autoWitnessed: c.autoWitnessed,
       expiredUnseen: c.expiredUnseen,
+      pendingNow: c.pendingNow,
     };
   } catch {
     frozenSends = null;

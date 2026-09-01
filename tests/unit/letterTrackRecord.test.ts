@@ -129,7 +129,13 @@ describe("narrate.ts — calibration small-n guard", () => {
     const line = calibrationLine({ grade: "over-confident", n: 25, brier: 0.3 })!;
     expect(line).toContain("over-confident");
     expect(line).toContain("25");
-    expect(line).toContain("not your judgment");
+    // CORRECTED 2026-09-01 (truth-sweep): the basis used to claim "not your
+    // judgment", but outcomeOf()'s PRIORITY-1 signal is the founder's own
+    // recorded verdict (experienceLog.ts) — automatic checks fill in only
+    // where no verdict exists. The label must credit the verdicts, and the
+    // old false phrase must not come back.
+    expect(line).toContain("your explicit verdicts first");
+    expect(line).not.toContain("not your judgment");
   });
 
   it("a well-calibrated grade at sufficient n does not say 'too early'", () => {

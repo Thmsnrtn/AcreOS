@@ -1,11 +1,13 @@
 /**
  * State non-renewal notice windows for residential leases.
  *
- * Imelda Lens 21 (Mobile Landlord Today tab): the "leases expiring <60d"
- * row has to surface the state-specific notice window — "Send 60-day
- * notice NOW" reads very different from "60-day notice (TX)". Without
- * the state rule, a landlord on the truck can blow the window and end
- * up holding over the lease for another full term.
+ * Imelda Lens 21 (Mobile Landlord Today tab) was the DESIGN INTENT: the
+ * "leases expiring <60d" row surfacing the state-specific notice window —
+ * "Send 60-day notice NOW" reads very different from "60-day notice (TX)".
+ * CORRECTED 2026-09-01: no UI consumes this yet. The sole producer,
+ * GET /api/rentals/leases/expiring, serializes the window and has zero
+ * client consumers — the module's contract is tested
+ * (tests/unit/leaseNoticeWindows.test.ts) but nothing renders it.
  *
  * Sources are state statutes; this registry is intentionally narrow
  * (operator-side, not tenant rights) and will need attorney review per
@@ -19,6 +21,8 @@
  * Default for unknown states is null — the UI surfaces "rule for $STATE
  * not in registry" rather than guessing.
  */
+
+import { parseCalendarDate } from "../dates/calendar";
 
 export interface LeaseNoticeRule {
   state: string;  // 2-letter
@@ -81,12 +85,17 @@ export function computeNoticeWindow(
   if (!rule || !endDateIso) {
     return { noticeDays: null, noticeWindowOpensAt: null, noticeWindowOpen: false };
   }
-  const end = new Date(endDateIso);
-  if (!Number.isFinite(end.getTime())) {
+  // parseCalendarDate, not bare new Date(): "2026-02-30" used to pass the
+  // finite check as March 2 and open the notice window off a rolled-over
+  // date — character-for-character the defect that retired the duplicate
+  // deposit registry (fixed 2026-09-01). UTC day arithmetic for the same
+  // reason: local setDate could shift a day across the host timezone.
+  const end = parseCalendarDate(endDateIso);
+  if (!end) {
     return { noticeDays: rule.noticeDays, noticeWindowOpensAt: null, noticeWindowOpen: false };
   }
   const opensAt = new Date(end);
-  opensAt.setDate(opensAt.getDate() - rule.noticeDays);
+  opensAt.setUTCDate(opensAt.getUTCDate() - rule.noticeDays);
   return {
     noticeDays: rule.noticeDays,
     noticeWindowOpensAt: opensAt.toISOString().slice(0, 10),

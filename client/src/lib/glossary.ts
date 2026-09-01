@@ -115,7 +115,8 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   churn_risk: {
     term: "Churn risk",
-    definition: "The probability a customer cancels in the next 30 days.",
+    definition:
+      "A 0–100 score of disengagement signals — logins, feature use, support tickets, failed payments — where higher means more likely to cancel.",
   },
   RVO: {
     term: "RVO",

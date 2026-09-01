@@ -18,8 +18,8 @@ type GlyphKind =
   | "doc" | "pen" | "ledger" | "flow" | "audit" | "team";
 
 const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
-  { cat: "Find", t: "Buy-box agent", d: "Define your criteria once. AcreOS scans listings, parcels, notes, distressed liens, and off-market leads against it within 90 seconds of ingest — forever.", i: "box" },
-  { cat: "Find", t: "Pulled lists", d: "Skip-traced, deduped, sorted by likelihood. Pax ships the week's list on Monday at 6am.", i: "list" },
+  { cat: "Find", t: "Buy-box workflows", d: "Define your criteria once as workflow conditions. Every new lead is checked against them the moment it's stored — a match fires the automations you chose.", i: "box" },
+  { cat: "Find", t: "Pulled lists", d: "Pax pulls your first county list inside 10 minutes. Every lead scored hot to cold. Skip-trace on demand when you're ready to reach out.", i: "list" },
   { cat: "Analyze", t: "Comp engine", d: "Real comparable sales from county records, not Zillow estimates. Ranked by acreage band and recency. Confidence score on every result.", i: "scale" },
   { cat: "Analyze", t: "Parcel intel", d: "Wetlands, easements, access, soil, slope. All on one screen.", i: "satellite" },
   { cat: "Reach", t: "Mail platform", d: "Multi-touch campaigns. Tracked. A/B tested. Full creative control.", i: "mail" },

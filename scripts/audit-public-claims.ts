@@ -57,8 +57,12 @@ const CLAIMS: string[] = [
   // surfaces, not as universality.
   "Deals, mail, inbox, offers, notes, and rentals under one roof.",
 
-  // copy.ts how-it-works
-  "AcreOS filters new leads against it within 90 seconds of ingest.",
+  // copy.ts how-it-works — CORRECTED 2026-09-01: the retired "within 90
+  // seconds of ingest" sentence (backed only by a self-authored "job queue
+  // latency target" that never existed) is replaced by the enforced
+  // mechanic: ingest fires the customer's workflow conditions
+  // (emitLeadCreated, server/routes-leads.ts:446).
+  "every new lead is checked against them the moment it's stored",
 
   // copy.ts pricing
   "Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key",
@@ -101,8 +105,9 @@ function buildSources(): Source[] {
         comparable sales (not Zillow estimates), sends direct mail,
         drafts seller replies, and tracks every deal from cold lead
         through closed note in one thread. Pax pulls your first county
-        list inside 10 minutes. AcreOS filters new leads against the
-        buy-box within 90 seconds of ingest. Pricing: Pro at $41/mo
+        list inside 10 minutes. Buy-box criteria wired into workflow
+        conditions check every new lead the moment it's stored
+        (emitLeadCreated, server/routes-leads.ts). Pricing: Pro at $41/mo
         (billed annually) unlocks the full Pax assistant, unlimited
         counties, and bring-your-own-key for the parcel and skip-trace
         data costs you already pay.

@@ -225,11 +225,11 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
         "server/services/lateFees/lateFees.test.ts",
         "server/services/lateFees/acquiredNoteLateFees.test.ts",
       ],
-      note: "shouldAssessLateFee() is pure and evaluates ONE cycle in isolation; a UNIQUE index on (loan_id, period_start, loan_type) makes at most one fee per cycle structurally possible.",
+      note: "shouldAssessLateFee() is pure and evaluates ONE cycle in isolation; a UNIQUE index on (loan_id, period_start, loan_type) makes at most one fee per cycle structurally possible — for fees written through this module. BUILT, NOT WIRED (recorded 2026-09-01): assessLateFee / shouldAssessLateFee have no production call site anywhere in the repo (only their colocated tests import the module — server/services/notes/acquiredNoteSchedule.ts's header says the same), so the §1026.36(c)(2) guard is unreached and nothing writes late_fee_assessments. The late fees production actually records are operator-entered lateFeeCents splits on note_payments (server/routes-notes.ts), which this guard and index do not constrain. Whether AcreOS assesses fees through this module or stays advisory is pending owner decision OD-8 (docs/autonomous/OWNER_DECISIONS_PENDING.md, opened 2026-08-20).",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
-      "A borrower who pays every subsequent month in full is charged a new late fee every month because of one old unpaid fee — the exact debt spiral the rule exists to prevent, and a well-litigated consumer claim.",
+      "A borrower who pays every subsequent month in full is charged a new late fee every month because of one old unpaid fee — the exact debt spiral the rule exists to prevent, and a well-litigated consumer claim. Today no borrower is charged (or protected) through this code at all: fees reach the ledger only as operator-entered payment splits the guard never sees.",
   },
   {
     id: "regz.prompt-crediting-and-suspense",
@@ -441,9 +441,12 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     what: "A landlord must give a state-specified number of days' notice to decline renewal of a fixed-term lease or terminate a month-to-month tenancy.",
     codeSites: ["shared/regulatory/leaseNoticeRules.ts", "server/routes-rentals.ts"],
     enforcement: {
-      kind: "prose-only",
-      refs: ["shared/regulatory/leaseNoticeRules.ts"],
-      note: "NO TEST. Unknown states return null and the UI surfaces 'rule for $STATE not in registry' rather than guessing — the honest default — but the encoded windows themselves are unchecked. The file's own header says it 'will need attorney review per state before being relied on in a courtroom'.",
+      kind: "unit-test",
+      refs: [
+        "tests/unit/leaseNoticeWindows.test.ts",
+        "shared/regulatory/leaseNoticeRules.ts",
+      ],
+      note: "leaseNoticeWindows.test.ts (2026-09-01) pins the encoded windows' hygiene (citations, 15-90 day bounds), the opensAt = end - noticeDays UTC arithmetic, the honest-unknown refusal (null rule, never a guessed default), and the calendar-rollover refusal — computeNoticeWindow parsed '2026-02-30' as March 2 via bare new Date() until the same commit swapped in parseCalendarDate (mutation-probed). Corrected 2026-09-01: NO UI EXISTS. GET /api/rentals/leases/expiring (server/routes-rentals.ts, the sole producer) computes and serializes the notice window and has zero client consumers, so neither the unknown-state warning nor any notice-window row reaches a screen. Legal correctness of the encoded day counts stays with attorney review (the file's own header says so).",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -458,11 +461,11 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     enforcement: {
       kind: "unit-test",
       refs: ["tests/unit/landlordCompliance.test.ts"],
-      note: "The suite pins the deadline math and retaliation-window logic so schema/data drift cannot silently lengthen a window. It does not verify that any encoded per-state number matches the statute.",
+      note: "The suite pins the deadline math and retaliation-window logic. BUILT, NOT WIRED (recorded 2026-09-01): landlordCompliance.ts has zero production importers — the test suite is the module's only consumer — so computeRetaliationWindow and the notice-deadline math are reachable by no request. The platform currently states no eviction-notice period and flags no retaliation window; the suite guards code no user can be shown. (Contrast lease NON-RENEWAL windows, which server/routes-rentals.ts genuinely serves from shared/regulatory/leaseNoticeRules.ts.) The suite also does not verify that any encoded per-state number matches the statute.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
-      "An operator serves a notice period the platform stated, the real statutory period was longer, and the eviction is dismissed at first appearance — the tenant stays, the landlord pays costs, and months are lost. Or an adverse action is taken inside a retaliation window the platform failed to flag.",
+      "Dormant until wired, because no production path reaches this module. Once wired: an operator serves a notice period the platform stated, the real statutory period was longer, and the eviction is dismissed at first appearance — the tenant stays, the landlord pays costs, and months are lost. Or an adverse action is taken inside a retaliation window the platform failed to flag.",
   },
   {
     id: "fairhousing.advertising-language",
@@ -472,11 +475,11 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     enforcement: {
       kind: "unit-test",
       refs: ["tests/unit/landlordCompliance.test.ts"],
-      note: "scanFairHousingText() is a red-flag scanner over listing/ad copy. It flags; it does not block. Detection is pattern-based and therefore both over- and under-inclusive.",
+      note: "BUILT, NOT WIRED (recorded 2026-09-01): scanFairHousingText() is a unit-tested red-flag scanner designed to flag without blocking — but it has zero production call sites (the module's only importer is its own test), so no listing, ad, or AI-copy path is ever scanned and no surface renders its warnings. It flags only inside its own test. The one fair-housing scan that IS wired is a different codepath with the opposite posture: FAIR_HOUSING_PATTERNS in server/services/autopilot/packs/land/regulatoryProfile.ts BLOCKS autopilot-published land artifacts, and covers only those. Detection in both is pattern-based and therefore over- and under-inclusive.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
-      "AI-generated or operator-written listing copy carrying a protected-class preference ships unflagged, and the org draws a HUD complaint or a testing-organization suit. The inverse failure is quieter but real: an over-eager scanner trains operators to ignore the warnings.",
+      "AI-generated or operator-written listing copy carrying a protected-class preference ships unflagged — which is the status quo, since nothing calls the scanner. The org draws a HUD complaint or a testing-organization suit. The inverse failure arrives only with wiring: an over-eager scanner trains operators to ignore the warnings.",
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -495,7 +498,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     enforcement: {
       kind: "refusal-path",
       refs: ["server/routes-rentals.ts", "tests/unit/landlordCompliance.test.ts"],
-      note: "A HARD GATE: a pre-1978 lease cannot be created or moved to an executing status without leadPaintDisclosureConfirmed=true and the lead_paint addendum. The gate itself has no dedicated test; only the requiresLeadPaintDisclosure(yearBuilt) predicate is covered.",
+      note: "A HARD GATE at the lease routes: create, PATCH to an executing status, and renew in server/routes-rentals.ts, plus signing-packet build (server/services/rental/leaseSigningPacket.ts), all refuse without leadPaintDisclosureConfirmed=true and the lead_paint addendum. Corrected 2026-09-01, two overstatements in the previous note: (1) the gate's population is NOT every lease writer — server/routes-rent-roll-import.ts inserts active leases with no lead-paint check (pre-existing tenancies imported from a seller's rent roll at acquisition; a plausible exemption, but recorded nowhere and pinned by nothing), so 'cannot be created without' holds only at the gated doors; (2) the tested predicate is not the one the gate runs — coverage is of landlordCompliance.requiresLeadPaintDisclosure(yearBuilt), an unwired duplicate with zero production callers, while the gate's own inline propertyNeedsLeadPaintDisclosure (DB column authoritative, yearBuilt<1978 fallback) and its refusal doors have no test at all, so the two implementations can drift with the cited suite green.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -534,7 +537,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     enforcement: {
       kind: "unit-test",
       refs: ["tests/unit/fcraPermissiblePurposeGate.test.ts"],
-      note: "Gate refusals (annual attestation, per-lookup purpose row, TTL, version), attestation-before-write ordering, adverse-action RECORD path, and skip-trace purpose validation are pinned by tests/unit/fcraPermissiblePurposeGate.test.ts (2026-08-01). The wave's audit found routes-skip-tracing.ts performing lookups with NO gate — closed in the same wave, and the test's enumeration ratchet was inverted to bound writers of createSkipTrace (the ACTION) rather than callers of the gate, so an ungated sibling now fails the suite. Remaining KNOWN GAP pinned in-test: POST /api/tenants CREATE accepts screening fields ungated.",
+      note: "Gate refusals (annual attestation, per-lookup purpose row, TTL, version), attestation-before-write ordering, adverse-action RECORD path, and skip-trace purpose validation are pinned by tests/unit/fcraPermissiblePurposeGate.test.ts (2026-08-01). The wave's audit found routes-skip-tracing.ts performing lookups with NO gate — closed in the same wave, and the test's enumeration ratchet was inverted to bound writers of createSkipTrace (the ACTION) rather than callers of the gate, so an ungated sibling now fails the suite. The CREATE gap is CLOSED (audit F-15-1; this note corrected 2026-09-01 — it previously still recorded the gap as open): POST /api/tenants gates all five screening fields plus approved/denied status on the org-level annual attestation via assertScreeningPermitted before the insert, and the pinning test was rewritten to assert gate-before-write ordering (fcraPermissiblePurposeGate.test.ts, 'gap closed, audit F-15-1').",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -718,8 +721,8 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
-      "A note is written at a rate the platform said was legal and the state says is usurious — forfeiting all interest on the note, or voiding it. FOUR independent usury tables exist (usury.ts — the only one production actually calls; usuryCeiling.ts — the best-tested and entirely UNWIRED; rmloAdvisor.ts; and regulatoryIntelligence.ts, discovered during the consistency work), so different surfaces can give an operator different answers about the same rate. Named suspect entries: usury.ts NV 40% vs no-cap elsewhere; TX a three-way conflict AND the silent fallback state; rmloAdvisor AK stores a margin as a cap by its own note's admission.",
-    note: "FOUNDER RULING 2026-08-24 resolves how to OPERATE while the legal question stays open, without resolving the legal question. (1) The 25-state disagreement is EXTERNAL LEGAL PROOF DEBT: AcreOS may not choose a legal answer by preferring one internal implementation. (2) Where jurisdiction-specific evidence is unresolved, classification must fail to INDETERMINATE, never guess compliant or noncompliant — implemented in services/usuryConsensus.ts, which consults all three tables and refuses where they conflict (28 of 51 jurisdictions, Texas among them), and consumed by auditOrgUsury and the complianceGate note lane. It explicitly does NOT take the lowest cap: erring conservative is still a legal claim, and usuryIndeterminateNotGuessed.test.ts fails if any reconciliation appears. (3) NEITHER usuryCeiling.ts NOR usury.ts becomes authoritative merely from current usage. The eventual canonical source must be SINGLE, VERSIONED, SOURCE-BACKED and JURISDICTION/EFFECTIVE-DATE AWARE; the duplicate is retired only after the underlying legal evidence is verified. usuryConsensus is the refusal that makes the current state safe to operate meanwhile — when the canonical table exists, its whole job is to be deleted.",
+      "A note is written at a rate the platform said was legal and the state says is usurious — forfeiting all interest on the note, or voiding it. FOUR independent usury tables exist (usury.ts, usuryCeiling.ts, rmloAdvisor.ts, and regulatoryIntelligence.ts, discovered during the consistency work), so different surfaces can give an operator different answers about the same rate. Corrected 2026-09-01: the parentheticals here previously called usury.ts 'the only one production actually calls' and usuryCeiling.ts 'entirely UNWIRED' — stale since the 2026-08-24 consensus work the note below describes. usuryConsensus.ts now consults the first three tables and reaches production through auditOrgUsury (GET /api/compliance/usury-audit); regulatoryIntelligence.ts remains outside the consensus. Named suspect entries: usury.ts NV 40% vs no-cap elsewhere; TX a three-way conflict AND the silent fallback state; rmloAdvisor AK stores a margin as a cap by its own note's admission.",
+    note: "FOUNDER RULING 2026-08-24 resolves how to OPERATE while the legal question stays open, without resolving the legal question. (1) The 25-state disagreement is EXTERNAL LEGAL PROOF DEBT: AcreOS may not choose a legal answer by preferring one internal implementation. (2) Where jurisdiction-specific evidence is unresolved, classification must fail to INDETERMINATE, never guess compliant or noncompliant — implemented in services/usuryConsensus.ts, which consults all three tables and refuses where they conflict (28 of 51 jurisdictions, Texas among them), and consumed by auditOrgUsury (production-reachable via GET /api/compliance/usury-audit) and the complianceGate note lane (real code, though the complianceGate middleware itself has no production mount yet). It explicitly does NOT take the lowest cap: erring conservative is still a legal claim, and usuryIndeterminateNotGuessed.test.ts fails if any reconciliation appears. (3) NEITHER usuryCeiling.ts NOR usury.ts becomes authoritative merely from current usage. The eventual canonical source must be SINGLE, VERSIONED, SOURCE-BACKED and JURISDICTION/EFFECTIVE-DATE AWARE; the duplicate is retired only after the underlying legal evidence is verified. usuryConsensus is the refusal that makes the current state safe to operate meanwhile — when the canonical table exists, its whole job is to be deleted.",
   },
   {
     id: "state.tax-lien-redemption",

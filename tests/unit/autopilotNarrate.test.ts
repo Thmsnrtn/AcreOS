@@ -51,6 +51,23 @@ describe("autopilot narration engine — the Voice", () => {
     expect(b.neededLine).toMatch(/2 decisions waiting in Decisions/);
   });
 
+  it("UNION: never says 'nothing needs you' while sends sit frozen awaiting a tap (2026-09-01)", () => {
+    const b = buildFounderBrief(
+      base({ frozenSends: { proposed: 3, tappedByFounder: 0, autoWitnessed: 0, expiredUnseen: 0, pendingNow: 3 } }),
+    );
+    expect(b.isFounderNeeded).toBe(true);
+    expect(b.neededLine).not.toMatch(/Nothing needs you/i);
+    expect(b.neededLine).toMatch(/3 sends are frozen until you approve/);
+    const mixed = buildFounderBrief(
+      base({
+        pulse: { ...base().pulse, decisionsWaitingCount: 2 },
+        frozenSends: { proposed: 1, tappedByFounder: 0, autoWitnessed: 0, expiredUnseen: 0, pendingNow: 1 },
+      }),
+    );
+    expect(mixed.neededLine).toMatch(/3 things need your call/);
+    expect(mixed.neededLine).toMatch(/1 send frozen until you approve/);
+  });
+
   it("on a calm all-green day the letter says you're free, and needs nobody", () => {
     const b = buildFounderBrief(base());
     expect(b.greeting).toBe("Good morning, Tom.");
@@ -243,13 +260,13 @@ describe("the Letter's frozen-send line (stage-4 turn 5, OD-9)", () => {
   it("stays silent when the counters were unreadable (null) or the lane is quiet", () => {
     expect(buildFounderBrief(base({ frozenSends: null })).theWord).not.toMatch(/Witnessed sends/);
     expect(
-      buildFounderBrief(base({ frozenSends: { proposed: 0, tappedByFounder: 0, autoWitnessed: 0, expiredUnseen: 0 } })).theWord,
+      buildFounderBrief(base({ frozenSends: { proposed: 0, tappedByFounder: 0, autoWitnessed: 0, expiredUnseen: 0, pendingNow: 0 } })).theWord,
     ).not.toMatch(/Witnessed sends/);
   });
 
   it("renders the week's counts when the lane saw traffic", () => {
     const { theWord: body } = buildFounderBrief(
-      base({ frozenSends: { proposed: 8, tappedByFounder: 2, autoWitnessed: 6, expiredUnseen: 0 } }),
+      base({ frozenSends: { proposed: 8, tappedByFounder: 2, autoWitnessed: 6, expiredUnseen: 0, pendingNow: 0 } }),
     );
     expect(body).toMatch(/Witnessed sends this week: 8 frozen/);
     expect(body).toMatch(/6 released by your grants/);
@@ -258,7 +275,7 @@ describe("the Letter's frozen-send line (stage-4 turn 5, OD-9)", () => {
 
   it("calls out expiries LOUDLY — a send dying unseen is the failure grants-for-all must keep visible", () => {
     const { theWord: body } = buildFounderBrief(
-      base({ frozenSends: { proposed: 5, tappedByFounder: 0, autoWitnessed: 2, expiredUnseen: 3 } }),
+      base({ frozenSends: { proposed: 5, tappedByFounder: 0, autoWitnessed: 2, expiredUnseen: 3, pendingNow: 0 } }),
     );
     expect(body).toMatch(/3 EXPIRED unseen/);
     expect(body).toMatch(/check the grant budgets/);

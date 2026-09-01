@@ -38,14 +38,21 @@ const pulseStripSrc = fs.readFileSync(
   "utf-8",
 );
 
-describe("narrate.ts — needsYouCount is the asks + queue union", () => {
-  it("computes asksCount and queueCount from both stores", () => {
+describe("narrate.ts — needsYouCount is the asks + queue + frozen-sends union", () => {
+  it("computes all three operands from their own stores", () => {
     expect(narrateSrc).toMatch(/asksCount\s*=\s*inp\.openAsks\.length/);
     expect(narrateSrc).toMatch(/queueCount\s*=\s*Math\.max\(\s*0\s*,\s*inp\.pulse\.decisionsWaitingCount\s*\)/);
+    // 2026-09-01: the witnessed-send queue joined the union — the Letter said
+    // "Nothing needs you" while the Decisions door showed "Waiting on you to
+    // send (N)". The operand reads frozenSends.pendingNow, which the composer
+    // fills from pendingHandCounters().pendingNow (the SAME store the door's
+    // pending-actions endpoint reads).
+    expect(narrateSrc).toMatch(/sendsCount\s*=\s*Math\.max\(\s*0\s*,\s*inp\.frozenSends\?\.pendingNow\s*\?\?\s*0\s*\)/);
+    expect(narrateSrc).toMatch(/pendingNow\s*:\s*c\.pendingNow/);
   });
 
-  it("needsYouCount is exactly asksCount + queueCount (the neededLine's union)", () => {
-    expect(narrateSrc).toMatch(/needsYouCount\s*=\s*asksCount\s*\+\s*queueCount/);
+  it("needsYouCount is exactly asksCount + queueCount + sendsCount (the neededLine's union)", () => {
+    expect(narrateSrc).toMatch(/needsYouCount\s*=\s*asksCount\s*\+\s*queueCount\s*\+\s*sendsCount/);
   });
 
   it("needsYouCount is part of the brief payload (declared and returned)", () => {

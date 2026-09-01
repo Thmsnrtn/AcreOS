@@ -1200,11 +1200,16 @@ function allocationNote(line: ChargeAllocation, lineCount: number, paymentCents:
 /**
  * The deposit clock, for leases that have ended.
  *
- * `security_deposits.statutoryDeadline` has never been populated by any route,
- * so the deadline is computed here from the registry
- * (`@shared/regulatory/depositReturnRules`) with the lease's own end date as
- * the move-out trigger, and the basis is stated on screen. Two things are
- * deliberate:
+ * CORRECTED 2026-09-01: `security_deposits.statutoryDeadline` DOES have
+ * writers now — startDepositClock (server/services/rental/depositClock.ts)
+ * persists it from POST /api/inspections/:id/reconcile-deposit and
+ * POST /api/leases/:id/security-deposit/clock, using the inspection date as
+ * the move-out trigger. This page still computes its own deadline from the
+ * registry (`@shared/regulatory/depositReturnRules`) with the lease's own
+ * end date as the trigger, and does NOT read the persisted clock — so the
+ * two can disagree when an inspection date differs from the lease end date.
+ * Reconciling the page onto the persisted clock is queued
+ * (docs/autonomous/TRUTH_SWEEP_QUEUE.md). Two things are deliberate:
  *
  *   - A jurisdiction with no encoded deadline renders the registry's
  *     unknown-reason sentence verbatim. There is no 30-day fallback.
@@ -1366,10 +1371,10 @@ function DepositClockRow({ lease }: { lease: Lease }) {
           )}
           {binding.note && <p className="italic">{binding.note}</p>}
           <p>
-            Disposition letter: prepare and send it yourself for now — AcreOS does not generate this
-            letter yet, and will not imply one was sent. Itemize each deduction with a description
-            and an amount; a line with no description is what the itemization requirement exists to
-            prevent.
+            Disposition letter: prepare and send it yourself for now — generating one from this
+            page isn't available yet, and AcreOS will not imply one was sent. Itemize each
+            deduction with a description and an amount; a line with no description is what the
+            itemization requirement exists to prevent.
           </p>
         </div>
       ) : (

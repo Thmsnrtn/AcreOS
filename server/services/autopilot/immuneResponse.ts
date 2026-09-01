@@ -155,7 +155,7 @@ export async function runImmuneResponse(
             "",
             ...witnessed.map((i) => `• ${i.name} [${i.severity}] — ${i.reason}`),
             "",
-            "Reply 'yes' to have fixes prepared as witnessed drafts, or answer with instructions.",
+            "Review the advisories and apply fixes yourself — your reply is recorded on this ask, but nothing acts on it automatically.",
           ].join("\n"),
           answerFormat: "free_text",
           urgency: plan.items.some((i) => i.action === "witnessed" && (i.severity === "critical" || i.severity === "high"))
