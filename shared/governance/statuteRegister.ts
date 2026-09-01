@@ -736,9 +736,13 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
       "server/services/taxRuleCoverage.ts",
     ],
     enforcement: {
-      kind: "prose-only",
-      refs: ["shared/regulatory/taxLienStateRules.ts", "server/services/taxRuleCoverage.ts"],
-      note: "NO TEST covers redemptionClock.ts's deadline arithmetic (including the first-Monday-after-sale anchor) or the per-state periods. taxRuleCoverage.ts tracks which jurisdictions have rules on file, which is coverage bookkeeping, not correctness.",
+      kind: "unit-test",
+      refs: [
+        "tests/unit/redemptionDeadlines.test.ts",
+        "shared/regulatory/taxLienStateRules.ts",
+        "server/services/taxRuleCoverage.ts",
+      ],
+      note: "redemptionDeadlines.test.ts (2026-09-01) pins the FIXED deadline arithmetic — until that commit computeRedemptionDeadline added months UNCLAMPED (sale 2025-08-31 + 3mo returned 2025-12-01) while wonBidToCertificate used the clamped sibling, giving the same certificate deadlines up to 3 days apart by entry door; both doors now share addMonthsIso (clamped, mutation-probed). Also pinned: bare-parse rollover refusal ('2026-02-30' no longer computes from March 2), deed_recordation anchors REFUSE (previously silently sale-anchored), first-Monday anchor semantics, the TX day-1-owes-25% amount quirk, and a cross-registry agreement gate whose dated conflict register (TN rate 1200 vs 1000 bps; TX period 6/24 vs flat 24; IA per-month vs per-year units; DE and TX note/number incoherence) records legal-judgment disagreements for attorney review WITHOUT adjudicating them — the register may only shrink via a recorded resolution. Legal correctness of every period and rate stays with attorney review (all rules carry attorneyReviewedAt: null); SCRA tolling remains unimplemented (see scra.tolling-and-rate-cap).",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:

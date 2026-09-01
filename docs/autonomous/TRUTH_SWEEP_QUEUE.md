@@ -34,15 +34,17 @@ PROSE_ONLY_BASELINE 3 -> 2).
   door is read-only, and ?id= deep links land unopened. Asks can be answered
   only via /api/founder/asks. Remount the dialogs on the Decisions door
   (route-redirects.ts records the honest state, 2026-09-01).
-- **[NEXT CYCLE, in-lane] Item 19 — redemptionClock work package**: clamped
-  month arithmetic (export taxRuleCoverage.addMonthsIso; TX 2025-08-31+6mo
-  must be 2026-02-28 not 2026-03-03), parseCalendarDate refusal, anchor
-  population pins (first_monday_after_sale exercised, deed_recordation must
-  refuse), cross-registry agreement gate over STATE_REDEMPTION_RULES vs
-  STATE_TAX_LIEN_RULES with dated conflict allowlist (TN 1200 vs 1000 bps;
-  TX 6/24 vs flat 24; DE 60mo vs "60-day" note — LEGAL-JUDGMENT conflicts to
-  pin honestly, never adjudicate from memory), amount-model pins, then
-  reclassify + PROSE_ONLY_BASELINE 2 -> 1.
+- **[DONE 2026-09-01] Item 19 — redemptionClock work package**: both doors
+  now share the clamped addMonthsIso (moved into redemptionClock.ts; TX
+  2025-08-31+6mo = 2026-02-28, was 2026-03-03); parseCalendarDate refusal in
+  deadline AND amount math; deed_recordation anchors refuse; first-Monday
+  semantics pinned; cross-registry agreement gate with dated LEGAL-JUDGMENT
+  conflict register (TN rate, TX period, IA units, DE + TX note/number
+  incoherence — the TX '6-month' note conflict was FOUND BY THE GATE on its
+  first run); register entry unit-test; PROSE_ONLY_BASELINE 2 -> 1 (the
+  last prose-only statute is scra.tolling-and-rate-cap, ungateable without
+  implementing SCRA — a founder decision). Nightly redemptionClockRefresh
+  will recompute persisted deadlines onto the corrected math.
 - **[quality-program] rent-roll deposit clock vs persisted statutoryDeadline**:
   the page computes from lease.endDate and ignores startDepositClock's
   persisted deadline (inspection-date basis) — reconcile the page onto the

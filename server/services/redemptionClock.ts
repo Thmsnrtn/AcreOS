@@ -1,3 +1,5 @@
+import { parseCalendarDate } from "@shared/dates/calendar";
+
 /**
  * Redemption-clock math for tax certificates / deeds.
  *
@@ -184,6 +186,60 @@ export const STATE_REDEMPTION_RULES: Record<string, StateRedemptionRule> = {
   },
 };
 
+/**
+ * Add calendar months to an ISO date, clamped to the last day of the target
+ * month (Jan 31 + 1 month = Feb 28/29, not Mar 3 — a three-day error on a
+ * redemption deadline is a lost parcel). Moved here 2026-09-01 from
+ * taxRuleCoverage.ts so BOTH doors run the same arithmetic: until then this
+ * file's computeRedemptionDeadline used an UNCLAMPED setUTCMonth (sale
+ * 2025-08-31 + 3 months returned 2025-12-01) while wonBidToCertificate used
+ * the clamped version — the same certificate got deadlines up to 3 days
+ * apart depending on which door created it.
+ */
+export function addMonthsIso(iso: string, months: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) throw new Error(`Invalid sale date '${iso}'`);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The anchor + month arithmetic, refusal-first — exported so the gate can
+ * drive every anchor directly (no production rule currently uses
+ * first_monday_after_sale or deed_recordation, so the branches would
+ * otherwise be untestable through computeRedemptionDeadline).
+ *
+ *   - A calendar-impossible sale date returns null ("2026-02-30" used to
+ *     parse as March 2 via bare new Date() and compute from a day that
+ *     does not exist).
+ *   - deed_recordation returns null: we hold a sale date, not a recordation
+ *     date — same refusal taxRuleCoverage.deriveRedemptionDeadline makes.
+ *     (Until 2026-09-01 this file silently computed from the sale date for
+ *     that anchor.)
+ *   - first_monday_after_sale rolls the anchor forward to Monday; a sale
+ *     already on a Monday anchors on the sale day itself.
+ */
+export function redemptionDeadlineFromAnchor(
+  saleDateIso: string,
+  months: number,
+  anchor: StateRedemptionRule["deadlineAnchor"],
+): string | null {
+  const sale = parseCalendarDate(saleDateIso);
+  if (!sale) return null;
+  if (anchor === "deed_recordation") return null;
+  let anchorIso = sale.toISOString().slice(0, 10);
+  if (anchor === "first_monday_after_sale") {
+    const d = new Date(sale);
+    while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() + 1);
+    anchorIso = d.toISOString().slice(0, 10);
+  }
+  return addMonthsIso(anchorIso, months);
+}
+
 export interface ComputeDeadlineInput {
   state: string;
   saleDate: string;
@@ -204,21 +260,16 @@ export function computeRedemptionDeadline(input: ComputeDeadlineInput): string |
     ? rule.redemptionPeriodMonthsOwnerOccupied
     : rule.redemptionPeriodMonths;
 
-  const sale = new Date(input.saleDate);
-  const deadline = new Date(sale);
-  deadline.setUTCMonth(deadline.getUTCMonth() + months);
-
-  // Anchor adjustments — Marcus's AL example: "AL counts from the first
-  // Monday after the sale and not the sale date."
-  if (rule.deadlineAnchor === "first_monday_after_sale") {
-    // Roll forward the *sale* date to the first Monday, then add months.
-    const adjustedSale = new Date(sale);
-    while (adjustedSale.getUTCDay() !== 1) {
-      adjustedSale.setUTCDate(adjustedSale.getUTCDate() + 1);
-    }
-    deadline.setTime(adjustedSale.getTime());
-    deadline.setUTCMonth(deadline.getUTCMonth() + months);
-  }
+  // All anchor + month arithmetic lives in redemptionDeadlineFromAnchor —
+  // clamped months, rollover refusal, deed_recordation refusal. (Fixed
+  // 2026-09-01: this body used an unclamped setUTCMonth and a bare
+  // new Date() parse; see the helper's docs for what that produced.)
+  const deadlineIso = redemptionDeadlineFromAnchor(
+    input.saleDate,
+    months,
+    rule.deadlineAnchor,
+  );
+  if (deadlineIso === null) return null;
 
   // ── SCRA TOLLING IS NOT IMPLEMENTED. Read this before trusting the date. ──
   //
@@ -249,7 +300,7 @@ export function computeRedemptionDeadline(input: ComputeDeadlineInput): string |
   // criminal exposure and mandatory attorney's fees when it is wrong.
   void input.scraTolling;
 
-  return deadline.toISOString().slice(0, 10);
+  return deadlineIso;
 }
 
 export interface ComputeAmountInput {
@@ -283,8 +334,13 @@ export interface RedemptionAmountResult {
  */
 export function computeRedemptionAmount(input: ComputeAmountInput): RedemptionAmountResult {
   const rule = STATE_REDEMPTION_RULES[input.state.toUpperCase()];
-  const sale = new Date(input.saleDate);
-  const asOf = new Date(input.asOfDate);
+  // Refuse calendar-impossible dates loudly rather than letting NaN flow
+  // into a dollar figure (same posture as addMonthsIso; fixed 2026-09-01 —
+  // bare new Date() previously rolled "2026-02-30" to March 2).
+  const sale = parseCalendarDate(input.saleDate);
+  const asOf = parseCalendarDate(input.asOfDate);
+  if (!sale) throw new Error(`Invalid sale date '${input.saleDate}'`);
+  if (!asOf) throw new Error(`Invalid as-of date '${input.asOfDate}'`);
   const daysHeld = Math.max(0, Math.floor((asOf.getTime() - sale.getTime()) / 86_400_000));
   const monthsHeld = Math.max(0, daysHeld / 30.4375); // average month length
   const yearsHeld = monthsHeld / 12;

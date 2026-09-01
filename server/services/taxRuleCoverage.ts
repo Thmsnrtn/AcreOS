@@ -48,7 +48,7 @@ import {
   type StateTaxLienRules,
 } from "@shared/regulatory/taxLienStateRules";
 import type { TaxCertSaleType } from "@shared/schema";
-import { STATE_REDEMPTION_RULES } from "./redemptionClock";
+import { STATE_REDEMPTION_RULES, addMonthsIso } from "./redemptionClock";
 
 /**
  * The one sentence that must appear on every surface derived from this
@@ -176,18 +176,9 @@ export type PreliminaryDeadline =
       caveat: string;
     };
 
-function addMonthsIso(iso: string, months: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) throw new Error(`Invalid sale date '${iso}'`);
-  const day = d.getUTCDate();
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + months);
-  // Clamp to the last day of the target month (Jan 31 + 1 month = Feb 28/29,
-  // not Mar 3 — a three-day error on a redemption deadline is a lost parcel).
-  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  d.setUTCDate(Math.min(day, lastDay));
-  return d.toISOString().slice(0, 10);
-}
+// addMonthsIso moved to redemptionClock.ts (2026-09-01) so both doors run
+// the SAME clamped arithmetic — computeRedemptionDeadline previously used an
+// unclamped sibling and the two doors disagreed by up to 3 days.
 
 /**
  * Derive a redemption deadline, or refuse.
