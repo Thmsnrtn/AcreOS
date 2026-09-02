@@ -8,6 +8,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { getPaxPauseState } from "./paxPause";
 
 export type ScoreFactors = {
   responseRecency?: number;
@@ -264,6 +265,12 @@ Respond in JSON format:
     creditsUsed: number;
     agingAlertsCreated: number;
     errors: string[];
+    /**
+     * True when the whole pass was skipped because the org's Pax pause is
+     * active (pause coverage, 2026-09-02). Nothing was scored, scheduled,
+     * generated or alerted; the next tick re-checks.
+     */
+    skippedPaused: boolean;
   }> {
     const JOB_TYPE = `lead_nurturing_${organizationId}`;
     const { scoringLimit = 50, generateFollowUps = true, checkAging = true } = options;
@@ -274,7 +281,31 @@ Respond in JSON format:
       creditsUsed: 0,
       agingAlertsCreated: 0,
       errors: [] as string[],
+      skippedPaused: false,
     };
+
+    // ── Pax pause (org-wide kill switch) ─────────────────────────────────
+    // This pass writes scores and nurturing stages, schedules follow-ups,
+    // creates aging alerts and (when enabled) spends credits on LLM drafts —
+    // all unattended, every 15 minutes. While the org is paused the entire
+    // pass is skipped for this tick and says so; nothing is marked failed and
+    // no job status is touched, so it simply runs on the first tick after the
+    // pause lifts. Fails CLOSED on a failed pause read.
+    const pause = await getPaxPauseState(organizationId);
+    if (pause.paused) {
+      logger.info(
+        `[leadNurturer] Skipping nurturing pass — Pax is paused for org ${organizationId}`,
+        {
+          metadata: {
+            organizationId,
+            pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+            checkFailed: pause.checkFailed,
+          },
+        },
+      );
+      result.skippedPaused = true;
+      return result;
+    }
 
     try {
       await storage.setJobStatus(JOB_TYPE, 'running');

@@ -8,14 +8,23 @@
  * Three controls:
  *   1. Pause all Pax automation for 24h — writes
  *      users.autonomyPreferences.pax.pausedUntil. ENFORCED server-side
- *      (server/services/paxPause.ts, org-level): the executeTool chokepoint
- *      refuses side-effecting tools, the Pax scheduler skips due tasks, and
- *      the autonomous decision executor defers org items while paused.
- *      Read-only lookups and drafts still run; the pause expires on its own.
+ *      (server/services/paxPause.ts, org-level) at every unattended
+ *      execution point — the enumeration lives in that module's header and
+ *      is pinned by tests/unit/paxPauseCoverage.test.ts. Read-only lookups
+ *      and drafts still run; the pause expires on its own.
+ *
+ *      The pause is ORG-WIDE (any owner's or active member's pause pauses
+ *      the org), but /api/me/autonomy only ever returns the caller's own
+ *      row — so this page ALSO reads /api/me/autonomy/org-pause and says
+ *      honestly when a teammate's pause is what holds the org. "Clear
+ *      pause" clears the caller's row only; it cannot clear a teammate's.
  *   2. Replay last 10 Pax actions — read-only feed of recent
  *      paxObservations + status.
  *   3. Reset Pax to manual-only — sets the Today threshold to the 1.01
- *      sentinel ("never auto") and clears pausedUntil.
+ *      sentinel ("never auto"). It deliberately does NOT touch pausedUntil
+ *      (pause coverage, 2026-09-02): a pause is a separate safety
+ *      instrument, and "reset to manual" silently un-pausing the machine
+ *      was the wrong direction for a kill switch to fail.
  */
 
 import React from "react";
@@ -54,6 +63,14 @@ interface AgentAutonomyShape {
 
 interface AutonomyPrefs {
   pax?: AgentAutonomyShape;
+}
+
+/** GET /api/me/autonomy/org-pause — the org-wide state, as enforcement reads it. */
+interface OrgPauseState {
+  paused: boolean;
+  pausedUntil: string | null;
+  /** The server could not read the pause and is failing CLOSED (treating the org as paused). */
+  checkFailed: boolean;
 }
 
 interface PaxObservation {
@@ -110,7 +127,18 @@ export default function PaxControlsPage() {
     queryKey: ["/api/me/autonomy"],
   });
 
-  const paused = isCurrentlyPaused(autonomy?.pax?.pausedUntil);
+  // The caller's OWN pause row vs the ORG-WIDE state the server enforces.
+  // They differ exactly when a teammate holds the pause: then the caller's
+  // row is clear, "Clear pause" would clear nothing, and the honest banner
+  // is "paused by a teammate".
+  const { data: orgPause, isLoading: orgPauseLoading } = useQuery<OrgPauseState>({
+    queryKey: ["/api/me/autonomy/org-pause"],
+    refetchInterval: 60_000,
+  });
+
+  const pausedByMe = isCurrentlyPaused(autonomy?.pax?.pausedUntil);
+  const pauseCheckFailed = orgPause?.checkFailed === true;
+  const pausedByTeammate = orgPause?.paused === true && !pausedByMe && !pauseCheckFailed;
 
   const {
     data: observationsResp,
@@ -138,9 +166,10 @@ export default function PaxControlsPage() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/me/autonomy"], data);
+      queryClient.invalidateQueries({ queryKey: ["/api/me/autonomy/org-pause"] });
       toast({
         title: "Pax paused for 24 hours",
-        description: "Pax will only ask, never act, until the pause lifts.",
+        description: "Pax will only ask, never act, for your whole team until the pause lifts.",
       });
     },
     onError: (error: Error) => {
@@ -155,12 +184,15 @@ export default function PaxControlsPage() {
   const resetMutation = useMutation({
     mutationFn: async () => {
       const prevThresholds = autonomy?.pax?.thresholdsCents ?? {};
+      // pausedUntil is carried through UNCHANGED (spread). This mutation used
+      // to `delete next.pausedUntil` "so the user isn't stuck waiting AND in
+      // manual mode" — which made "reset to manual" a hidden un-pause, and a
+      // kill switch must never be cleared as a side effect of another
+      // control. Clearing a pause is its own explicit button.
       const next: AgentAutonomyShape = {
         ...(autonomy?.pax ?? {}),
         thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: NEVER_AUTO_PCT },
       };
-      // Clear pausedUntil so the user isn't stuck waiting AND in manual mode.
-      delete next.pausedUntil;
       const res = await apiRequest("PATCH", "/api/me/autonomy", { pax: next });
       return res.json();
     },
@@ -168,7 +200,7 @@ export default function PaxControlsPage() {
       queryClient.setQueryData(["/api/me/autonomy"], data);
       toast({
         title: "Pax reset to manual-only",
-        description: "Pax will ask before every action.",
+        description: "Pax will ask before every action. Any active pause stays in place.",
       });
     },
     onError: (error: Error) => {
@@ -185,11 +217,31 @@ export default function PaxControlsPage() {
       const next: AgentAutonomyShape = { ...(autonomy?.pax ?? {}) };
       delete next.pausedUntil;
       const res = await apiRequest("PATCH", "/api/me/autonomy", { pax: next });
-      return res.json();
+      const prefs: AutonomyPrefs = await res.json();
+      // Re-read the ORG-WIDE state after clearing our own row: if a teammate
+      // also paused Pax, the org is still paused and the toast must say so
+      // rather than announce a resume that did not happen.
+      const orgRes = await apiRequest("GET", "/api/me/autonomy/org-pause");
+      const org: OrgPauseState = await orgRes.json();
+      return { prefs, org };
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/me/autonomy"], data);
-      toast({ title: "Pax pause cleared" });
+    onSuccess: ({ prefs, org }) => {
+      queryClient.setQueryData(["/api/me/autonomy"], prefs);
+      queryClient.setQueryData(["/api/me/autonomy/org-pause"], org);
+      if (org.checkFailed) {
+        toast({
+          title: "Your pause is cleared, but Pax is still holding",
+          description:
+            "The server couldn't verify the org-wide pause state and is treating Pax as paused (failing closed). Try again shortly.",
+        });
+      } else if (org.paused) {
+        toast({
+          title: "Your pause is cleared — Pax is still paused",
+          description: `A teammate's pause keeps Pax paused for the whole org until ${fmtTimestamp(org.pausedUntil)}.`,
+        });
+      } else {
+        toast({ title: "Pax pause cleared" });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -259,12 +311,15 @@ export default function PaxControlsPage() {
           Pax controls
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Pause, replay, or reset Pax. The pause is enforced at the server's
-          tool-execution layer the moment you tap it: while paused, Pax
-          refuses any action with side effects (record changes, sends,
-          external triggers), scheduled Pax tasks are skipped, and the
-          autonomous executor defers your org's items. Read-only lookups and
-          drafts still work. The replay below shows every observation Pax has
+          Pause, replay, or reset Pax. The pause is enforced server-side the
+          moment you tap it, at every path that acts without you: Pax refuses
+          any tool call with side effects (record changes, sends, external
+          triggers), scheduled Pax tasks and scheduled jobs are skipped, the
+          autonomous executor and agent task processor defer your org's
+          items, workflow steps that act are blocked, sequence sends are
+          deferred, and lead nurturing sits out. Read-only lookups and drafts
+          still work. The pause is org-wide — it holds while any teammate's
+          pause is active. The replay below shows every observation Pax has
           surfaced.
         </p>
       </div>
@@ -279,9 +334,9 @@ export default function PaxControlsPage() {
       {/* ── Current status banner ────────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="pax-controls-status">
         <CardContent className="p-4 flex items-start gap-3 flex-wrap">
-          {autonomyLoading ? (
+          {autonomyLoading || orgPauseLoading ? (
             <Skeleton className="h-5 w-48" />
-          ) : paused && autonomy?.pax?.pausedUntil ? (
+          ) : pausedByMe && autonomy?.pax?.pausedUntil ? (
             <>
               <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
               <div className="flex-1 min-w-0">
@@ -289,6 +344,11 @@ export default function PaxControlsPage() {
                 <div className="text-xs text-muted-foreground">
                   {fmtRemaining(autonomy.pax.pausedUntil)} · resumes{" "}
                   {fmtTimestamp(autonomy.pax.pausedUntil)}
+                  {orgPause?.paused &&
+                  orgPause.pausedUntil &&
+                  Date.parse(orgPause.pausedUntil) > Date.parse(autonomy.pax.pausedUntil) + 60_000
+                    ? ` · a teammate's pause keeps the org paused until ${fmtTimestamp(orgPause.pausedUntil)}`
+                    : null}
                 </div>
               </div>
               <Button
@@ -300,6 +360,34 @@ export default function PaxControlsPage() {
               >
                 Clear pause
               </Button>
+            </>
+          ) : pausedByTeammate && orgPause?.pausedUntil ? (
+            <>
+              <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm" data-testid="pax-paused-by-teammate">
+                  Paused by a teammate until {fmtTimestamp(orgPause.pausedUntil)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {fmtRemaining(orgPause.pausedUntil)}. The pause is org-wide; only
+                  the teammate who set it can clear it early, and it lifts on its
+                  own when the timer expires.
+                </div>
+              </div>
+            </>
+          ) : pauseCheckFailed ? (
+            <>
+              <AlertTriangle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm" data-testid="pax-pause-check-failed">
+                  Pax is holding — pause state couldn't be verified
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  The server couldn't read your org's pause setting, so it is
+                  treating Pax as paused (failing closed). Nothing auto-executes
+                  until the read succeeds again.
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -371,23 +459,26 @@ export default function PaxControlsPage() {
           </CardTitle>
           <CardDescription>
             Stops every auto-execution path for 24 hours, enforced server-side
-            at the tool layer, the scheduler, and the autonomous executor. Pax
-            will still draft and ask — it just won't act on its own. Actions
-            you explicitly approve still go through. The pause lifts
-            automatically when the timer expires. Use this if anything Pax did
-            surprised you.
+            at the tool layer, the Pax scheduler, the autonomous executor,
+            workflows, sequences, lead nurturing, the agent task processor,
+            agent skills, and scheduled tasks. Pax will still draft and ask —
+            it just won't act on its own. Actions you explicitly approve still
+            go through. Paused work is skipped or deferred, never cancelled,
+            and resumes when the timer expires. The pause is org-wide: it
+            holds for your whole team while anyone's pause is active. Use this
+            if anything Pax did surprised you.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button
             variant="outline"
             onClick={() => pauseMutation.mutate()}
-            disabled={pauseMutation.isPending || paused}
+            disabled={pauseMutation.isPending || pausedByMe}
             data-testid="button-pax-pause-24h"
             className="border-acr-warn text-acr-warn hover:bg-acr-warn-soft"
           >
             <PauseCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-            {paused ? "Already paused" : "Pause Pax for 24 hours"}
+            {pausedByMe ? "Already paused" : "Pause Pax for 24 hours"}
           </Button>
         </CardContent>
       </Card>
@@ -494,9 +585,9 @@ export default function PaxControlsPage() {
             Reset Pax to manual-only
           </CardTitle>
           <CardDescription>
-            Sets the autonomy threshold to the never-auto sentinel (101%) and
-            clears any pause. Pax will ask before every action, forever — until
-            you raise the slider again.
+            Sets the autonomy threshold to the never-auto sentinel (101%). Pax
+            will ask before every action, forever — until you raise the slider
+            again. An active pause is left in place; clear it separately above.
           </CardDescription>
         </CardHeader>
         <CardContent>

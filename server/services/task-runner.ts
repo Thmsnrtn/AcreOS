@@ -3,6 +3,7 @@ import { workflowEngine } from "./workflow-engine";
 import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 const log = (msg: string, meta?: Record<string, any>) => 
   logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
@@ -84,7 +85,9 @@ class TaskRunnerService {
     return newTask;
   }
 
-  async runTask(taskId: number): Promise<{ success: boolean; error?: string }> {
+  async runTask(
+    taskId: number,
+  ): Promise<{ success: boolean; error?: string; skippedPaused?: boolean }> {
     const task = await storage.getScheduledTask(taskId);
     if (!task) {
       return { success: false, error: "Task not found" };
@@ -92,6 +95,25 @@ class TaskRunnerService {
 
     if (task.status === "paused") {
       return { success: false, error: "Task is paused" };
+    }
+
+    // ── Pax pause (org-wide kill switch, pause coverage 2026-09-02) ───────
+    // Scheduled tasks run workflows and agent skills unattended. While the
+    // org is paused the task returns here exactly like the task-level
+    // "paused" status above: nothing executes, nextRunAt is NOT advanced (so
+    // the task is due again next tick and runs the moment the pause lifts),
+    // retryCount is untouched, and the task is never marked failed. Fails
+    // CLOSED on a failed pause read.
+    const pause = await getPaxPauseState(task.organizationId);
+    if (pause.paused) {
+      log(`Task skipped — Pax is paused for this org`, {
+        taskId,
+        name: task.name,
+        organizationId: task.organizationId,
+        pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+        checkFailed: pause.checkFailed,
+      });
+      return { success: false, skippedPaused: true, error: paxPauseRefusalMessage(pause) };
     }
 
     log(`Running task`, { taskId, name: task.name, type: task.type });
@@ -245,29 +267,38 @@ class TaskRunnerService {
     log(`Custom handler completed`, { taskId: task.id, handler });
   }
 
-  async processScheduledTasks(): Promise<{ processed: number; succeeded: number; failed: number }> {
+  async processScheduledTasks(): Promise<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+    skippedPaused: number;
+  }> {
     const now = new Date();
     const dueTasks = await storage.getDueScheduledTasks(now);
-    
+
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let skippedPaused = 0;
 
     for (const task of dueTasks) {
       processed++;
       const result = await this.runTask(task.id);
       if (result.success) {
         succeeded++;
+      } else if (result.skippedPaused) {
+        // A pause skip is not a failure — tally it as what it is.
+        skippedPaused++;
       } else {
         failed++;
       }
     }
 
     if (processed > 0) {
-      log(`Processed scheduled tasks`, { processed, succeeded, failed });
+      log(`Processed scheduled tasks`, { processed, succeeded, failed, skippedPaused });
     }
 
-    return { processed, succeeded, failed };
+    return { processed, succeeded, failed, skippedPaused };
   }
 
   async pauseTask(taskId: number): Promise<ScheduledTask | undefined> {

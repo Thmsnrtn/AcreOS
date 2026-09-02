@@ -14,6 +14,7 @@ import {
   LIVE_WORKFLOW_TRIGGER_EVENTS,
   isLiveWorkflowTriggerEvent,
 } from "@shared/workflow-live-triggers";
+import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 // Re-export the live-trigger source of truth for server-side consumers and
 // tests. The list itself lives in shared/ so the client (builder + gallery
@@ -40,8 +41,9 @@ export { LIVE_WORKFLOW_TRIGGER_EVENTS, isLiveWorkflowTriggerEvent };
 //                   configured skillId resolves in no registry. Nothing was
 //                   attempted; the reason names what to connect/fix.
 //   "blocked"     — a rail existed and REFUSED on compliance grounds (TCPA /
-//                   do-not-contact / suppression list). The refusal is the
-//                   correct outcome, not an error, so the run continues.
+//                   do-not-contact / suppression list), or the org's Pax
+//                   pause is active (pause coverage, 2026-09-02). The refusal
+//                   is the correct outcome, not an error, so the run continues.
 //   "failed"      — the rail ran and errored (thrown; aborts the run as before).
 //
 // Neither "unavailable" nor "blocked" results are merged into workflow
@@ -91,6 +93,26 @@ export function isNonExecutingActionResult(
 ): result is ActionUnavailableResult | ActionBlockedResult {
   return isActionUnavailableResult(result) || isActionBlockedResult(result);
 }
+
+/**
+ * Workflow steps that ACT on the world — send, write a record, notify, or
+ * dispatch an agent skill. While the org's Pax pause is active
+ * (server/services/paxPause.ts) each of these returns a "blocked" result
+ * instead of executing; the run continues so the log records exactly which
+ * steps did not happen and why. `delay` is control flow, not an action, and
+ * `conditional` only recurses — its branch actions are gated individually.
+ *
+ * Pinned by tests/unit/paxPauseCoverage.test.ts against WORKFLOW_ACTION_TYPES:
+ * a new action type added to the schema must be classified here or the gate
+ * is silently incomplete.
+ */
+const PAUSE_GATED_WORKFLOW_ACTIONS: ReadonlySet<string> = new Set([
+  "send_email",
+  "create_task",
+  "update_record",
+  "run_agent_skill",
+  "send_notification",
+]);
 
 // ---------------------------------------------------------------------------
 // Agent-skill id reconciliation (Wave B).
@@ -2307,6 +2329,37 @@ class WorkflowEngine {
     action: WorkflowAction,
     context: WorkflowExecutionContext
   ): Promise<Record<string, any> | void> {
+    // ── Pax pause kill-switch gate (pause coverage, 2026-09-02) ───────────
+    // /settings/pax promises the pause "stops every auto-execution path".
+    // Workflow steps run unattended (event emitters, the delay-resume sweep,
+    // scheduled tasks), so every ACTING step consults the org's pause state
+    // and, while paused, returns a "blocked" result: nothing sends, nothing
+    // is written, the run log says so, and the run continues — a pause is a
+    // skip, never a cancellation. Expiry is implicit (getPaxPauseState
+    // compares timestamps). On a failed pause read the gate fails CLOSED.
+    if (PAUSE_GATED_WORKFLOW_ACTIONS.has(action.type)) {
+      const pause = await getPaxPauseState(context.organizationId);
+      if (pause.paused) {
+        logger.info(
+          `[WorkflowEngine] ${action.type} step ${action.id} blocked — Pax is paused for org ${context.organizationId}`,
+          {
+            metadata: {
+              actionType: action.type,
+              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+              checkFailed: pause.checkFailed,
+            },
+          },
+        );
+        const blocked: ActionBlockedResult = {
+          status: ACTION_STATUS_BLOCKED,
+          paxPaused: true,
+          pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+          reason: `${paxPauseRefusalMessage(pause)} The workflow continued with its remaining steps.`,
+        };
+        return blocked;
+      }
+    }
+
     // TODO(tsc): "conditional" is handled here but not declared in the frozen
     // WORKFLOW_ACTION_TYPES union; widen the discriminant locally so the case typechecks.
     switch (action.type as WorkflowActionType | "conditional") {

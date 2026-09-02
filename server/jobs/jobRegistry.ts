@@ -349,6 +349,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "index_analyzer", intervalMs: DAY, critical: false },
   { name: "land_credit_score_recalc", intervalMs: DAY, critical: false },
   { name: "referral_reward_maturity", intervalMs: DAY, critical: false },
+  // Review-queue plumbing (2026-09-02): flips pending_actions past their 24h
+  // TTL to 'expired'. Bookkeeping only — every reader already applies
+  // expires_at > now() itself, so a dark sweep degrades the audit trail's
+  // status column, never what a customer sees.
+  { name: "pending_action_expiry_sweep", intervalMs: DAY, critical: false, cron: "20 2 * * *" },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
   // Tier 3F — cross-org data co-op: monthly privacy-preserving county
   // rollups (k>=5 floor enforced in the aggregation). Production check on

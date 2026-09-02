@@ -24,10 +24,12 @@
  */
 
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { pendingActions, paxSends, type PendingAction } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { wsServer } from "../websocket";
 
 /**
  * Tools that require an explicit human approval before execution
@@ -158,7 +160,88 @@ export async function proposePendingAction(params: {
     },
   });
 
+  // Review-queue plumbing (2026-09-02): nudge the org's pending-approval
+  // badges to refetch live instead of waiting on their poll (same shape as
+  // the inbox.unread publish in inboundEmailService). Org-scoped — the queue
+  // is per-org. Fires only for a genuinely NEW row: a reused live duplicate
+  // (above) changes nothing a badge counts. Best-effort: the row is already
+  // persisted, so a WS failure must never fail the proposal.
+  try {
+    wsServer.broadcastToOrg(params.organizationId, "pending_action.created", { id: inserted[0].id });
+  } catch (err) {
+    logger.warn(
+      "[approvalKernel] failed to publish pending_action.created over WebSocket (poll fallback remains)",
+      err instanceof Error ? err : undefined,
+    );
+  }
+
   return inserted[0];
+}
+
+// ── Review queue: list / count / expiry sweep ───────────────────────────────
+//
+// Customer-side plumbing for "what is waiting on a human tap right now"
+// (autonomy clarity program, 2026-09-02). Expiry is written lazily (approve
+// on a stale row, plus the daily sweep below), so `status = 'pending'` alone
+// OVER-counts: a row past its TTL is not reviewable. Every reader therefore
+// applies the live predicate itself — status AND expires_at > now() — the
+// same discipline as the founder's listPendingHands. Both pending_actions
+// indexes lead with organization_id, so each read is one index range.
+
+/** The predicate every review-queue reader must apply (org + pending + unexpired). */
+function livePendingPredicate(organizationId: number) {
+  return and(
+    eq(pendingActions.organizationId, organizationId),
+    eq(pendingActions.status, "pending"),
+    sql`${pendingActions.expiresAt} > now()`,
+  );
+}
+
+const PENDING_LIST_DEFAULT_LIMIT = 50;
+const PENDING_LIST_MAX_LIMIT = 200;
+
+/** Live (pending, unexpired) actions for one org, newest first. */
+export async function listPendingActions(
+  organizationId: number,
+  { limit = PENDING_LIST_DEFAULT_LIMIT }: { limit?: number } = {},
+): Promise<PendingAction[]> {
+  const cap = Number.isFinite(limit)
+    ? Math.min(Math.max(1, Math.floor(limit)), PENDING_LIST_MAX_LIMIT)
+    : PENDING_LIST_DEFAULT_LIMIT;
+  return db
+    .select()
+    .from(pendingActions)
+    .where(livePendingPredicate(organizationId))
+    .orderBy(desc(pendingActions.createdAt))
+    .limit(cap);
+}
+
+/** Badge count: how many live actions await a tap in this org. Same predicate as the list. */
+export async function countPendingActions(organizationId: number): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(pendingActions)
+    .where(livePendingPredicate(organizationId));
+  return Number(row?.count ?? 0);
+}
+
+/**
+ * Flip every pending row past its TTL to 'expired'. Deliberately cross-org
+ * (a platform bookkeeping sweep, like the referral-maturity sweep — it
+ * writes no org's data INTO another's; it only stamps a status the readers
+ * already treat as expired). Guarded UPDATE on `status = 'pending'` so a
+ * re-run finds nothing to flip — idempotent by construction. Returns the
+ * number of rows flipped on THIS run.
+ */
+export async function sweepExpiredPendingActions(): Promise<number> {
+  const flipped = await unscopedForPlatformOps(
+    "pending-action expiry sweep: cross-org status stamp (pending -> expired past TTL); writes no org's data into another's",
+  )
+    .update(pendingActions)
+    .set({ status: "expired" })
+    .where(and(eq(pendingActions.status, "pending"), sql`${pendingActions.expiresAt} <= now()`))
+    .returning({ id: pendingActions.id });
+  return flipped.length;
 }
 
 /**

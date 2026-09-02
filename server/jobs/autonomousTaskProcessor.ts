@@ -20,6 +20,7 @@ import { agentTasks, agentRuns } from "@shared/schema";
 import { eq, and, lte, isNull, desc } from "drizzle-orm";
 import { autonomousAgentEngine, type ActionRiskProfile, type ActionCategory } from "../services/autonomousAgentEngine";
 import { executeAgentTask, type CoreAgentType } from "../services/core-agents";
+import { getPaxPauseState, type PaxPauseState } from "../services/paxPause";
 import { logger } from "../utils/logger";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -27,6 +28,15 @@ import { logger } from "../utils/logger";
 const RUN_INTERVAL_MS   = 30_000; // poll every 30 seconds
 const BATCH_SIZE        = 10;     // max tasks per run
 const MAX_RETRY_COUNT   = 3;
+
+/** One batch's tally. `skippedPaused` tasks were left pending, untouched. */
+type BatchStats = {
+  processed: number;
+  autoExecuted: number;
+  escalated: number;
+  failed: number;
+  skippedPaused: number;
+};
 
 // ─── Task → Risk profile mapping ─────────────────────────────────────────────
 
@@ -268,8 +278,8 @@ export function _inferRiskProfile(agentType: string, input: Record<string, any>)
 
 // ─── Processor ────────────────────────────────────────────────────────────────
 
-async function processBatch(): Promise<{ processed: number; autoExecuted: number; escalated: number; failed: number }> {
-  const stats = { processed: 0, autoExecuted: 0, escalated: 0, failed: 0 };
+async function processBatch(): Promise<BatchStats> {
+  const stats: BatchStats = { processed: 0, autoExecuted: 0, escalated: 0, failed: 0, skippedPaused: 0 };
 
   // Fetch pending tasks that haven't been reviewed/escalated yet
   const tasks = await db
@@ -284,8 +294,40 @@ async function processBatch(): Promise<{ processed: number; autoExecuted: number
     .orderBy(agentTasks.priority, agentTasks.createdAt)
     .limit(BATCH_SIZE);
 
+  // ── Pax pause (org-wide kill switch, pause coverage 2026-09-02) ──────────
+  // One pause read and one log line per org per batch: a paused org with
+  // many pending tasks must not re-read the switch and re-log the skip ten
+  // times every 30 seconds. The state is read outside the per-task try so a
+  // pause check can never be what marks a task "failed" (getPaxPauseState
+  // never throws — it fails CLOSED by contract).
+  const pauseByOrg = new Map<number, PaxPauseState>();
+
   for (const task of tasks) {
     stats.processed++;
+
+    let pause = pauseByOrg.get(task.organizationId);
+    if (!pause) {
+      pause = await getPaxPauseState(task.organizationId);
+      pauseByOrg.set(task.organizationId, pause);
+      if (pause.paused) {
+        logger.info(
+          `[autonomousTaskProcessor] Pax is paused for org ${task.organizationId} — leaving its pending tasks untouched this tick`,
+          {
+            metadata: {
+              organizationId: task.organizationId,
+              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+              checkFailed: pause.checkFailed,
+            },
+          },
+        );
+      }
+    }
+    if (pause.paused) {
+      // Skip, don't cancel: the row stays `pending` / `requiresReview=false`
+      // and is picked up on the first tick after the pause lifts.
+      stats.skippedPaused++;
+      continue;
+    }
 
     try {
       const input = task.input as Record<string, any>;
@@ -389,7 +431,7 @@ async function processBatch(): Promise<{ processed: number; autoExecuted: number
 
 async function updateAgentRunRecord(
   status: "running" | "completed" | "failed",
-  stats?: { processed: number; autoExecuted: number; escalated: number; failed: number },
+  stats?: BatchStats,
   error?: string
 ): Promise<void> {
   try {
@@ -443,7 +485,7 @@ export async function runOnce(): Promise<void> {
 
   try {
     const stats = await processBatch();
-    logger.info(`[autonomousTaskProcessor] Batch complete — processed:${stats.processed} auto:${stats.autoExecuted} escalated:${stats.escalated} failed:${stats.failed}`);
+    logger.info(`[autonomousTaskProcessor] Batch complete — processed:${stats.processed} auto:${stats.autoExecuted} escalated:${stats.escalated} failed:${stats.failed} skippedPaused:${stats.skippedPaused}`);
     await updateAgentRunRecord("completed", stats);
   } catch (err: any) {
     logger.error("[autonomousTaskProcessor] Fatal error", err);

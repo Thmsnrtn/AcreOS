@@ -28,6 +28,7 @@ import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs"; // S3 decomposition slice 1
 import { startReferralMaturityJob } from "./referralMaturityJob"; // S3 slice
 import { startLandCreditScoreRecalcJob } from "./landCreditScoreRecalcJob"; // S3 slice
+import { startPendingActionExpiryJob } from "./pendingActionExpiryJob"; // S3 slice (review-queue TTL sweep)
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
@@ -4203,19 +4204,18 @@ export async function runScheduledJobs(): Promise<void> {
   // log at warn level for now.
   startIrisPerfMonitorJob();
 
-  // Tess (SRE) — dark-job activation. Six fully-built jobs that were never
-  // registered (and so never ran). All lock-guarded + idempotent + staggered
-  // across the low-traffic 01:00–08:00 UTC band; the two cred-dependent ones
-  // (backup / course-completion) self-skip cleanly until creds land.
+  // Tess (SRE) — dark-job activation. Six fully-built jobs that were never registered (and so
+  // never ran). All lock-guarded + idempotent + staggered across the low-traffic 01:00–08:00 UTC
+  // band; the two cred-dependent ones (backup / course-completion) self-skip cleanly until creds land.
   startLandCreditScoreRecalcJob();   // daily ~01:00 UTC
   startReferralMaturityJob();        // daily ~02:10 UTC
+  startPendingActionExpiryJob();     // daily ~02:20 UTC (pending_actions TTL sweep — review queue)
   startIndexAnalyzerJob();           // daily ~02:00 UTC
   startFeatureEngineeringJob();      // weekly Sun ~02:30 UTC
   startDbBackupJob();                // daily ~07:00 UTC (dormant w/o DB_BACKUP_S3_BUCKET)
   startCourseCompletionCheckJob();   // daily ~08:00 UTC (dormant w/o AWS_SES_FROM_EMAIL)
-  // Tier 1E — weekly restore-verification of the latest backup (Sun ~05:00
-  // UTC; dormant w/o DB_BACKUP_S3_BUCKET + AWS creds — visible via the
-  // deadman's config-dormant meta-check, never silently forgotten).
+  // Tier 1E — weekly restore-verification of the latest backup (Sun ~05:00 UTC; dormant w/o
+  // DB_BACKUP_S3_BUCKET + AWS creds — visible via the deadman's config-dormant meta-check, never silently forgotten).
   startBackupRestoreVerifyJob();
   // Note: fairLendingAudit (monthly) is ALREADY registered below via
   // scheduleSelfRescheduling("fair_lending_audit") — not re-wired here.

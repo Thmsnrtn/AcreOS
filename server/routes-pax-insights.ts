@@ -18,8 +18,12 @@ import {
 import {
   approvePendingAction,
   rejectPendingAction,
+  listPendingActions,
+  countPendingActions,
   toolChannel,
+  toolRecipientRef,
 } from "./services/approvalKernel";
+import type { PendingAction } from "@shared/schema";
 import { z } from "zod";
 
 const router = Router();
@@ -740,6 +744,65 @@ router.post("/pending-actions/:id/reject", async (req: AuthenticatedRequest, res
     return res.json({ success: true, rejected: true });
   } catch (error: any) {
     logger.error("Pax pending-action reject error", { error: error.message });
+    return Errors.internal(res, error);
+  }
+});
+
+// ── Review-queue reads (autonomy clarity program, 2026-09-02) ───────────────
+// The customer-side view of the kernel's frozen rows: what is waiting on a
+// human tap right now. Same auth/org scoping as approve/reject above
+// (isAuthenticated + getOrCreateOrg at the mount; the org comes from
+// req.organization, never from the client). Each read is ONE indexed query
+// and shares the router-wide paxChatGuard (30/min) with chat — keep them
+// cheap; the badge polls slowly and refetches on `pending_action.created`.
+
+/**
+ * Card shape for one review-queue row. Never the raw row: resultSummary,
+ * contentHash and the approver stay server-side; the card needs what a human
+ * reads to decide — what, to whom, over which channel, and how long it lives.
+ */
+function pendingActionCard(row: PendingAction) {
+  const args = row.args as Record<string, unknown>;
+  return {
+    id: row.id,
+    toolName: row.toolName,
+    channel: toolChannel(row.toolName),
+    recipient: toolRecipientRef(row.toolName, args),
+    args,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+  };
+}
+
+const PENDING_LIST_ROUTE_MAX = 100;
+
+// GET /api/pax/pending-actions?limit=50 — live (pending, unexpired) actions, newest first.
+router.get("/pending-actions", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const limit =
+      Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, PENDING_LIST_ROUTE_MAX) : 50;
+    const rows = await listPendingActions(org.id, { limit });
+    return res.json({ actions: rows.map(pendingActionCard) });
+  } catch (error: unknown) {
+    logger.error("Pax pending-actions list error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return Errors.internal(res, error);
+  }
+});
+
+// GET /api/pax/pending-actions/count — badge count, same predicate as the list.
+router.get("/pending-actions/count", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const count = await countPendingActions(org.id);
+    return res.json({ count });
+  } catch (error: unknown) {
+    logger.error("Pax pending-actions count error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return Errors.internal(res, error);
   }
 });

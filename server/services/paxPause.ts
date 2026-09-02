@@ -8,19 +8,59 @@
  * active team member pauses Pax for the whole org. That is deliberately the
  * fail-safe direction — one panicked human stops the machine for everyone.
  *
- * This module is the single source of truth consulted by the five
- * enforcement points:
+ * This module is the single source of truth consulted by every enforcement
+ * point. The population below is pinned by tests/unit/paxPauseCoverage.test.ts
+ * in both directions: each listed file must call getPaxPauseState inside its
+ * dispatch function, before dispatch, and no other production file may call
+ * it without being added here. A pause is always a SKIP or DEFER — never a
+ * cancellation, never a failure mark: the work runs the moment the pause
+ * lifts.
+ *
+ *   Model-driven tool dispatch
  *   - server/ai/tools.ts (executeTool) — refuses side-effecting tool calls
  *     while paused (read-only lookups and drafts still run).
  *   - server/ai/supportAgent.ts (executeSupportTool) — same allowlist gate
  *     over the support agent's dispatch switch (added 2026-09-01; it was the
  *     population blind spot CLAUDE.md documents).
+ *
+ *   Scheduled / autonomous Pax surfaces
  *   - server/services/paxScheduler.ts — skips scheduled Pax tasks for paused
  *     orgs with a logged skip reason, never silently.
  *   - server/services/autonomousDecisionExecutor.ts — defers org-scoped
  *     inbox items for paused orgs until the pause lifts.
- *   - server/services/financeAgent.ts — skips the finance sweep for paused
- *     orgs.
+ *   - server/services/financeAgent.ts — parks ladder reminders as "queued"
+ *     (not sent) for paused orgs.
+ *
+ *   Unattended execution engines (pause coverage, 2026-09-02 — before this
+ *   the switch promised "every auto-execution path" and covered only the
+ *   five above)
+ *   - server/services/workflow-engine.ts (executeAction) — every acting
+ *     workflow step (send_email, create_task, update_record,
+ *     run_agent_skill, send_notification) returns a "blocked" result; the
+ *     run continues, nothing sends, nothing is written.
+ *   - server/services/sequenceProcessor.ts (sendStep) — Gate 0: the step is
+ *     DEFERRED (not consumed) until the pause lifts, or 15 minutes out when
+ *     the expiry is unknown.
+ *   - server/services/leadNurturer.ts (processLeadsForOrg) — the org's
+ *     nurturing pass is skipped for this tick (`skippedPaused: true`).
+ *   - server/jobs/autonomousTaskProcessor.ts (processBatch) — a paused org's
+ *     pending agent tasks are left pending; never failed, never cancelled.
+ *   - server/services/agent-skills.ts (executeSkill) — side-effecting skills
+ *     (anything not on PAUSE_SAFE_SKILLS) are refused for every caller of
+ *     the registry.
+ *   - server/services/task-runner.ts (runTask) — scheduled tasks return
+ *     before executing, without advancing nextRunAt or counting a retry.
+ *
+ *   Read-only consumers (not enforcement points)
+ *   - server/routes-autonomy.ts (GET /api/me/autonomy/org-pause) — the
+ *     settings surface reads the ORG-WIDE state so "Clear pause" is honest
+ *     when a teammate's pause is what holds the org.
+ *   - server/services/paxAskExecutors.ts — reads the state (via
+ *     getPaxControls) for stance attribution on the ask receipt only.
+ *
+ *   Aggregator (wraps this primitive; its consumers are the enforcers)
+ *   - server/services/paxControls.ts (getPaxControls) — folds the pause
+ *     into the org's stance for engines that consult the "one reader".
  *
  * Expiry is implicit: every read compares `pausedUntil` against now, so
  * behavior resumes automatically the moment the timestamp passes — no cron.

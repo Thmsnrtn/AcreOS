@@ -7,9 +7,51 @@ import { emailService } from "./emailService";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
 import { PropertyEnrichmentService } from "./propertyEnrichment";
 import { logger } from "../utils/logger";
+import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
+
+/**
+ * Skills that may still run while the org's Pax pause is active: pure
+ * calculations and read-only lookups / analyses that change nothing of the
+ * customer's and reach no counterparty — the pause promise is "read-only
+ * lookups and drafts still work". Every other registered skill is refused by
+ * executeSkill while paused, for EVERY caller of the registry (workflow
+ * engine, task runner, autonomous task processor, company agents — all
+ * unattended; no human is present to approve).
+ *
+ * Fail-closed by construction: a newly registered skill is gated until
+ * someone deliberately lists it here. tests/unit/paxPauseCoverage.test.ts
+ * pins the classification against SKILL_RISK
+ * (server/jobs/autonomousTaskProcessor.ts): an entry here must be classified
+ * research/draft, non-external and reversible there, and every registered
+ * skill must appear on exactly one side. Deliberately NOT exported — the
+ * test reads the literal out of this source, the same way
+ * paxPauseSupportGate reads PAUSE_SAFE_SUPPORT_TOOLS.
+ */
+const PAUSE_SAFE_SKILLS: ReadonlySet<string> = new Set([
+  // Pure calculation
+  "calculateFinancing",
+  // Read-only CRM analysis (reads leads / activities / notes; writes nothing)
+  "scoreLead",
+  "scoreBuyer",
+  "analyzeNote",
+  "suggestFollowUp",
+  "marketAnalysis",
+  "researchComps",
+  // External data lookups (read the world; change nothing of the org's).
+  // researchCounty is deliberately absent: it upserts county_research rows.
+  "lookupParcel",
+  "lookupEnvironmental",
+  "gis_property_enrichment",
+  "gis_flood_lookup",
+  "gis_environmental_lookup",
+  "gis_infrastructure_lookup",
+  "gis_hazards_lookup",
+  // Produces copy from a property record; sends nothing, writes nothing
+  "generateAdCopy",
+]);
 
 export interface AgentContext {
   organizationId: number;
@@ -2795,6 +2837,31 @@ export class SkillRegistry {
         success: false,
         error: `Skill not found: ${skillId}`,
       };
+    }
+
+    // ── Pax pause kill-switch gate (pause coverage, 2026-09-02) ───────────
+    // Every caller of this registry is an unattended engine, so the org-wide
+    // pause is enforced HERE, once, for all of them. Read-only skills still
+    // run; anything else is refused with the honest message and executes
+    // nothing. A refusal is a skip, not a failure of the skill: whoever
+    // retries after the pause lifts finds it runnable. Fails CLOSED on a
+    // failed pause read.
+    if (!PAUSE_SAFE_SKILLS.has(skillId)) {
+      const pause = await getPaxPauseState(context.organizationId);
+      if (pause.paused) {
+        logger.info(
+          `[SkillRegistry] Refused skill ${skillId} — Pax is paused for org ${context.organizationId}`,
+          {
+            metadata: {
+              skillId,
+              organizationId: context.organizationId,
+              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+              checkFailed: pause.checkFailed,
+            },
+          },
+        );
+        return { success: false, error: paxPauseRefusalMessage(pause) };
+      }
     }
 
     try {

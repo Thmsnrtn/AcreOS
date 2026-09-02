@@ -42,23 +42,17 @@ export interface AppearancePreferences {
   };
 }
 
-export type AutonomyLevel = 0 | 1 | 2 | 3;
-
-export interface AgentAutonomy {
-  /** Top-level scale (0 Observe / 1 Draft / 2 Execute / 3 Autonomous). */
-  level?: AutonomyLevel;
-  /** Per-action overrides — keys are action IDs from per-agent registry. */
-  perAction?: Record<string, AutonomyLevel>;
-  /** Monetary thresholds (cents) — keys are action IDs that gate on $$$. */
-  thresholdsCents?: Record<string, number>;
-  /**
-   * Workstream A (Honesty) — kill switch.
-   * ISO-8601 timestamp. While in the future, all autonomous action for this
-   * agent MUST be skipped (only asked / drafted, never executed). Downstream
-   * executors (e.g. server/services/autonomousDecisionExecutor.ts) must
-   * respect this when wired. Cleared by the "reset to manual-only" or by
-   * the timestamp passing.
-   */
+/**
+ * The Pax pause — the ONE thing this column still carries.
+ *
+ * ISO-8601 timestamp. While it is in the future, everything Pax and the
+ * customer's rules do on their own is stopped for the WHOLE org (enforcement
+ * is org-wide by union over the owner and active members —
+ * server/services/paxPause.ts). Expiry is implicit: every read compares it
+ * against now. Written by POST /api/pax/pause; cleared by POST /api/pax/resume
+ * or by the timestamp passing.
+ */
+export interface PaxPausePreference {
   pausedUntil?: string;
 }
 
@@ -99,31 +93,24 @@ export type Persona =
   | "landlord";
 
 /**
- * Per-agent autonomy matrix (design-system §7). 4-level scale
- * (0 Observe / 1 Draft / 2 Execute / 3 Autonomous) per agent, with
- * per-action overrides and monetary thresholds where applicable.
- * Time guards apply to all agents.
+ * `users.autonomy_preferences` — narrowed 2026-09-02 (customer autonomy
+ * clarity program, AUTONOMY_SPEC.md §4.1) to the pause alone.
  *
- * Server-side enforcement is wired progressively as Phase E surfaces
- * touch agent action paths — for now this stores the user's intent;
- * agents read it at action time and gate / ask / log accordingly.
+ * It used to carry a per-agent 0–3 level, per-action overrides, monetary
+ * thresholds and time guards (the "autonomy matrix", JC#14 / migration
+ * 0030). None of those ever had a server reader: enforcement was never wired,
+ * the panel that wrote them was founder-only behind a feature flag, and the
+ * stance the customer can actually choose now lives org-wide in
+ * `organizations.pax_controls` (shared/pax-controls.ts). Migration 0250
+ * strips the dead keys from stored rows and keeps `pax.pausedUntil` exactly
+ * as it was — the pause reads it (server/services/paxPause.ts) and is
+ * pinned by tests/unit/paxPauseState.test.ts.
  *
- * Phase D gates this UI behind feature.autonomy-matrix (founder-only)
- * until UX polish complete (design-system §8.4).
- *
- * Lives in its own column (JC#14) — see migrations/0030. Decoupled from
- * AppearancePreferences so theme writes can't trample autonomy policy
- * and agents read a narrow surface at action time.
+ * Still its own column (never inside appearance_preferences), so a theme
+ * write cannot trample the pause.
  */
 export interface AutonomyPreferences {
-  atlas?: AgentAutonomy;
-  pax?: AgentAutonomy;
-  sophie?: AgentAutonomy;
-  timeGuards?: {
-    pauseStartHour?: number;
-    pauseEndHour?: number;
-    dailyActionLimit?: number;
-  };
+  pax?: PaxPausePreference;
 }
 
 // User storage table.
@@ -146,8 +133,9 @@ export const users = pgTable("users", {
   // Defaults applied client-side via DEFAULT_CONFIG in theme-context.tsx; nulls in
   // any field fall back to those defaults.
   appearancePreferences: jsonb("appearance_preferences").$type<AppearancePreferences>(),
-  // Per-agent autonomy matrix — split off from appearance_preferences in
-  // migration 0030 so theme writes can't trample agent policy.
+  // The Pax pause (pax.pausedUntil) — split off from appearance_preferences in
+  // migration 0030 so theme writes can't trample it; narrowed to the pause
+  // alone in migration 0250.
   autonomyPreferences: jsonb("autonomy_preferences").$type<AutonomyPreferences>(),
   // Investor archetype — drives onboarding path, default surfaces, and
   // vocabulary substitutions (JC#7 + VERTICAL-EXPANSION-PLAN.md). Validated

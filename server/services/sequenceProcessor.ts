@@ -14,6 +14,7 @@ import {
 } from "./compliance/contactFrequency";
 import crypto from "crypto";
 import { logger } from '../utils/logger';
+import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -301,12 +302,16 @@ export class SequenceProcessorService {
    * Send one sequence step.
    *
    * GATE ORDER (never reordered, never bypassed):
+   *   0. Pax pause (org-wide kill switch) — DEFERS the step, never consumes
+   *      it; checked first because it is a customer's explicit "stop", and
+   *      a stopped machine has no business evaluating consent for a send it
+   *      will not make. Added 2026-09-02 (pause coverage).
    *   1. TCPA consent / doNotContact  — canSendViaChannel
    *   2. Recipient-local quiet hours  — SMS only, DST-correct
    *   3. Contact-frequency cap        — the fatigue detector's `suppress`
    *      verdict, now enforced rather than merely reported
    * Frequency is only ever an ADDITIONAL refusal; it is reached only when the
-   * two gates above have already allowed the send.
+   * gates above have already allowed the send.
    *
    * Returns what ACTUALLY happened. Only a "sent" outcome writes a
    * status:"sent" delivery event and a contact-touch row.
@@ -314,6 +319,33 @@ export class SequenceProcessorService {
   async sendStep(enrollment: EnrollmentWithDetails, step: SequenceStep): Promise<StepSendResult> {
     const lead = enrollment.lead;
     const channel = step.channel as ContactChannel;
+
+    // ── Gate 0: Pax pause ────────────────────────────────────────────────
+    // Sequences send unattended, so "Pause all Pax automation" must hold
+    // here. A paused step is DEFERRED: the caller keeps currentStep put and
+    // reschedules for the pause expiry (or MIN_DEFER_MS out when the expiry
+    // is unknown — including a failed read, which fails CLOSED). Recorded on
+    // the delivery timeline with the honest reason, exactly like the
+    // frequency-cap deferral below.
+    const pause = await getPaxPauseState(enrollment.sequence.organizationId);
+    if (pause.paused) {
+      const reason = paxPauseRefusalMessage(pause);
+      const retryAt = pause.pausedUntil ?? new Date(Date.now() + MIN_DEFER_MS);
+      logger.info("[sequence-processor] Step deferred — Pax is paused for this org", {
+        metadata: {
+          enrollmentId: enrollment.id,
+          organizationId: enrollment.sequence.organizationId,
+          leadId: lead.id,
+          channel: step.channel,
+          stepNumber: step.stepNumber,
+          pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+          checkFailed: pause.checkFailed,
+          retryAt: retryAt.toISOString(),
+        },
+      });
+      await this.recordStepSkip(enrollment, step, reason);
+      return { status: "deferred", reason, retryAt };
+    }
 
     // ── Gate 1: consent ──────────────────────────────────────────────────
     const channelCheck = canSendViaChannel(lead, step.channel as 'email' | 'sms' | 'direct_mail');

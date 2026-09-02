@@ -88,6 +88,16 @@ vi.mock("../../server/services/emailService", () => ({
   emailService: { sendEmail: (...args: any[]) => sendEmail(...(args as [any])) },
 }));
 
+// The engine consults the org's Pax pause before every ACTING step (pause
+// coverage, 2026-09-02). getPaxPauseState fails CLOSED, so without this mock
+// every step below would come back "blocked" instead of exercising the rails
+// this suite is about. The gate's own behaviour is pinned in
+// tests/unit/paxPauseWorkflowEngine.test.ts.
+vi.mock("../../server/services/paxPause", () => ({
+  getPaxPauseState: async () => ({ paused: false, pausedUntil: null, checkFailed: false }),
+  paxPauseRefusalMessage: () => "Pax is paused",
+}));
+
 const getSkillById = vi.fn((_id: string) => undefined as any);
 const executeSkill = vi.fn(async (_id: string, _params: any, _ctx: any) => ({
   success: true,

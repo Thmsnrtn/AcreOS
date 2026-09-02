@@ -10,6 +10,10 @@ import { z } from "zod";
 import { chartOfAccounts, accountLedgerEntries } from "./schema/accounting-ops";
 import { users } from "./models/auth";
 import { dealRooms } from "./schema/marketplace";
+// Pax controls (customer autonomy clarity program, 2026-09-02) — the typed
+// shapes behind organizations.pax_controls and pending_actions.origin /
+// source_ref. Type-only, so nothing here reaches the client bundle.
+import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
 
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
@@ -237,6 +241,16 @@ export const organizations = pgTable("organizations", {
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
   // Pax autonomy level — controls how much Pax can act without per-action approval
   paxAutonomyLevel: varchar("pax_autonomy_level", { length: 20 }).default("assisted"), // assisted, supervised, autonomous
+  // Pax controls (customer autonomy clarity program, 2026-09-02; spec §4.1;
+  // migration 0250). Org-level and customer-writable: which of the two
+  // OFFERED_STANCES, plus the three "runs on its own" switches. NULL means
+  // "never set" and reads as PAX_CONTROLS_DEFAULTS — which EQUAL today's live
+  // behaviour, so the deploy that adds the column changes nothing silently.
+  // Read only through server/services/paxControls.ts, which parses it
+  // strictly and fails CLOSED (stricter stance, switches off) on anything it
+  // does not recognise. `pax_autonomy_level` above has no customer writer and
+  // is dropped by a later migration once its zero-reader ratchet is green.
+  paxControls: jsonb("pax_controls").$type<PaxControls>(),
   // UTM attribution for customer acquisition tracking
   utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
   utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
@@ -2676,6 +2690,16 @@ export const pendingActions = pgTable("pending_actions", {
   approvedByUserId: text("approved_by_user_id"),
   executedAt: timestamp("executed_at"),
   resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
+  // Migration 0250 (customer autonomy clarity program): where the ask came
+  // from and why. `origin` is the lane (PAX_ASK_ORIGINS), `source_ref` the
+  // record it was about, `reason` Pax's own explanation — rendered verbatim
+  // under "Pax's explanation" on the ask card, never as a number. All three
+  // nullable: rows written before 0250 carry none, and the kernel writers
+  // that populate them land in wave 1 (executeTool / executeSupportTool /
+  // the borrower ladder / the revise route).
+  origin: text("origin").$type<PaxAskOrigin>(),
+  sourceRef: jsonb("source_ref").$type<PaxAskSourceRef>(),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => [
   index("pending_actions_org_status_idx").on(t.organizationId, t.status),

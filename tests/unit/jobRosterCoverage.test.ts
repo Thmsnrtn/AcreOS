@@ -53,6 +53,9 @@ const SCANNED_FILES = [
   // runScheduledJobs.ts under the strictly-DOWN line ratchet.
   "../../server/jobs/referralMaturityJob.ts",
   "../../server/jobs/landCreditScoreRecalcJob.ts",
+  // Review-queue plumbing (2026-09-02): the daily pending_actions TTL sweep
+  // (pending_action_expiry_sweep) lives in its own slice, same reason.
+  "../../server/jobs/pendingActionExpiryJob.ts",
 ];
 
 function extractWithJobLockNames(): Set<string> {

@@ -160,6 +160,14 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// The kernel publishes `pending_action.created` over the org WebSocket
+// channel on proposal (review-queue plumbing, 2026-09-02). Stubbed here so
+// this suite stays a pure state-machine test; the publish contract itself is
+// pinned in tests/unit/pendingActionsQueue.test.ts.
+vi.mock("../../server/websocket", () => ({
+  wsServer: { broadcastToOrg: vi.fn() },
+}));
+
 import {
   APPROVAL_REQUIRED_TOOLS,
   actionContentHash,
