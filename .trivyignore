@@ -73,3 +73,17 @@ CVE-2026-73566
 # still fires any of them, restore exactly the survivors with a
 # v2.99.0-dated assessment (the nil-exposure reasoning — gh is a subprocess
 # API client, no module fetching, no gRPC server — still holds if needed).
+#
+# REMOVAL-TEST RESULT (run 33578279866, 2026-09-02): exactly ONE survivor.
+# CVE-2026-56854 (x/crypto), CVE-2026-56852/x-text pair and
+# GHSA-hrxh-6v49-42gf (grpc) all cleared at v2.99.0 — entries stay removed.
+#
+# ── CVE-2026-56864 — golang.org/x/mod v0.39.0 in the gh v2.99.0 binary ──
+# Fixed in x/mod 0.40.0; gh v2.99.0 (latest) still pins 0.39.0 upstream.
+# Assessment — EXPOSURE NIL (v2.99.0-dated): the vulnerability requires a
+# malicious GOSUMDB serving module data during Go module fetching; gh
+# performs NO Go-module fetching at runtime — it is a subprocess API client
+# for api.github.com invoked by evolutionPrGenerator.ts with our own token.
+# Re-review trigger: next GH_VERSION bump — drop this line when the
+# release's go.mod pins x/mod >= 0.40.0.
+CVE-2026-56864
