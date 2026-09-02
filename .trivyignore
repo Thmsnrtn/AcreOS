@@ -84,6 +84,12 @@ CVE-2026-73566
 # malicious GOSUMDB serving module data during Go module fetching; gh
 # performs NO Go-module fetching at runtime — it is a subprocess API client
 # for api.github.com invoked by evolutionPrGenerator.ts with our own token.
-# Re-review trigger: next GH_VERSION bump — drop this line when the
+# Re-review trigger: next GH_VERSION bump — drop BOTH lines when the
 # release's go.mod pins x/mod >= 0.40.0.
 CVE-2026-56864
+# …and CVE-2026-56865 — the SECOND x/mod v0.39.0 CVE (sumdb/tlog
+# transparency-log verification), surfaced by the next scan (run
+# 33580880674, 2026-09-02) after 56864 was dispositioned. Same module,
+# same version, same nil exposure: gh performs no Go-module fetching and
+# no sumdb verification at runtime. Same re-review trigger.
+CVE-2026-56865
