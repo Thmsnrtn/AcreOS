@@ -63,23 +63,13 @@ CVE-2026-69152
 # lockfile. Same npm-bundle disposition and re-review trigger as above.
 CVE-2026-73566
 
-# ── CVE-2026-56852 / 56864 / 56865 — Go modules embedded in the gh binary ──
-# Affected: golang.org/x/text v0.38.0 and x/mod v0.37.0 compiled into the
-# gh CLI (built from GH_VERSION=v2.96.0 in the Dockerfile's gh-build stage).
-# Assessment — EXPOSURE NIL:
-#   • gh runs only as a subprocess of the evolution PR generator
-#     (evolutionPrGenerator.ts) talking to api.github.com with our own
-#     token; the x/mod CVE requires a malicious GOSUMDB serving module
-#     data — gh performs no Go-module fetching at all — and the x/text
-#     path never receives attacker-controlled input in our invocations.
-#   • The Go STDLIB CVEs previously flagged are gone (base bumped to
-#     golang 1.26.6); these three are gh's own go.mod pins.
-# Re-review trigger: drop these three on the next GH_VERSION bump — check
-# whether the release's go.mod carries x/mod >= 0.40.0 and x/text >= 0.39.0.
-CVE-2026-56852
-CVE-2026-56864
-CVE-2026-56865
-# …and google.golang.org/grpc v1.81.1 (fixed 1.82.1) in the same gh binary —
-# xDS RBAC / HTTP/2 SERVER vulnerabilities; gh runs no gRPC server, ever.
-# Same re-review trigger: the next GH_VERSION bump.
-GHSA-hrxh-6v49-42gf
+# ── gh-binary Go-module CVEs: REMOVAL-TESTED at GH_VERSION v2.99.0 bump ────
+# (2026-09-02) The prior entries here — CVE-2026-56852/56864/56865 (x/text
+# v0.38.0, x/mod v0.37.0) and GHSA-hrxh-6v49-42gf (grpc v1.81.1) — hit their
+# recorded re-review trigger when GH_VERSION bumped v2.96.0 → v2.99.0, whose
+# go.mod pins x/text v0.41.0 and grpc v1.83.2 (both past their fix floors)
+# but x/mod v0.39.0 (our note's floor said 0.40.0). Ignored entries are
+# invisible to falsification, so ALL FOUR were removed; if the next scan
+# still fires any of them, restore exactly the survivors with a
+# v2.99.0-dated assessment (the nil-exposure reasoning — gh is a subprocess
+# API client, no module fetching, no gRPC server — still holds if needed).
