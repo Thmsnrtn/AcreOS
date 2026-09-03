@@ -48,6 +48,8 @@ import { Link } from "wouter";
 import { Verbs } from "@/lib/labels";
 import { TeamChatPanel } from "@/components/team-chat-panel";
 import { NativeMailPanel } from "@/components/native-mail-panel";
+import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
+import { PAX_LABELS } from "@shared/pax-glossary";
 
 type ChannelFilter = "all" | "email" | "sms" | "team" | "mail";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
@@ -844,7 +846,7 @@ function SMSConversationDetail({
           <EmptyState
             icon={MessageSquare}
             headline="Thread starts the moment you hit send"
-            subtitle="Pax threads every reply against this lead and raises an aging alert after 3 quiet days on a hot lead."
+            subtitle="Pax threads every reply against this lead."
             cta={{ label: "Send a message", onClick: () => document.querySelector<HTMLTextAreaElement>('[data-testid="input-sms-message"]')?.focus() }}
             actionIcon={null}
             testId="sms-empty-thread"
@@ -916,6 +918,32 @@ function SMSConversationDetail({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The one pinned pointer from the Inbox to the Pax queue (spec §3c). Reads
+ * the same count every badge reads (usePaxNeedsYouCount — live on
+ * `pax.needs_you`, 5-minute poll fallback). Renders NOTHING until the server
+ * has answered and the count is above zero: a chip must not invent a 0, and
+ * an empty queue needs no pointer. The word is "waiting", not "drafts" —
+ * under "Ask before everything" a record change waits here too, and a chip
+ * that called it a draft would be describing a thing it did not read.
+ */
+function PaxNeedsYouChip() {
+  const { count } = usePaxNeedsYouCount();
+  if (count === null || count <= 0) return null;
+  return (
+    <Link
+      href="/ai"
+      className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 min-h-11 md:min-h-8 text-sm font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={`${count} ${PAX_LABELS.queue.toLowerCase()} — open Pax`}
+      data-testid="inbox-pax-needs-you-chip"
+    >
+      <span>
+        {count} {PAX_LABELS.queue.toLowerCase()} → Pax
+      </span>
+    </Link>
   );
 }
 
@@ -1227,6 +1255,8 @@ export default function InboxPage() {
               )}
             </h1>
           </div>
+
+          <PaxNeedsYouChip />
 
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />

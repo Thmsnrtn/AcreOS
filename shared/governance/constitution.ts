@@ -38,7 +38,7 @@ export type InvariantCategory =
   | "expansion-gate" // the approved growth ladder (marketplace/API triggers)
   | "data-plane" // gated data planes (residential comps)
   | "rails" // BYO send rails; platform sender for system mail only
-  | "ai-surface" // Pax stays ambient, never a separate destination
+  | "ai-surface" // Pax stays ambient, never a separate destination; what it may do on its own and how the customer controls it
   // The governing POSTURE that several hard stops above are instances of.
   // Not itself a ban: it is the rule that decides which role AcreOS takes when
   // a new capability is designed, and it carries explicit exceptions.
@@ -616,6 +616,95 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "holds today BY THE FREEZE rather than by absence; unfreezing it fails " +
         "the ratchet. The founder plane is deliberately out of scope — it has " +
         "its own four-doors rule and an explicit admin namespace.",
+    },
+  },
+  // ── Pax controls (customer autonomy clarity program, 2026-09-02) ───────
+  // Three decisions from docs/company/founder-decision-2026-09-02-pax-controls.md
+  // and docs/autonomous/AUTONOMY_SPEC.md, each registered the day its gate
+  // shipped so none of them lives as prose first. All three are the kind of
+  // rule this registry exists for: a green gate over a live defect was the
+  // program's founding observation (the "autonomy level" that no engine read).
+  {
+    id: "ai.customer-sends-are-witnessed",
+    title: "Every message Pax writes waits for a human tap",
+    statement:
+      "Pax never sends a message to another person on its own — every customer-facing send (email, text, letter, payment link) is a pending ask until a signed-in human approves it, at every offered stance; the two offered stances are the only lever and widening them requires a dated founder ruling.",
+    category: "ai-surface",
+    source:
+      "docs/company/founder-decision-2026-09-02-pax-controls.md #1 (standing posture: docs/internal/roadmap/founder-autopilot-2026-06-16.md §5, 'Customer-facing Pax keeps witnessed-send regardless')",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/paxWitnessedSend.test.ts",
+        "tests/unit/paxControlsOffered.test.ts",
+        "server/services/approvalKernel.ts",
+        "shared/pax-controls.ts",
+      ],
+      note:
+        "paxWitnessedSend.test.ts drives the REAL executeTool with the REAL " +
+        "APPROVAL_REQUIRED_TOOLS and asserts a send never reaches its rail " +
+        "without trustedApproval, at either stance; the set may only grow " +
+        "(removing send_sms goes red). paxControlsOffered.test.ts pins " +
+        "OFFERED_STANCES to asking stances only and requires a dated ruling " +
+        "document per stance, so 'on its own' cannot be appended quietly. " +
+        "What this cannot see: a NEW send rail added outside executeTool. " +
+        "That is the pause-coverage entry's population question, below.",
+    },
+  },
+  {
+    id: "ai.pause-covers-every-unattended-path",
+    title: "One pause stops every path that acts without a tap",
+    statement:
+      "Every place Pax or a customer rule acts without a tap is a member of UNATTENDED_PATHS (shared/pax-controls.ts), the customer's Pause is read at each member's gate before any side effect, and the page's 'what Pause stops' list is rendered from the same registry the ratchet reads — one enumeration, both sides.",
+    category: "ai-surface",
+    source:
+      "docs/autonomous/AUTONOMY_SPEC.md §4.4, §4.6, §7 (paxPauseCoversEveryUnattendedPath); founder decision 2026-09-02 #6 (pause durations)",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/paxPauseCoverage.test.ts",
+        "shared/pax-controls.ts",
+        "server/services/paxPause.ts",
+      ],
+      note:
+        "paxPauseCoverage.test.ts derives its enforcement points FROM " +
+        "UNATTENDED_PATHS (not a second hand-typed list), resolves each " +
+        "member's file:function, asserts the pause read sits in that function " +
+        "and that the job roster carries no org-writing job outside the " +
+        "registry. Removing one pause read, or adding a job that writes org " +
+        "rows without registering, goes red. Behaviour under pause (defer, " +
+        "park, skip — never drop, never mark completed) is pinned by the " +
+        "per-engine suites it names.",
+    },
+  },
+  {
+    id: "ai.one-pax-control-surface",
+    title: "One Pax control surface, in the customer's words",
+    statement:
+      "The customer controls Pax from exactly one place (Settings → Pax, nested — never a door), reads two stances, one Pause, one queue and one receipts feed, and never reads the machine's vocabulary: every stance and pause string comes from shared/pax-glossary.ts, and the banned words of AUTONOMY_SPEC.md §2 appear on no customer surface.",
+    category: "ai-surface",
+    source:
+      "docs/company/founder-decision-2026-09-02-pax-controls.md #9 (where the page lives) and 'Binding vocabulary'; AUTONOMY_SPEC.md §2, §3a",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/paxControlsSurfaceIsHonest.test.ts",
+        "tests/unit/paxGlossaryBannedWords.test.ts",
+        "shared/pax-glossary.ts",
+        "client/src/pages/settings/pax-controls.tsx",
+      ],
+      note:
+        "paxControlsSurfaceIsHonest.test.ts parses every file under " +
+        "client/src/pages/** and client/src/components/** (founder " +
+        "directories allowlisted, per-directory vacuity) with the TypeScript " +
+        "compiler and scans JSX text, string literals and template text — " +
+        "not identifiers, comments or import paths — for the §2 banned list, " +
+        "each banned entry proven live against its own planted sample. It " +
+        "also asserts the page renders 'what Pause stops' from " +
+        "UNATTENDED_PATHS, that no stance/pause sentence is typed inline " +
+        "outside the glossary, and that PAX_CONTROLS_PATH resolves to a real " +
+        "nested route in App.tsx. Typing a stance label inline or the word " +
+        "'autopilot' into a customer component goes red.",
     },
   },
 ] as const;

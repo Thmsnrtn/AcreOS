@@ -1187,3 +1187,68 @@ as a second implementation.
 because it is a separate question (whether AcreOS should hold a platform-wide
 data-vendor account at all) and deleting it here would have been an unannounced
 answer to it. Recorded so the next reader finds it rather than rediscovers it.
+
+---
+
+## Pax controls program — wave 1 deletions (2026-09-02)
+
+Program: customer autonomy clarity (founder directive 2026-09-02; spec
+`docs/autonomous/AUTONOMY_SPEC.md` §3d; decisions
+`docs/company/founder-decision-2026-09-02-pax-controls.md`). Each row below
+is a deletion the spec prescribed and wave 1 executed, recorded here by the
+program's governance agent (F) as the ledger of record; the executing agent
+is named per row. Verified against the working tree at the time of writing
+(`git status`); the central verifier re-checks each row at commit. Rows
+marked *pending* were prescribed but not yet observed deleted when this
+section was written — they stay listed so the residue is visible rather than
+forgotten.
+
+**Why one section, not one row per module.** These were not speculative
+modules; they were a second, third and fourth *vocabulary* for the same
+idea — "autopilot", an "autonomy level" no engine read, a "Full autopilot"
+option with no server reader, an "Autonomy matrix" flag that silently
+cleared pauses, a customer "Tasks / Deploy Agent" lane priced at an invented
+"$0.02 per task", and a second approval mechanism (`pax_drafts`) with zero
+client callers. The customer model that replaced them is two stances, one
+Pause, one queue, one receipts feed (`shared/pax-glossary.ts`,
+`shared/pax-controls.ts`). Deleting the surfaces without deleting the words
+would have left the confusion in place, so the banned vocabulary is ratcheted
+(`tests/unit/paxControlsSurfaceIsHonest.test.ts`,
+`tests/unit/paxGlossaryBannedWords.test.ts`) alongside the file deletions.
+
+| Deleted (file / route / symbol) | What went | Why (spec §3d confusion #) | Agent | Observed |
+|---|---|---|---|---|
+| `client/src/components/settings/autopilot-setup.tsx` | whole file; the four connection-status rows moved into `PaxControls` ("What Pax can use") | `pax.level` had no server reader; "Full autopilot" was fabricated capability (#1) | D | deleted |
+| `client/src/components/settings/autonomy-panel.tsx` + `settings.tsx` mount + `SettingsQuickFind.tsx` "Autonomy matrix" row + `feature.autonomy-matrix` flag (`RETIRED_FLAG_KEYS`; migrate.mjs 0250 `DELETE FROM feature_flags`) | whole panel + flag | a third vocabulary, inert fields, silently cleared pauses (#12) | D | deleted |
+| `client/src/components/ai-settings.tsx` + mounts (`settings.tsx`, `command-center.tsx` gear dialog) + `PATCH /api/organization/ai-settings` + `storage.updateOrganizationAISettings` | all four fields and the route; `paxDraftEnabled` migrated to `pax_controls.inboxDrafts` | zero readers (#9) | D (client) / C (route + storage) | client file deleted; route/storage: C's slice |
+| `client/src/pages/settings/pax-controls.tsx` — slider, Reset, Replay, founder link, the old header copy | rebuilt as `PaxControls` rendering from `UNATTENDED_PATHS` + the glossary | client-only threshold; reset deleted `pausedUntil`; observations mislabelled as actions; false pause claims (#3, #4) | D | rebuilt (modified, not removed) |
+| `client/src/pages/today.tsx` threshold read; `DecisionQueue.tsx` "Pax would handle" / Override / hardcoded confidence; `server/routes-today.ts` `confidence: 0.82` | field removed; pill removed; CTA = `actionLabel` | fabricated confidence (#7) | E (client) / C (server) | modified |
+| `client/src/pages/command-center.tsx` Tasks tab, Deploy Agent, "$0.02 per task"; `routes-ai.ts` customer `/api/agents/tasks`; `server/jobs/autonomousTaskProcessor.ts` + its `jobRegistry.ts` entry | customer surface + processor deleted; founder readers of `agent_tasks` stay (table has other live users) | dead-letter queue with an invented price (#8); founder decision #7 | E (client) / C (route) / B (processor + roster) | `autonomousTaskProcessor.ts` deleted (staged); client/route: E/C slices |
+| `routes-autonomous-agent.ts` (`PUT /agents/:type/config`, `POST /tasks`, approve/reject); `routes-ai.ts` VA auto-create, `PATCH /api/va/agents/:id`, `process-autonomous`; `routes-communications.ts` `POST /api/scheduled-tasks` agent_skill | `requireFounder` on all; `process-autonomous` deleted | the undocumented place a customer could set `full_auto`; founder decision #7 | C | modified |
+| `server/ai/vaService.ts` `send_reminder` / `propose_campaign` / `schedule_callback` / `record_note` | return `success:false` with the reason | they wrote nothing (fabricated effect) | A | modified |
+| `routes-pax-insights.ts` first-follow-up GET + `POST /first-follow-up/approve-and-send`; `server/services/paxDraftService.ts`; `tests/unit/paxDraftApproval.test.ts` (rewritten as `paxReviseRace.test.ts`) | second approval mechanism deleted; `pax_drafts` table drop is a wave-2 migration once the zero-reader ratchet is green | zero client callers; one kernel only | C | `paxDraftService.ts` + `paxDraftApproval.test.ts` deleted |
+| `server/ai/tools.ts` dead level branches; `agent-skills.ts:303-314`; `autonomyGuardrails.ts` `getOrgAutonomyLevel` / `unattendedSendPermitted` / `getAutonomyEligibility` / `checkCircuitBreaker` / `AutonomyLevel`; `routes-pax-insights.ts` and `financeAgent.ts` readers; `tests/unit/autonomyLevelFailsClosed.test.ts` (retired → `paxStanceFailsClosed.test.ts`), `tests/unit/autonomyRiskClassification.test.ts` | dead level machinery; `organizations.paxAutonomyLevel` column drop is a wave-2 migration | unreachable; leaked "assisted" | A (kernel) / B (`financeAgent.ts`) / C (route) | both tests deleted (staged); kernel/engine/route: A/B/C slices |
+| `agent-skills.ts:1626-1645` `notificationSent: true` | `false` + reason | fabricated effect | A | modified |
+| `tools.ts` `draft_offer` in `PAUSE_SAFE_TOOLS` | removed from the allowlist (it mutates the deal) | pause-safe must mean no storage mutation | A | modified |
+| `client/src/components/workflow-builder.tsx` `WorkflowBuilderPanel` | deleted | zero call sites; listed actions the engine lacks | D | modified |
+| `client/src/components/workflows-settings-tab.tsx` mount; `client/src/components/pax-tasks-settings-tab.tsx` (rows moved into `PaxControls`); `MobileCommandDrawer.tsx` duplicate entry | one "Workflows" entry; `/workflows` is the one editor | duplicate entry points (#19) | D | both component files deleted |
+| inline `ByokSettings` mount (`settings.tsx`); `SettingsQuickFind.tsx` BYOK row | link to `/settings/byok` | two catalogs (#14) | D | modified |
+| `client/src/components/provider-settings.tsx` "cost-saving / full-power mode"; `routes-organization.ts` mode text | factual BYOK status chip on `/settings/byok` only | read as a setting (#18) | D / C | modified |
+| `pax-overflow-menu.tsx` customer "Agents" entry; "Insights" dollar badges; "What Pax did" → receipts route | fabricated dollars removed; founder placeholder gated | (#10) | E | modified — see residues in the wave-1 status section of the spec |
+| `client/src/lib/nav-items.ts` "AI Hub"; `command-center.tsx` "Command center" title and the AI-Ops voice "Ready" badge | "Pax" / "Pax"; voice badge deleted | no voice rail exists; founder decision #10 | E | modified |
+| `server/routes-autonomy.ts` (`GET/PATCH /api/me/autonomy`, the shallow-merge pause clobber) | deleted; replaced by `GET /api/pax/controls`, `POST pause`, `POST resume`, `PATCH controls` (zod `.strict()`, cannot touch `pausedUntil`) | the clobber that silently cleared pauses (§4.6) | C | deleted |
+| Landing + customer copy: FAQ "autonomy slider … Auto-send"; DayInLife "37 servicing receipts sent overnight" / "booked … automatically" / "Background queue continues"; Agents "auto-sent Mon"; ProductShots "2 items finished overnight"; copy.ts "mail sent … overnight" / "books follow-ups, services notes"; inbox/tasks "aging alert after 3 quiet days"; privacy "Pax > Controls"; disclosure "AI executive team" (v1 → v2) | replaced per spec §6 with sentences that describe the shipped product; every stance/pause string imported from `shared/pax-glossary.ts` | public claims must match the product on day one; the FAQ was in no audit population (`scripts/audit-public-claims.ts` now scans FAQ/Agents/DayInLife/ProductShots) | F | modified |
+
+**Residue check (F, 2026-09-02).** `grep` for the retired labels
+("Settings → Pax controls", "Pax > Controls") across `client/src`, `server`
+and `shared` string literals returns nothing (pinned by
+`paxControlsSurfaceIsHonest.test.ts`). The banned-vocabulary scan over
+`client/src/pages/**` and `client/src/components/**` still reports
+pre-existing hits outside this program's files — the "Dunning" feature
+vocabulary on the Finance door, the customer "VA agents" roster still
+rendered by `command-center.tsx`, "Pax copilot" on the rail, "AI agents"
+help-centre copy, the `/compare` pages' "An autopilot, not just a database",
+the landing meta description's "AI agents that act on your behalf", and one
+dead component (`monthly-checkin.tsx`, zero importers). They are enumerated
+file:line in the spec's "Wave 1 status" section for the central verifier;
+none is allowlisted.

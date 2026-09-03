@@ -20,7 +20,7 @@ const ITEMS = [
   },
   {
     q: "Can the AI assistant be turned off?",
-    a: "Yes. Pax has an autonomy slider per surface — Off, Suggest, Review-then-send, or Auto-send. Default is Suggest. The operator is always in control.",
+    a: "Yes. Pause everything with one tap, or set Pax to ask before it changes anything. Pax never sends a message to anyone until you tap Approve.",
   },
   {
     q: "Does this replace an existing CRM?",
@@ -31,12 +31,12 @@ const ITEMS = [
     a: "AcreOS imports and services notes from Beanstalk, Note Servicing Center, or a CSV. Migration support is included on a 30-min call.",
   },
   {
-    q: "Can a partner or VA share access?",
-    a: "Yes. Pro and Scale plans include multi-user with role-based permissions — a VA can't see financials unless explicitly granted.",
+    q: "Can a partner or assistant share access?",
+    a: "Yes. Pro and Scale plans include multi-user with role-based permissions — a teammate can't see financials unless explicitly granted.",
   },
   {
     q: "How fast can a new operator get started?",
-    a: "Same day. Define the buy-box in 4 minutes, and the first list pulls overnight. Mail can go out the next morning.",
+    a: "Same day. Define the buy-box, and the first list pulls overnight. Mail can go out the next morning.",
   },
   {
     q: "What happens on cancel?",

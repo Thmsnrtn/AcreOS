@@ -48,7 +48,7 @@ const SURFACES = [
     letter: "C",
     tagline: "Drafts replies. Books calls. Handles objections.",
     bullets: [
-      "Drafts SMS, email, and voicemail replies",
+      "Drafts SMS, email, and voicemail scripts",
       "Tone-matches each seller",
       "Schedules follow-ups across time zones",
       "Hands off when human judgment is needed",
@@ -81,7 +81,7 @@ const SURFACES = [
         ["Payments collected", "$14,820"],
         ["Notes serviced", "37 of 37"],
         ["Receipts sent", "37"],
-        ["Late notices", "2 (auto-sent Mon)"],
+        ["Late notices", "2 (waiting for your tap)"],
       ],
     },
   },

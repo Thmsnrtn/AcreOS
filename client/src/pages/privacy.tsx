@@ -9,6 +9,7 @@ import { SupportFeedbackButton } from "@/components/support-feedback-button";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { SITE } from "@/lib/jsonld-schemas";
 import { LEGAL_ENTITY_NAME, LEGAL_ENTITY_FOOTER } from "@/lib/legal-entity";
+import { PAX_CONTROLS_LABEL } from "@shared/pax-glossary";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/privacy-policy.md.
@@ -238,8 +239,8 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>Pax outputs are suggestions for your review; AcreOS does not guarantee their accuracy</li>
                 <li>
-                  You can reduce the data sent to Pax by limiting your queries and by using the autonomy
-                  controls in Settings (Pax &gt; Controls)
+                  You can reduce the data sent to Pax by limiting your queries and by using the Pax
+                  settings under {PAX_CONTROLS_LABEL}
                 </li>
               </ul>
             </section>

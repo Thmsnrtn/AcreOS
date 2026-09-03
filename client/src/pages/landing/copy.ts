@@ -165,7 +165,7 @@ export const LANDING_COPY = {
       {
         n: 2,
         t: "AcreOS does the busy work",
-        b: "Lists pulled, mail sent, replies drafted overnight. Every action is logged and reviewable.",
+        b: "Lists pulled, replies drafted, your drips sent — overnight, from your own accounts. Every action is logged and reviewable.",
       },
       {
         n: 3,
@@ -178,7 +178,7 @@ export const LANDING_COPY = {
     eyebrow: "Meet Pax",
     title: "Pax — your AI operations partner.",
     sub:
-      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, books follow-ups, services notes. Every action is shown with the data it used. Nothing happens behind your back.",
+      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, prepares borrower reminders for your tap. Every action is shown with the data it used. Nothing happens behind your back.",
   },
   day: {
     eyebrow: "A Tuesday in May",

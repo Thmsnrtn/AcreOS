@@ -1064,7 +1064,7 @@ export default function OnboardingV2() {
                       </span>
                       <span className="ob2-sample-card-desc">
                         Pax loads 50 realistic leads so Today is alive from the start.
-                        You'll wipe them when you're ready for real data.
+                        You'll approve before anything goes out. You'll wipe them when you're ready for real data.
                       </span>
                     </div>
                   </button>
@@ -1244,7 +1244,7 @@ export default function OnboardingV2() {
                   ? "Sample data is loaded and Today is live. "
                   : csvImportDone
                     ? "Your leads are imported and Today is live. "
-                    : "Pax is ready — data can wait on the checklist whenever you need it. "}
+                    : "Pax is ready — data can wait on the checklist whenever you need it. You'll approve before anything goes out. "}
                 {vertical.finish.blurb}
               </motion.p>
             </div>

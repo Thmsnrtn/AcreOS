@@ -108,7 +108,7 @@ function TodayShot() {
           <span className="lp-shot-queue-tag lp-shot-tag-mail">Mail queued</span>
           <p>214-piece batch scrubbed and scheduled for Thursday.</p>
         </div>
-        <div className="lp-shot-queue-done">2 items finished overnight — logged with receipts</div>
+        <div className="lp-shot-queue-done">Drips you turned on ran overnight — logged with receipts</div>
       </div>
     </Frame>
   );

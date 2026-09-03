@@ -547,6 +547,40 @@ describe("every standing decision in CLAUDE.md reached the registry", () => {
   });
 });
 
+/**
+ * The Pax controls program (2026-09-02) registered three decisions the day
+ * their gates shipped. Pinned by id so a rename, a downgrade to prose, or a
+ * repoint away from the named ratchet is a failure here and not a quiet
+ * drift — the generic checks above prove the pointers RESOLVE; this block
+ * proves they still point at the specific gates the decisions were made on.
+ */
+describe("Pax controls — the three program decisions stay machine-enforced", () => {
+  const PAX_ENTRIES: Array<{ id: string; gate: string }> = [
+    { id: "ai.customer-sends-are-witnessed", gate: "tests/unit/paxWitnessedSend.test.ts" },
+    { id: "ai.pause-covers-every-unattended-path", gate: "tests/unit/paxPauseCoverage.test.ts" },
+    { id: "ai.one-pax-control-surface", gate: "tests/unit/paxControlsSurfaceIsHonest.test.ts" },
+  ];
+
+  it("the block sees all three (vacuity)", () => {
+    expect(PAX_ENTRIES.length).toBe(3);
+  });
+
+  for (const { id, gate } of PAX_ENTRIES) {
+    it(`${id} is registered as a ratchet-test pointing at ${gate}`, () => {
+      const inv = invariantById(id);
+      expect(inv, `${id} is gone from the constitution`).toBeDefined();
+      expect(inv!.enforcement.kind, `${id} was downgraded from ratchet-test`).toBe("ratchet-test");
+      expect(inv!.enforcement.refs, `${id} no longer points at ${gate}`).toContain(gate);
+      expect(exists(gate), `${gate} does not exist`).toBe(true);
+      // The named gate must be a real, running test — same bar as the
+      // generic hollow/skipped checks, applied to the one file that matters.
+      const body = read(gate);
+      expect(/\bexpect\s*\(/.test(body), `${gate} asserts nothing`).toBe(true);
+      expect(/\bdescribe\s*\.\s*(?:skip|todo)\s*\(/.test(body), `${gate} is skipped`).toBe(false);
+    });
+  }
+});
+
 describe("constitution ratchet — hard stops must become machine-enforced", () => {
   it("registers the six hard stops", () => {
     // The permanent hard stops from CLAUDE.md's DO-NOT-DO list: four

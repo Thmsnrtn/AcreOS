@@ -335,3 +335,137 @@ Seams wave 1 MUST close (each is a named residue until then):
 6. **Central verification note:** migrate.mjs 0250 rewrites `users.autonomy_preferences` (strips inert level/perAction/thresholdsCents/atlas/sophie/timeGuards, preserves `pax.pausedUntil`) — inert fields with no reader; within decision 9's scope; confirm again at commit.
 7. **Pause-coverage divergences from §4.4 (adjudicate in wave 1 B):** the head-start implementation gates workflows PER ACTION (`ACTION_STATUS_BLOCKED`, run continues past the blocked step) rather than parking the run with `resumeAt = pausedUntil`; it keeps `autonomousTaskProcessor.ts` (per-batch skip, tasks stay pending and occupy BATCH_SIZE slots) rather than deleting it; and it adds `GET /api/me/autonomy/org-pause` (org state via per-route `getOrCreateOrg`) which overlaps the planned `GET /api/pax/controls`. Wave 1 B decides park-vs-block (park is the spec's intent so a paused rule resumes whole), deletes the processor per decision 7, and C folds `/org-pause` into `/api/pax/controls`. Two enumerations of the same population now exist — `UNATTENDED_PATHS` (shared/pax-controls.ts) and `PAUSE_ENFORCEMENT_POINTS` (tests/unit/paxPauseCoverage.test.ts) — derive one from the other in wave 1 so they cannot drift apart.
 8. **Enforced today after wave 0 + head starts:** pause covers 11 points (tools, supportAgent, paxScheduler, autonomousDecisionExecutor, financeAgent, workflow-engine, sequenceProcessor, leadNurturer, autonomousTaskProcessor, agent-skills, task-runner); the ask queue has list/count/sweep + org broadcast; the stance is STORED and readable (`getPaxControls`) but NOT YET READ by the kernel or engines — that is wave 1 A/B's first job, and until then the customer-facing stance control must not ship (D waits for A/B in the same PR).
+
+## Wave 1 status (2026-09-02) — copy, first-run, governance (agent F)
+
+What F verified against the tree, with the gate that keeps it true. Every
+claim below was checked by running the named test or script, not by reading
+a report.
+
+**§6 copy (F's rows) — every replacement landed verbatim.** `FAQ.tsx`
+"Can the AI assistant be turned off?" → the Pause / ask / never-sends
+sentence (the same answer also lost "a VA can't see financials" → "a
+teammate", and the unsourced "in 4 minutes" — a number with no backing row
+is a fabrication, and the FAQ is now in the public-claim audit). `DayInLife.tsx`
+:32/:34/:37 (the "37 servicing receipts" number is gone; "3 calls placed from
+the lead queue" lost its duplicate tail so the spec sentence reads once).
+`Agents.tsx:84` "2 (waiting for your tap)"; `:51` "voicemail replies" →
+"voicemail scripts" (the real `draft_message` messageType, `tools.ts:634` —
+decision 10's voice rule, applied as a tightening not a deletion).
+`ProductShots.tsx:111`; `copy.ts:168/:181`; `inbox.tsx` empty state;
+`tasks.tsx` empty state + tip; `privacy.tsx` renders `PAX_CONTROLS_LABEL`;
+`onboarding-v2.tsx:1066/:1247` append "You'll approve before anything goes
+out." Pinned by `scripts/audit-public-claims.ts` liveness anchors for the two
+FAQ sentences (14 verified / 0 unverified / 0 structural failures) and by
+`paxControlsSurfaceIsHonest.test.ts` for the vocabulary.
+
+**§1 first-run disclosure v2.** `AiDisclosureDialog.tsx`: `AI_DISCLOSURE_VERSION`
+`"v1"` → `"v2"`; body = `PAX_LABELS.mentalModel` (three sentences) +
+`PAX_LABELS.youStartOn`, nothing typed inline; buttons "Got it" / "See what
+Pax may do" (→ `PAX_CONTROLS_PATH` after consent is recorded). Every existing
+user sees it exactly once: a new `AiDisclosureGate` (same file) is mounted in
+`App.tsx`'s authenticated shell and renders the dialog when the stored
+version ≠ current; the onboarding page keeps its own instance for new
+signups and the gate stands down on `/onboarding-v2`. The founder is skipped
+by design (the consumer's consent record; the founder plane is out of
+scope). Consent stays `users.ai_disclosed_at + ai_disclosure_version`
+(`routes-ai-disclosure.ts` accept route, unchanged). `critical-path-render.test.ts`
+now pins `"v2"`.
+
+**§3c Inbox chip.** `inbox.tsx` renders one pinned pointer from
+`usePaxNeedsYouCount()` → `/ai`; it renders nothing until the count is a
+number above zero, and it says "N waiting for your tap → Pax" (the queue
+label) rather than "N drafts" because under *Ask before everything* a record
+change waits there too — the chip must not call a thing a draft it did not
+read.
+
+**§7 constitution.** `ai.customer-sends-are-witnessed` →
+`paxWitnessedSend.test.ts` (+ `paxControlsOffered.test.ts`),
+`ai.pause-covers-every-unattended-path` → `paxPauseCoverage.test.ts`,
+`ai.one-pax-control-surface` → `paxControlsSurfaceIsHonest.test.ts`, each
+`kind: "ratchet-test"`; `constitution.test.ts` 36/36 green, unenforced
+hard-stop baseline unchanged at 0 (no prose-only hard-stop became enforced
+this wave, so it is not lowered), and a new block pins the three ids to
+their gates. Probe: repointing one entry at a missing file → red.
+
+**§7 `paxControlsSurfaceIsHonest.test.ts` (new).** Population =
+`client/src/pages/**` + `client/src/components/**` (+ `pages/landing/**`
+counted on its own), 556 files parsed with the TypeScript compiler, ~5,000+
+customer strings (JSX text, literals, template text; identifiers, comments,
+imports, types, class/testid/route attributes and class lists excluded).
+Founder context is derived (founder dirs, `Founder*` files, pages App.tsx
+routes only through `FounderProtectedRoute`, `isFounder &&` branches,
+`founderOnly: true` objects, `founder:` keys, founder-named components, the
+reviewed eslint founder marker). Checks: §2 banned list in its AUTONOMY
+sense (44 entries, each with a planted sample that must match); "what Pause
+stops" imported from `UNATTENDED_PATHS` and filtered on `pauseStops`; no
+stance/pause/standing/mental-model string typed inline outside the glossary;
+"Settings → Pax controls" / "Pax > Controls" in no string literal under
+client/server/shared; `PAX_CONTROLS_PATH` is nested and routed in `App.tsx`
+to the lazy pax-controls page through `ProtectedRoute`; per-directory
+vacuity against an independent recursive listing. Probes run and reverted:
+`"PROBE: Ask before sending"` literal in `tasks.tsx` → red (stance check);
+`<span>PROBE Full autopilot mode</span>` → red (banned-word check). Domain
+senses deliberately outside the ban (each a full phrase, none a bare word):
+real-estate/listing/licensed agent, "broker or agent", agent-investor,
+agents' commissions, legal "contractors, agents", probate executor, ACH
+trace; the skip-trace feature's own verb inside `skip-trac*` files; the
+commissions surface's "agent". Narrowed to the defect: threshold/matrix
+(autonomy sense), assisted/supervised (whole-string labels), Override (over
+a Pax decision), envelope (kernel sense), VA (Pax-as-VA), confidence %
+(not the AVM's own column), Insights (whole-string label).
+
+**Current state of the banned-word scan: RED on 81 hits in 19 files, none
+in F's files, none allowlisted.** The gate is not weakened to pass; the
+central verifier routes each:
+
+- `client/src/pages/command-center.tsx` (E) — 31 hits: the VA-agent roster
+  view (`/ai#agents`): "Agent Roster", "No VA agents yet", "Autonomy Level",
+  "Supervised", "Agent acts without approval", "Background agents" (:240–:880,
+  :1929). Decision 7 founder-gated the APIs; the customer UI still renders.
+- `client/src/components/pax-copilot-rail.tsx` (E) — 7: "Pax copilot" /
+  "Pax Co-Pilot" / "Pax is your AI co-pilot" (:1119, :1172, :1184, :1193, :1548).
+- `client/src/components/pax/pax-overflow-menu.tsx` (E) — 3: `SHEET_META.agents`
+  "Agents" / "The agent roster working behind Pax." / "Open Agent Queue"
+  (:79–:82) — the entry is founder-only in use but the map is not
+  founder-marked; move it under an `isFounder` branch or mark the lines.
+- `client/src/components/workflow-builder.tsx` (D) — 1: "Agent skill" (:364).
+- `client/src/pages/finance.tsx` (9), `pages/dunning-manager.tsx` (7),
+  `pages/notes.tsx:552` (1) — unowned: the pre-existing "Dunning" feature
+  vocabulary on the Finance door. Needs a product decision (rename to
+  "Late-payment follow-up" or a founder ruling narrowing "dunning" to Pax
+  surfaces); not a wave-1 file.
+- `client/src/components/help-content.tsx` (5) — unowned help-centre copy:
+  "AI Agents", "How do AI Agents work?", "AI agents & smart workflows"
+  (:88, :118, :119, :171).
+- `client/src/pages/decision-queue.tsx` (3) — unowned (`/admin/decisions`,
+  ProtectedRoute): "open the full AI hub" (:239, :550, :552).
+- `client/src/pages/landing.tsx:62, :75` — unowned public meta description:
+  "…with AI agents that act on your behalf." A public claim in banned words.
+- `client/src/pages/compare/ComparisonPage.tsx:133, :193` — unowned public
+  compare pages: "An autopilot, not just a database."
+- `client/src/pages/landing/Features.tsx:31` "Every agent action…";
+  `landing/Quotes.tsx:43` "…attributed to operator or agent." — landing
+  files outside F's set.
+- `client/src/components/pax-memory-panel.tsx:57, :61` — "Insights" as a
+  tab label on a Pax surface (unowned).
+- `client/src/pages/analytics.tsx:53` — page title "Insights" (unowned;
+  its nav label is Analytics).
+- `client/src/components/monthly-checkin.tsx:200, :215` — "Dunning",
+  "Autonomous Actions"; the component has ZERO importers (dead) — delete.
+- `client/src/pages/security.tsx:75` "(Pax / agent runtime)";
+  `client/src/pages/terms.tsx:134` "AI executive team" (legal copy —
+  counsel/founder); `client/src/components/error-boundary.tsx:174` "Trace"
+  (stack-trace toggle label).
+
+**§3d deletions** are ledgered in `docs/company/deletion-ledger.md` ("Pax
+controls program — wave 1 deletions"), one row per prescribed deletion with
+the executing agent and what the working tree showed.
+
+**Public-claim audit population.** `scripts/audit-public-claims.ts` now
+reads FAQ, Agents, DayInLife and ProductShots (11 landing files; vacuity
+floor raised 5 → 9), carries the two FAQ sentences as claims backed by a
+source that names the kernel, the pause route and their ratchets, and
+exempts — with dated reasons — the labelled example-frame figures ($31, $15,
+$16, $11) and the BEFORE-column "90 minutes". `audit-learn-pages.ts` scans
+`content/learn/**` JSON, not landing sections — no change needed.

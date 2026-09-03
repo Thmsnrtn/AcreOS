@@ -39,7 +39,18 @@ import { verifyClaims, type Source } from "../server/services/truth-engine";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The real public surface the claim list is enforced against. */
+/**
+ * The real public surface the claim list is enforced against.
+ *
+ * 2026-09-02 (customer autonomy clarity program, wave 1 F): FAQ, Agents,
+ * DayInLife and ProductShots were added. They were a known blind spot — the
+ * FAQ advertised an "autonomy slider … Auto-send" that no code implemented
+ * and DayInLife printed "37 servicing receipts sent overnight" from no row,
+ * and neither sentence was in this population, so the audit was green over
+ * exactly the fabrications it exists to catch (third law). Every landing
+ * section that renders prose is now listed; a new section must be added here
+ * or the vacuity floor below is the only thing that notices.
+ */
 const LANDING_FILES = [
   "client/src/pages/landing/copy.ts",
   "client/src/pages/landing/Features.tsx",
@@ -48,6 +59,10 @@ const LANDING_FILES = [
   "client/src/pages/landing/Positioning.tsx",
   "client/src/pages/landing/FinalCTA.tsx",
   "client/src/pages/landing/Hero.tsx",
+  "client/src/pages/landing/FAQ.tsx",
+  "client/src/pages/landing/Agents.tsx",
+  "client/src/pages/landing/DayInLife.tsx",
+  "client/src/pages/landing/ProductShots.tsx",
 ];
 
 /** Strip comments so truth-notes and design notes don't read as claims. */
@@ -140,6 +155,19 @@ const CLAIMS: { claim: string; anchor: string }[] = [
     claim: "Connect your own Twilio, SendGrid, Lob, and property-data accounts, or run on ours.",
     anchor: "Connect your own Twilio, SendGrid, Lob",
   },
+  {
+    // FAQ "Can the AI assistant be turned off?" — the witnessed-send rule
+    // (founder decision 2026-09-02 #1), enforced by the approval kernel and
+    // ratcheted by paxWitnessedSend.test.ts at every offered stance.
+    claim: "Pax never sends a message to anyone until you tap Approve.",
+    anchor: "Pax never sends a message to anyone until you tap Approve.",
+  },
+  {
+    // FAQ, same answer — the one Pause and the two stances
+    // (POST /api/pax/pause, PATCH /api/pax/controls, OFFERED_STANCES).
+    claim: "Pause everything with one tap, or set Pax to ask before it changes anything.",
+    anchor: "Pause everything with one tap, or set Pax to ask before it changes anything.",
+  },
 ];
 
 /**
@@ -163,6 +191,23 @@ const EXEMPT: Record<string, string> = {
   "87%": "fixture: example confidence figure on a labeled example card (2026-09-01)",
   "$487": 'fixture: "$487.50" example payment on a labeled example card (2026-09-01)',
   "$2": "fixture: dollar figure inside a labeled example card (regex prefix match, 2026-09-01)",
+  // ProductShots.tsx frames — every value is a hand-authored illustration of
+  // the SHAPE of product output, each frame carries a visible "Example ·
+  // representative output" chip and the band is aria-hidden (file header,
+  // HOUSE RULE). Regex prefix matches of the comma-formatted figures
+  // (verified 2026-09-02).
+  "$31": 'fixture: "$31,900" est. value in the labeled Map example frame (2026-09-02)',
+  "$15": 'fixture: "$15,400 cash" in the labeled Pax example thread (2026-09-02)',
+  "$16": 'fixture: "$16,000" seller line in the labeled Pax example thread (2026-09-02)',
+  // Agents.tsx sample cards — illustrative rows on the "Pax just finished /
+  // Pax ledger" sample cards (same contract as the hero fixtures); $14 and
+  // $2 are already covered above by prefix. (verified 2026-09-02)
+  "$11": 'fixture: "$11,200 – $14,800" suggested offer band on the Analysis sample card (2026-09-02)',
+  // DayInLife.tsx BEFORE column — the operator's Tuesday WITHOUT AcreOS
+  // ("Borrower receipt search across Gmail threads. Found after 90
+  // minutes."): a description of the pain, not a claim about the product.
+  // (verified 2026-09-02)
+  "90 minutes": "DayInLife BEFORE-column pain narrative, not a product capability claim (2026-09-02)",
 };
 
 /** Number-bearing marketing-claim shapes. */
@@ -261,6 +306,23 @@ function buildSources(): Source[] {
       `,
     },
     {
+      name: "Witnessed send + the one Pause (Pax controls kernel)",
+      ref: "server/services/approvalKernel.ts (APPROVAL_REQUIRED_TOOLS) + server/ai/tools.ts (executeTool) + shared/pax-controls.ts (OFFERED_STANCES) + server/routes-pax-controls.ts (POST /api/pax/pause) + tests/unit/paxWitnessedSend.test.ts + tests/unit/paxPauseCoverage.test.ts",
+      content: `
+        Pax never sends a message to anyone until you tap Approve: every
+        send tool (send_sms, send_email, send_direct_mail, payment link)
+        is in APPROVAL_REQUIRED_TOOLS and executeTool freezes it as a
+        pending ask until a signed-in human approves it, at every offered
+        stance — paxWitnessedSend.test.ts drives the real kernel and the
+        set may only grow. Pause everything with one tap: POST
+        /api/pax/pause writes the org-wide pause that every member of
+        UNATTENDED_PATHS reads before it acts (paxPauseCoverage.test.ts),
+        or set Pax to ask before it changes anything: the
+        ask_before_everything stance freezes every record change as an
+        ask (OFFERED_STANCES, PATCH /api/pax/controls).
+      `,
+    },
+    {
       name: "AcreOS BYOK vault + connectors hub",
       ref: "shared/schema/finance.ts (BYOK_CHANNELS) + client/src/pages/settings/byok.tsx",
       content: `
@@ -292,9 +354,9 @@ async function main() {
       console.error(`        (claim: ${claim.slice(0, 80)}…) — update or retire the entry.`);
     }
   }
-  if (surface.filter((s) => s.text.length > 200).length < 5) {
+  if (surface.filter((s) => s.text.length > 200).length < 9) {
     failures += 1;
-    console.error("[VACUOUS] fewer than 5 landing files read — the scan went blind.");
+    console.error("[VACUOUS] fewer than 9 landing files read — the scan went blind.");
   }
 
   // ── Pass 2: completeness ──────────────────────────────────────────────

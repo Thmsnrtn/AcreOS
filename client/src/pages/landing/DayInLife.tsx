@@ -30,11 +30,11 @@ const AFTER = [
   { t: "6:42 am", e: "Inbox opens to 14 overnight replies. 11 drafted by Pax, queued for review." },
   { t: "7:00 am", e: "Drafts triaged in one view. 9 sent, 2 edited, 3 escalated — all logged." },
   { t: "7:25 am", e: "22 leads comped overnight. 4 surfaced as in-buy-box with confidence scores." },
-  { t: "8:30 am", e: "3 calls placed from the lead queue. 2 meetings booked into calendar automatically." },
-  { t: "10:00 am", e: "Tomorrow's mail batch reviewed and approved. 37 servicing receipts sent overnight." },
+  { t: "8:30 am", e: "3 calls placed. 2 meetings booked into calendar from the lead queue." },
+  { t: "10:00 am", e: "Tomorrow's mail batch reviewed and approved." },
   { t: "11:15 am", e: "Inbox at zero. Pipeline state current. Operator capacity freed for field work." },
   { t: "4:00 pm", e: "2 offers signed from Pax-drafted templates. Audit log captures source data." },
-  { t: "6:30 pm", e: "Background queue continues: comps, drafts, receipts, follow-ups." },
+  { t: "6:30 pm", e: "Overnight: comps run, replies drafted, drips you turned on go out." },
 ];
 
 export function DayInLife() {

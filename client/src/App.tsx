@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
+import { AiDisclosureGate } from "@/components/onboarding/AiDisclosureDialog";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { telemetry } from "@/lib/telemetry";
@@ -2203,6 +2204,9 @@ function AppContent() {
       )}
       {user && <Suspense fallback={null}><DynamicIsland /></Suspense>}
       {user && <Suspense fallback={null}><NotificationBanner /></Suspense>}
+      {/* AI-disclosure v2 (2026-09-02): every EXISTING user sees the reworded
+          disclosure exactly once; the onboarding page gates new signups. */}
+      {user && <AiDisclosureGate />}
       {user && npsData?.shouldShow && npsData.trigger && (
         <Suspense fallback={null}>
           <NpsDialog

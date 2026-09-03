@@ -584,7 +584,7 @@ export default function TasksPage() {
                 <EmptyState
                   icon={CheckSquare}
                   headline="Nothing on your list yet"
-                  subtitle="Add a task and link it to a lead, deal, or parcel — Pax flags hot leads after 3 quiet days and stale ones after 14."
+                  subtitle="Add a task and link it to a lead, deal, or parcel — Pax surfaces the task on Today the morning it's due."
                   cta={{
                     label: "Add a Task",
                     onClick: () => setIsCreateOpen(true),
@@ -593,7 +593,7 @@ export default function TasksPage() {
                   tips={[
                     "Wire a task to a lead, deal, or parcel — Pax surfaces it on Today the morning it's due",
                     "Set a due date — overdue tasks get flagged on Today and in Pax nudges",
-                    "Pax drafts follow-up messages as leads age — 3 quiet days for hot leads, 14 for stale",
+                    "Ask Pax to draft a follow-up any time — it waits for your tap",
                   ]}
                   testId="empty-state-tasks"
                 />

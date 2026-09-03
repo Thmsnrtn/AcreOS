@@ -401,8 +401,12 @@ describe("AiDisclosureDialog component — source contract", () => {
     expect(src).toContain("export function AiDisclosureDialog");
   });
 
-  it("AI_DISCLOSURE_VERSION is v1 (current version)", () => {
-    expect(src).toContain('AI_DISCLOSURE_VERSION = "v1"');
+  it("AI_DISCLOSURE_VERSION is v2 (current version — the Pax mental model, 2026-09-02)", () => {
+    // v1 → v2 on 2026-09-02 (customer autonomy clarity program): the wording
+    // became the three sentences of shared/pax-glossary.ts PAX_LABELS.mentalModel
+    // plus youStartOn. A bump re-fires the dialog once for every existing user
+    // (AiDisclosureGate in the app shell) and the accept row is the consent record.
+    expect(src).toContain('AI_DISCLOSURE_VERSION = "v2"');
   });
 });
 
