@@ -34,6 +34,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
+import { usePaxNeedsYou } from "@/hooks/usePaxNeedsYou";
 import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
 import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
@@ -68,24 +69,6 @@ interface TodayPayload {
     hasAnyData: boolean;
     generatedAt: string;
   };
-}
-
-// Autonomy preferences shape (subset of /api/me/autonomy we read).
-// The Today autonomy threshold lives in `pax.thresholdsCents` under a
-// reserved key (value is a confidence pct, not cents — the key name
-// disambiguates it). The slider that EDITS this value moved to
-// /settings/pax — Today just reads the saved threshold to pass into the
-// Decision Queue for the "Pax would handle" visual treatment.
-const AUTONOMY_THRESHOLD_KEY = "confidenceAutoPct";
-const AUTONOMY_DEFAULT_PCT = 90;
-
-interface AutonomyPrefs {
-  pax?: {
-    level?: number;
-    perAction?: Record<string, number>;
-    thresholdsCents?: Record<string, number>;
-  };
-  [k: string]: unknown;
 }
 
 const LAST_VISIT_KEY = "acreos_last_visit_ts";
@@ -213,7 +196,26 @@ export default function TodayPage() {
     },
   });
 
-  const decisionItems: DecisionItem[] = today?.queue ?? [];
+  // ── Waiting for your tap (the Pax controls spec §3c) ─────────────────────────
+  // Today's queue is host 3 of 4 for PaxAskCard: every pending ask from the
+  // ONE queue read (GET /api/pax/needs-you, server-formatted, live on
+  // `pax.needs_you`) leads the list as source "pax-ask" — the tap that
+  // sends is the highest-leverage decision on the page. Expired asks stay
+  // on /ai; they are not decisions any more.
+  const { pending: paxAsks } = usePaxNeedsYou();
+  const paxAskItems: DecisionItem[] = paxAsks.map((ask): DecisionItem => ({
+    id: `pax-ask-${ask.id}`,
+    source: "pax-ask",
+    priority: "high",
+    title: ask.verb,
+    description: ask.text ?? ask.originPhrase ?? "",
+    actionLabel: "Open Pax",
+    actionUrl: "/ai",
+    rank: -1,
+    inlineAction: { kind: "navigate" },
+    ask,
+  }));
+  const decisionItems: DecisionItem[] = [...paxAskItems, ...(today?.queue ?? [])];
   const decisionQueueLoading = todayLoading;
   const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
 
@@ -329,23 +331,6 @@ export default function TodayPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] }),
     ]);
   }, [refetchToday]);
-
-  // ── Pax autonomy threshold (read-only on Today) ────────────────────────
-  // Today only READS the saved threshold to inform the "Pax would handle"
-  // visual in the Decision Queue. The slider that edits this value moved
-  // to /settings/pax — autonomy is a monthly-tune control, not a daily
-  // one, so it shouldn't compete with decisions for screen real estate.
-  const { data: autonomyPrefs } = useQuery<AutonomyPrefs>({
-    queryKey: ["/api/me/autonomy"],
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const savedThresholdPct =
-    autonomyPrefs?.pax?.thresholdsCents?.[AUTONOMY_THRESHOLD_KEY] ?? AUTONOMY_DEFAULT_PCT;
-
-  // Confidence fraction (0..1) at/above which a Pax item is treated as
-  // "Pax will handle" rather than needing a decision.
-  const autoThreshold = savedThresholdPct / 100;
 
   // Dismiss mutation retained for /alerts surface; no longer wired into
   // /today JSX (decision queue handles the high-level fan-out). Keeping
@@ -776,7 +761,6 @@ export default function TodayPage() {
         <DecisionQueue
           items={decisionItems}
           isLoading={decisionQueueLoading}
-          autoThreshold={autoThreshold}
           onResolve={handleResolve}
           resolvingIds={resolvingIds}
           clearedToday={today?.progress?.cleared ?? 0}

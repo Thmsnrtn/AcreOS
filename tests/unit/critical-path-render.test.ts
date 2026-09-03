@@ -285,8 +285,15 @@ describe("Pax page — source contract", () => {
     expect(src).toContain('useDocumentTitle("Pax")');
   });
 
-  it("shows QueryErrorState for failed assistant data", () => {
-    expect(src).toContain("QueryErrorState");
+  it("shows a visible, recoverable error state when the conversation fails to render", () => {
+    // The chat subtree is wrapped in a scoped ErrorBoundary whose fallback
+    // (ChatErrorFallback, role="alert") keeps the header alive and offers a
+    // refresh. The old QueryErrorState lived in the Insights drawer, which
+    // left the Pax door in the Pax controls program (banned menu label,
+    // fabricated dollar badges) — the chat fallback is the surface that
+    // remains.
+    expect(src).toContain('data-testid="pax-chat-error"');
+    expect(src).toContain("ChatErrorFallback");
   });
 
   // Phase Zero-Three gate (Beatrice audit 2026-06-01) — the Pax disclosure

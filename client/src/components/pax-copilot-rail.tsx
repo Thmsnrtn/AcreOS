@@ -33,6 +33,14 @@ import { PaxScheduleButton } from "@/components/pax-schedule-button";
 import { PaxConnectorPanel } from "@/components/pax-connector-panel";
 import { PaxMemoryPanel } from "@/components/pax-memory-panel";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
+import PaxAskCard from "@/components/pax/PaxAskCard";
+import {
+  NEEDS_YOU_COUNT_KEY,
+  NEEDS_YOU_KEY,
+  usePaxAskActions,
+  usePaxAskById,
+} from "@/hooks/usePaxNeedsYou";
+import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
 
@@ -180,18 +188,12 @@ interface RailMessage {
   thinkingContent?: string;
   isThinking?: boolean;
   /**
-   * Tier 1A approval kernel: an approval-required tool call frozen
-   * server-side as a pending_actions row. Approve/Reject hit
-   * /api/pax/pending-actions/:id/{approve,reject} — the ONLY path from a
-   * frozen row to execution. status tracks the local card lifecycle.
+   * An ask the server froze as a pending_actions row while this message
+   * streamed. The card itself (PaxAskCard) reads the server-formatted
+   * summary from GET /api/pax/needs-you by this id — the rail carries only
+   * the id, never a client-side rendering of the args.
    */
-  pendingAction?: {
-    pendingActionId: number;
-    toolName: string;
-    args: any;
-    status: "pending" | "deciding" | "executed" | "rejected" | "failed";
-    resultNote?: string;
-  };
+  pendingAsk?: { pendingActionId: number };
   /** Set when the server's hallucination guard replaced the streamed text with a corrected version. */
   wasCorrected?: boolean;
   /** Tier 1I — recoverable error CTA (e.g. "Add your AI key" → /settings/byok). */
@@ -226,22 +228,43 @@ export function reducePaxTextEvent(
   return state;
 }
 
-// ─── Approval args formatter ─────────────────────────────────────────────────
+// ─── Ask card in the chat ─────────────────────────────────────────────────────
+// The wording of an ask is SERVER truth (server/services/paxAskSummary.ts via
+// GET /api/pax/needs-you); the rail only knows the id it was told during the
+// stream. The old client-side formatter that used to live here was deleted in
+// the Pax controls program (spec §4.5) so the phone, Today and the
+// support chat cannot drift into a different wording from this rail.
 
-function formatApprovalArgs(toolName: string, args: any): string {
-  try {
-    if (toolName === "send_email" || toolName === "send_gmail") {
-      const to = args?.to ?? args?.recipient ?? "unknown";
-      const subject = args?.subject ?? "";
-      return `to ${to}${subject ? `: "${subject}"` : ""}`;
-    }
-    if (toolName === "send_sms") return `SMS to ${args?.to ?? args?.phone ?? "unknown"}`;
-    if (toolName === "send_slack_message") return `in #${args?.channel ?? "unknown"}`;
-    if (toolName === "create_stripe_payment_link") return `$${args?.amount ?? "?"} — ${args?.description ?? "payment"}`;
-    return JSON.stringify(args).slice(0, 80);
-  } catch {
-    return "";
+function RailAsk({ pendingActionId }: { pendingActionId: number }) {
+  const { ask, isLoading } = usePaxAskById(pendingActionId);
+  const { approve, reject, revise } = usePaxAskActions();
+  if (ask) {
+    return (
+      <PaxAskCard
+        ask={ask}
+        compact
+        className="mt-1"
+        onApprove={(a) => approve(a.id)}
+        onReject={(a) => reject(a.id)}
+        onRevise={(a, args) => revise(a.id, args)}
+      />
+    );
   }
+  if (isLoading) {
+    return (
+      <div className="mt-1 space-y-2" role="status" aria-busy="true" aria-label="Loading what Pax is asking">
+        <Skeleton className="h-4 w-1/2" announce={false} />
+        <Skeleton className="h-12 w-full" announce={false} />
+      </div>
+    );
+  }
+  // The row is no longer waiting (answered elsewhere, or expired past the
+  // 7-day window). Say so; never invent a card for it.
+  return (
+    <p className="mt-1 text-xs text-muted-foreground" data-testid={`pax-ask-gone-${pendingActionId}`}>
+      This ask is no longer waiting — see <Link href="/ai" className="underline underline-offset-2">{PAX_LABELS.queue}</Link>.
+    </p>
+  );
 }
 
 // ─── Observation ─────────────────────────────────────────────────────────────
@@ -872,20 +895,18 @@ export function PaxCopilotRail() {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, role: "error" as const, content: data.error ?? "An error occurred", isStreaming: false } : m
                 ));
-              } else if (data.type === "pending_action" && data.pendingAction?.pendingActionId) {
-                // Tier 1A approval kernel: the tool call is frozen server-side
-                // as a pending_actions row; render the Approve/Reject card.
+              } else if (data.type === "pending_action" && typeof data.pendingAction?.pendingActionId === "number") {
+                // The server froze the tool call as a pending_actions row.
+                // Remember the id on this message; PaxAskCard renders the
+                // server-formatted ask from the queue read. Refresh that read
+                // now so the card lands with the message (the org broadcast
+                // also arrives, but not necessarily first).
+                const pendingActionId: number = data.pendingAction.pendingActionId;
                 setMessages((prev) => prev.map((m) =>
-                  m.id === asstId ? {
-                    ...m,
-                    pendingAction: {
-                      pendingActionId: data.pendingAction.pendingActionId,
-                      toolName: data.pendingAction.toolName,
-                      args: data.pendingAction.args,
-                      status: "pending" as const,
-                    },
-                  } : m
+                  m.id === asstId ? { ...m, pendingAsk: { pendingActionId } } : m
                 ));
+                queryClient.invalidateQueries({ queryKey: [...NEEDS_YOU_KEY] });
+                queryClient.invalidateQueries({ queryKey: [...NEEDS_YOU_COUNT_KEY] });
               }
             } catch {}
           }
@@ -1069,42 +1090,9 @@ export function PaxCopilotRail() {
     }
   };
 
-  // ── Approval kernel (Tier 1A) ─────────────────────────────────────────────
-  // Approve/Reject act on the FROZEN pending_actions row server-side. No
-  // natural-language "Confirmed, please proceed" round-trip — the human tap
-  // is the approval, the kernel re-verifies the content hash, and a
-  // double-tap is idempotent (the second tap returns the first result).
-  const handlePendingActionDecision = async (
-    msgId: string,
-    pendingActionId: number,
-    decision: "approve" | "reject",
-  ) => {
-    const setStatus = (status: NonNullable<RailMessage["pendingAction"]>["status"], resultNote?: string) =>
-      setMessages((prev) => prev.map((m) =>
-        m.id === msgId && m.pendingAction
-          ? { ...m, pendingAction: { ...m.pendingAction, status, resultNote } }
-          : m
-      ));
-
-    setStatus("deciding");
-    try {
-      const res = await fetch(`/api/pax/pending-actions/${pendingActionId}/${decision}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const body = await res.json().catch(() => null);
-      if (res.ok && decision === "approve") {
-        setStatus("executed", body?.alreadyExecuted ? "Already sent — returned the original result." : undefined);
-      } else if (res.ok) {
-        setStatus("rejected");
-      } else {
-        setStatus("failed", body?.message ?? "The action could not be completed. Ask Pax to draft it again.");
-      }
-    } catch {
-      setStatus("failed", "Connection failed. The action was not executed — try again.");
-    }
-  };
+  // Approve / Reject / Edit on an ask live in PaxAskCard (rendered by
+  // RailAsk above): the human tap is the approval, the server re-verifies the
+  // content hash, and a double tap is idempotent. No handler here.
 
   // File drag handlers
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); };
@@ -1651,59 +1639,11 @@ export function PaxCopilotRail() {
                               </TooltipContent>
                             </Tooltip>
                           )}
-                          {/* Approval-kernel card: the frozen pending action awaiting a witnessed tap.
-                              Bold Tahoe re-skin (Wave R) — CONTAINER STYLING ONLY: `rounded-card`
-                              for cardish-surface consistency (§2.3). The witnessed-send logic,
-                              status colors, button handlers, testids, and aria are all untouched. */}
-                          {msg.pendingAction && (
-                            <div className="rounded-card border border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/30 dark:border-acr-warn-soft p-3 text-xs space-y-2 mt-1">
-                              <div className="flex items-center gap-1.5">
-                                {msg.pendingAction.status === "executed" ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos flex-shrink-0" aria-hidden="true" />
-                                ) : (
-                                  <AlertCircle className="w-3.5 h-3.5 text-acr-warn flex-shrink-0" aria-hidden="true" />
-                                )}
-                                <span className="font-medium text-acr-warn dark:text-acr-warn">
-                                  {msg.pendingAction.status === "executed" && "Approved and sent"}
-                                  {msg.pendingAction.status === "rejected" && "Rejected — nothing was sent"}
-                                  {msg.pendingAction.status === "failed" && "Not completed"}
-                                  {(msg.pendingAction.status === "pending" || msg.pendingAction.status === "deciding") &&
-                                    "Action requires your approval"}
-                                </span>
-                              </div>
-                              <p className="text-acr-warn dark:text-acr-warn leading-snug">
-                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-caption">{msg.pendingAction.toolName}</span>
-                                {" "}{formatApprovalArgs(msg.pendingAction.toolName, msg.pendingAction.args)}
-                              </p>
-                              {msg.pendingAction.resultNote && (
-                                <p className="text-muted-foreground leading-snug">{msg.pendingAction.resultNote}</p>
-                              )}
-                              {(msg.pendingAction.status === "pending" || msg.pendingAction.status === "deciding") && (
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    className="h-7 text-xs"
-                                    disabled={msg.pendingAction.status === "deciding"}
-                                    aria-label={`Approve and send ${msg.pendingAction.toolName.replace(/_/g, " ")}`}
-                                    onClick={() => handlePendingActionDecision(msg.id, msg.pendingAction!.pendingActionId, "approve")}
-                                    data-testid={`pending-action-approve-${msg.pendingAction.pendingActionId}`}
-                                  >
-                                    {msg.pendingAction.status === "deciding" ? "Working…" : "Approve & send"}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs"
-                                    disabled={msg.pendingAction.status === "deciding"}
-                                    aria-label={`Reject ${msg.pendingAction.toolName.replace(/_/g, " ")}`}
-                                    onClick={() => handlePendingActionDecision(msg.id, msg.pendingAction!.pendingActionId, "reject")}
-                                    data-testid={`pending-action-reject-${msg.pendingAction.pendingActionId}`}
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
+                          {/* The ask card — host 1 of 4 (the Pax controls spec §4.5): the chat
+                              message where Pax proposed it. Same PaxAskCard as the /ai
+                              strip, Today and the support chat. */}
+                          {msg.pendingAsk && (
+                            <RailAsk pendingActionId={msg.pendingAsk.pendingActionId} />
                           )}
                           {/* Artifact renders */}
                           {(msg.artifacts ?? []).map((art, i) => (
@@ -1905,7 +1845,7 @@ export function PaxCopilotRail() {
                 </div>
               </div>
               <p className="text-micro text-muted-foreground/50 text-center">
-                Pax can take real actions · Always review before sharing sensitive info
+                {PAX_STANDING_LINE}
               </p>
             </div>
           </>

@@ -6,20 +6,18 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
-import { useAgentTasks, useCreateAgentTask } from "@/hooks/use-agent-tasks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { ErrorBoundary } from "@/components/error-boundary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
@@ -44,6 +42,8 @@ import {
   MessageSquare,
   Loader2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Wrench,
   Users,
   Settings2,
@@ -61,18 +61,14 @@ import {
   Play,
   Check,
   X,
-  ListTodo,
   Bell,
   GitBranch,
   RefreshCw,
   Activity,
-  Headphones,
   Gift,
-  Phone,
   Shield,
   BarChart3,
   UserCheck,
-  Handshake,
   Mail,
   Eye,
   AlertTriangle,
@@ -80,7 +76,16 @@ import {
   Image as ImageIcon,
   Square,
 } from "lucide-react";
-import { AISettings } from "@/components/ai-settings";
+import { Link, useSearch } from "wouter";
+import PaxAskCard from "@/components/pax/PaxAskCard";
+import {
+  NEEDS_YOU_COUNT_KEY,
+  NEEDS_YOU_KEY,
+  usePaxAskActions,
+  usePaxAskById,
+  usePaxNeedsYou,
+} from "@/hooks/usePaxNeedsYou";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
 import { relative, usd, formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
@@ -966,172 +971,6 @@ function AgentsTabContent() {
   );
 }
 
-const agentTypeDescriptions: Record<string, { description: string; placeholder: string }> = {
-  research: {
-    description: "Use this agent to analyze county data, pricing, and comps.",
-    placeholder: "Describe your research task here..."
-  },
-  marketing: {
-    description: "Use this agent to write ad copy and generate listing descriptions.",
-    placeholder: "Describe your marketing task here..."
-  },
-  lead_nurturing: {
-    description: "Score leads and generate personalized follow-up sequences.",
-    placeholder: "Describe which leads to nurture or follow-up strategy..."
-  },
-  campaign: {
-    description: "Analyze campaign performance and suggest optimizations.",
-    placeholder: "Describe which campaign to optimize or analyze..."
-  },
-  finance: {
-    description: "Handle payment reminders and delinquency management.",
-    placeholder: "Describe payment reminders or collection tasks..."
-  },
-  support: {
-    description: "Handle support cases and generate response recommendations.",
-    placeholder: "Describe the support case or issue to handle..."
-  }
-};
-
-function TasksTabContent() {
-  const { data: tasks, isLoading } = useAgentTasks();
-  const { mutate: createTask, isPending } = useCreateAgentTask();
-  const [input, setInput] = useState("");
-  const [activeTab, setActiveTab] = useState("research");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-
-    createTask({
-      agentType: activeTab,
-      input: input,
-      status: "pending"
-    }, {
-      onSuccess: () => setInput("")
-    });
-  };
-
-  const currentAgentType = agentTypeDescriptions[activeTab] || agentTypeDescriptions.research;
-
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        <Card className="col-span-1 shadow-sm flex flex-col">
-          <CardHeader className="bg-muted/50 pb-4">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="w-4 h-4" /> New Task
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col pt-6 gap-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <ScrollArea className="w-full">
-                <TabsList className="inline-flex w-max gap-1 p-1">
-                  <TabsTrigger value="research" data-testid="tab-task-research">
-                    <Search className="w-3 h-3 mr-1" />
-                    Research
-                  </TabsTrigger>
-                  <TabsTrigger value="marketing" data-testid="tab-task-marketing">
-                    <Megaphone className="w-3 h-3 mr-1" />
-                    Marketing
-                  </TabsTrigger>
-                  <TabsTrigger value="lead_nurturing" data-testid="tab-task-lead-nurturing">
-                    <Users className="w-3 h-3 mr-1" />
-                    Nurturing
-                  </TabsTrigger>
-                  <TabsTrigger value="campaign" data-testid="tab-task-campaign">
-                    <TrendingUp className="w-3 h-3 mr-1" />
-                    Campaign
-                  </TabsTrigger>
-                  <TabsTrigger value="finance" data-testid="tab-task-finance">
-                    <DollarSign className="w-3 h-3 mr-1" />
-                    Finance
-                  </TabsTrigger>
-                  <TabsTrigger value="support" data-testid="tab-task-support">
-                    <Headphones className="w-3 h-3 mr-1" />
-                    Support
-                  </TabsTrigger>
-                </TabsList>
-              </ScrollArea>
-              <div className="mt-4 text-sm text-muted-foreground">
-                {currentAgentType.description}
-              </div>
-            </Tabs>
-            
-            <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4">
-              <Textarea 
-                aria-label="Message to the assistant"
-                placeholder={currentAgentType.placeholder}
-                className="flex-1 resize-none p-4 text-base"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                data-testid="textarea-quick-task"
-              />
-              <div className="flex flex-col gap-1">
-                <Button type="submit" className="w-full" disabled={isPending || !input.trim()} data-testid="button-deploy-task">
-                  {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : <Send className="w-4 h-4 mr-2" aria-hidden="true" />}
-                  Deploy Agent
-                </Button>
-                <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-agent-task">$0.02 per task</span>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-1 lg:col-span-2 shadow-sm flex flex-col overflow-hidden">
-          <CardHeader className="border-b bg-muted/30">
-            <CardTitle className="text-base">Active Operations</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 flex-1 relative">
-            <ScrollArea className="h-full absolute inset-0">
-              <div className="p-6 space-y-6">
-                {isLoading ? (
-                  <div className="text-center py-10 text-muted-foreground">Connecting to agents...</div>
-                ) : tasks?.length === 0 ? (
-                  <div className="text-center py-20 text-muted-foreground">
-                    <Bot className="w-12 h-12 mx-auto mb-4 opacity-20" aria-hidden="true" />
-                    <p className="text-sm">Nothing running — assign a task to get started.</p>
-                  </div>
-                ) : (
-                  tasks?.map((task) => (
-                    <div key={task.id} className="group flex gap-4" data-testid={`task-item-${task.id}`}>
-                      <div className="flex flex-col items-center gap-2">
-                        <div className={`w-2 h-full rounded-full ${
-                          task.status === 'completed' ? 'bg-acr-pos-soft' : 'bg-muted'
-                        }`} />
-                      </div>
-                      <div className="flex-1 pb-8">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <Badge variant="outline" className="capitalize">{task.agentType}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
-                          </span>
-                          {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-acr-pos" />}
-                          {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />}
-                        </div>
-                        <div className="bg-muted/50 rounded-card p-4 mb-3 border">
-                          <p className="text-sm font-medium">{String(task.input ?? '')}</p>
-                        </div>
-                        {task.output != null && task.output !== '' ? (
-                          <div className="bg-acr-pos-soft rounded-card p-4 border border-acr-pos/20">
-                            <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                              {String(task.output)}
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 interface Suggestion {
   label: string;
   skill: string;
@@ -1180,7 +1019,6 @@ const aiServices: AIService[] = [
   { id: "price-optimizer", name: "Price Optimizer", description: "Automated pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
   { id: "deal-patterns", name: "Deal Patterns", description: "Clone successful deal strategies", phase: 3, icon: GitBranch, endpoint: "/api/ai/patterns/analyze" },
   { id: "sequences", name: "Sequences", description: "AI-optimized outreach sequences", phase: 4, icon: Mail, endpoint: "/api/ai/sequences/performance" },
-  { id: "voice-calls", name: "Voice Calls", description: "Call transcription and analysis", phase: 4, icon: Phone, endpoint: "/api/ai/voice/record" },
   { id: "portfolio", name: "Portfolio", description: "Monitor portfolio health and alerts", phase: 5, icon: Eye, endpoint: "/api/ai/portfolio/monitor" },
   { id: "documents", name: "Documents", description: "Intelligent document processing", phase: 5, icon: FileText, endpoint: "/api/ai/documents/analyze" },
   { id: "cash-flow", name: "Cash Flow", description: "Forecast cash flow and projections", phase: 5, icon: DollarSign, endpoint: "/api/ai/cashflow/forecast" },
@@ -1456,10 +1294,6 @@ function AIOperationsTabContent() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium text-sm">{service.name}</span>
-                              <Badge variant="secondary" className="text-xs">
-                                <div className="w-1.5 h-1.5 rounded-full bg-acr-pos mr-1" aria-hidden="true" />
-                                Ready
-                              </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-2">
                               {service.description}
@@ -1553,8 +1387,113 @@ const ACCEPTED_EXTENSIONS = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.cs
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
 
+// ─── Ask hosts on /ai (the Pax controls spec §4.5) ────────────────────────────────
+// Host 1 (the stream): an ask the server froze while this conversation
+// streamed renders as a PaxAskCard right under the reply that proposed it.
+// Host 2 (the strip): "Waiting for your tap (N)" is pinned above the composer
+// on desktop AND mobile — the copilot rail returns null on phones, so the
+// strip is how a phone answers. Both read the SAME server-formatted queue
+// (GET /api/pax/needs-you) through usePaxNeedsYou; nothing is formatted here.
+
+function ConversationAsk({ pendingActionId }: { pendingActionId: number }) {
+  const { ask, isLoading } = usePaxAskById(pendingActionId);
+  const { approve, reject, revise } = usePaxAskActions();
+  if (ask) {
+    return (
+      <div className="flex justify-start" data-testid={`conversation-ask-${pendingActionId}`}>
+        <div className="w-full max-w-[80%]">
+          <PaxAskCard
+            ask={ask}
+            onApprove={(a) => approve(a.id)}
+            onReject={(a) => reject(a.id)}
+            onRevise={(a, args) => revise(a.id, args)}
+          />
+        </div>
+      </div>
+    );
+  }
+  if (isLoading) {
+    return (
+      <div className="flex justify-start" role="status" aria-busy="true" aria-label="Loading what Pax is asking">
+        <div className="w-full max-w-[80%] space-y-2">
+          <Skeleton announce={false} className="h-4 w-1/2" />
+          <Skeleton announce={false} className="h-16 w-full" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground" data-testid={`conversation-ask-gone-${pendingActionId}`}>
+      This ask is no longer waiting — it was answered or expired.
+    </p>
+  );
+}
+
+function PaxNeedsYouStrip() {
+  const { pending, expired, isLoading, isError } = usePaxNeedsYou();
+  const { approve, reject, revise } = usePaxAskActions();
+  const [open, setOpen] = useState(false);
+  const count = pending.length;
+  // No chrome for an empty queue — and no number until the server has answered.
+  if (isLoading || isError || (count === 0 && expired.length === 0)) return null;
+  const label = `${PAX_LABELS.queue} (${count})`;
+  return (
+    <section
+      className="mb-2 rounded-card border border-acr-warn/40 bg-acr-warn-soft/40"
+      aria-label={label}
+      data-testid="pax-needs-you-strip"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls="pax-needs-you-list"
+        className="flex w-full items-center justify-between gap-2 px-3 min-h-11 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-card"
+        data-testid="pax-needs-you-toggle"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-4 h-4 text-acr-warn shrink-0" aria-hidden="true" />
+          <span className="truncate" data-testid="pax-needs-you-count">{label}</span>
+          {expired.length > 0 && (
+            <span className="text-xs text-muted-foreground shrink-0">· {expired.length} expired</span>
+          )}
+        </span>
+        {open ? (
+          <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />
+        ) : (
+          <ChevronUp className="w-4 h-4 shrink-0" aria-hidden="true" />
+        )}
+      </button>
+      {open && (
+        <div id="pax-needs-you-list" className="px-3 pb-3 space-y-2 max-h-[50vh] overflow-y-auto" data-testid="pax-needs-you-list">
+          {pending.map((ask) => (
+            <PaxAskCard
+              key={ask.id}
+              ask={ask}
+              compact
+              onApprove={(a) => approve(a.id)}
+              onReject={(a) => reject(a.id)}
+              onRevise={(a, args) => revise(a.id, args)}
+            />
+          ))}
+          {expired.map((ask) => (
+            <PaxAskCard
+              key={ask.id}
+              ask={ask}
+              compact
+              onApprove={(a) => approve(a.id)}
+              onReject={(a) => reject(a.id)}
+              onRevise={(a, args) => revise(a.id, args)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function CommandCenterPage() {
-  useDocumentTitle("Command center");
+  useDocumentTitle("Pax");
   const queryClient = useQueryClient();
   const { isMobile } = useIsMobile();
   const { toast } = useToast();
@@ -1580,6 +1519,19 @@ export default function CommandCenterPage() {
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [deleteConvoId, setDeleteConvoId] = useState<number | null>(null);
+  // Asks the server froze during THIS session's turns, per conversation. The
+  // card reads the server summary by id; this only remembers where it landed.
+  const [conversationAsks, setConversationAsks] = useState<Record<number, number[]>>({});
+  // ?prefill= — an expired ask's "Ask Pax to draft it again" lands here with
+  // the original request; it fills the composer and waits for the human.
+  const search = useSearch();
+  useEffect(() => {
+    const prefill = new URLSearchParams(search).get("prefill");
+    if (prefill && prefill.trim()) {
+      setInput(prefill);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [search]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1845,6 +1797,21 @@ export default function CommandCenterPage() {
                     tc.name === data.toolCall?.name ? { ...tc, result: data.toolCall?.result } : tc
                   )
                 );
+              } else if (data.type === "pending_action" && typeof data.pendingAction?.pendingActionId === "number") {
+                // The server froze the tool call as a pending_actions row and
+                // nothing was sent. Remember the id under this conversation so
+                // the PaxAskCard renders beneath the reply, and refresh the
+                // queue read so the card lands with it.
+                const pendingActionId: number = data.pendingAction.pendingActionId;
+                const convId = conversationId;
+                if (typeof convId === "number") {
+                  setConversationAsks((prev) => ({
+                    ...prev,
+                    [convId]: [...(prev[convId] ?? []).filter((id) => id !== pendingActionId), pendingActionId],
+                  }));
+                }
+                queryClient.invalidateQueries({ queryKey: [...NEEDS_YOU_KEY] });
+                queryClient.invalidateQueries({ queryKey: [...NEEDS_YOU_COUNT_KEY] });
               } else if (data.type === "done") {
                 queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] });
                 if (currentConversationId) {
@@ -1939,87 +1906,60 @@ export default function CommandCenterPage() {
       <div className="pb-4 border-b border-border">
         <DisclaimerBanner type="ai" className="mb-4" />
           <div className="flex items-center gap-2">
-            <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1 min-w-0">
-              {/* Five tabs × icon + label can't fit a 390px viewport when
-                  divided evenly with flex-1 — "Background" clipped to
-                  "Backgrou…" and "AI Ops" fell off the right edge. Use a
-                  horizontal-scroll bar on mobile so the user can swipe to
-                  all tabs; desktop keeps the inline-flex default. */}
-              {/* Mobile: icon-only tabs (all 5 fit on a 390px viewport,
-                  no horizontal scroll, no clipped last tab next to the
-                  settings gear). Desktop: icon + label as before.
-                  aria-label on each trigger keeps screen readers honest
-                  about the hidden text. */}
-              <div className="md:overflow-visible md:mx-0 md:px-0">
-                <TabsList className="w-full md:w-auto">
-                  <TabsTrigger value="chat" data-testid="tab-chat" aria-label="Assistant">
-                    <MessageSquare className="w-4 h-4 md:mr-2" />
-                    <span className="hidden md:inline">Assistant</span>
-                  </TabsTrigger>
-                  {isFounder && (
-                    <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
-                      <Users className="w-4 h-4 md:mr-2" />
-                      <span className="hidden md:inline">Team</span>
+            {/* Customer tabs collapsed to the conversation alone (Pax
+                controls program, spec §3b): the Tasks tab, its queue and
+                its invented price are gone. Founders keep their own tabs
+                (Team / Background / AI Ops) behind the same isFounder gate
+                the constitution requires. */}
+            {isFounder ? (
+              <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1 min-w-0">
+                <div className="md:overflow-visible md:mx-0 md:px-0">
+                  <TabsList className="w-full md:w-auto">
+                    <TabsTrigger value="chat" data-testid="tab-chat" aria-label="Assistant">
+                      <MessageSquare className="w-4 h-4 md:mr-2" />
+                      <span className="hidden md:inline">Assistant</span>
                     </TabsTrigger>
-                  )}
-                  <TabsTrigger value="tasks" data-testid="tab-tasks" aria-label="Tasks">
-                    <ListTodo className="w-4 h-4 md:mr-2" />
-                    <span className="hidden md:inline">Tasks</span>
-                  </TabsTrigger>
-                  {isFounder && (
-                    <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
-                      <Bot className="w-4 h-4 md:mr-2" />
-                      <span className="hidden md:inline">Background</span>
-                    </TabsTrigger>
-                  )}
-                  {isFounder && (
-                    <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
-                      <Brain className="w-4 h-4 md:mr-2" />
-                      <span className="hidden md:inline">AI Ops</span>
-                    </TabsTrigger>
-                  )}
-                </TabsList>
-              </div>
-            </Tabs>
-            <Dialog>
-              <DialogTrigger asChild>
-                {/* shrink-0 so the flex-1 tab list never compresses the gear
-                    out of its own box, and relative z-docked so the gear paints
-                    above the tab list — on a founder session (5 tabs) the
-                    full-width TabsList bled over the gear and its subtree
-                    intercepted the tap (Customer Surface Monitor J1, the
-                    third overlay-interception of this step after the FAB +
-                    cookie banner). */}
-                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-docked">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="w-[calc(100vw-2rem)] max-w-md sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5" />
-                    AI Settings
-                  </DialogTitle>
-                  <DialogDescription>
-                    Configure AI behavior preferences
-                  </DialogDescription>
-                </DialogHeader>
-                {/* ErrorBoundary protects against a blank dialog when AISettings throws — Tom flagged
-                    this 2026-06-02 ("clicking settings in pax → blank screen"). Root-cause fix is the
-                    dialog-width responsive class above (was `sm:max-w-md` only — no mobile width fallback
-                    so on <640px the content rendered with default Radix width that clipped the content).
-                    Boundary stays as defense-in-depth so future render-time errors don't blank the surface. */}
-                <ErrorBoundary
-                  fallback={
-                    <div className="py-8 text-center text-sm text-muted-foreground">
-                      AI Settings hit a render error. Refresh the page to try again.
-                    </div>
-                  }
-                >
-                  <AISettings compact={true} />
-                </ErrorBoundary>
-              </DialogContent>
-            </Dialog>
+                    {isFounder && (
+                      <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
+                        <Users className="w-4 h-4 md:mr-2" />
+                        <span className="hidden md:inline">Team</span>
+                      </TabsTrigger>
+                    )}
+                    {isFounder && (
+                      <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
+                        <Bot className="w-4 h-4 md:mr-2" />
+                        <span className="hidden md:inline">Background</span>
+                      </TabsTrigger>
+                    )}
+                    {isFounder && (
+                      <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
+                        <Brain className="w-4 h-4 md:mr-2" />
+                        <span className="hidden md:inline">AI Ops</span>
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+                </div>
+              </Tabs>
+            ) : (
+              <div className="flex-1 min-w-0" />
+            )}
+            {/* The gear opens the ONE Pax control surface (Settings → Pax).
+                The old in-place "AI settings" dialog had zero readers of the
+                fields it wrote (the Pax controls spec §3d) and is deleted. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              asChild
+              className="shrink-0 relative z-docked min-h-11 min-w-11 md:min-h-10 md:min-w-10"
+            >
+              <Link
+                href={PAX_CONTROLS_PATH}
+                aria-label="Pax settings — when it asks, what runs on its own"
+                data-testid="button-pax-settings"
+              >
+                <Settings className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
         </div>
 
@@ -2298,12 +2238,22 @@ export default function CommandCenterPage() {
                         )}
                       </>
                     )}
+                    {/* Host 1 of 4: asks proposed in this conversation, under the reply. */}
+                    {currentConversationId != null && (conversationAsks[currentConversationId] ?? []).length > 0 && (
+                      <div className="space-y-3" data-testid="conversation-asks">
+                        {(conversationAsks[currentConversationId] ?? []).map((id) => (
+                          <ConversationAsk key={id} pendingActionId={id} />
+                        ))}
+                      </div>
+                    )}
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
 
                 <div className="p-4 border-t border-border">
                   <div className="max-w-3xl mx-auto flex flex-col gap-2">
+                    {/* Host 2 of 4: the pinned queue, desktop and mobile. */}
+                    <PaxNeedsYouStrip />
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -2411,13 +2361,24 @@ export default function CommandCenterPage() {
                         </Button>
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                       <span>{isImageMode ? "Image generation mode" : ""}</span>
-                      {/* 2026-06-05 Krieger audit: removed leaked internal
-                          unit-cost ("$0.02 per message"). Customer-facing
-                          cost surface is the PaxDailyCapBadge "X/25 today"
-                          pattern; raw per-message price is internal
-                          telemetry only. */}
+                      {/* Three text links, nothing else (the Pax controls spec §3b).
+                          No per-message price here: the cap badge on the Pax
+                          door is the only customer-facing usage number. */}
+                      <nav aria-label="Pax links" className="flex items-center gap-1" data-testid="pax-footer-links">
+                        <Link href={PAX_CONTROLS_PATH} className="inline-flex items-center min-h-11 md:min-h-0 px-1 underline-offset-2 hover:underline" data-testid="pax-footer-controls">
+                          Controls
+                        </Link>
+                        <span aria-hidden="true">·</span>
+                        <Link href="/activity?actor=pax" className="inline-flex items-center min-h-11 md:min-h-0 px-1 underline-offset-2 hover:underline" data-testid="pax-footer-receipts">
+                          {PAX_LABELS.receipts}
+                        </Link>
+                        <span aria-hidden="true">·</span>
+                        <Link href="/ai#appeals" className="inline-flex items-center min-h-11 md:min-h-0 px-1 underline-offset-2 hover:underline" data-testid="pax-footer-appeals">
+                          Appeals
+                        </Link>
+                      </nav>
                     </div>
                   </div>
                 </div>
@@ -2427,10 +2388,6 @@ export default function CommandCenterPage() {
 
           {mainTab === "team" && isFounder && (
             <TeamTabContent />
-          )}
-
-          {mainTab === "tasks" && (
-            <TasksTabContent />
           )}
 
           {mainTab === "agents" && isFounder && (

@@ -2,11 +2,10 @@ import { lazy, Suspense, useEffect } from "react";
 import { trackCanonicalEvent } from "@/lib/analytics";
 import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -14,16 +13,11 @@ import {
   Bot,
   Sparkles,
   X,
-  AlertCircle,
   Clock,
-  Phone,
   DollarSign,
   TrendingUp,
-  ArrowRight,
   CheckCircle2,
-  Flame,
 } from "lucide-react";
-import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
@@ -84,65 +78,6 @@ function ChatErrorFallback() {
     </div>
   );
 }
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Observation = {
-  id: string | number;
-  severity: "high" | "medium" | "low" | "info";
-  title: string;
-  description: string;
-};
-
-type StaleLead = {
-  id: number;
-  firstName: string;
-  lastName: string;
-  daysSinceContact: number;
-};
-
-type ExpiringOffer = {
-  id: number;
-  title: string;
-  offerExpiresAt: string | null;
-  leadName: string;
-};
-
-type MotivatedCaller = {
-  id: number;
-  name: string;
-  phone: string | null;
-  status: string;
-  notes: string | null;
-  tags: string[] | null;
-};
-
-type InsightsData = {
-  observations: Observation[];
-  staleLeads: StaleLead[];
-  expiringOffers: ExpiringOffer[];
-  motivatedCallers: MotivatedCaller[];
-  generatedAt: string;
-};
-
-// ─── Severity helpers ─────────────────────────────────────────────────────────
-
-const SEVERITY_BORDER: Record<string, string> = {
-  high: "border-acr-neg",
-  medium: "border-acr-warn",
-  low: "border-acr-brand",
-  info: "border-border",
-};
-
-const SEVERITY_BADGE: Record<
-  string,
-  "destructive" | "default" | "secondary" | "outline"
-> = {
-  high: "destructive",
-  medium: "default",
-  low: "secondary",
-  info: "outline",
-};
 
 // ─── Greeting Banner ──────────────────────────────────────────────────────────
 //
@@ -260,294 +195,6 @@ function GreetingBanner() {
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
-    </div>
-  );
-}
-
-// ─── Revenue impact estimator ─────────────────────────────────────────────────
-
-function revenueImpact(severity: string, type?: string): string | null {
-  if (severity === "high") return type?.includes("offer") ? "+$25K–$80K" : "+$5K–$20K potential";
-  if (severity === "medium") return "+$2K–$8K potential";
-  return null;
-}
-
-// ─── Insights Panel (rendered in the overflow drawer) ──────────────────────────
-
-function InsightsPanel() {
-  const [, setLocation] = useLocation();
-  const { data, isLoading, error, refetch, isRefetching } = useQuery<InsightsData>({
-    queryKey: ["/api/pax/insights"],
-  });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6" role="status" aria-label="Loading Pax insights">
-        <div className="space-y-3">
-          <Skeleton className="h-5 w-40" />
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-card" />
-          ))}
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-5 w-32" />
-          {[1, 2].map((i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-card" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <QueryErrorState
-        error={error}
-        onRetry={() => refetch()}
-        isRetrying={isRefetching}
-        title="Couldn't load insights"
-        description="Pax was unable to fetch your latest insights. Please try again."
-        testId="insights-error"
-      />
-    );
-  }
-
-  const observations = data?.observations ?? [];
-  const staleLeads = data?.staleLeads ?? [];
-  const expiringOffers = data?.expiringOffers ?? [];
-  const motivatedCallers = data?.motivatedCallers ?? [];
-
-  const totalItems = observations.length + staleLeads.length + expiringOffers.length + motivatedCallers.length;
-
-  if (totalItems === 0) {
-    return (
-      <EmptyState
-        icon={Sparkles}
-        headline="All clear — Pax is keeping watch."
-        subtitle="No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends."
-        tone="celebratory"
-        // TODO(cta): insights panel — no action available when all clear
-        cta={{ label: "", _noOp: true }}
-        testId="pax-insights-empty"
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      {/* Pax Noticed */}
-      {observations.length > 0 && (
-        <section aria-labelledby="pax-noticed-heading">
-          <h2 id="pax-noticed-heading" className="acr-eyebrow mb-4">
-            Pax noticed
-          </h2>
-          <ul className="space-y-2 list-none p-0 m-0" aria-label="Observations Pax wants you to know about">
-            {observations.map((obs) => {
-              const impact = revenueImpact(obs.severity, obs.title);
-              const isCritical = obs.severity === "high";
-              return (
-                <li
-                  key={obs.id}
-                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4 shadow-acr-1`}
-                  role={isCritical ? "alert" : undefined}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <Badge
-                          variant={SEVERITY_BADGE[obs.severity] ?? "outline"}
-                          className="capitalize text-xs"
-                          aria-label={`Severity: ${obs.severity}`}
-                        >
-                          {obs.severity}
-                        </Badge>
-                        {impact && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs text-acr-pos border-acr-pos/30 bg-acr-pos-soft"
-                            aria-label={`Estimated revenue impact: ${impact.replace(/–/g, " to ")}`}
-                          >
-                            <DollarSign className="w-2.5 h-2.5 mr-0.5" aria-hidden="true" />
-                            <span className="tabular-nums">{impact}</span>
-                          </Badge>
-                        )}
-                        <span className="text-sm font-medium">{obs.title}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{obs.description}</p>
-                    </div>
-                    <Button size="sm" variant="outline" className="shrink-0 h-7 text-xs gap-1" asChild>
-                      <Link href="/pipeline" aria-label={`Act on: ${obs.title}`}>
-                        Act <ArrowRight className="w-3 h-3" aria-hidden="true" />
-                      </Link>
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Stale Leads */}
-      {staleLeads.length > 0 && (
-        <section aria-labelledby="stale-leads-heading">
-          <h2 id="stale-leads-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
-            Stale leads
-            <Badge variant="outline" className="text-micro tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
-          </h2>
-          <ul className="space-y-2 list-none p-0 m-0" aria-label="Leads with no recent contact">
-            {staleLeads.map((lead) => {
-              const name = `${lead.firstName} ${lead.lastName}`.trim();
-              const isAtRisk = lead.daysSinceContact >= 30;
-              const sinceText = lead.daysSinceContact >= 999
-                ? "Never contacted"
-                : `${lead.daysSinceContact} day${lead.daysSinceContact === 1 ? "" : "s"} since contact`;
-              return (
-                <li
-                  key={lead.id}
-                  className="flex items-center justify-between rounded-card border border-acr-warn/30 bg-acr-warn-soft px-4 py-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-2 h-2 rounded-full shrink-0 ${isAtRisk ? "bg-acr-neg" : "bg-acr-warn"}`}
-                      role="img"
-                      aria-label={isAtRisk ? "At risk of going cold" : "Stale"}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        <span className="tabular-nums">{sinceText}</span>
-                        {isAtRisk && (
-                          <span className="ml-1 text-acr-neg font-medium">· at risk of going cold</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={() => setLocation(`/leads/${lead.id}`)}
-                      aria-label={`Follow up with ${name}`}
-                    >
-                      Follow up
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Expiring Offers */}
-      {expiringOffers.length > 0 && (
-        <section aria-labelledby="expiring-offers-heading">
-          <h2 id="expiring-offers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
-            <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
-            Expiring offers
-            <Badge variant="destructive" className="text-micro tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
-          </h2>
-          <ul className="space-y-2 list-none p-0 m-0" aria-label="Offers nearing expiration">
-            {expiringOffers.map((offer) => {
-              const daysLeft = offer.offerExpiresAt
-                ? Math.ceil((new Date(offer.offerExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                : null;
-              const expiryText = offer.offerExpiresAt
-                ? daysLeft !== null && daysLeft <= 0
-                  ? "Expired"
-                  : daysLeft === 1
-                  ? "Expires tomorrow"
-                  : `${daysLeft} days left`
-                : "Expiring soon";
-              return (
-                <li
-                  key={offer.id}
-                  className="flex items-center justify-between rounded-card border border-acr-neg/30 bg-acr-neg-soft px-4 py-3"
-                  role="alert"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <AlertCircle className="h-4 w-4 text-acr-neg shrink-0" aria-hidden="true" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{offer.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {offer.leadName && <span className="mr-1">for {offer.leadName} ·</span>}
-                        <span className="tabular-nums">{expiryText}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-7 text-xs shrink-0"
-                    onClick={() => setLocation(`/deals/${offer.id}`)}
-                    aria-label={`Review expiring offer: ${offer.title}`}
-                  >
-                    Review now
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Motivated Callers */}
-      {motivatedCallers.length > 0 && (
-        <section aria-labelledby="motivated-callers-heading">
-          <h2 id="motivated-callers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
-            <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
-            Motivated callers
-            <Badge variant="outline" className="text-micro text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
-          </h2>
-          <ul className="space-y-2 list-none p-0 m-0" aria-label="Recently active leads who want to hear from you">
-            {motivatedCallers.map((caller) => (
-              <li
-                key={caller.id}
-                className="flex items-center justify-between rounded-card border border-acr-pos/30 bg-acr-pos-soft px-4 py-3"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-8 h-8 rounded-full bg-acr-pos/20 flex items-center justify-center shrink-0"
-                    aria-hidden="true"
-                  >
-                    <span className="text-xs font-bold text-acr-pos">
-                      {caller.name?.charAt(0)?.toUpperCase() ?? "?"}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{caller.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {caller.phone ?? "No phone"}{caller.notes && ` · ${caller.notes}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-1.5 shrink-0">
-                  {caller.phone && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" asChild>
-                      <a href={`tel:${caller.phone}`} aria-label={`Call ${caller.name} at ${caller.phone}`}>
-                        <Phone className="w-3 h-3" aria-hidden="true" />
-                        Call
-                      </a>
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-7 text-xs"
-                    onClick={() => setLocation(`/leads/${caller.id}`)}
-                    aria-label={`View lead: ${caller.name}`}
-                  >
-                    View
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -772,13 +419,14 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
 
 // ─── Suggested Prompts ────────────────────────────────────────────────────────
 
-// Two ACTION prompts + two question prompts. Pax's differentiator is that it
-// DOES the work (draft offers, skip-trace — through the approval-freeze
-// pattern, nothing sends without your review), so the first impression must
-// advertise the worker, not just the analyst. (Five-lens audit, wedge #3.)
+// One ACTION prompt + three question prompts. Pax's differentiator is that it
+// DOES the work (draft offers, draft follow-ups — every message waits for
+// your tap), so the first impression must advertise the worker, not just the
+// analyst. Skip-tracing is on the Never list (never from chat), so it is not
+// advertised here. (Five-lens audit, wedge #3; Pax controls spec §6.)
 const SUGGESTED_PROMPTS = [
   { label: "Draft a blind offer on my hottest lead", icon: DollarSign },
-  { label: "Skip-trace my newest leads", icon: Flame },
+  { label: "Which of my leads went quiet this week?", icon: Clock },
   { label: "What's my pipeline worth?", icon: TrendingUp },
   { label: "What should I work on today?", icon: CheckCircle2 },
 ];
@@ -871,13 +519,15 @@ export default function PaxPage() {
   const queryClient = useQueryClient();
 
   // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
-  // A pull at the top re-pulls the queries the Pax door renders: the insights
-  // panel, the monthly usage cap badge, the conversation list (which gates
-  // the suggested prompts), and the cached AI-health probe. No-ops on
-  // pointer/desktop. Haptic fires inside PullToRefresh at the threshold.
+  // A pull at the top re-pulls the queries the Pax door renders: the monthly
+  // usage cap badge, the conversation list (which gates the suggested
+  // prompts), the cached AI-health probe and the "Waiting for your tap"
+  // queue. No-ops on pointer/desktop. Haptic fires inside PullToRefresh at
+  // the threshold.
   const handlePullRefresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["/api/pax/insights"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/pax/needs-you"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/pax/needs-you/count"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/health/cached"] }),
@@ -895,9 +545,10 @@ export default function PaxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.paxDisclosureAcknowledgedAt]);
   // Pax is ONE conversation. The chat is the primary, full-screen surface.
-  // Everything that used to be a peer tab — Insights, Activity ("What Pax
-  // did"), Agents (founder-only), Automation — is re-homed into the header
-  // overflow menu, reachable FROM the conversation without competing with it.
+  // Everything that used to be a peer tab — Controls, Activity ("What Pax
+  // did"), Appeals, Agents (founder-only), Automation — is re-homed into the
+  // header overflow menu, reachable FROM the conversation without competing
+  // with it.
   // The agent roster (Atlas/Sophie/Forge/Shield) remains founder-only per the
   // persona-architecture rule; PaxOverflowMenu gates the Agents entry behind
   // isFounder. Customers see Pax, not the dozen-agent roster underneath.
@@ -905,7 +556,7 @@ export default function PaxPage() {
     <PageShell label="Pax">
       {/* Pull-to-refresh wraps only the header + disclosure banner — the
           natural top-of-page pull zone — so it re-pulls Pax's sibling
-          queries (insights / usage cap / conversation list / health) without
+          queries (usage cap / conversation list / health / queue) without
           fighting the chat composer's own scroll + input handling below.
           No-ops on pointer/desktop. */}
       <PullToRefresh onRefresh={handlePullRefresh}>
@@ -926,13 +577,13 @@ export default function PaxPage() {
           </div>
           <div className="acr-cc-hero-actions shrink-0">
             {/* The overflow menu carries the only founder-divergent header
-                element (the isFounder-gated Agents entry) + the InsightsPanel
-                query. Scope a boundary here so a crash in the tools menu can't
+                element (the isFounder-gated Agents entry). Scope a boundary
+                here so a crash in the tools menu can't
                 blank the header or, via PageShell's page-level boundary, the
                 whole Pax door. It degrades to nothing — the menu is auxiliary;
                 the conversation below is the primary surface. */}
             <ErrorBoundary fallback={null}>
-              <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+              <PaxOverflowMenu />
             </ErrorBoundary>
           </div>
         </div>

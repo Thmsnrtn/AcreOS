@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -23,11 +23,12 @@ import {
   Activity,
   Bot,
   Zap,
-  Sparkles,
   Scale,
+  SlidersHorizontal,
   ArrowUpRight,
 } from "lucide-react";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
 
 // The standalone pages re-homed from the old peer tabs. Lazy so opening Pax
 // doesn't ship them in the parent chunk — each loads on demand when the
@@ -59,29 +60,26 @@ function DrawerFallback() {
   );
 }
 
-type SheetView = "activity" | "agents" | "insights" | "appeals" | null;
+type SheetView = "activity" | "agents" | "appeals" | null;
+
+/** `/ai#appeals` — the footer's Appeals link opens the drawer from the page body. */
+const APPEALS_HASH = "#appeals";
 
 const SHEET_META: Record<
   Exclude<SheetView, null>,
   { title: string; description: string; route: string; routeLabel: string }
 > = {
   activity: {
-    title: "What Pax did",
-    description: "A running log of the actions Pax has taken for you.",
-    route: "/activity",
-    routeLabel: "Open Activity full page",
+    title: PAX_LABELS.receipts,
+    description: "Every change Pax made and every rule that ran — when, what, which record, and whether you asked.",
+    route: "/activity?actor=pax",
+    routeLabel: "Open the full receipts page",
   },
   agents: {
     title: "Agents",
     description: "The agent roster working behind Pax.",
     route: "/founder/agent-queue",
     routeLabel: "Open Agent Queue",
-  },
-  insights: {
-    title: "Insights",
-    description: "What Pax is watching across your pipeline.",
-    route: "/pipeline",
-    routeLabel: "Go to pipeline",
   },
   appeals: {
     title: "Appeals",
@@ -93,23 +91,31 @@ const SHEET_META: Record<
 };
 
 /**
- * Header overflow menu for the Pax conversation. Re-homes the capabilities
- * that used to be peer tabs (Activity / Agents / Automation / Insights) so the
- * conversation stays the single primary surface. Activity, Agents and Insights
- * open in a right-side Sheet (reusing the existing standalone pages / insights
- * panel); Automation navigates to its standalone route.
- *
- * `insightsContent` is passed in so this component stays free of the insights
- * data dependency — the page owns that query and renders it here when the
- * Insights drawer opens.
+ * Header overflow menu for the Pax conversation: Controls · What Pax did ·
+ * Appeals (the Pax controls spec §3b), plus the founder-only Agents drawer and the
+ * Automation link. Controls navigates to the ONE Pax control surface
+ * (Settings → Pax); "What Pax did" opens the receipts feed (activity_log rows
+ * with agent_type = 'pax', read through GET /api/pax/receipts) in a Sheet;
+ * Appeals lives entirely in its drawer. The old "Insights" entry (a banned
+ * menu label with fabricated dollar badges) is gone.
  */
-export function PaxOverflowMenu({
-  insightsContent,
-}: {
-  insightsContent: React.ReactNode;
-}) {
+export function PaxOverflowMenu() {
   const { isFounder } = useAuth();
   const [view, setView] = useState<SheetView>(null);
+
+  // The /ai footer's "Appeals" text link is `/ai#appeals`: open the drawer
+  // when the hash says so (on mount and on later hash changes), then clear
+  // the hash so closing the drawer does not re-open it on the next render.
+  useEffect(() => {
+    const openFromHash = () => {
+      if (typeof window === "undefined" || window.location.hash !== APPEALS_HASH) return;
+      requestAnimationFrame(() => setView("appeals"));
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, []);
 
   const meta = view ? SHEET_META[view] : null;
 
@@ -127,8 +133,15 @@ export function PaxOverflowMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Pax tools</DropdownMenuLabel>
+          <DropdownMenuLabel>Pax</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem asChild data-testid="pax-menu-controls">
+            <Link href={PAX_CONTROLS_PATH}>
+              <SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
+              Controls
+              <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={(e) => {
               // On iOS, DropdownMenu close and Sheet open happen in the same
@@ -137,22 +150,12 @@ export function PaxOverflowMenu({
               // screen for the full 500ms open animation. Deferring via rAF
               // lets the dropdown finish its close cycle before the Sheet mounts.
               e.preventDefault();
-              requestAnimationFrame(() => setView("insights"));
-            }}
-            data-testid="pax-menu-insights"
-          >
-            <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-            Insights
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
               requestAnimationFrame(() => setView("activity"));
             }}
             data-testid="pax-menu-activity"
           >
             <Activity className="mr-2 h-4 w-4" aria-hidden="true" />
-            What Pax did
+            {PAX_LABELS.receipts}
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={(e) => {
@@ -212,13 +215,13 @@ export function PaxOverflowMenu({
                 <SheetDescription>{meta.description}</SheetDescription>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto px-6 py-5">
-                {view === "insights" && insightsContent}
                 {view === "activity" && (
                   <Suspense fallback={<DrawerFallback />}>
                     {/* embedded — the Sheet lives inside the app shell;
                         without it ActivityPage nested a second sidebar/topbar
-                        and a duplicate id="main-content" (T0-9). */}
-                    <ActivityPage embedded />
+                        and a duplicate id="main-content" (T0-9). The Pax
+                        filter is the receipts feed. */}
+                    <ActivityPage embedded initialFilter="pax" />
                   </Suspense>
                 )}
                 {view === "appeals" && (

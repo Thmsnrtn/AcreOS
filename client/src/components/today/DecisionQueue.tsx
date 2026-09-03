@@ -18,10 +18,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ContentReveal } from "@/components/ContentReveal";
 import { ClearedEmpty } from "@/components/empty-state";
-import { DataProvenanceChip } from "@/components/data-provenance-chip";
-import { ConfidenceBar } from "@/components/today/ConfidenceBar";
-import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import PaxAskCard from "@/components/pax/PaxAskCard";
+import { usePaxAskActions, type PaxAskItem } from "@/hooks/usePaxNeedsYou";
 import { lightImpact } from "@/lib/haptics";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
@@ -47,6 +46,7 @@ export type DecisionSource =
   | "pax-priority"
   | "pax-suggests"
   | "pax-noticed"
+  | "pax-ask"
   | "ai-queue"
   | "portfolio-alert";
 
@@ -54,6 +54,7 @@ const sourcePillStyles: Record<DecisionSource, string> = {
   "pax-priority": "bg-acr-brand-soft text-acr-brand",
   "pax-suggests": "bg-acr-pos-soft text-acr-pos",
   "pax-noticed": "bg-acr-brand-soft text-acr-brand",
+  "pax-ask": "bg-acr-warn-soft text-acr-warn",
   "ai-queue": "bg-primary/10 text-primary",
   "portfolio-alert": "bg-acr-warn-soft text-acr-warn",
 };
@@ -62,6 +63,7 @@ const sourcePillLabel: Record<DecisionSource, string> = {
   "pax-priority": "Pax",
   "pax-suggests": "Pax",
   "pax-noticed": "Pax",
+  "pax-ask": "Pax",
   "ai-queue": "AI queue",
   "portfolio-alert": "Alert",
 };
@@ -70,6 +72,7 @@ const sourceIcon: Record<DecisionSource, LucideIcon> = {
   "pax-priority": Zap,
   "pax-suggests": Sparkles,
   "pax-noticed": Sparkles,
+  "pax-ask": Sparkles,
   "ai-queue": GitBranch,
   "portfolio-alert": AlertTriangle,
 };
@@ -108,15 +111,12 @@ export interface DecisionItem {
   actionLabel: string;
   actionUrl: string;
   rank: number; // for sort; lower = higher priority
-  // Optional Pax model-confidence (0..1). Only set for Pax-sourced rows;
-  // surfaces on the canonical DataProvenanceChip beside the origin pill
-  // (classification "modeled") and drives the ConfidenceBar +
-  // ConfidenceSparkline directly under the title.
-  confidence?: number | null;
-  // Optional chronological history of confidences (oldest first) for this
-  // item's class — fed into the sparkline. The server `/api/today` does
-  // not populate this yet; Sparkline gracefully renders a flat baseline.
-  confidenceHistory?: number[];
+  // Host 3 of 4 for PaxAskCard (the Pax controls spec §4.5): a `pax-ask` row
+  // carries the server-formatted ask and renders the same card as the /ai
+  // strip, the chat and the support chat, with inline Approve / Reject /
+  // Edit. No confidence number rides on any row — the old hardcoded
+  // value, the auto-handled pill and its CTA were fabricated and are gone.
+  ask?: PaxAskItem;
   // What the operator can do in place. Absent → treated as "navigate".
   inlineAction?: InlineAction;
   // Urgency class from the server's one ranking function (Tier 3C):
@@ -128,17 +128,6 @@ export interface DecisionItem {
 interface DecisionQueueProps {
   items: DecisionItem[];
   isLoading: boolean;
-  /**
-   * Pax autonomy threshold (0..1). Pax-sourced items whose confidence is at
-   * or above this value are rendered as "Pax will handle — tap to override"
-   * instead of as a decision the user must make.
-   *
-   * NOTE: this is a *visual* treatment only. It reflects the user's persisted
-   * autonomy preference but does NOT itself execute anything — server-side
-   * auto-execution above the threshold is a separate, not-yet-wired engine.
-   * Default 1.01 means "never auto" until a threshold is supplied.
-   */
-  autoThreshold?: number;
   /**
    * Inline-resolve a queue item in place (Maren CPO #2). The parent owns the
    * PATCH mutation + query invalidation so this component stays presentational.
@@ -207,7 +196,6 @@ function persistSnoozed(map: Record<string, number>) {
 export function DecisionQueue({
   items,
   isLoading,
-  autoThreshold = 1.01,
   onResolve,
   resolvingIds,
   clearedToday = 0,
@@ -218,13 +206,9 @@ export function DecisionQueue({
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [, setLocation] = useLocation();
-
-  // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
-  // user's autonomy threshold. Visual-only treatment (see prop doc).
-  const isAutoHandled = (item: DecisionItem) =>
-    item.source.startsWith("pax-") &&
-    typeof item.confidence === "number" &&
-    item.confidence >= autoThreshold;
+  // The three taps on a `pax-ask` row post to the approval routes and settle
+  // the queue reads; the card reports the server's own outcome.
+  const paxAsk = usePaxAskActions();
 
   useEffect(() => {
     persistSnoozed(snoozed);
@@ -268,6 +252,9 @@ export function DecisionQueue({
     [items, snoozed],
   );
   const snoozedCount = Object.keys(snoozed).length;
+  // Asks are answered on their card (Approve / Reject / Edit), never
+  // cleared or snoozed away: "Clear queue" only counts the server's rows.
+  const clearable = visible.filter((it) => it.source !== "pax-ask");
 
   // ── Keyboard layer (Tier 3C) — J/K traverses, Enter opens ──────────────
   // Desktop-only (fine pointer + hover); suppressed while typing and while
@@ -329,7 +316,7 @@ export function DecisionQueue({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {visible.length > 0 && (
+          {clearable.length > 0 && (
             onClearAll ? (
               // Permanent clear — destructive, so it opens a confirm dialog
               // before firing POST /api/today/queue/clear (server clears the
@@ -339,7 +326,7 @@ export function DecisionQueue({
                 size="sm"
                 className="gap-1 text-xs"
                 onClick={() => setConfirmClearOpen(true)}
-                aria-label={`Clear all ${visible.length} decisions permanently`}
+                aria-label={`Clear all ${clearable.length} decisions permanently`}
                 data-testid="button-clear-queue"
               >
                 <Trash2 className="w-3 h-3" aria-hidden="true" />
@@ -352,7 +339,7 @@ export function DecisionQueue({
                 variant="ghost"
                 size="sm"
                 className="gap-1 text-xs"
-                onClick={() => snoozeAll(visible.map((v) => v.id))}
+                onClick={() => snoozeAll(clearable.map((v) => v.id))}
                 aria-label="Snooze all items for 24 hours"
                 data-testid="button-snooze-all-decisions"
               >
@@ -420,30 +407,44 @@ export function DecisionQueue({
           >
             {visible.map((item) => {
               const SourceIcon = sourceIcon[item.source];
-              const auto = isAutoHandled(item);
-              const isPax = item.source.startsWith("pax-");
-              const hasConfidence = isPax && typeof item.confidence === "number";
-              const confidencePct = hasConfidence
-                ? Math.round((item.confidence as number) * 100)
-                : null;
-              const thresholdPct = Math.round(autoThreshold * 100);
-              // Auto-handled rows replace the priority left-border with a
-              // hairline --acr-pos signal; other rows take priority tone.
-              const borderColor = auto
-                ? "var(--acr-pos)"
-                : priorityBorderColor[item.priority];
-              // Swipe right (left action) — fire the primary CTA. For auto-handled
-              // Pax rows that becomes "Override"; otherwise it's the regular open/act
-              // path (e.g. "Open lead", "Send reminder"). We navigate via wouter so
-              // the gesture matches the on-screen Button's Link target exactly.
-              // Swipe left (right action) — snooze, mirroring InboxTab's vocabulary.
-              const swipeLeftLabel = auto ? "Override" : item.actionLabel;
-              const swipeLeftTone = auto ? "pos" : "brand";
+              const isKeyboardActiveAsk = item.id === activeId;
+              // Host 3 of 4: an ask is answered on its own card, in place.
+              if (item.source === "pax-ask" && item.ask) {
+                return (
+                  <motion.li
+                    key={item.id}
+                    role="listitem"
+                    variants={staggerItem}
+                    tabIndex={isKeyboardActiveAsk ? -1 : undefined}
+                    data-keyboard-active={isKeyboardActiveAsk ? "true" : undefined}
+                    className={isKeyboardActiveAsk ? "rounded-card ring-2 ring-ring outline-none" : undefined}
+                    ref={(el) => {
+                      if (el) rowRefs.current.set(item.id, el);
+                      else rowRefs.current.delete(item.id);
+                    }}
+                    data-testid={`decision-item-${item.id}`}
+                  >
+                    <PaxAskCard
+                      ask={item.ask}
+                      onApprove={(a) => paxAsk.approve(a.id)}
+                      onReject={(a) => paxAsk.reject(a.id)}
+                      onRevise={(a, args) => paxAsk.revise(a.id, args)}
+                    />
+                  </motion.li>
+                );
+              }
+              const borderColor = priorityBorderColor[item.priority];
+              // Swipe right (left action) — fire the primary CTA: the regular
+              // open/act path (e.g. "Open lead", "Send reminder"). We navigate
+              // via wouter so the gesture matches the on-screen Button's Link
+              // target exactly. Swipe left (right action) — snooze, mirroring
+              // InboxTab's vocabulary.
+              const swipeLeftLabel = item.actionLabel;
+              const swipeLeftTone = "brand" as const;
               // Inline-resolve is available when the parent wired onResolve AND
-              // the server marked this item resolvable. Auto-handled Pax rows
-              // keep their Override-only treatment (Pax owns those).
+              // the server marked this item resolvable.
               const canResolveInline =
-                !!onResolve && !auto && item.inlineAction?.kind === "resolve";
+                !!onResolve && item.inlineAction?.kind === "resolve";
               const paxDraft =
                 item.inlineAction?.kind === "resolve" ? item.inlineAction.paxDraft : undefined;
               const isResolving = resolvingIds?.has(item.id) ?? false;
@@ -488,30 +489,13 @@ export function DecisionQueue({
                   <Card
                     className="rounded-card shadow-acr-1 hover-elevate border-l-2"
                     style={{ borderLeftColor: borderColor }}
-                    data-auto-handled={auto ? "true" : undefined}
                     data-priority={item.priority}
                     data-testid={`decision-item-${item.id}`}
                   >
                     <CardContent className="flex items-start gap-4 p-6">
-                      {auto && (
-                        <div
-                          className="shrink-0 mt-1.5 w-2 h-2 rounded-full ring-1"
-                          style={{
-                            background: "transparent",
-                            // The ring is the only color signal on auto rows.
-                            // Using inline style keeps us on tokens without
-                            // adding a new Tailwind utility class.
-                            boxShadow: "inset 0 0 0 1px var(--acr-pos)",
-                          }}
-                          aria-hidden="true"
-                        />
-                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          {/* Origin pill: which subsystem raised this item.
-                              Epistemic standing (Pax model confidence) lives
-                              on the canonical DataProvenanceChip beside it —
-                              never merged into the category pill. */}
+                          {/* Origin pill: which subsystem raised this item. */}
                           <Badge
                             variant="secondary"
                             className={`text-xs border-transparent inline-flex items-center gap-1 ${sourcePillStyles[item.source]}`}
@@ -520,43 +504,13 @@ export function DecisionQueue({
                             <SourceIcon className="w-3 h-3" aria-hidden={true} />
                             <span>{sourcePillLabel[item.source]}</span>
                           </Badge>
-                          {hasConfidence && (
-                            <DataProvenanceChip
-                              source="Pax"
-                              classification="modeled"
-                              confidence={confidencePct}
-                            />
-                          )}
-                          {auto && (
-                            <span className="text-xs text-acr-pos inline-flex items-center gap-1">
-                              <Zap className="w-3 h-3" aria-hidden="true" />
-                              Pax would handle
-                            </span>
-                          )}
                         </div>
                         <div className="text-[15px] font-medium leading-snug text-foreground">
                           {item.title}
                         </div>
                         <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                          {auto
-                            ? "Preview — Pax will still ask you. You'll see this row in your queue."
-                            : item.description}
+                          {item.description}
                         </p>
-                        {isPax && hasConfidence && (
-                          <div
-                            className="flex items-center justify-between gap-3 mt-2"
-                            aria-label={`Pax confidence ${confidencePct}% (auto-handle threshold ${thresholdPct}%)`}
-                          >
-                            <ConfidenceBar
-                              value={item.confidence as number}
-                              threshold={autoThreshold}
-                            />
-                            <ConfidenceSparkline
-                              history={item.confidenceHistory ?? []}
-                              current={item.confidence as number}
-                            />
-                          </div>
-                        )}
 
                         {/* ── Inline resolution row (Maren CPO #2) ──────────
                             Resolve the item WITHOUT leaving Today — the habit-
@@ -625,10 +579,10 @@ export function DecisionQueue({
                       <Button
                         asChild
                         size="sm"
-                        variant={auto ? "outline" : "default"}
+                        variant="default"
                         className="shrink-0 text-xs"
                       >
-                        <Link href={item.actionUrl}>{auto ? "Override" : item.actionLabel}</Link>
+                        <Link href={item.actionUrl}>{item.actionLabel}</Link>
                       </Button>
                     </CardContent>
                   </Card>
@@ -656,7 +610,7 @@ export function DecisionQueue({
           <AlertDialogContent data-testid="dialog-clear-queue">
             <AlertDialogHeader>
               <AlertDialogTitle>
-                Clear all {visible.length} decision{visible.length === 1 ? "" : "s"} permanently?
+                Clear all {clearable.length} decision{clearable.length === 1 ? "" : "s"} permanently?
               </AlertDialogTitle>
               <AlertDialogDescription>
                 This removes every item currently in your decision queue. It can't

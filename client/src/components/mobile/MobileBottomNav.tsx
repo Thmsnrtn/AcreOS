@@ -9,6 +9,7 @@ import { MobileCommandDrawer } from "./MobileCommandDrawer";
 import { QuickAddSheet } from "./QuickAddSheet";
 import { useAuth } from "@/hooks/use-auth";
 import { NAV_ITEM_MAP, MOBILE_DOORS, type MasterNavItem } from "@/lib/nav-items";
+import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
 import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
 
 export function MobileBottomNav() {
@@ -17,6 +18,10 @@ export function MobileBottomNav() {
   const { user } = useAuth();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  // The Pax door badge — asks "Waiting for your tap", from the server's own
+  // count (live on `pax.needs_you`, 5-min poll fallback). `null` until the
+  // server answers, so the door never shows an invented 0.
+  const { count: paxAskCount } = usePaxNeedsYouCount();
 
   // The five canonical doors — the SAME for every persona (persona changes the
   // content behind them, not the doors). Inbox/Settings/long-tail live behind
@@ -109,6 +114,15 @@ export function MobileBottomNav() {
                     />
                   )}
                   <ItemIcon className={cn("relative w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
+                  {item.id === "ai-hub" && paxAskCount != null && paxAskCount > 0 && (
+                    <span
+                      className="absolute -top-0.5 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold leading-[18px] text-center tabular-nums"
+                      aria-label={`${paxAskCount} waiting for your tap`}
+                      data-testid="badge-pax-needs-you-mobile"
+                    >
+                      {paxAskCount > 99 ? "99+" : paxAskCount}
+                    </span>
+                  )}
                 </div>
                 <span className={cn(
                   "text-caption font-medium truncate",

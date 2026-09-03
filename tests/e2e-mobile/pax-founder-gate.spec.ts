@@ -6,7 +6,12 @@
  *   - the "Team" tab (renders Acquisitions VA / Collections VA / Executive VA)
  *   - the "Background" tab (renders the agent-roster codenames)
  *   - the "AI Ops" tab (founder-only operational tooling)
- * They DO see "Assistant" (Chat) and "Tasks".
+ *
+ * Pax controls program (2026-09-02, docs/autonomous/AUTONOMY_SPEC.md §3b):
+ * customers see the conversation ALONE. The old "Tasks" tab (a dead-letter
+ * queue with an invented "$0.02 per task" price) is deleted for everyone, so
+ * assertion 2 is now "Tasks tab ABSENT" — the mutation that must go red is
+ * rendering that tab again.
  *
  * The test-auth bypass seeds TWO identities (tests/e2e-mobile/global-setup.ts):
  * the customer `e2e@acreos.test` and the founder `founder-e2e@acreos.test`.
@@ -16,19 +21,14 @@
  * seeds value "e2e", so it runs as a genuine non-founder customer session.
  *
  * What we assert:
- *   1. /ai renders (no auth bounce, no error fallback).
- *   2. The Assistant + Tasks tab triggers ARE present.
+ *   1. /ai renders (no auth bounce, no error fallback): the composer is there.
+ *   2. The Tasks tab trigger is ABSENT (and its invented price with it).
  *   3. The Team / Background / AI Ops tab triggers are NOT present.
  *   4. The body text never contains the internal codenames
  *      "Acquisitions VA" / "Collections VA" / "Executive VA" / "Sophie" /
  *      "Forge" / "Atlas" on any of these views.
- *   5. Deep-linking to /ai#team bounces the user to the Chat tab (the
+ *   5. Deep-linking to /ai#team bounces the user to the conversation (the
  *      mount-time bouncer in CommandCenterPage).
- *   6. On iPhone width (390-class viewport via the iphone-14 project), the
- *      Pax greeting dismiss button responds to a single tap (not double-tap)
- *      — covered indirectly by asserting the dismiss-button uses active:
- *      class via the source-contract spec; here we assert it renders + is
- *      tappable.
  */
 import { test, expect, type Page } from "@playwright/test";
 
@@ -84,7 +84,7 @@ async function waitForRoot(page: Page) {
 }
 
 test.describe("/ai founder-gate — customer (non-founder) session", () => {
-  test("renders Assistant + Tasks tabs, hides Team / Background / AI Ops", async ({ page, baseURL }) => {
+  test("renders the conversation alone: no Tasks tab, no Team / Background / AI Ops", async ({ page, baseURL }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => {
       const msg = e.message || String(e);
@@ -95,12 +95,20 @@ test.describe("/ai founder-gate — customer (non-founder) session", () => {
     await page.goto("/ai", { waitUntil: "domcontentloaded" });
     await waitForRoot(page);
 
-    // Customer-visible triggers MUST exist.
-    await expect(page.locator('[data-testid="tab-chat"]')).toBeVisible({ timeout: 30000 });
-    await expect(page.locator('[data-testid="tab-tasks"]')).toBeVisible();
+    // 1. The conversation renders: the composer is the customer's surface.
+    await expect(page.locator('[data-testid="input-message"]')).toBeVisible({ timeout: 30000 });
 
-    // Founder-only triggers MUST NOT exist (the {isFounder && …} wrap removes
-    // the entire node from the DOM, so .count() is the correct probe).
+    // 2. The Tasks tab is ABSENT for everyone (deleted, not gated). Render
+    //    it again and this goes red.
+    await expect(
+      page.locator('[data-testid="tab-tasks"]'),
+      "Tasks tab must not render — it was deleted in the Pax controls program",
+    ).toHaveCount(0);
+    const bodyForPrice = await page.locator("body").innerText();
+    expect(bodyForPrice, "the invented per-task price must not render").not.toContain("$0.02");
+
+    // 3. Founder-only triggers MUST NOT exist (the {isFounder && …} wrap removes
+    //    the entire node from the DOM, so .count() is the correct probe).
     await expect(
       page.locator('[data-testid="tab-team"]'),
       "Team tab must not render for non-founders",
@@ -114,7 +122,7 @@ test.describe("/ai founder-gate — customer (non-founder) session", () => {
       "AI Ops tab must not render for non-founders",
     ).toHaveCount(0);
 
-    // No codename text on the default (Chat) render.
+    // 4. No codename text on the default render.
     const body = await page.locator("body").innerText();
     for (const name of CODENAMES_THAT_MUST_NOT_LEAK) {
       expect(body, `Internal codename "${name}" leaked to non-founder /ai surface`).not.toContain(
@@ -125,18 +133,19 @@ test.describe("/ai founder-gate — customer (non-founder) session", () => {
     expect(pageErrors, `/ai threw: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("deep-link /ai#team bounces a non-founder back to the Chat tab", async ({ page, baseURL }) => {
+  test("deep-link /ai#team bounces a non-founder back to the conversation", async ({ page, baseURL }) => {
     // The mount-time useEffect in CommandCenterPage redirects mainTab to
     // "chat" when isFounder is false. Even if mainTab is restored from a
-    // hash or saved session, the user must end up on Chat.
+    // hash or saved session, the user must end up on the conversation.
     await seedSessionCookie(page, baseURL!);
     await page.goto("/ai#team", { waitUntil: "domcontentloaded" });
     await waitForRoot(page);
 
-    // Still no team trigger.
+    // Still no team trigger, still no Tasks trigger.
     await expect(page.locator('[data-testid="tab-team"]')).toHaveCount(0);
-    // The Chat tab's content (or at least the Chat trigger) is visible.
-    await expect(page.locator('[data-testid="tab-chat"]')).toBeVisible();
+    await expect(page.locator('[data-testid="tab-tasks"]')).toHaveCount(0);
+    // The conversation is what renders.
+    await expect(page.locator('[data-testid="input-message"]')).toBeVisible({ timeout: 30000 });
 
     const body = await page.locator("body").innerText();
     for (const name of CODENAMES_THAT_MUST_NOT_LEAK) {

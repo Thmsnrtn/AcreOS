@@ -13,6 +13,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate } from "@/lib/format";
+import PaxAskCard from "@/components/pax/PaxAskCard";
+import { usePaxAskActions, usePaxAskById } from "@/hooks/usePaxNeedsYou";
 
 // Browser context capture types
 interface CapturedError {
@@ -226,6 +228,53 @@ interface TicketMessage {
   toolsUsed?: string[];
   actionsPerformed?: any[];
   createdAt: string;
+}
+
+/**
+ * Host 4 of 4 for PaxAskCard (the Pax controls spec §4.5): the support chat.
+ * A support tool the server froze as a pending_actions row leaves its
+ * artifact in the agent message's `actionsPerformed[i].result`
+ * (pendingApproval + pendingActionId). The card renders the SAME
+ * server-formatted ask as the /ai strip, the chat and Today, with inline
+ * Approve / Reject / Edit — a billing fix waits for the customer's tap here,
+ * exactly where Pax proposed it.
+ */
+function supportAskIdsOf(msg: TicketMessage): number[] {
+  const out: number[] = [];
+  for (const action of msg.actionsPerformed ?? []) {
+    const result = (action as { result?: unknown } | null)?.result as
+      | { pendingApproval?: unknown; pendingActionId?: unknown }
+      | undefined;
+    if (result?.pendingApproval === true && typeof result.pendingActionId === "number" && !out.includes(result.pendingActionId)) {
+      out.push(result.pendingActionId);
+    }
+  }
+  return out;
+}
+
+function SupportAsk({ pendingActionId }: { pendingActionId: number }) {
+  const { ask, isLoading } = usePaxAskById(pendingActionId);
+  const { approve, reject, revise } = usePaxAskActions();
+  if (ask) {
+    return (
+      <PaxAskCard
+        ask={ask}
+        compact
+        className="mt-2"
+        onApprove={(a) => approve(a.id)}
+        onReject={(a) => reject(a.id)}
+        onRevise={(a, args) => revise(a.id, args)}
+      />
+    );
+  }
+  if (isLoading) {
+    return <p className="mt-2 text-xs text-muted-foreground" role="status">Loading what Pax is asking…</p>;
+  }
+  return (
+    <p className="mt-2 text-xs text-muted-foreground" data-testid={`support-ask-gone-${pendingActionId}`}>
+      This ask is no longer waiting — it was answered or expired.
+    </p>
+  );
 }
 
 interface KnowledgeBaseArticle {
@@ -1016,6 +1065,9 @@ export function HelpPanel() {
                             Actions taken: {msg.toolsUsed.length}
                           </div>
                         )}
+                        {supportAskIdsOf(msg).map((id) => (
+                          <SupportAsk key={id} pendingActionId={id} />
+                        ))}
                       </div>
                     </div>
                   ))}

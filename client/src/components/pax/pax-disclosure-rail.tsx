@@ -1,5 +1,6 @@
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PAX_STANDING_LINE } from "@shared/pax-glossary";
 
 /**
  * PaxDisclosureRail — the standing, always-present "tool, not advisor" line on
@@ -26,11 +27,11 @@ import { cn } from "@/lib/utils";
  */
 
 /**
- * The single source of truth for the Pax standing-disclosure copy. Anyone
- * revising the "tool, not advisor" language touches this one string.
+ * The Pax standing line (shared/pax-glossary.ts — the ONE file for every
+ * customer-visible Pax string) plus the "verify" clause. Anyone revising the
+ * "tool, not advisor" language touches the glossary, not this file.
  */
-export const PAX_DISCLOSURE_COPY =
-  "Pax surfaces public data and your own records to inform your decisions — it never decides for you. Verify before you act.";
+export const PAX_DISCLOSURE_COPY = `${PAX_STANDING_LINE} Verify before you act.`;
 
 interface PaxDisclosureRailProps {
   className?: string;

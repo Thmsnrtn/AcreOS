@@ -136,6 +136,7 @@ import {
 import { useUiState } from "@/hooks/use-ui-state";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
+import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -371,6 +372,10 @@ interface NavModule {
   href: string;
   description?: string;
   showUnreadBadge?: boolean;
+  // The Pax door badge: how many asks are "Waiting for your tap"
+  // (GET /api/pax/needs-you/count, live on `pax.needs_you`). One number on
+  // the door, fed by the server's own count — never a client tally.
+  showPaxAskBadge?: boolean;
   founderOnly?: boolean;
   // Hide unless the user's businessType matches one of these values.
   // Used for sub-vertical modules (tax-delinquent, etc.) that only
@@ -680,6 +685,7 @@ const NAV_MODULES: NavModule[] = [
     icon: Sparkles,
     href: "/ai",
     description: "Pax — your AI assistant",
+    showPaxAskBadge: true,
   },
 
   // ── Inbox (communications, reachable from the top bar too) ─────────
@@ -828,7 +834,7 @@ const routePrefetchMap: Record<string, string> = {
   "/tasks": "/api/tasks",
   "/campaigns": "/api/campaigns",
   "/inbox": "/api/inbox",
-  "/ai": "/api/pax/insights",
+  "/ai": "/api/pax/needs-you",
   "/today": "/api/dashboard/today-priorities",
   "/": "/api/dashboard/today-priorities",
   "/alerts": "/api/alerts/active",
@@ -1030,6 +1036,13 @@ export function Sidebar() {
     },
   );
 
+  // The Pax door badge: asks waiting for a tap. The hook subscribes to the
+  // org channel's `pax.needs_you` event and polls every 5 min as fallback —
+  // the same live-then-poll pattern as the inbox badge above. `null` until
+  // the first read lands, so the door never shows an invented 0.
+  const { count: paxAskCountRaw } = usePaxNeedsYouCount();
+  const paxAskCount = paxAskCountRaw ?? 0;
+
   const handlePrefetch = useCallback((href: string) => {
     const apiRoute = routePrefetchMap[href];
     if (apiRoute) prefetchRoute(apiRoute);
@@ -1220,6 +1233,7 @@ export function Sidebar() {
           const hasChildren = (module.children?.length ?? 0) > 0 || (module.overflow?.length ?? 0) > 0;
           const showBadge =
             module.showUnreadBadge && inboxUnreadCount > 0;
+          const showPaxBadge = module.showPaxAskBadge && paxAskCount > 0;
 
           if (isCollapsed) {
             // Collapsed: icon-only with popover for children
@@ -1229,6 +1243,7 @@ export function Sidebar() {
                 module={module}
                 isActive={active}
                 inboxUnreadCount={inboxUnreadCount}
+                paxAskCount={paxAskCount}
                 isRouteActive={isRouteActive}
                 onPrefetch={handlePrefetch}
               />
@@ -1284,6 +1299,16 @@ export function Sidebar() {
                         data-testid="badge-inbox-unread"
                       >
                         {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                      </Badge>
+                    )}
+                    {showPaxBadge && (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn border-transparent tabular-nums"
+                        aria-label={`${paxAskCount} waiting for your tap`}
+                        data-testid="badge-pax-needs-you"
+                      >
+                        {paxAskCount > 99 ? "99+" : paxAskCount}
                       </Badge>
                     )}
                   </Link>
@@ -1578,6 +1603,7 @@ export function Sidebar() {
           const expanded = expandedModules.has(module.id);
           const hasChildren = (module.children?.length ?? 0) > 0;
           const showBadge = module.showUnreadBadge && inboxUnreadCount > 0;
+          const showPaxBadge = module.showPaxAskBadge && paxAskCount > 0;
 
           return (
             <div key={module.id}>
@@ -1614,6 +1640,16 @@ export function Sidebar() {
                     {showBadge && (
                       <Badge variant="secondary" className="text-xs shrink-0">
                         {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                      </Badge>
+                    )}
+                    {showPaxBadge && (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn border-transparent tabular-nums"
+                        aria-label={`${paxAskCount} waiting for your tap`}
+                        data-testid="badge-pax-needs-you"
+                      >
+                        {paxAskCount > 99 ? "99+" : paxAskCount}
                       </Badge>
                     )}
                   </Link>
@@ -1788,17 +1824,20 @@ function CollapsedModuleItem({
   module,
   isActive,
   inboxUnreadCount,
+  paxAskCount = 0,
   isRouteActive,
   onPrefetch,
 }: {
   module: NavModule;
   isActive: boolean;
   inboxUnreadCount: number;
+  paxAskCount?: number;
   isRouteActive: (href: string) => boolean;
   onPrefetch: (href: string) => void;
 }) {
   const hasChildren = (module.children?.length ?? 0) > 0 || (module.overflow?.length ?? 0) > 0;
-  const showBadge = module.showUnreadBadge && inboxUnreadCount > 0;
+  const showBadge =
+    (module.showUnreadBadge && inboxUnreadCount > 0) || (module.showPaxAskBadge && paxAskCount > 0);
 
   if (!hasChildren) {
     return (

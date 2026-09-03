@@ -9,7 +9,10 @@
  *   1. fb46d356 — non-founder users must never see Team / Background / AI Ops
  *      tabs on /ai (constitution: Customer AI = Pax only; internal codenames
  *      Sophie / Forge / Atlas / "Acquisitions VA" / "Collections VA" /
- *      "Executive VA" must not render for customers).
+ *      "Executive VA" must not render for customers). Since the Pax controls
+ *      program (2026-09-02, spec §3b) customers see NO tab strip at all —
+ *      the conversation alone; the Tasks tab (a dead-letter queue with an
+ *      invented price) is deleted for everyone.
  *   2. d3fd2b9b — the Pax overflow menu DropdownMenu → Sheet handoff must
  *      defer setView() inside requestAnimationFrame on every menu item that
  *      opens the Sheet (otherwise a blank frosted overlay races the slide-in).
@@ -88,28 +91,20 @@ describe("fb46d356 — /ai tabs founder-gate (constitution: Customer AI = Pax on
     expect(src).toMatch(/mainTab\s*===\s*"ai-ops"\s*&&\s*isFounder/);
   });
 
-  it("leaves Chat (assistant) and Tasks ungated — every authed user sees them", () => {
-    // The two non-founder-visible tabs must NOT be wrapped in {isFounder && …}.
-    // A regression here would hide Chat/Tasks from customers.
-    const chatLine = src.match(/data-testid="tab-chat"[\s\S]{0,200}/)?.[0] || "";
-    const tasksLine = src.match(/data-testid="tab-tasks"[\s\S]{0,200}/)?.[0] || "";
-    // The 200 chars BEFORE the trigger must not include `{isFounder && (`
-    const chatPrefix = src.slice(
-      Math.max(0, src.indexOf('data-testid="tab-chat"') - 200),
-      src.indexOf('data-testid="tab-chat"'),
-    );
-    const tasksPrefix = src.slice(
-      Math.max(0, src.indexOf('data-testid="tab-tasks"') - 200),
-      src.indexOf('data-testid="tab-tasks"'),
-    );
-    expect(chatLine.length).toBeGreaterThan(0);
-    expect(tasksLine.length).toBeGreaterThan(0);
-    expect(chatPrefix, "Chat tab must not be founder-gated").not.toMatch(
-      /\{isFounder\s*&&\s*\(\s*$/,
-    );
-    expect(tasksPrefix, "Tasks tab must not be founder-gated").not.toMatch(
-      /\{isFounder\s*&&\s*\(\s*$/,
-    );
+  it("the Tasks tab is gone for everyone and customers get the conversation alone", () => {
+    // Pax controls program (spec §3b, §3d): the customer Tasks tab — a
+    // dead-letter queue with an invented "$0.02 per task" price — is deleted,
+    // not gated. Customers see no tab strip; the founder-only tabs render
+    // inside `isFounder ? (<Tabs …>) : …`.
+    expect(src, "the Tasks tab trigger must not exist").not.toContain('data-testid="tab-tasks"');
+    expect(src).not.toContain("TasksTabContent");
+    expect(src).not.toContain("$0.02");
+    expect(src).not.toContain("Deploy Agent");
+    // The whole tab strip is founder-only; the Chat trigger lives inside it.
+    expect(src).toMatch(/\{isFounder\s*\?\s*\(\s*<Tabs[\s\S]{0,1200}data-testid="tab-chat"/);
+    // The gear is a link to the ONE Pax control surface, not an in-place dialog.
+    expect(src).toContain('data-testid="button-pax-settings"');
+    expect(src).not.toContain("AISettings");
   });
 });
 
@@ -119,9 +114,11 @@ describe("d3fd2b9b — Pax overflow menu defers setView via requestAnimationFram
   const src = read(PAX_OVERFLOW_MENU);
 
   it("every DropdownMenuItem that opens the Sheet calls preventDefault + rAF", () => {
-    // Three handlers: insights, activity, agents. Each must defer setView so
-    // the dropdown finishes closing before the Sheet overlay mounts.
-    for (const view of ["insights", "activity", "agents"] as const) {
+    // Three handlers: activity ("What Pax did"), appeals, agents. Each must
+    // defer setView so the dropdown finishes closing before the Sheet
+    // overlay mounts. ("Insights" left the customer menu in the Pax controls
+    // program — a banned menu label with fabricated dollar badges.)
+    for (const view of ["activity", "appeals", "agents"] as const) {
       const pattern = new RegExp(
         `onSelect=\\{\\(e\\)\\s*=>\\s*\\{[\\s\\S]*?e\\.preventDefault\\(\\)[\\s\\S]*?requestAnimationFrame\\(\\(\\)\\s*=>\\s*setView\\("${view}"\\)\\)`,
       );
