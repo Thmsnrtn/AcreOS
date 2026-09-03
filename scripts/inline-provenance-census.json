@@ -193,7 +193,6 @@
     "client/src/pages/portfolio-optimizer.tsx": 4,
     "client/src/pages/price-optimizer.tsx": 3,
     "client/src/pages/public-parcel-report.tsx": 1,
-    "client/src/pages/settings/pax-controls.tsx": 4,
     "client/src/pages/skip-tracing.tsx": 5,
     "client/src/pages/today.tsx": 1,
     "client/src/pages/tools/parcel-check.tsx": 1,

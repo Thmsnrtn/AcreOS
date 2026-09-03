@@ -86,6 +86,11 @@ export const RETIRED_FLAG_KEYS: Record<string, string> = {
     "KILL executed 2026-08-13 — routes-negotiation.ts, " +
     "services/negotiationCopilot.ts, pages/negotiation-copilot.tsx and the " +
     "three ai-operations copilot endpoints are deleted.",
+  "feature.autonomy-matrix":
+    "KILL executed 2026-09-02 (Pax controls program, AUTONOMY_SPEC.md §3d) — " +
+    "components/settings/autonomy-panel.tsx and its useFlag gate in " +
+    "pages/settings.tsx are deleted; the row is removed by migrate.mjs 0250. " +
+    "Pax has two stances and one pause at /settings/pax; nothing reads a matrix.",
 };
 
 const KNOWN_TIERS = new Set(["free", "starter", "pro", "scale", "enterprise"]);

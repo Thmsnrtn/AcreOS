@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { ChevronDown } from "lucide-react";
+import { PAX_CONTROLS_LABEL, PAX_CONTROLS_PATH } from "@shared/pax-glossary";
 
 interface MorningBriefProps {
   brief: string | null;
@@ -63,11 +64,11 @@ export function MorningBrief({ brief }: MorningBriefProps) {
           </p>
           <div className="mt-2">
             <Link
-              href="/settings/pax"
+              href={PAX_CONTROLS_PATH}
               className="inline-flex min-h-11 items-center px-2 -mx-2 -my-3 text-xs text-acr-ink-3 hover:text-acr-brand active:text-acr-brand underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               data-testid="link-pax-controls-from-brief"
             >
-              Pax controls →
+              {PAX_CONTROLS_LABEL} →
             </Link>
           </div>
         </div>

@@ -13,7 +13,6 @@ import {
   ListTodo,
   Store,
   Workflow,
-  Zap,
   Inbox,
   PieChart
 } from "lucide-react";
@@ -46,11 +45,11 @@ const quickActions = [
 const moreItems = [
   { href: "/inbox", icon: Inbox, label: "Inbox" },
   { href: "/tasks", icon: ListTodo, label: "Tasks" },
-  { href: "/analytics", icon: TrendingUp, label: "Insights" },
+  { href: "/analytics", icon: TrendingUp, label: "Analytics" },
   { href: "/portfolio", icon: PieChart, label: "Portfolio" },
   { href: "/listings", icon: Store, label: "Listings" },
   { href: "/documents", icon: FileText, label: "Documents" },
-  { href: "/automation", icon: Zap, label: "Automation" },
+  // One editor for rules: /workflows (the /automation twin redirects there).
   { href: "/workflows", icon: Workflow, label: "Workflows" },
 ];
 

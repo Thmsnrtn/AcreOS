@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, ArrowRight, Command } from "lucide-react";
+import { useLocation } from "wouter";
+import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +24,8 @@ type SettingsEntry = {
   description: string;
   tab: "account" | "security" | "organization" | "billing" | "tax-compliance" | "notifications" | "integrations";
   keywords: string;
+  /** A nested page (e.g. /settings/pax, /settings/byok) instead of a tab scroll. */
+  href?: string;
 };
 
 const CATALOG: SettingsEntry[] = [
@@ -46,10 +50,13 @@ const CATALOG: SettingsEntry[] = [
   { label: "SMS alerts", description: "Critical text notifications", tab: "notifications", keywords: "sms text phone alert critical mobile" },
   { label: "Push notifications", description: "Browser + PWA pushes", tab: "notifications", keywords: "push browser pwa desktop notification" },
   { label: "API keys", description: "Manage org API keys", tab: "integrations", keywords: "api key token developer rest webhook scope" },
-  { label: "BYOK (Bring your own keys)", description: "OpenAI / Anthropic credentials", tab: "integrations", keywords: "byok openai anthropic claude gpt key llm ai credentials" },
+  { label: PAX_SETTINGS_COPY.quickFind.byok.label, description: PAX_SETTINGS_COPY.quickFind.byok.description, tab: "integrations", keywords: "byok own keys twilio sendgrid lob openai anthropic openrouter attom regrid key credentials", href: "/settings/byok" },
   { label: "Stripe Connect", description: "Contractor payouts", tab: "integrations", keywords: "stripe connect payout contractor ach payment" },
   { label: "Webhooks", description: "Outbound event subscriptions", tab: "integrations", keywords: "webhook outbound event subscription endpoint url" },
-  { label: "Autonomy matrix", description: "Founder-only AI autonomy rules", tab: "integrations", keywords: "autonomy ai matrix founder rules permission autonomous agent" },
+  // Settings → Pax (AUTONOMY_SPEC.md §3a entry points) — one nested page.
+  { label: PAX_SETTINGS_COPY.quickFind.pax.label, description: PAX_SETTINGS_COPY.quickFind.pax.description, tab: "integrations", keywords: "pax ai ask asks sending everything stance switch rules runs own scheduled prompts lead scoring borrower reminders drafts", href: PAX_CONTROLS_PATH },
+  { label: PAX_SETTINGS_COPY.quickFind.pause.label, description: PAX_SETTINGS_COPY.quickFind.pause.description, tab: "integrations", keywords: "pause stop resume pax kill off hold", href: PAX_CONTROLS_PATH },
+  { label: PAX_SETTINGS_COPY.quickFind.waiting.label, description: PAX_SETTINGS_COPY.quickFind.waiting.description, tab: "integrations", keywords: "waiting tap approve reject edit pending queue drafts pax wrote", href: "/ai" },
 ];
 
 interface SettingsQuickFindProps {
@@ -57,6 +64,7 @@ interface SettingsQuickFindProps {
 }
 
 export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
+  const [, setLocation] = useLocation();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -94,8 +102,12 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
   }, [query]);
 
   function pick(entry: SettingsEntry) {
-    onJump(entry.tab);
-    window.location.hash = entry.tab;
+    if (entry.href) {
+      setLocation(entry.href);
+    } else {
+      onJump(entry.tab);
+      window.location.hash = entry.tab;
+    }
     setQuery("");
     setOpen(false);
     inputRef.current?.blur();

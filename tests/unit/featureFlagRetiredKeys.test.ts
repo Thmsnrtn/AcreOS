@@ -148,6 +148,8 @@ describe("a deleted subsystem does not keep its switch", () => {
       "server/services/negotiationCopilot.ts",
       "client/src/pages/negotiation-copilot.tsx",
     ],
+    // Pax controls program (2026-09-02): the panel the flag gated is gone.
+    "feature.autonomy-matrix": ["client/src/components/settings/autonomy-panel.tsx"],
   };
 
   it("each deleted subsystem's flag is registered", () => {
@@ -226,11 +228,19 @@ describe("the service treats a retired key as absent, not as off", () => {
     // what keeps working afterwards, so a later reader does not remove it as
     // "bookkeeping for rows that no longer exist".
     const migrate = fs.readFileSync(path.join(ROOT, "scripts/migrate.mjs"), "utf8");
-    const at = migrate.indexOf('DELETE FROM "platform_feature_flags"');
-    expect(at, "the B16 row deletion is gone from scripts/migrate.mjs").toBeGreaterThan(-1);
-    const stmt = migrate.slice(at, migrate.indexOf("`", at));
+    // Every DELETE statement against the flag table, not just the first: the
+    // B16 kill and the 2026-09-02 autonomy-matrix kill are two migrations.
+    const needle = 'DELETE FROM "platform_feature_flags"';
+    const stmts: string[] = [];
+    for (let at = migrate.indexOf(needle); at > -1; at = migrate.indexOf(needle, at + 1)) {
+      stmts.push(migrate.slice(at, migrate.indexOf("`", at)));
+    }
+    expect(stmts.length, "the B16 row deletion is gone from scripts/migrate.mjs").toBeGreaterThan(0);
     for (const key of Object.keys(RETIRED_FLAG_KEYS)) {
-      expect(stmt, `${key} is registered as retired but not in the DELETE`).toContain(key);
+      expect(
+        stmts.some((stmt) => stmt.includes(`'${key}'`)),
+        `${key} is registered as retired but no DELETE in migrate.mjs names it`,
+      ).toBe(true);
     }
   });
 

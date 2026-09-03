@@ -18,7 +18,6 @@
  *  - **\/pages/sovereign*\/**
  *  - **\/components/founder*\/**
  *  - **\/components/dashboard/**     (founder-dashboard widgets)
- *  - **\/components/settings/autonomy-panel.tsx (founder-mode panel)
  *  - **\/lib/agent-identity.ts
  *  - **\/lib/trust-language.ts
  *  - **\/lib/personaVocabulary.ts
@@ -68,7 +67,6 @@ const SKIP_PATTERNS = [
   /\/pages\/sovereign[^/]*\.tsx?$/,
   /\/components\/founder[^/]*\//,
   /\/components\/dashboard\//,
-  /\/components\/settings\/autonomy-panel\.tsx?$/,
   /\/lib\/agent-identity\.ts$/,
   /\/lib\/trust-language\.ts$/,
   /\/lib\/personaVocabulary\.ts$/,

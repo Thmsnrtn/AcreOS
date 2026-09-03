@@ -1,657 +1,1033 @@
 /**
- * /settings/pax — Pax kill-switch surface (Workstream A, Honesty).
+ * /settings/pax — Settings → Pax (AUTONOMY_SPEC.md §3a; decision record
+ * docs/company/founder-decision-2026-09-02-pax-controls.md).
  *
- * The Fadell "panicked Nest grandma at 11pm" surface: a one-tap home for
- * pause / replay / reset, plus an explicit explanation of what the
- * autonomy slider on Today actually does today (and what it does not).
+ * The ONE customer surface for what Pax does on its own. Two stances, one
+ * pause, one queue, one receipts feed, one fixed Never list. No level, no
+ * percentage, no per-person preference: EVERY line is read from
+ * GET /api/pax/controls (org truth — server/routes-pax-controls.ts), and the
+ * four writes go to POST /pause, POST /resume, PATCH /controls and the
+ * existing PATCH /api/ai/scheduled-tasks/:id. True zeros render as zeros;
+ * a number with no row renders as "no runs yet", never as a guess.
  *
- * Three controls:
- *   1. Pause all Pax automation for 24h — writes
- *      users.autonomyPreferences.pax.pausedUntil. ENFORCED server-side
- *      (server/services/paxPause.ts, org-level) at every unattended
- *      execution point — the enumeration lives in that module's header and
- *      is pinned by tests/unit/paxPauseCoverage.test.ts. Read-only lookups
- *      and drafts still run; the pause expires on its own.
+ * Copy discipline: every customer-visible string comes from
+ * shared/pax-glossary.ts (stance / pause / group / page copy), and the
+ * "what Pause stops" list is rendered from UNATTENDED_PATHS in
+ * shared/pax-controls.ts — the same registry the pause-coverage ratchet
+ * reads, so the page can only list a path the engines actually gate.
+ * tests/unit/paxControlsPage.test.ts pins both (mutation-probed).
  *
- *      The pause is ORG-WIDE (any owner's or active member's pause pauses
- *      the org), but /api/me/autonomy only ever returns the caller's own
- *      row — so this page ALSO reads /api/me/autonomy/org-pause and says
- *      honestly when a teammate's pause is what holds the org. "Clear
- *      pause" clears the caller's row only; it cannot clear a teammate's.
- *   2. Replay last 10 Pax actions — read-only feed of recent
- *      paxObservations + status.
- *   3. Reset Pax to manual-only — sets the Today threshold to the 1.01
- *      sentinel ("never auto"). It deliberately does NOT touch pausedUntil
- *      (pause coverage, 2026-09-02): a pause is a separate safety
- *      instrument, and "reset to manual" silently un-pausing the machine
- *      was the wrong direction for a kill switch to fail.
+ * A controls read the server could not verify is REFUSED upstream (503 with
+ * the glossary's "could not verify" line) and rendered here as an error
+ * with retry — a failed read is not a stance, so the page never shows one.
  */
 
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { PauseCircle, RotateCcw, History, AlertTriangle, ShieldOff, Clock, FileCode, Gauge, X } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Database,
+  History,
+  Inbox,
+  Mail,
+  MessageSquare,
+  MinusCircle,
+  PauseCircle,
+  PlayCircle,
+  Printer,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
-import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
-import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { AutopilotSetup } from "@/components/settings/autopilot-setup";
+import { formatDateTime, formatRelative } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { OFFERED_STANCES, STANCE_LABELS, UNATTENDED_PATHS, type PaxStance } from "@shared/pax-controls";
+import {
+  PAX_GROUP_COPY,
+  PAX_LABELS,
+  PAX_NEVER_LIST,
+  PAX_PAGE_COPY,
+  PAX_PAUSE_COPY,
+  PAX_PAUSE_OPTIONS,
+  PAX_RECEIPT_WORDS,
+  PAX_STANCE_COPY,
+  type PaxPauseOption,
+} from "@shared/pax-glossary";
 
-// Sentinel threshold — when the autonomy slider hits this value the
-// "auto above" gate can never trip (confidences are 0..1, ours are .50–1.00).
-const NEVER_AUTO_PCT = 101;
-const AUTONOMY_THRESHOLD_KEY = "confidenceAutoPct";
-const AUTONOMY_DEFAULT_PCT = 90;
-const REPLAY_LIMIT = 10;
+// ── The controls object (frozen contract 3, server/routes-pax-controls.ts) ──
 
-interface AgentAutonomyShape {
-  level?: 0 | 1 | 2 | 3;
-  perAction?: Record<string, 0 | 1 | 2 | 3>;
-  thresholdsCents?: Record<string, number>;
-  pausedUntil?: string;
+interface ScheduledPromptRow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  nextRunAt: string | null;
 }
 
-interface AutonomyPrefs {
-  pax?: AgentAutonomyShape;
-}
-
-/** GET /api/me/autonomy/org-pause — the org-wide state, as enforcement reads it. */
-interface OrgPauseState {
+export interface PaxControlsResponse {
   paused: boolean;
   pausedUntil: string | null;
-  /** The server could not read the pause and is failing CLOSED (treating the org as paused). */
+  pausedBy: { userId: string | number; name: string | null } | null;
   checkFailed: boolean;
+  stance: PaxStance;
+  canChangeStance: boolean;
+  canResume: boolean;
+  switches: { leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean };
+  rightNow: {
+    waiting: number;
+    changedTodayOnItsOwn: number;
+    rulesRunning: { workflows: number; sequences: number; scheduledPrompts: number };
+  };
+  runsOnItsOwn: {
+    workflows: { active: number; live: number; lastRanAt: string | null };
+    sequences: { activeEnrollments: number; lastSendAt: string | null };
+    scheduledPrompts: ScheduledPromptRow[];
+    leadScoring: { lastRanAt: string | null; rescoredToday: number };
+    borrowerReminders: { waiting: number };
+    fixedRules: { emailsUsedToday: number; emailLimit: number; textsUsedToday: number; textLimit: number };
+  };
+  /** The org's IANA zone, when the server sends it; pause times print in it. */
+  timezone?: string;
 }
 
-interface PaxObservation {
+interface ReceiptItem {
   id: number;
-  type: string;
-  title: string;
-  description: string;
-  status: string;
-  confidenceScore: number;
-  severity: string;
-  detectedAt: string | null;
-  acknowledgedAt: string | null;
-  resolvedAt: string | null;
+  at: string;
+  actor: "pax" | "rule";
+  origin: string | null;
+  group: string | null;
+  mode: "asked" | "on_its_own" | "rule";
+  action: string;
+  entityType: string;
+  entityId: number;
+  entityLabel?: string;
+  summary: string;
+  pendingActionId?: number;
 }
 
-function fmtTimestamp(iso: string | null): string {
-  if (!iso) return "—";
+interface ReceiptsPage {
+  items: ReceiptItem[];
+  nextCursor: string | null;
+}
+
+interface TaskRun {
+  id: number;
+  runAt: string;
+  status: string;
+  summary: string | null;
+  durationMs: number | null;
+}
+
+interface ByokResponse {
+  channels: Array<{ channel: string; status: "platform" | "byok" }>;
+}
+
+interface MailboxResponse {
+  mailboxes: Array<{ id: number; emailAddress: string }>;
+}
+
+const CONTROLS_KEY = ["/api/pax/controls"] as const;
+const RECEIPTS_LIMIT = 10;
+const RECEIPTS_KEY = ["/api/pax/receipts", { limit: RECEIPTS_LIMIT }] as const;
+const SCHEDULED_TASKS_KEY = ["/api/ai/scheduled-tasks"] as const;
+
+/** Sizes on this page: every tap target is ≥44px on touch. */
+const TAP = "min-h-11 pointer-fine:sm:min-h-9";
+
+// The four connection rows moved here from the deleted autopilot-setup.tsx.
+// "Connected" is keyed on the customer having their OWN key for the channel
+// (BYO rails); the link goes to the one catalog at /settings/byok.
+const CAPABILITIES: Array<{
+  key: keyof typeof PAX_PAGE_COPY.capabilities;
+  icon: typeof MessageSquare;
+  channels: string[];
+}> = [
+  { key: "texts", icon: MessageSquare, channels: ["twilio", "telnyx"] },
+  { key: "email", icon: Mail, channels: ["sendgrid", "ses"] },
+  { key: "mail", icon: Printer, channels: ["lob", "postgrid"] },
+  { key: "data", icon: Database, channels: ["attom", "regrid", "batch_skiptracing"] },
+];
+
+const BYOK_PATH = "/settings/byok";
+const QUEUE_PATH = "/ai";
+const TEAM_PATH = "/settings#organization";
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function browserZone(): string | undefined {
   try {
-    return new Date(iso).toLocaleString();
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
-    return iso;
+    return undefined;
   }
 }
 
-function isCurrentlyPaused(pausedUntil: string | undefined): boolean {
-  if (!pausedUntil) return false;
-  const t = Date.parse(pausedUntil);
-  return Number.isFinite(t) && t > Date.now();
+function toDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t) : null;
 }
 
-function fmtRemaining(pausedUntil: string): string {
-  const t = Date.parse(pausedUntil);
-  if (!Number.isFinite(t)) return "—";
-  const minutes = Math.max(0, Math.round((t - Date.now()) / 60_000));
-  if (minutes < 60) return `${minutes}m remaining`;
-  const hours = Math.floor(minutes / 60);
-  const rem = minutes % 60;
-  return rem > 0 ? `${hours}h ${rem}m remaining` : `${hours}h remaining`;
+/** "503: Pax could not verify…" → the server's own sentence. */
+function serverMessage(error: unknown): string | undefined {
+  const msg = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
+  return msg ? msg.replace(/^\d{3}:\s*/, "") : undefined;
 }
 
-function statusTone(status: string): { label: string; cls: string } {
-  if (status === "acknowledged") return { label: "acknowledged", cls: "bg-acr-brand-soft text-acr-brand" };
-  if (status === "dismissed") return { label: "dismissed", cls: "bg-muted text-muted-foreground" };
-  if (status === "escalated") return { label: "escalated", cls: "bg-acr-warn-soft text-acr-warn" };
-  if (status === "auto_resolved") return { label: "auto-resolved", cls: "bg-acr-pos-soft text-acr-pos" };
-  return { label: status || "detected", cls: "bg-muted text-muted-foreground" };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The 30-day "until I resume" is the only offered choice that reaches past 3 days. */
+function isLongPause(until: Date | null): boolean {
+  return until !== null && until.getTime() - Date.now() > 3 * DAY_MS;
 }
 
-export default function PaxControlsPage() {
-  useDocumentTitle("Pax controls — AcreOS");
+type PromptTone = "ok" | "neutral" | "error";
+
+/** Neutral outcomes stay neutral: a skip is not an error. */
+function promptStatus(status: string | null): { label: string; tone: PromptTone } | null {
+  if (!status) return null;
+  if (status === "success") return { label: PAX_PAGE_COPY.promptOk, tone: "ok" };
+  if (status === "skipped_paused") return { label: PAX_PAGE_COPY.promptSkippedPaused, tone: "neutral" };
+  if (status === "skipped_off") return { label: PAX_PAGE_COPY.promptSkippedOff, tone: "neutral" };
+  if (status.startsWith("skipped")) return { label: status.replace(/_/g, " "), tone: "neutral" };
+  return { label: PAX_PAGE_COPY.promptError, tone: "error" };
+}
+
+const TONE_CLASS: Record<PromptTone, string> = {
+  ok: "bg-acr-pos-soft text-acr-pos border-transparent",
+  neutral: "bg-muted text-muted-foreground border-transparent",
+  error: "bg-acr-neg-soft text-acr-neg border-transparent",
+};
+
+const RECEIPT_MODE_WORD: Record<ReceiptItem["mode"], string> = {
+  asked: PAX_RECEIPT_WORDS.asked,
+  on_its_own: PAX_RECEIPT_WORDS.onItsOwn,
+  rule: PAX_RECEIPT_WORDS.rule,
+};
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await apiRequest("GET", url);
+  return (await res.json()) as T;
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────
+
+export function PaxControls() {
+  useDocumentTitle(PAX_PAGE_COPY.title);
   const { toast } = useToast();
+  const [pauseOpen, setPauseOpen] = React.useState(false);
 
-  const { data: autonomy, isLoading: autonomyLoading } = useQuery<AutonomyPrefs>({
-    queryKey: ["/api/me/autonomy"],
-  });
-
-  // The caller's OWN pause row vs the ORG-WIDE state the server enforces.
-  // They differ exactly when a teammate holds the pause: then the caller's
-  // row is clear, "Clear pause" would clear nothing, and the honest banner
-  // is "paused by a teammate".
-  const { data: orgPause, isLoading: orgPauseLoading } = useQuery<OrgPauseState>({
-    queryKey: ["/api/me/autonomy/org-pause"],
+  const controls = useQuery<PaxControlsResponse>({
+    queryKey: CONTROLS_KEY,
+    queryFn: () => getJson<PaxControlsResponse>("/api/pax/controls"),
     refetchInterval: 60_000,
   });
 
-  const pausedByMe = isCurrentlyPaused(autonomy?.pax?.pausedUntil);
-  const pauseCheckFailed = orgPause?.checkFailed === true;
-  const pausedByTeammate = orgPause?.paused === true && !pausedByMe && !pauseCheckFailed;
+  const settle = React.useCallback((next: PaxControlsResponse) => {
+    queryClient.setQueryData(CONTROLS_KEY, next);
+    void queryClient.invalidateQueries({ queryKey: [RECEIPTS_KEY[0]] });
+  }, []);
 
-  const {
-    data: observationsResp,
-    isLoading: observationsLoading,
-    error: observationsError,
-    refetch: refetchObservations,
-  } = useQuery<{ observations: PaxObservation[] }>({
-    queryKey: ["/api/pax/observations", { limit: REPLAY_LIMIT }],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/pax/observations?limit=${REPLAY_LIMIT}`);
-      return res.json();
+  const data = controls.data;
+  const zone = data?.timezone ?? browserZone();
+  const pausedUntil = toDate(data?.pausedUntil);
+  const pauseWords = { until: pausedUntil, byName: data?.pausedBy?.name ?? null, timeZone: zone };
+
+  const pause = useMutation({
+    mutationFn: async (until: PaxPauseOption) => {
+      const res = await apiRequest("POST", "/api/pax/pause", { until, timeZone: browserZone() });
+      return (await res.json()) as PaxControlsResponse;
     },
+    onSuccess: (next) => {
+      settle(next);
+      setPauseOpen(false);
+      toast({
+        title: PAX_PAUSE_COPY.statusLine({
+          until: toDate(next.pausedUntil),
+          byName: next.pausedBy?.name ?? null,
+          timeZone: next.timezone ?? browserZone(),
+        }),
+        description: PAX_PAUSE_COPY.stillWorks,
+      });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotPause, description: serverMessage(error), variant: "destructive" }),
   });
 
-  const pauseMutation = useMutation({
+  const resume = useMutation({
     mutationFn: async () => {
-      const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const res = await apiRequest("PATCH", "/api/me/autonomy", {
-        pax: {
-          ...(autonomy?.pax ?? {}),
-          pausedUntil: until,
-        },
-      });
-      return res.json();
+      const res = await apiRequest("POST", "/api/pax/resume");
+      return (await res.json()) as PaxControlsResponse;
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/me/autonomy"], data);
-      queryClient.invalidateQueries({ queryKey: ["/api/me/autonomy/org-pause"] });
+    onSuccess: (next) => {
+      settle(next);
+      // Org truth: a member's own pause may clear while a teammate's holds.
       toast({
-        title: "Pax paused for 24 hours",
-        description: "Pax will only ask, never act, for your whole team until the pause lifts.",
+        title: next.paused
+          ? PAX_PAUSE_COPY.statusLine({
+              until: toDate(next.pausedUntil),
+              byName: next.pausedBy?.name ?? null,
+              timeZone: next.timezone ?? browserZone(),
+            })
+          : PAX_LABELS.active,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Couldn't pause Pax",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotResume, description: serverMessage(error), variant: "destructive" }),
   });
 
-  const resetMutation = useMutation({
-    mutationFn: async () => {
-      const prevThresholds = autonomy?.pax?.thresholdsCents ?? {};
-      // pausedUntil is carried through UNCHANGED (spread). This mutation used
-      // to `delete next.pausedUntil` "so the user isn't stuck waiting AND in
-      // manual mode" — which made "reset to manual" a hidden un-pause, and a
-      // kill switch must never be cleared as a side effect of another
-      // control. Clearing a pause is its own explicit button.
-      const next: AgentAutonomyShape = {
-        ...(autonomy?.pax ?? {}),
-        thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: NEVER_AUTO_PCT },
-      };
-      const res = await apiRequest("PATCH", "/api/me/autonomy", { pax: next });
-      return res.json();
+  type Patch = Partial<{ stance: PaxStance; leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean }>;
+  const patch = useMutation({
+    mutationFn: async (body: Patch) => {
+      const res = await apiRequest("PATCH", "/api/pax/controls", body);
+      return { next: (await res.json()) as PaxControlsResponse, body };
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/me/autonomy"], data);
-      toast({
-        title: "Pax reset to manual-only",
-        description: "Pax will ask before every action. Any active pause stays in place.",
-      });
+    onSuccess: ({ next, body }) => {
+      settle(next);
+      if (body.stance) toast({ title: PAX_STANCE_COPY[body.stance].toast });
+      if (body.leadScoring !== undefined)
+        toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.leadScoring, body.leadScoring) });
+      if (body.borrowerReminders !== undefined)
+        toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.borrowerReminders, body.borrowerReminders) });
+      if (body.inboxDrafts !== undefined)
+        toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.inboxDrafts, body.inboxDrafts) });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Couldn't reset Pax",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
   });
 
-  const unpauseMutation = useMutation({
-    mutationFn: async () => {
-      const next: AgentAutonomyShape = { ...(autonomy?.pax ?? {}) };
-      delete next.pausedUntil;
-      const res = await apiRequest("PATCH", "/api/me/autonomy", { pax: next });
-      const prefs: AutonomyPrefs = await res.json();
-      // Re-read the ORG-WIDE state after clearing our own row: if a teammate
-      // also paused Pax, the org is still paused and the toast must say so
-      // rather than announce a resume that did not happen.
-      const orgRes = await apiRequest("GET", "/api/me/autonomy/org-pause");
-      const org: OrgPauseState = await orgRes.json();
-      return { prefs, org };
-    },
-    onSuccess: ({ prefs, org }) => {
-      queryClient.setQueryData(["/api/me/autonomy"], prefs);
-      queryClient.setQueryData(["/api/me/autonomy/org-pause"], org);
-      if (org.checkFailed) {
-        toast({
-          title: "Your pause is cleared, but Pax is still holding",
-          description:
-            "The server couldn't verify the org-wide pause state and is treating Pax as paused (failing closed). Try again shortly.",
-        });
-      } else if (org.paused) {
-        toast({
-          title: "Your pause is cleared — Pax is still paused",
-          description: `A teammate's pause keeps Pax paused for the whole org until ${fmtTimestamp(org.pausedUntil)}.`,
-        });
-      } else {
-        toast({ title: "Pax pause cleared" });
-      }
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Couldn't clear pause",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  if (controls.isLoading) {
+    return (
+      <PageShell label={PAX_PAGE_COPY.title}>
+        <div className="space-y-4" data-testid="pax-controls-loading" aria-busy="true">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-24 w-full rounded-card" />
+          <Skeleton className="h-40 w-full rounded-card" />
+          <Skeleton className="h-64 w-full rounded-card" />
+        </div>
+      </PageShell>
+    );
+  }
 
-  const observations = observationsResp?.observations ?? [];
+  if (controls.isError || !data) {
+    return (
+      <PageShell label={PAX_PAGE_COPY.title}>
+        <QueryErrorState
+          error={controls.error as Error}
+          onRetry={() => void controls.refetch()}
+          title={PAX_PAGE_COPY.couldNotLoad}
+          description={serverMessage(controls.error)}
+          testId="pax-controls-error"
+        />
+      </PageShell>
+    );
+  }
 
-  // ── Pax autonomy slider ────────────────────────────────────────────────
-  // Moved here from Today (Chesky / Wave 2). The slider edits the saved
-  // "auto above" confidence threshold; persistence reuses the existing
-  // pax.thresholdsCents[confidenceAutoPct] key so no schema change.
-  // Honest preview disclosure copy travels with the control.
-  const savedThresholdPct =
-    autonomy?.pax?.thresholdsCents?.[AUTONOMY_THRESHOLD_KEY] ?? AUTONOMY_DEFAULT_PCT;
-
-  const [thresholdPct, setThresholdPct] = React.useState<number>(AUTONOMY_DEFAULT_PCT);
-  const thresholdHydrated = React.useRef(false);
-  React.useEffect(() => {
-    if (!thresholdHydrated.current && autonomy !== undefined) {
-      setThresholdPct(savedThresholdPct);
-      thresholdHydrated.current = true;
-    }
-  }, [autonomy, savedThresholdPct]);
-
-  const thresholdMutation = useMutation({
-    mutationFn: async (pct: number) => {
-      const prevThresholds = autonomy?.pax?.thresholdsCents ?? {};
-      const res = await apiRequest("PATCH", "/api/me/autonomy", {
-        pax: {
-          ...(autonomy?.pax ?? {}),
-          thresholdsCents: { ...prevThresholds, [AUTONOMY_THRESHOLD_KEY]: pct },
-        },
-      });
-      if (!res.ok) throw new Error("Failed to save autonomy preference");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/me/autonomy"], data);
-    },
-    onError: (error) => {
-      toast({
-        title: getErrorTitle(error),
-        description: getErrorMessage(error),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const commitThreshold = React.useCallback(
-    (pct: number) => {
-      setThresholdPct(pct);
-      thresholdMutation.mutate(pct);
-    },
-    [thresholdMutation],
-  );
+  const stance = data.stance;
+  const canEdit = data.canChangeStance && !patch.isPending;
+  const pauseStops = UNATTENDED_PATHS.filter((p) => p.customerVisible && p.pauseStops);
+  const pauseKeeps = UNATTENDED_PATHS.filter((p) => p.customerVisible && !p.pauseStops);
+  const runs = data.runsOnItsOwn;
+  const promptsOn = runs.scheduledPrompts.filter((p) => p.isActive).length;
 
   return (
-    <PageShell label="Pax controls">
+    <PageShell label={PAX_PAGE_COPY.title}>
       <div className="mb-6">
-        <h1 className="text-hero flex items-center gap-2">
-          <ShieldOff className="w-7 h-7 text-acr-brand" aria-hidden="true" />
-          Pax controls
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Pause, replay, or reset Pax. The pause is enforced server-side the
-          moment you tap it, at every path that acts without you: Pax refuses
-          any tool call with side effects (record changes, sends, external
-          triggers), scheduled Pax tasks and scheduled jobs are skipped, the
-          autonomous executor and agent task processor defer your org's
-          items, workflow steps that act are blocked, sequence sends are
-          deferred, and lead nurturing sits out. Read-only lookups and drafts
-          still work. The pause is org-wide — it holds while any teammate's
-          pause is active. The replay below shows every observation Pax has
-          surfaced.
-        </p>
+        <h1 className="text-hero">{PAX_PAGE_COPY.title}</h1>
+        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{PAX_PAGE_COPY.intro}</p>
       </div>
 
-      {/* ── Autopilot setup — the crystal-clear config (level + tools + what
-          it means). The technical controls (pause/replay/thresholds) stay
-          below for power users. ─────────────────────────────────────────── */}
-      <div className="mb-6">
-        <AutopilotSetup />
-      </div>
-
-      {/* ── Current status banner ────────────────────────────────────── */}
-      <Card className="rounded-card mb-4" data-testid="pax-controls-status">
+      {/* ── 1. Status strip ─────────────────────────────────────────────── */}
+      <Card className="rounded-card mb-4" data-testid="pax-status-strip">
         <CardContent className="p-4 flex items-start gap-3 flex-wrap">
-          {autonomyLoading || orgPauseLoading ? (
-            <Skeleton className="h-5 w-48" />
-          ) : pausedByMe && autonomy?.pax?.pausedUntil ? (
-            <>
-              <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">Pax is paused</div>
-                <div className="text-xs text-muted-foreground">
-                  {fmtRemaining(autonomy.pax.pausedUntil)} · resumes{" "}
-                  {fmtTimestamp(autonomy.pax.pausedUntil)}
-                  {orgPause?.paused &&
-                  orgPause.pausedUntil &&
-                  Date.parse(orgPause.pausedUntil) > Date.parse(autonomy.pax.pausedUntil) + 60_000
-                    ? ` · a teammate's pause keeps the org paused until ${fmtTimestamp(orgPause.pausedUntil)}`
-                    : null}
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => unpauseMutation.mutate()}
-                disabled={unpauseMutation.isPending}
-                data-testid="button-pax-unpause"
-              >
-                Clear pause
-              </Button>
-            </>
-          ) : pausedByTeammate && orgPause?.pausedUntil ? (
-            <>
-              <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm" data-testid="pax-paused-by-teammate">
-                  Paused by a teammate until {fmtTimestamp(orgPause.pausedUntil)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {fmtRemaining(orgPause.pausedUntil)}. The pause is org-wide; only
-                  the teammate who set it can clear it early, and it lifts on its
-                  own when the timer expires.
-                </div>
-              </div>
-            </>
-          ) : pauseCheckFailed ? (
-            <>
-              <AlertTriangle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm" data-testid="pax-pause-check-failed">
-                  Pax is holding — pause state couldn't be verified
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  The server couldn't read your org's pause setting, so it is
-                  treating Pax as paused (failing closed). Nothing auto-executes
-                  until the read succeeds again.
-                </div>
-              </div>
-            </>
+          {data.paused ? (
+            <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
           ) : (
-            <>
-              <Clock className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">Pax is active</div>
-                <div className="text-xs text-muted-foreground">
-                  Pax always asks before taking an action on your behalf.
-                  Your autonomy threshold is saved and will apply as Pax earns
-                  more independence.
-                </div>
+            <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0 mt-0.5" aria-hidden="true" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm" data-testid="pax-status-line">
+              {data.paused ? PAX_PAUSE_COPY.statusLine(pauseWords) : `${PAX_LABELS.active} · ${STANCE_LABELS[stance]}`}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {data.paused ? PAX_PAUSE_COPY.sentence(pauseWords) : PAX_STANCE_COPY[stance].sentence}
+            </div>
+            {data.paused && isLongPause(pausedUntil) && pausedUntil && (
+              <div className="text-xs text-muted-foreground mt-0.5" data-testid="pax-resumes-by-itself">
+                {PAX_PAUSE_COPY.resumesByItself(pausedUntil, zone)}
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Pax autonomy threshold (moved from Today) ────────────────── */}
-      <Card className="rounded-card mb-4" data-testid="card-pax-autonomy">
-        <CardHeader>
-          <CardTitle className="text-section-h2 flex items-center gap-2">
-            <Gauge className="w-5 h-5 text-acr-brand" aria-hidden="true" />
-            Pax autonomy
-          </CardTitle>
-          <CardDescription>
-            Pax is still asking before every move. Your threshold is saved for
-            the day we flip the switch — you'll get the email first. This is a
-            monthly-tune control; it used to live on Today and now lives here.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <span className="text-xs text-muted-foreground">
-              Pax-sourced rows above the threshold are flagged "Pax would handle".
-            </span>
-            <Badge
-              variant="secondary"
-              className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums shrink-0"
-              aria-live="polite"
+            )}
+          </div>
+          {data.paused ? (
+            data.canResume ? (
+              <Button
+                variant="outline"
+                className={TAP}
+                onClick={() => resume.mutate()}
+                disabled={resume.isPending}
+                data-testid="button-pax-resume"
+              >
+                <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                {PAX_PAGE_COPY.resumeButton}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground self-center" data-testid="pax-resume-not-yours">
+                {PAX_PAGE_COPY.resumeNotYours}
+              </span>
+            )
+          ) : (
+            <Button
+              variant="outline"
+              className={cn(TAP, "border-acr-warn text-acr-warn hover:bg-acr-warn-soft")}
+              onClick={() => setPauseOpen(true)}
+              disabled={pause.isPending}
+              data-testid="button-pax-pause"
             >
-              Auto above {thresholdPct}%
-            </Badge>
-          </div>
-          <div className="px-1">
-            <Slider
-              value={[thresholdPct]}
-              min={50}
-              max={100}
-              step={5}
-              onValueChange={(v) => setThresholdPct(v[0] ?? AUTONOMY_DEFAULT_PCT)}
-              onValueCommit={(v) => commitThreshold(v[0] ?? AUTONOMY_DEFAULT_PCT)}
-              aria-label={`Pax auto-handle confidence threshold: ${thresholdPct} percent`}
-              data-testid="slider-pax-autonomy"
-            />
-            <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground tabular-nums">
-              <span>Ask more (50%)</span>
-              <span>Auto more (100%)</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Control 1: Pause for 24h ─────────────────────────────────── */}
-      <Card className="rounded-card mb-4" data-testid="card-pax-pause">
-        <CardHeader>
-          <CardTitle className="text-section-h2 flex items-center gap-2">
-            <PauseCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
-            Pause all Pax automation for 24 hours
-          </CardTitle>
-          <CardDescription>
-            Stops every auto-execution path for 24 hours, enforced server-side
-            at the tool layer, the Pax scheduler, the autonomous executor,
-            workflows, sequences, lead nurturing, the agent task processor,
-            agent skills, and scheduled tasks. Pax will still draft and ask —
-            it just won't act on its own. Actions you explicitly approve still
-            go through. Paused work is skipped or deferred, never cancelled,
-            and resumes when the timer expires. The pause is org-wide: it
-            holds for your whole team while anyone's pause is active. Use this
-            if anything Pax did surprised you.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            variant="outline"
-            onClick={() => pauseMutation.mutate()}
-            disabled={pauseMutation.isPending || pausedByMe}
-            data-testid="button-pax-pause-24h"
-            className="border-acr-warn text-acr-warn hover:bg-acr-warn-soft"
-          >
-            <PauseCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-            {pausedByMe ? "Already paused" : "Pause Pax for 24 hours"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* ── Control 2: Replay last 10 ────────────────────────────────── */}
-      <Card className="rounded-card mb-4" data-testid="card-pax-replay">
-        <CardHeader>
-          <CardTitle className="text-section-h2 flex items-center gap-2">
-            <History className="w-5 h-5 text-acr-brand" aria-hidden="true" />
-            Replay last {REPLAY_LIMIT} Pax actions
-          </CardTitle>
-          <CardDescription>
-            The most recent observations Pax surfaced and how they were
-            dispositioned. Need the full LLM prompt + tool calls?{" "}
-            <Link href="/founder/pax-traces" className="underline underline-offset-2 inline-flex items-center gap-1">
-              Pax trace viewer
-              <FileCode className="w-3 h-3" aria-hidden="true" />
-            </Link>
-            .
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {observationsError && (
-            <QueryErrorState
-              error={observationsError as Error}
-              onRetry={() => refetchObservations()}
-              compact
-              title="Couldn't load Pax actions"
-              description="We hit a snag loading the last few Pax observations. Try again."
-              testId="pax-replay-error"
-            />
+              <PauseCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+              {PAX_PAGE_COPY.pauseButton}
+            </Button>
           )}
-          {observationsLoading && (
-            <div className="space-y-2" data-testid="pax-replay-loading">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex gap-3">
-                  <Skeleton className="w-8 h-8 rounded-full shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-3 w-3/4" />
-                  </div>
-                </div>
+        </CardContent>
+        <CardContent className="px-4 pb-4 pt-0 grid gap-4 md:grid-cols-2">
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              {PAX_PAGE_COPY.whatPauseStops}
+            </h2>
+            <ul className="text-sm space-y-1" data-testid="pax-pause-stops">
+              {pauseStops.map((p) => (
+                <li key={p.id} data-testid={`pause-stops-${p.id}`} className="flex gap-2">
+                  <MinusCircle className="w-4 h-4 mt-0.5 shrink-0 text-acr-warn" aria-hidden="true" />
+                  <span>
+                    <span className="font-medium">{p.label}</span>
+                    <span className="text-muted-foreground"> — {p.whilePaused}</span>
+                  </span>
+                </li>
               ))}
-            </div>
-          )}
-          {!observationsLoading && !observationsError && observations.length === 0 && (
-            <EmptyState
-              icon={History}
-              headline="No recent Pax actions"
-              subtitle="Pax hasn't surfaced any observations yet. As soon as it does, the last 10 will appear here."
-              // TODO(cta): Pax observations are system-generated; no direct user action produces them
-              cta={{ label: "", _noOp: true }}
-              actionIcon={null}
-              testId="pax-replay-empty"
-            />
-          )}
-          {!observationsLoading && !observationsError && observations.length > 0 && (
-            <ul className="space-y-2" data-testid="pax-replay-list">
-              {observations.slice(0, REPLAY_LIMIT).map((obs) => {
-                const tone = statusTone(obs.status);
-                return (
-                  <li
-                    key={obs.id}
-                    className="border rounded-card p-3 flex items-start gap-3"
-                    data-testid={`pax-replay-row-${obs.id}`}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-acr-brand-soft text-acr-brand"
-                      aria-hidden="true"
-                    >
-                      <AlertTriangle className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="font-medium text-sm truncate">{obs.title}</span>
-                        <Badge variant="secondary" className={`text-[10px] border-transparent ${tone.cls}`}>
-                          {tone.label}
-                        </Badge>
-                        <DataProvenanceChip
-                          source="Pax"
-                          classification="modeled"
-                          confidence={obs.confidenceScore}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">{obs.description}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-                        {fmtTimestamp(obs.detectedAt)}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
             </ul>
-          )}
+          </div>
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              {PAX_PAGE_COPY.whatPauseKeeps}
+            </h2>
+            <ul className="text-sm space-y-1" data-testid="pax-pause-keeps">
+              {pauseKeeps.map((p) => (
+                <li key={p.id} data-testid={`pause-keeps-${p.id}`} className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-acr-pos" aria-hidden="true" />
+                  <span>
+                    <span className="font-medium">{p.label}</span>
+                    <span className="text-muted-foreground"> — {p.whilePaused}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground mt-2" data-testid="pax-pause-still-works">
+              {PAX_PAUSE_COPY.stillWorks}
+            </p>
+          </div>
         </CardContent>
       </Card>
 
-      {/* ── Control 3: Reset to manual-only ──────────────────────────── */}
-      {/* Calm danger-zone: outline until confirm click, then destructive. */}
-      <Card className="rounded-card" data-testid="card-pax-reset">
+      <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-sm" data-testid="pax-pause-dialog">
+          <DialogHeader>
+            <DialogTitle>{PAX_PAGE_COPY.pauseUntilPrompt}</DialogTitle>
+            <DialogDescription>{PAX_PAUSE_COPY.stillWorks}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {(Object.keys(PAX_PAUSE_OPTIONS) as PaxPauseOption[]).map((key, idx) => (
+              <Button
+                key={key}
+                variant={idx === 0 ? "default" : "outline"}
+                className={cn(TAP, "justify-between")}
+                autoFocus={idx === 0}
+                onClick={() => pause.mutate(key)}
+                disabled={pause.isPending}
+                data-testid={`button-pause-${key}`}
+              >
+                <span>{PAX_PAUSE_OPTIONS[key]}</span>
+                {key === "30d" && (
+                  <span className="text-xs font-normal opacity-80">{PAX_PAGE_COPY.pauseOptionLiftNote}</span>
+                )}
+              </Button>
+            ))}
+            <Button variant="ghost" className={TAP} onClick={() => setPauseOpen(false)}>
+              {PAX_PAGE_COPY.cancel}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 2. When Pax asks ────────────────────────────────────────────── */}
+      <Card className="rounded-card mb-4" data-testid="pax-stance-card">
         <CardHeader>
-          <CardTitle className="text-section-h2 flex items-center gap-2">
-            <RotateCcw className="w-5 h-5 text-acr-neg" aria-hidden="true" />
-            Reset Pax to manual-only
-          </CardTitle>
-          <CardDescription>
-            Sets the autonomy threshold to the never-auto sentinel (101%). Pax
-            will ask before every action, forever — until you raise the slider
-            again. An active pause is left in place; clear it separately above.
-          </CardDescription>
+          <CardTitle className="text-section-h2">{PAX_PAGE_COPY.whenPaxAsks}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ToggleGroup
+            type="single"
+            value={stance}
+            onValueChange={(v) => {
+              if (v && v !== stance && OFFERED_STANCES.includes(v as PaxStance)) patch.mutate({ stance: v as PaxStance });
+            }}
+            disabled={!canEdit}
+            aria-label={PAX_PAGE_COPY.whenPaxAsks}
+            className="justify-start flex-wrap gap-2"
+            data-testid="pax-stance-control"
+          >
+            {OFFERED_STANCES.map((s) => (
+              <ToggleGroupItem
+                key={s}
+                value={s}
+                variant="outline"
+                className={cn(TAP, "px-4 data-[state=on]:bg-acr-brand-soft data-[state=on]:text-acr-brand")}
+                data-testid={`stance-option-${s}`}
+              >
+                {STANCE_LABELS[s]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <p className="text-sm" data-testid="pax-stance-sentence">
+            {PAX_STANCE_COPY[stance].sentence}
+          </p>
+          {!data.canChangeStance && (
+            <p className="text-xs text-muted-foreground" data-testid="pax-stance-read-only">
+              {PAX_PAGE_COPY.askAnOwner}
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground tabular-nums" data-testid="pax-right-now">
+            <span className="font-medium text-foreground">{PAX_PAGE_COPY.rightNowLabel}: </span>
+            {PAX_PAGE_COPY.rightNow(data.rightNow)}
+          </p>
+          <p className="text-sm border-l-2 border-acr-brand pl-3" data-testid="pax-fixed-rule">
+            {PAX_LABELS.fixedRule}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── 3. What runs on its own ─────────────────────────────────────── */}
+      <Card className="rounded-card mb-4" data-testid="pax-runs-card">
+        <CardHeader>
+          <CardTitle className="text-section-h2">{PAX_PAGE_COPY.runsOnItsOwn}</CardTitle>
+          <CardDescription>{PAX_PAGE_COPY.runsOnItsOwnIntro}</CardDescription>
+        </CardHeader>
+        <CardContent className="divide-y p-0">
+          {/* Workflows — switches live on /workflows */}
+          <RunRow
+            testId="run-row-workflows"
+            label={PAX_PAGE_COPY.workflows}
+            line={PAX_PAGE_COPY.workflowsLine({
+              active: runs.workflows.active,
+              live: runs.workflows.live,
+              lastRan: runs.workflows.lastRanAt ? formatRelative(runs.workflows.lastRanAt) : null,
+            })}
+            badge={runs.workflows.active > runs.workflows.live ? PAX_LABELS.notYetLive : null}
+            control={
+              <Button asChild variant="outline" size="sm" className={TAP}>
+                <Link href="/workflows">
+                  {PAX_PAGE_COPY.switchesLiveOn(PAX_PAGE_COPY.workflows)}
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </Button>
+            }
+          />
+          {/* Campaign sequences — per-enrollment pause lives on /campaigns */}
+          <RunRow
+            testId="run-row-sequences"
+            label={PAX_PAGE_COPY.sequences}
+            line={PAX_PAGE_COPY.sequencesLine({
+              activeEnrollments: runs.sequences.activeEnrollments,
+              lastSend: runs.sequences.lastSendAt ? formatRelative(runs.sequences.lastSendAt) : null,
+            })}
+            control={
+              <Button asChild variant="outline" size="sm" className={TAP}>
+                <Link href="/campaigns">
+                  {PAX_PAGE_COPY.switchesLiveOn("Campaigns")}
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </Button>
+            }
+          />
+          {/* Scheduled prompts — inline, each with its own switch */}
+          <div className="px-4 py-3" data-testid="run-row-scheduled-prompts">
+            <div className="text-sm font-medium">{PAX_PAGE_COPY.scheduledPrompts}</div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {PAX_PAGE_COPY.scheduledPromptsLine({ on: promptsOn, total: runs.scheduledPrompts.length })}
+            </div>
+            <ScheduledPrompts prompts={runs.scheduledPrompts} />
+          </div>
+          {/* Lead scoring — org switch */}
+          <SwitchRow
+            testId="run-row-lead-scoring"
+            id="switch-lead-scoring"
+            label={PAX_PAGE_COPY.leadScoring}
+            line={PAX_PAGE_COPY.leadScoringLine({
+              lastRan: runs.leadScoring.lastRanAt ? formatRelative(runs.leadScoring.lastRanAt) : null,
+              rescoredToday: runs.leadScoring.rescoredToday,
+            })}
+            checked={data.switches.leadScoring}
+            disabled={!canEdit}
+            onChange={(on) => patch.mutate({ leadScoring: on })}
+          />
+          {/* Borrower reminders — preparation only; dispatch always asks */}
+          <SwitchRow
+            testId="run-row-borrower-reminders"
+            id="switch-borrower-reminders"
+            label={PAX_PAGE_COPY.borrowerReminders}
+            line={PAX_PAGE_COPY.borrowerRemindersLine({ waiting: runs.borrowerReminders.waiting })}
+            checked={data.switches.borrowerReminders}
+            disabled={!canEdit}
+            onChange={(on) => patch.mutate({ borrowerReminders: on })}
+          />
+          {/* Inbox reply drafts */}
+          <SwitchRow
+            testId="run-row-inbox-drafts"
+            id="switch-inbox-drafts"
+            label={PAX_PAGE_COPY.inboxDrafts}
+            line={PAX_PAGE_COPY.inboxDraftsLine}
+            checked={data.switches.inboxDrafts}
+            disabled={!canEdit}
+            onChange={(on) => patch.mutate({ inboxDrafts: on })}
+          />
+          {/* Fixed rules — read-only, usage from the send log */}
+          <RunRow
+            testId="run-row-fixed-rules"
+            label={PAX_PAGE_COPY.fixedRules}
+            line={PAX_PAGE_COPY.fixedRulesLine(runs.fixedRules)}
+          />
+        </CardContent>
+      </Card>
+
+      {/* ── 4. What Pax can use ─────────────────────────────────────────── */}
+      <Connections />
+
+      {/* ── 5. Waiting for your tap · What Pax did · Team ───────────────── */}
+      <Card className="rounded-card mb-4" data-testid="pax-links-card">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{PAX_LABELS.queue}</div>
+              <div className="text-xs text-muted-foreground">{PAX_PAGE_COPY.waitingHint}</div>
+            </div>
+            <Button asChild variant="default" className={TAP}>
+              <Link href={QUEUE_PATH} data-testid="link-pax-waiting">
+                {PAX_PAGE_COPY.waitingLink(data.rightNow.waiting)}
+                <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+          <Receipts />
+          <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4">
+            <div className="text-sm font-medium">{PAX_PAGE_COPY.teamLink}</div>
+            <Button asChild variant="outline" size="sm" className={TAP}>
+              <Link href={TEAM_PATH} data-testid="link-pax-team">
+                {PAX_PAGE_COPY.teamHint}
+                <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 6. Never ────────────────────────────────────────────────────── */}
+      <Card className="rounded-card" data-testid="pax-never-card">
+        <CardHeader>
+          <CardTitle className="text-section-h2">{PAX_GROUP_COPY.never.label}</CardTitle>
+          <CardDescription>{PAX_PAGE_COPY.neverLead}</CardDescription>
         </CardHeader>
         <CardContent>
-          <PaxResetConfirm onConfirm={() => resetMutation.mutate()} isPending={resetMutation.isPending} />
+          <ul className="text-sm space-y-1" data-testid="pax-never-list">
+            {PAX_NEVER_LIST.map((n) => (
+              <li key={n.id} data-testid={`never-${n.id}`} className="flex gap-2">
+                <XCircle className="w-4 h-4 mt-0.5 shrink-0 text-acr-neg" aria-hidden="true" />
+                <span>{n.line}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm font-medium mt-3">{PAX_LABELS.notEvenIfYouAsk}</p>
         </CardContent>
       </Card>
     </PageShell>
   );
 }
 
-// ── Calm danger-zone confirmation — no red alarm until the moment of confirm ──
+export default PaxControls;
 
-function PaxResetConfirm({
-  onConfirm,
-  isPending,
+// ── Rows ───────────────────────────────────────────────────────────────────
+
+function RunRow({
+  testId,
+  label,
+  line,
+  badge,
+  control,
 }: {
-  onConfirm: () => void;
-  isPending: boolean;
+  testId: string;
+  label: string;
+  line: string;
+  badge?: string | null;
+  control?: React.ReactNode;
 }) {
-  const [confirming, setConfirming] = React.useState(false);
+  return (
+    <div className="px-4 py-3 flex items-start justify-between gap-3 flex-wrap" data-testid={testId}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+          {label}
+          {badge && (
+            <Badge variant="secondary" className="text-[10px] border-transparent bg-acr-warn-soft text-acr-warn">
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums" data-testid={`${testId}-line`}>
+          {line}
+        </div>
+      </div>
+      {control}
+    </div>
+  );
+}
 
-  if (!confirming) {
+function SwitchRow({
+  testId,
+  id,
+  label,
+  line,
+  checked,
+  disabled,
+  onChange,
+}: {
+  testId: string;
+  id: string;
+  label: string;
+  line: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className="px-4 py-3 flex items-start justify-between gap-3" data-testid={testId}>
+      <div className="min-w-0 flex-1">
+        <Label htmlFor={id} className="text-sm font-medium cursor-pointer">
+          {label}
+        </Label>
+        <div className="text-xs text-muted-foreground tabular-nums" data-testid={`${testId}-line`}>
+          {line}
+        </div>
+      </div>
+      <div className="min-h-11 flex items-center">
+        <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} data-testid={id} />
+      </div>
+    </div>
+  );
+}
+
+// ── Scheduled prompts (moved here from the deleted pax-tasks-settings-tab) ──
+
+function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
+  const { toast } = useToast();
+  const [historyOf, setHistoryOf] = React.useState<ScheduledPromptRow | null>(null);
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: CONTROLS_KEY });
+    void queryClient.invalidateQueries({ queryKey: SCHEDULED_TASKS_KEY });
+  };
+
+  // PATCH /api/ai/scheduled-tasks/:id { isActive } — server/routes-ai.ts.
+  // (The old tab's toggleMut POSTed a /toggle route that does not exist.)
+  const setActive = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      await apiRequest("PATCH", `/api/ai/scheduled-tasks/${id}`, { isActive });
+    },
+    onSuccess: refresh,
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/ai/scheduled-tasks/${id}`);
+    },
+    onSuccess: () => {
+      refresh();
+      toast({ title: PAX_PAGE_COPY.promptDeleted });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  if (prompts.length === 0) {
     return (
-      <Button
-        variant="outline"
-        onClick={() => setConfirming(true)}
-        disabled={isPending}
-        data-testid="button-pax-reset"
-      >
-        <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
-        Reset Pax to manual-only
-      </Button>
+      <p className="text-xs text-muted-foreground mt-2" data-testid="scheduled-prompts-empty">
+        {PAX_PAGE_COPY.scheduledPromptsEmpty}
+      </p>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 p-3 rounded-card border border-acr-neg/30 bg-acr-neg-soft/30">
-      <p className="text-sm text-muted-foreground flex-1 min-w-0">
-        Pax will ask before every action. You can raise the autonomy threshold again at any time.
-      </p>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => { onConfirm(); setConfirming(false); }}
-          disabled={isPending}
-          data-testid="button-pax-reset-confirm"
-        >
-          {isPending ? (
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" aria-hidden="true" />
+    <>
+      <ul className="mt-2 space-y-2" data-testid="scheduled-prompts-list">
+        {prompts.map((p) => {
+          const status = promptStatus(p.lastRunStatus);
+          return (
+            <li
+              key={p.id}
+              className={cn("border rounded-card px-3 py-2 flex items-start gap-3", !p.isActive && "opacity-70")}
+              data-testid={`scheduled-prompt-${p.id}`}
+            >
+              <Clock className="w-4 h-4 mt-1 shrink-0 text-acr-brand" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium truncate">{p.name}</span>
+                  {!p.isActive && (
+                    <Badge variant="secondary" className="text-[10px] border-transparent">
+                      {PAX_PAGE_COPY.promptPaused}
+                    </Badge>
+                  )}
+                  {status && (
+                    <Badge
+                      variant="secondary"
+                      className={cn("text-[10px]", TONE_CLASS[status.tone])}
+                      data-testid={`scheduled-prompt-${p.id}-status`}
+                    >
+                      {status.label}
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  {p.lastRunAt ? PAX_PAGE_COPY.lastRan(formatRelative(p.lastRunAt)) : PAX_PAGE_COPY.noRunsYet}
+                  {p.isActive && p.nextRunAt ? ` · ${PAX_PAGE_COPY.promptNextRun(formatDateTime(p.nextRunAt))}` : null}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={TAP}
+                  onClick={() => setActive.mutate({ id: p.id, isActive: !p.isActive })}
+                  disabled={setActive.isPending}
+                  data-testid={`button-prompt-${p.isActive ? "pause" : "resume"}-${p.id}`}
+                >
+                  {p.isActive ? PAX_PAGE_COPY.promptPause : PAX_PAGE_COPY.promptResume}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
+                  onClick={() => setHistoryOf(p)}
+                  aria-label={`${PAX_PAGE_COPY.promptHistory}: ${p.name}`}
+                  data-testid={`button-prompt-history-${p.id}`}
+                >
+                  <History className="w-4 h-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 text-muted-foreground hover:text-destructive"
+                  onClick={() => remove.mutate(p.id)}
+                  disabled={remove.isPending}
+                  aria-label={`${PAX_PAGE_COPY.promptDelete}: ${p.name}`}
+                  data-testid={`button-prompt-delete-${p.id}`}
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <RunHistorySheet prompt={historyOf} onClose={() => setHistoryOf(null)} />
+    </>
+  );
+}
+
+function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | null; onClose: () => void }) {
+  const runs = useQuery<TaskRun[]>({
+    queryKey: [SCHEDULED_TASKS_KEY[0], prompt?.id ?? 0, "runs"],
+    queryFn: () => getJson<TaskRun[]>(`/api/ai/scheduled-tasks/${prompt!.id}/runs`),
+    enabled: prompt !== null,
+    staleTime: 30_000,
+  });
+
+  return (
+    <Sheet open={prompt !== null} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-[420px] p-0 flex flex-col">
+        <SheetHeader className="px-4 py-3 border-b shrink-0">
+          <SheetTitle className="flex items-center gap-2 text-sm">
+            <History className="w-4 h-4 text-acr-brand" aria-hidden="true" />
+            {prompt ? PAX_PAGE_COPY.runHistoryTitle(prompt.name) : PAX_PAGE_COPY.promptHistory}
+          </SheetTitle>
+          <p className="text-xs text-muted-foreground">{PAX_PAGE_COPY.runHistoryIntro}</p>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" data-testid="run-history-list">
+          {runs.isLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-14" />
+              ))}
+            </div>
+          ) : runs.isError ? (
+            <QueryErrorState error={runs.error as Error} onRetry={() => void runs.refetch()} compact testId="run-history-error" />
+          ) : (runs.data ?? []).length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-10">{PAX_PAGE_COPY.runHistoryEmpty}</p>
           ) : (
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+            (runs.data ?? []).map((run) => {
+              const status = promptStatus(run.status) ?? { label: run.status, tone: "neutral" as const };
+              return (
+                <div key={run.id} className="rounded-md border px-3 py-2 space-y-0.5" data-testid={`run-${run.id}`}>
+                  <div className="flex items-center gap-2">
+                    {status.tone === "ok" ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos shrink-0" aria-hidden="true" />
+                    ) : status.tone === "neutral" ? (
+                      <MinusCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                    ) : (
+                      <XCircle className="w-3.5 h-3.5 text-acr-neg shrink-0" aria-hidden="true" />
+                    )}
+                    <span className="text-xs font-medium tabular-nums">{formatDateTime(run.runAt)}</span>
+                    <span className={cn("ml-auto text-[10px] font-medium rounded px-1.5 py-0.5", TONE_CLASS[status.tone])}>
+                      {status.label}
+                    </span>
+                    {run.durationMs ? (
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{(run.durationMs / 1000).toFixed(1)}s</span>
+                    ) : null}
+                  </div>
+                  {run.summary && <p className="text-xs text-muted-foreground line-clamp-2 pl-5">{run.summary}</p>}
+                </div>
+              );
+            })
           )}
-          Confirm reset
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setConfirming(false)}
-          aria-label="Cancel reset"
-        >
-          <X className="w-3.5 h-3.5" aria-hidden="true" />
-        </Button>
-      </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── What Pax can use (moved here from the deleted autopilot-setup) ─────────
+
+function Connections() {
+  const byok = useQuery<ByokResponse>({
+    queryKey: ["/api/byok"],
+    queryFn: () => getJson<ByokResponse>("/api/byok"),
+  });
+  const mailbox = useQuery<MailboxResponse>({
+    queryKey: ["/api/mailbox"],
+    queryFn: () => getJson<MailboxResponse>("/api/mailbox"),
+  });
+
+  const ownChannels = new Set((byok.data?.channels ?? []).filter((c) => c.status === "byok").map((c) => c.channel));
+  const inboxConnected = (mailbox.data?.mailboxes?.length ?? 0) > 0;
+  const pending = byok.isLoading || mailbox.isLoading;
+
+  const rows: Array<{ key: string; label: string; icon: typeof MessageSquare; connected: boolean }> = [
+    ...CAPABILITIES.map((c) => ({
+      key: c.key,
+      label: PAX_PAGE_COPY.capabilities[c.key],
+      icon: c.icon,
+      connected: c.channels.some((ch) => ownChannels.has(ch)),
+    })),
+    { key: "inbox", label: PAX_PAGE_COPY.capabilities.inbox, icon: Inbox, connected: inboxConnected },
+  ];
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-connections-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_PAGE_COPY.canUse}</CardTitle>
+        <CardDescription>{PAX_PAGE_COPY.canUseIntro}</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y p-0">
+        {rows.map((r) => {
+          const Icon = r.icon;
+          return (
+            <div key={r.key} className="px-4 py-2.5 flex items-center justify-between gap-3" data-testid={`connection-${r.key}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <Icon className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                <span className="text-sm truncate">{r.label}</span>
+              </div>
+              {pending ? (
+                <Skeleton className="h-8 w-24" />
+              ) : r.connected ? (
+                <Badge variant="default" className="bg-acr-pos text-acr-brand-ink hover:bg-acr-pos">
+                  <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" /> {PAX_PAGE_COPY.connected}
+                </Badge>
+              ) : (
+                <Button asChild variant="outline" size="sm" className={TAP}>
+                  <Link href={BYOK_PATH}>
+                    {PAX_PAGE_COPY.connect} <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── What Pax did (GET /api/pax/receipts) ───────────────────────────────────
+
+function Receipts() {
+  const receipts = useQuery<ReceiptsPage>({
+    queryKey: RECEIPTS_KEY,
+    queryFn: () => getJson<ReceiptsPage>(`/api/pax/receipts?limit=${RECEIPTS_LIMIT}`),
+  });
+
+  return (
+    <div className="border-t pt-4" data-testid="pax-receipts">
+      <div className="text-sm font-medium">{PAX_LABELS.receipts}</div>
+      <div className="text-xs text-muted-foreground mb-2">{PAX_PAGE_COPY.receiptsHint}</div>
+      {receipts.isLoading ? (
+        <div className="space-y-2" data-testid="pax-receipts-loading">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : receipts.isError ? (
+        <QueryErrorState error={receipts.error as Error} onRetry={() => void receipts.refetch()} compact testId="pax-receipts-error" />
+      ) : (receipts.data?.items ?? []).length === 0 ? (
+        <EmptyState
+          icon={History}
+          headline={PAX_LABELS.receipts}
+          subtitle={PAX_PAGE_COPY.receiptsEmpty}
+          // TODO(cta): receipts are written by Pax and the rules; no user action creates one.
+          cta={{ label: "", _noOp: true }}
+          actionIcon={null}
+          testId="pax-receipts-empty"
+        />
+      ) : (
+        <ul className="space-y-1.5" data-testid="pax-receipts-list">
+          {(receipts.data?.items ?? []).map((r) => (
+            <li key={r.id} className="text-sm flex gap-2 flex-wrap items-baseline" data-testid={`receipt-${r.id}`}>
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0">{formatRelative(r.at)}</span>
+              <span className="min-w-0 flex-1">{r.summary}</span>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {r.entityLabel ?? `${r.entityType} #${r.entityId}`}
+              </span>
+              <Badge variant="secondary" className="text-[10px] border-transparent shrink-0">
+                {RECEIPT_MODE_WORD[r.mode] ?? r.mode}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

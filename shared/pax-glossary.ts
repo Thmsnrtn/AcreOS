@@ -302,3 +302,219 @@ export function originPhrase(
       return null;
   }
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Wave 1 D additions — the Settings → Pax page and its entry points.
+// ADDITIONS ONLY: nothing above this line changed. Every heading, button and
+// row line the page prints that is not already a stance / pause / group
+// string lives here. Numbers are ALWAYS parameters read from
+// GET /api/pax/controls or a constant whose source is cited beside it —
+// nothing here types a count.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** "4 workflows" / "1 workflow" — the page's only grammar helper. */
+function nOf(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * The fixed send rules, in the customer's words. The hours are the TCPA
+ * quiet-hours window the send chokepoint enforces
+ * (server/services/tcpaCompliance.ts: `local < 8 || local >= 21` blocks);
+ * the daily limits are NOT typed here — they arrive from the controls
+ * route (`fixedRules.emailLimit` / `textLimit`, read from the limiter's own
+ * constants). Cadences cite the job roster (server/jobs/jobRegistry.ts):
+ * `lead_nurturing` every 15 min, `finance_agent` every 30 min;
+ * tests/unit/paxControlsPage.test.ts pins both against the roster.
+ */
+export const PAX_FIXED_RULES = {
+  textHours: "8 am–9 pm",
+  leadScoringCadence: "every 15 min",
+  borrowerRemindersCadence: "every 30 min",
+} as const;
+
+/** The three "until when" choices (founder question 6). Keys are the API values. */
+export const PAX_PAUSE_OPTIONS = {
+  tomorrow_8am: "Tomorrow 8 am",
+  "3d": "3 days",
+  "30d": "Until I resume",
+} as const;
+
+export type PaxPauseOption = keyof typeof PAX_PAUSE_OPTIONS;
+
+export const PAX_PAGE_COPY = {
+  title: "Pax",
+  intro: "When Pax asks, what runs on its own, and one button that pauses all of it.",
+
+  // ── 1. Status strip ──
+  pauseButton: "Pause Pax",
+  resumeButton: "Resume",
+  pauseUntilPrompt: "Until when?",
+  /** Under "Until I resume": the safety lift is real, so say so. */
+  pauseOptionLiftNote: "30 days at most — it lifts by itself if you forget.",
+  cancel: "Cancel",
+  whatPauseStops: "What Pause stops",
+  whatPauseKeeps: "What it does not stop",
+  resumeNotYours: "An owner, an admin, or the person who paused can resume.",
+
+  // ── 2. When Pax asks ──
+  whenPaxAsks: "When Pax asks",
+  askAnOwner: "Ask an owner to change this",
+  rightNowLabel: "Right now",
+  rightNow(n: {
+    waiting: number;
+    changedTodayOnItsOwn: number;
+    rulesRunning: { workflows: number; sequences: number; scheduledPrompts: number };
+  }): string {
+    return (
+      `${PAX_LABELS.queue}: ${n.waiting} · Changed on its own today: ${n.changedTodayOnItsOwn} · ` +
+      `Rules running: ${nOf(n.rulesRunning.workflows, "workflow", "workflows")}, ` +
+      `${nOf(n.rulesRunning.sequences, "sequence", "sequences")}, ` +
+      `${nOf(n.rulesRunning.scheduledPrompts, "scheduled prompt", "scheduled prompts")}`
+    );
+  },
+
+  // ── 3. What runs on its own ──
+  runsOnItsOwn: "What runs on its own",
+  runsOnItsOwnIntro: "Each has its own switch. Pause stops all of them.",
+  switchesLiveOn(where: string): string {
+    return `Switches are on ${where}`;
+  },
+  noRunsYet: "no runs yet",
+  noSendsYet: "no sends yet",
+  lastRan(when: string): string {
+    return `last ran ${when}`;
+  },
+  lastSend(when: string): string {
+    return `last send ${when}`;
+  },
+  workflows: "Workflows",
+  workflowsLine(w: { active: number; live: number; lastRan: string | null }): string {
+    const notLive = Math.max(0, w.active - w.live);
+    return (
+      `${w.active} on · ${w.live} live` +
+      (notLive > 0 ? ` · ${notLive} ${PAX_LABELS.notYetLive.toLowerCase()}` : "") +
+      ` · ${w.lastRan ? PAX_PAGE_COPY.lastRan(w.lastRan) : PAX_PAGE_COPY.noRunsYet}`
+    );
+  },
+  sequences: "Campaign sequences",
+  sequencesLine(s: { activeEnrollments: number; lastSend: string | null }): string {
+    return (
+      `${nOf(s.activeEnrollments, "active enrollment", "active enrollments")} · ` +
+      (s.lastSend ? PAX_PAGE_COPY.lastSend(s.lastSend) : PAX_PAGE_COPY.noSendsYet)
+    );
+  },
+  scheduledPrompts: "Scheduled prompts",
+  scheduledPromptsLine(n: { on: number; total: number }): string {
+    return `${n.on} of ${n.total} on · runs the prompt you wrote, on the schedule you chose`;
+  },
+  scheduledPromptsEmpty: "No scheduled prompts yet — schedule one from the Pax chat.",
+  promptPause: "Pause",
+  promptResume: "Resume",
+  promptDelete: "Delete",
+  promptHistory: "Run history",
+  promptPaused: "Paused",
+  promptOk: "OK",
+  promptError: "Error",
+  /** skipped_paused / skipped_off are neutral outcomes, never the Error badge. */
+  promptSkippedPaused: "Skipped — paused",
+  promptSkippedOff: "Skipped — off",
+  promptNextRun(when: string): string {
+    return `next ${when}`;
+  },
+  runHistoryTitle(name: string): string {
+    return `Run history — ${name}`;
+  },
+  runHistoryIntro: "The last 20 runs of this prompt.",
+  runHistoryEmpty: "No runs recorded yet.",
+  leadScoring: "Lead scoring",
+  leadScoringLine(l: { lastRan: string | null; rescoredToday: number }): string {
+    return (
+      `${PAX_FIXED_RULES.leadScoringCadence} · scores and stages leads · ` +
+      `${l.lastRan ? PAX_PAGE_COPY.lastRan(l.lastRan) : PAX_PAGE_COPY.noRunsYet} · ` +
+      `${l.rescoredToday} rescored today`
+    );
+  },
+  borrowerReminders: "Prepare borrower payment reminders",
+  borrowerRemindersLine(b: { waiting: number }): string {
+    return `prepared ${PAX_FIXED_RULES.borrowerRemindersCadence} · each one waits for your tap · ${b.waiting} waiting`;
+  },
+  inboxDrafts: "Draft a reply when I open a message",
+  inboxDraftsLine: "a draft is not an action — nothing is sent until you send it",
+  fixedRules: "Fixed rules",
+  fixedRulesLine(f: { emailsUsedToday: number; emailLimit: number; textsUsedToday: number; textLimit: number }): string {
+    return (
+      `Texts only ${PAX_FIXED_RULES.textHours} recipient time · ` +
+      `${f.emailsUsedToday} of ${f.emailLimit} emails and ${f.textsUsedToday} of ${f.textLimit} texts used today · ` +
+      "never to anyone who opted out · from your own connected accounts"
+    );
+  },
+  switchOn: "on",
+  switchOff: "off",
+  switchToast(label: string, on: boolean): string {
+    return `${label} — ${on ? PAX_PAGE_COPY.switchOn : PAX_PAGE_COPY.switchOff}`;
+  },
+
+  // ── 4. What Pax can use ──
+  canUse: "What Pax can use",
+  canUseIntro: "Your own accounts — your keys, your invoices. Pax sends from these, never from an AcreOS address.",
+  connected: "Connected",
+  connect: "Connect",
+  capabilities: {
+    texts: "Text sellers",
+    email: "Send email",
+    mail: "Send mail",
+    data: "Pull property data",
+    inbox: "Read & reply to your inbox",
+  },
+
+  // ── 5. Links ──
+  waitingLink(n: number): string {
+    return `${PAX_LABELS.queue} (${n})`;
+  },
+  waitingHint: "Everything Pax wrote for someone else, in one place.",
+  receiptsEmpty: "Nothing yet. When Pax changes a record or a rule runs, it shows up here.",
+  receiptsHint: "when · what · which record · how",
+  teamLink: "Who on your team can ask Pax to do what",
+  teamHint: "Settings → Team",
+
+  // ── 6. Never ──
+  neverLead: "Pax will never:",
+
+  // ── Toasts / errors ──
+  couldNotLoad: "Couldn't load your Pax settings",
+  couldNotPause: "Couldn't pause Pax",
+  couldNotResume: "Couldn't resume Pax",
+  couldNotChange: "Couldn't change this",
+  promptDeleted: "Scheduled prompt deleted",
+} as const;
+
+/** Settings bucket + quick-find entry points (spec §3a "Entry points"). */
+export const PAX_SETTINGS_COPY = {
+  bucketLabel: "Pax & connections",
+  cardTitle: "Pax — when it asks, what runs on its own",
+  cardOpen: "Open",
+  byokCardTitle: "Use your own provider accounts",
+  byokCardBody:
+    "Plug in your own Twilio, SendGrid, Lob or AI account so texts, emails, mail and Pax bill to you directly.",
+  byokOpen: "Open your keys",
+  quickFind: {
+    pax: { label: "Pax — pause, when it asks", description: "One page: pause, stance, what runs on its own" },
+    pause: { label: PAX_PAGE_COPY.pauseButton, description: "Stop everything Pax and your rules do on their own" },
+    waiting: { label: PAX_LABELS.queue, description: "Approve, edit or reject what Pax wrote" },
+    byok: { label: "Your own keys (BYOK)", description: "Twilio, SendGrid, Lob, AI, property data" },
+  },
+} as const;
+
+/** Honesty lines for the rules editors (spec §6 workflow toast; provider status chip). */
+export const PAX_RULES_COPY = {
+  workflowActive: "Your workflow is now active.",
+  workflowSavedNotLive(eventLabel: string): string {
+    return `Saved — will run when ${eventLabel} goes live`;
+  },
+  /** Factual AI-key status on the provider card: read from GET /api/byok. */
+  aiOwnKey(providerName: string): string {
+    return `Pax runs on your own ${providerName} account`;
+  },
+  aiPlatformKey: "Pax runs on AcreOS's AI account",
+} as const;

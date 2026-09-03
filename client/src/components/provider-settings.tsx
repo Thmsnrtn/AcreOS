@@ -9,16 +9,48 @@
  * hardcoded client copy that could silently drift from reality.
  */
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, XCircle, Cpu, MessageSquare, Mail } from "lucide-react";
+import { PAX_RULES_COPY } from "@shared/pax-glossary";
+
+/**
+ * The AI channels a customer can bring their own key for (server/routes-byok.ts
+ * AI_CHANNELS). The chip on the AI card reads /api/byok and says which — a
+ * fact about the org's keys, not a mode or a setting.
+ */
+const AI_BYOK_CHANNELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
+  openai: "OpenAI",
+};
+
+interface ByokStatusResponse {
+  channels: Array<{ channel: string; status: "platform" | "byok" }>;
+}
+
+function AiKeyChip() {
+  const { data, isLoading } = useQuery<ByokStatusResponse>({ queryKey: ["/api/byok"] });
+  if (isLoading) return <Skeleton className="h-5 w-40" />;
+  if (!data) return null;
+  const own = data.channels.find((c) => c.status === "byok" && c.channel in AI_BYOK_CHANNELS);
+  return (
+    <Link
+      href="/settings/byok"
+      className="text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+      data-testid="chip-ai-key-source"
+    >
+      {own ? PAX_RULES_COPY.aiOwnKey(AI_BYOK_CHANNELS[own.channel]) : PAX_RULES_COPY.aiPlatformKey}
+    </Link>
+  );
+}
 
 interface ProviderStatus {
   ai: {
     openai: boolean;
     openrouter: boolean;
-    defaultTier: "economy" | "premium";
   };
   sms: {
     available: string[];
@@ -108,13 +140,7 @@ export function ProviderSettings() {
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <ReadyBadge ready={aiReady} />
-            {aiReady && (
-              <span className="text-sm text-muted-foreground">
-                {providers.ai.defaultTier === "economy"
-                  ? "Running in cost-saving mode"
-                  : "Running in full-power mode"}
-              </span>
-            )}
+            {aiReady && <AiKeyChip />}
           </div>
           {!aiReady && (
             <p className="text-sm text-muted-foreground">
@@ -142,7 +168,7 @@ export function ProviderSettings() {
           {!smsReady && (
             <p className="text-sm text-muted-foreground">
               Texting isn't set up yet. Plug in your own Twilio account under "Use your own provider
-              accounts" below, or contact support.
+              accounts" above, or contact support.
             </p>
           )}
         </CardContent>
@@ -167,7 +193,7 @@ export function ProviderSettings() {
           {!mailReady && (
             <p className="text-sm text-muted-foreground">
               Mail isn't set up yet. Plug in your own Lob account under "Use your own provider accounts"
-              below, or contact support.
+              above, or contact support.
             </p>
           )}
         </CardContent>

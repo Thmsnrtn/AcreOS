@@ -33,6 +33,7 @@ import {
   isLiveWorkflowTriggerEvent,
   TRIGGER_NOT_LIVE_MESSAGE,
 } from "@shared/workflow-live-triggers";
+import { PAX_RULES_COPY } from "@shared/pax-glossary";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -72,6 +73,17 @@ function getTriggerLabel(trigger: WorkflowTrigger | null | undefined): string {
 
 const reassurance = "The workflow is unchanged — try again.";
 
+/**
+ * "Your workflow is now active" is only true when its trigger really fires
+ * today (LIVE_WORKFLOW_TRIGGER_EVENTS). Otherwise say what is true: saved,
+ * and it will run the day the event goes live (spec §6 workflow toast).
+ */
+function savedToastDescription(trigger: WorkflowTrigger | null | undefined): string {
+  const event = trigger?.event;
+  if (!event || isLiveWorkflowTriggerEvent(event)) return PAX_RULES_COPY.workflowActive;
+  return PAX_RULES_COPY.workflowSavedNotLive(getTriggerLabel(trigger));
+}
+
 export default function WorkflowsPage() {
   useDocumentTitle("Workflows");
   const { toast } = useToast();
@@ -97,11 +109,11 @@ export default function WorkflowsPage() {
       const response = await apiRequest("POST", "/api/workflows", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_created, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
       setIsBuilderOpen(false);
       setSelectedWorkflow(null);
-      toast({ title: "Workflow created", description: "Your workflow is now active." });
+      toast({ title: "Workflow created", description: savedToastDescription(variables.trigger) });
     },
     onError: (error: Error) => {
       toast({ title: "Couldn't create workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
@@ -164,10 +176,11 @@ export default function WorkflowsPage() {
       const response = await apiRequest("POST", `/api/workflow-templates/${templateId}/install`, {});
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_installed, templateId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
       setInstallingTemplateId(null);
-      toast({ title: "Template installed", description: "The workflow is now active." });
+      const template = templates?.find((t) => t.id === templateId);
+      toast({ title: "Template installed", description: savedToastDescription(template?.trigger) });
     },
     onError: (error: Error) => {
       setInstallingTemplateId(null);

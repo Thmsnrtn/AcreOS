@@ -48,12 +48,8 @@ import { NotificationPreferences } from "@/components/notification-preferences";
 import { ImportExportManager } from "@/components/import-export";
 import { ComplianceSettings } from "@/components/compliance-settings";
 import { SecurityActivityLog } from "@/components/security-activity-log";
-import { AISettings } from "@/components/ai-settings";
-import { WorkflowsSettingsTab } from "@/components/workflows-settings-tab";
-import { PaxTasksSettingsTab } from "@/components/pax-tasks-settings-tab";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
-import { ByokSettings } from "@/components/settings/ByokSettings";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
@@ -68,8 +64,6 @@ import { AppearancePanel } from "@/components/settings/appearance-panel";
 import { AccessibilityPanel } from "@/components/settings/accessibility-panel";
 import { PersonaPanel } from "@/components/settings/persona-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
-import { AutonomyPanel } from "@/components/settings/autonomy-panel";
-import { useFlag } from "@/contexts/feature-flags-context";
 import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -79,6 +73,8 @@ import { UserProfile } from "@clerk/react";
 import { useSafeUser, CLERK_AVAILABLE } from "@/lib/clerk-safe";
 import { useLocation } from "wouter";
 import { useSearch } from "wouter";
+import { Link } from "wouter";
+import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
 import { XCircle } from "lucide-react";
 import { CancellationDialog } from "@/components/cancellation-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -97,7 +93,7 @@ import { Verbs } from "@/lib/labels";
 // privacy          →  account            (data rights, export, delete)
 // referral         →  account            (refer & earn — personal action)
 // appearance       →  account            (theme + language + accessibility)
-// autonomy         →  integrations       (per-agent autonomy lives w/ AI)
+// autonomy         →  integrations       (legacy hash only — Pax lives at /settings/pax)
 // goals            →  organization       (org-scoped goals)
 // notifications    →  notifications      (channel matrix)
 // communications   →  notifications      (email/SMS/mail provider config)
@@ -105,11 +101,11 @@ import { Verbs } from "@/lib/labels";
 // payments         →  billing            (Stripe Connect + plan)
 // data             →  tax-compliance     (compliance settings live here +
 //                                         custom fields + import/export)
-// integrations     →  integrations       (BYOK + provider connections)
-// automations      →  integrations       (workflow rules)
+// integrations     →  integrations       (Pax & connections: Pax card, BYOK link, providers)
+// automations      →  integrations       (legacy hash — /workflows is the one editor)
 // developer        →  integrations       (API keys + audit log)
 // ai               →  integrations       (AI cost + provider settings)
-// ai-tasks         →  integrations       (Pax tasks)
+// ai-tasks         →  integrations       (legacy hash — scheduled prompts live on /settings/pax)
 //
 // Legacy HASH values (#payments, #referral, …) auto-rewrite to the
 // canonical bucket via LEGACY_TO_CANONICAL below. NOTE: only the HASH is
@@ -160,11 +156,6 @@ export default function Settings() {
   const [showPlanComparison, setShowPlanComparison] = useState(false);
   const [planPickerHighlight, setPlanPickerHighlight] = useState<TierKey | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  // Feature flag — autonomy matrix is founder-only by default per
-  // design-system §8.4. Tab + content hidden when flag is off; founder
-  // toggles state via /founder/features.
-  const autonomyFlag = useFlag("feature.autonomy-matrix");
-
   // The upgrade-toast deep link is `/settings#billing?tier=pro` — the
   // "?tier=" rides INSIDE the hash (there is no real query string), so the
   // hash must be split before tab matching. Without this, that link landed
@@ -440,7 +431,7 @@ export default function Settings() {
                 <SelectItem value="billing">Billing</SelectItem>
                 <SelectItem value="tax-compliance">Tax &amp; Compliance</SelectItem>
                 <SelectItem value="notifications">Notifications</SelectItem>
-                <SelectItem value="integrations">Integrations</SelectItem>
+                <SelectItem value="integrations">{PAX_SETTINGS_COPY.bucketLabel}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -477,7 +468,7 @@ export default function Settings() {
                 </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Integrations
+                  {PAX_SETTINGS_COPY.bucketLabel}
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1036,7 +1027,7 @@ export default function Settings() {
                     <EmptyState
                       icon={Users}
                       headline="It's just you so far"
-                      subtitle="Invite a teammate or VA above — they get their own login and a role that controls what they can see and do."
+                      subtitle="Invite a teammate above — they get their own login and a role that controls what they can see and do."
                       cta={{
                         label: "Invite someone",
                         onClick: () => {
@@ -1455,24 +1446,34 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations-ai">
-              {/* AI cost, settings, provider config */}
-              <AICostDashboard />
-              <AISettings />
-              <div className="pt-4 border-t">
-                <h3 className="text-section-h2 mb-4">Service Providers</h3>
-                <ProviderSettings />
-              </div>
+              {/* Pax — the ONE control surface (AUTONOMY_SPEC.md §3a). It is
+                  nested at /settings/pax, never a tab; this card is the
+                  bucket's first entry. The six-component stack that used to
+                  live here is deleted (spec §3d). */}
+              <Card data-testid="card-pax-controls-entry">
+                <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Sparkles className="w-5 h-5 text-acr-brand shrink-0" aria-hidden="true" />
+                    <span className="text-sm font-medium">{PAX_SETTINGS_COPY.cardTitle}</span>
+                  </div>
+                  <Button asChild className="min-h-11 pointer-fine:sm:min-h-9">
+                    <Link href={PAX_CONTROLS_PATH} data-testid="link-pax-controls">
+                      {PAX_SETTINGS_COPY.cardOpen}
+                      <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
 
-              {/* BYOK */}
-              <div className="space-y-6 pt-4 border-t">
+              {/* BYOK — ONE catalog, at /settings/byok. The inline mount is
+                  gone (two catalogs was confusion #14). */}
+              <div className="space-y-4 pt-4 border-t" data-testid="section-byok-link">
                 <div>
                   <h2 className="text-section-h2 flex items-center gap-2">
                     <Link2 className="w-5 h-5" />
-                    Use your own provider accounts
+                    {PAX_SETTINGS_COPY.byokCardTitle}
                   </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Plug in your own Twilio, SendGrid, or Lob account so texts, emails, and mail bill to you directly instead of drawing from AcreOS credits.
-                  </p>
+                  <p className="text-muted-foreground text-sm">{PAX_SETTINGS_COPY.byokCardBody}</p>
                   {/* Trust microcopy at the moment of key entry. BYOK
                       adoption is gated on the user believing we won't
                       leak their OpenAI / Twilio / SendGrid secret. */}
@@ -1487,15 +1488,19 @@ export default function Settings() {
                     </span>
                   </div>
                 </div>
-                <ByokSettings />
+                <Button asChild variant="outline" className="min-h-11 pointer-fine:sm:min-h-9">
+                  <Link href="/settings/byok" data-testid="link-settings-byok">
+                    {PAX_SETTINGS_COPY.byokOpen}
+                    <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
+                  </Link>
+                </Button>
               </div>
 
-              {/* Autonomy matrix (founder-gated feature flag) */}
-              {autonomyFlag && (
-                <div className="pt-4 border-t" data-testid="tab-content-integrations-autonomy">
-                  <AutonomyPanel />
-                </div>
-              )}
+              {/* Provider status — read-only, from /api/organization/providers */}
+              <div className="pt-4 border-t">
+                <h3 className="text-section-h2 mb-4">Service Providers</h3>
+                <ProviderSettings />
+              </div>
 
               {/* Developer tools */}
               <div className="space-y-4 pt-4 border-t" data-testid="tab-content-integrations-developer">
@@ -1555,14 +1560,9 @@ export default function Settings() {
                 <ActivityLogPanel />
               </div>
 
-              {/* Workflow automations */}
-              <div className="pt-4 border-t" data-testid="tab-content-integrations-automations">
-                <WorkflowsSettingsTab />
-              </div>
-
-              {/* Pax task settings */}
-              <div className="pt-4 border-t" data-testid="tab-content-integrations-ai-tasks">
-                <PaxTasksSettingsTab />
+              {/* AI cost — last in the bucket (spec §3a). */}
+              <div className="pt-4 border-t" data-testid="tab-content-integrations-ai-cost">
+                <AICostDashboard />
               </div>
             </TabsContent>
 
