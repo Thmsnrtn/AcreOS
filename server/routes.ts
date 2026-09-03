@@ -34,6 +34,7 @@ import voiceLearningRouter from "./routes-voice-learning";
 import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
+import paxControlsRouter from "./routes-pax-controls";
 import todayRouter from "./routes-today";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
@@ -88,7 +89,6 @@ import tenantThemeRouter from "./routes-tenant-theme";
 import uiStateRouter from "./routes-ui-state";
 import byokRouter from "./routes-byok";
 import mailboxRouter from "./routes-mailbox";
-import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
@@ -1430,6 +1430,14 @@ export async function registerRoutes(
   // Stacks AFTER aiLimiter (per-user/min) and BEFORE the actual handlers —
   // soft-degrades to a structured LimitExceeded payload on cap exceeded
   // instead of silently failing or relying solely on usageLimitGate.
+  // Settings → Pax (customer autonomy clarity program, 2026-09-02): the
+  // controls / pause / resume / receipts routes. Mounted BEFORE the guarded
+  // insights router so a Settings page read never spends the per-org AI
+  // budget that paxChatGuard meters — these routes call no model. Same org
+  // resolution (isAuthenticated + getOrCreateOrg). The pre-program
+  // /api/me/autonomy surface (routes-autonomy.ts) is gone; its org-pause read
+  // is GET /api/pax/controls now.
+  app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxControlsRouter);
   app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
@@ -1540,10 +1548,6 @@ export async function registerRoutes(
   // R1c native inbox — mailbox connect/callback/list/disconnect. Same auth
   // posture as byok; env-gated per provider (inert until the OAuth app is set).
   app.use('/api/mailbox', isAuthenticated, getOrCreateOrg, mailboxRouter);
-  // Per-agent autonomy matrix — split off from /preferences in JC#14 so
-  // theme writes can't trample agent policy and agents have a narrow read
-  // surface at action time.
-  app.use('/api/me/autonomy', isAuthenticated, autonomyRouter);
   // Persona setter — drives vocabulary swaps, default surfaces, onboarding
   // path per VERTICAL-EXPANSION-PLAN.md. User-scoped, no org context needed.
   app.use('/api/me/persona', isAuthenticated, personaRouter);

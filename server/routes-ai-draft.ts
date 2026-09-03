@@ -13,7 +13,13 @@
  *   - Source-attribution: response carries `attribution` + `model` so the
  *     UI can show "Pax drafted this · review before sending"
  *   - Regenerate: client calls the same endpoint again to get a new draft
- *   - Per-org disable: organizations.paxDraftEnabled gate (defaulted on)
+ *   - Per-org switch: organizations.pax_controls.inboxDrafts ("Draft a reply
+ *     when I open a message", Settings → Pax), read through the one reader
+ *     server/services/paxControls.ts. A draft is not an action, so the Pax
+ *     PAUSE does not stop drafting — only this switch does. Migrated from
+ *     settings.aiSettings.paxDraftEnabled (customer autonomy clarity
+ *     program, 2026-09-02; migration 0250 backfilled inboxDrafts=false where
+ *     paxDraftEnabled was false).
  *
  * Auth context: founder + signed-in user; isAuthenticated middleware
  * runs upstream. Org context comes from getOrCreateOrg.
@@ -23,7 +29,9 @@ import { Router, type Response } from "express";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
-import { inboxMessages, leads, organizations } from "@shared/schema";
+import { inboxMessages, leads } from "@shared/schema";
+import { PAX_CONTROLS_LABEL, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { getPaxControls } from "./services/paxControls";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
@@ -70,16 +78,19 @@ router.post("/draft-reply", async (req: AuthenticatedRequest, res: Response) => 
     }
     const { messageId, priorDraft, tone } = parsed.data;
 
-    // Per-org disable gate — defaulted on; founder can flip via settings.
-    // Stored in organizations.settings.aiSettings.paxDraftEnabled.
-    const [org] = await db
-      .select({ id: organizations.id, settings: organizations.settings })
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .limit(1);
-    if (!org) return Errors.notFound(res, "Organization");
-    if (org.settings?.aiSettings?.paxDraftEnabled === false) {
-      return Errors.forbidden(res, "Pax drafts are disabled for this workspace");
+    // The org's "Inbox reply drafts" switch (organizations.pax_controls
+    // .inboxDrafts), through the ONE reader. A read that failed is refused
+    // with the glossary line — never a guessed switch. The pause is
+    // deliberately NOT consulted: drafting is not an action.
+    const controls = await getPaxControls(orgId);
+    if (controls.checkFailed) {
+      return Errors.serviceUnavailable(res, PAX_PAUSE_COPY.checkFailedRefusal);
+    }
+    if (!controls.inboxDrafts) {
+      return Errors.forbidden(
+        res,
+        `Inbox reply drafts are switched off for this workspace. Turn them on under ${PAX_CONTROLS_LABEL}.`,
+      );
     }
 
     // Pull the inbound message + lead context. Drafts are scoped to org —

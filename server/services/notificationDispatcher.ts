@@ -16,6 +16,7 @@
 
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
+import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
 import {
   arbitrateFounderInterrupt,
   recordDeferredInterrupt,
@@ -71,7 +72,72 @@ const EVENT_CHANNEL_MAP: Record<string, ChannelConfig> = {
   "briefing:ready": { defaultChannel: "in_app", label: "Daily Briefing Ready", founderClass: "C" },
   "agent:conflict": { defaultChannel: "in_app", urgentChannel: "sms", label: "Agent Conflict", founderClass: "B" },
   "market:alert": { defaultChannel: "in_app", label: "Market Alert", founderClass: "C" },
+  // Customer autonomy clarity program (AUTONOMY_SPEC.md §4.5): the three
+  // Pax ask events. CUSTOMER-facing — dispatched through dispatchPaxAskEvent
+  // below (org members' own trays + email by their own preferences), never
+  // through dispatch()'s founder tray, and never through the founder
+  // `approval:requested` stub above. Class C: a customer's ask is not a
+  // founder interrupt.
+  "pax:needs_you": { defaultChannel: "in_app", label: PAX_LABELS.queue, founderClass: "C" },
+  "pax:ask_expiring": { defaultChannel: "in_app", label: "An ask expires soon", founderClass: "C" },
+  "pax:ask_expired": { defaultChannel: "in_app", label: PAX_LABELS.expiredAsk, founderClass: "C" },
 };
+
+// ── Customer-facing Pax ask events ───────────────────────────────────────────
+
+export type PaxAskEventType = "pax:needs_you" | "pax:ask_expiring" | "pax:ask_expired";
+
+/** NOTIFICATION_SCHEMA event id (the per-user preference key) for each Pax event. */
+const PAX_EVENT_PREFERENCE: Record<PaxAskEventType, string> = {
+  "pax:needs_you": "pax.needs_you",
+  "pax:ask_expiring": "pax.ask_expiring",
+  "pax:ask_expired": "pax.ask_expired",
+};
+
+/** Where every Pax ask notification deep-links: Today's queue renders the same card. */
+const PAX_ASK_ACTION_URL = "/today";
+
+export interface PaxAskEvent {
+  type: PaxAskEventType;
+  orgId: number;
+  /** Live asks waiting after this event (needs_you). */
+  count?: number;
+  pendingActionId?: number;
+  /** The card's verb line ("Text Bill Thompson"), when the caller has it. */
+  summary?: string | null;
+  expiresAt?: Date | null;
+  /** IANA zone for the expiry line; the org's. */
+  timeZone?: string;
+}
+
+export interface PaxAskDelivery {
+  /** Members who got a persisted in-app row. */
+  inApp: number;
+  /** Members whose email the provider ACCEPTED. */
+  email: number;
+  /** Members skipped by their own preferences, or with no address. */
+  skipped: number;
+  /** Legs attempted and errored (never counted as delivered). */
+  failed: number;
+}
+
+function paxAskCopy(event: PaxAskEvent): { title: string; message: string } {
+  const summary = typeof event.summary === "string" && event.summary.trim() ? event.summary.trim() : null;
+  switch (event.type) {
+    case "pax:needs_you": {
+      const n = typeof event.count === "number" ? event.count : null;
+      const title = n !== null ? `${PAX_LABELS.queue} (${n})` : PAX_LABELS.queue;
+      return { title, message: summary ?? PAX_LABELS.queue };
+    }
+    case "pax:ask_expiring": {
+      const when = event.expiresAt ? ` — expires ${formatPaxTime(event.expiresAt, event.timeZone)}` : "";
+      return { title: "An ask expires soon", message: `${summary ?? "Something waiting for your tap"}${when}` };
+    }
+    case "pax:ask_expired":
+      return { title: PAX_LABELS.expiredAsk, message: summary ?? PAX_LABELS.expiredAsk };
+  }
+}
+
 
 // ─── Notification Storage (in-app history) ───────────────────────────────────
 
@@ -440,6 +506,10 @@ export class NotificationDispatcher {
         return `Agents disagree: ${p.topic ?? p.description ?? "Needs resolution"}`;
       case "market:alert":
         return `Market alert for ${p.county ?? p.market ?? "your area"}: ${p.description ?? p.message ?? ""}`;
+      case "pax:needs_you":
+      case "pax:ask_expiring":
+      case "pax:ask_expired":
+        return paxAskCopy({ ...p, type: event.eventType as PaxAskEventType, orgId: event.orgId ?? 0 }).message;
       default:
         return p.message ?? p.description ?? `${event.eventType} event occurred`;
     }
@@ -467,6 +537,10 @@ export class NotificationDispatcher {
         return "/today";
       case "market:alert":
         return "/market-intelligence";
+      case "pax:needs_you":
+      case "pax:ask_expiring":
+      case "pax:ask_expired":
+        return PAX_ASK_ACTION_URL;
       default:
         return "/sovereign";
     }
@@ -518,3 +592,141 @@ export class NotificationDispatcher {
 }
 
 export const notificationDispatcher = new NotificationDispatcher();
+
+/**
+ * Deliver a Pax ask event to the CUSTOMER org (AUTONOMY_SPEC.md §4.5).
+ *
+ * Three honest legs, none of them the founder tray:
+ *   1. an org-wide WebSocket "notification" toast (the same event the inbox
+ *      badge and the tray already listen to);
+ *   2. a persisted `notifications` row per ACTIVE member whose own
+ *      preferences allow the in-app leg for this event;
+ *   3. a system-lane email per member whose preferences allow email — the
+ *      platform sender talking to its own user (BYO rule intact) — counted
+ *      only when the provider accepted it.
+ * Push is never attempted: the schema row says push OFF until the
+ * org-scoped push lane is proven.
+ *
+ * Never throws into the caller: an ask that was proposed or expired is a
+ * fact already; a notification that failed is logged and counted `failed`.
+ *
+ * Callers (wave 1): the kernel on a genuinely NEW pending_actions row
+ * (proposePendingAction → needs_you), and the expiry sweep
+ * (server/jobs/pendingActionExpiryJob.ts → ask_expired / ask_expiring).
+ */
+export async function dispatchPaxAskEvent(event: PaxAskEvent): Promise<PaxAskDelivery> {
+  const delivery: PaxAskDelivery = { inApp: 0, email: 0, skipped: 0, failed: 0 };
+  const preferenceId = PAX_EVENT_PREFERENCE[event.type];
+  const { title, message } = paxAskCopy(event);
+
+  // Leg 1 — org broadcast (best-effort; a WS failure never fails the event).
+  try {
+    wsServer.broadcastToOrg(event.orgId, "notification", {
+      id: `pax_${event.type}_${event.pendingActionId ?? "count"}_${Date.now()}`,
+      title,
+      message,
+      priority: 3,
+      eventType: event.type,
+      actionUrl: PAX_ASK_ACTION_URL,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.warn(
+      `[notification-dispatcher] org broadcast for ${event.type} failed (tray rows still written)`,
+      err instanceof Error ? err : undefined,
+    );
+  }
+
+  let members: Array<{ userId: string; email: string | null; isActive: boolean }> = [];
+  // Lazy: the preferences service opens the db module; this dispatcher is
+  // imported at boot by modules that must stay off the db graph.
+  const { notificationPrefsService } = await import("./notificationPreferences");
+  try {
+    const { storage } = await import("../storage");
+    members = (await storage.getTeamMembers(event.orgId)).map((m) => ({
+      userId: m.userId,
+      email: m.email ?? null,
+      isActive: m.isActive,
+    }));
+  } catch (err) {
+    logger.error(
+      `[notification-dispatcher] could not list org ${event.orgId} members for ${event.type} — no tray rows written`,
+      err instanceof Error ? err : undefined,
+    );
+    delivery.failed++;
+    return delivery;
+  }
+
+  for (const member of members.filter((m) => m.isActive)) {
+    // Leg 2 — persisted in-app row, by the member's own preference.
+    try {
+      if (await notificationPrefsService.shouldNotify(member.userId, event.orgId, preferenceId, "inApp")) {
+        const { storage } = await import("../storage");
+        await storage.createNotification({
+          organizationId: event.orgId,
+          userId: member.userId,
+          type: preferenceId,
+          title,
+          message,
+          entityType: event.pendingActionId != null ? "pending_action" : null,
+          entityId: event.pendingActionId ?? null,
+          metadata: {
+            source: "pax_ask",
+            eventType: event.type,
+            actionUrl: PAX_ASK_ACTION_URL,
+            count: event.count ?? null,
+            pendingActionId: event.pendingActionId ?? null,
+          },
+        });
+        delivery.inApp++;
+      } else {
+        delivery.skipped++;
+      }
+    } catch (err) {
+      delivery.failed++;
+      logger.error(
+        `[notification-dispatcher] in-app row for ${event.type} failed for user ${member.userId}`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+
+    // Leg 3 — system-lane email, by the member's own preference. Counted
+    // ONLY when the provider accepted it; no address or no rail → skipped.
+    try {
+      if (!(await notificationPrefsService.shouldNotify(member.userId, event.orgId, preferenceId, "email"))) {
+        continue;
+      }
+      if (!member.email) {
+        delivery.skipped++;
+        continue;
+      }
+      const { emailService } = await import("./emailService");
+      const result = await emailService.sendEmail({
+        to: member.email,
+        subject: title,
+        text: `${message}\n\nOpen Today: ${PAX_ASK_ACTION_URL}`,
+        html: `<p>${message}</p><p><a href="${PAX_ASK_ACTION_URL}">Open Today</a></p>`,
+        purpose: "system",
+        organizationId: event.orgId,
+        ...(event.pendingActionId != null
+          ? { idempotencyKey: `pax-ask:${event.type}:${event.pendingActionId}:${member.userId}` }
+          : {}),
+      });
+      if (result.success) delivery.email++;
+      else {
+        delivery.failed++;
+        logger.warn(
+          `[notification-dispatcher] email for ${event.type} NOT delivered to user ${member.userId}: ${result.error ?? "no email provider configured"}`,
+        );
+      }
+    } catch (err) {
+      delivery.failed++;
+      logger.error(
+        `[notification-dispatcher] email leg for ${event.type} threw for user ${member.userId}`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  return delivery;
+}

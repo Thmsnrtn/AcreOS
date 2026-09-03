@@ -182,6 +182,35 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
     ],
   },
   {
+    id: "pax",
+    label: "Pax",
+    description: "What Pax is waiting on you for",
+    events: [
+      {
+        // Customer autonomy clarity program (AUTONOMY_SPEC.md §4.5). In-app +
+        // email; push stays OFF until the org-scoped push lane is proven by an
+        // end-to-end test — the matrix row says "in-app + email", and a
+        // channel that is not proven is not switched on by default.
+        id: "pax.needs_you",
+        label: "Pax is waiting for your tap",
+        description: "When Pax has drafted something that will not go out until you approve it",
+        defaultChannels: { email: true, sms: false, push: false, inApp: true },
+      },
+      {
+        id: "pax.ask_expiring",
+        label: "An ask expires in 2 hours",
+        description: "A heads-up two hours before something waiting for your tap expires unanswered",
+        defaultChannels: { email: false, sms: false, push: false, inApp: true },
+      },
+      {
+        id: "pax.ask_expired",
+        label: "An ask expired unanswered",
+        description: "When something waiting for your tap expired — ask Pax to draft it again",
+        defaultChannels: { email: false, sms: false, push: false, inApp: true },
+      },
+    ],
+  },
+  {
     id: "system",
     label: "System",
     description: "Weekly summaries, AI insights, and anything that breaks",

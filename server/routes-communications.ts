@@ -1258,6 +1258,15 @@ export function registerCommunicationRoutes(app: Express): void {
   api.post("/api/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      // A scheduled task of type `agent_skill` runs a skill from the registry
+      // on a timer with no tap (server/services/task-runner.ts). The customer's
+      // scheduled Pax prompts live at /api/ai/scheduled-tasks; skill tasks are
+      // a founder instrument (customer autonomy clarity program, 2026-09-02,
+      // founder decision 7). Same 404 requireFounder gives, so the lane is not
+      // advertised by its refusal.
+      if (req.body?.taskType === "agent_skill" && !req.isFounder) {
+        return Errors.notFound(res, "Route");
+      }
       const { taskRunnerService, parseSchedule } = await import("./services/task-runner");
 
       const nextRunAt = req.body.nextRunAt ? new Date(req.body.nextRunAt) : parseSchedule(req.body.schedule);

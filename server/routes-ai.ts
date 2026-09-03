@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { z } from "zod";
-import { insertAgentConfigSchema, insertAgentTaskSchema } from "@shared/schema";
-import { isAuthenticated } from "./auth";
+import { insertAgentConfigSchema } from "@shared/schema";
+import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
@@ -45,37 +45,12 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/agents/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const tasks = await storage.getAgentTasks(org.id);
-    res.json(tasks);
-  });
-  
-  api.post("/api/agents/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      
-      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
-      if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
-      }
-      
-      const input = insertAgentTaskSchema.parse({ ...req.body, organizationId: org.id });
-      const task = await storage.createAgentTask(input);
-      res.status(201).json(task);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, err.issues[0].message);
-      }
-      throw err;
-    }
-  });
+  // GET/POST /api/agents/tasks are GONE (customer autonomy clarity program,
+  // 2026-09-02, founder decision 7): the customer "Tasks / Deploy" lane was a
+  // dead-letter queue — rows it created were escalated by the processor and
+  // nothing a customer could reach ever cleared them — with an invented
+  // "$0.02 per task" price. The founder readers of agent_tasks stay (the
+  // table has other live writers); nothing customer-facing writes it now.
 
   // Get background agent statuses (for Agents tab in Command Center)
   api.get("/api/agents/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -1535,8 +1510,13 @@ export function registerAIRoutes(app: Express): void {
   // VA (VIRTUAL ASSISTANTS) SYSTEM
   // ============================================
   
-  // Get all VA agents for the organization
-  api.get("/api/va/agents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Get all VA agents for the organization.
+  // FOUNDER-ONLY (customer autonomy clarity program, 2026-09-02, founder
+  // decision 7): initializeVaAgents CREATES the per-org VA rows on first read,
+  // and those rows carry an `autonomyLevel` the customer surface no longer
+  // offers. The customer's one control is Settings → Pax; this lane is a
+  // founder instrument until it has a real rail.
+  api.get("/api/va/agents", isAuthenticated, getOrCreateOrg, requireFounder, async (req, res) => {
     try {
       const org = req.organization;
       const agents = await storage.initializeVaAgents(org.id);
@@ -1571,7 +1551,10 @@ export function registerAIRoutes(app: Express): void {
     settings: z.record(z.string(), z.unknown()).optional(),
   }).passthrough();
 
-  api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // FOUNDER-ONLY — see GET /api/va/agents above: this is the undocumented
+  // place a customer could set a VA "autonomyLevel"; the customer's stance
+  // lives in organizations.pax_controls (PATCH /api/pax/controls).
+  api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, requireFounder, async (req, res) => {
     try {
       const org = req.organization;
       const agentId = parseInt(req.params.id);
@@ -1746,19 +1729,11 @@ export function registerAIRoutes(app: Express): void {
     }
   });
   
-  // Process autonomous actions (for background job)
-  api.post("/api/va/actions/process-autonomous", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const { vaAgentService } = await import("./ai/vaService");
-      const org = req.organization;
-      
-      const result = await vaAgentService.processAutonomousActions(org.id);
-      res.json(result);
-    } catch (error: any) {
-      Errors.internal(res, error);
-    }
-  });
-  
+  // POST /api/va/actions/process-autonomous is GONE (customer autonomy
+  // clarity program, 2026-09-02, founder decision 7): it let any signed-in
+  // customer run vaService.processAutonomousActions — the one path that
+  // executed VA actions with no tap and no client caller.
+
   // Get briefings
   api.get("/api/va/briefings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

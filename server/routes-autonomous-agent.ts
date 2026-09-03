@@ -4,15 +4,23 @@
  * Endpoints for managing the autonomous agent system:
  *   - GET  /api/autonomous/agents              — list all agents + status
  *   - GET  /api/autonomous/agents/:type        — single agent status
- *   - PUT  /api/autonomous/agents/:type/config — update autonomy config
+ *   - PUT  /api/autonomous/agents/:type/config — update config (FOUNDER-ONLY)
  *   - GET  /api/autonomous/tasks               — list tasks (with filters)
- *   - POST /api/autonomous/tasks               — queue a new task manually
- *   - POST /api/autonomous/tasks/:id/approve   — approve escalated task
- *   - POST /api/autonomous/tasks/:id/reject    — reject escalated task
- *   - POST /api/autonomous/tasks/:id/run       — run a task immediately
+ *   - POST /api/autonomous/tasks/:id/run       — run a task immediately (FOUNDER-ONLY)
  *   - GET  /api/autonomous/tasks/pending-approval — tasks awaiting review
- *   - GET  /api/autonomous/decisions           — decision log
  *   - POST /api/autonomous/evaluate            — evaluate a hypothetical action
+ *
+ * Customer autonomy clarity program (2026-09-02, founder decision 7,
+ * AUTONOMY_SPEC.md §3d): the customer's ONE control is Settings → Pax
+ * (organizations.pax_controls, PATCH /api/pax/controls). This router was the
+ * undocumented place a signed-in customer could set `full_auto` on an
+ * engine and queue tasks for a processor that escalated every one of them.
+ * The processor (server/jobs/autonomousTaskProcessor.ts) is deleted, so
+ * POST /tasks, /tasks/:id/approve, /tasks/:id/reject and /trigger-processor —
+ * which only ever fed it — are gone with it; the two routes that still
+ * change or execute anything (PUT config, POST /tasks/:id/run) are
+ * founder-gated. The read-only task lists stay (the table has other live
+ * writers), as does the inert /evaluate preview.
  */
 
 import type { Express } from "express";
@@ -21,17 +29,10 @@ import { z } from "zod";
 import { db } from "./db";
 import { agentTasks, agentConfigs } from "@shared/schema";
 import { eq, and, desc, isNull, or } from "drizzle-orm";
-import { isAuthenticated } from "./auth";
+import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { autonomousAgentEngine, type AutonomyLevel, type ActionCategory } from "./services/autonomousAgentEngine";
-import {
-  queueAgentTask,
-  approveEscalatedTask,
-  rejectEscalatedTask,
-  runOnce,
-} from "./jobs/autonomousTaskProcessor";
 import { executeAgentTask, type CoreAgentType } from "./services/core-agents";
-import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
 const CORE_AGENT_TYPES: CoreAgentType[] = ["research", "deals", "communications", "operations"];
@@ -59,16 +60,6 @@ const autonomyConfigSchema = z.object({
   maxActionsPerDay: z.number().int().min(1).max(1000).optional(),
   notifyOnAction: z.boolean().optional(),
   customInstructions: z.string().max(2000).optional(),
-});
-
-const queueTaskSchema = z.object({
-  agentType: z.enum(["research", "deals", "communications", "operations"]),
-  action: z.string().min(1),
-  parameters: z.record(z.string(), z.any()).optional(),
-  relatedLeadId: z.number().int().optional(),
-  relatedPropertyId: z.number().int().optional(),
-  relatedDealId: z.number().int().optional(),
-  priority: z.number().int().min(1).max(10).optional(),
 });
 
 const evaluateActionSchema = z.object({
@@ -124,8 +115,8 @@ export function registerAutonomousAgentRoutes(app: Express): void {
     }
   });
 
-  // ── PUT /agents/:type/config ────────────────────────────────────────────────
-  router.put("/agents/:type/config", async (req, res) => {
+  // ── PUT /agents/:type/config — FOUNDER-ONLY ──────────────────────────────
+  router.put("/agents/:type/config", requireFounder, async (req, res) => {
     try {
       const org = req.organization;
       const { type } = req.params;
@@ -220,96 +211,9 @@ export function registerAutonomousAgentRoutes(app: Express): void {
     }
   });
 
-  // ── POST /tasks ─────────────────────────────────────────────────────────────
-  router.post("/tasks", async (req, res) => {
-    try {
-      const org = req.organization;
-      const parsed = queueTaskSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-
-      const taskId = await queueAgentTask(
-        org.id,
-        parsed.data.agentType,
-        parsed.data.action,
-        parsed.data.parameters || {},
-        {
-          relatedLeadId: parsed.data.relatedLeadId,
-          relatedPropertyId: parsed.data.relatedPropertyId,
-          relatedDealId: parsed.data.relatedDealId,
-        },
-        parsed.data.priority || 5
-      );
-
-      res.status(201).json({ taskId, message: "Task queued for autonomous processing" });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // ── POST /tasks/:id/approve ─────────────────────────────────────────────────
-  router.post("/tasks/:id/approve", async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user;
-      const taskId = parseInt(req.params.id);
-      const { notes } = req.body;
-
-      // Verify task belongs to org
-      const [task] = await db
-        .select()
-        .from(agentTasks)
-        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)))
-        .limit(1);
-
-      if (!task) {
-        return Errors.notFound(res, "Task");
-      }
-
-      // reviewedBy is a numeric reviewer id; user.id is a UUID. Follow the
-      // rosy-river convention of parseInt (non-numeric ids collapse to 0).
-      const reviewerId = parseInt(String(user.id), 10);
-      await approveEscalatedTask(taskId, Number.isNaN(reviewerId) ? 0 : reviewerId, notes);
-
-      // Immediately trigger the processor to pick it up
-      runOnce().catch(err => logger.error("[autonomous] Immediate run failed", err));
-
-      res.json({ message: "Task approved and queued for execution" });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // ── POST /tasks/:id/reject ──────────────────────────────────────────────────
-  router.post("/tasks/:id/reject", async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user;
-      const taskId = parseInt(req.params.id);
-      const { notes } = req.body;
-
-      const [task] = await db
-        .select()
-        .from(agentTasks)
-        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)))
-        .limit(1);
-
-      if (!task) {
-        return Errors.notFound(res, "Task");
-      }
-
-      const reviewerId = parseInt(String(user.id), 10);
-      await rejectEscalatedTask(taskId, Number.isNaN(reviewerId) ? 0 : reviewerId, notes);
-      res.json({ message: "Task rejected" });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // ── POST /tasks/:id/run ─────────────────────────────────────────────────────
+  // ── POST /tasks/:id/run — FOUNDER-ONLY ───────────────────────────────────
   // Execute a specific task immediately (bypass queue)
-  router.post("/tasks/:id/run", async (req, res) => {
+  router.post("/tasks/:id/run", requireFounder, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
@@ -433,18 +337,6 @@ export function registerAutonomousAgentRoutes(app: Express): void {
           decision
         ),
       });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // ── POST /trigger-processor ─────────────────────────────────────────────────
-  // Manually trigger a processor run (admin/debug)
-  router.post("/trigger-processor", async (req, res) => {
-    try {
-      // Fire and forget
-      runOnce().catch(err => logger.error("[autonomous] Manual trigger failed", err));
-      res.json({ message: "Processor triggered" });
     } catch (err: any) {
       Errors.internal(res, err);
     }

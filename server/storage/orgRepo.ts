@@ -81,29 +81,6 @@ export const orgRepo = {
     return updated;
   },
 
-  async updateOrganizationAISettings(this: DatabaseStorage, orgId: number, aiSettings: {
-    responseStyle?: "concise" | "detailed" | "balanced";
-    defaultAgent?: string;
-    autoSuggestions?: boolean;
-    rememberContext?: boolean;
-  }): Promise<void> {
-    const org = await this.getOrganization(orgId);
-    if (!org) throw new Error("Organization not found");
-
-    const currentSettings = org.settings || {};
-    const updatedSettings = {
-      ...currentSettings,
-      aiSettings: {
-        ...currentSettings.aiSettings,
-        ...aiSettings,
-      },
-    };
-
-    await db.update(organizations)
-      .set({ settings: updatedSettings, updatedAt: new Date() })
-      .where(eq(organizations.id, orgId));
-  },
-
   async getTrialTokens(this: DatabaseStorage, orgId: number): Promise<number> {
     const org = await this.getOrganization(orgId);
     if (!org) return 0;

@@ -723,47 +723,13 @@ export function registerOrganizationRoutes(app: Express): void {
     },
   );
 
-  // Update AI settings for the organization
-  api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, requirePermission("canAccessSettings"), async (req, res) => {
-    try {
-      const org = req.organization;
-      const aiSettings = req.body;
+  // PATCH /api/organization/ai-settings is GONE (customer autonomy clarity
+  // program, 2026-09-02, AUTONOMY_SPEC.md §3d): its four fields
+  // (responseStyle / defaultAgent / autoSuggestions / rememberContext) had
+  // zero server readers, and the one switch that mattered
+  // (aiSettings.paxDraftEnabled) now lives in organizations.pax_controls
+  // .inboxDrafts, written by PATCH /api/pax/controls.
 
-      const aiSettingsSchema = z.object({
-        responseStyle: z.enum(["concise", "detailed", "balanced"]).optional(),
-        defaultAgent: z.string().optional(),
-        autoSuggestions: z.boolean().optional(),
-        rememberContext: z.boolean().optional(),
-      });
-
-      const validatedSettings = aiSettingsSchema.parse(aiSettings);
-      await storage.updateOrganizationAISettings(org.id, validatedSettings);
-
-      try {
-        const user = req.user as any;
-        await storage.createAuditLogEntry({
-          organizationId: org.id,
-          userId: (user?.id || user?.id)?.toString() || null,
-          action: "update",
-          entityType: "organization_ai_settings",
-          entityId: org.id,
-          changes: { after: validatedSettings, fields: Object.keys(validatedSettings) },
-          ipAddress: req.ip || null,
-          userAgent: req.headers["user-agent"] || null,
-          metadata: {},
-        });
-      } catch (e) { /* non-fatal */ }
-
-      res.json({ success: true });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return Errors.validationFailed(res, error.issues);
-      }
-      logger.error("Update AI settings error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error);
-    }
-  });
-  
   // Get provider status (AI, SMS, Mail providers)
   api.get("/api/organization/providers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -777,9 +743,12 @@ export function registerOrganizationRoutes(app: Express): void {
       
       res.json({
         ai: {
+          // Which platform providers are configured — a FACT for the BYOK
+          // status chip, not a mode. The former `defaultTier`
+          // ("economy" / "premium") rendered as a "cost-saving / full-power
+          // mode" setting the customer could not change (spec §3d).
           openai: aiStatus.openai,
           openrouter: aiStatus.openrouter,
-          defaultTier: aiStatus.openrouter ? "economy" : "premium",
         },
         sms: {
           available: smsInfo.available,

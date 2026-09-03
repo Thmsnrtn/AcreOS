@@ -630,7 +630,9 @@ async function gatherPaxSuggests(orgId: number, now: Date): Promise<DecisionItem
     .limit(20);
 
   type Suggestion = {
-    id: string; suggestion: string; rationale: string; actionLabel: string; actionUrl: string; confidence: number;
+    id: string; suggestion: string; rationale: string; actionLabel: string; actionUrl: string;
+    /** A REAL model score (paxObservations.confidenceScore / 100); absent for rule-derived items. */
+    confidence?: number;
   };
   const suggestions: Suggestion[] = [];
 
@@ -698,25 +700,34 @@ async function gatherPaxSuggests(orgId: number, now: Date): Promise<DecisionItem
         rationale: `Last contacted ${daysText}. Re-engaging stale leads improves conversion rates.`,
         actionLabel: lead.email ? "Send Email" : "Create Task",
         actionUrl: `/leads?highlight=${lead.id}`,
-        confidence: 0.82,
+        // No confidence: this is a deterministic staleness RULE (21 days
+        // since last contact), not a model score. The former 0.82 was a
+        // fabricated number the client rendered as a threshold (spec §3d).
       });
     }
   }
 
-  return suggestions.slice(0, 3).map((s) => ({
-    id: `suggest-${s.id}`,
-    source: "pax-suggests" as const,
-    priority: s.confidence >= 0.85 ? "high" : s.confidence >= 0.7 ? "medium" : "low",
-    title: s.suggestion,
-    description: s.rationale,
-    actionLabel: s.actionLabel,
-    actionUrl: s.actionUrl,
-    rank: 400 + (1 - s.confidence) * 10,
-    confidence: s.confidence,
-    // Stale-lead suggestions ride a real 21-day silence clock; observation
-    // suggestions are opportunities, not deadlines → routine.
-    urgency: (s.id.startsWith("stale-") ? "time" : "routine") as QueueUrgency,
-  }));
+  return suggestions.slice(0, 3).map((s) => {
+    const confidence = typeof s.confidence === "number" ? s.confidence : null;
+    return {
+      id: `suggest-${s.id}`,
+      source: "pax-suggests" as const,
+      priority:
+        confidence === null ? "medium" : confidence >= 0.85 ? "high" : confidence >= 0.7 ? "medium" : "low",
+      title: s.suggestion,
+      description: s.rationale,
+      actionLabel: s.actionLabel,
+      actionUrl: s.actionUrl,
+      rank: 400 + (confidence === null ? 5 : (1 - confidence) * 10),
+      // Only a real model score is emitted; a rule-derived item carries none
+      // (the client's "Pax would handle" / Override pill read this field —
+      // both are gone, spec §3d).
+      ...(confidence !== null ? { confidence } : {}),
+      // Stale-lead suggestions ride a real 21-day silence clock; observation
+      // suggestions are opportunities, not deadlines → routine.
+      urgency: (s.id.startsWith("stale-") ? "time" : "routine") as QueueUrgency,
+    };
+  });
 }
 
 // ── AI action queue: mirrors the .actions slice of /api/dashboard/intelligence
@@ -837,6 +848,7 @@ interface BriefInputs {
   topCounter: string | null; // best Pax-priority headline if present
   curbSaves: number;         // portfolio alerts touched today
   lateNotes: number;
+  postedOvernight: number;   // completed payment rows in the last 24h (real rows)
   netInflow30: number;       // projected 30-day net (from cash strip)
   staleLeads: number;
   pipelineValue: number;
@@ -899,6 +911,7 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
     topCounter,
     curbSaves,
     lateNotes,
+    postedOvernight,
     netInflow30,
     staleLeads,
     pipelineValue,
@@ -930,10 +943,12 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
       return `${lateNotes} note${lateNotes === 1 ? "" : "s"} slipped overnight${counterInline} — funded paper still pencils ${money(netInflow30)} this month.`;
     case "note_servicer":
       // Servicers process payments; their verb is "posted".
-      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — Pax posted the rest, ${money(netInflow30)} cleared this month.`;
+      // "{n} posted" is a COUNT of completed payment rows in the last 24h —
+      // never "Pax posted the rest" (Pax posts nothing; spec §6).
+      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — ${postedOvernight} posted, ${money(netInflow30)} cleared this month.`;
     case "land_investor":
       // Land investors hunt parcels; their verb is "surfaced".
-      return `Pax surfaced ${paxReplies} parcel${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${staleLeads} you'd otherwise lose to the 21-day silence, still warm.`;
+      return `Pax surfaced ${paxReplies} parcel${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${staleLeads} gone quiet, still warm.`;
     case "fix_flipper":
       // Flippers run jobs; their verb is "swung" (as in swinging hammers / jobs in flight).
       return `${paxReplies} project update${paxReplies === 1 ? "" : "s"} swung in overnight${counterInline} — ${money(pipelineValue)} on the table this week.`;
@@ -1339,6 +1354,9 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       new Date(now.getTime() - (SPARK_BUCKETS - 1 - i) * BUCKET_DAYS * DAY_MS);
 
     let cashHistory: number[] = [];
+    // Completed payment rows whose processed/payment timestamp is within the
+    // last 24h — the brief's "{n} posted" (a real count, never a claim).
+    let postedOvernight = 0;
     try {
       const since = bucketStart(0);
       const rows = await db
@@ -1360,6 +1378,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         const ts = r.processedAt ?? r.paymentDate;
         if (!ts) continue;
         const d = new Date(ts).getTime();
+        if (d >= now.getTime() - DAY_MS && d <= now.getTime()) postedOvernight++;
         const idx = Math.floor((d - since.getTime()) / (BUCKET_DAYS * DAY_MS));
         if (idx < 0 || idx >= SPARK_BUCKETS) continue;
         buckets[idx] += parseFloat(String(r.amount ?? "0") || "0");
@@ -1433,6 +1452,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       topCounter,
       curbSaves,
       lateNotes: lateCount,
+      postedOvernight,
       netInflow30,
       staleLeads: stalledLeads,
       firstClosePrefix,

@@ -1,29 +1,32 @@
 import { Router } from "express";
-import { db, storage } from "./storage";
-import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
-import { paxObservations, paxNudges, leads, deals, leadActivities, properties } from "@shared/schema";
-import { isAuthenticated } from "./auth";
-import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
-import type { AuthenticatedRequest } from "./types/request";
-import { getUserId } from "./types/request";
-import { executeTool } from "./ai/tools";
-import { getOrgAutonomyLevel } from "./services/autonomyGuardrails";
+import { db } from "./db";
+import { storage } from "./storage";
+import { eq, and, asc, desc, gte, lte, gt, sql, inArray, isNull } from "drizzle-orm";
 import {
-  upsertPendingDraft,
-  claimDraftForSend,
-  recordDraftSendResult,
-} from "./services/paxDraftService";
+  paxObservations,
+  paxNudges,
+  leads,
+  deals,
+  properties,
+  pendingActions,
+  connectedMailboxes,
+  type PendingAction,
+} from "@shared/schema";
+import { logger } from "./utils/logger";
+import { Errors, sendError } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
+import { getOrganization, getUserId } from "./types/request";
 import {
   approvePendingAction,
   rejectPendingAction,
-  listPendingActions,
+  revisePendingAction,
   countPendingActions,
   toolChannel,
-  toolRecipientRef,
 } from "./services/approvalKernel";
-import type { PendingAction } from "@shared/schema";
+import { executeApprovedAsk } from "./services/paxAskExecutors";
+import { summarizeAsk } from "./services/paxAskSummary";
+import { getPaxControls } from "./services/paxControls";
+import { PARKED_STATES } from "@shared/pax-controls";
 import { z } from "zod";
 
 const router = Router();
@@ -431,207 +434,18 @@ router.get("/pax-suggestions", async (req, res) => {
   }
 });
 
-// ============================================================================
-// WITNESSED FIRST-FOLLOW-UP SEND (Maren / "Pax acted" proof)
-//
-// The minimum proof that Pax is an OPERATOR, not just an advisor: Pax drafts
-// the first follow-up to the stalest emailable lead, the human taps "Send",
-// and Pax sends it through the real autonomyGuardrails kernel (envelope + TCPA
-// + audit). NOTHING sends without an explicit human tap — the draft endpoint
-// never sends; only the approve-and-send endpoint does, and only when the
-// human invoked it.
-// ============================================================================
-
-const STALE_CUTOFF_DAYS = 21;
-
-/**
- * Finds the single best stale lead to follow up with: not closed/dead, has an
- * email, and is the most overdue for contact. Reuses the same staleness rule as
- * /pax-suggestions. Returns null when there's nothing actionable.
- */
-async function findStalestEmailableLead(orgId: number) {
-  const now = Date.now();
-  const cutoff = now - STALE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
-
-  const candidates = await db
-    .select({
-      id: leads.id,
-      firstName: leads.firstName,
-      lastName: leads.lastName,
-      email: leads.email,
-      status: leads.status,
-      lastContactedAt: leads.lastContactedAt,
-    })
-    .from(leads)
-    .where(eq(leads.organizationId, orgId))
-    .orderBy(leads.lastContactedAt)
-    .limit(50);
-
-  const stale = candidates.filter((l) => {
-    if (["closed", "dead", "lost"].includes(l.status ?? "")) return false;
-    if (!l.email) return false;
-    if (!l.lastContactedAt) return true; // never contacted ⇒ maximally stale
-    return new Date(l.lastContactedAt).getTime() < cutoff;
-  });
-
-  return stale[0] ?? null;
-}
-
-/** Build the follow-up draft for a stale lead. Deterministic, honest copy. */
-function buildFollowUpDraft(lead: { firstName: string | null; lastName: string | null }) {
-  const name = (lead.firstName || "there").trim();
-  const subject = `Following up on your land${lead.firstName ? `, ${name}` : ""}`;
-  const message =
-    `Hi ${name},\n\n` +
-    `I wanted to follow up and see if you're still thinking about your land. ` +
-    `If now's a good time to talk through your options — or if anything has changed — ` +
-    `just reply to this email and I'll get right back to you.\n\n` +
-    `Looking forward to hearing from you.`;
-  return { subject, message };
-}
-
-// GET /api/pax/first-follow-up/draft
-// Pax drafts (does NOT send) a follow-up to the stalest emailable lead.
-// 2026-06-10 (T0-6): the draft is now PERSISTED server-side at generation
-// time — approval references draftId + contentHash, never client content.
-router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
-  try {
-    const org = req.organization!;
-    const lead = await findStalestEmailableLead(org.id);
-    if (!lead) {
-      return res.json({ available: false, draft: null });
-    }
-    const { subject, message } = buildFollowUpDraft(lead);
-    const autonomyLevel = await getOrgAutonomyLevel(org.id);
-    const draftRow = await upsertPendingDraft({
-      organizationId: org.id,
-      leadId: lead.id,
-      channel: "email",
-      toAddress: lead.email!,
-      subject,
-      message,
-    });
-    return res.json({
-      available: true,
-      autonomyLevel,
-      lead: {
-        id: lead.id,
-        name: `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim(),
-        email: lead.email,
-      },
-      draftId: draftRow.id,
-      contentHash: draftRow.contentHash,
-      draft: { subject, message },
-    });
-  } catch (error: any) {
-    logger.error("Pax first-follow-up draft error", { error: error.message });
-    return Errors.internal(res, error);
-  }
-});
-
-// 2026-06-10 (T0-6): approval is by draftId + content hash. The old schema
-// took client-resupplied subject/message, which meant the human's tap blessed
-// whatever the client sent — approval was not bound to the draft Pax wrote.
-const approveSendSchema = z.object({
-  draftId: z.number().int().positive(),
-  contentHash: z.string().regex(/^[0-9a-f]{64}$/, "Invalid content hash"),
-});
-
-// POST /api/pax/first-follow-up/approve-and-send
-// The witnessed tap: the human approved this exact draft, so Pax sends the
-// STORED draft through the guarded send path ({ trustedApproval: true }
-// unlocks the kernel send) and emits a value event recording that Pax acted.
-// Idempotent: the pending→sent claim inside claimDraftForSend means a
-// double-tap sends once — the second tap returns the first result.
-router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedRequest, res) => {
-  try {
-    const org = req.organization!;
-    const parsed = approveSendSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.issues);
-    }
-    const { draftId, contentHash } = parsed.data;
-
-    const claim = await claimDraftForSend(org.id, draftId, contentHash);
-
-    if (claim.outcome === "not_found") {
-      return Errors.notFound(res, "Draft");
-    }
-    if (claim.outcome === "hash_mismatch") {
-      return Errors.badRequest(
-        res,
-        "This approval doesn't match the stored draft. Refresh, review the draft again, and re-approve.",
-      );
-    }
-    if (claim.outcome === "already_sent") {
-      // Second tap — return the first result instead of re-sending.
-      return res.json({
-        success: true,
-        sent: true,
-        alreadySent: true,
-        data: { messageId: claim.draft.sentMessageId ?? null },
-      });
-    }
-
-    const draft = claim.draft;
-
-    // Send the STORED draft through the real Pax tool path with the trusted
-    // server-side approval option. executeTool routes send_email through
-    // autonomyGuardrails: rate-limit + TCPA + recordAutonomousSend. Without
-    // trustedApproval this same call would return a draft and send nothing.
-    const result = await executeTool(
-      "send_email",
-      { lead_id: draft.leadId, subject: draft.subject, message: draft.message },
-      org,
-      { trustedApproval: true },
-    );
-
-    const messageId: string | null = (result.data as any)?.messageId ?? null;
-    // On failure this releases the claim back to 'pending' so the human can
-    // retry; on success it stores the provider message id for idempotent
-    // replays of the second tap.
-    await recordDraftSendResult(org.id, draft.id, {
-      success: result.success,
-      messageId,
-    });
-
-    if (!result.success) {
-      return Errors.badRequest(res, result.error || "Pax could not send the follow-up");
-    }
-
-    // Value event: a measurable record that Pax SENT something on the human's
-    // approval. This is the "Pax acted" signal the pricing thesis is built on.
-    await storage.logActivity({
-      organizationId: org.id,
-      agentType: "pax",
-      action: "pax_value_event",
-      entityType: "lead",
-      entityId: draft.leadId,
-      description: "Pax sent a witnessed first follow-up email after human approval",
-      metadata: {
-        valueEvent: "first_follow_up_sent",
-        channel: "email",
-        witnessed: true,
-        approvedByHuman: true,
-        draftId: draft.id,
-        messageId,
-      },
-    });
-
-    return res.json({ success: true, sent: true, data: result.data });
-  } catch (error: any) {
-    logger.error("Pax first-follow-up approve-and-send error", { error: error.message });
-    return Errors.internal(res, error);
-  }
-});
-
 // ── Approval kernel endpoints (2026-06-10, Tier 1A elevation blueprint) ─────
-// The ONLY path from a frozen pending_actions row to execution. executeTool
-// freezes every approval-required tool call as a pending_actions row; the
-// human tap lands here; the kernel re-verifies org ownership + expiry +
-// content hash against the FROZEN args and executes exactly that row with
-// the trusted server-side approval option. Idempotent: a double-tap returns
-// the first result instead of double-sending.
+// The ONLY path from a frozen pending_actions row to execution. The kernel
+// (executeTool / executeSupportTool / the borrower ladder) freezes every ask
+// as a pending_actions row; the human tap lands here; the kernel re-verifies
+// org ownership + expiry + content hash against the FROZEN args and replays
+// exactly that row through the rail that owns its tool name
+// (server/services/paxAskExecutors.ts). Idempotent: a double-tap returns the
+// first result instead of double-sending.
+//
+// The witnessed first-follow-up lane (paxDraftService + pax_drafts) that used
+// to sit here was a SECOND approval mechanism with zero client callers; it is
+// gone (AUTONOMY_SPEC.md §3d) — one kernel only.
 
 function parsePendingActionId(raw: string): number | null {
   const id = Number.parseInt(raw, 10);
@@ -641,24 +455,36 @@ function parsePendingActionId(raw: string): number | null {
 // POST /api/pax/pending-actions/:id/approve
 router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, res) => {
   try {
-    const org = req.organization!;
+    const org = getOrganization(req);
     const pendingActionId = parsePendingActionId(req.params.id);
     if (!pendingActionId) {
       return Errors.badRequest(res, "Invalid pending action id");
     }
     const userId = getUserId(req);
 
+    // The frozen source_ref rides along to the executor (a support ask's
+    // ticket, a borrower rung's note) — read org-scoped, never from the client.
+    const [frozen] = await db
+      .select({ sourceRef: pendingActions.sourceRef })
+      .from(pendingActions)
+      .where(and(eq(pendingActions.id, pendingActionId), eq(pendingActions.organizationId, org.id)))
+      .limit(1);
+    if (!frozen) return Errors.notFound(res, "Pending action");
+
     const outcome = await approvePendingAction({
       organizationId: org.id,
       pendingActionId,
       approvedByUserId: userId,
-      // The kernel executes EXACTLY the frozen row through the real tool
-      // path; trustedApproval is the server-side option the model can never
-      // set. Without it this same call would re-freeze instead of sending.
+      // The kernel executes EXACTLY the frozen row through the rail that
+      // owns the tool name, with the tap as the trusted approval. The
+      // executor writes the attributed receipt ("What Pax did") — one tap,
+      // one row; this route no longer logs its own pax_value_event.
       execute: (toolName, args) =>
-        executeTool(toolName, args as Record<string, any>, org, {
-          trustedApproval: true,
+        executeApprovedAsk(toolName, args, {
+          org,
           userId,
+          pendingActionId,
+          sourceRef: frozen.sourceRef ?? null,
         }),
     });
 
@@ -690,33 +516,14 @@ router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, re
           alreadyExecuted: true,
           result: outcome.result,
         });
-      case "executed": {
-        // Value event: a measurable record that Pax ACTED on a human's
-        // witnessed approval (same discipline as the first-follow-up send).
-        await storage.logActivity({
-          organizationId: org.id,
-          agentType: "pax",
-          action: "pax_value_event",
-          entityType: "pending_action",
-          entityId: outcome.action.id,
-          description: `Pax executed ${outcome.action.toolName} after human approval`,
-          metadata: {
-            valueEvent: "approved_action_executed",
-            toolName: outcome.action.toolName,
-            channel: toolChannel(outcome.action.toolName),
-            witnessed: true,
-            approvedByHuman: true,
-            pendingActionId: outcome.action.id,
-          },
-        });
+      case "executed":
         return res.json({ success: true, executed: true, result: outcome.result });
-      }
       default:
         // Exhaustive switch — unreachable; satisfies noImplicitReturns.
         return Errors.internal(res, new Error("Unhandled approval outcome"));
     }
-  } catch (error: any) {
-    logger.error("Pax pending-action approve error", { error: error.message });
+  } catch (error: unknown) {
+    logger.error("Pax pending-action approve error", error instanceof Error ? error : undefined);
     return Errors.internal(res, error);
   }
 });
@@ -724,7 +531,7 @@ router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, re
 // POST /api/pax/pending-actions/:id/reject
 router.post("/pending-actions/:id/reject", async (req: AuthenticatedRequest, res) => {
   try {
-    const org = req.organization!;
+    const org = getOrganization(req);
     const pendingActionId = parsePendingActionId(req.params.id);
     if (!pendingActionId) {
       return Errors.badRequest(res, "Invalid pending action id");
@@ -742,71 +549,242 @@ router.post("/pending-actions/:id/reject", async (req: AuthenticatedRequest, res
       return Errors.badRequest(res, "This action already executed and cannot be rejected.");
     }
     return res.json({ success: true, rejected: true });
-  } catch (error: any) {
-    logger.error("Pax pending-action reject error", { error: error.message });
+  } catch (error: unknown) {
+    logger.error("Pax pending-action reject error", error instanceof Error ? error : undefined);
     return Errors.internal(res, error);
   }
 });
 
-// ── Review-queue reads (autonomy clarity program, 2026-09-02) ───────────────
+// POST /api/pax/pending-actions/:id/revise { args } — Edit on the ask card
+// (AUTONOMY_SPEC.md §4.5). The human's args are validated against the tool's
+// OWN definition inside the kernel; the old row is claimed pending→rejected
+// and the revised row inserted in ONE transaction, so a double tap yields one
+// new row, one approval, one send. 200 { id } · 404 other org / missing ·
+// 409 not pending · 422 invalid args.
+const reviseSchema = z.object({ args: z.record(z.string(), z.unknown()) }).strict();
+
+router.post("/pending-actions/:id/revise", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = getOrganization(req);
+    const pendingActionId = parsePendingActionId(req.params.id);
+    if (!pendingActionId) {
+      return Errors.badRequest(res, "Invalid pending action id");
+    }
+    const parsed = reviseSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.issues);
+    }
+    const userId = getUserId(req);
+
+    const outcome = await revisePendingAction({
+      organizationId: org.id,
+      pendingActionId,
+      userId,
+      args: parsed.data.args as Record<string, unknown>,
+    });
+
+    if (outcome.ok) {
+      return res.json({ id: outcome.newId });
+    }
+    switch (outcome.reason) {
+      case "not_found":
+        return Errors.notFound(res, "Pending action");
+      case "not_pending":
+        return sendError(
+          res,
+          409,
+          "Conflict",
+          "This ask is no longer waiting — it was approved, rejected, edited or expired. Refresh to see the current one.",
+        );
+      case "invalid_args":
+        return Errors.validationFailed(res, outcome.details ?? []);
+      default:
+        return Errors.internal(res, new Error("Unhandled revision outcome"));
+    }
+  } catch (error: unknown) {
+    logger.error("Pax pending-action revise error", error instanceof Error ? error : undefined);
+    return Errors.internal(res, error);
+  }
+});
+
+// ── "Waiting for your tap" (autonomy clarity program, spec §4.5) ────────────
 // The customer-side view of the kernel's frozen rows: what is waiting on a
-// human tap right now. Same auth/org scoping as approve/reject above
-// (isAuthenticated + getOrCreateOrg at the mount; the org comes from
-// req.organization, never from the client). Each read is ONE indexed query
-// and shares the router-wide paxChatGuard (30/min) with chat — keep them
-// cheap; the badge polls slowly and refetches on `pending_action.created`.
+// human tap right now, SERVER-formatted by summarizeAsk so the rail, the
+// pinned strip, Today's queue and the support chat render one wording. Same
+// auth/org scoping as approve/reject above (isAuthenticated + getOrCreateOrg
+// at the mount; the org comes from req.organization, never from the client).
+// Each read is a couple of indexed queries and shares the router-wide
+// paxChatGuard (30/min) with chat — keep them cheap; the badge polls slowly
+// and refetches on `pax.needs_you`.
+
+const NEEDS_YOU_DEFAULT_LIMIT = 50;
+const NEEDS_YOU_MAX_LIMIT = 100;
+/** Expired asks stay listed this long under the glossary's expired line. */
+const EXPIRED_LISTING_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Card shape for one review-queue row. Never the raw row: resultSummary,
- * contentHash and the approver stay server-side; the card needs what a human
- * reads to decide — what, to whom, over which channel, and how long it lives.
+ * The statuses this queue reads for `pending_actions`, DERIVED from
+ * PARKED_STATES (shared/pax-controls.ts) — the same registry the page and
+ * tests/unit/needsYouCountIsComplete.test.ts read. A parked state added to
+ * the registry that this list does not read is exactly what that gate fails.
  */
-function pendingActionCard(row: PendingAction) {
-  const args = row.args as Record<string, unknown>;
-  return {
-    id: row.id,
-    toolName: row.toolName,
-    channel: toolChannel(row.toolName),
-    recipient: toolRecipientRef(row.toolName, args),
-    args,
-    createdAt: row.createdAt,
-    expiresAt: row.expiresAt,
-  };
+const PARKED_PENDING_ACTION_STATUSES: string[] = PARKED_STATES
+  .filter((s) => s.startsWith("pending_actions:"))
+  .map((s) => s.slice("pending_actions:".length));
+
+/**
+ * The org's live asks (parked, unexpired) ordered by expiry — soonest first —
+ * plus the asks that expired within the last 7 days, newest expiry first.
+ * Org-scoped in BOTH queries (asserted on the rendered SQL by the gates).
+ */
+async function readNeedsYouRows(organizationId: number, limit: number, now: Date) {
+  const live = await db
+    .select()
+    .from(pendingActions)
+    .where(
+      and(
+        eq(pendingActions.organizationId, organizationId),
+        inArray(pendingActions.status, PARKED_PENDING_ACTION_STATUSES),
+        gt(pendingActions.expiresAt, now),
+      ),
+    )
+    .orderBy(asc(pendingActions.expiresAt))
+    .limit(limit);
+  const expiredSince = new Date(now.getTime() - EXPIRED_LISTING_MS);
+  const expired = await db
+    .select()
+    .from(pendingActions)
+    .where(
+      and(
+        eq(pendingActions.organizationId, organizationId),
+        // A parked row past its TTL the sweep has not stamped yet reads as
+        // expired too — the readers apply the live predicate themselves.
+        inArray(pendingActions.status, [...PARKED_PENDING_ACTION_STATUSES, "expired"]),
+        lte(pendingActions.expiresAt, now),
+        gte(pendingActions.expiresAt, expiredSince),
+      ),
+    )
+    .orderBy(desc(pendingActions.expiresAt))
+    .limit(limit);
+  return { live, expired };
 }
 
-const PENDING_LIST_ROUTE_MAX = 100;
-
-// GET /api/pax/pending-actions?limit=50 — live (pending, unexpired) actions, newest first.
-router.get("/pending-actions", async (req: AuthenticatedRequest, res) => {
+/**
+ * The org's connected sending identity per channel, in the customer's
+ * words, for the card's "from" line. Read from the rows that prove a
+ * connection (an unrevoked BYOK credential; a connected mailbox) — a channel
+ * with no such row gets NO entry, and summarizeAsk prints the glossary's
+ * "no sending identity connected" line for it. Returns null when the lookup
+ * itself failed, so a failed read never prints as "nothing connected".
+ */
+async function resolveSendingIdentities(
+  organizationId: number,
+): Promise<Partial<Record<string, string>> | null> {
   try {
-    const org = req.organization!;
+    const { listByokCredentials } = await import("./services/byok/key-vault");
+    const credentials = await listByokCredentials(organizationId);
+    const active = new Set(credentials.filter((c) => !c.revokedAt).map((c) => c.channel));
+    const identities: Partial<Record<string, string>> = {};
+    if (active.has("twilio")) identities.sms = "your Twilio number";
+    else if (active.has("telnyx")) identities.sms = "your Telnyx number";
+    if (active.has("sendgrid")) identities.email = "your SendGrid sender";
+    else if (active.has("ses")) identities.email = "your Amazon SES sender";
+
+    const mailboxes = await db
+      .select({ provider: connectedMailboxes.provider, emailAddress: connectedMailboxes.emailAddress })
+      .from(connectedMailboxes)
+      .where(
+        and(
+          eq(connectedMailboxes.organizationId, organizationId),
+          eq(connectedMailboxes.status, "connected"),
+          isNull(connectedMailboxes.revokedAt),
+        ),
+      )
+      .limit(1);
+    const mailbox = mailboxes[0];
+    if (mailbox) {
+      const label = mailbox.provider === "gmail" ? "Gmail" : mailbox.provider === "outlook" ? "Outlook" : mailbox.provider;
+      identities.email = `your ${label} (${mailbox.emailAddress})`;
+    }
+    return identities;
+  } catch (error: unknown) {
+    logger.warn("[pax-insights] Could not read the org's sending identities — the card will not name one", {
+      orgId: organizationId,
+      metadata: { error: error instanceof Error ? error.message : String(error) },
+    });
+    return null;
+  }
+}
+
+/** Channels whose identity this route can verify from a row. Others get no "from" claim. */
+const RESOLVABLE_CHANNELS: ReadonlySet<string> = new Set(["sms", "email"]);
+
+// GET /api/pax/needs-you?limit=50
+router.get("/needs-you", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = getOrganization(req);
     const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
     const limit =
-      Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, PENDING_LIST_ROUTE_MAX) : 50;
-    const rows = await listPendingActions(org.id, { limit });
-    return res.json({ actions: rows.map(pendingActionCard) });
-  } catch (error: unknown) {
-    logger.error("Pax pending-actions list error", {
-      error: error instanceof Error ? error.message : String(error),
+      Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, NEEDS_YOU_MAX_LIMIT) : NEEDS_YOU_DEFAULT_LIMIT;
+    const now = new Date();
+
+    // Attribution only: the org's zone for the expiry line. A tap is the
+    // human acting; the stance never gates this read.
+    const controls = await getPaxControls(org.id);
+    const [{ live, expired }, identities] = await Promise.all([
+      readNeedsYouRows(org.id, limit, now),
+      resolveSendingIdentities(org.id),
+    ]);
+
+    const toItem = (row: PendingAction, status: "pending" | "expired") => {
+      const summary = summarizeAsk(
+        {
+          id: row.id,
+          toolName: row.toolName,
+          args: row.args as Record<string, unknown>,
+          status,
+          expiresAt: row.expiresAt,
+          origin: row.origin ?? null,
+          reason: row.reason ?? null,
+          sourceRef: row.sourceRef ?? null,
+        },
+        { timeZone: controls.timezone, identities: identities ?? undefined, now },
+      );
+      const channel = row.toolName === "send_borrower_reminder"
+        ? String((row.args as Record<string, unknown>).channel ?? "")
+        : toolChannel(row.toolName);
+      // No claim about a channel this route cannot verify from a row.
+      const from = identities && RESOLVABLE_CHANNELS.has(channel) ? summary.from : null;
+      return {
+        ...summary,
+        from,
+        id: row.id,
+        status,
+        expiresAt: row.expiresAt instanceof Date ? row.expiresAt.toISOString() : null,
+        createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
+      };
+    };
+
+    return res.json({
+      items: [...live.map((r) => toItem(r, "pending")), ...expired.map((r) => toItem(r, "expired"))],
     });
+  } catch (error: unknown) {
+    logger.error("Pax needs-you list error", error instanceof Error ? error : undefined);
     return Errors.internal(res, error);
   }
 });
 
-// GET /api/pax/pending-actions/count — badge count, same predicate as the list.
-router.get("/pending-actions/count", async (req: AuthenticatedRequest, res) => {
+// GET /api/pax/needs-you/count — badge count, the kernel's live predicate.
+router.get("/needs-you/count", async (req: AuthenticatedRequest, res) => {
   try {
-    const org = req.organization!;
+    const org = getOrganization(req);
     const count = await countPendingActions(org.id);
     return res.json({ count });
   } catch (error: unknown) {
-    logger.error("Pax pending-actions count error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error("Pax needs-you count error", error instanceof Error ? error : undefined);
     return Errors.internal(res, error);
   }
 });
-
 // PATCH /api/pax/nudges/:nudgeId/snooze
 router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
   try {

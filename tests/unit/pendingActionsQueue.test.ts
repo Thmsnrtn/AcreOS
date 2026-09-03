@@ -1,6 +1,6 @@
 /**
  * Review-queue plumbing for customer pending approvals (autonomy clarity
- * program, 2026-09-02).
+ * program, 2026-09-02; routes renamed to the frozen wave-1 contract).
  *
  * The approval kernel freezes every approval-required tool call as a
  * pending_actions row; until now the ONLY way to see those rows was the chat
@@ -15,17 +15,19 @@
  *     (the guarded UPDATE finds nothing on a re-run);
  *   - proposePendingAction publishes `pending_action.created` to the org's
  *     WebSocket channel for a genuinely new row, never for a reused duplicate,
- *     and a WS failure never fails the proposal;
- *   - GET /api/pax/pending-actions and /count are org-scoped: the mocked
+ *     and a WS failure never fails the proposal (wave-1 decision iii: this
+ *     event is KEPT alongside the count event `pax.needs_you`);
+ *   - GET /api/pax/needs-you and /needs-you/count are org-scoped: the mocked
  *     req.organization.id must reach the WHERE clause (asserted on the
- *     rendered SQL + params, not only on the filtered result).
+ *     rendered SQL + params, not only on the filtered result), and each item
+ *     is SERVER-formatted by summarizeAsk.
  *
  * The db mock follows tests/unit/approvalKernel.test.ts: an in-memory table
  * with drizzle WHERE / ORDER BY expressions rendered to SQL via PgDialect and
- * interpreted — extended here to understand `> now()` / `<= now()`, ORDER BY,
- * LIMIT and a `count(*)` projection. Every parser throws on a shape it does
- * not recognise (vacuity guard): a predicate the mock silently dropped would
- * read exactly like a predicate that is present.
+ * interpreted — extended here to understand `> now()` / `<= now()`, `in (…)`,
+ * ORDER BY, LIMIT and projections. Every parser throws on a shape it does not
+ * recognise (vacuity guard): a predicate the mock silently dropped would read
+ * exactly like a predicate that is present.
  *
  * idempotent: true — db + websocket fully mocked; no network, no Postgres.
  */
@@ -37,11 +39,12 @@ import request from "supertest";
 // ── In-memory pending_actions + rendered-query capture ──────────────────────
 
 const mem = vi.hoisted(() => ({
-  rows: [] as any[],
+  tables: { pending_actions: [] as any[], pax_sends: [] as any[] } as Record<string, any[]>,
   nextId: 1,
-  /** The most recent SELECT's rendered WHERE — the org-scoping pin reads this. */
-  lastSelect: null as null | { sql: string; params: unknown[] },
+  /** Every SELECT against pending_actions, in order — the org-scoping pins read these. */
+  selects: [] as Array<{ sql: string; params: unknown[] }>,
   broadcastToOrg: vi.fn(),
+  listByokCredentials: vi.fn(async () => [] as Array<{ channel: string; revokedAt: Date | null }>),
 }));
 
 vi.mock("../../server/db", async () => {
@@ -61,20 +64,25 @@ vi.mock("../../server/db", async () => {
     approved_by_user_id: "approvedByUserId",
     executed_at: "executedAt",
     result_summary: "resultSummary",
+    origin: "origin",
+    source_ref: "sourceRef",
+    reason: "reason",
     created_at: "createdAt",
+    pending_action_id: "pendingActionId",
+    channel: "channel",
+    recipient_ref: "recipientRef",
+    sent_at: "sentAt",
   };
 
   const render = (expr: unknown) => dialect.sqlToQuery(expr as any);
-
-  const assertTable = (table: any) => {
-    const name = getTableName(table);
-    if (name !== "pending_actions") throw new Error(`pendingActionsQueue mock: unexpected table ${name}`);
+  /** Dates compare as ms; a timestamp param drizzle mapped to its ISO string compares the same way. */
+  const scalar = (v: unknown): number | string | null => {
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return Date.parse(v);
+    return v as number | string | null;
   };
 
-  const scalar = (v: unknown): number | string | null =>
-    v instanceof Date ? v.getTime() : (v as number | string | null);
-
-  /** ANDed `"col" <op> ($n | now())` conditions → row predicate. */
+  /** ANDed `"col" <op> ($n | now())` and `"col" in ($n, …)` conditions → row predicate. */
   const matcher = (expr: unknown) => {
     const { sql, params } = render(expr);
     const conds: Array<(row: any) => boolean> = [];
@@ -100,86 +108,129 @@ vi.mock("../../server/db", async () => {
         }
       });
     }
+    const reIn = /(?:"[a-z_]+"\.)?"([a-z_]+)" in \(((?:\$\d+(?:, )?)+)\)/g;
+    while ((m = reIn.exec(sql)) !== null) {
+      const prop = COLUMN_TO_PROP[m[1]];
+      if (!prop) throw new Error(`pendingActionsQueue mock: unmapped column ${m[1]}`);
+      const values = m[2].split(", ").map((p) => scalar(params[Number(p.slice(1)) - 1]));
+      conds.push((row) => values.includes(scalar(row[prop])));
+    }
     if (conds.length === 0) throw new Error(`pendingActionsQueue mock: no conditions in: ${sql}`);
     // Every comparison in the rendered SQL must have been understood; a
-    // clause the regex skipped would silently widen the query.
-    const comparisons = (sql.match(/ (=|<>|>=|<=|>|<) /g) ?? []).length;
+    // clause the regexes skipped would silently widen the query.
+    const comparisons =
+      (sql.match(/ (=|<>|>=|<=|>|<) /g) ?? []).length + (sql.match(/" in \(/g) ?? []).length;
     if (comparisons !== conds.length) {
       throw new Error(`pendingActionsQueue mock: parsed ${conds.length}/${comparisons} comparisons in: ${sql}`);
     }
     return { pred: (row: any) => conds.every((c) => c(row)), sql, params };
   };
 
-  const orderer = (expr: unknown) => {
-    const { sql } = render(expr);
-    const m = /^(?:"[a-z_]+"\.)?"([a-z_]+)" (asc|desc)$/.exec(sql.trim());
-    if (!m) throw new Error(`pendingActionsQueue mock: unsupported ORDER BY: ${sql}`);
-    const prop = COLUMN_TO_PROP[m[1]];
-    if (!prop) throw new Error(`pendingActionsQueue mock: unmapped ORDER BY column ${m[1]}`);
-    const sign = m[2] === "desc" ? -1 : 1;
-    return (a: any, b: any) => sign * ((scalar(a[prop]) as number) - (scalar(b[prop]) as number));
+  const orderer = (exprs: unknown[]) => {
+    const keys = exprs.map((expr) => {
+      const { sql } = render(expr);
+      const m = /^(?:"[a-z_]+"\.)?"([a-z_]+)" (asc|desc)$/.exec(sql.trim());
+      if (!m) throw new Error(`pendingActionsQueue mock: unsupported ORDER BY: ${sql}`);
+      const prop = COLUMN_TO_PROP[m[1]];
+      if (!prop) throw new Error(`pendingActionsQueue mock: unmapped ORDER BY column ${m[1]}`);
+      return { prop, sign: m[2] === "desc" ? -1 : 1 };
+    });
+    return (a: any, b: any) => {
+      for (const k of keys) {
+        const d = (scalar(a[k.prop]) as number) - (scalar(b[k.prop]) as number);
+        if (d !== 0) return k.sign * d;
+      }
+      return 0;
+    };
   };
 
   const stage = (rows: any[]): any =>
     Object.assign(Promise.resolve(rows), {
-      orderBy: (expr: unknown) => stage([...rows].sort(orderer(expr))),
+      orderBy: (...exprs: unknown[]) => stage([...rows].sort(orderer(exprs))),
       limit: async (n: number) => rows.slice(0, n),
     });
 
-  const db = {
+  /** `select({ a: col, n: sql\`count(*)…\` })` — count, or a column pick. */
+  const project = (fields: Record<string, unknown>, rows: any[]) => {
+    const keys = Object.keys(fields);
+    const rendered = keys.map((k) => {
+      const f = fields[k] as { name?: string; queryChunks?: unknown };
+      // A bare column (`{ sourceRef: pendingActions.sourceRef }`) is not an
+      // SQL chunk; its column name is the projection.
+      return typeof f?.name === "string" && !f.queryChunks ? `"${f.name}"` : render(f).sql;
+    });
+    if (keys.length === 1 && /^count\(\*\)/.test(rendered[0])) return [{ [keys[0]]: rows.length }];
+    return rows.map((row) => {
+      const out: Record<string, unknown> = {};
+      keys.forEach((k, i) => {
+        const m = /"([a-z_]+)"$/.exec(rendered[i]);
+        const prop = m ? COLUMN_TO_PROP[m[1]] : undefined;
+        if (!prop) throw new Error(`pendingActionsQueue mock: unsupported projection ${rendered[i]}`);
+        out[k] = row[prop];
+      });
+      return out;
+    });
+  };
+
+  const table = (t: any) => {
+    const name = getTableName(t);
+    const rows = mem.tables[name];
+    if (!rows) throw new Error(`pendingActionsQueue mock: unexpected table ${name}`);
+    return { name, rows };
+  };
+
+  const db: any = {
     select: (fields?: Record<string, unknown>) => ({
-      from: (table: any) => ({
+      from: (t: any) => ({
         where: (expr: unknown) => {
-          assertTable(table);
+          // The sending-identity lookup reads connected mailboxes; none here.
+          if (getTableName(t) === "connected_mailboxes") return stage([]);
+          const { name, rows } = table(t);
           const { pred, sql, params } = matcher(expr);
-          mem.lastSelect = { sql, params };
-          const matched = mem.rows.filter(pred).map((r) => ({ ...r }));
-          if (fields) {
-            // Projection: only `count(*)` is used by the module under test.
-            const keys = Object.keys(fields);
-            const rendered = keys.map((k) => render(fields[k]).sql);
-            if (keys.length !== 1 || !/^count\(\*\)/.test(rendered[0])) {
-              throw new Error(`pendingActionsQueue mock: unsupported projection ${rendered.join(", ")}`);
-            }
-            return Promise.resolve([{ [keys[0]]: matched.length }]);
-          }
-          return stage(matched);
+          if (name === "pending_actions") mem.selects.push({ sql, params });
+          const matched = rows.filter(pred).map((r) => ({ ...r }));
+          return stage(fields ? project(fields, matched) : matched);
         },
       }),
     }),
-    insert: (table: any) => ({
+    insert: (t: any) => ({
       values: (vals: any) => {
-        assertTable(table);
+        const { name, rows } = table(t);
         let inserted: any[] | null = null;
         const run = () => {
           if (inserted) return inserted;
-          const row = {
-            status: "pending",
-            createdByUserId: null,
-            approvedByUserId: null,
-            executedAt: null,
-            resultSummary: null,
-            createdAt: new Date(),
-            ...vals,
-            id: mem.nextId++,
-          };
-          mem.rows.push(row);
+          const defaults =
+            name === "pending_actions"
+              ? {
+                  status: "pending",
+                  createdByUserId: null,
+                  approvedByUserId: null,
+                  executedAt: null,
+                  resultSummary: null,
+                  origin: null,
+                  sourceRef: null,
+                  reason: null,
+                  createdAt: new Date(),
+                }
+              : { sentAt: new Date() };
+          const row = { ...defaults, ...vals, id: mem.nextId++ };
+          rows.push(row);
           inserted = [{ ...row }];
           return inserted;
         };
         return Object.assign(Promise.resolve().then(run), { returning: async () => run() });
       },
     }),
-    update: (table: any) => ({
+    update: (t: any) => ({
       set: (vals: any) => ({
         where: (expr: unknown) => {
-          assertTable(table);
+          const { rows } = table(t);
           const { pred } = matcher(expr);
           let applied: any[] | null = null;
           const apply = () => {
             if (applied) return applied;
             applied = [];
-            for (const row of mem.rows) {
+            for (const row of rows) {
               if (pred(row)) {
                 Object.assign(row, vals);
                 applied.push({ ...row });
@@ -191,6 +242,7 @@ vi.mock("../../server/db", async () => {
         },
       }),
     }),
+    transaction: async (fn: (tx: any) => Promise<unknown>) => fn(db),
   };
   return { db };
 });
@@ -204,21 +256,28 @@ vi.mock("../../server/websocket", () => ({
 }));
 
 // routes-pax-insights.ts pulls in the whole Pax service graph at module load;
-// none of it is exercised by the two review-queue reads. Stubbed to keep this
+// none of it is exercised by the review-queue reads. Stubbed to keep this
 // suite hermetic — the kernel itself is REAL and runs against the mock db.
-vi.mock("../../server/storage", () => ({ db: {}, storage: {} }));
-vi.mock("../../server/auth", () => ({
-  isAuthenticated: (_req: unknown, _res: unknown, next: () => void) => next(),
+vi.mock("../../server/storage", () => ({ storage: {} }));
+vi.mock("../../server/ai/tools", () => ({ executeTool: vi.fn(), toolDefinitions: {} }));
+vi.mock("../../server/ai/supportAgent", () => ({ executeSupportTool: vi.fn(), supportToolDefinitions: {} }));
+vi.mock("../../server/services/paxAskExecutors", () => ({ executeApprovedAsk: vi.fn() }));
+vi.mock("../../server/services/paxControls", () => ({
+  getPaxControls: vi.fn(async () => ({
+    paused: false,
+    pausedUntil: null,
+    pausedBy: null,
+    checkFailed: false,
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    timezone: "UTC",
+  })),
+  paxControlsRefusalMessage: () => "",
 }));
-vi.mock("../../server/middleware/getOrCreateOrg", () => ({
-  getOrCreateOrg: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-vi.mock("../../server/ai/tools", () => ({ executeTool: vi.fn() }));
-vi.mock("../../server/services/autonomyGuardrails", () => ({ getOrgAutonomyLevel: vi.fn() }));
-vi.mock("../../server/services/paxDraftService", () => ({
-  upsertPendingDraft: vi.fn(),
-  claimDraftForSend: vi.fn(),
-  recordDraftSendResult: vi.fn(),
+vi.mock("../../server/services/byok/key-vault", () => ({
+  listByokCredentials: (...args: unknown[]) => mem.listByokCredentials(...(args as [])),
 }));
 
 import {
@@ -239,6 +298,8 @@ type Seed = Partial<{
   status: string;
   expiresAt: Date;
   createdAt: Date;
+  origin: string | null;
+  reason: string | null;
 }> & { organizationId: number };
 
 /** Insert a row directly (bypassing the kernel) with a live 24h TTL by default. */
@@ -256,9 +317,12 @@ function seed(s: Seed) {
     approvedByUserId: null,
     executedAt: null,
     resultSummary: null,
+    origin: s.origin ?? null,
+    sourceRef: null,
+    reason: s.reason ?? null,
     createdAt: s.createdAt ?? new Date(Date.now() - id * 1000),
   };
-  mem.rows.push(row);
+  mem.tables.pending_actions.push(row);
   return row;
 }
 
@@ -266,10 +330,13 @@ const past = (ms = HOUR) => new Date(Date.now() - ms);
 const future = (ms = HOUR) => new Date(Date.now() + ms);
 
 beforeEach(() => {
-  mem.rows = [];
+  mem.tables.pending_actions = [];
+  mem.tables.pax_sends = [];
   mem.nextId = 1;
-  mem.lastSelect = null;
+  mem.selects = [];
   mem.broadcastToOrg.mockReset();
+  mem.listByokCredentials.mockReset();
+  mem.listByokCredentials.mockResolvedValue([]);
 });
 
 // ── list / count ────────────────────────────────────────────────────────────
@@ -340,7 +407,7 @@ describe("sweepExpiredPendingActions — guarded, idempotent", () => {
     const flipped = await sweepExpiredPendingActions();
 
     expect(flipped).toBe(2);
-    const byId = (id: number) => mem.rows.find((r) => r.id === id)!;
+    const byId = (id: number) => mem.tables.pending_actions.find((r) => r.id === id)!;
     expect(byId(expiredA.id).status).toBe("expired");
     expect(byId(expiredB.id).status).toBe("expired");
     expect(byId(live.id).status).toBe("pending");
@@ -358,9 +425,9 @@ describe("sweepExpiredPendingActions — guarded, idempotent", () => {
     expect(await countPendingActions(ORG)).toBe(1);
 
     expect(await sweepExpiredPendingActions()).toBe(2);
-    const snapshot = JSON.stringify(mem.rows);
+    const snapshot = JSON.stringify(mem.tables.pending_actions);
     expect(await sweepExpiredPendingActions()).toBe(0);
-    expect(JSON.stringify(mem.rows)).toBe(snapshot);
+    expect(JSON.stringify(mem.tables.pending_actions)).toBe(snapshot);
 
     // And the sweep changed nothing a customer sees.
     expect(await countPendingActions(ORG)).toBe(1);
@@ -369,9 +436,9 @@ describe("sweepExpiredPendingActions — guarded, idempotent", () => {
 
   it("with nothing expired it returns 0 and writes nothing", async () => {
     seed({ organizationId: ORG });
-    const snapshot = JSON.stringify(mem.rows);
+    const snapshot = JSON.stringify(mem.tables.pending_actions);
     expect(await sweepExpiredPendingActions()).toBe(0);
-    expect(JSON.stringify(mem.rows)).toBe(snapshot);
+    expect(JSON.stringify(mem.tables.pending_actions)).toBe(snapshot);
   });
 });
 
@@ -379,12 +446,14 @@ describe("sweepExpiredPendingActions — guarded, idempotent", () => {
 
 describe("proposePendingAction publishes pending_action.created to the org", () => {
   const args = { lead_id: 42, subject: "Following up", message: "Hi there." };
+  const createdCalls = () => mem.broadcastToOrg.mock.calls.filter((c) => c[1] === "pending_action.created");
 
-  it("broadcasts { id } on the org channel for a NEW row", async () => {
+  it("broadcasts { id } on the org channel for a NEW row (alongside the pax.needs_you count)", async () => {
     const row = await proposePendingAction({ organizationId: ORG, toolName: "send_email", args });
 
-    expect(mem.broadcastToOrg).toHaveBeenCalledTimes(1);
+    expect(createdCalls()).toHaveLength(1);
     expect(mem.broadcastToOrg).toHaveBeenCalledWith(ORG, "pending_action.created", { id: row.id });
+    expect(mem.broadcastToOrg).toHaveBeenCalledWith(ORG, "pax.needs_you", { count: 1 });
   });
 
   it("does NOT broadcast again when a live duplicate is reused (nothing new to badge)", async () => {
@@ -392,7 +461,7 @@ describe("proposePendingAction publishes pending_action.created to the org", () 
     const second = await proposePendingAction({ organizationId: ORG, toolName: "send_email", args });
 
     expect(second.id).toBe(first.id);
-    expect(mem.broadcastToOrg).toHaveBeenCalledTimes(1);
+    expect(createdCalls()).toHaveLength(1);
   });
 
   it("a throwing broadcast never fails the proposal (row persisted, best-effort publish)", async () => {
@@ -403,8 +472,8 @@ describe("proposePendingAction publishes pending_action.created to the org", () 
     const row = await proposePendingAction({ organizationId: ORG, toolName: "send_sms", args: { lead_id: 1, message: "hi" } });
 
     expect(row.status).toBe("pending");
-    expect(mem.rows).toHaveLength(1);
-    expect(mem.broadcastToOrg).toHaveBeenCalledTimes(1);
+    expect(mem.tables.pending_actions).toHaveLength(1);
+    expect(createdCalls()).toHaveLength(1);
   });
 });
 
@@ -423,28 +492,48 @@ function appForOrg(organizationId: number) {
   return app;
 }
 
-describe("GET /api/pax/pending-actions — org-scoped card list", () => {
-  it("returns only the requesting org's live rows, shaped for a card", async () => {
+/** Every pending_actions SELECT the route rendered must bind THIS org and no other. */
+function expectEverySelectScopedTo(orgId: number, notOrgId: number) {
+  expect(mem.selects.length).toBeGreaterThan(0);
+  for (const s of mem.selects) {
+    expect(s.sql).toMatch(/"organization_id" = \$\d+/);
+    expect(s.params).toContain(orgId);
+    expect(s.params).not.toContain(notOrgId);
+  }
+}
+
+describe("GET /api/pax/needs-you — org-scoped, server-formatted card list", () => {
+  it("returns only the requesting org's live rows, shaped by summarizeAsk", async () => {
+    mem.listByokCredentials.mockResolvedValue([{ channel: "twilio", revokedAt: null }]);
     const mine = seed({
       organizationId: ORG,
       toolName: "send_sms",
       args: { phone_number: "+15555550100", message: "Your offer is ready." },
+      origin: "chat",
+      reason: "The seller asked for it by text.",
     });
-    seed({ organizationId: ORG, expiresAt: past() }); // lazily expired → hidden
     seed({ organizationId: OTHER_ORG, toolName: "send_email", args: { email: "other@example.com" } });
 
-    const res = await request(appForOrg(ORG)).get("/api/pax/pending-actions");
+    const res = await request(appForOrg(ORG)).get("/api/pax/needs-you");
 
     expect(res.status).toBe(200);
-    expect(res.body.actions).toHaveLength(1);
-    const card = res.body.actions[0];
-    expect(card).toEqual({
+    expect(res.body.items).toHaveLength(1);
+    const card = res.body.items[0];
+    expect(card).toMatchObject({
       id: mine.id,
       toolName: "send_sms",
-      channel: "sms",
-      recipient: "+15555550100",
-      args: mine.args,
-      createdAt: mine.createdAt.toISOString(),
+      status: "pending",
+      verb: "Text +15555550100",
+      to: "+15555550100",
+      from: "your Twilio number",
+      text: "Your offer is ready.",
+      why: "The seller asked for it by text.",
+      whyLabel: "Pax's explanation",
+      origin: "chat",
+      originPhrase: "from your chat",
+      parked: true,
+      expired: false,
+      alwaysAsks: true,
       expiresAt: mine.expiresAt.toISOString(),
     });
     // Server-side fields never reach the card.
@@ -452,44 +541,42 @@ describe("GET /api/pax/pending-actions — org-scoped card list", () => {
     expect(card).not.toHaveProperty("resultSummary");
     expect(card).not.toHaveProperty("approvedByUserId");
     expect(card).not.toHaveProperty("organizationId");
+    expect(card).not.toHaveProperty("args");
 
-    // THE pin: the mocked req.organization.id is IN the rendered WHERE, as a
-    // bound parameter — not merely "the result happened to be filtered".
-    expect(mem.lastSelect).not.toBeNull();
-    expect(mem.lastSelect!.sql).toMatch(/"organization_id" = \$\d+/);
-    expect(mem.lastSelect!.params).toContain(ORG);
-    expect(mem.lastSelect!.params).not.toContain(OTHER_ORG);
+    // THE pin: the mocked req.organization.id is IN the rendered WHERE of
+    // every pending_actions read, as a bound parameter — not merely "the
+    // result happened to be filtered".
+    expectEverySelectScopedTo(ORG, OTHER_ORG);
   });
 
   it("the other org sees its own rows and nothing of ours", async () => {
     seed({ organizationId: ORG });
     const theirs = seed({ organizationId: OTHER_ORG });
 
-    const res = await request(appForOrg(OTHER_ORG)).get("/api/pax/pending-actions");
+    const res = await request(appForOrg(OTHER_ORG)).get("/api/pax/needs-you");
 
     expect(res.status).toBe(200);
-    expect(res.body.actions.map((a: any) => a.id)).toEqual([theirs.id]);
-    expect(mem.lastSelect!.params).toContain(OTHER_ORG);
-    expect(mem.lastSelect!.params).not.toContain(ORG);
+    expect(res.body.items.map((a: any) => a.id)).toEqual([theirs.id]);
+    expectEverySelectScopedTo(OTHER_ORG, ORG);
   });
 
   it("?limit is honoured and clamped; garbage falls back to the default", async () => {
     for (let i = 0; i < 5; i++) seed({ organizationId: ORG });
 
-    expect((await request(appForOrg(ORG)).get("/api/pax/pending-actions?limit=2")).body.actions).toHaveLength(2);
-    expect((await request(appForOrg(ORG)).get("/api/pax/pending-actions?limit=banana")).body.actions).toHaveLength(5);
-    expect((await request(appForOrg(ORG)).get("/api/pax/pending-actions?limit=-3")).body.actions).toHaveLength(5);
+    expect((await request(appForOrg(ORG)).get("/api/pax/needs-you?limit=2")).body.items).toHaveLength(2);
+    expect((await request(appForOrg(ORG)).get("/api/pax/needs-you?limit=banana")).body.items).toHaveLength(5);
+    expect((await request(appForOrg(ORG)).get("/api/pax/needs-you?limit=-3")).body.items).toHaveLength(5);
   });
 
   it("an org with nothing waiting gets an empty list, not an error", async () => {
     seed({ organizationId: OTHER_ORG });
-    const res = await request(appForOrg(ORG)).get("/api/pax/pending-actions");
+    const res = await request(appForOrg(ORG)).get("/api/pax/needs-you");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ actions: [] });
+    expect(res.body).toEqual({ items: [] });
   });
 });
 
-describe("GET /api/pax/pending-actions/count — org-scoped badge count", () => {
+describe("GET /api/pax/needs-you/count — org-scoped badge count", () => {
   it("counts only the requesting org's live rows", async () => {
     seed({ organizationId: ORG });
     seed({ organizationId: ORG });
@@ -499,20 +586,19 @@ describe("GET /api/pax/pending-actions/count — org-scoped badge count", () => 
     seed({ organizationId: OTHER_ORG });
     seed({ organizationId: OTHER_ORG });
 
-    const mineRes = await request(appForOrg(ORG)).get("/api/pax/pending-actions/count");
+    const mineRes = await request(appForOrg(ORG)).get("/api/pax/needs-you/count");
     expect(mineRes.status).toBe(200);
     expect(mineRes.body).toEqual({ count: 2 });
-    expect(mem.lastSelect!.sql).toMatch(/"organization_id" = \$\d+/);
-    expect(mem.lastSelect!.params).toContain(ORG);
+    expectEverySelectScopedTo(ORG, OTHER_ORG);
 
-    const theirsRes = await request(appForOrg(OTHER_ORG)).get("/api/pax/pending-actions/count");
+    mem.selects = [];
+    const theirsRes = await request(appForOrg(OTHER_ORG)).get("/api/pax/needs-you/count");
     expect(theirsRes.body).toEqual({ count: 3 });
-    expect(mem.lastSelect!.params).toContain(OTHER_ORG);
-    expect(mem.lastSelect!.params).not.toContain(ORG);
+    expectEverySelectScopedTo(OTHER_ORG, ORG);
   });
 
   it("is not shadowed by the :id routes (count is a literal segment, not an id)", async () => {
-    const res = await request(appForOrg(ORG)).get("/api/pax/pending-actions/count");
+    const res = await request(appForOrg(ORG)).get("/api/pax/needs-you/count");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ count: 0 });
   });

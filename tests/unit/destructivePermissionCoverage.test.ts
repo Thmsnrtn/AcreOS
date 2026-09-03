@@ -197,11 +197,6 @@ const PRIVILEGED_ROUTES = [
     // denied billing access to. canManageBilling is true for OWNER ONLY, not
     // even admin.
   },
-  {
-    file: "server/routes-organization.ts",
-    match: 'api.patch("/api/organization/ai-settings"',
-    permission: "canAccessSettings",
-  },
 ] as const;
 
 describe("privileged non-delete mutations enforce their permission too", () => {

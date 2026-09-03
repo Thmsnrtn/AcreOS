@@ -159,12 +159,6 @@ export interface IStorage {
   getOrganizationByStripeCustomerId(customerId: string): Promise<Organization | undefined>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, updates: Partial<InsertOrganization>): Promise<Organization>;
-  updateOrganizationAISettings(orgId: number, aiSettings: {
-    responseStyle?: "concise" | "detailed" | "balanced";
-    defaultAgent?: string;
-    autoSuggestions?: boolean;
-    rememberContext?: boolean;
-  }): Promise<void>;
   consumeTrialToken(orgId: number): Promise<{ success: boolean; remaining: number }>;
   getTrialTokens(orgId: number): Promise<number>;
   
@@ -275,10 +269,10 @@ export interface IStorage {
   createAgentConfig(config: InsertAgentConfig): Promise<AgentConfig>;
   updateAgentConfig(id: number, updates: Partial<InsertAgentConfig>): Promise<AgentConfig>;
   
-  // Agent Tasks
-  getAgentTasks(orgId: number): Promise<AgentTask[]>;
+  // Agent Tasks. getAgentTasks / createAgentTask are GONE with the customer
+  // /api/agents/tasks lane (customer autonomy clarity program, 2026-09-02);
+  // the remaining writers of agent_tasks insert through db directly.
   getAgentTask(orgId: number, id: number): Promise<AgentTask | undefined>;
-  createAgentTask(task: InsertAgentTask): Promise<AgentTask>;
   updateAgentTask(id: number, updates: Partial<InsertAgentTask>): Promise<AgentTask>;
   
   // Conversations & Messages
@@ -1090,22 +1084,10 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Agent Tasks
-  async getAgentTasks(orgId: number) {
-    return await db.select().from(agentTasks)
-      .where(eq(agentTasks.organizationId, orgId))
-      .orderBy(desc(agentTasks.createdAt));
-  }
-  
   async getAgentTask(orgId: number, id: number) {
     const [task] = await db.select().from(agentTasks)
       .where(and(eq(agentTasks.organizationId, orgId), eq(agentTasks.id, id)));
     return task;
-  }
-  
-  async createAgentTask(task: InsertAgentTask) {
-    const [newTask] = await db.insert(agentTasks).values(task).returning();
-    await this.trackUsage(task.organizationId, "ai_request");
-    return newTask;
   }
   
   async updateAgentTask(id: number, updates: Partial<InsertAgentTask>, organizationId?: number) {

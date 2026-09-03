@@ -1,9 +1,14 @@
 import { db } from '../db';
-import { digestSubscriptions, organizations, leads, campaigns, notes, payments, teamMembers } from '@shared/schema';
-import { eq, and, gte, lte, sql, isNull, or, lt } from 'drizzle-orm';
+import { digestSubscriptions, organizations, leads, campaigns, notes, payments, teamMembers, pendingActions } from '@shared/schema';
+import { eq, and, gte, lte, sql, isNull, or, lt, gt } from 'drizzle-orm';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
+import { countPaxEffects } from "./paxReceiptsReader";
+
+/** Absolute base for the digest's deep links (same source as dunning.ts). */
+const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 
 export interface DigestData {
   organizationId: number;
@@ -32,6 +37,19 @@ export interface DigestData {
     campaignsOptimized: number;
     remindersScheduled: number;
   };
+  /**
+   * "Waiting for your tap" (AUTONOMY_SPEC.md §4.5): the org's live asks —
+   * pending_actions rows still parked and unexpired — and the soonest expiry
+   * among them. Both from the rows at generation time; null when none.
+   */
+  paxWaiting: { count: number; oldestExpiresAt: Date | null };
+  /**
+   * "What Pax did" over the period — three COUNTS over activity_log receipts
+   * (agent_type = 'pax') and the append-only pax_sends audit; never a tally.
+   */
+  paxDid: { recordChanges: number; rulesRan: number; approvedSends: number };
+  /** The org's IANA zone, for printing the expiry line; null when unknown. */
+  timeZone: string | null;
   recommendations: string[];
 }
 
@@ -144,6 +162,33 @@ export class DigestService {
       0
     );
 
+    // Pax: what is waiting on a tap right now, and what Pax / the org's rules
+    // did over the period — every number a query over real rows.
+    const now = new Date();
+    const [waitingRow] = await db
+      .select({
+        count: sql<number>`count(*)::int`,
+        oldest: sql<Date | null>`min(${pendingActions.expiresAt})`,
+      })
+      .from(pendingActions)
+      .where(
+        and(
+          eq(pendingActions.organizationId, organizationId),
+          eq(pendingActions.status, "pending"),
+          gt(pendingActions.expiresAt, now),
+        ),
+      );
+    const paxWaiting = {
+      count: Number(waitingRow?.count ?? 0),
+      oldestExpiresAt: waitingRow?.oldest instanceof Date ? waitingRow.oldest : null,
+    };
+    const paxDid = await countPaxEffects(organizationId, start);
+    const [orgRow] = await db
+      .select({ timezone: organizations.timezone })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    const timeZone = typeof orgRow?.timezone === "string" && orgRow.timezone ? orgRow.timezone : null;
+
     const recommendations: string[] = [];
     if (segmentCounts['cold'] > segmentCounts['hot'] * 2) {
       recommendations.push('Consider running a re-engagement campaign for cold leads');
@@ -179,8 +224,24 @@ export class DigestService {
         campaignsOptimized: allCampaigns.filter(c => c.lastOptimizedAt && new Date(c.lastOptimizedAt) >= start).length,
         remindersScheduled: 0,
       },
+      paxWaiting,
+      paxDid,
+      timeZone,
       recommendations,
     };
+  }
+
+  /**
+   * "Waiting for your tap (3, oldest expires Thu 9:14 am)" — the digest's
+   * one line about the queue. Zero renders as zero; no expiry, no clause.
+   */
+  formatPaxWaitingLine(digest: Pick<DigestData, "paxWaiting" | "timeZone">): string {
+    const { count, oldestExpiresAt } = digest.paxWaiting;
+    const oldest =
+      count > 0 && oldestExpiresAt
+        ? `, oldest expires ${formatPaxTime(oldestExpiresAt, digest.timeZone ?? undefined)}`
+        : "";
+    return `${PAX_LABELS.queue} (${count}${oldest})`;
   }
 
   formatDigestEmail(digest: DigestData): string {
@@ -242,6 +303,24 @@ export class DigestService {
       </div>
     </div>
     
+    <div class="section">
+      <h2>Pax</h2>
+      <p><a href="${APP_URL}/today">${this.formatPaxWaitingLine(digest)}</a></p>
+      <div class="stat">
+        <div class="stat-value">${digest.paxDid.recordChanges}</div>
+        <div class="stat-label">Record changes on its own</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">${digest.paxDid.rulesRan}</div>
+        <div class="stat-label">Rules ran</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">${digest.paxDid.approvedSends}</div>
+        <div class="stat-label">Sends you approved</div>
+      </div>
+      <p><a href="${APP_URL}/today">${PAX_LABELS.receipts} →</a></p>
+    </div>
+
     ${digest.recommendations.length > 0 ? `
     <div class="section">
       <h2>Recommendations</h2>
