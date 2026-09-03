@@ -4010,10 +4010,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   startSequenceProcessorJob(); // sequence processor, every 60 seconds
 
-  // Start autonomous agent task processor (every 30 seconds)
-  import('./autonomousTaskProcessor').then(({ startAutonomousTaskProcessor }) => {
-    startAutonomousTaskProcessor();
-  }).catch(err => logger.warn('[startup] autonomousTaskProcessor failed to start', err instanceof Error ? err : undefined));
+  // (The autonomous agent task processor — every 30 s, auto-executing
+  // agent_tasks rows — was deleted 2026-09-02, founder decision #7 of the
+  // customer autonomy clarity program. Nothing auto-executes those rows.)
 
   // Start scheduled task runner background job (every minute)
   startScheduledTaskRunnerJob();
@@ -4209,7 +4208,7 @@ export async function runScheduledJobs(): Promise<void> {
   // band; the two cred-dependent ones (backup / course-completion) self-skip cleanly until creds land.
   startLandCreditScoreRecalcJob();   // daily ~01:00 UTC
   startReferralMaturityJob();        // daily ~02:10 UTC
-  startPendingActionExpiryJob();     // daily ~02:20 UTC (pending_actions TTL sweep — review queue)
+  startPendingActionExpiryJob();     // every 5 min (pending_actions TTL sweep + ask_expired receipts — review queue)
   startIndexAnalyzerJob();           // daily ~02:00 UTC
   startFeatureEngineeringJob();      // weekly Sun ~02:30 UTC
   startDbBackupJob();                // daily ~07:00 UTC (dormant w/o DB_BACKUP_S3_BUCKET)

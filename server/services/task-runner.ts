@@ -3,7 +3,7 @@ import { workflowEngine } from "./workflow-engine";
 import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
-import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
+import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 
 const log = (msg: string, meta?: Record<string, any>) => 
   logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
@@ -97,23 +97,24 @@ class TaskRunnerService {
       return { success: false, error: "Task is paused" };
     }
 
-    // ── Pax pause (org-wide kill switch, pause coverage 2026-09-02) ───────
+    // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ──────────────
     // Scheduled tasks run workflows and agent skills unattended. While the
     // org is paused the task returns here exactly like the task-level
     // "paused" status above: nothing executes, nextRunAt is NOT advanced (so
     // the task is due again next tick and runs the moment the pause lifts),
     // retryCount is untouched, and the task is never marked failed. Fails
-    // CLOSED on a failed pause read.
-    const pause = await getPaxPauseState(task.organizationId);
-    if (pause.paused) {
+    // CLOSED on a failed controls read. The refusal is glossary copy.
+    const controls = await getPaxControls(task.organizationId);
+    if (controls.paused) {
       log(`Task skipped — Pax is paused for this org`, {
+        reason: "skipped_paused",
         taskId,
         name: task.name,
         organizationId: task.organizationId,
-        pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-        checkFailed: pause.checkFailed,
+        pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+        checkFailed: controls.checkFailed,
       });
-      return { success: false, skippedPaused: true, error: paxPauseRefusalMessage(pause) };
+      return { success: false, skippedPaused: true, error: paxControlsRefusalMessage(controls) };
     }
 
     log(`Running task`, { taskId, name: task.name, type: task.type });

@@ -14,7 +14,8 @@ import {
 } from "./compliance/contactFrequency";
 import crypto from "crypto";
 import { logger } from '../utils/logger';
-import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
+import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
+import { recordPaxEffect } from "./paxReceipts";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -26,6 +27,17 @@ type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; 
  * sent — this type is how the caller finds out what actually happened.
  */
 export type StepSendStatus = "sent" | "skipped" | "deferred" | "failed";
+
+/**
+ * The delivery-timeline status a step is recorded under when the org's Pax
+ * pause deferred it (AUTONOMY_SPEC.md §4.4 — `deferred_paused`, the reason
+ * code UNATTENDED_PATHS carries for sequences). Distinct from a frequency or
+ * quiet-hours deferral so the operator can see WHY the touch waited. The
+ * StepSendResult the caller sees is still "deferred": the step is not
+ * consumed, and the enrollment is rescheduled for the moment the pause lifts.
+ */
+const STEP_SKIP_DEFERRED_PAUSED = "deferred_paused" as const;
+type StepSkipStatus = Exclude<StepSendStatus, "sent"> | typeof STEP_SKIP_DEFERRED_PAUSED;
 
 export interface StepSendResult {
   status: StepSendStatus;
@@ -302,10 +314,13 @@ export class SequenceProcessorService {
    * Send one sequence step.
    *
    * GATE ORDER (never reordered, never bypassed):
-   *   0. Pax pause (org-wide kill switch) — DEFERS the step, never consumes
-   *      it; checked first because it is a customer's explicit "stop", and
-   *      a stopped machine has no business evaluating consent for a send it
-   *      will not make. Added 2026-09-02 (pause coverage).
+   *   0. Pax controls (the one reader; pause folded in) — a paused org's step
+   *      is DEFERRED as `deferred_paused`, never consumed; checked first
+   *      because it is a customer's explicit "stop", and a stopped machine
+   *      has no business evaluating consent for a send it will not make.
+   *      The stance does NOT gate a sequence (rules the customer turned on
+   *      run at either stance — stated on the Pax page); it is read here
+   *      only so the receipt can say under what.
    *   1. TCPA consent / doNotContact  — canSendViaChannel
    *   2. Recipient-local quiet hours  — SMS only, DST-correct
    *   3. Contact-frequency cap        — the fatigue detector's `suppress`
@@ -320,17 +335,18 @@ export class SequenceProcessorService {
     const lead = enrollment.lead;
     const channel = step.channel as ContactChannel;
 
-    // ── Gate 0: Pax pause ────────────────────────────────────────────────
-    // Sequences send unattended, so "Pause all Pax automation" must hold
-    // here. A paused step is DEFERRED: the caller keeps currentStep put and
+    // ── Gate 0: Pax controls (pause folded in) ───────────────────────────
+    // Sequences send unattended, so the one red button must hold here. A
+    // paused step is DEFERRED: the caller keeps currentStep put and
     // reschedules for the pause expiry (or MIN_DEFER_MS out when the expiry
     // is unknown — including a failed read, which fails CLOSED). Recorded on
-    // the delivery timeline with the honest reason, exactly like the
-    // frequency-cap deferral below.
-    const pause = await getPaxPauseState(enrollment.sequence.organizationId);
-    if (pause.paused) {
-      const reason = paxPauseRefusalMessage(pause);
-      const retryAt = pause.pausedUntil ?? new Date(Date.now() + MIN_DEFER_MS);
+    // the delivery timeline as `deferred_paused` with the glossary reason —
+    // deferred, never dropped: on resume the frequency cap and quiet hours
+    // below still meter every deferred touch.
+    const controls = await getPaxControls(enrollment.sequence.organizationId);
+    if (controls.paused) {
+      const reason = paxControlsRefusalMessage(controls);
+      const retryAt = controls.pausedUntil ?? new Date(Date.now() + MIN_DEFER_MS);
       logger.info("[sequence-processor] Step deferred — Pax is paused for this org", {
         metadata: {
           enrollmentId: enrollment.id,
@@ -338,12 +354,12 @@ export class SequenceProcessorService {
           leadId: lead.id,
           channel: step.channel,
           stepNumber: step.stepNumber,
-          pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-          checkFailed: pause.checkFailed,
+          pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+          checkFailed: controls.checkFailed,
           retryAt: retryAt.toISOString(),
         },
       });
-      await this.recordStepSkip(enrollment, step, reason);
+      await this.recordStepSkip(enrollment, step, reason, STEP_SKIP_DEFERRED_PAUSED);
       return { status: "deferred", reason, retryAt };
     }
 
@@ -425,6 +441,24 @@ export class SequenceProcessorService {
 
       logger.info("[sequence-processor] Sent message", { metadata: { channel: step.channel, leadId: lead.id, enrollmentId: enrollment.id, stepNumber: step.stepNumber } });
 
+      // "What Pax did" (spec §4.7): a rule the customer turned on sent a
+      // message from their own connected account. Written only on a real
+      // send; never throws into the send path.
+      await recordPaxEffect({
+        orgId: enrollment.sequence.organizationId,
+        actor: "rule",
+        origin: "engine",
+        engine: "sequences",
+        stance: controls.checkFailed ? null : controls.stance,
+        action: "sequence_step_sent",
+        entityType: "lead",
+        entityId: lead.id,
+        description: `${String(step.channel).toUpperCase()} sent — sequence "${enrollment.sequence.name}" step ${step.stepNumber}`,
+        after: { channel: step.channel, stepNumber: step.stepNumber, sequenceId: enrollment.sequenceId },
+        enrollmentId: enrollment.id,
+        witnessed: false,
+      });
+
       // Contact-frequency ledger. SMS records its own touch inside the send
       // choke point (sendOrgSMS), so recording it again here would
       // double-count one message; email and direct mail have no choke point
@@ -472,7 +506,7 @@ export class SequenceProcessorService {
     enrollment: EnrollmentWithDetails,
     step: SequenceStep,
     reason: string,
-    status: Exclude<StepSendStatus, "sent"> = "deferred",
+    status: StepSkipStatus = "deferred",
   ): Promise<void> {
     try {
       const campaignId = enrollment.lead.sourceCampaignId || enrollment.lead.campaignId;

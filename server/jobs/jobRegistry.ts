@@ -173,8 +173,10 @@ export const JOB_ROSTER: JobRosterEntry[] = [
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
   // W5.1 — former bare setIntervals routed through the runtime (2026-07).
-  // The task processor auto-executes agent actions: critical.
-  { name: "autonomous_task_processor", intervalMs: 30 * 1000, critical: true },
+  // (autonomous_task_processor was deleted 2026-09-02 — founder decision #7
+  // of the customer autonomy clarity program: the customer "Tasks / Deploy
+  // Agent" lane was a dead-letter queue with an invented price. Its rows
+  // still exist for the founder readers; nothing auto-executes them.)
   { name: "atlas_pending_confirmation_nudge", intervalMs: MIN, critical: false },
   // founder_digest took the job lock (job_health_logs rows existed) but was
   // never rostered — locked yet invisible to the deadman. Daily send window
@@ -353,7 +355,9 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // TTL to 'expired'. Bookkeeping only — every reader already applies
   // expires_at > now() itself, so a dark sweep degrades the audit trail's
   // status column, never what a customer sees.
-  { name: "pending_action_expiry_sweep", intervalMs: DAY, critical: false, cron: "20 2 * * *" },
+  // Review-queue TTL sweep: every 5 minutes (wave 1, 2026-09-02 — an ask
+  // that expired at 9:14 reads "expired" by 9:19 and leaves its receipt).
+  { name: "pending_action_expiry_sweep", intervalMs: 5 * MIN, critical: false },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
   // Tier 3F — cross-org data co-op: monthly privacy-preserving county
   // rollups (k>=5 floor enforced in the aggregation). Production check on

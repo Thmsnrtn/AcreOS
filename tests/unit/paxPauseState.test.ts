@@ -5,15 +5,23 @@
  * The SUT fires two awaited select chains per call:
  *   1. org owner's users.autonomyPreferences (users ⋈ organizations.ownerId)
  *   2. active team members' users.autonomyPreferences (users ⋈ teamMembers)
- * Each test enqueues the two rows-arrays those reads should return.
+ * Each test enqueues the two rows-arrays those reads should return. Rows
+ * carry `{ id, firstName, lastName, prefs }` — the same shape the read
+ * selects, so the HOLDER (spec §4.2: "extended to return the holder") comes
+ * from the rows the expiry came from, not from a second lookup.
  *
  * Invariants proven here:
  *   - a FUTURE pax.pausedUntil on the owner OR any active member → paused
  *   - a PAST pax.pausedUntil → NOT paused (expiry is implicit, no cron)
- *   - the latest future pause wins when several users hold one
+ *   - the latest future pause wins when several users hold one — and the
+ *     holder is the person whose pause that is, by name
+ *   - a nameless holder is "a teammate" (glossary), never a fabricated name;
+ *     a row with no user id yields no holder at all
  *   - malformed / missing prefs → not paused
- *   - a failed DB read FAILS CLOSED (paused: true, checkFailed: true) and the
- *     refusal message for that case never invents an expiry time
+ *   - a failed DB read FAILS CLOSED (paused: true, checkFailed: true, no
+ *     holder) and the refusal message for that case never invents an expiry
+ *   - refusals are glossary copy: a local "Thu 8:00 am" time, "Settings →
+ *     Pax", never an ISO string
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,6 +81,10 @@ function ownerRow(pausedUntil?: string) {
   return { prefs: pausedUntil ? { pax: { pausedUntil } } : { pax: {} } };
 }
 
+function namedRow(id: string, firstName: string | null, lastName: string | null, pausedUntil?: string) {
+  return { id, firstName, lastName, prefs: pausedUntil ? { pax: { pausedUntil } } : { pax: {} } };
+}
+
 beforeEach(() => {
   mocks.setThrow(null);
   mocks.setSelectQueue([[], []]);
@@ -98,11 +110,35 @@ describe("getPaxPauseState — org-level pause semantics", () => {
     expect(state.pausedUntil?.toISOString()).toBe(FUTURE);
   });
 
-  it("the LATEST future pause wins when several users hold one", async () => {
-    mocks.setSelectQueue([[ownerRow(FUTURE)], [ownerRow(FURTHER_FUTURE)]]);
+  it("the LATEST future pause wins when several users hold one — and names its holder", async () => {
+    mocks.setSelectQueue([
+      [namedRow("u-owner", "Owen", "Owner", FUTURE)],
+      [namedRow("u-1", "Sam", "Other", FUTURE), namedRow("u-2", "Maria", "Lopez", FURTHER_FUTURE)],
+    ]);
     const state = await getPaxPauseState(7);
     expect(state.paused).toBe(true);
     expect(state.pausedUntil?.toISOString()).toBe(FURTHER_FUTURE);
+    expect(state.pausedBy).toEqual({ userId: "u-2", name: "Maria Lopez" });
+  });
+
+  it("a nameless holder is 'a teammate' — never a fabricated name", async () => {
+    mocks.setSelectQueue([[namedRow("u-owner", null, null, FUTURE)], []]);
+    const state = await getPaxPauseState(7);
+    expect(state.pausedBy).toEqual({ userId: "u-owner", name: "a teammate" });
+  });
+
+  it("a holding row with no user id yields no holder (pause still holds)", async () => {
+    mocks.setSelectQueue([[ownerRow(FUTURE)], []]);
+    const state = await getPaxPauseState(7);
+    expect(state.paused).toBe(true);
+    expect(state.pausedBy).toBeNull();
+  });
+
+  it("not paused → no holder", async () => {
+    mocks.setSelectQueue([[namedRow("u-owner", "Owen", "Owner", PAST)], []]);
+    const state = await getPaxPauseState(7);
+    expect(state.paused).toBe(false);
+    expect(state.pausedBy).toBeNull();
   });
 
   it("a PAST pausedUntil does NOT pause — expiry is implicit, no cron needed", async () => {
@@ -128,17 +164,21 @@ describe("getPaxPauseState — org-level pause semantics", () => {
     expect(state.paused).toBe(true);
     expect(state.checkFailed).toBe(true);
     expect(state.pausedUntil).toBeNull();
+    expect(state.pausedBy).toBeNull();
   });
 });
 
-describe("paxPauseRefusalMessage — honest, user-visible refusals", () => {
-  it("names the resume time and where to resume", async () => {
-    mocks.setSelectQueue([[ownerRow(FUTURE)], []]);
+describe("paxPauseRefusalMessage — honest, user-visible refusals (glossary copy)", () => {
+  it("names the resume time as a local time, the holder, and where to resume — never an ISO string", async () => {
+    mocks.setSelectQueue([[namedRow("u-owner", "Maria", "Lopez", FUTURE)], []]);
     const state = await getPaxPauseState(7);
     const msg = paxPauseRefusalMessage(state);
     expect(msg).toContain("Pax is paused until");
-    expect(msg).toContain(FUTURE);
-    expect(msg).toContain("Settings");
+    expect(msg).toMatch(/\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2} (am|pm)\b/);
+    expect(msg).not.toContain(FUTURE);
+    expect(msg).toContain("paused by Maria Lopez");
+    expect(msg).toMatch(/Settings → Pax\b/);
+    expect(msg).not.toContain("Pax controls");
   });
 
   it("never invents an expiry when the check failed — says so plainly", async () => {
@@ -146,7 +186,7 @@ describe("paxPauseRefusalMessage — honest, user-visible refusals", () => {
     const state = await getPaxPauseState(7);
     const msg = paxPauseRefusalMessage(state);
     expect(msg).toContain("could not verify");
-    expect(msg).toContain("not executed");
+    expect(msg).toContain("wasn't done");
     expect(msg).not.toContain("paused until");
   });
 });

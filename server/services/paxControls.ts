@@ -21,16 +21,21 @@
  * A NULL column is not an error: it means "never set" and reads as
  * PAX_CONTROLS_DEFAULTS, which equal today's live behaviour.
  *
- * Wave-1 consumers: executeTool / executeSupportTool (A), the engines in
- * §4.4 (B), GET/PATCH /api/pax/controls (C). Wave 0 consumer:
- * server/services/paxAskExecutors.ts (stance attribution on the receipt).
+ * Consumers: executeTool / executeSupportTool (the kernel), every engine in
+ * §4.4 (paxScheduler, leadCampaignJobs / leadNurturer, paxNudges / alerting,
+ * workflow-engine, sequenceProcessor, task-runner, financeAgent), the
+ * routes-pax-controls surface, paxAskExecutors and the expiry sweep (stance
+ * attribution on receipts).
+ *
+ * The pause holder ({ userId, name }) comes from the primitive itself —
+ * getPaxPauseState resolves it from the same rows it reads for the expiry
+ * (one read, not three); this module only passes it through.
  */
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { organizations, teamMembers } from "@shared/schema";
-import { users } from "@shared/models/auth";
+import { organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { getPaxPauseState } from "./paxPause";
 import {
@@ -40,7 +45,7 @@ import {
   type PaxControls,
   type PaxStance,
 } from "@shared/pax-controls";
-import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { PAX_PAUSE_COPY } from "@shared/pax-glossary";
 
 export interface PaxControlsState extends PaxControls {
   /** True while the org is paused — or while the pause could not be read. */
@@ -92,53 +97,6 @@ function describeStored(value: unknown): string {
     return JSON.stringify(value)?.slice(0, 200) ?? String(value);
   } catch {
     return String(value);
-  }
-}
-
-/**
- * Who holds the latest active pause. paxPause.ts reads the same two
- * populations (owner + active members) for the expiry; this resolves the
- * NAME for the one whose `pax.pausedUntil` is that expiry. Best-effort:
- * a failure here yields null, never a fabricated holder and never a
- * changed pause state. When paxPause.ts is extended to return the holder
- * (spec §4.2), delete this and read it from there.
- */
-async function resolvePauseHolder(
-  orgId: number,
-  pausedUntil: Date,
-): Promise<{ userId: string; name: string } | null> {
-  try {
-    const shape = {
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      prefs: users.autonomyPreferences,
-    };
-    const ownerRows = await db
-      .select(shape)
-      .from(users)
-      .innerJoin(organizations, eq(organizations.ownerId, users.id))
-      .where(eq(organizations.id, orgId));
-    const memberRows = await db
-      .select(shape)
-      .from(users)
-      .innerJoin(teamMembers, eq(teamMembers.userId, users.id))
-      .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.isActive, true)));
-
-    const target = pausedUntil.getTime();
-    for (const row of [...ownerRows, ...memberRows]) {
-      const iso = row.prefs?.pax?.pausedUntil;
-      if (typeof iso !== "string" || Date.parse(iso) !== target) continue;
-      const name = [row.firstName, row.lastName].filter(Boolean).join(" ").trim();
-      return { userId: row.id, name: name || PAX_LABELS.unknownHolder };
-    }
-    return null;
-  } catch (err) {
-    logger.warn("[paxControls] Pause holder lookup failed — reporting no holder", {
-      orgId,
-      metadata: { error: err instanceof Error ? err.message : String(err) },
-    });
-    return null;
   }
 }
 
@@ -201,10 +159,9 @@ export async function getPaxControls(orgId: number): Promise<PaxControlsState> {
   // switches close too. paxPause already reports paused:true for it.
   if (pause.checkFailed) controls = { ...CLOSED };
 
-  const pausedBy =
-    pause.paused && !pause.checkFailed && pause.pausedUntil
-      ? await resolvePauseHolder(orgId, pause.pausedUntil)
-      : null;
+  // The holder rides along from the primitive. A failed pause read carries no
+  // holder (and no expiry) — nothing is invented for the refusal line.
+  const pausedBy = pause.paused && !pause.checkFailed ? (pause.pausedBy ?? null) : null;
 
   return {
     ...controls,

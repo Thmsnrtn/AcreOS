@@ -88,14 +88,31 @@ vi.mock("../../server/services/emailService", () => ({
   emailService: { sendEmail: (...args: any[]) => sendEmail(...(args as [any])) },
 }));
 
-// The engine consults the org's Pax pause before every ACTING step (pause
-// coverage, 2026-09-02). getPaxPauseState fails CLOSED, so without this mock
-// every step below would come back "blocked" instead of exercising the rails
-// this suite is about. The gate's own behaviour is pinned in
-// tests/unit/paxPauseWorkflowEngine.test.ts.
-vi.mock("../../server/services/paxPause", () => ({
-  getPaxPauseState: async () => ({ paused: false, pausedUntil: null, checkFailed: false }),
-  paxPauseRefusalMessage: () => "Pax is paused",
+// The engine consults the org's Pax controls once per action loop (the ONE
+// reader, AUTONOMY_SPEC.md §4.4). getPaxControls fails CLOSED, so without
+// this mock every run below would PARK instead of exercising the rails this
+// suite is about. The park's own behaviour is pinned in
+// tests/unit/paxPauseWorkflowEngine.test.ts; the "paused run never completes"
+// case at the bottom of this file is the honesty half of it.
+const getPaxControls = vi.fn(async (_orgId: number) => ({
+  paused: false,
+  pausedUntil: null as Date | null,
+  pausedBy: null,
+  checkFailed: false,
+  stance: "ask_before_sending",
+  leadScoring: true,
+  borrowerReminders: true,
+  inboxDrafts: true,
+  timezone: "America/Chicago",
+}));
+vi.mock("../../server/services/paxControls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
+  return { ...actual, getPaxControls: (...args: any[]) => getPaxControls(...(args as [number])) };
+});
+// Receipts ("What Pax did") are a side rail of every acting step; stood up
+// as a double so this suite stays database-free.
+vi.mock("../../server/services/paxReceipts", () => ({
+  recordPaxEffect: async () => ({ written: true }),
 }));
 
 const getSkillById = vi.fn((_id: string) => undefined as any);
@@ -162,6 +179,18 @@ const NO_CONNECTED_IDENTITY = {
 };
 
 beforeEach(() => {
+  getPaxControls.mockClear();
+  getPaxControls.mockResolvedValue({
+    paused: false,
+    pausedUntil: null,
+    pausedBy: null,
+    checkFailed: false,
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    timezone: "America/Chicago",
+  });
   createWorkflowRun.mockClear();
   updateWorkflowRun.mockClear();
   createTask.mockClear();
@@ -377,6 +406,56 @@ describe("actions report success only when a real rail ran (behavioral)", () => 
     expect(isActionUnavailableResult({ status: "completed" })).toBe(false);
     expect(isActionUnavailableResult(undefined)).toBe(false);
     expect(isActionUnavailableResult(null)).toBe(false);
+  });
+});
+
+describe("a paused org's run is parked, never reported as done (honesty of the run outcome)", () => {
+  // AUTONOMY_SPEC.md §7: "a paused-org run parks as `waiting` with
+  // `resumeState.reason: 'paused'`, never `completed`". Probe that must go
+  // red: mark the paused run completed.
+  const PAUSED_UNTIL = new Date(Date.now() + 6 * 60 * 60 * 1000);
+
+  it("executeWorkflow on a paused org returns status waiting with reason paused — no rail ran, no step is 'completed'", async () => {
+    getPaxControls.mockResolvedValue({
+      paused: true,
+      pausedUntil: PAUSED_UNTIL,
+      pausedBy: { userId: "u-1", name: "Dana" },
+      checkFailed: false,
+      stance: "ask_before_sending",
+      leadScoring: true,
+      borrowerReminders: true,
+      inboxDrafts: true,
+      timezone: "America/Chicago",
+    });
+
+    const run = await workflowEngine.executeWorkflow(
+      makeWorkflow([
+        { id: "a_email", type: "send_email", config: { to: "x@example.com", subject: "s", body: "b" } },
+        { id: "a_notify", type: "send_notification", config: { message: "hello" } },
+      ]),
+      { event: "parcel.owner_changed" as any, entityId: 1, entityType: "parcel", data: {} },
+    );
+
+    expect(run.status).toBe("waiting");
+    expect(run.status).not.toBe("completed");
+    expect(run.resumeAt).toEqual(PAUSED_UNTIL);
+    expect((run.resumeState as any).reason).toBe("paused");
+    expect((run.resumeState as any).nextActionIndex).toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(createNotification).not.toHaveBeenCalled();
+    const log = run.executionLog as any[];
+    expect(log.every((e) => e.status !== "completed")).toBe(true);
+    // No write ever claimed the run was done.
+    expect(updateWorkflowRun.mock.calls.some(([, u]) => u.status === "completed")).toBe(false);
+  });
+
+  it("source: the park writes status waiting and never a terminal status", () => {
+    const park = ENGINE_CODE.indexOf("private async parkRunPaused(");
+    expect(park).toBeGreaterThan(-1);
+    const body = ENGINE_CODE.slice(park, ENGINE_CODE.indexOf("\n  private async parkOrSleep(", park));
+    expect(body).toMatch(/status:\s*"waiting"/);
+    expect(body).not.toMatch(/status:\s*"(completed|failed)"/);
+    expect(body).toContain("RESUME_REASON_PAUSED");
   });
 });
 

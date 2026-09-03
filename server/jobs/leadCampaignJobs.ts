@@ -2,10 +2,23 @@
  * Lead-nurturing + campaign-optimization background jobs.
  *
  * Extracted verbatim from runScheduledJobs.ts (S3, 2026-07-16) as the first
- * slice of decomposing that god-file — the autopilot heartbeat. Behaviour is
- * unchanged: same shared runtime (jobRuntime lock/interval/log, jobSupervisor),
- * same kill-switches, same cadences. runScheduledJobs.ts imports the two
- * start* entrypoints and calls them from its orchestrator exactly as before.
+ * slice of decomposing that god-file — the autopilot heartbeat. Same shared
+ * runtime (jobRuntime lock/interval/log, jobSupervisor), same kill-switches,
+ * same cadences. runScheduledJobs.ts imports the two start* entrypoints and
+ * calls them from its orchestrator exactly as before.
+ *
+ * Pax controls (AUTONOMY_SPEC.md §4.4, customer autonomy clarity program):
+ * both passes are "Runs your rules" rows behind the org's `leadScoring`
+ * switch. Per org, per tick, ONE read of getPaxControls decides:
+ *   paused            → the org is skipped for this tick (`skipped_paused`,
+ *                       logged, nothing marked failed);
+ *   leadScoring=false → skipped (`skipped_off`) — a real Off, not a hidden
+ *                       one; the campaign optimizer follows the same switch;
+ *   otherwise         → the pass runs at EITHER stance: a score, a stage, a
+ *                       suggestion is an internal write, not a message to
+ *                       anyone — the receipt each transition leaves says so.
+ * The controls are handed down to processLeadsForOrg so the engine does not
+ * read them a second time.
  */
 
 import { db } from "../storage";
@@ -14,6 +27,17 @@ import { organizations } from "@shared/schema";
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { jobSupervisor } from "../services/jobSupervisor";
 import { leadNurturerService } from "../services/leadNurturer";
+import { getPaxControls, type PaxControlsState } from "../services/paxControls";
+
+/**
+ * The reason an org's pass did not run this tick, or null when it may run.
+ * One vocabulary for both jobs — the same words the Pax page prints.
+ */
+function skipReasonFor(controls: PaxControlsState): "skipped_paused" | "skipped_off" | null {
+  if (controls.paused) return "skipped_paused";
+  if (!controls.leadScoring) return "skipped_off";
+  return null;
+}
 
 // Lead nurturing background job
 async function processLeadNurturing() {
@@ -26,9 +50,21 @@ async function processLeadNurturing() {
 
     for (const org of activeOrgs) {
       try {
+        const controls = await getPaxControls(org.id);
+        const skip = skipReasonFor(controls);
+        if (skip) {
+          log(
+            `Lead nurturing for org ${org.id}: ${skip}` +
+              (controls.checkFailed ? " (controls read failed; failing closed)" : ""),
+            'nurturing',
+          );
+          continue;
+        }
+
         const result = await leadNurturerService.processLeadsForOrg(org.id, {
           scoringLimit: 20,
           generateFollowUps: false,
+          controls,
         });
 
         if (result.scored > 0 || result.errors.length > 0) {
@@ -86,6 +122,19 @@ async function processCampaignOptimizations() {
 
     for (const org of activeOrgs) {
       try {
+        // Suggestions follow the lead-scoring switch (spec §4.4): one switch
+        // on the page, one reason vocabulary in the log.
+        const controls = await getPaxControls(org.id);
+        const skip = skipReasonFor(controls);
+        if (skip) {
+          log(
+            `Campaign optimization for org ${org.id}: ${skip}` +
+              (controls.checkFailed ? " (controls read failed; failing closed)" : ""),
+            'optimizer',
+          );
+          continue;
+        }
+
         const result = await campaignOptimizerService.processOrganizationCampaigns(org.id, {
           limit: 3,
         });

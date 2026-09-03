@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "./orgOperating";
+import { getPaxControls } from "./paxControls";
 
 const MAX_NUDGES_PER_ORG = 5;
 // Interval before regenerating nudges for an org (6 hours)
@@ -277,6 +278,23 @@ export async function processPaxNudges(): Promise<void> {
 
     for (const org of allOrgs) {
       try {
+        // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ──────────
+        // Nudges are cards, not actions, so the stance does not gate them —
+        // but "no new cards until the pause lifts" is what the Pax page
+        // promises, so a paused org is skipped for this tick and says so.
+        // Fails CLOSED on a failed read.
+        const controls = await getPaxControls(org.id);
+        if (controls.paused) {
+          logger.info(`[PaxNudges] Skipping org ${org.id} — Pax is paused`, {
+            metadata: {
+              reason: "skipped_paused",
+              organizationId: org.id,
+              pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+              checkFailed: controls.checkFailed,
+            },
+          });
+          continue;
+        }
         await generateNudgesForOrg(org as Organization);
       } catch (err) {
         logger.error(`[PaxNudges] Error for org ${org.id}`, err);

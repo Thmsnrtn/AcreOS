@@ -46,15 +46,16 @@ const SCANNED_FILES = [
   // (note_payment_due_scan + lease_expiry_scan) now live in this module.
   "../../server/jobs/expiryDetectorJobs.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
-  "../../server/jobs/autonomousTaskProcessor.ts",
+  // autonomousTaskProcessor.ts was deleted 2026-09-02 (founder decision #7,
+  // customer autonomy clarity program) together with its roster row.
   "../../server/services/founderDigest.ts",
   // S3 slices (2026-09-02): referral maturity sweep (market-match terms) and
   // the land-credit recalc start wrapper — both carved out of
   // runScheduledJobs.ts under the strictly-DOWN line ratchet.
   "../../server/jobs/referralMaturityJob.ts",
   "../../server/jobs/landCreditScoreRecalcJob.ts",
-  // Review-queue plumbing (2026-09-02): the daily pending_actions TTL sweep
-  // (pending_action_expiry_sweep) lives in its own slice, same reason.
+  // Review-queue plumbing (2026-09-02): the pending_actions TTL sweep
+  // (pending_action_expiry_sweep, every 5 min) lives in its own slice, same reason.
   "../../server/jobs/pendingActionExpiryJob.ts",
 ];
 
@@ -87,6 +88,20 @@ describe("JOB_ROSTER ↔ withJobLock parity", () => {
 
   it("has no duplicate roster names", () => {
     expect(rosterNames.size).toBe(JOB_ROSTER.length);
+  });
+
+  it("the deleted autonomous task processor has no roster row and no lock literal (founder decision 2026-09-02 #7)", () => {
+    expect(rosterNames.has("autonomous_task_processor")).toBe(false);
+    expect(lockNames.has("autonomous_task_processor")).toBe(false);
+    expect(SCANNED_FILES.some((f) => f.includes("autonomousTaskProcessor"))).toBe(false);
+  });
+
+  it("the review-queue expiry sweep is rostered and locked at its real cadence", () => {
+    const entry = JOB_ROSTER.find((e) => e.name === "pending_action_expiry_sweep");
+    expect(entry).toBeTruthy();
+    expect(lockNames.has("pending_action_expiry_sweep")).toBe(true);
+    expect(entry!.intervalMs).toBe(5 * 60 * 1000);
+    expect(entry!.cron).toBeUndefined();
   });
 });
 

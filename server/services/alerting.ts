@@ -3,6 +3,7 @@ import { systemAlerts, organizations, leads, type Lead, type IrSeverity, coerceI
 import { eq, and, gte, sql, ne, isNotNull } from 'drizzle-orm';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
+import { getPaxControls } from "./paxControls";
 
 export interface AgingLead {
   id: number;
@@ -291,16 +292,37 @@ export class AlertingService {
 
     for (const org of orgs) {
       try {
+        // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ──────────
+        // Alerts are cards. A paused org gets no new ones this tick (the
+        // page says "no new cards until the pause lifts"); nothing is marked
+        // failed and the next tick re-checks. Fails CLOSED on a failed read.
+        const controls = await getPaxControls(org.id);
+        if (controls.paused) {
+          logger.info(`[Alerting] Skipping org ${org.id} — Pax is paused`, {
+            metadata: {
+              reason: "skipped_paused",
+              organizationId: org.id,
+              pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+              checkFailed: controls.checkFailed,
+            },
+          });
+          continue;
+        }
+
+        // Per-org delta: count THIS org's alerts before and after, so the
+        // tally is the org's own and the read is org-scoped.
         const beforeCount = await db
           .select({ count: sql<number>`count(*)` })
-          .from(systemAlerts);
+          .from(systemAlerts)
+          .where(eq(systemAlerts.organizationId, org.id));
         
         await this.checkAlerts(org.id);
         await this.checkLeadAging(org.id);
         
         const afterCount = await db
           .select({ count: sql<number>`count(*)` })
-          .from(systemAlerts);
+          .from(systemAlerts)
+          .where(eq(systemAlerts.organizationId, org.id));
         
         alertsCreated += (afterCount[0]?.count || 0) - (beforeCount[0]?.count || 0);
         checked++;

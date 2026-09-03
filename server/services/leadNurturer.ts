@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { leads, type Lead, type NurturingStage, type InsertLeadActivity } from "@shared/schema";
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
@@ -8,7 +8,9 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
-import { getPaxPauseState } from "./paxPause";
+import { getPaxControls, type PaxControlsState } from "./paxControls";
+import { recordPaxEffect } from "./paxReceipts";
+import type { PaxStance } from "@shared/pax-controls";
 
 export type ScoreFactors = {
   responseRecency?: number;
@@ -239,7 +241,20 @@ Respond in JSON format:
     }
   }
 
-  async scoreLead(lead: Lead): Promise<Lead> {
+  /**
+   * Score one lead and move it to the stage its score implies.
+   *
+   * `attribution` is present only when the unattended nurturing pass is the
+   * caller (AUTONOMY_SPEC.md §4.7): a stage transition then leaves a receipt
+   * in "What Pax did" — actor "rule", the org's stance at the time, and the
+   * before/after stage — stating on the row that a score is an internal
+   * write, not a message to anyone. A human re-scoring a lead by hand is the
+   * human acting and leaves no Pax receipt.
+   */
+  async scoreLead(
+    lead: Lead,
+    attribution?: { stance: PaxStance | null },
+  ): Promise<Lead> {
     const { score, factors } = this.calculateLeadScore(lead);
     const stage = this.segmentLead(score);
     
@@ -249,7 +264,25 @@ Respond in JSON format:
       await db
         .update(leads)
         .set({ nurturingStage: stage, updatedAt: new Date() })
-        .where(eq(leads.id, lead.id));
+        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, lead.organizationId)));
+
+      if (attribution) {
+        const from = updated.nurturingStage ?? lead.nurturingStage ?? "new";
+        await recordPaxEffect({
+          orgId: lead.organizationId,
+          actor: "rule",
+          origin: "engine",
+          engine: "lead_scoring",
+          stance: attribution.stance,
+          action: "lead_stage_changed",
+          entityType: "lead",
+          entityId: lead.id,
+          description: `Lead moved from ${from} to ${stage} (score ${score}) — a score is not a message`,
+          before: { nurturingStage: from, score: lead.score ?? null },
+          after: { nurturingStage: stage, score },
+          witnessed: false,
+        });
+      }
     }
 
     return { ...updated, nurturingStage: stage };
@@ -257,7 +290,17 @@ Respond in JSON format:
 
   async processLeadsForOrg(
     organizationId: number,
-    options: { scoringLimit?: number; generateFollowUps?: boolean; checkAging?: boolean } = {}
+    options: {
+      scoringLimit?: number;
+      generateFollowUps?: boolean;
+      checkAging?: boolean;
+      /**
+       * The org's controls when the caller already read them this tick
+       * (leadCampaignJobs reads once per org and hands them down). Absent,
+       * this pass reads them itself — the gate is here either way.
+       */
+      controls?: PaxControlsState;
+    } = {}
   ): Promise<{
     scored: number;
     followUpsScheduled: number;
@@ -271,6 +314,12 @@ Respond in JSON format:
      * generated or alerted; the next tick re-checks.
      */
     skippedPaused: boolean;
+    /**
+     * True when the whole pass was skipped because the org switched lead
+     * scoring OFF (`pax_controls.leadScoring`, spec §4.4). A real Off: no
+     * score, stage, follow-up or alert is written while it is off.
+     */
+    skippedOff: boolean;
   }> {
     const JOB_TYPE = `lead_nurturing_${organizationId}`;
     const { scoringLimit = 50, generateFollowUps = true, checkAging = true } = options;
@@ -282,30 +331,43 @@ Respond in JSON format:
       agingAlertsCreated: 0,
       errors: [] as string[],
       skippedPaused: false,
+      skippedOff: false,
     };
 
-    // ── Pax pause (org-wide kill switch) ─────────────────────────────────
+    // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ─────────────
     // This pass writes scores and nurturing stages, schedules follow-ups,
     // creates aging alerts and (when enabled) spends credits on LLM drafts —
-    // all unattended, every 15 minutes. While the org is paused the entire
-    // pass is skipped for this tick and says so; nothing is marked failed and
-    // no job status is touched, so it simply runs on the first tick after the
-    // pause lifts. Fails CLOSED on a failed pause read.
-    const pause = await getPaxPauseState(organizationId);
-    if (pause.paused) {
+    // all unattended, every 15 minutes. While the org is paused, or while its
+    // lead-scoring switch is off, the entire pass is skipped for this tick
+    // and says which; nothing is marked failed and no job status is touched,
+    // so it simply runs on the first tick after the pause lifts or the switch
+    // comes back. Fails CLOSED on a failed read. The pass runs at EITHER
+    // stance — a score is an internal write, not a message — and each stage
+    // transition leaves a receipt saying so.
+    const controls = options.controls ?? await getPaxControls(organizationId);
+    if (controls.paused) {
       logger.info(
-        `[leadNurturer] Skipping nurturing pass — Pax is paused for org ${organizationId}`,
+        `[leadNurturer] skipped_paused — Pax is paused for org ${organizationId}`,
         {
           metadata: {
             organizationId,
-            pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-            checkFailed: pause.checkFailed,
+            pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+            checkFailed: controls.checkFailed,
           },
         },
       );
       result.skippedPaused = true;
       return result;
     }
+    if (!controls.leadScoring) {
+      logger.info(
+        `[leadNurturer] skipped_off — lead scoring is switched off for org ${organizationId}`,
+        { metadata: { organizationId } },
+      );
+      result.skippedOff = true;
+      return result;
+    }
+    const attribution = { stance: controls.checkFailed ? null : controls.stance };
 
     try {
       await storage.setJobStatus(JOB_TYPE, 'running');
@@ -319,7 +381,7 @@ Respond in JSON format:
       let maxProcessedId = lastProcessedId;
       for (const lead of unprocessedLeads) {
         try {
-          const scoredLead = await this.scoreLead(lead);
+          const scoredLead = await this.scoreLead(lead, attribution);
           result.scored++;
 
           const nextFollowUp = this.getNextFollowUpDate(scoredLead.nurturingStage as NurturingStage);

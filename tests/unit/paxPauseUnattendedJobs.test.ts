@@ -1,22 +1,28 @@
 /**
- * Pax pause — the unattended jobs honour it (pause coverage, 2026-09-02).
+ * Pax controls — the unattended jobs honour them (AUTONOMY_SPEC.md §4.4).
  *
- * Three engines that run on timers with nobody watching:
+ * Two engines that run on timers with nobody watching:
  *   - leadNurturer.processLeadsForOrg  (every 15 min, per active org)
  *   - task-runner.runTask               (every 60 s, per due scheduled task)
- *   - autonomousTaskProcessor           (every 30 s, auto-executes agent tasks)
  *
- * For each, against the REAL module with its stores stood up as doubles:
- *   paused  → the work is SKIPPED for this tick (never failed, never
- *             cancelled, no bookkeeping advanced) and says so;
- *   unpaused → the same call does the work it did before;
- *   failed pause read → fails CLOSED (treated as paused).
- * Plus the processor-specific promise: one pause read and one log line per
- * org per batch, and a paused org's tasks never starve another org's.
+ * For each, against the REAL module with its stores stood up as doubles and
+ * the ONE reader (getPaxControls) controllable:
+ *   paused            → the work is SKIPPED for this tick (never failed,
+ *                       never cancelled, no bookkeeping advanced) and says
+ *                       so in the glossary's words;
+ *   switch off        → lead scoring is a real Off (`skippedOff`);
+ *   unpaused, on      → the same call does the work it did before, and a
+ *                       stage transition leaves a "What Pax did" receipt
+ *                       that says a score is not a message;
+ *   failed read       → fails CLOSED (treated as paused, "could not verify").
+ * Plus the one-read promise: controls handed in by the job are not re-read.
+ *
+ * (The autonomous task processor that used to sit in this file was deleted
+ * 2026-09-02 — founder decision #7 of the customer autonomy clarity program.
+ * paxPauseCoverage.test.ts pins that it stays deleted.)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { agentTasks } from "@shared/schema";
 
 const H = vi.hoisted(() => {
   type Call = { method: string; args: unknown[] };
@@ -45,7 +51,7 @@ const H = vi.hoisted(() => {
 
   const db = {
     select: vi.fn(() => chain("select", undefined, (r) => selectRows(r.table))),
-    update: vi.fn((table: unknown) => chain("update", table, () => undefined)),
+    update: vi.fn((table: unknown) => chain("update", table, () => [])),
     insert: vi.fn((table: unknown) => chain("insert", table, () => [])),
   };
 
@@ -55,18 +61,8 @@ const H = vi.hoisted(() => {
     setSelectRows: (fn: typeof selectRows) => {
       selectRows = fn;
     },
-    getPaxPauseState: vi.fn(async (_orgId: number) => ({
-      paused: false,
-      pausedUntil: null as Date | null,
-      checkFailed: false,
-    })),
-    evaluate: vi.fn(async (_orgId: number, _agent: string, _risk: unknown) => ({
-      decision: "deny" as const,
-      reason: "test-deny",
-      riskScore: 99,
-    })),
-    recordAction: vi.fn(async () => undefined),
-    executeAgentTask: vi.fn(async () => ({ success: true })),
+    getPaxControls: vi.fn(async (_orgId: number) => ({}) as any),
+    recordPaxEffect: vi.fn(async () => ({ written: true })),
     executeWorkflow: vi.fn(async () => ({ id: 1, status: "completed" })),
     storage: {
       setJobStatus: vi.fn(async (_t: string, _s: string) => undefined),
@@ -74,7 +70,7 @@ const H = vi.hoisted(() => {
       updateJobCursor: vi.fn(async () => undefined),
       getLeadsNeedingScoring: vi.fn(async (_orgId: number, _limit: number) => [] as any[]),
       getLeadsDueForFollowUp: vi.fn(async () => [] as any[]),
-      updateLeadScore: vi.fn(),
+      updateLeadScore: vi.fn(async (id: number, score: number, factors: unknown) => ({ id, score, scoreFactors: factors, nurturingStage: "cold" })),
       createLeadActivity: vi.fn(),
       getScheduledTask: vi.fn(async (_id: number) => null as any),
       updateScheduledTask: vi.fn(async (_id: number, _u: any) => undefined),
@@ -94,16 +90,11 @@ const H = vi.hoisted(() => {
 
 vi.mock("../../server/db", () => ({ db: H.db }));
 vi.mock("../../server/storage", () => ({ storage: H.storage, db: H.db }));
-vi.mock("../../server/services/paxPause", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../server/services/paxPause")>();
-  return { ...actual, getPaxPauseState: H.getPaxPauseState };
+vi.mock("../../server/services/paxControls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
+  return { ...actual, getPaxControls: H.getPaxControls };
 });
-vi.mock("../../server/services/autonomousAgentEngine", () => ({
-  autonomousAgentEngine: { evaluate: H.evaluate, recordAction: H.recordAction },
-}));
-vi.mock("../../server/services/core-agents", () => ({
-  executeAgentTask: H.executeAgentTask,
-}));
+vi.mock("../../server/services/paxReceipts", () => ({ recordPaxEffect: H.recordPaxEffect }));
 vi.mock("../../server/services/workflow-engine", () => ({
   workflowEngine: { executeWorkflow: H.executeWorkflow },
 }));
@@ -121,21 +112,34 @@ vi.mock("../../server/utils/logger", () => ({
 
 import { leadNurturerService } from "../../server/services/leadNurturer";
 import { taskRunnerService } from "../../server/services/task-runner";
-import { runOnce } from "../../server/jobs/autonomousTaskProcessor";
 
 const ORG_ID = 7;
-const OTHER_ORG_ID = 8;
 const PAUSED_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-const UNPAUSED = { paused: false, pausedUntil: null, checkFailed: false };
-const PAUSED = { paused: true, pausedUntil: PAUSED_UNTIL, checkFailed: false };
-const CHECK_FAILED = { paused: true, pausedUntil: null, checkFailed: true };
+function controls(over: Record<string, unknown> = {}) {
+  return {
+    paused: false,
+    pausedUntil: null as Date | null,
+    pausedBy: null as { userId: string; name: string } | null,
+    checkFailed: false,
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    timezone: "America/Chicago",
+    ...over,
+  };
+}
+
+const UNPAUSED = controls();
+const PAUSED = controls({ paused: true, pausedUntil: PAUSED_UNTIL, pausedBy: { userId: "u-2", name: "Maria Lopez" } });
+const CHECK_FAILED = controls({ paused: true, checkFailed: true, stance: "ask_before_everything", leadScoring: false, borrowerReminders: false, inboxDrafts: false });
 
 beforeEach(() => {
   vi.clearAllMocks();
   H.dbCalls.length = 0;
   H.setSelectRows(() => []);
-  H.getPaxPauseState.mockResolvedValue(UNPAUSED);
+  H.getPaxControls.mockResolvedValue(UNPAUSED);
 });
 
 // ── leadNurturer ─────────────────────────────────────────────────────────────
@@ -144,36 +148,125 @@ describe("leadNurturer.processLeadsForOrg", () => {
   const opts = { scoringLimit: 20, generateFollowUps: false };
 
   it("paused → the whole pass is skipped for this tick with skippedPaused: true; nothing touched", async () => {
-    H.getPaxPauseState.mockResolvedValue(PAUSED);
+    H.getPaxControls.mockResolvedValue(PAUSED);
 
     const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
 
     expect(result.skippedPaused).toBe(true);
+    expect(result.skippedOff).toBe(false);
     expect(result.scored).toBe(0);
     expect(result.errors).toEqual([]);
-    expect(H.getPaxPauseState).toHaveBeenCalledWith(ORG_ID);
+    expect(H.getPaxControls).toHaveBeenCalledWith(ORG_ID);
     expect(H.storage.setJobStatus).not.toHaveBeenCalled();
     expect(H.storage.getLeadsNeedingScoring).not.toHaveBeenCalled();
     expect(H.recordUsage).not.toHaveBeenCalled();
     // Aging alerts are part of the pass too — skipped, not run around the gate.
     expect(H.checkLeadAging).not.toHaveBeenCalled();
+    expect(H.recordPaxEffect).not.toHaveBeenCalled();
   });
 
-  it("failed pause read → fails CLOSED (skipped)", async () => {
-    H.getPaxPauseState.mockResolvedValue(CHECK_FAILED);
+  it("lead scoring switched OFF → a real Off: skippedOff, nothing scored, no alert, no receipt", async () => {
+    H.getPaxControls.mockResolvedValue(controls({ leadScoring: false }));
+
+    const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
+
+    expect(result.skippedOff).toBe(true);
+    expect(result.skippedPaused).toBe(false);
+    expect(H.storage.getLeadsNeedingScoring).not.toHaveBeenCalled();
+    expect(H.checkLeadAging).not.toHaveBeenCalled();
+    expect(H.recordPaxEffect).not.toHaveBeenCalled();
+  });
+
+  it("failed controls read → fails CLOSED (skipped as paused)", async () => {
+    H.getPaxControls.mockResolvedValue(CHECK_FAILED);
     const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
     expect(result.skippedPaused).toBe(true);
     expect(H.storage.getLeadsNeedingScoring).not.toHaveBeenCalled();
   });
 
-  it("unpaused → the pass runs as before and reports skippedPaused: false", async () => {
+  it("unpaused, on → the pass runs as before at EITHER stance and reports no skip", async () => {
+    for (const stance of ["ask_before_sending", "ask_before_everything"]) {
+      vi.clearAllMocks();
+      H.getPaxControls.mockResolvedValue(controls({ stance }));
+      const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
+
+      expect(result.skippedPaused).toBe(false);
+      expect(result.skippedOff).toBe(false);
+      expect(H.storage.getLeadsNeedingScoring).toHaveBeenCalledWith(ORG_ID, 20);
+      expect(H.storage.setJobStatus).toHaveBeenCalledWith(`lead_nurturing_${ORG_ID}`, "running");
+      expect(H.storage.setJobStatus).toHaveBeenCalledWith(`lead_nurturing_${ORG_ID}`, "idle");
+      expect(H.checkLeadAging).toHaveBeenCalledWith(ORG_ID);
+    }
+  });
+
+  it("controls handed in by the job are used — the engine does not read them a second time", async () => {
+    await leadNurturerService.processLeadsForOrg(ORG_ID, { ...opts, controls: PAUSED as any });
+    expect(H.getPaxControls).not.toHaveBeenCalled();
+    expect(H.storage.getLeadsNeedingScoring).not.toHaveBeenCalled();
+  });
+
+  it("a stage transition leaves a receipt — actor rule, the org's stance, before/after — stating a score is not a message", async () => {
+    H.getPaxControls.mockResolvedValue(controls({ stance: "ask_before_everything" }));
+    // A lead that scores hot (recent response + negotiating) while stored cold.
+    H.storage.getLeadsNeedingScoring.mockResolvedValue([
+      {
+        id: 42,
+        organizationId: ORG_ID,
+        status: "negotiating",
+        source: "referral",
+        responses: 3,
+        lastContactedAt: new Date(),
+        emailOpens: 3,
+        emailClicks: 1,
+        nurturingStage: "cold",
+        score: 30,
+      },
+    ] as any[]);
+    H.storage.updateLeadScore.mockImplementation(async (id: number, score: number, factors: unknown) => ({
+      id,
+      score,
+      scoreFactors: factors,
+      nurturingStage: "cold",
+    }));
+
     const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
 
-    expect(result.skippedPaused).toBe(false);
-    expect(H.storage.getLeadsNeedingScoring).toHaveBeenCalledWith(ORG_ID, 20);
-    expect(H.storage.setJobStatus).toHaveBeenCalledWith(`lead_nurturing_${ORG_ID}`, "running");
-    expect(H.storage.setJobStatus).toHaveBeenCalledWith(`lead_nurturing_${ORG_ID}`, "idle");
-    expect(H.checkLeadAging).toHaveBeenCalledWith(ORG_ID);
+    expect(result.scored).toBe(1);
+    expect(H.recordPaxEffect).toHaveBeenCalledTimes(1);
+    const receipt = H.recordPaxEffect.mock.calls[0][0] as any;
+    expect(receipt).toMatchObject({
+      orgId: ORG_ID,
+      actor: "rule",
+      origin: "engine",
+      engine: "lead_scoring",
+      stance: "ask_before_everything",
+      entityType: "lead",
+      entityId: 42,
+      witnessed: false,
+    });
+    expect(receipt.before.nurturingStage).toBe("cold");
+    expect(receipt.after.nurturingStage).toBe("hot");
+    expect(receipt.description).toContain("a score is not a message");
+  });
+
+  it("no receipt when the stage did not change, and none when a human re-scores by hand", async () => {
+    H.storage.getLeadsNeedingScoring.mockResolvedValue([
+      { id: 43, organizationId: ORG_ID, status: "new", nurturingStage: "cold", score: 40, createdAt: new Date() },
+    ] as any[]);
+    // updateLeadScore reports the stage the score implies → no transition.
+    H.storage.updateLeadScore.mockImplementation(async (id: number, score: number, factors: unknown) => ({
+      id,
+      score,
+      scoreFactors: factors,
+      nurturingStage: leadNurturerService.segmentLead(score),
+    }));
+    await leadNurturerService.processLeadsForOrg(ORG_ID, opts);
+    expect(H.recordPaxEffect).not.toHaveBeenCalled();
+
+    // The human path (no attribution) writes the stage but no Pax receipt.
+    H.storage.updateLeadScore.mockResolvedValue({ id: 44, score: 90, scoreFactors: {}, nurturingStage: "cold" } as any);
+    await leadNurturerService.scoreLead({ id: 44, organizationId: ORG_ID, status: "negotiating", responses: 2, lastContactedAt: new Date(), nurturingStage: "cold" } as any);
+    expect(H.recordPaxEffect).not.toHaveBeenCalled();
   });
 });
 
@@ -197,24 +290,27 @@ describe("task-runner.runTask", () => {
     H.storage.getScheduledTask.mockResolvedValue(TASK);
   });
 
-  it("paused → returns before executing, nextRunAt NOT advanced, not a retry, not a failure", async () => {
-    H.getPaxPauseState.mockResolvedValue(PAUSED);
+  it("paused → returns before executing, nextRunAt NOT advanced, not a retry, not a failure — with the glossary line", async () => {
+    H.getPaxControls.mockResolvedValue(PAUSED);
 
     const result = await taskRunnerService.runTask(1);
 
     expect(result.success).toBe(false);
     expect(result.skippedPaused).toBe(true);
     expect(result.error).toContain("Pax is paused until");
-    expect(result.error).toContain(PAUSED_UNTIL.toISOString());
+    expect(result.error).toContain("paused by Maria Lopez");
+    expect(result.error).toMatch(/\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2} (am|pm)\b/);
+    expect(result.error).not.toContain(PAUSED_UNTIL.toISOString());
+    expect(result.error).toMatch(/Settings → Pax\b/);
     expect(H.executeWorkflow).not.toHaveBeenCalled();
     // Mirrors the task-level "paused" early return: no bookkeeping at all,
     // so the task is due again next tick and runs the moment the pause lifts.
     expect(H.storage.updateScheduledTask).not.toHaveBeenCalled();
-    expect(H.getPaxPauseState).toHaveBeenCalledWith(ORG_ID);
+    expect(H.getPaxControls).toHaveBeenCalledWith(ORG_ID);
   });
 
-  it("failed pause read → fails CLOSED (skipped, nothing executed)", async () => {
-    H.getPaxPauseState.mockResolvedValue(CHECK_FAILED);
+  it("failed controls read → fails CLOSED (skipped, nothing executed)", async () => {
+    H.getPaxControls.mockResolvedValue(CHECK_FAILED);
     const result = await taskRunnerService.runTask(1);
     expect(result.skippedPaused).toBe(true);
     expect(result.error).toContain("could not verify");
@@ -223,7 +319,7 @@ describe("task-runner.runTask", () => {
   });
 
   it("processScheduledTasks tallies a pause skip as skippedPaused, not as failed", async () => {
-    H.getPaxPauseState.mockResolvedValue(PAUSED);
+    H.getPaxControls.mockResolvedValue(PAUSED);
     H.storage.getDueScheduledTasks.mockResolvedValue([{ id: 1 }]);
 
     const summary = await taskRunnerService.processScheduledTasks();
@@ -241,84 +337,5 @@ describe("task-runner.runTask", () => {
     expect(id).toBe(1);
     expect(updates).toMatchObject({ status: "active", retryCount: 0, lastError: null });
     expect(updates.nextRunAt).toBeInstanceOf(Date);
-  });
-});
-
-// ── autonomousTaskProcessor ──────────────────────────────────────────────────
-
-describe("autonomousTaskProcessor.processBatch (via runOnce)", () => {
-  function pendingTask(id: number, organizationId: number) {
-    return {
-      id,
-      organizationId,
-      agentType: "research",
-      status: "pending",
-      requiresReview: false,
-      priority: 5,
-      input: { action: "execute_skill", parameters: { skillId: "sendEmail" } },
-      relatedLeadId: null,
-      relatedPropertyId: null,
-      relatedDealId: null,
-      createdAt: new Date(),
-    };
-  }
-
-  function agentTaskUpdates() {
-    return H.dbCalls.filter((c) => c.op === "update" && c.table === agentTasks);
-  }
-
-  it("a paused org's pending tasks are left pending — not evaluated, not executed, not written — and the batch still serves other orgs", async () => {
-    H.setSelectRows((table) =>
-      table === agentTasks
-        ? [pendingTask(1, ORG_ID), pendingTask(2, ORG_ID), pendingTask(3, OTHER_ORG_ID)]
-        : [],
-    );
-    H.getPaxPauseState.mockImplementation(async (orgId: number) =>
-      orgId === ORG_ID ? PAUSED : UNPAUSED,
-    );
-
-    await runOnce();
-
-    // Only org 8's task reached the engine (denied → cancelled). Org 7's two
-    // tasks produced NO agent_tasks write of any kind.
-    expect(H.evaluate).toHaveBeenCalledTimes(1);
-    expect(H.evaluate.mock.calls[0][0]).toBe(OTHER_ORG_ID);
-    expect(H.executeAgentTask).not.toHaveBeenCalled();
-    const updates = agentTaskUpdates();
-    expect(updates).toHaveLength(1);
-    const setPayload = updates[0].chain.find((c) => c.method === "set")!.args[0] as any;
-    expect(setPayload.status).toBe("cancelled");
-    expect(setPayload.error).toContain("test-deny");
-
-    // One pause read and one log line per org per batch — not per task.
-    expect(H.getPaxPauseState).toHaveBeenCalledTimes(2);
-    const pauseLogs = H.loggerInfo.mock.calls.filter(([msg]) =>
-      String(msg).includes(`Pax is paused for org ${ORG_ID}`),
-    );
-    expect(pauseLogs).toHaveLength(1);
-    const batchLog = H.loggerInfo.mock.calls.find(([msg]) => String(msg).includes("Batch complete"));
-    expect(batchLog?.[0]).toContain("skippedPaused:2");
-    expect(batchLog?.[0]).toContain("failed:1");
-  });
-
-  it("failed pause read → fails CLOSED: the org's tasks are left pending", async () => {
-    H.setSelectRows((table) => (table === agentTasks ? [pendingTask(1, ORG_ID)] : []));
-    H.getPaxPauseState.mockResolvedValue(CHECK_FAILED);
-
-    await runOnce();
-
-    expect(H.evaluate).not.toHaveBeenCalled();
-    expect(H.executeAgentTask).not.toHaveBeenCalled();
-    expect(agentTaskUpdates()).toHaveLength(0);
-  });
-
-  it("unpaused → tasks reach the autonomy engine as before", async () => {
-    H.setSelectRows((table) => (table === agentTasks ? [pendingTask(1, ORG_ID)] : []));
-
-    await runOnce();
-
-    expect(H.getPaxPauseState).toHaveBeenCalledWith(ORG_ID);
-    expect(H.evaluate).toHaveBeenCalledTimes(1);
-    expect(agentTaskUpdates()).toHaveLength(1);
   });
 });

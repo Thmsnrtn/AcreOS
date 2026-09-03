@@ -6,6 +6,7 @@ import {
   type WorkflowActionType,
   type WorkflowTriggerEvent,
   type WorkflowExecutionLogEntry,
+  type WorkflowRunResumeState,
   WORKFLOW_TRIGGER_EVENTS,
   WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
@@ -14,7 +15,9 @@ import {
   LIVE_WORKFLOW_TRIGGER_EVENTS,
   isLiveWorkflowTriggerEvent,
 } from "@shared/workflow-live-triggers";
-import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
+import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "./paxControls";
+import { recordPaxEffect } from "./paxReceipts";
+import type { PaxStance } from "@shared/pax-controls";
 
 // Re-export the live-trigger source of truth for server-side consumers and
 // tests. The list itself lives in shared/ so the client (builder + gallery
@@ -41,9 +44,10 @@ export { LIVE_WORKFLOW_TRIGGER_EVENTS, isLiveWorkflowTriggerEvent };
 //                   configured skillId resolves in no registry. Nothing was
 //                   attempted; the reason names what to connect/fix.
 //   "blocked"     — a rail existed and REFUSED on compliance grounds (TCPA /
-//                   do-not-contact / suppression list), or the org's Pax
-//                   pause is active (pause coverage, 2026-09-02). The refusal
-//                   is the correct outcome, not an error, so the run continues.
+//                   do-not-contact / suppression list). The refusal is the
+//                   correct outcome, not an error, so the run continues.
+//                   (The org's Pax PAUSE is not a per-step block: a paused
+//                   org's run PARKS whole — see runActionsFrom.)
 //   "failed"      — the rail ran and errored (thrown; aborts the run as before).
 //
 // Neither "unavailable" nor "blocked" results are merged into workflow
@@ -96,23 +100,33 @@ export function isNonExecutingActionResult(
 
 /**
  * Workflow steps that ACT on the world — send, write a record, notify, or
- * dispatch an agent skill. While the org's Pax pause is active
- * (server/services/paxPause.ts) each of these returns a "blocked" result
- * instead of executing; the run continues so the log records exactly which
- * steps did not happen and why. `delay` is control flow, not an action, and
- * `conditional` only recurses — its branch actions are gated individually.
+ * dispatch an agent skill. Each leaves a receipt in "What Pax did"
+ * (AUTONOMY_SPEC.md §4.7; actor "rule") when it really ran. `delay` is
+ * control flow, not an action, and `conditional` only recurses — its branch
+ * actions are receipted individually.
+ *
+ * The org's Pax PAUSE is enforced on the RUN, not per step (spec §4.4,
+ * seam 7 adjudicated 2026-09-02): a paused org's run parks as "waiting" with
+ * `resumeAt` = the lift and `resumeState.reason = "paused"`, and resumes
+ * whole — see runActionsFrom / parkRunPaused / resumeWorkflowRun.
  *
  * Pinned by tests/unit/paxPauseCoverage.test.ts against WORKFLOW_ACTION_TYPES:
- * a new action type added to the schema must be classified here or the gate
- * is silently incomplete.
+ * a new action type added to the schema must be classified here or its
+ * receipt is silently missing.
  */
-const PAUSE_GATED_WORKFLOW_ACTIONS: ReadonlySet<string> = new Set([
+const ACTING_WORKFLOW_ACTIONS: ReadonlySet<string> = new Set([
   "send_email",
   "create_task",
   "update_record",
   "run_agent_skill",
   "send_notification",
 ]);
+
+/** How soon a paused run is re-checked when the pause expiry is not known. */
+const PAUSED_RESUME_FALLBACK_MS = 15 * 60 * 1000;
+
+/** `resumeState.reason` for a run parked by the org's Pax pause. */
+const RESUME_REASON_PAUSED = "paused" as const;
 
 // ---------------------------------------------------------------------------
 // Agent-skill id reconciliation (Wave B).
@@ -2104,9 +2118,12 @@ class WorkflowEngine {
           status: "pending" as const,
         }));
 
-    // The delay step itself is only now genuinely over.
-    const delayEntry = executionLog[resumeState.delayActionIndex];
-    if (delayEntry) {
+    // The delay step itself is only now genuinely over. A run parked by the
+    // Pax pause has no delay step (delayActionIndex -1): its next action is
+    // simply the one it was about to run.
+    const pausedPark = (resumeState as { reason?: unknown }).reason === RESUME_REASON_PAUSED;
+    const delayEntry = resumeState.delayActionIndex >= 0 ? executionLog[resumeState.delayActionIndex] : undefined;
+    if (delayEntry && !pausedPark) {
       delayEntry.status = "completed";
       delayEntry.completedAt = new Date().toISOString();
       delayEntry.result = {
@@ -2124,7 +2141,9 @@ class WorkflowEngine {
     };
 
     logger.info(
-      `[WorkflowEngine] Resuming run ${run.id} at action index ${resumeState.nextActionIndex} after a ${resumeState.delayMinutes}m wait`,
+      pausedPark
+        ? `[WorkflowEngine] Resuming run ${run.id} at action index ${resumeState.nextActionIndex} after the org's Pax pause (re-checking)`
+        : `[WorkflowEngine] Resuming run ${run.id} at action index ${resumeState.nextActionIndex} after a ${resumeState.delayMinutes}m wait`,
     );
 
     return this.runActionsFrom(
@@ -2149,6 +2168,26 @@ class WorkflowEngine {
     startIndex: number,
   ): Promise<WorkflowRun> {
     try {
+      // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ──────────
+      // Every way into the action loop — a live trigger (triggerWorkflows →
+      // executeWorkflow), the delay-resume sweep (resumeWorkflowRun), a
+      // scheduled task — passes here, so this is where the org's pause is
+      // consulted, once per run and again on every resume. A paused org's
+      // run PARKS whole: status "waiting", resumeAt = the lift (or a short
+      // re-check when the expiry is unknown — a failed read fails CLOSED),
+      // resumeState.reason "paused". Nothing sends, nothing is written, and
+      // the run resumes at exactly this action when the pause lifts. The
+      // stance does not gate a rule the customer turned on; it is carried on
+      // the context only so each step's receipt can say under what.
+      if (startIndex < workflow.actions.length) {
+        const controls = await getPaxControls(context.organizationId);
+        if (controls.paused) {
+          return this.parkRunPaused(run, executionLog, context, startIndex, controls);
+        }
+        context.stance = controls.checkFailed ? null : controls.stance;
+      }
+      context.runId = run.id;
+
       for (let i = startIndex; i < workflow.actions.length; i++) {
         const action = workflow.actions[i];
         executionLog[i].status = "running";
@@ -2228,6 +2267,68 @@ class WorkflowEngine {
     }
 
     return run;
+  }
+
+  /**
+   * Park a run because the org's Pax pause is active. The run keeps its place:
+   * `resumeState.nextActionIndex` is the action it was about to run, the
+   * variables it accumulated ride along, and the delay-resume sweep
+   * (server/jobs/workflowDelayResume.ts → resumeDueWorkflowRuns) picks it up
+   * at `resumeAt`, where runActionsFrom re-checks the pause before running a
+   * single step. The run is never marked completed or failed by a pause.
+   */
+  private async parkRunPaused(
+    run: WorkflowRun,
+    executionLog: WorkflowExecutionLogEntry[],
+    context: WorkflowExecutionContext,
+    nextActionIndex: number,
+    controls: PaxControlsState,
+  ): Promise<WorkflowRun> {
+    const resumeAt = controls.pausedUntil ?? new Date(Date.now() + PAUSED_RESUME_FALLBACK_MS);
+    const reason = paxControlsRefusalMessage(controls);
+
+    const entry = executionLog[nextActionIndex];
+    if (entry) {
+      // TODO(tsc): "waiting" is not declared in the frozen shared
+      // WorkflowExecutionLogEntry status union; widen locally.
+      (entry as { status: string }).status = "waiting";
+      entry.result = {
+        paxPaused: true,
+        pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+        checkFailed: controls.checkFailed,
+        resumeAt: resumeAt.toISOString(),
+        reason,
+      };
+    }
+
+    const resumeState = {
+      delayActionIndex: -1,
+      nextActionIndex,
+      variables: { ...context.variables },
+      delayMinutes: 0,
+      reason: RESUME_REASON_PAUSED,
+      pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+    } as WorkflowRunResumeState;
+
+    const parked = await storage.updateWorkflowRun(run.id, {
+      status: "waiting",
+      executionLog,
+      resumeAt,
+      resumeState,
+    });
+
+    logger.info(
+      `[WorkflowEngine] Run ${run.id} parked — Pax is paused for org ${context.organizationId}; resumes at ${resumeAt.toISOString()}`,
+      {
+        metadata: {
+          organizationId: context.organizationId,
+          nextActionIndex,
+          pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+          checkFailed: controls.checkFailed,
+        },
+      },
+    );
+    return parked;
   }
 
   /**
@@ -2329,37 +2430,87 @@ class WorkflowEngine {
     action: WorkflowAction,
     context: WorkflowExecutionContext
   ): Promise<Record<string, any> | void> {
-    // ── Pax pause kill-switch gate (pause coverage, 2026-09-02) ───────────
-    // /settings/pax promises the pause "stops every auto-execution path".
-    // Workflow steps run unattended (event emitters, the delay-resume sweep,
-    // scheduled tasks), so every ACTING step consults the org's pause state
-    // and, while paused, returns a "blocked" result: nothing sends, nothing
-    // is written, the run log says so, and the run continues — a pause is a
-    // skip, never a cancellation. Expiry is implicit (getPaxPauseState
-    // compares timestamps). On a failed pause read the gate fails CLOSED.
-    if (PAUSE_GATED_WORKFLOW_ACTIONS.has(action.type)) {
-      const pause = await getPaxPauseState(context.organizationId);
-      if (pause.paused) {
-        logger.info(
-          `[WorkflowEngine] ${action.type} step ${action.id} blocked — Pax is paused for org ${context.organizationId}`,
-          {
-            metadata: {
-              actionType: action.type,
-              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-              checkFailed: pause.checkFailed,
-            },
-          },
-        );
-        const blocked: ActionBlockedResult = {
-          status: ACTION_STATUS_BLOCKED,
-          paxPaused: true,
-          pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-          reason: `${paxPauseRefusalMessage(pause)} The workflow continued with its remaining steps.`,
-        };
-        return blocked;
-      }
+    const result = await this.dispatchAction(action, context);
+    // "What Pax did" (spec §4.7): every acting step that really ran leaves a
+    // receipt — actor "rule", the org's stance at the time. Refused and
+    // unavailable outcomes are not effects and leave none; a receipt that
+    // fails to write never throws into the run.
+    if (ACTING_WORKFLOW_ACTIONS.has(action.type) && result && !isNonExecutingActionResult(result)) {
+      await this.recordActionReceipt(action, context, result);
     }
+    return result;
+  }
 
+  private async recordActionReceipt(
+    action: WorkflowAction,
+    context: WorkflowExecutionContext,
+    result: Record<string, any>,
+  ): Promise<void> {
+    const entity = this.receiptEntityFor(action, context, result);
+    if (!entity) {
+      logger.warn(
+        `[WorkflowEngine] No record to attribute the ${action.type} receipt to (run ${context.runId ?? "?"}) — receipt not written`,
+      );
+      return;
+    }
+    await recordPaxEffect({
+      orgId: context.organizationId,
+      actor: "rule",
+      origin: "engine",
+      engine: "workflows",
+      stance: context.stance ?? null,
+      action: `workflow_${action.type}`,
+      entityType: entity.type,
+      entityId: entity.id,
+      description: this.receiptDescription(action, context, result),
+      after: result,
+      workflowRunId: context.runId ?? null,
+      witnessed: false,
+    });
+  }
+
+  /** The record a step's receipt is filed under, or null when there is none. */
+  private receiptEntityFor(
+    action: WorkflowAction,
+    context: WorkflowExecutionContext,
+    result: Record<string, any>,
+  ): { type: string; id: number } | null {
+    if (action.type === "create_task" && Number.isInteger(result.taskId)) {
+      return { type: "task", id: result.taskId };
+    }
+    const { entityType, entityId } = context.triggerData;
+    if (typeof entityType === "string" && Number.isInteger(entityId)) {
+      return { type: entityType, id: entityId as number };
+    }
+    if (Number.isInteger(context.runId)) return { type: "workflow_run", id: context.runId as number };
+    return null;
+  }
+
+  private receiptDescription(
+    action: WorkflowAction,
+    context: WorkflowExecutionContext,
+    result: Record<string, any>,
+  ): string {
+    switch (action.type) {
+      case "send_email":
+        return `Workflow email sent to ${result.emailTo ?? "a contact"} from your connected account`;
+      case "create_task":
+        return `Workflow created task #${result.taskId}`;
+      case "update_record":
+        return `Workflow updated ${context.triggerData.entityType ?? "a record"} #${context.triggerData.entityId ?? "?"}`;
+      case "run_agent_skill":
+        return `Workflow ran skill ${result.skillId ?? "(unknown)"}`;
+      case "send_notification":
+        return "Workflow posted a notification";
+      default:
+        return `Workflow step ${action.type} ran`;
+    }
+  }
+
+  private async dispatchAction(
+    action: WorkflowAction,
+    context: WorkflowExecutionContext
+  ): Promise<Record<string, any> | void> {
     // TODO(tsc): "conditional" is handled here but not declared in the frozen
     // WORKFLOW_ACTION_TYPES union; widen the discriminant locally so the case typechecks.
     switch (action.type as WorkflowActionType | "conditional") {
@@ -2822,6 +2973,10 @@ type WorkflowExecutionContext = {
     previousData?: Record<string, any>;
   };
   variables: Record<string, any>;
+  /** The org's stance when the run (re)started; null when it could not be read. Receipts only. */
+  stance?: PaxStance | null;
+  /** The workflow_runs row this loop is executing. Receipts only. */
+  runId?: number;
 };
 
 export const workflowEngine = new WorkflowEngine();

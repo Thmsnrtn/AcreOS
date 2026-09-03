@@ -22,8 +22,10 @@
  *   - a DB error, a missing org row, a failed pause read → closed
  *   - a NULL column → the defaults, which EQUAL today's live behaviour
  *   - both real stances survive, switches intact — closed, not shut
- *   - the pause holder is resolved by name and the refusal prints a local
- *     time, never an ISO string; a failed holder lookup changes nothing else
+ *   - the pause holder comes from the pause PRIMITIVE (spec §4.2: paxPause
+ *     "extended to return the holder") and is passed through by name; the
+ *     refusal prints a local time, never an ISO string; a pause with no
+ *     holder on file changes nothing else — and the reader makes ONE read
  *
  * The values go through the REAL resolver against stubbed rows. The probe
  * that must turn this red: replace the zod parse with a cast.
@@ -35,7 +37,8 @@ type Rows = Array<Record<string, unknown>>;
 
 const mocks = vi.hoisted(() => {
   let selectQueue: Array<Rows | Error> = [];
-  let pause: { paused: boolean; pausedUntil: Date | null; checkFailed: boolean } = {
+  type Holder = { userId: string; name: string } | null;
+  let pause: { paused: boolean; pausedUntil: Date | null; checkFailed: boolean; pausedBy?: Holder } = {
     paused: false,
     pausedUntil: null,
     checkFailed: false,
@@ -64,7 +67,7 @@ const mocks = vi.hoisted(() => {
     setSelectQueue(q: Array<Rows | Error>) {
       selectQueue = [...q];
     },
-    setPause(p: { paused: boolean; pausedUntil: Date | null; checkFailed: boolean }) {
+    setPause(p: { paused: boolean; pausedUntil: Date | null; checkFailed: boolean; pausedBy?: Holder }) {
       pause = p;
     },
     pause: () => pause,
@@ -274,26 +277,18 @@ describe("the real stances survive — closed, not shut", () => {
   });
 });
 
-describe("the pause is folded in, holder included", () => {
-  const holderQueue = () => [
-    // owner: no pause
-    [{ id: "u-owner", firstName: "Owen", lastName: "Owner", prefs: { pax: {} } }],
-    // members: one holds exactly the org's latest pause
-    [
-      { id: "u-1", firstName: "Sam", lastName: "Other", prefs: { pax: { pausedUntil: new Date(FUTURE.getTime() - 1000).toISOString() } } },
-      { id: "u-2", firstName: "Maria", lastName: "Lopez", prefs: { pax: { pausedUntil: FUTURE.toISOString() } } },
-    ],
-  ];
+describe("the pause is folded in, holder included (from the primitive)", () => {
+  const MARIA = { userId: "u-2", name: "Maria Lopez" };
 
-  it("names the person holding the latest pause and prints a local time, never an ISO string", async () => {
-    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false });
-    mocks.setSelectQueue([orgRow(valid("ask_before_sending")), ...holderQueue()]);
+  it("passes the primitive's holder through by name and prints a local time, never an ISO string", async () => {
+    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false, pausedBy: MARIA });
+    mocks.setSelectQueue([orgRow(valid("ask_before_sending"))]);
     const state = await getPaxControls(1);
     expect(state.paused).toBe(true);
     expect(state.checkFailed).toBe(false);
     expect(state.stance).toBe("ask_before_sending");
     expect(state.pausedUntil).toEqual(FUTURE);
-    expect(state.pausedBy).toEqual({ userId: "u-2", name: "Maria Lopez" });
+    expect(state.pausedBy).toEqual(MARIA);
 
     const refusal = paxControlsRefusalMessage(state);
     expect(refusal).toContain("Maria Lopez");
@@ -302,29 +297,34 @@ describe("the pause is folded in, holder included", () => {
     expect(refusal).toMatch(/Settings → Pax\b/);
   });
 
-  it("a nameless holder is 'a teammate', never a fabricated name", async () => {
-    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false });
-    mocks.setSelectQueue([
-      orgRow(valid("ask_before_sending")),
-      [{ id: "u-owner", firstName: null, lastName: null, prefs: { pax: { pausedUntil: FUTURE.toISOString() } } }],
-      [],
-    ]);
-    const state = await getPaxControls(1);
-    expect(state.pausedBy).toEqual({ userId: "u-owner", name: "a teammate" });
-  });
-
-  it("a failed holder lookup reports no holder and changes nothing else", async () => {
-    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false });
-    mocks.setSelectQueue([orgRow(valid("ask_before_sending")), new Error("holder read failed")]);
+  it("a pause with no holder on file reports no holder and changes nothing else", async () => {
+    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false, pausedBy: null });
+    mocks.setSelectQueue([orgRow(valid("ask_before_sending"))]);
     const state = await getPaxControls(1);
     expect(state.pausedBy).toBeNull();
     expect(state.paused).toBe(true);
     expect(state.checkFailed).toBe(false);
     expect(state.stance).toBe("ask_before_sending");
     expect(state.leadScoring).toBe(true);
+    expect(paxControlsRefusalMessage(state)).not.toContain("paused by");
   });
 
-  it("does not look up a holder when not paused (one read, not three)", async () => {
+  it("a failed pause read carries no holder even if the primitive reported one", async () => {
+    mocks.setPause({ paused: true, pausedUntil: null, checkFailed: true, pausedBy: MARIA });
+    mocks.setSelectQueue([orgRow(valid("ask_before_sending"))]);
+    const state = await getPaxControls(1);
+    expect(state.pausedBy).toBeNull();
+    expect(state.checkFailed).toBe(true);
+    expect(paxControlsRefusalMessage(state)).toContain("could not verify");
+  });
+
+  it("makes ONE read of its own — the holder never costs a second or third select", async () => {
+    mocks.setPause({ paused: true, pausedUntil: FUTURE, checkFailed: false, pausedBy: MARIA });
+    mocks.setSelectQueue([orgRow(valid("ask_before_sending"))]);
+    await getPaxControls(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    mocks.db.select.mockClear();
+    mocks.setPause({ paused: false, pausedUntil: null, checkFailed: false });
     mocks.setSelectQueue([orgRow(valid("ask_before_sending"))]);
     await getPaxControls(1);
     expect(mocks.db.select).toHaveBeenCalledTimes(1);

@@ -22,25 +22,47 @@
  *      touched a rail at all. Now it dispatches through the same chokepoint.
  *
  * Gates honoured on every send, in order (none of them bypassed):
- *   Pax pause (paxPause.getPaxPauseState, fail-closed)
- *     → org autonomy level (autonomyGuardrails.getOrgAutonomyLevel)
- *     → daily autonomous-send envelope (checkSendRateLimit)
+ *   Pax controls (paxControls.getPaxControls — the one reader, pause folded
+ *   in, fail-closed)
+ *     → the approval kernel: a rung nobody tapped is PARKED as a
+ *       pending_actions row (`send_borrower_reminder`, origin
+ *       "finance_ladder") and the reminder row reads awaiting_approval
+ *       (AUTONOMY_SPEC.md §4.4/§4.5; founder decision 2026-09-02 #3:
+ *       prepare only, every rung waits for a tap, at every stance — there
+ *       is no level that dispatches unattended)
+ *     → daily send envelope (checkSendRateLimit)
  *     → communicationsService.sendToLead, which itself applies TCPA consent,
  *       the contact-frequency cap, per-channel consent, and for SMS the
  *       sendOrgSMS chokepoint (consent → recipient-local quiet hours → DNC →
  *       frequency). Email goes out with `purpose: 'counterparty'`, so the org's
  *       own connected identity is REQUIRED and there is no platform fallback
  *       (founder decision 2026-07-17).
+ *
+ * Staging (ensureLadderRung) reads the same controls: nothing is prepared
+ * while the org is paused (`pax_paused`) or while its borrowerReminders
+ * switch is off (`pax_off`). The 31+-day default-candidate alert is NOT
+ * gated — it is an alert about the customer's own money, not a message to
+ * the borrower.
  */
 
-import { storage } from "../storage";
+import { and, desc, eq } from "drizzle-orm";
+import { storage, db } from "../storage";
 import { usageMeteringService } from "./credits";
-import { type Note, type Lead, type InsertPaymentReminder, type InsertSystemAlert } from "@shared/schema";
+import {
+  paymentReminders,
+  type Note,
+  type Lead,
+  type InsertPaymentReminder,
+  type InsertSystemAlert,
+} from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
-import { getOrgAutonomyLevel, unattendedSendPermitted, checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
+import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "./paxControls";
+import { proposePendingAction } from "./approvalKernel";
+import { recordPaxEffect } from "./paxReceipts";
+import { PAX_LABELS } from "@shared/pax-glossary";
+import { checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
 import { getIdentityForSend } from "./orgEmailIdentity";
 import { readIntegrationCredentials } from "./integrationCredentials";
 import {
@@ -85,7 +107,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *   queued             attempted; rail unavailable for a reason that may clear
  *                      (no connected identity, warmup/daily envelope, frequency
  *                      cap, Pax pause) — retried inside a bounded window
- *   awaiting_approval  org autonomy is "assisted": ready, needs a human tap
+ *   awaiting_approval  prepared and parked in the approval kernel; needs a
+ *                      human tap (every rung, at every stance)
  *   blocked            refused by a compliance gate (consent / DNC / opt-out)
  *   unavailable        cannot be delivered for this period (no contact info,
  *                      recipient suppressed)
@@ -300,11 +323,18 @@ export class FinanceAgentService {
    *
    * Never backfills skipped rungs, and stops permanently after the terminal
    * rung: the ladder terminates.
+   *
+   * Pax controls (spec §4.4, "Borrower ladder STAGING"): nothing is prepared
+   * while the org is paused (`pax_paused`) or while its borrowerReminders
+   * switch is off (`pax_off`). `controls` may be handed in by a caller that
+   * already read them this tick (processOrganizationNotes reads once per
+   * org); absent, the rung reads them itself — the gate is here either way.
    */
   async ensureLadderRung(
     note: Note,
     borrower: Lead | null,
     now: Date = new Date(),
+    controls?: PaxControlsState,
   ): Promise<{
     created: boolean;
     stage?: BorrowerNoticeStage;
@@ -332,6 +362,15 @@ export class FinanceAgentService {
       return { created: false, stage: rung.stage, idempotencyKey, reason: "already exists" };
     }
 
+    // ── Pax controls: the one reader (pause folded in; fails closed) ──────
+    const state = controls ?? await getPaxControls(note.organizationId);
+    if (state.paused) {
+      return { created: false, stage: rung.stage, idempotencyKey, reason: "pax_paused" };
+    }
+    if (!state.borrowerReminders) {
+      return { created: false, stage: rung.stage, idempotencyKey, reason: "pax_off" };
+    }
+
     const lenderName = await this.lenderNameFor(note.organizationId);
     const input = this.noticeInput(note, borrower, relativeDays, lenderName);
     const channel = this.channelForRung(rung, borrower);
@@ -353,7 +392,7 @@ export class FinanceAgentService {
       status: REMINDER_STATUS.scheduled,
     };
 
-    await storage.createPaymentReminder(reminder);
+    const created = await storage.createPaymentReminder(reminder);
     logger.info("[FinanceAgent] Borrower reminder queued by the ladder", {
       metadata: {
         __pii_safe: true,
@@ -365,6 +404,22 @@ export class FinanceAgentService {
         idempotencyKey,
         terminal: rung.terminal === true,
       },
+    });
+
+    // "What Pax did" (spec §4.7): a reminder was PREPARED — not sent. The
+    // row says so; dispatch always waits for a tap.
+    await recordPaxEffect({
+      orgId: note.organizationId,
+      actor: "rule",
+      origin: "engine",
+      engine: "borrower_staging",
+      stance: state.checkFailed ? null : state.stance,
+      action: "borrower_reminder_prepared",
+      entityType: "payment_reminder",
+      entityId: created.id,
+      description: `Borrower reminder prepared (${rung.stage}, ${channel}) for note #${note.id} — waits for your tap`,
+      after: { noteId: note.id, stage: rung.stage, channel, scheduledFor: scheduledFor.toISOString() },
+      witnessed: false,
     });
 
     return { created: true, stage: rung.stage, idempotencyKey };
@@ -388,8 +443,8 @@ export class FinanceAgentService {
    * Back-compat shim for the old name. Returns the number of rows created
    * (0 or 1) — the ladder creates at most one rung per tick.
    */
-  async scheduleReminders(note: Note, borrower: Lead | null): Promise<number> {
-    const result = await this.ensureLadderRung(note, borrower);
+  async scheduleReminders(note: Note, borrower: Lead | null, controls?: PaxControlsState): Promise<number> {
+    const result = await this.ensureLadderRung(note, borrower, new Date(), controls);
     return result.created ? 1 : 0;
   }
 
@@ -452,9 +507,11 @@ export class FinanceAgentService {
     content: string | null;
   }, options: {
     /**
-     * Set ONLY by the human-initiated path (sendManualReminder). The tap IS the
-     * approval the "assisted" autonomy level demands, so that one gate is
-     * satisfied rather than bypassed. Every other gate still applies.
+     * Set ONLY by the human-initiated path (sendManualReminder — the "Send
+     * reminder" button, or the approval kernel replaying a tapped
+     * `send_borrower_reminder` ask). The tap IS the approval Gate 2 demands,
+     * so that one gate is satisfied rather than bypassed. Every other gate
+     * still applies.
      */
     humanApproved?: boolean;
   } = {}): Promise<{ status: string; reason?: string }> {
@@ -495,23 +552,46 @@ export class FinanceAgentService {
       return finish(REMINDER_STATUS.cancelled, `Note is ${note.status} — no borrower contact sent`);
     }
 
-    // ── Gate 1: Pax pause kill switch (fails closed) ────────────────────────
-    const pause = await getPaxPauseState(orgId);
-    if (pause.paused) {
-      return finish(REMINDER_STATUS.queued, paxPauseRefusalMessage(pause));
+    // ── Gate 1: Pax controls — pause folded in (fails closed) ───────────────
+    // Unchanged by a tap: a paused org's rung stays `queued` with the
+    // glossary refusal and is retried inside the bounded window.
+    const controls = await getPaxControls(orgId);
+    if (controls.paused) {
+      return finish(REMINDER_STATUS.queued, paxControlsRefusalMessage(controls));
     }
 
-    // ── Gate 2: org autonomy level ──────────────────────────────────────────
-    // "assisted" is the default and its standing promise is that NOTHING sends
-    // without an explicit human tap. A borrower collection notice does not get
-    // to opt out of that promise on its own authority: the notice is fully
-    // prepared and parked for one-tap approval. Orgs at supervised/autonomous
-    // dispatch unattended.
-    const autonomy = await getOrgAutonomyLevel(orgId);
-    if (!unattendedSendPermitted(autonomy) && !options.humanApproved) {
+    // ── Gate 2: the approval kernel ─────────────────────────────────────────
+    // A borrower collection notice is a message to another person, and Pax
+    // never sends what it wrote without a tap — at EVERY stance (founder
+    // decision 2026-09-02 #3). A rung nobody tapped is parked as an ordinary
+    // kernel row (`send_borrower_reminder`, origin "finance_ladder") with the
+    // noteId and rung type frozen on it, so the tap replays through
+    // sendManualReminder(noteId, orgId, type) and lands on THIS row. The
+    // reminder row reads awaiting_approval until then.
+    if (!options.humanApproved) {
+      const ask = await proposePendingAction({
+        organizationId: orgId,
+        toolName: "send_borrower_reminder",
+        args: { reminderId: reminder.id, noteId: reminder.noteId, type: reminder.type },
+        origin: "finance_ladder",
+        sourceRef: { noteId: reminder.noteId, borrowerId: reminder.borrowerId, reminderId: reminder.id },
+      });
+      await recordPaxEffect({
+        orgId,
+        actor: "rule",
+        origin: "engine",
+        engine: "borrower_dispatch",
+        stance: controls.checkFailed ? null : controls.stance,
+        action: "borrower_reminder_waiting",
+        entityType: "payment_reminder",
+        entityId: reminder.id,
+        description: `Borrower reminder (${reminder.type}, ${reminder.channel}) for note #${reminder.noteId} — ${PAX_LABELS.queue.toLowerCase()}`,
+        after: { pendingActionId: ask.id, noteId: reminder.noteId, stage: reminder.type, channel: reminder.channel },
+        witnessed: false,
+      });
       return finish(
         REMINDER_STATUS.awaitingApproval,
-        "Ready to send — your autonomy level is 'assisted', so Pax waits for your tap (Settings → Pax controls).",
+        `${PAX_LABELS.queue} — prepared, not sent.`,
       );
     }
 
@@ -722,6 +802,8 @@ export class FinanceAgentService {
     let statusUpdates = 0;
 
     try {
+      // One controls read per org per tick; handed to every rung below.
+      const controls = await getPaxControls(orgId);
       const notesNeedingReminders = await storage.getNotesNeedingReminders(orgId);
       const delinquentNotes = await storage.getDelinquentNotes(orgId);
       
@@ -743,7 +825,7 @@ export class FinanceAgentService {
             await this.updateDelinquencyStatus(note);
           }
 
-          const scheduled = await this.scheduleReminders(note, borrower);
+          const scheduled = await this.scheduleReminders(note, borrower, controls);
           remindersScheduled += scheduled;
 
           processed++;
@@ -779,6 +861,38 @@ export class FinanceAgentService {
   }
 
   /**
+   * The newest reminder row for this note and rung that the ladder parked
+   * awaiting a tap (Gate 2), or null. Org-scoped; a tap on a note in another
+   * org can never dispatch this org's row.
+   */
+  private async findParkedReminder(
+    orgId: number,
+    noteId: number,
+    type: ReminderType,
+  ): Promise<{ id: number; borrowerId: number | null; type: string; channel: string; content: string | null } | null> {
+    const rows = await db
+      .select({
+        id: paymentReminders.id,
+        borrowerId: paymentReminders.borrowerId,
+        type: paymentReminders.type,
+        channel: paymentReminders.channel,
+        content: paymentReminders.content,
+      })
+      .from(paymentReminders)
+      .where(
+        and(
+          eq(paymentReminders.organizationId, orgId),
+          eq(paymentReminders.noteId, noteId),
+          eq(paymentReminders.type, type),
+          eq(paymentReminders.status, REMINDER_STATUS.awaitingApproval),
+        ),
+      )
+      .orderBy(desc(paymentReminders.createdAt))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /**
    * Human-initiated reminder (the "Send reminder" / "Escalate" buttons).
    *
    * This used to insert a row with `status: "sent"` and never touch a rail —
@@ -788,8 +902,14 @@ export class FinanceAgentService {
    * exists and was acted on; `status`/`deliveryNote` say whether a rail actually
    * accepted it, so callers can stop saying "Reminder sent" when it wasn't.
    *
-   * The human tap satisfies the "assisted" autonomy promise, so the
-   * awaiting-approval gate is skipped here — and only here.
+   * The human tap satisfies Gate 2 (the approval kernel), so the
+   * awaiting-approval parking is skipped here — and only here. Two callers:
+   * the "Send reminder" button (server/routes-finance.ts) and the kernel's
+   * replay of a tapped `send_borrower_reminder` ask
+   * (server/services/paxAskExecutors.ts → sendManualReminder(noteId, orgId,
+   * type)). When the ladder already PREPARED this rung and parked it
+   * awaiting_approval, the tap dispatches THAT row — one notice, one row —
+   * rather than minting a second copy beside it.
    */
   async sendManualReminder(
     noteId: number,
@@ -845,6 +965,32 @@ export class FinanceAgentService {
             delivered: false,
             reason: PHYSICAL_MAIL_STATUS.reason,
           },
+        };
+      }
+
+      // A rung the ladder already prepared and parked for this tap.
+      const parked = await this.findParkedReminder(orgId, noteId, type);
+      if (parked) {
+        const outcome = await this.dispatchReminder(
+          {
+            id: parked.id,
+            organizationId: orgId,
+            noteId,
+            borrowerId: parked.borrowerId,
+            type: parked.type,
+            channel: parked.channel,
+            content: parked.content,
+          },
+          { humanApproved: true },
+        );
+        return {
+          success: true,
+          reminderId: parked.id,
+          status: outcome.status,
+          deliveryNote:
+            outcome.status === REMINDER_STATUS.sent
+              ? undefined
+              : outcome.reason ?? "The notice was not delivered.",
         };
       }
 

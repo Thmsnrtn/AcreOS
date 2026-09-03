@@ -1,66 +1,72 @@
 /**
- * Pax pause kill-switch — the READ side (Workstream A, Honesty).
+ * Pax pause kill-switch — the READ side (the pause PRIMITIVE).
  *
- * /settings/pax writes `users.autonomyPreferences.pax.pausedUntil` via
- * PATCH /api/me/autonomy (server/routes-autonomy.ts). Storage is per-user,
- * but the switch's promise is org-level ("Pause ALL Pax automation"), so
- * enforcement is org-scoped: an ACTIVE pause held by the org owner or by any
- * active team member pauses Pax for the whole org. That is deliberately the
- * fail-safe direction — one panicked human stops the machine for everyone.
+ * `POST /api/pax/pause` writes `users.autonomyPreferences.pax.pausedUntil`
+ * (server/routes-pax-controls.ts). Storage is per-user, but the switch's
+ * promise is org-level ("one red button pauses all of it"), so enforcement is
+ * org-scoped: an ACTIVE pause held by the org owner or by any active team
+ * member pauses Pax for the whole org. That is deliberately the fail-safe
+ * direction — one panicked human stops the machine for everyone.
  *
- * This module is the single source of truth consulted by every enforcement
- * point. The population below is pinned by tests/unit/paxPauseCoverage.test.ts
- * in both directions: each listed file must call getPaxPauseState inside its
- * dispatch function, before dispatch, and no other production file may call
- * it without being added here. A pause is always a SKIP or DEFER — never a
+ * ONE READER (AUTONOMY_SPEC.md §4.2). Engines do not call this module
+ * directly any more: they call `getPaxControls(orgId)` in
+ * server/services/paxControls.ts, which folds this pause state — expiry AND
+ * holder — into the org's stance and switches in one read. This module stays
+ * the primitive that reads the rows. The population of production files that
+ * consult the pause (through either form) is pinned by
+ * tests/unit/paxPauseCoverage.test.ts, DERIVED from UNATTENDED_PATHS in
+ * shared/pax-controls.ts, in both directions: every registered path must gate
+ * before dispatch, and no other production file may consult the switch
+ * without being enumerated. A pause is always a SKIP, DEFER or PARK — never a
  * cancellation, never a failure mark: the work runs the moment the pause
  * lifts.
  *
- *   Model-driven tool dispatch
- *   - server/ai/tools.ts (executeTool) — refuses side-effecting tool calls
- *     while paused (read-only lookups and drafts still run).
- *   - server/ai/supportAgent.ts (executeSupportTool) — same allowlist gate
- *     over the support agent's dispatch switch (added 2026-09-01; it was the
- *     population blind spot CLAUDE.md documents).
- *
- *   Scheduled / autonomous Pax surfaces
- *   - server/services/paxScheduler.ts — skips scheduled Pax tasks for paused
- *     orgs with a logged skip reason, never silently.
- *   - server/services/autonomousDecisionExecutor.ts — defers org-scoped
- *     inbox items for paused orgs until the pause lifts.
- *   - server/services/financeAgent.ts — parks ladder reminders as "queued"
- *     (not sent) for paused orgs.
- *
- *   Unattended execution engines (pause coverage, 2026-09-02 — before this
- *   the switch promised "every auto-execution path" and covered only the
- *   five above)
- *   - server/services/workflow-engine.ts (executeAction) — every acting
- *     workflow step (send_email, create_task, update_record,
- *     run_agent_skill, send_notification) returns a "blocked" result; the
- *     run continues, nothing sends, nothing is written.
- *   - server/services/sequenceProcessor.ts (sendStep) — Gate 0: the step is
- *     DEFERRED (not consumed) until the pause lifts, or 15 minutes out when
- *     the expiry is unknown.
- *   - server/services/leadNurturer.ts (processLeadsForOrg) — the org's
- *     nurturing pass is skipped for this tick (`skippedPaused: true`).
- *   - server/jobs/autonomousTaskProcessor.ts (processBatch) — a paused org's
- *     pending agent tasks are left pending; never failed, never cancelled.
+ *   Model-driven tool dispatch (kernel)
+ *   - server/ai/tools.ts (executeTool) — refuses record writes while paused;
+ *     sends freeze as asks at every stance (looks and drafts still run).
+ *   - server/ai/supportAgent.ts (executeSupportTool) — the same gate over the
+ *     support agent's dispatch switch.
  *   - server/services/agent-skills.ts (executeSkill) — side-effecting skills
- *     (anything not on PAUSE_SAFE_SKILLS) are refused for every caller of
- *     the registry.
- *   - server/services/task-runner.ts (runTask) — scheduled tasks return
- *     before executing, without advancing nextRunAt or counting a retry.
+ *     are refused for every caller of the registry.
  *
- *   Read-only consumers (not enforcement points)
- *   - server/routes-autonomy.ts (GET /api/me/autonomy/org-pause) — the
- *     settings surface reads the ORG-WIDE state so "Clear pause" is honest
- *     when a teammate's pause is what holds the org.
- *   - server/services/paxAskExecutors.ts — reads the state (via
- *     getPaxControls) for stance attribution on the ask receipt only.
+ *   Scheduled Pax surfaces
+ *   - server/services/paxScheduler.ts — a paused org's scheduled prompt is
+ *     skipped (`skipped_paused`) and re-aimed at the moment the pause lifts.
+ *   - server/jobs/leadCampaignJobs.ts + server/services/leadNurturer.ts —
+ *     lead scoring / staging and campaign suggestions skip the org for the
+ *     tick (`skipped_paused`; `skipped_off` when the org's switch is off).
+ *   - server/services/paxNudges.ts + server/services/alerting.ts — no new
+ *     cards for a paused org.
+ *   - server/services/autonomousDecisionExecutor.ts — defers org-scoped inbox
+ *     items for paused orgs until the pause lifts (founder lane).
+ *
+ *   Rules the customer turned on
+ *   - server/services/workflow-engine.ts — a paused org's run PARKS
+ *     (status "waiting", resumeAt = the lift, resumeState.reason "paused") and
+ *     resumes whole; the resume sweep re-checks.
+ *   - server/services/sequenceProcessor.ts — a step is DEFERRED
+ *     (`deferred_paused`), never consumed, until the pause lifts; the
+ *     frequency cap and quiet hours still meter on resume.
+ *   - server/services/task-runner.ts — scheduled tasks return before
+ *     executing, without advancing nextRunAt or counting a retry.
+ *   - server/services/financeAgent.ts — nothing is prepared while paused
+ *     (`pax_paused`); a prepared reminder always waits for a tap anyway.
+ *   - server/routes-ai-draft.ts — inbox reply drafts keep drafting (a draft is
+ *     not an action); the org's `inboxDrafts` switch is what it reads.
+ *
+ *   Read-only consumers (display or attribution; enforce nothing)
+ *   - server/routes-pax-controls.ts — the Settings page reads ORG truth.
+ *   - server/routes-pax-insights.ts — approve / revise: a tap is the human
+ *     acting; the state is read for attribution only.
+ *   - server/services/paxAskExecutors.ts — stance attribution on the ask
+ *     receipt only; a tap is the human acting.
+ *   - server/jobs/pendingActionExpiryJob.ts — stance attribution on the
+ *     `ask_expired` receipt only.
+ *   - server/routes-autonomy.ts — the pre-program settings surface, deleted
+ *     by wave 1 C; listed only until the file is gone.
  *
  *   Aggregator (wraps this primitive; its consumers are the enforcers)
- *   - server/services/paxControls.ts (getPaxControls) — folds the pause
- *     into the org's stance for engines that consult the "one reader".
+ *   - server/services/paxControls.ts (getPaxControls)
  *
  * Expiry is implicit: every read compares `pausedUntil` against now, so
  * behavior resumes automatically the moment the timestamp passes — no cron.
@@ -75,6 +81,14 @@ import { db } from "../db";
 import { organizations, teamMembers } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { logger } from "../utils/logger";
+import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+
+/** The person whose `pax.pausedUntil` is the org's latest active pause. */
+export interface PaxPauseHolder {
+  userId: string;
+  /** Display name, or the glossary's "a teammate" when no name is on file. */
+  name: string;
+}
 
 export interface PaxPauseState {
   /** True while any org user holds a future pax.pausedUntil (or the check failed). */
@@ -86,6 +100,12 @@ export interface PaxPauseState {
    */
   pausedUntil: Date | null;
   /**
+   * Who holds that latest pause. Null when not paused, when the check failed,
+   * or when the holding row carries no usable user id — never a fabricated
+   * person.
+   */
+  pausedBy: PaxPauseHolder | null;
+  /**
    * True when the DB read failed. Callers on side-effecting paths must treat
    * this as paused (fail closed) and say so honestly — never fabricate an
    * expiry time for it.
@@ -93,40 +113,67 @@ export interface PaxPauseState {
   checkFailed: boolean;
 }
 
+interface PauseRow {
+  id?: unknown;
+  firstName?: unknown;
+  lastName?: unknown;
+  prefs: unknown;
+}
+
+function holderOf(row: PauseRow): PaxPauseHolder | null {
+  if (typeof row.id !== "string" || row.id.length === 0) return null;
+  const name = [row.firstName, row.lastName]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join(" ")
+    .trim();
+  return { userId: row.id, name: name || PAX_LABELS.unknownHolder };
+}
+
 function latestFuturePause(
-  rows: Array<{ prefs: unknown }>,
+  rows: PauseRow[],
   nowMs: number,
-): Date | null {
+): { until: Date | null; holder: PaxPauseHolder | null } {
   let latest: Date | null = null;
+  let holder: PaxPauseHolder | null = null;
   for (const row of rows) {
     const iso = (row.prefs as { pax?: { pausedUntil?: unknown } } | null)?.pax
       ?.pausedUntil;
     if (typeof iso !== "string") continue;
     const t = Date.parse(iso);
     if (!Number.isFinite(t) || t <= nowMs) continue;
-    if (!latest || t > latest.getTime()) latest = new Date(t);
+    if (!latest || t > latest.getTime()) {
+      latest = new Date(t);
+      holder = holderOf(row);
+    }
   }
-  return latest;
+  return { until: latest, holder };
 }
 
 /**
- * Org-level Pax pause state. Any active pause held by the org owner or an
- * active team member pauses the org. Fails CLOSED on read errors.
+ * Org-level Pax pause state, holder included. Any active pause held by the
+ * org owner or an active team member pauses the org. Fails CLOSED on read
+ * errors.
  */
 export async function getPaxPauseState(orgId: number): Promise<PaxPauseState> {
   try {
     const nowMs = Date.now();
+    const shape = {
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      prefs: users.autonomyPreferences,
+    };
 
     // Org owner's preferences (organizations.ownerId → users.id).
     const ownerRows = await db
-      .select({ prefs: users.autonomyPreferences })
+      .select(shape)
       .from(users)
       .innerJoin(organizations, eq(organizations.ownerId, users.id))
       .where(eq(organizations.id, orgId));
 
     // Active team members' preferences.
     const memberRows = await db
-      .select({ prefs: users.autonomyPreferences })
+      .select(shape)
       .from(users)
       .innerJoin(teamMembers, eq(teamMembers.userId, users.id))
       .where(
@@ -136,34 +183,30 @@ export async function getPaxPauseState(orgId: number): Promise<PaxPauseState> {
         ),
       );
 
-    const pausedUntil = latestFuturePause([...ownerRows, ...memberRows], nowMs);
-    return { paused: pausedUntil !== null, pausedUntil, checkFailed: false };
+    const { until, holder } = latestFuturePause([...ownerRows, ...memberRows], nowMs);
+    return { paused: until !== null, pausedUntil: until, pausedBy: holder, checkFailed: false };
   } catch (err) {
     logger.error(
       "[paxPause] Pause-state read failed — failing CLOSED (treating org as paused)",
       err as Error,
       { orgId },
     );
-    return { paused: true, pausedUntil: null, checkFailed: true };
+    return { paused: true, pausedUntil: null, pausedBy: null, checkFailed: true };
   }
 }
 
 /**
- * The honest, user-visible refusal for a side-effecting action while paused.
- * Shown verbatim in chat when a tool call is refused.
+ * The customer-visible refusal for a side-effecting action while paused, from
+ * the glossary: a local time, the holder by name, never an ISO string, never
+ * an invented expiry. Engines that hold a PaxControlsState should prefer
+ * `paxControlsRefusalMessage` (server/services/paxControls.ts), which also
+ * knows the org's timezone; this form prints in the runtime's zone.
  */
-export function paxPauseRefusalMessage(state: PaxPauseState): string {
-  if (state.checkFailed) {
-    return (
-      "Pax could not verify your pause setting, so this action was not " +
-      "executed (failing closed). Try again, or check Settings → Pax controls."
-    );
-  }
-  const until = state.pausedUntil
-    ? state.pausedUntil.toISOString()
-    : "the pause is cleared";
-  return (
-    `Pax is paused until ${until}; this action was not executed. ` +
-    "Resume in Settings → Pax controls. Read-only lookups and drafts still work."
-  );
+export function paxPauseRefusalMessage(state: PaxPauseState, timeZone?: string): string {
+  if (state.checkFailed) return PAX_PAUSE_COPY.checkFailedRefusal;
+  return PAX_PAUSE_COPY.refusal({
+    until: state.pausedUntil,
+    byName: state.pausedBy?.name ?? null,
+    timeZone,
+  });
 }

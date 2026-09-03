@@ -5,11 +5,15 @@ import { paxScheduledTaskRuns } from "@shared/schema";
 import type { PaxScheduledTask } from "@shared/schema";
 import type { Organization } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { getPaxPauseState } from "./paxPause";
+import { getPaxControls } from "./paxControls";
+import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 
 // ── Schedule preset → next run time ─────────────────────────────────────────
 
 const DEFAULT_TIMEZONE = "America/New_York";
+
+/** How soon a paused run is re-aimed when the pause expiry is not known. */
+const PAUSED_RETRY_MS = 15 * 60 * 1000;
 
 /**
  * Returns the org-local wall-clock parts (year, month, day, hour, minute, weekday)
@@ -116,10 +120,55 @@ export function computeNextRun(schedule: string, timezone: string): Date {
   }
 }
 
+// ── "N things waiting for your tap" ─────────────────────────────────────────
+
+/**
+ * Count the asks a scheduled run left in the queue. The kernel returns a
+ * pending artifact (`pendingApproval: true`, `pendingActionId`) INSTEAD of
+ * executing whenever a tool freezes — every send at every stance, and every
+ * record write at "Ask before everything" — so the count is read off the
+ * run's own tool results, never guessed. Distinct rows only: the model may
+ * re-propose the same frozen action within one run.
+ */
+function countAsksParked(toolCalls: unknown): number {
+  if (!Array.isArray(toolCalls)) return 0;
+  const ids = new Set<string>();
+  for (const call of toolCalls) {
+    const result = (call as { result?: unknown } | null)?.result;
+    if (!result || typeof result !== "object") continue;
+    const data = (result as { data?: unknown }).data;
+    const artifact =
+      data && typeof data === "object" && (data as { pendingApproval?: unknown }).pendingApproval === true
+        ? (data as { pendingActionId?: unknown })
+        : (result as { pendingApproval?: unknown }).pendingApproval === true
+          ? (result as { pendingActionId?: unknown })
+          : null;
+    if (!artifact) continue;
+    ids.add(String(artifact.pendingActionId ?? ids.size));
+  }
+  return ids.size;
+}
+
+/** "3 things waiting for your tap" — the glossary's queue label, counted. */
+function waitingLine(count: number): string {
+  const queue = PAX_LABELS.queue.charAt(0).toLowerCase() + PAX_LABELS.queue.slice(1);
+  return `${count} ${count === 1 ? "thing" : "things"} ${queue}`;
+}
+
 // ── Execute a single scheduled task ─────────────────────────────────────────
 
 // In-flight guard per org — prevents concurrent executions
 const runningOrgs = new Set<number>();
+
+/**
+ * The chat options a scheduled run passes down. `origin` and `scheduledTask`
+ * are the kernel's ask lanes (AUTONOMY_SPEC.md §4.3): every tool call this
+ * run makes is proposed as `origin: "scheduled"` with the task it came from
+ * frozen on the row (source_ref.scheduledTaskId / scheduledTaskName), so the
+ * ask card can say "from your scheduled prompt 'Monday lead pull'".
+ * processChat threads both to executeTool.
+ */
+type ScheduledChatOptions = NonNullable<Parameters<typeof processChat>[3]>;
 
 export async function executeTask(task: PaxScheduledTask, org: Organization): Promise<void> {
   if (runningOrgs.has(org.id)) {
@@ -130,17 +179,21 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
   const startedAt = Date.now();
   // Prefer the org-level timezone so all scheduled tasks for an org fire at consistent
   // local times. Fall back to the task's own timezone, then the platform default.
-  const effectiveTimezone = (org as any).timezone || task.timezone || DEFAULT_TIMEZONE;
+  const effectiveTimezone = org.timezone || task.timezone || DEFAULT_TIMEZONE;
   try {
-    const result = await processChat(
-      task.prompt,
-      org,
-      task.userId,
-      { agentRole: "executive", conversationId: undefined }
-    );
+    const chatOptions: ScheduledChatOptions = {
+      agentRole: "executive",
+      conversationId: undefined,
+      origin: "scheduled",
+      scheduledTask: { id: task.id, name: task.name },
+    };
+    const result = await processChat(task.prompt, org, task.userId, chatOptions);
 
     const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const summary = result.response.slice(0, 400);
+    // The run summary leads with what is now waiting on the human — a count
+    // read off the kernel's own pending artifacts — then the model's own words.
+    const parked = countAsksParked(result.toolCalls);
+    const summary = (parked > 0 ? `${waitingLine(parked)}. ` : "") + result.response.slice(0, 400);
 
     await storage.updatePaxScheduledTask(task.id, {
       lastRunAt: new Date(),
@@ -167,7 +220,9 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
       durationMs: Date.now() - startedAt,
     } as any).catch(() => {});
 
-    logger.info(`[pax-scheduler] Task ${task.id} "${task.name}" completed (conv ${result.conversationId})`);
+    logger.info(
+      `[pax-scheduler] Task ${task.id} "${task.name}" completed (conv ${result.conversationId}; ${parked} ask(s) parked)`,
+    );
   } catch (err: any) {
     logger.error(`[pax-scheduler] Task ${task.id} "${task.name}" failed`, err);
     await storage.updatePaxScheduledTask(task.id, {
@@ -207,27 +262,28 @@ export async function processPaxScheduledTasks(): Promise<void> {
         continue;
       }
 
-      // ── Pax pause kill-switch (Workstream A honesty) ──────────────────
-      // pax.pausedUntil (written by /settings/pax) pauses ALL Pax automation
-      // for the org. Skip the run with a logged, recorded reason — never
-      // silently — and schedule the task to fire right when the pause lifts
-      // (or shortly, if the pause read failed and we're failing closed).
-      const pause = await getPaxPauseState(org.id);
-      if (pause.paused) {
-        const resumeAt =
-          pause.pausedUntil ?? new Date(Date.now() + 15 * 60 * 1000);
+      // ── Pax controls: the one reader (AUTONOMY_SPEC.md §4.4) ──────────
+      // Paused ⇒ the run is skipped with a recorded reason — never silently
+      // — and re-aimed at the moment the pause lifts (or shortly, when the
+      // read failed and we are failing closed). The stance itself is read
+      // by the kernel on every tool call this run makes: at "Ask before
+      // everything" every record write freezes as an ask and the run summary
+      // above says how many are waiting.
+      const controls = await getPaxControls(org.id);
+      if (controls.paused) {
+        const resumeAt = controls.pausedUntil ?? new Date(Date.now() + PAUSED_RETRY_MS);
         logger.info(
           `[pax-scheduler] Skipping task ${task.id} "${task.name}" — Pax is paused for org ${org.id}` +
-            (pause.checkFailed
-              ? " (pause-state read failed; failing closed, retrying soon)"
-              : ` until ${pause.pausedUntil!.toISOString()}`),
+            (controls.checkFailed
+              ? " (controls read failed; failing closed, retrying soon)"
+              : ` until ${controls.pausedUntil?.toISOString() ?? "(unknown)"}`),
         );
         await storage.updatePaxScheduledTask(task.id, {
           nextRunAt: resumeAt,
           lastRunStatus: "skipped_paused",
-          lastRunSummary: pause.checkFailed
-            ? "Skipped: could not verify the Pax pause setting (failing closed). Will retry shortly."
-            : `Skipped: Pax is paused until ${pause.pausedUntil!.toISOString()}. Resume in Settings → Pax controls.`,
+          lastRunSummary: controls.checkFailed
+            ? PAX_PAUSE_COPY.checkFailedRefusal
+            : PAX_PAUSE_COPY.skippedLine({ until: controls.pausedUntil, timeZone: controls.timezone }),
         });
         continue;
       }
