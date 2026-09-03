@@ -30,7 +30,7 @@
  * below; only the database row is a fixture. A mock standing in for the
  * predicate would make this suite agree with any implementation of it,
  * including one with the polarity inverted — the mistake
- * `paxPauseToolGate.test.ts` records for `unattendedSendPermitted`.
+ * `paxPauseToolGate.test.ts` once recorded for the retired `unattendedSendPermitted`.
  *
  * Both directions are asserted, because a gate that refuses everything is
  * deleted the first week and then guards nothing.
@@ -38,7 +38,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getPaxPauseState, selectFn, memberRow, logWarn } = vi.hoisted(() => {
+const { getPaxControls, selectFn, memberRow, logWarn } = vi.hoisted(() => {
   const memberRow = { current: null as null | { role: string } };
   const selectFn = vi.fn(() => ({
     from: () => ({
@@ -48,10 +48,16 @@ const { getPaxPauseState, selectFn, memberRow, logWarn } = vi.hoisted(() => {
     }),
   }));
   return {
-    getPaxPauseState: vi.fn(async () => ({
+    getPaxControls: vi.fn(async () => ({
+      stance: "ask_before_sending" as const,
+      leadScoring: true,
+      borrowerReminders: true,
+      inboxDrafts: true,
       paused: false,
       pausedUntil: null as Date | null,
+      pausedBy: null,
       checkFailed: false,
+      timezone: "America/Chicago",
     })),
     selectFn,
     memberRow,
@@ -59,10 +65,14 @@ const { getPaxPauseState, selectFn, memberRow, logWarn } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../server/services/paxPause", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../server/services/paxPause")>();
-  return { ...actual, getPaxPauseState };
+// The ONE reader of the org's Pax controls (the pause is folded into it) —
+// stubbed unpaused so the gates under test here are the scope and FCRA ones.
+vi.mock("../../server/services/paxControls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
+  return { ...actual, getPaxControls };
 });
+vi.mock("../../server/websocket", () => ({ wsServer: { broadcastToOrg: vi.fn() } }));
+vi.mock("../../server/services/paxReceipts", () => ({ recordPaxEffect: vi.fn(async () => ({ written: true })) }));
 
 // The DB row is the ONLY fixture. `userHasScope` and ROLE_SCOPES stay real.
 vi.mock("../../server/db", () => ({ db: { select: selectFn } }));
@@ -134,7 +144,17 @@ function asRole(role: string | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   asRole(null);
-  getPaxPauseState.mockResolvedValue({ paused: false, pausedUntil: null, checkFailed: false });
+  getPaxControls.mockResolvedValue({
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    paused: false,
+    pausedUntil: null,
+    pausedBy: null,
+    checkFailed: false,
+    timezone: "America/Chicago",
+  });
 });
 afterEach(() => vi.clearAllMocks());
 

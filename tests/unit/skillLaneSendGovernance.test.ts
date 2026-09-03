@@ -1,118 +1,103 @@
 /**
- * The skill lane's sendEmail wears the same belts as the pax lane.
+ * The skill lane's sendEmail has no one to approve it — so it refuses.
  *
  * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
  * Stage-4 turn 1's census named `agent-skills.ts`'s sendEmail the least
  * governed send lane in the repo: a MODEL-COMPOSED free-form recipient with
- * no autonomy gate, no rate envelope, no TCPA check — while the same
- * recipients reached through pax's send_email carry all three
- * (ai/tools.ts:1950-1985). Turn 9 reclassified the lane counterparty-byo
- * (purpose:"counterparty" makes emailService refuse without the org's own
- * identity) and recorded the residual gap as skill-lane follow-up. This is
- * that follow-up, and this file pins it.
+ * no approval gate. Turn 9 gave it the pax lane's belts (level, envelope,
+ * TCPA). The customer autonomy clarity program (2026-09-02) removed the
+ * level altogether: every message Pax writes waits for a tap at every
+ * stance (founder decision 1), and every caller of the skill registry is an
+ * unattended engine (task-runner, workflow-engine, company agents) — there
+ * is nobody in the loop to tap. A belt that lets a send through when "the
+ * level is high enough" is the lever the founder declined to offer.
  *
  * ── THE CONTRACT ────────────────────────────────────────────────────────────
- * Every skill caller is an autonomous engine (task-runner, workflow-engine,
- * autonomousTaskProcessor, companyAgents) — no human is present to approve a
- * draft. So, unlike pax chat's draft-for-approval:
- *   - assisted autonomy       → REFUSE, naming the level and the route.
- *   - rate envelope exhausted → REFUSE.
- *   - TCPA-blocked lead       → REFUSE.
- *   - all green               → send with purpose:"counterparty" AND record
- *                               into the autonomous-send audit envelope, so
- *                               the rate limiter and daily briefing count it.
+ * sendEmail REFUSES, plainly, before touching anything: no config check, no
+ * envelope, no rail. The sentence names the one lane that works ("send via
+ * Pax", where the draft waits for a tap) and says nothing was sent. The
+ * skill stays registered so the pause / risk classification ratchets keep
+ * seeing it as a send.
  *
- * Falsification: each refusal case asserts emailService.sendEmail was NEVER
- * called — deleting a belt turns exactly that case red; the all-green case
- * is the vacuity guard proving the refusals aren't "refuse everything".
+ * Falsification: every case asserts emailService.sendEmail was NEVER called
+ * and isConfigured was never consulted; restore any belt that can pass and
+ * the "all green" case goes red.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const ORG = 7;
 
-interface Knobs {
-  level?: "assisted" | "supervised" | "autonomous";
-  rateAllowed?: boolean;
-  tcpaAllowed?: boolean;
-  leadId?: number;
-}
-
-async function runSendEmail(knobs: Knobs) {
+async function runSendEmail(args: Record<string, unknown> = {}) {
   vi.resetModules();
 
   const sendEmail = vi.fn(async (_args: Record<string, unknown>) => ({ success: true, messageId: "m-1" }));
+  const isConfigured = vi.fn(async () => true);
   const recordAutonomousSend = vi.fn(async () => {});
+  const checkSendRateLimit = vi.fn(async () => ({ allowed: true }));
+  const checkTcpaBeforeSend = vi.fn(async () => ({ allowed: true }));
 
   vi.doMock("../../server/services/emailService", () => ({
-    emailService: {
-      isConfigured: async () => true,
-      sendEmail,
-    },
+    emailService: { isConfigured, sendEmail },
   }));
   vi.doMock("../../server/services/autonomyGuardrails", () => ({
-    getOrgAutonomyLevel: async () => knobs.level ?? "autonomous",
-    unattendedSendPermitted: (level: string) => level !== "assisted",
-    checkSendRateLimit: async () => (knobs.rateAllowed === false
-      ? { allowed: false, reason: "Daily send envelope reached (test)" }
-      : { allowed: true }),
-    checkTcpaBeforeSend: async () => (knobs.tcpaAllowed === false
-      ? { allowed: false, reason: "lead opted out (test)" }
-      : { allowed: true }),
+    checkSendRateLimit,
+    checkTcpaBeforeSend,
     recordAutonomousSend,
+  }));
+  vi.doMock("../../server/db", () => ({ db: {} }));
+  vi.doMock("../../server/utils/logger", () => ({
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   }));
 
   const { skillRegistry } = await import("../../server/services/agent-skills");
   const skill = skillRegistry.getSkillById("sendEmail");
   if (!skill) throw new Error("sendEmail skill is not registered");
   const result = await skill.execute(
-    { to: "seller@example.com", subject: "Hi", body: "Hello", ...(knobs.leadId ? { leadId: knobs.leadId } : {}) },
+    { to: "seller@example.com", subject: "Hi", body: "Hello", ...args },
     { organizationId: ORG },
   );
-  return { result, sendEmail, recordAutonomousSend };
+  return { result, sendEmail, isConfigured, recordAutonomousSend, checkSendRateLimit, checkTcpaBeforeSend };
 }
 
-describe("skill-lane sendEmail wears the pax lane's belts", () => {
+describe("skill-lane sendEmail refuses — there is no one to approve it", () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
-  it("vacuity guard: all green → sends as counterparty and records into the audit envelope", async () => {
-    const { result, sendEmail, recordAutonomousSend } = await runSendEmail({ leadId: 12 });
-    expect(result.success, result.error).toBe(true);
-    expect(sendEmail).toHaveBeenCalledTimes(1);
-    expect(sendEmail.mock.calls[0]![0]).toMatchObject({ purpose: "counterparty", organizationId: ORG });
-    expect(recordAutonomousSend).toHaveBeenCalledTimes(1);
+  it("all green (configured, envelope open, consent on file) still refuses — the belts are not the gate, the tap is", async () => {
+    const r = await runSendEmail({ leadId: 12 });
+    expect(r.result.success).toBe(false);
+    expect(r.result.error ?? "").toMatch(/^Email from a skill has no one to approve it/);
+    expect(r.result.error ?? "").toMatch(/send via Pax/);
+    expect(r.result.error ?? "").toMatch(/Nothing was sent/);
+    expect(r.sendEmail).not.toHaveBeenCalled();
+    expect(r.isConfigured).not.toHaveBeenCalled();
+    expect(r.recordAutonomousSend).not.toHaveBeenCalled();
+    expect(r.checkSendRateLimit).not.toHaveBeenCalled();
+    expect(r.checkTcpaBeforeSend).not.toHaveBeenCalled();
   });
 
-  it("assisted autonomy refuses without sending, naming the level and a route", async () => {
-    const { result, sendEmail } = await runSendEmail({ level: "assisted" });
-    expect(result.success).toBe(false);
-    expect(result.error ?? "").toMatch(/assisted/);
-    expect(result.error ?? "").toMatch(/no send was made/i);
-    expect(result.error ?? "").toMatch(/Pax/);
-    expect(sendEmail).not.toHaveBeenCalled();
+  it("without a leadId (a bare address) it refuses the same way", async () => {
+    const r = await runSendEmail();
+    expect(r.result.success).toBe(false);
+    expect(r.result.error ?? "").toMatch(/^Email from a skill has no one to approve it/);
+    expect(r.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("an exhausted daily envelope refuses without sending", async () => {
-    const { result, sendEmail } = await runSendEmail({ rateAllowed: false });
-    expect(result.success).toBe(false);
-    expect(result.error ?? "").toMatch(/envelope/i);
-    expect(sendEmail).not.toHaveBeenCalled();
+  it("the refusal names no level and no threshold — there is nothing to raise", async () => {
+    const r = await runSendEmail();
+    expect(r.result.error ?? "").not.toMatch(/level|assisted|supervised|autonom/i);
   });
 
-  it("a TCPA-blocked lead refuses without sending", async () => {
-    const { result, sendEmail } = await runSendEmail({ tcpaAllowed: false, leadId: 12 });
-    expect(result.success).toBe(false);
-    expect(result.error ?? "").toMatch(/opted out/);
-    expect(sendEmail).not.toHaveBeenCalled();
-  });
-
-  it("without a leadId the TCPA gate has nothing to check and the send proceeds", async () => {
-    // Pins the conditional: the lead consent check applies when a lead is
-    // named; a bare address still passes the level + envelope gates above.
-    const { result, sendEmail } = await runSendEmail({ tcpaAllowed: false });
-    expect(result.success, result.error).toBe(true);
-    expect(sendEmail).toHaveBeenCalledTimes(1);
+  it("the skill stays registered as a communications send (the classification ratchets read it)", async () => {
+    vi.doMock("../../server/db", () => ({ db: {} }));
+    vi.doMock("../../server/utils/logger", () => ({
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    }));
+    const { skillRegistry } = await import("../../server/services/agent-skills");
+    const skill = skillRegistry.getSkillById("sendEmail");
+    expect(skill).toBeDefined();
+    expect(skill!.agentTypes).toContain("communications");
   });
 });

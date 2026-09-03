@@ -289,6 +289,24 @@ vi.mock("../../server/services/paxPause", () => ({
   getPaxPauseState: async () => ({ paused: false, pausedUntil: null, checkFailed: false }),
   paxPauseRefusalMessage: () => "Pax is paused",
 }));
+// Since 2026-09-02 executeTool reads the org's stance + pause through the
+// ONE reader (getPaxControls), which fails CLOSED on any DB read — so the
+// mocked db above would refuse every record write. Unpaused, default stance.
+vi.mock("../../server/services/paxControls", () => ({
+  getPaxControls: async () => ({
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    paused: false,
+    pausedUntil: null,
+    pausedBy: null,
+    checkFailed: false,
+    timezone: "America/Chicago",
+  }),
+  paxControlsRefusalMessage: () => "Pax is paused",
+}));
+vi.mock("../../server/services/paxReceipts", () => ({ recordPaxEffect: async () => ({ written: true }) }));
 vi.mock("../../server/services/approvalKernel", () => ({
   APPROVAL_REQUIRED_TOOLS: new Set<string>(),
   proposePendingAction: async () => ({ id: 1 }),

@@ -443,6 +443,15 @@ Always structure research reports with:
   }
 };
 
+/**
+ * The plain sentence a VA action returns when nothing behind it exists. It
+ * used to return `success: true` with the input echoed back as if it had
+ * happened; the executor then marked the action "completed". Nothing was
+ * ever written. Refuse-not-fabricate.
+ */
+const VA_ACTION_NOT_WIRED = (actionType: string, what: string): string =>
+  `"${actionType}" is not connected to anything — ${what}. Nothing was changed.`;
+
 export class VaAgentService {
   async proposeAction(
     orgId: number,
@@ -507,6 +516,14 @@ export class VaAgentService {
 
       const result = await this.performAction(action, org);
 
+      // A rail that reports `success: false` did NOT do the thing — the row
+      // must say "failed", not "completed" with a failure tucked into its
+      // output (the four unwired action types above return exactly this).
+      if (result && typeof result === "object" && (result as { success?: boolean }).success === false) {
+        const r = result as { error?: string; message?: string };
+        throw new Error(r.error ?? r.message ?? "Action did not complete");
+      }
+
       const completed = await storage.updateVaAction(actionId, {
         status: "completed",
         output: result,
@@ -552,7 +569,7 @@ export class VaAgentService {
           lead_id: input.leadId,
           status: input.status,
           notes: input.notes
-        }, org);
+        }, org, { origin: "chat" });
 
       case "create_lead":
         return await executeTool("create_lead", {
@@ -563,52 +580,34 @@ export class VaAgentService {
           type: input.type,
           source: input.source,
           notes: input.notes
-        }, org);
+        }, org, { origin: "chat" });
 
+      // The four cases below reported success while writing NOTHING — no
+      // reminder row, no campaign, no task, no note (AUTONOMY_SPEC.md §3d,
+      // 2026-09-02). A result that names an effect it did not have is a
+      // fabrication; each now says plainly that nothing was done and why.
       case "send_reminder":
         return {
-          success: true,
-          message: "Reminder prepared",
-          data: {
-            type: input.reminderType,
-            recipient: input.recipient,
-            content: input.content,
-            scheduledFor: input.scheduledFor
-          }
+          success: false,
+          error: VA_ACTION_NOT_WIRED("send_reminder", "no reminder was prepared or sent — reminders go out only through the finance ladder after your tap"),
         };
 
       case "propose_campaign":
         return {
-          success: true,
-          message: "Campaign proposal created",
-          data: {
-            name: input.campaignName,
-            target: input.targetAudience,
-            type: input.campaignType,
-            budget: input.budget
-          }
+          success: false,
+          error: VA_ACTION_NOT_WIRED("propose_campaign", "no campaign was created — build one under Campaigns"),
         };
 
       case "schedule_callback":
         return {
-          success: true,
-          message: "Callback scheduled",
-          data: {
-            leadId: input.leadId,
-            scheduledTime: input.scheduledTime,
-            notes: input.notes
-          }
+          success: false,
+          error: VA_ACTION_NOT_WIRED("schedule_callback", "no callback was scheduled — ask Pax to create a task instead"),
         };
 
       case "record_note":
         return {
-          success: true,
-          message: "Note recorded",
-          data: {
-            entityType: input.entityType,
-            entityId: input.entityId,
-            note: input.note
-          }
+          success: false,
+          error: VA_ACTION_NOT_WIRED("record_note", "no note was recorded — add it on the record's page"),
         };
 
       default:
@@ -704,7 +703,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         if ('function' in toolCall) {
           const args = JSON.parse(toolCall.function.arguments);
           toolsUsed.push(toolCall.function.name);
-          const result = await executeTool(toolCall.function.name, args, org);
+          const result = await executeTool(toolCall.function.name, args, org, { origin: "chat" });
 
           toolResults.push({
             role: "tool",

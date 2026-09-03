@@ -15,7 +15,13 @@ import {
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
+// The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
+// and pause in one call, failing CLOSED. The pause primitive is read through it.
+import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+import { proposePendingAction, pendingActionArtifact } from "../services/approvalKernel";
+import { recordPaxEffect } from "../services/paxReceipts";
+import { ALWAYS_ASK_SUPPORT_TOOLS } from "@shared/pax-controls";
+import type { ExecuteToolOptions } from "./tools";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
@@ -662,17 +668,21 @@ export const supportToolDefinitions = {
   
   apply_billing_fix: {
     name: "apply_billing_fix",
-    description: "Apply a common billing fix such as retrying a failed payment or updating payment method. Requires customer confirmation.",
+    // "Requires customer confirmation" is TRUE (2026-09-02): apply_billing_fix
+    // is in ALWAYS_ASK_SUPPORT_TOOLS, so every call freezes as an ask the
+    // customer taps, at every stance. Credits are not offered here at all — a
+    // concession on what the customer pays AcreOS is the founder's pricing
+    // hard-stop, not a support fix (paxSupportNoPricing.test.ts).
+    description: "Apply a common billing fix such as retrying a failed payment or updating payment method. Requires customer confirmation — the fix waits for the customer's tap before anything is applied.",
     parameters: {
       type: "object",
       properties: {
         fix_type: { 
           type: "string", 
-          enum: ["retry_payment", "send_update_payment_link", "apply_credit", "cancel_pending_invoice"],
+          enum: ["retry_payment", "send_update_payment_link", "cancel_pending_invoice"],
           description: "Type of billing fix to apply" 
         },
         invoice_id: { type: "string", description: "Invoice ID for payment retry (if applicable)" },
-        amount_cents: { type: "number", description: "Amount in cents for credit application (if applicable)" },
         reason: { type: "string", description: "Reason for the billing fix" }
       },
       required: ["fix_type", "reason"]
@@ -1297,39 +1307,117 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "twilio",
 ]);
 
+/**
+ * The one sentence the support agent says when a credit is asked for. A
+ * concession on what the customer pays AcreOS is the founder's pricing
+ * hard-stop (CLAUDE.md DO-NOT-DO list; founder decision 8, 2026-09-02): it
+ * is not a customer approval and not a model decision, so it is refused
+ * before ANY gate — at every stance and every pause state — and routed to a
+ * person. Nothing is written, nothing is asked.
+ */
+export const APPLY_CREDIT_REFUSAL =
+  "A credit on your AcreOS bill isn't something Pax can apply or queue — a person will review this. " +
+  "Nothing was changed on your account.";
+
+/** True when a call is asking for the one billing fix the model may never reach. */
+function asksForCredit(toolName: string, args: Record<string, any>): boolean {
+  return toolName === "apply_billing_fix" && args?.fix_type === "apply_credit";
+}
+
+type SupportToolResult = { success: boolean; data?: any; error?: string };
+
 export async function executeSupportTool(
   toolName: string,
   args: Record<string, any>,
   org: Organization,
-  ticketId?: number
-): Promise<{ success: boolean; data?: any; error?: string }> {
+  ticketId?: number,
+  options?: ExecuteToolOptions
+): Promise<SupportToolResult> {
   try {
-    // ── Pax pause gate (2026-09-01) ──────────────────────────────────────
-    // The /settings/pax kill-switch promises "stops EVERY auto-execution
-    // path", and this switch is a dispatch path a model drives while talking
-    // to a customer — it was the population blind spot CLAUDE.md documents.
-    // Mirrors tools.ts: tools NOT on the PAUSE_SAFE allowlist are refused
-    // while paused, so a new tool added without classification is gated by
-    // default (fail closed). Read-only lookups, drafts, and escalation to a
-    // human stay available — pausing the machine must never block reaching
-    // a person.
-    if (!PAUSE_SAFE_SUPPORT_TOOLS.has(toolName)) {
-      const pause = await getPaxPauseState(org.id);
-      if (pause.paused) {
-        logger.info(
-          "[executeSupportTool] Refused side-effecting support tool — Pax is paused for this org",
-          {
-            orgId: org.id,
-            metadata: {
-              toolName,
-              pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-              checkFailed: pause.checkFailed,
-            },
-          },
-        );
-        return { success: false, error: paxPauseRefusalMessage(pause) };
-      }
+    // ── Pricing hard-stop — before any gate ───────────────────────────────
+    if (asksForCredit(toolName, args)) {
+      logger.warn("[executeSupportTool] Refused apply_credit — pricing hard-stop, routed to a person", {
+        orgId: org.id,
+        metadata: { ticketId: ticketId ?? null },
+      });
+      return { success: false, error: APPLY_CREDIT_REFUSAL };
     }
+
+    const trustedApproval = options?.trustedApproval === true;
+    const origin = options?.origin ?? "support";
+    const pauseSafe = PAUSE_SAFE_SUPPORT_TOOLS.has(toolName);
+
+    // ── The org's Pax controls — ONE read per invocation (spec §4.2, §4.3) ─
+    // This switch is a dispatch path a model drives while talking to a
+    // paying customer — the population blind spot CLAUDE.md documents. It
+    // reads the SAME controls executeTool reads, through the same reader,
+    // failing CLOSED. Skipped for the two cases the controls never gate:
+    // pause-safe tools (read-only lookups, drafts, the support system's own
+    // bookkeeping, escalation to a human — pausing the machine must never
+    // block reaching a person) and the human-approved replay.
+    const controls: PaxControlsState | null =
+      !pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null;
+
+    // A failed read is not a stance: nothing proceeds, not even as an ask.
+    if (controls?.checkFailed) {
+      logger.warn("[executeSupportTool] Refused — Pax controls could not be verified (failing closed)", {
+        orgId: org.id,
+        metadata: { toolName, origin, ticketId: ticketId ?? null },
+      });
+      return { success: false, error: paxControlsRefusalMessage(controls) };
+    }
+
+    // ── The approval kernel, support half (spec §4.3) ─────────────────────
+    // What requires a tap here:
+    //   - ALWAYS_ASK_SUPPORT_TOOLS (billing fixes, Stripe resync, preference
+    //     resets, bulk / common-issue fixes) at EVERY stance — so "Requires
+    //     customer confirmation" in the tool description is true;
+    //   - at "Ask before everything", every non-pause-safe case.
+    // The frozen row replays through executeSupportTool with
+    // { trustedApproval: true } after the customer taps (paxAskExecutors).
+    const requiresAsk =
+      ALWAYS_ASK_SUPPORT_TOOLS.has(toolName) ||
+      (controls?.stance === "ask_before_everything" && !pauseSafe);
+    if (requiresAsk && !trustedApproval) {
+      const pending = await proposePendingAction({
+        organizationId: org.id,
+        toolName,
+        args,
+        createdByUserId: options?.userId ?? null,
+        origin,
+        sourceRef: typeof ticketId === "number" ? { ticketId } : null,
+        reason: typeof args.reason === "string" && args.reason.length > 0 ? args.reason : null,
+      });
+      return { success: true, data: pendingActionArtifact(pending) };
+    }
+
+    // ── Pax pause gate (2026-09-01) ──────────────────────────────────────
+    // Tools NOT on the PAUSE_SAFE allowlist are refused while paused, so a
+    // new tool added without classification is gated by default (fail
+    // closed). After the kernel, like tools.ts: an always-ask fix has already
+    // been frozen as an ask above — asks keep accumulating while paused.
+    if (controls?.paused) {
+      logger.info(
+        "[executeSupportTool] Refused side-effecting support tool — Pax is paused for this org",
+        {
+          orgId: org.id,
+          metadata: {
+            toolName,
+            origin,
+            pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+          },
+        },
+      );
+      return { success: false, error: paxControlsRefusalMessage(controls) };
+    }
+
+    // ── Dispatch, then the receipt (spec §4.7) ─────────────────────────────
+    // Same shape as executeTool: the switch runs inside a closure so one
+    // post-dispatch hook sees every case's result and writes the generic
+    // receipt — only on success, only when the case did not, never on the
+    // human-approved replay (the executor writes that one).
+    let receiptWritten = false;
+    const outcome: SupportToolResult = await (async (): Promise<SupportToolResult> => {
     switch (toolName) {
       case "search_knowledge_base": {
         const { query, category } = args;
@@ -3790,7 +3878,7 @@ export async function executeSupportTool(
       }
       
       case "apply_billing_fix": {
-        const { fix_type, invoice_id, amount_cents, reason } = args;
+        const { fix_type, invoice_id, reason } = args;
         
         if (!org.stripeCustomerId) {
           return { success: false, error: "No Stripe customer configured for this organization." };
@@ -3859,40 +3947,12 @@ export async function executeSupportTool(
             }
             
             case "apply_credit": {
-              if (!amount_cents || amount_cents <= 0) {
-                return { success: false, error: "Valid amount required for credit application" };
-              }
-              
-              // Apply credit balance to customer
-              await stripe.customers.update(org.stripeCustomerId, {
-                balance: -amount_cents // Negative = credit
-              });
-              
-              // Log to memory
-              await db.insert(paxMemory).values({
-                organizationId: org.id,
-                userId: org.ownerId,
-                memoryType: "issue_history",
-                key: `billing_credit_${Date.now()}`,
-                value: {
-                  summary: `Applied $${(amount_cents / 100).toFixed(2)} credit to account`,
-                  fixType: fix_type,
-                  amountCents: amount_cents,
-                  reason,
-                  timestamp: new Date().toISOString()
-                } as any,
-                importance: 9,
-                sourceTicketId: ticketId
-              });
-              
-              return {
-                success: true,
-                data: {
-                  creditApplied: true,
-                  amount: (amount_cents / 100).toFixed(2),
-                  message: `Successfully applied $${(amount_cents / 100).toFixed(2)} credit to customer account`
-                }
-              };
+              // Model-unreachable (2026-09-02): the guard at the top of
+              // executeSupportTool refuses this before any gate, and the
+              // fix_type enum no longer offers it. The label stays so the
+              // classification ratchets still see it; the body refuses and
+              // touches nothing — no Stripe balance, no memory row.
+              return { success: false, error: APPLY_CREDIT_REFUSAL };
             }
             
             case "cancel_pending_invoice": {
@@ -5057,6 +5117,32 @@ export async function executeSupportTool(
       default:
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
+    })();
+
+    if (!pauseSafe && !trustedApproval && outcome.success && !receiptWritten) {
+      // Never into the tool path: the effect already happened.
+      try {
+        await recordPaxEffect({
+          orgId: org.id,
+          actor: "pax",
+          origin,
+          stance: controls?.stance ?? null,
+          tool: toolName,
+          entityType: typeof ticketId === "number" ? "support_ticket" : "organization",
+          entityId: typeof ticketId === "number" ? ticketId : org.id,
+          after: outcome.data && typeof outcome.data === "object" ? outcome.data : undefined,
+          witnessed: false,
+          userId: options?.userId ?? null,
+        });
+      } catch (receiptErr) {
+        logger.error("[executeSupportTool] Receipt hook failed — the effect stands, the record does not", receiptErr as Error, {
+          orgId: org.id,
+          metadata: { toolName, origin },
+        });
+      }
+    }
+
+    return outcome;
   } catch (error: any) {
     logger.error(`[support-tool] Error executing ${toolName}`, error);
     return { success: false, error: error.message };
@@ -5298,7 +5384,12 @@ export async function processSupportChat(
     for (const toolCall of assistantMessage.tool_calls) {
       if ('function' in toolCall) {
         const args = JSON.parse(toolCall.function.arguments);
-        const result = await executeSupportTool(toolCall.function.name, args, org, ticketId);
+        // Support-origin: asks the customer taps in the support chat; the
+        // human in the conversation is recorded as who asked.
+        const result = await executeSupportTool(toolCall.function.name, args, org, ticketId, {
+          origin: "support",
+          userId,
+        });
 
         toolsUsed.push(toolCall.function.name);
         actionsPerformed.push({

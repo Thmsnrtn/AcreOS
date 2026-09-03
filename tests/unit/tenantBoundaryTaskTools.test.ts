@@ -20,8 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  getPaxPauseState,
-  getOrgAutonomyLevel,
+  getPaxControls,
   checkSendRateLimit,
   checkTcpaBeforeSend,
   recordAutonomousSend,
@@ -35,12 +34,17 @@ const {
   createLead,
   logActivity,
 } = vi.hoisted(() => ({
-  getPaxPauseState: vi.fn(async () => ({
+  getPaxControls: vi.fn(async () => ({
+    stance: "ask_before_sending" as const,
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
     paused: false,
     pausedUntil: null as Date | null,
+    pausedBy: null,
     checkFailed: false,
+    timezone: "America/Chicago",
   })),
-  getOrgAutonomyLevel: vi.fn(async () => "assisted" as const),
   checkSendRateLimit: vi.fn(async () => ({ allowed: true })),
   checkTcpaBeforeSend: vi.fn(async () => ({ allowed: true })),
   recordAutonomousSend: vi.fn(async () => undefined),
@@ -55,14 +59,15 @@ const {
   logActivity: vi.fn(async () => undefined),
 }));
 
-vi.mock("../../server/services/paxPause", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../server/services/paxPause")
-  >("../../server/services/paxPause");
-  return { ...actual, getPaxPauseState };
+// The ONE reader of the org's Pax controls (pause folded in) — unpaused, at
+// the default stance, so the org-scope prechecks are what run here.
+vi.mock("../../server/services/paxControls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
+  return { ...actual, getPaxControls };
 });
+vi.mock("../../server/db", () => ({ db: {} }));
+vi.mock("../../server/websocket", () => ({ wsServer: { broadcastToOrg: vi.fn() } }));
 vi.mock("../../server/services/autonomyGuardrails", () => ({
-  getOrgAutonomyLevel,
   checkSendRateLimit,
   checkTcpaBeforeSend,
   recordAutonomousSend,
@@ -112,8 +117,17 @@ const org = { id: 7, name: "Org A" } as any;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getPaxPauseState.mockResolvedValue({ paused: false, pausedUntil: null, checkFailed: false });
-  getOrgAutonomyLevel.mockResolvedValue("assisted" as const);
+  getPaxControls.mockResolvedValue({
+    stance: "ask_before_sending",
+    leadScoring: true,
+    borrowerReminders: true,
+    inboxDrafts: true,
+    paused: false,
+    pausedUntil: null,
+    pausedBy: null,
+    checkFailed: false,
+    timezone: "America/Chicago",
+  });
 });
 afterEach(() => vi.clearAllMocks());
 

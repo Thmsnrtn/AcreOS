@@ -48,6 +48,7 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import { skillRegistry } from "../../server/services/agent-skills";
+import { PAX_PAUSE_COPY } from "../../shared/pax-glossary";
 
 const ORG_ID = 7;
 const ctx = { organizationId: ORG_ID };
@@ -69,9 +70,10 @@ describe("paused org — side-effecting skills are refused for every caller", ()
     );
 
     expect(result.success).toBe(false);
+    // The glossary line (spec §4.6): a humanised time, never an ISO string.
+    expect(result.error).toBe(PAX_PAUSE_COPY.refusal({ until: PAUSED_UNTIL, byName: null }));
     expect(result.error).toContain("Pax is paused until");
-    expect(result.error).toContain(PAUSED_UNTIL.toISOString());
-    expect(result.error).toContain("not executed");
+    expect(result.error).not.toContain(PAUSED_UNTIL.toISOString());
     expect(H.sendEmail).not.toHaveBeenCalled();
     expect(H.isConfigured).not.toHaveBeenCalled();
     expect(H.getPaxPauseState).toHaveBeenCalledWith(ORG_ID);
@@ -97,6 +99,7 @@ describe("paused org — side-effecting skills are refused for every caller", ()
     const result = await skillRegistry.executeSkill("enrichLead", { leadId: 42 }, ctx);
 
     expect(result.success).toBe(false);
+    expect(result.error).toBe(PAX_PAUSE_COPY.checkFailedRefusal);
     expect(result.error).toContain("could not verify");
     expect(H.getLead).not.toHaveBeenCalled();
   });

@@ -9,8 +9,9 @@
  * the trusted approval, and an attributed receipt written after success and
  * never after failure.
  *
- * Wave 1 A adds the other half: derive every toolName proposePendingAction
- * is called with (call-site scan) and assert each is in the registry.
+ * The other half — every toolName proposePendingAction is called with
+ * (call-site scan) resolves here to exactly one rail — is
+ * tests/unit/paxAsksAreExecutable.test.ts.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -115,10 +116,18 @@ describe("the tap is the trusted approval", () => {
     expect(options).toMatchObject({ trustedApproval: true, userId: "u-1", origin: "approval_replay" });
   });
 
-  it("replays a support fix through executeSupportTool with the ticket from source_ref", async () => {
+  it("replays a support fix through executeSupportTool with the ticket from source_ref AND the trusted options (seam 1)", async () => {
     await executeApprovedAsk("resync_stripe", {}, { ...ctx, sourceRef: { ticketId: 12 } });
     expect(mocks.executeSupportTool).toHaveBeenCalledTimes(1);
-    expect(mocks.executeSupportTool.mock.calls[0]).toEqual(["resync_stripe", {}, org, 12]);
+    // Without the fifth argument an approved support ask re-froze as a new
+    // ask instead of running (wave-0 handoff seam 1).
+    expect(mocks.executeSupportTool.mock.calls[0]).toEqual([
+      "resync_stripe",
+      {},
+      org,
+      12,
+      { trustedApproval: true, userId: "u-1", origin: "approval_replay" },
+    ]);
     expect(mocks.executeTool).not.toHaveBeenCalled();
   });
 

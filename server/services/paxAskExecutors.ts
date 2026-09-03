@@ -31,18 +31,19 @@
  * server/ai/supportAgent.ts are large graphs that must not load with this
  * module, and neither may import this one (no cycle back into the kernel).
  *
- * WAVE-1 SEAMS, named so they cannot be forgotten:
- *   - A adds `origin` to ExecuteToolOptions; it is already passed below and
- *     becomes typed the moment the field exists.
- *   - A adds `options?: ExecuteToolOptions` to executeSupportTool and the
- *     always-ask predicate inside it. Until BOTH land here — pass
- *     `{ trustedApproval: true, origin: "approval_replay" }` as its fifth
- *     argument — an approved support ask would re-freeze instead of running.
- *   - B parks the ladder as `send_borrower_reminder` with
- *     args `{ reminderId, noteId, type }` and sourceRef `{ noteId, borrowerId }`;
- *     the replay below reads noteId from either and refuses without one.
+ * The tap is the trusted approval on EVERY rail (wave 1 A, 2026-09-02):
+ *   - executeTool gets `{ trustedApproval: true, origin: "approval_replay" }`,
+ *     so neither the kernel gate nor the stance nor the pause re-freezes the
+ *     replay — a human tapped for exactly this row.
+ *   - executeSupportTool gets the same options as its fifth argument; before
+ *     this an approved support ask re-froze as a new ask instead of running.
+ *   - `send_borrower_reminder` replays through financeAgentService
+ *     .sendManualReminder(noteId, orgId, type), which dispatches with the
+ *     `humanApproved` flag the ladder's gate honours; noteId is read from the
+ *     frozen args (the ladder freezes `{ reminderId, noteId, type }`) or the
+ *     row's sourceRef, and the replay refuses without one.
  *
- * Wave-1 consumer: POST /api/pax/pending-actions/:id/approve (C).
+ * Consumer: POST /api/pax/pending-actions/:id/approve (server/routes-pax-insights.ts).
  */
 
 import type { Organization } from "@shared/schema";
@@ -73,6 +74,13 @@ export type ApprovedAskResult = ToolExecutionResult & {
 const numberArg = (v: unknown): number | null =>
   typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
 
+/** The one option shape a replay passes: the tap is the trusted approval. */
+const replayOptions = (ctx: ApprovedAskContext): ExecuteToolOptions => ({
+  trustedApproval: true,
+  userId: ctx.userId,
+  origin: "approval_replay",
+});
+
 /**
  * Replay one approved ask through the rail that owns its tool name.
  * Shaped to drop into approvePendingAction's `execute` callback.
@@ -88,20 +96,13 @@ export async function executeApprovedAsk(
   switch (dispatch) {
     case "executeTool": {
       const { executeTool } = await import("../ai/tools");
-      // `origin` rides along untyped until wave 1 A adds it to
-      // ExecuteToolOptions; the wider variable type keeps tsc honest either way.
-      const options: ExecuteToolOptions & { origin: "approval_replay" } = {
-        trustedApproval: true,
-        userId: ctx.userId,
-        origin: "approval_replay",
-      };
-      result = await executeTool(toolName, args, ctx.org, options);
+      result = await executeTool(toolName, args, ctx.org, replayOptions(ctx));
       break;
     }
     case "executeSupportTool": {
       const { executeSupportTool } = await import("../ai/supportAgent");
       const ticketId = numberArg(ctx.sourceRef?.ticketId) ?? undefined;
-      result = await executeSupportTool(toolName, args, ctx.org, ticketId);
+      result = await executeSupportTool(toolName, args, ctx.org, ticketId, replayOptions(ctx));
       break;
     }
     case "finance_ladder": {

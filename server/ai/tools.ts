@@ -14,8 +14,6 @@ import {
 import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
 import {
-  getOrgAutonomyLevel,
-  unattendedSendPermitted,
   checkSendRateLimit,
   checkTcpaBeforeSend,
   recordAutonomousSend,
@@ -27,7 +25,12 @@ import {
   proposePendingAction,
   pendingActionArtifact,
 } from "../services/approvalKernel";
-import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
+// The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2): stance,
+// switches and the pause folded into one call, failing CLOSED. The pause
+// primitive (server/services/paxPause.ts) is consulted through it.
+import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+import { recordPaxEffect } from "../services/paxReceipts";
+import type { PaxAskOrigin, PaxAskSourceRef } from "@shared/pax-controls";
 // The permission ladder, reachable without an Express request. `intentScopes`
 // is a TYPE-ONLY leaf so importing it here is not the cycle that importing
 // `appIntents/catalog` would be (catalog imports executeTool from this file).
@@ -984,9 +987,12 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "browse_web",
   "extract_properties_from_text",
   "retrieve_land_knowledge",
-  // Drafts that don't send (the pause promise: "Pax will still draft and ask")
+  // Drafts that don't send (the pause promise: "Pax will still draft and ask").
+  // `draft_offer` left this list on 2026-09-02: it advances a negotiating deal
+  // to offer_sent and writes a paxMemory row — a record mutation, and
+  // pause-safe must mean no storage mutation (spec §3d; pauseSafeToolsAreSafe
+  // in tests/unit/paxPauseToolGate.test.ts reads every allowlisted case body).
   "generate_offer",
-  "draft_offer",
   "draft_outreach_message",
   // Connector READS (their write counterparts — send_gmail, send_slack_message,
   // create_stripe_payment_link, create_calendar_event, trigger_zapier/make —
@@ -1012,6 +1018,17 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "spawn_subagent",
 ]);
 
+/**
+ * Which lane a tool call arrived through (AUTONOMY_SPEC.md §4.3). Exactly the
+ * ExecuteToolOptions lanes of PAX_ASK_ORIGINS — `finance_ladder` is written
+ * by the borrower ladder's own gate, never by a tool call — so an origin
+ * recorded on an ask row is always a value the row's type accepts.
+ */
+export type ExecuteToolOrigin = Extract<
+  PaxAskOrigin,
+  "chat" | "scheduled" | "inbound_signal" | "support" | "approval_replay" | "revised"
+>;
+
 // Options threaded into executeTool by TRUSTED SERVER CODE only — never
 // derived from model output. See the witnessed-send kernel gate below.
 export interface ExecuteToolOptions {
@@ -1023,6 +1040,78 @@ export interface ExecuteToolOptions {
   trustedApproval?: boolean;
   /** The requesting user, recorded as created_by on pending_actions rows. */
   userId?: string;
+  /**
+   * Where the call came from. Recorded on every ask row and every receipt so
+   * "Waiting for your tap" can say "from your scheduled prompt 'Monday lead
+   * pull'" and "What Pax did" can say "ran on its own". Defaults to "chat".
+   */
+  origin?: ExecuteToolOrigin;
+  /** The scheduled prompt that ran this call, when origin is "scheduled". */
+  scheduledTask?: { id: number; name: string } | null;
+}
+
+type ToolResult = { success: boolean; data?: any; error?: string };
+
+const positiveInt = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
+  if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+  return null;
+};
+
+/**
+ * The record an ask is about, derived from the frozen args (spec §4.3:
+ * lead_id | deal_id | property_id) plus the scheduled prompt that proposed
+ * it. Only fields the frozen PaxAskSourceRef declares; a tool whose args
+ * name no record yields null rather than an invented reference.
+ */
+function askSourceRef(args: Record<string, any>, options?: ExecuteToolOptions): PaxAskSourceRef | null {
+  const ref: PaxAskSourceRef = {};
+  const leadId = positiveInt(args.lead_id ?? args.leadId);
+  if (leadId) ref.leadId = leadId;
+  const dealId = positiveInt(args.deal_id ?? args.dealId);
+  if (dealId) ref.dealId = dealId;
+  const propertyId = positiveInt(args.property_id ?? args.propertyId);
+  if (propertyId) ref.propertyId = propertyId;
+  const noteId = positiveInt(args.note_id ?? args.noteId);
+  if (noteId) ref.noteId = noteId;
+  if (options?.scheduledTask) {
+    ref.scheduledTaskId = options.scheduledTask.id;
+    ref.scheduledTaskName = options.scheduledTask.name;
+  }
+  return Object.keys(ref).length > 0 ? ref : null;
+}
+
+/**
+ * Which record a completed tool call touched, for the generic receipt: read
+ * from the result first (the row the tool actually wrote), then from the
+ * args, and otherwise the org itself — never an invented id.
+ */
+function receiptEntity(
+  org: Organization,
+  args: Record<string, any>,
+  data: any,
+): { entityType: string; entityId: number } {
+  const d = data && typeof data === "object" ? data : {};
+  const candidates: Array<[string, unknown]> = [
+    ["lead", d.lead?.id],
+    ["deal", d.deal?.id],
+    ["property", d.property?.id],
+    ["task", d.task?.id],
+    ["deal", d.dealId],
+    ["property", d.propertyId],
+    ["lead", args.lead_id ?? args.leadId],
+    ["deal", args.deal_id ?? args.dealId],
+    ["property", args.property_id ?? args.propertyId],
+    ["task", args.task_id ?? args.taskId],
+  ];
+  if (typeof args.entityType === "string" || typeof args.entity_type === "string") {
+    candidates.push([String(args.entityType ?? args.entity_type), args.entityId ?? args.entity_id]);
+  }
+  for (const [type, id] of candidates) {
+    const n = positiveInt(id);
+    if (n) return { entityType: type, entityId: n };
+  }
+  return { entityType: "organization", entityId: org.id };
 }
 
 // Tool executor functions
@@ -1050,55 +1139,85 @@ export async function executeTool(
       args = rest;
     }
     const trustedApproval = options?.trustedApproval === true;
+    const origin: ExecuteToolOrigin = options?.origin ?? "chat";
+    const pauseSafe = PAUSE_SAFE_TOOLS.has(toolName);
 
-    // ── The approval kernel (2026-06-10, Tier 1A elevation blueprint) ──────
-    // STRUCTURAL gate: any approval-required tool invoked without the
-    // trusted server-side approval option does not execute, period. The call
-    // is frozen as a pending_actions row (frozen args + sha256 content hash
-    // + 24h expiry) and a pending artifact is returned for the human to
-    // approve. The ONLY path to execution is the approve endpoint, which
-    // re-verifies the hash and replays EXACTLY the frozen row with
-    // { trustedApproval: true }. Because this lives inside executeTool,
-    // every caller — chat, streaming chat, vaService, app intents, future
-    // surfaces — inherits witnessed-send by construction.
-    if (kernelApprovalRequiredTools.has(toolName) && !trustedApproval) {
+    // ── The org's Pax controls — ONE read per invocation (spec §4.2, §4.3) ─
+    // Stance + switches + pause in one call, failing CLOSED. Skipped for the
+    // two cases the controls never gate: a pause-safe tool (looks and drafts
+    // are never gated, never counted, and keep working while paused) and the
+    // human-approved replay (a tap is the human acting, not Pax).
+    const controls: PaxControlsState | null =
+      !pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null;
+
+    // A failed read is not a stance. When the controls could not be verified
+    // NOTHING proceeds — not even as an ask, because an ask row minted under
+    // an unknown state is a stance the org never chose. The glossary line
+    // says exactly that ("could not verify … so this wasn't done").
+    if (controls?.checkFailed) {
+      logger.warn("[executeTool] Refused — Pax controls could not be verified (failing closed)", {
+        orgId: org.id,
+        metadata: { toolName, origin },
+      });
+      return { success: false, error: paxControlsRefusalMessage(controls) };
+    }
+
+    // ── The approval kernel (2026-06-10, Tier 1A; stance-aware 2026-09-02) ─
+    // STRUCTURAL gate: a call that requires a tap and arrives without the
+    // trusted server-side approval option does not execute, period. It is
+    // frozen as a pending_actions row (frozen args + sha256 content hash +
+    // 24h expiry + origin + the record it is about) and a pending artifact
+    // is returned for the human to approve. The ONLY path to execution is
+    // the approve endpoint, which re-verifies the hash and replays EXACTLY
+    // the frozen row with { trustedApproval: true }. Because this lives
+    // inside executeTool, every caller — chat, streaming chat, vaService,
+    // app intents, scheduled prompts, sub-agents — inherits it.
+    //
+    // What requires a tap (spec §4.3):
+    //   - every send, at EVERY stance (APPROVAL_REQUIRED_TOOLS may only grow;
+    //     founder decision 1: Pax never sends what it wrote without a tap);
+    //   - at "Ask before everything", every non-pause-safe tool — record
+    //     writes included, and the customer's own chat commands included
+    //     (founder decision 4: uniform, no asterisk).
+    const requiresAsk =
+      kernelApprovalRequiredTools.has(toolName) ||
+      (controls?.stance === "ask_before_everything" && !pauseSafe);
+    if (requiresAsk && !trustedApproval) {
       const pending = await proposePendingAction({
         organizationId: org.id,
         toolName,
         args,
         createdByUserId: options?.userId ?? null,
+        origin,
+        sourceRef: askSourceRef(args, options),
+        reason: typeof args.reason === "string" && args.reason.length > 0 ? args.reason : null,
       });
       return { success: true, data: pendingActionArtifact(pending) };
     }
 
-    // ── Pax pause kill-switch gate (Workstream A honesty, 2026-07-29) ──────
-    // /settings/pax writes pax.pausedUntil; THIS read is what makes that
-    // switch real at the tool chokepoint. While the org is paused, any tool
-    // not on the PAUSE_SAFE_TOOLS allowlist is refused with an honest,
-    // user-visible message — nothing executes, and nothing pretends to.
+    // ── Pax pause gate (Workstream A honesty, 2026-07-29) ──────────────────
+    // Settings → Pax writes the pause; THIS read (through getPaxControls) is
+    // what makes it real at the tool chokepoint. While the org is paused,
+    // any tool not on PAUSE_SAFE_TOOLS is refused with the glossary's line —
+    // nothing executes, and nothing pretends to.
     //
-    // Ordering is deliberate:
-    //  - AFTER the approval kernel: an unapproved approval-required send has
-    //    already been frozen as an ask above (asking is allowed while paused —
-    //    "Pax will still draft and ask, it just won't act").
-    //  - trustedApproval bypasses the gate: a human explicitly tapping "Send"
-    //    is the human acting, not Pax automation.
-    // Expiry is implicit — getPaxPauseState compares timestamps, so behavior
-    // resumes automatically the moment pausedUntil passes. On a failed pause
-    // read the gate fails CLOSED (refuses, saying the check failed).
-    if (!trustedApproval && !PAUSE_SAFE_TOOLS.has(toolName)) {
-      const pause = await getPaxPauseState(org.id);
-      if (pause.paused) {
-        logger.info("[executeTool] Refused side-effecting tool — Pax is paused for this org", {
-          orgId: org.id,
-          metadata: {
-            toolName,
-            pausedUntil: pause.pausedUntil?.toISOString() ?? null,
-            checkFailed: pause.checkFailed,
-          },
-        });
-        return { success: false, error: paxPauseRefusalMessage(pause) };
-      }
+    // Ordering is deliberate (kernel → pause → scope → FCRA):
+    //  - AFTER the approval kernel: an unapproved send has already been
+    //    frozen as an ask above — asks keep accumulating while paused
+    //    ("Pax still looks, drafts and asks; anything you approve still goes
+    //    out").
+    //  - trustedApproval bypasses the gate: a human explicitly tapping
+    //    Approve is the human acting, not Pax automation.
+    if (controls?.paused) {
+      logger.info("[executeTool] Refused side-effecting tool — Pax is paused for this org", {
+        orgId: org.id,
+        metadata: {
+          toolName,
+          origin,
+          pausedUntil: controls.pausedUntil?.toISOString() ?? null,
+        },
+      });
+      return { success: false, error: paxControlsRefusalMessage(controls) };
     }
 
     // ── Permission-ladder gate (2026-08-19) ───────────────────────────────
@@ -1189,6 +1308,15 @@ export async function executeTool(
       };
     }
 
+    // ── Dispatch, then the receipt (spec §4.7) ─────────────────────────────
+    // The switch runs inside a closure so ONE post-dispatch hook sees every
+    // case's result. A case that writes its own receipt (with a real
+    // before → after) sets `receiptWritten`; the hook writes the generic one
+    // only when the case did not, only on success, and never on the
+    // human-approved replay — the executor writes the witnessed receipt for
+    // that path (one tap, one row).
+    let receiptWritten = false;
+    const outcome: ToolResult = await (async (): Promise<ToolResult> => {
     switch (toolName) {
       case "get_leads": {
         const leads = await storage.getLeads(org.id);
@@ -1240,17 +1368,26 @@ export async function executeTool(
           updated,
           args.notes !== undefined ? ["status", "notes"] : ["status"],
         );
-        // Log activity for auditability
-        if (leadBeforeUpdate) {
-          await storage.logActivity({
-            organizationId: org.id,
-            agentType: "pax",
+        // The receipt, with the real before → after (spec §4.7). On the
+        // human-approved replay the executor writes the witnessed receipt
+        // instead — one tap, one row.
+        if (leadBeforeUpdate && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "update_lead_status",
             action: "status_changed",
             entityType: "lead",
             entityId: args.lead_id,
             description: `Status changed to "${args.status}"${args.notes ? `: ${args.notes}` : ""}`,
-            changes: { status: { old: leadBeforeUpdate.status, new: args.status } },
+            before: { status: leadBeforeUpdate.status },
+            after: { status: args.status },
+            witnessed: false,
+            userId: options?.userId ?? null,
           });
+          receiptWritten = true;
         }
         invalidateContextCache(org.id);
         return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated, before: { status: leadBeforeUpdate?.status }, after: { status: args.status } } };
@@ -1937,38 +2074,13 @@ export async function executeTool(
         const htmlContent = args.message;
         const textContent = htmlContent.replace(/<[^>]*>/g, '').trim();
 
-        // ── Autonomy kernel gate (Maren / witnessed-send loop) ──────────────
-        // Wire the real autonomyGuardrails kernel into the live send path.
-        // organizations.paxAutonomyLevel was dead config; this reads it.
-        //
-        // INVARIANT (this increment): NOTHING sends without an explicit human
-        // tap. At the default "assisted" level a send_email call returns a
-        // DRAFT for approval — it does NOT send — unless trusted server code
-        // passed { trustedApproval: true }, which only the approve-and-send
-        // endpoint sets after the human taps "Send". (2026-06-10, T0-1: this
-        // was previously args._approved, which the model could emit itself.)
-        const autonomyLevel = await getOrgAutonomyLevel(org.id);
-
-        if (!unattendedSendPermitted(autonomyLevel) && !trustedApproval) {
-          // Draft-for-approval. No send. Surface a one-tap approval artifact.
-          return {
-            success: true,
-            data: {
-              draft: true,
-              requiresApproval: true,
-              channelType: "email",
-              leadId: args.lead_id ?? null,
-              to: toEmail!,
-              subject: args.subject,
-              message: htmlContent,
-              note:
-                "Draft ready. Pax will send this only after you tap Send — no autonomous send at the assisted level.",
-            },
-          };
-        }
-
-        // ── Guarded send (explicit human approval, or org above assisted) ────
-        // Honor the daily envelope, TCPA, and the autonomous-send audit trail.
+        // ── Guarded send — reached ONLY after a human tap ─────────────────────
+        // send_email is in APPROVAL_REQUIRED_TOOLS, so the kernel gate at the
+        // top of executeTool froze every unapproved call as an ask before the
+        // switch ran; this case executes exactly the frozen row with
+        // { trustedApproval: true }. (The per-tool "autonomy level" branch
+        // that used to sit here was unreachable and is gone — 2026-09-02.)
+        // Honor the daily envelope, TCPA, and the send audit trail.
         const rateCheck = await checkSendRateLimit(org.id, "email");
         if (!rateCheck.allowed) {
           return { success: false, error: rateCheck.reason ?? "Daily send envelope reached" };
@@ -2048,34 +2160,10 @@ export async function executeTool(
           return { success: false, error: "Phone number not available" };
         }
 
-        // ── Autonomy kernel gate (2026-06-10, T0-1 elevation blueprint) ─────
-        // send_sms previously had NO autonomy gate at all — only TCPA/quiet-
-        // hours — so a single model tool call could fire a live SMS with no
-        // human in the loop (an unwitnessed-send pathway). Mirror the
-        // send_email kernel exactly: at the default "assisted" level this
-        // returns a DRAFT and sends nothing; only the trusted human-tap
-        // approval path (or an org explicitly above assisted) reaches the
-        // guarded send, which honors the daily envelope + TCPA + audit trail.
-        const smsAutonomyLevel = await getOrgAutonomyLevel(org.id);
-
-        if (!unattendedSendPermitted(smsAutonomyLevel) && !trustedApproval) {
-          // Draft-for-approval. No send. Surface a one-tap approval artifact.
-          return {
-            success: true,
-            data: {
-              draft: true,
-              requiresApproval: true,
-              channelType: "sms",
-              leadId: args.lead_id ?? null,
-              to: toPhone,
-              message: args.message,
-              note:
-                "Draft ready. Pax will send this only after you tap Send — no autonomous send at the assisted level.",
-            },
-          };
-        }
-
-        // ── Guarded send (explicit human approval, or org above assisted) ───
+        // ── Guarded send — reached ONLY after a human tap ─────────────────────
+        // Same as send_email: the kernel gate froze the unapproved call as an
+        // ask; this case runs the frozen row after the tap, honouring the
+        // daily envelope + TCPA + the send audit trail.
         const smsRateCheck = await checkSendRateLimit(org.id, "sms");
         if (!smsRateCheck.allowed) {
           return { success: false, error: smsRateCheck.reason ?? "Daily send envelope reached" };
@@ -2761,6 +2849,9 @@ export async function executeTool(
         const subResult = await processChat(args.prompt, subOrg, "pax_subagent", {
           agentRole: (args.role || "research") as any,
           subAgentDepth: currentDepth + 1,
+          // A sub-agent's asks belong to the lane that spawned it.
+          origin,
+          scheduledTask: options?.scheduledTask ?? null,
         });
         return { success: true, data: { response: subResult.response, conversationId: subResult.conversationId } };
       }
@@ -2857,6 +2948,38 @@ export async function executeTool(
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };
     }
+    })();
+
+    if (!pauseSafe && !trustedApproval && outcome.success && !receiptWritten) {
+      // Never into the tool path: the effect already happened, and a
+      // bookkeeping failure must not turn it into an error the model
+      // retries. recordPaxEffect swallows its own errors; this guards the
+      // derivation around it.
+      try {
+        const entity = receiptEntity(org, args, outcome.data);
+        const d = outcome.data && typeof outcome.data === "object" ? outcome.data : {};
+        await recordPaxEffect({
+          orgId: org.id,
+          actor: "pax",
+          origin,
+          stance: controls?.stance ?? null,
+          tool: toolName,
+          entityType: entity.entityType,
+          entityId: entity.entityId,
+          before: d.before,
+          after: d.after,
+          witnessed: false,
+          userId: options?.userId ?? null,
+        });
+      } catch (receiptErr) {
+        logger.error("[executeTool] Receipt hook failed — the effect stands, the record does not", receiptErr as Error, {
+          orgId: org.id,
+          metadata: { toolName, origin },
+        });
+      }
+    }
+
+    return outcome;
   } catch (error: any) {
     return { success: false, error: error.message };
   }

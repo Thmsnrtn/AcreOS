@@ -1,22 +1,26 @@
 /**
- * Autonomy Guardrails — Safety limits for Pax autonomous operation.
+ * Send guardrails — the post-tap envelope every Pax send honours.
  *
- * Enforces rate limits and TCPA compliance before any autonomous send action.
- * Provides an audit trail of autonomous actions via agentMemory.
+ * Enforces the daily send envelope (50 emails / 20 texts, from real rows)
+ * and TCPA consent before a send goes out, and keeps the audit trail of
+ * sends in agentMemory so the rate limiter and the daily briefing count them.
  *
- * Autonomy levels (planned):
- *   'assisted'   — current default; all sends require human approval
- *   'supervised' — Pax can send within daily limits with consent checks
- *   'autonomous' — Pax can send freely within guardrails (future)
- *
- * organizations.paxAutonomyLevel is read from the DB by getOrgAutonomyLevel().
- * Circuit breaker can downgrade to 'assisted' if override rate exceeds 5%.
+ * WHAT THIS MODULE NO LONGER HOLDS (customer autonomy clarity program,
+ * 2026-09-02, docs/autonomous/AUTONOMY_SPEC.md §3d / §4.3): the
+ * `AutonomyLevel` type, `getOrgAutonomyLevel`, `unattendedSendPermitted`,
+ * the graduated ramp (`getAutonomyEligibility`) and the circuit breaker
+ * (`checkCircuitBreaker`). Whether Pax may send without a tap is not a level
+ * any more — every Pax-written message waits for a tap at every stance
+ * (founder decision 1), and the ONE lever is OFFERED_STANCES in
+ * shared/pax-controls.ts. The send cases in server/ai/tools.ts run only
+ * after the approval kernel's tap, so the per-tool level branches were dead
+ * and are gone; `organizations.pax_autonomy_level` is dropped by a later
+ * migration once the zero-reader ratchet is green.
  */
 
 import { db } from "../db";
-import { eq, and, gte, sql } from "drizzle-orm";
-import { agentMemory, organizations } from "@shared/schema";
-import { storage } from "../storage";
+import { eq, and } from "drizzle-orm";
+import { agentMemory } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -24,15 +28,12 @@ import { logger } from "../utils/logger";
 const EMAIL_DAILY_LIMIT = 50;
 const SMS_DAILY_LIMIT   = 20;
 
-// ── Exported Types ─────────────────────────────────────────────────────────────
-
-export type AutonomyLevel = "assisted" | "supervised" | "autonomous";
-
 // ── Core Guardrail Functions ───────────────────────────────────────────────────
 
 /**
- * Check whether an autonomous send is within the daily rate limit for the
- * given org and channel.
+ * Check whether a send is within the daily envelope for the given org and
+ * channel. Runs AFTER the human tap — the kernel gate decides whether a send
+ * may happen at all; this decides whether today still has room for it.
  *
  * Counts sends recorded via recordAutonomousSend() in agentMemory for today.
  */
@@ -71,7 +72,7 @@ export async function checkSendRateLimit(
     if (channelSends >= limit) {
       return {
         allowed: false,
-        reason: `Daily autonomous send limit reached (${channelSends}/${limit} ${channelType}s)`,
+        reason: `Daily send limit reached (${channelSends}/${limit} ${channelType}s today)`,
       };
     }
 
@@ -79,12 +80,12 @@ export async function checkSendRateLimit(
   } catch (err: any) {
     logger.error("[autonomyGuardrails] checkSendRateLimit error", err);
     // Fail safe on error
-    return { allowed: false, reason: "Rate limit check failed — blocking autonomous send" };
+    return { allowed: false, reason: "Daily send limit check failed — the send was not made" };
   }
 }
 
 /**
- * Check TCPA compliance for a lead before an autonomous SMS send.
+ * Check TCPA compliance for a lead before a send goes out.
  *
  * 2026-06-10 (T0-5, elevation blueprint): this used to look the lead up by
  * bare id across ALL orgs — a latent cross-tenant read on the send path (an
@@ -133,14 +134,14 @@ export async function checkTcpaBeforeSend(
     if (["dead", "closed", "lost"].includes(lead.status ?? "")) {
       return {
         allowed: false,
-        reason: `Lead status is "${lead.status}" — Pax will not contact them autonomously`,
+        reason: `Lead status is "${lead.status}" — Pax will not contact them`,
       };
     }
 
     return { allowed: true };
   } catch (err: any) {
     logger.error("[autonomyGuardrails] checkTcpaBeforeSend error", err);
-    return { allowed: false, reason: "TCPA check failed — blocking autonomous send" };
+    return { allowed: false, reason: "TCPA check failed — the send was not made" };
   }
 }
 
@@ -316,373 +317,5 @@ export async function generateAutonomousAuditSummary(
   } catch (err: any) {
     logger.error("[autonomyGuardrails] generateAutonomousAuditSummary error", err);
     return `**Pax Autonomous Activity (last ${hours}h):** Summary unavailable due to an internal error.`;
-  }
-}
-
-/** The levels this module actually knows how to reason about. */
-const KNOWN_LEVELS: ReadonlySet<string> = new Set<AutonomyLevel>([
-  "assisted",
-  "supervised",
-  "autonomous",
-]);
-
-/**
- * Read a stored autonomy level, PARSING it rather than casting it.
- *
- * The previous body was `(org?.paxAutonomyLevel as AutonomyLevel) ?? "assisted"`.
- * A cast is not a check, and `??` only catches null/undefined — so an empty
- * string, a typo, or any value written by a future code path came back
- * unchanged. That mattered because every consumer asks `=== "assisted"`:
- *
- *     if (autonomyLevel === "assisted" && !trustedApproval) { ...draft, no send }
- *
- * so ANY unrecognised value is not "assisted" and falls straight through to the
- * guarded send. An unknown level was read as MORE permission than the default,
- * which is the exact inverse of what a safety default is for, and it contradicts
- * the invariant those call sites state in capitals: nothing sends without an
- * explicit human tap.
- *
- * `assisted` is the safe floor, so an unrecognised value resolves there and is
- * logged — a value nobody recognises is a fact worth seeing, not one to swallow.
- */
-export async function getOrgAutonomyLevel(
-  orgId: number
-): Promise<AutonomyLevel> {
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { paxAutonomyLevel: true },
-  });
-  const stored = org?.paxAutonomyLevel;
-  if (stored == null) return "assisted";
-  if (KNOWN_LEVELS.has(stored)) return stored as AutonomyLevel;
-  logger.warn(
-    `[autonomy] org=${orgId} has an unrecognised paxAutonomyLevel ${JSON.stringify(stored)}; ` +
-      `reading it as "assisted" rather than granting the permission it does not name`,
-  );
-  return "assisted";
-}
-
-/**
- * May this level send to a counterparty WITHOUT an explicit human tap?
- *
- * The one predicate for that question. Every call site used to spell it
- * `level === "assisted"` — a check for the one level that must NOT send, so a
- * level added later would be granted unattended sending by default, silently,
- * by every consumer at once. Asking which levels MAY send inverts that: a new
- * level sends nothing until someone adds it here on purpose.
- */
-export function unattendedSendPermitted(level: AutonomyLevel): boolean {
-  return level === "supervised" || level === "autonomous";
-}
-
-// ── Graduated Autonomy Ramp ──────────────────────────────────────────────────
-
-const RAMP_MIN_DAYS_FOR_SUPERVISED = 7;
-const RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED = 20;
-const RAMP_MIN_DAYS_SUPERVISED = 30;
-const RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS = 0.05; // 5%
-
-export interface AutonomyEligibility {
-  currentLevel: AutonomyLevel;
-  upgradeAvailable: boolean;
-  nextLevel: AutonomyLevel | null;
-  reason: string;
-  metrics: {
-    orgAgeDays: number;
-    manualReviews: number;
-    daysSupervisedStarted: number | null;
-    overrideRate: number | null;
-  };
-}
-
-/**
- * Checks the current autonomy level for an org and whether an upgrade is available.
- *
- * Graduation path:
- *   1. New orgs start "assisted"
- *   2. After 7 days + 20 manual reviews → eligible for "supervised"
- *   3. After 30 days supervised + <5% override rate → eligible for "autonomous"
- */
-export async function getAutonomyEligibility(
-  organizationId: number
-): Promise<AutonomyEligibility> {
-  try {
-    const currentLevel = await getOrgAutonomyLevel(organizationId);
-
-    // Fetch the org to get creation date
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-    });
-
-    const orgCreatedAt = org?.createdAt ? new Date(org.createdAt) : new Date();
-    const orgAgeDays = Math.floor(
-      (Date.now() - orgCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    // Count manual reviews (agent memory entries where founder took action)
-    const reviewRows = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(agentMemory)
-      .where(
-        and(
-          eq(agentMemory.organizationId, organizationId),
-          eq(agentMemory.agentType, "pax"),
-          eq(agentMemory.memoryType, "fact"),
-          sql`${agentMemory.key} LIKE 'founder_review_%'`
-        )
-      );
-    const manualReviews = Number(reviewRows[0]?.count ?? 0);
-
-    // Check for supervised start date (stored in agent memory)
-    const supervisedStartRows = await db
-      .select({ value: agentMemory.value })
-      .from(agentMemory)
-      .where(
-        and(
-          eq(agentMemory.organizationId, organizationId),
-          eq(agentMemory.agentType, "pax"),
-          eq(agentMemory.memoryType, "fact"),
-          eq(agentMemory.key, "autonomy_supervised_started_at")
-        )
-      )
-      .limit(1);
-
-    const supervisedStartedAt = supervisedStartRows[0]
-      ? new Date((supervisedStartRows[0].value as any)?.date ?? 0)
-      : null;
-    const daysSupervisedStarted = supervisedStartedAt
-      ? Math.floor((Date.now() - supervisedStartedAt.getTime()) / (1000 * 60 * 60 * 24))
-      : null;
-
-    // Count overrides (founder overrode an autonomous decision)
-    let overrideRate: number | null = null;
-    if (currentLevel === "supervised" && daysSupervisedStarted !== null) {
-      const overrideRows = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(agentMemory)
-        .where(
-          and(
-            eq(agentMemory.organizationId, organizationId),
-            eq(agentMemory.agentType, "pax"),
-            eq(agentMemory.memoryType, "fact"),
-            sql`${agentMemory.key} LIKE 'autonomy_override_%'`
-          )
-        );
-      const totalOverrides = Number(overrideRows[0]?.count ?? 0);
-
-      const totalDecisionRows = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(agentMemory)
-        .where(
-          and(
-            eq(agentMemory.organizationId, organizationId),
-            eq(agentMemory.agentType, "pax"),
-            eq(agentMemory.memoryType, "fact"),
-            sql`${agentMemory.key} LIKE 'autonomy_decision_%'`
-          )
-        );
-      const totalDecisions = Number(totalDecisionRows[0]?.count ?? 0);
-
-      overrideRate = totalDecisions > 0 ? totalOverrides / totalDecisions : null;
-    }
-
-    const metrics = {
-      orgAgeDays,
-      manualReviews,
-      daysSupervisedStarted,
-      overrideRate,
-    };
-
-    // Evaluate eligibility based on current level
-    if (currentLevel === "assisted") {
-      if (
-        orgAgeDays >= RAMP_MIN_DAYS_FOR_SUPERVISED &&
-        manualReviews >= RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED
-      ) {
-        return {
-          currentLevel,
-          upgradeAvailable: true,
-          nextLevel: "supervised",
-          reason: `Org has been active ${orgAgeDays} days with ${manualReviews} manual reviews. Eligible for supervised autonomy.`,
-          metrics,
-        };
-      }
-      return {
-        currentLevel,
-        upgradeAvailable: false,
-        nextLevel: null,
-        reason: `Needs ${Math.max(0, RAMP_MIN_DAYS_FOR_SUPERVISED - orgAgeDays)} more days and ${Math.max(0, RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED - manualReviews)} more manual reviews before supervised is available.`,
-        metrics,
-      };
-    }
-
-    if (currentLevel === "supervised") {
-      if (
-        daysSupervisedStarted !== null &&
-        daysSupervisedStarted >= RAMP_MIN_DAYS_SUPERVISED &&
-        overrideRate !== null &&
-        overrideRate < RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS
-      ) {
-        return {
-          currentLevel,
-          upgradeAvailable: true,
-          nextLevel: "autonomous",
-          reason: `Supervised for ${daysSupervisedStarted} days with ${(overrideRate * 100).toFixed(1)}% override rate. Eligible for full autonomy.`,
-          metrics,
-        };
-      }
-      const reasons: string[] = [];
-      if (daysSupervisedStarted === null || daysSupervisedStarted < RAMP_MIN_DAYS_SUPERVISED) {
-        reasons.push(
-          `${Math.max(0, RAMP_MIN_DAYS_SUPERVISED - (daysSupervisedStarted ?? 0))} more days in supervised mode`
-        );
-      }
-      if (overrideRate === null || overrideRate >= RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS) {
-        reasons.push(
-          `override rate must drop below ${RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS * 100}% (currently ${overrideRate !== null ? (overrideRate * 100).toFixed(1) + "%" : "N/A"})`
-        );
-      }
-      return {
-        currentLevel,
-        upgradeAvailable: false,
-        nextLevel: null,
-        reason: `Needs: ${reasons.join("; ")}.`,
-        metrics,
-      };
-    }
-
-    // Already autonomous
-    return {
-      currentLevel,
-      upgradeAvailable: false,
-      nextLevel: null,
-      reason: "Already at maximum autonomy level.",
-      metrics,
-    };
-  } catch (err: any) {
-    logger.error("[autonomyGuardrails] getAutonomyEligibility error", err);
-    return {
-      currentLevel: "assisted",
-      upgradeAvailable: false,
-      nextLevel: null,
-      reason: `Error evaluating eligibility: ${err.message}`,
-      metrics: { orgAgeDays: 0, manualReviews: 0, daysSupervisedStarted: null, overrideRate: null },
-    };
-  }
-}
-
-// ── Circuit Breaker ──────────────────────────────────────────────────────────
-
-const CIRCUIT_BREAKER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const CIRCUIT_BREAKER_OVERRIDE_THRESHOLD = 3;
-
-export interface CircuitBreakerResult {
-  tripped: boolean;
-  overridesInWindow: number;
-  downgraded: boolean;
-  reason: string;
-}
-
-/**
- * Circuit breaker: if 3+ overrides happen within 1 hour, auto-downgrade to
- * "assisted" and notify the founder.
- *
- * Call this after every founder override of an autonomous decision.
- */
-export async function checkCircuitBreaker(
-  organizationId: number
-): Promise<CircuitBreakerResult> {
-  try {
-    const windowStart = new Date(Date.now() - CIRCUIT_BREAKER_WINDOW_MS);
-
-    // Count overrides within the last hour
-    const overrideRows = await db
-      .select({ value: agentMemory.value, createdAt: agentMemory.createdAt })
-      .from(agentMemory)
-      .where(
-        and(
-          eq(agentMemory.organizationId, organizationId),
-          eq(agentMemory.agentType, "pax"),
-          eq(agentMemory.memoryType, "fact"),
-          sql`${agentMemory.key} LIKE 'autonomy_override_%'`,
-          gte(agentMemory.createdAt, windowStart)
-        )
-      );
-
-    const overridesInWindow = overrideRows.length;
-
-    if (overridesInWindow < CIRCUIT_BREAKER_OVERRIDE_THRESHOLD) {
-      return {
-        tripped: false,
-        overridesInWindow,
-        downgraded: false,
-        reason: `${overridesInWindow}/${CIRCUIT_BREAKER_OVERRIDE_THRESHOLD} overrides in the last hour. No action needed.`,
-      };
-    }
-
-    // Circuit breaker tripped — downgrade to assisted
-    // Record the downgrade event
-    await db.insert(agentMemory).values({
-      organizationId,
-      agentType: "pax",
-      memoryType: "fact",
-      key: `circuit_breaker_trip_${new Date().toISOString()}`,
-      value: {
-        trippedAt: new Date().toISOString(),
-        overridesInWindow,
-        previousOverrides: overrideRows.map((r) => r.value),
-        action: "downgraded_to_assisted",
-      },
-      confidence: "1.0",
-    });
-
-    // Downgrade autonomy level in the database
-    await db.update(organizations)
-      .set({ paxAutonomyLevel: "assisted", updatedAt: new Date() })
-      .where(eq(organizations.id, organizationId));
-
-    // Notify founder via email
-    const { emailService } = await import("./emailService");
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-    });
-    const founderEmail =
-      (org as any)?.contactEmail ||
-      (org as any)?.ownerEmail ||
-      process.env.FOUNDER_EMAIL;
-
-    if (founderEmail) {
-      await emailService.sendEmail({
-        to: founderEmail,
-        subject: `[AcreOS] Autonomy circuit breaker tripped for ${org?.name ?? `Org #${organizationId}`}`,
-        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
-          <h2 style="color:#c0392b;">Autonomy Circuit Breaker Tripped</h2>
-          <p><strong>${overridesInWindow} founder overrides</strong> detected within the last hour for <strong>${org?.name ?? `Org #${organizationId}`}</strong>.</p>
-          <p>The organization has been automatically downgraded to <strong>assisted</strong> mode. All autonomous decisions now require manual approval.</p>
-          <p>Review recent decisions at <a href="${process.env.APP_URL || "https://app.acreos.io"}/founder/autonomy-log">the autonomy log</a> and re-enable when ready.</p>
-          <p style="color:#7f8c8d;font-size:12px;">This is an automated safety notification from the AcreOS autonomy system.</p>
-        </div>`,
-        text: `Autonomy Circuit Breaker Tripped\n\n${overridesInWindow} founder overrides detected within the last hour for ${org?.name ?? `Org #${organizationId}`}.\n\nThe organization has been automatically downgraded to "assisted" mode. All autonomous decisions now require manual approval.\n\nReview recent decisions at the autonomy log and re-enable when ready.`,
-      });
-    }
-
-    logger.warn(`[autonomyGuardrails] CIRCUIT BREAKER TRIPPED for org ${organizationId}: ` +
-      `${overridesInWindow} overrides in 1h. Downgraded to assisted.`);
-
-    return {
-      tripped: true,
-      overridesInWindow,
-      downgraded: true,
-      reason: `Circuit breaker tripped: ${overridesInWindow} overrides in the last hour. Org downgraded to assisted mode. Founder notified.`,
-    };
-  } catch (err: any) {
-    logger.error("[autonomyGuardrails] checkCircuitBreaker error", err);
-    // Fail safe — report as tripped so caller can take defensive action
-    return {
-      tripped: true,
-      overridesInWindow: -1,
-      downgraded: false,
-      reason: `Circuit breaker check failed: ${err.message}. Treating as tripped for safety.`,
-    };
   }
 }

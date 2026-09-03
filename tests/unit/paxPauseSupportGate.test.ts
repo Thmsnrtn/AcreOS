@@ -81,14 +81,22 @@ async function loadAllowlist(): Promise<ReadonlySet<string>> {
 
 describe("executeSupportTool is inside the Pax pause population", () => {
   it("the gate call sits inside executeSupportTool, before the switch, allowlist-guarded", () => {
+    // Since 2026-09-02 the pause is read through the ONE reader of the org's
+    // Pax controls (getPaxControls folds the pause primitive in), skipped
+    // only for pause-safe tools and the human-approved replay, and the
+    // refusal is the glossary line (paxControlsRefusalMessage).
     const body = executeSupportToolBody();
-    const gateAt = body.indexOf("getPaxPauseState(org.id)");
+    const gateAt = body.indexOf("await getPaxControls(org.id)");
     const switchAt = body.indexOf("switch (toolName)");
     expect(gateAt, "pause gate missing from executeSupportTool").toBeGreaterThan(-1);
     expect(switchAt).toBeGreaterThan(-1);
     expect(gateAt, "gate must run BEFORE dispatch").toBeLessThan(switchAt);
-    expect(body).toContain("!PAUSE_SAFE_SUPPORT_TOOLS.has(toolName)");
-    expect(body).toContain("paxPauseRefusalMessage(pause)");
+    expect(body).toContain("const pauseSafe = PAUSE_SAFE_SUPPORT_TOOLS.has(toolName)");
+    expect(body).toContain("!pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null");
+    const refuseAt = body.indexOf("if (controls?.paused) {");
+    expect(refuseAt, "paused branch missing").toBeGreaterThan(gateAt);
+    expect(refuseAt).toBeLessThan(switchAt);
+    expect(body.slice(refuseAt, switchAt)).toContain("paxControlsRefusalMessage(controls)");
   });
 
   it("every case label is explicitly classified — allowlisted or gated, never unlisted", async () => {
@@ -134,6 +142,12 @@ describe("executeSupportTool is inside the Pax pause population", () => {
     // Pausing the machine must never block reaching a person.
     const allow = await loadAllowlist();
     expect(allow.has("escalate_to_human")).toBe(true);
+  });
+
+  it("the pause primitive is not read directly — only through the aggregator", () => {
+    // One reader (spec §4.2): a second direct read would be a second truth.
+    expect(src).not.toContain("getPaxPauseState(");
+    expect(src).not.toContain("paxPauseRefusalMessage(");
   });
 
   it("paxPause.ts names supportAgent among its enforcement points", () => {

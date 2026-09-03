@@ -3,7 +3,7 @@ import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 // APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
 // kernel enforces it INSIDE executeTool, so this call site cannot bypass it.
-import { executeTool } from "./tools";
+import { executeTool, type ExecuteToolOptions, type ExecuteToolOrigin } from "./tools";
 // Tier 1B (elevation blueprint): customer-content fields in tool results are
 // wrapped in the untrusted envelope before re-entering the model channel.
 import { serializeToolResultForModel, wrapUntrusted } from "./untrustedEnvelope";
@@ -1000,6 +1000,15 @@ interface ChatOptions {
    * up to 3 bullets). Set to "v2" via `?paxPrompt=v2` for ops fall-back.
    */
   paxPromptVersion?: PaxPromptVersion;
+  /**
+   * Which lane this chat runs in (AUTONOMY_SPEC.md §4.3). Threaded into every
+   * executeTool call so an ask row and a receipt say where they came from:
+   * "chat" (default — the customer typing), "scheduled" (paxScheduler
+   * running a scheduled prompt), "inbound_signal" (a reply that came in).
+   */
+  origin?: ExecuteToolOrigin;
+  /** The scheduled prompt behind this run, when origin is "scheduled". */
+  scheduledTask?: { id: number; name: string } | null;
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -1332,6 +1341,14 @@ export async function processChat(
   options: ChatOptions = {}
 ): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number; tierDowngraded?: boolean; paxTier?: string }> {
   const { agentRole = "executive", files, propertyId } = options;
+  // Every tool call in this loop carries the lane it runs in (spec §4.3), so
+  // the kernel can record where an ask came from. Unspecified = the customer
+  // typing in chat.
+  const toolOptions: ExecuteToolOptions = {
+    userId,
+    origin: options.origin ?? "chat",
+    scheduledTask: options.scheduledTask ?? null,
+  };
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
   const normalizedRole = (roleStr === "assistant" || !agentProfiles[roleStr as keyof typeof agentProfiles]) 
@@ -1711,7 +1728,7 @@ export async function processChat(
       toolResults = await Promise.all(
         validToolCalls.map(async (toolCall) => {
           const args = JSON.parse(toolCall.function.arguments);
-          const result = await executeTool(toolCall.function.name, args, org, { userId });
+          const result = await executeTool(toolCall.function.name, args, org, toolOptions);
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           return { role: "tool" as const, tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) };
         })
@@ -1724,7 +1741,7 @@ export async function processChat(
         // approval kernel): without trustedApproval they freeze as a
         // pending_actions row and return a pending artifact — no send fires
         // from this path, structurally.
-        const result = await executeTool(toolCall.function.name, args, org, { userId });
+        const result = await executeTool(toolCall.function.name, args, org, toolOptions);
         toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
         toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) });
       }
@@ -1833,6 +1850,12 @@ export async function* processChatStream(
   options: ChatOptions = {}
 ): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
   const { agentRole = "executive", files } = options;
+  // Same lane threading as processChat (spec §4.3).
+  const toolOptions: ExecuteToolOptions = {
+    userId,
+    origin: options.origin ?? "chat",
+    scheduledTask: options.scheduledTask ?? null,
+  };
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
   const normalizedRole = (roleStr === "assistant" || !agentProfiles[roleStr as keyof typeof agentProfiles]) 
@@ -2206,7 +2229,7 @@ export async function* processChatStream(
         const parallelResults = await Promise.all(
           currentToolCalls.map(async (toolCall) => {
             const args = JSON.parse(toolCall.function.arguments);
-            const result = await executeTool(toolCall.function.name, args, org, { userId });
+            const result = await executeTool(toolCall.function.name, args, org, toolOptions);
             return { toolCall, args, result };
           })
         );
@@ -2236,7 +2259,7 @@ export async function* processChatStream(
           // replaces the old "approval_required" event + dead
           // __paxPendingApprovals map + natural-language "Confirmed, please
           // proceed" loop, which never actually executed anything.)
-          const result = await executeTool(toolCall.function.name, args, org, { userId });
+          const result = await executeTool(toolCall.function.name, args, org, toolOptions);
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
           if ((result as any)?.data?.pendingApproval) {

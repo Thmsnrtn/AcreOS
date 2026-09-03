@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { lookupParcelByAPN } from "./parcel";
 import { getPropertyComps, calculateMarketValue, calculateOfferPrices, calculateDesirabilityScore } from "./comps";
-import { emailService } from "./emailService";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
 import { PropertyEnrichmentService } from "./propertyEnrichment";
 import { logger } from "../utils/logger";
@@ -309,113 +308,33 @@ const sendEmailInputSchema = z.object({
   leadId: z.number().optional().describe("Optional lead ID for tracking"),
 });
 
+/**
+ * Email from a skill has no one to approve it.
+ *
+ * Every caller of the skill registry is an unattended engine (task-runner,
+ * workflow-engine, company agents) — there is no human in the loop to tap
+ * Approve. Every message Pax writes waits for a tap at every stance (founder
+ * decision 1, 2026-09-02), so this skill REFUSES, plainly, before touching
+ * anything: no config check, no envelope, no rail. The one lane for a
+ * Pax-written email is Pax's own send_email, which freezes as an ask in the
+ * approval kernel and sends only after the customer taps. The skill stays
+ * registered so the classification ratchets (GATED_SKILLS, SKILL_RISK) keep
+ * seeing it as what it is: a send.
+ */
+const SKILL_EMAIL_REFUSAL =
+  "Email from a skill has no one to approve it — send via Pax, where it waits for your tap. Nothing was sent.";
+
 const sendEmailSkill: Skill = {
   id: "sendEmail",
   name: "Send Email",
-  description: "Sends an email using the configured email service (AWS SES)",
+  description: "Refuses: a skill has no one to approve an email. Send via Pax, where the draft waits for a tap.",
   agentTypes: ["communications"],
   inputSchema: sendEmailInputSchema,
   costEstimate: "low",
   examples: [
     'sendEmail({ to: "seller@example.com", subject: "Property Inquiry", body: "Hello..." })',
   ],
-  execute: async (params, context) => {
-    try {
-      const { to, subject, body, leadId } = sendEmailInputSchema.parse(params);
-
-      const isConfigured = await emailService.isConfigured(context.organizationId);
-      if (!isConfigured) {
-        return {
-          success: false,
-          error: "Email service not configured. Please configure AWS SES credentials.",
-        };
-      }
-
-      // ── Skill-lane governance (2026-08-30, stage-4 turn-9 follow-up) ──────
-      // This was the least governed send lane in the repo: a model-composed
-      // free-form recipient with no autonomy gate, no rate envelope, no TCPA
-      // check — while the SAME recipients reached through pax's send_email
-      // wear all three (ai/tools.ts:1950-1985). The belts are now identical.
-      // One deliberate difference: pax chat returns a draft-for-approval at
-      // the assisted level because a human is present to tap Send; every
-      // skill caller is an autonomous engine (task-runner, workflow-engine,
-      // autonomousTaskProcessor, companyAgents), so there is nobody to show
-      // a draft to — at assisted the skill REFUSES, naming the route, rather
-      // than queueing a draft where no one looks (refuse-not-fabricate).
-      const { getOrgAutonomyLevel, unattendedSendPermitted, checkSendRateLimit, checkTcpaBeforeSend, recordAutonomousSend } =
-        await import("./autonomyGuardrails");
-
-      const autonomyLevel = await getOrgAutonomyLevel(context.organizationId);
-      if (!unattendedSendPermitted(autonomyLevel)) {
-        return {
-          success: false,
-          error:
-            `Autonomous email is not permitted at the "${autonomyLevel}" autonomy level — ` +
-            `no send was made. Raise the org's autonomy level, or send via Pax where a draft can be approved by a person.`,
-        };
-      }
-
-      const rateCheck = await checkSendRateLimit(context.organizationId, "email");
-      if (!rateCheck.allowed) {
-        return { success: false, error: rateCheck.reason ?? "Daily send envelope reached — no send was made." };
-      }
-
-      if (leadId) {
-        const tcpaCheck = await checkTcpaBeforeSend(context.organizationId, leadId);
-        if (!tcpaCheck.allowed) {
-          return { success: false, error: `Cannot send email: ${tcpaCheck.reason}` };
-        }
-      }
-
-      const result = await emailService.sendEmail({
-        to,
-        subject,
-        html: body.includes("<") ? body : `<p>${body.replace(/\n/g, "</p><p>")}</p>`,
-        organizationId: context.organizationId,
-        // COUNTERPARTY (founder decision 2026-07-17). This skill belongs to the
-        // communications agent only ("Handles all lead communication"), its
-        // recipient is agent-chosen and free-form, its one optional param is a
-        // leadId, and its own example addresses seller@example.com — every
-        // reachable recipient is one of the customer's contacts, not an AcreOS
-        // user. The same engine's own send_email action already labels this
-        // lane (workflow-engine.ts, "BYO identity or nothing"), and
-        // run_agent_skill reaches these same recipients through here; an
-        // unlabelled lane on this side is a way around that rule, not a
-        // different case from it.
-        //
-        // The isConfigured() gate above does NOT stand in for the label:
-        // getCredentials() falls back to platform creds (emailService.ts:265),
-        // so it returns true for an org with no identity of its own.
-        purpose: "counterparty",
-      });
-
-      if (result.success) {
-        // Same audit envelope as the pax lane: the rate limiter and the daily
-        // briefing must see this send, or the envelope undercounts.
-        await recordAutonomousSend(context.organizationId, "email", leadId ?? 0, `${subject} — ${body.slice(0, 200)}`);
-        return {
-          success: true,
-          data: {
-            messageId: result.messageId,
-            to,
-            subject,
-            leadId,
-          },
-          message: `Email sent successfully to ${to}`,
-        };
-      } else {
-        return {
-          success: false,
-          error: result.error || "Failed to send email",
-        };
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || "Email sending failed",
-      };
-    }
-  },
+  execute: async () => ({ success: false, error: SKILL_EMAIL_REFUSAL }),
 };
 
 const calculateFinancingInputSchema = z.object({
@@ -1662,6 +1581,12 @@ const escalateDelinquencySkill: Skill = {
         });
       }
 
+      // No notification rail exists behind this skill (2026-09-02, spec §3d):
+      // `sendNotification` used to be echoed back as `notificationSent: true`
+      // and stamped a contact date the borrower never received. The
+      // escalation record is real; the contact is not, so neither the row
+      // nor the result may claim one. Borrower notices go out only through
+      // the finance ladder, after the customer's tap.
       const escalation = await storage.createDelinquencyEscalation({
         organizationId: context.organizationId,
         noteId,
@@ -1669,8 +1594,6 @@ const escalateDelinquencySkill: Skill = {
         status: "active",
         daysDelinquent: note.daysDelinquent || 0,
         amountDue: note.currentBalance || "0",
-        lastContactMethod: sendNotification ? "notification" : undefined,
-        lastContactDate: sendNotification ? new Date() : undefined,
         nextAction: nextActionMap[escalationType],
       });
 
@@ -1682,9 +1605,12 @@ const escalateDelinquencySkill: Skill = {
           previousStep,
           currentStep: escalationType,
           nextAction: nextActionMap[escalationType],
-          notificationSent: sendNotification || false,
+          notificationSent: false,
+          notificationReason: sendNotification
+            ? "No borrower notice was sent — this skill has no notification rail. Borrower reminders go out through the finance ladder after your tap."
+            : "No notification requested.",
         },
-        message: `Note ${noteId} escalated from ${previousStep} to ${escalationType}`,
+        message: `Note ${noteId} escalated from ${previousStep} to ${escalationType}${sendNotification ? " (no notice sent — see notificationReason)" : ""}`,
       };
     } catch (error: any) {
       return { success: false, error: error.message || "Escalation failed" };

@@ -25,11 +25,13 @@
 
 import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../db";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { pendingActions, paxSends, type PendingAction } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { wsServer } from "../websocket";
+import { dispatchForTool, type PaxAskOrigin, type PaxAskSourceRef } from "@shared/pax-controls";
 
 /**
  * Tools that require an explicit human approval before execution
@@ -120,6 +122,12 @@ export async function proposePendingAction(params: {
   toolName: string;
   args: Record<string, unknown>;
   createdByUserId?: string | null;
+  /** Which lane proposed it (PAX_ASK_ORIGINS). Rendered on the ask card in words. */
+  origin?: PaxAskOrigin | null;
+  /** The record the ask is about — frozen with the row (migration 0250). */
+  sourceRef?: PaxAskSourceRef | null;
+  /** Pax's own explanation, verbatim; never a number. */
+  reason?: string | null;
 }): Promise<PendingAction> {
   const contentHash = actionContentHash(params.toolName, params.args);
   const now = Date.now();
@@ -149,6 +157,9 @@ export async function proposePendingAction(params: {
       status: "pending",
       expiresAt: new Date(now + PENDING_ACTION_TTL_MS),
       createdByUserId: params.createdByUserId ?? null,
+      origin: params.origin ?? null,
+      sourceRef: params.sourceRef ?? null,
+      reason: typeof params.reason === "string" && params.reason.length > 0 ? params.reason : null,
     })
     .returning();
 
@@ -174,8 +185,36 @@ export async function proposePendingAction(params: {
       err instanceof Error ? err : undefined,
     );
   }
+  // "Waiting for your tap (N)" — the door badge and the pinned strip read the
+  // COUNT (spec §4.5); the id-only event above is kept for its existing pin.
+  await publishNeedsYou(params.organizationId);
 
   return inserted[0];
+}
+
+// ── "Waiting for your tap" live count ────────────────────────────────────────
+
+/** The one event name the badge, the strip and the queue invalidate on. */
+const PAX_NEEDS_YOU_EVENT = "pax.needs_you";
+
+/**
+ * Publish the org's live ask count on its WebSocket channel. Called from
+ * every transition that can change the count — propose, approve (executed
+ * and lazy-expire), reject, revise, and the expiry sweep. Best-effort by
+ * contract: the row transition is already persisted, and a badge that is
+ * late is a poll away; a badge that FAILS the kernel would be a second
+ * effect nobody asked for. Never throws.
+ */
+async function publishNeedsYou(organizationId: number): Promise<void> {
+  try {
+    const count = await countPendingActions(organizationId);
+    wsServer.broadcastToOrg(organizationId, PAX_NEEDS_YOU_EVENT, { count });
+  } catch (err) {
+    logger.warn(
+      `[approvalKernel] failed to publish ${PAX_NEEDS_YOU_EVENT} over WebSocket (poll fallback remains)`,
+      { orgId: organizationId, metadata: { error: err instanceof Error ? err.message : String(err) } },
+    );
+  }
 }
 
 // ── Review queue: list / count / expiry sweep ───────────────────────────────
@@ -240,7 +279,12 @@ export async function sweepExpiredPendingActions(): Promise<number> {
     .update(pendingActions)
     .set({ status: "expired" })
     .where(and(eq(pendingActions.status, "pending"), sql`${pendingActions.expiresAt} <= now()`))
-    .returning({ id: pendingActions.id });
+    .returning({ id: pendingActions.id, organizationId: pendingActions.organizationId });
+  // One count per org TOUCHED — never a cross-org broadcast, and nothing for
+  // orgs the sweep did not change.
+  const orgs = new Set<number>();
+  for (const row of flipped) if (typeof row.organizationId === "number") orgs.add(row.organizationId);
+  for (const orgId of orgs) await publishNeedsYou(orgId);
   return flipped.length;
 }
 
@@ -320,6 +364,7 @@ export async function approvePendingAction(params: {
             eq(pendingActions.status, "pending"),
           ),
         );
+      await publishNeedsYou(organizationId);
     }
     return { outcome: "expired" };
   }
@@ -444,6 +489,8 @@ export async function approvePendingAction(params: {
     metadata: { pendingActionId, organizationId, toolName: action.toolName },
   });
 
+  await publishNeedsYou(organizationId);
+
   return { outcome: "executed", action: executedRows[0] ?? action, result: resultSummary };
 }
 
@@ -471,7 +518,10 @@ export async function rejectPendingAction(params: {
     )
     .returning();
 
-  if (updated.length > 0) return { outcome: "rejected", action: updated[0] };
+  if (updated.length > 0) {
+    await publishNeedsYou(organizationId);
+    return { outcome: "rejected", action: updated[0] };
+  }
 
   const reread = await db
     .select()
@@ -482,4 +532,190 @@ export async function rejectPendingAction(params: {
   if (current.status === "executed") return { outcome: "already_executed" };
   // Already rejected/expired — rejection is idempotent enough to report success.
   return { outcome: "rejected", action: current };
+}
+
+// ── Revise (Edit on the ask card, spec §4.5) ────────────────────────────────
+
+export type RevisionOutcome =
+  | { ok: true; newId: number }
+  | { ok: false; reason: "not_found" | "not_pending" | "invalid_args"; details?: unknown };
+
+/**
+ * A JSON-schema tool definition, the shape both dispatch switches declare
+ * (OpenAI function-calling format). Only the subset the definitions use.
+ */
+interface JsonSchemaNode {
+  type?: string;
+  properties?: Record<string, JsonSchemaNode>;
+  required?: string[];
+  enum?: readonly (string | number)[];
+  items?: JsonSchemaNode;
+  description?: string;
+}
+
+/**
+ * Build a STRICT zod schema from a tool's JSON-schema parameters, so a
+ * revised ask is validated against the tool's OWN definition: a key the
+ * tool does not declare is refused, a required key that is missing is
+ * refused, an enum value the tool does not offer is refused. Everything
+ * the tool declares as optional stays optional. Unknown node shapes fall
+ * back to `unknown` rather than refusing the whole edit.
+ */
+function zodFromToolParameters(node: JsonSchemaNode | undefined): z.ZodTypeAny {
+  if (!node || typeof node !== "object") return z.unknown();
+  if (Array.isArray(node.enum) && node.enum.length > 0) {
+    const values = node.enum.filter((v): v is string => typeof v === "string");
+    if (values.length === node.enum.length && values.length > 0) {
+      return z.enum(values as [string, ...string[]]);
+    }
+    return z.union(node.enum.map((v) => z.literal(v)) as unknown as [z.ZodTypeAny, z.ZodTypeAny]);
+  }
+  switch (node.type) {
+    case "string":
+      return z.string();
+    case "number":
+      return z.number();
+    case "integer":
+      return z.number().int();
+    case "boolean":
+      return z.boolean();
+    case "array":
+      return z.array(zodFromToolParameters(node.items));
+    case "object": {
+      const required = new Set(node.required ?? []);
+      const shape: Record<string, z.ZodTypeAny> = {};
+      for (const [key, child] of Object.entries(node.properties ?? {})) {
+        const inner = zodFromToolParameters(child);
+        shape[key] = required.has(key) ? inner : inner.optional();
+      }
+      return z.object(shape).strict();
+    }
+    default:
+      return z.unknown();
+  }
+}
+
+/** Frozen shape of the borrower ladder's ask (spec §4.4; frozen contract 2). */
+const BORROWER_REMINDER_ARGS = z
+  .object({
+    reminderId: z.number().int().positive(),
+    noteId: z.number().int().positive(),
+    type: z.enum(["upcoming", "due", "late", "final_warning", "demand_letter"]),
+  })
+  .strict();
+
+/**
+ * The tool's own definition, looked up by the rail that runs the name. The
+ * dispatch switches are imported lazily — they are large graphs, and both
+ * import THIS module, so a static import here would be a cycle.
+ */
+async function toolArgsSchema(toolName: string): Promise<z.ZodTypeAny | null> {
+  switch (dispatchForTool(toolName)) {
+    case "executeTool": {
+      const { toolDefinitions } = await import("../ai/tools");
+      const def = (toolDefinitions as Record<string, { parameters?: JsonSchemaNode }>)[toolName];
+      return def ? zodFromToolParameters(def.parameters) : null;
+    }
+    case "executeSupportTool": {
+      const { supportToolDefinitions } = await import("../ai/supportAgent");
+      const def = (supportToolDefinitions as Record<string, { parameters?: JsonSchemaNode }>)[toolName];
+      return def ? zodFromToolParameters(def.parameters) : null;
+    }
+    case "finance_ladder":
+      return BORROWER_REMINDER_ARGS;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Edit → revise. Validates the human's args against the tool's own
+ * definition, then in ONE transaction inserts the revised row (created by
+ * the human, origin "revised", fresh content hash, same expiry policy) and
+ * claims the old row pending→rejected with a guarded `WHERE status =
+ * 'pending'` UPDATE whose resultSummary points at the new row. If the guard
+ * claims nothing — the old row was approved, rejected, expired or already
+ * revised by a concurrent tap — the transaction rolls back and the revised
+ * row never exists: a double tap yields ONE new row, so one approval, so
+ * one send. Approval of the new row replays through the kernel like any
+ * other ask.
+ */
+export async function revisePendingAction(params: {
+  organizationId: number;
+  pendingActionId: number;
+  userId: string;
+  args: Record<string, unknown>;
+}): Promise<RevisionOutcome> {
+  const { organizationId, pendingActionId, userId } = params;
+
+  const rows = await db
+    .select()
+    .from(pendingActions)
+    .where(and(eq(pendingActions.id, pendingActionId), eq(pendingActions.organizationId, organizationId)));
+  const current = rows[0];
+  if (!current) return { ok: false, reason: "not_found" };
+  if (current.status !== "pending" || !current.expiresAt || current.expiresAt.getTime() <= Date.now()) {
+    return { ok: false, reason: "not_pending" };
+  }
+
+  const schema = await toolArgsSchema(current.toolName);
+  if (!schema) {
+    return { ok: false, reason: "invalid_args", details: `no definition for ${current.toolName}` };
+  }
+  const parsed = schema.safeParse(params.args);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      reason: "invalid_args",
+      details: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    };
+  }
+  const args = parsed.data as Record<string, unknown>;
+  const contentHash = actionContentHash(current.toolName, args);
+
+  class NotPendingError extends Error {}
+
+  let newId: number;
+  try {
+    newId = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(pendingActions)
+        .values({
+          organizationId,
+          toolName: current.toolName,
+          args,
+          contentHash,
+          status: "pending",
+          expiresAt: new Date(Date.now() + PENDING_ACTION_TTL_MS),
+          createdByUserId: userId,
+          origin: "revised",
+          sourceRef: current.sourceRef ?? null,
+          reason: current.reason ?? null,
+        })
+        .returning({ id: pendingActions.id });
+
+      const claimed = await tx
+        .update(pendingActions)
+        .set({ status: "rejected", resultSummary: { revisedTo: inserted.id } })
+        .where(
+          and(
+            eq(pendingActions.id, pendingActionId),
+            eq(pendingActions.organizationId, organizationId),
+            eq(pendingActions.status, "pending"),
+          ),
+        )
+        .returning({ id: pendingActions.id });
+      if (claimed.length === 0) throw new NotPendingError("lost the revise race");
+      return inserted.id;
+    });
+  } catch (err) {
+    if (err instanceof NotPendingError) return { ok: false, reason: "not_pending" };
+    throw err;
+  }
+
+  logger.info("[approvalKernel] Pending action revised", {
+    metadata: { organizationId, pendingActionId, newId, toolName: current.toolName },
+  });
+  await publishNeedsYou(organizationId);
+  return { ok: true, newId };
 }
