@@ -2846,3 +2846,30 @@ spellings the implementation already knew and proved nothing about the ones it
 did not — the population failure again, one level below the file list. The
 table of twelve spellings is now the test, so adding a family without adding a
 row leaves the next spelling untested in a way that is visible.
+
+### The debt register was read to zero
+
+The register the population work produced held 210 unread claims. Reading a
+list of unread claims is the only thing that separates a debt register from an
+exemption list, so it was read — in three passes, every DEFECT verdict put to a
+second reader instructed to refute it.
+
+| Verdict | Count |
+| --- | --- |
+| Real cross-tenant defect | 4 |
+| Safe by design | 154 |
+| Lint false positive | 52 |
+
+A roughly 2% hit rate is the expected shape for a heuristic register, and it is
+the reason the list existed rather than a set of blocking failures. It is also
+not zero, which is why reading it was worth doing rather than trusting the shape
+of the list.
+
+Every remaining key now carries an individual, hand-checked reason and the
+evidence it rests on, so the next reader can check the judgement instead of
+inheriting it. The lint's verdict line prints the split — "208 held (208 read,
+0 NOT read)" — because "held" alone reads as a backlog when what a reader needs
+is how much of it anyone has actually opened.
+
+A new offender is still not covered by the file and fails the gate immediately.
+Reading the backlog does not turn it into permission.
