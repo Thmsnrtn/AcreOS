@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { okOrThrow } from "@/lib/fetch-honesty";
 
 // ─── Sovereign Dashboard hooks (Phase A) ─────────────────────────────────────
 
@@ -14,10 +15,17 @@ export function useAgentRuntimeStates() {
   return useQuery({
     queryKey: ["/api/founder/v12/runtime"],
     queryFn: async () => {
-      const res = await fetch("/api/founder/v12/runtime", { credentials: "include" });
-      if (!res.ok) return [];
+      // A failed read is not an empty fleet. This returned [] on any failure,
+      // and agent-performance.tsx renders that as "No agent data available yet.
+      // Agents will appear once the system initializes." — telling the founder
+      // their agents had not started, when they were running and the read
+      // failed. okOrThrow keeps the failure a failure; the page shows it.
+      const res = await okOrThrow(
+        await fetch("/api/founder/v12/runtime", { credentials: "include" }),
+      );
       const rows = await res.json();
-      if (!Array.isArray(rows)) return [];
+      // A non-array body is a contract failure, not an empty fleet either.
+      if (!Array.isArray(rows)) throw new Error("Expected a list of agent runtime states");
       // Server rows are agent_runtime_state entries keyed by agentCodename;
       // consumers read `codename`/`name`.
       return rows.map((row: any) => ({

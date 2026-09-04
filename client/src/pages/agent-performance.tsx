@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -40,7 +41,14 @@ function TrustScoreBar({ score, label }: { score: number; label: string }) {
 
 export default function AgentPerformance() {
   useDocumentTitle("Agent performance");
-  const { data: agents = [], isLoading: agentsLoading } = useAgentRuntimeStates();
+  const {
+    data: agents = [],
+    isLoading: agentsLoading,
+    isError: agentsFailed,
+    error: agentsError,
+    refetch: refetchAgents,
+    isRefetching: agentsRefetching,
+  } = useAgentRuntimeStates();
   const { data: revenue } = useRevenueAttribution();
 
   const isLoading = agentsLoading;
@@ -62,7 +70,19 @@ export default function AgentPerformance() {
           </TabsList>
 
           <TabsContent value="trust" className="space-y-4">
-            {Array.isArray(agents) && agents.length > 0 ? (
+            {agentsFailed ? (
+              // BEFORE the empty branch. That branch says "Agents will appear
+              // once the system initializes" — a claim about the fleet's state
+              // that a failed read has no business making.
+              <QueryErrorState
+                error={agentsError}
+                onRetry={() => void refetchAgents()}
+                isRetrying={agentsRefetching}
+                title="Couldn't load agent trust scores"
+                description="We couldn't read the agent runtime just now. This isn't an idle fleet — try again."
+                testId="agent-performance-error"
+              />
+            ) : Array.isArray(agents) && agents.length > 0 ? (
               <ul className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-label="Agent trust scores">
                 {agents.map((agent: any) => (
                   <li key={agent.id ?? agent.codename}>
