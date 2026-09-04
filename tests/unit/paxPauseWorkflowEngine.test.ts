@@ -29,8 +29,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const H = vi.hoisted(() => ({
-  getPaxControls: vi.fn(async (_orgId: number) => ({}) as any),
-  recordPaxEffect: vi.fn(async () => ({ written: true })),
+  getPaxControls: vi.fn(async (_orgId: number) => ({}) as unknown as PaxControlsState),
+  recordPaxEffect: vi.fn(async (_effect: PaxEffect) => ({ written: true })),
   createWorkflowRun: vi.fn(async (data: any) => ({ id: 101, ...data })),
   updateWorkflowRun: vi.fn(async (id: number, updates: any) => ({ id, ...updates })),
   getWorkflowById: vi.fn(async (_id: number) => null as any),
@@ -85,6 +85,9 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import { workflowEngine } from "../../server/services/workflow-engine";
+import type { PaxControlsState } from "../../server/services/paxControls";
+import type { PaxEffect } from "../../server/services/paxReceipts";
+import { OFFERED_STANCES } from "../../shared/pax-controls";
 
 /** `resumeState.reason` the engine writes for a pause park (pinned as a literal on purpose). */
 const RESUME_REASON_PAUSED = "paused";
@@ -95,7 +98,7 @@ const FIFTEEN_MIN = 15 * 60 * 1000;
 
 const ACTING_STEP_IDS = ["a_email", "a_task", "a_update", "a_skill", "a_notify"] as const;
 
-function controls(over: Record<string, unknown> = {}) {
+function controls(over: Partial<PaxControlsState> = {}): PaxControlsState {
   return {
     paused: false,
     pausedUntil: null as Date | null,
@@ -273,7 +276,7 @@ describe("resume re-checks the pause", () =>
 });
 
 describe("unpaused org — the same workflow runs every rail as before and leaves receipts", () => {
-  it.each(["ask_before_sending", "ask_before_everything"])(
+  it.each(OFFERED_STANCES)(
     "stance %s: send_email / create_task / update_record / run_agent_skill / send_notification all complete, each with a receipt",
     async (stance) => {
       H.getPaxControls.mockResolvedValue(controls({ stance }));

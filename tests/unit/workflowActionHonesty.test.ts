@@ -49,6 +49,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import { WORKFLOW_TRIGGER_EVENTS } from "@shared/schema";
+import type { PaxControlsState } from "../../server/services/paxControls";
 import {
   LIVE_WORKFLOW_TRIGGER_EVENTS,
   isLiveWorkflowTriggerEvent,
@@ -94,7 +95,7 @@ vi.mock("../../server/services/emailService", () => ({
 // suite is about. The park's own behaviour is pinned in
 // tests/unit/paxPauseWorkflowEngine.test.ts; the "paused run never completes"
 // case at the bottom of this file is the honesty half of it.
-const getPaxControls = vi.fn(async (_orgId: number) => ({
+const getPaxControls = vi.fn(async (_orgId: number): Promise<PaxControlsState> => ({
   paused: false,
   pausedUntil: null as Date | null,
   pausedBy: null,

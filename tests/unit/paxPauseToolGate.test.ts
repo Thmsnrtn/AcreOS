@@ -52,7 +52,7 @@ const {
   createLead,
   logActivity,
 } = vi.hoisted(() => ({
-  getPaxControls: vi.fn(async () => ({
+  getPaxControls: vi.fn(async (): Promise<PaxControlsState> => ({
     stance: "ask_before_sending" as const,
     leadScoring: true,
     borrowerReminders: true,
@@ -163,12 +163,13 @@ vi.mock("../../server/ai/validators", () => ({
 
 import { executeTool, PAUSE_SAFE_TOOLS, toolDefinitions } from "../../server/ai/tools";
 import { formatPaxTime, PAX_CONTROLS_LABEL } from "../../shared/pax-glossary";
+import type { PaxControlsState } from "../../server/services/paxControls";
 
 const org = { id: 7, name: "Test Org" } as any;
 const PAUSED_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
 const TZ = "America/Chicago";
 
-const state = (over: Partial<Awaited<ReturnType<typeof getPaxControls>>> = {}) => ({
+const state = (over: Partial<PaxControlsState> = {}): PaxControlsState => ({
   stance: "ask_before_sending" as const,
   leadScoring: true,
   borrowerReminders: true,

@@ -162,7 +162,7 @@
     },
     {
       "file": "server/services/notificationDispatcher.ts",
-      "line": 138,
+      "line": 204,
       "category": "id",
       "note": "Notification id suffix — entropy for uniqueness."
     },
@@ -254,7 +254,7 @@
     },
     {
       "file": "client/src/components/pax-copilot-rail.tsx",
-      "line": 822,
+      "line": 845,
       "category": "id",
       "note": "React key for a streaming tool-call event. The tool's NAME and ARGS come from the stream; only the key is random."
     },
@@ -278,17 +278,11 @@
     },
     {
       "file": "client/src/components/workflow-builder.tsx",
-      "line": 103,
+      "line": 99,
       "category": "id",
       "note": "Local id for a newly added workflow action, before the server assigns one."
     },
-    {
-      "file": "client/src/components/workflow-builder.tsx",
-      "line": 868,
-      "category": "id",
-      "note": "Same, in the side-panel builder."
-    },
-    {
+{
       "file": "client/src/hooks/use-founder-chat.ts",
       "line": 223,
       "category": "id",

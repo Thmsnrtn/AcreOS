@@ -75,7 +75,7 @@ const H = vi.hoisted(() => {
     flags,
     logActivity,
     storage,
-    getPaxControls: vi.fn(async () => ({
+    getPaxControls: vi.fn(async (): Promise<PaxControlsState> => ({
       stance: "ask_before_sending" as const,
       leadScoring: true,
       borrowerReminders: true,
@@ -183,6 +183,7 @@ vi.mock("../../server/ai/validators", () => ({
 }));
 
 import { executeTool, PAUSE_SAFE_TOOLS, APPROVAL_REQUIRED_TOOLS } from "../../server/ai/tools";
+import type { PaxControlsState } from "../../server/services/paxControls";
 
 const ROOT = path.resolve(__dirname, "../..");
 const source = (rel: string) =>

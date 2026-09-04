@@ -61,8 +61,8 @@ const H = vi.hoisted(() => {
     setSelectRows: (fn: typeof selectRows) => {
       selectRows = fn;
     },
-    getPaxControls: vi.fn(async (_orgId: number) => ({}) as any),
-    recordPaxEffect: vi.fn(async () => ({ written: true })),
+    getPaxControls: vi.fn(async (_orgId: number) => ({}) as unknown as PaxControlsState),
+    recordPaxEffect: vi.fn(async (_effect: PaxEffect) => ({ written: true })),
     executeWorkflow: vi.fn(async () => ({ id: 1, status: "completed" })),
     storage: {
       setJobStatus: vi.fn(async (_t: string, _s: string) => undefined),
@@ -112,11 +112,14 @@ vi.mock("../../server/utils/logger", () => ({
 
 import { leadNurturerService } from "../../server/services/leadNurturer";
 import { taskRunnerService } from "../../server/services/task-runner";
+import type { PaxControlsState } from "../../server/services/paxControls";
+import type { PaxEffect } from "../../server/services/paxReceipts";
+import { OFFERED_STANCES } from "../../shared/pax-controls";
 
 const ORG_ID = 7;
 const PAUSED_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-function controls(over: Record<string, unknown> = {}) {
+function controls(over: Partial<PaxControlsState> = {}): PaxControlsState {
   return {
     paused: false,
     pausedUntil: null as Date | null,
@@ -185,7 +188,7 @@ describe("leadNurturer.processLeadsForOrg", () => {
   });
 
   it("unpaused, on → the pass runs as before at EITHER stance and reports no skip", async () => {
-    for (const stance of ["ask_before_sending", "ask_before_everything"]) {
+    for (const stance of OFFERED_STANCES) {
       vi.clearAllMocks();
       H.getPaxControls.mockResolvedValue(controls({ stance }));
       const result = await leadNurturerService.processLeadsForOrg(ORG_ID, opts);

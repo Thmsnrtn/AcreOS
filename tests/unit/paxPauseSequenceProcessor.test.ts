@@ -27,8 +27,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const H = vi.hoisted(() => ({
-  getPaxControls: vi.fn(async (_orgId: number) => ({}) as any),
-  recordPaxEffect: vi.fn(async () => ({ written: true })),
+  getPaxControls: vi.fn(async (_orgId: number) => ({}) as unknown as PaxControlsState),
+  recordPaxEffect: vi.fn(async (_effect: PaxEffect) => ({ written: true })),
   insertValues: vi.fn(async (_row: any) => undefined),
   sendEmail: vi.fn(async (_opts: any) => ({ success: true, messageId: "m1" })),
   getSequenceSteps: vi.fn(async (_sequenceId: number) => [] as any[]),
@@ -74,6 +74,9 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import { sequenceProcessorService } from "../../server/services/sequenceProcessor";
+import type { PaxControlsState } from "../../server/services/paxControls";
+import type { PaxEffect } from "../../server/services/paxReceipts";
+import { OFFERED_STANCES } from "../../shared/pax-controls";
 
 /** The delivery-timeline status of a pause deferral (registry pausedReason for "sequences"). */
 const STEP_SKIP_DEFERRED_PAUSED = "deferred_paused";
@@ -82,7 +85,7 @@ const ORG_ID = 7;
 const PAUSED_UNTIL = new Date(Date.now() + 6 * 60 * 60 * 1000);
 const FIFTEEN_MIN = 15 * 60 * 1000;
 
-function controls(over: Record<string, unknown> = {}) {
+function controls(over: Partial<PaxControlsState> = {}): PaxControlsState {
   return {
     paused: false,
     pausedUntil: null as Date | null,
@@ -197,7 +200,7 @@ describe("paused org — sequence steps are deferred as deferred_paused, never s
 });
 
 describe("unpaused org — the same step sends as before, at either stance, and leaves a receipt", () => {
-  it.each(["ask_before_sending", "ask_before_everything"])("stance %s: sendStep reaches the email rail on the counterparty lane and reports 'sent'", async (stance) => {
+  it.each(OFFERED_STANCES)("stance %s: sendStep reaches the email rail on the counterparty lane and reports 'sent'", async (stance) => {
     H.getPaxControls.mockResolvedValue(controls({ stance }));
 
     const outcome = await sequenceProcessorService.sendStep(enrollment(), STEP_1);

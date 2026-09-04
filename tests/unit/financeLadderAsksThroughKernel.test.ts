@@ -40,7 +40,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const H = vi.hoisted(() => ({
-  getPaxControls: vi.fn(async (_orgId: number) => ({
+  getPaxControls: vi.fn(async (_orgId: number): Promise<PaxControlsState> => ({
     paused: false,
     pausedUntil: null as Date | null,
     pausedBy: null as { userId: string; name: string } | null,
@@ -52,15 +52,18 @@ const H = vi.hoisted(() => ({
     timezone: "America/Chicago",
   })),
   proposePendingAction: vi.fn(async (params: any) => ({ id: 901, ...params })),
-  recordPaxEffect: vi.fn(async () => ({ written: true })),
-  sendToLead: vi.fn(async () => ({ success: true, channel: "email" })),
+  recordPaxEffect: vi.fn(async (_effect: PaxEffect) => ({ written: true })),
+  sendToLead: vi.fn(async (_options: CommunicationOptions) => ({ success: true, channel: "email" })),
   checkSendRateLimit: vi.fn(async () => ({ allowed: true })),
   recordAutonomousSend: vi.fn(async () => undefined),
   storage: {
     getNote: vi.fn(async (_orgId: number, _noteId: number) => null as any),
     getLead: vi.fn(async () => null as any),
     updateNote: vi.fn(async () => undefined),
-    recordReminderOutcome: vi.fn(async () => undefined),
+    recordReminderOutcome: vi.fn(
+      async (_id: number, _outcome: { status: string; reason?: string | null; acceptedBy?: string | null }) =>
+        undefined,
+    ),
     findLadderReminder: vi.fn(async () => undefined as any),
     createPaymentReminder: vi.fn(async (r: any) => ({ id: 77, ...r })),
     getOrganizationIntegration: vi.fn(async () => null),
@@ -107,6 +110,9 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import { financeAgentService, REMINDER_STATUS } from "../../server/services/financeAgent";
+import type { PaxControlsState } from "../../server/services/paxControls";
+import type { PaxEffect } from "../../server/services/paxReceipts";
+import type { CommunicationOptions } from "../../server/services/communications";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
@@ -116,7 +122,7 @@ const stripComments = (src: string) =>
 const ORG_ID = 7;
 const PAUSED_UNTIL = new Date(Date.now() + 6 * 60 * 60 * 1000);
 
-function controls(over: Partial<Awaited<ReturnType<typeof H.getPaxControls>>> = {}) {
+function controls(over: Partial<PaxControlsState> = {}): PaxControlsState {
   return {
     paused: false,
     pausedUntil: null,
@@ -214,6 +220,17 @@ describe("zero hits: paxAutonomyLevel / unattendedSendPermitted / getOrgAutonomy
    * in shared/schema.ts may mention the name; nothing else may.
    */
   const COLUMN_DEFINITION = /^\s*paxAutonomyLevel:\s*varchar\("pax_autonomy_level"/m;
+  /**
+   * The second tolerated form: an assertion that a name is ABSENT. This scan
+   * hunts READERS and WRITERS, and `expect(src.includes("X")).toBe(false)` is
+   * neither — it is another gate enforcing the same deletion (approvalKernel
+   * .test.ts pins that tools.ts no longer carries the level branches). Left
+   * unstripped, one gate's evidence reads as another gate's violation and the
+   * only way to green is to delete an enforcement. Narrow by construction: it
+   * strips the single assertion form, so ANY other mention in the same file
+   * still fails.
+   */
+  const ABSENCE_ASSERTION = /expect\(\s*\w+(?:\.\w+)*\.includes\(\s*(["'`])(?:paxAutonomyLevel|unattendedSendPermitted|getOrgAutonomyLevel)\1\s*\)\s*\)\.toBe\(false\)/g;
 
   function* walk(dir: string): Generator<string> {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -227,16 +244,11 @@ describe("zero hits: paxAutonomyLevel / unattendedSendPermitted / getOrgAutonomy
     }
   }
 
-  // WAVE-1 CROSS-AGENT SEAM (B, 2026-09-02): the machinery is gone from every
-  // file B owns; the hits that remain at B's last run are in files owned by
-  // A (tests/unit/autonomyLevelFailsClosed.test.ts — retired by A;
-  // tests/unit/skillLaneSendGovernance.test.ts and
-  // tests/unit/tenantBoundaryTaskTools.test.ts — mocks of the deleted
-  // exports) and C (server/routes-pax-insights.ts:12,505 — the first-follow-up
-  // route C deletes; tests/unit/pendingActionsQueue.test.ts:217 — a mock).
-  // Central: flip `it.todo` back to `it` the moment those land. The
-  // assertion body is unchanged and unweakened.
-  it.todo("no production file, script or test names the deleted level machinery (vacuity: the walk is real)", () => {
+  // Parked as `it.todo` while wave 1 was mid-flight: at agent B's last run the
+  // remaining hits were all in files A and C had not yet landed. Central
+  // verification flipped it back on once all six slices were committed
+  // (2026-09-04) — the assertion body was never weakened.
+  it("no production file, script or test names the deleted level machinery (vacuity: the walk is real)", () => {
     const hits: string[] = [];
     let scanned = 0;
     for (const dir of ["server", "shared", "client", "scripts", "tests"]) {
@@ -246,6 +258,7 @@ describe("zero hits: paxAutonomyLevel / unattendedSendPermitted / getOrgAutonomy
         if (rel === "tests/unit/financeLadderAsksThroughKernel.test.ts") continue;
         let src = fs.readFileSync(full, "utf-8");
         if (rel === "shared/schema.ts") src = src.replace(COLUMN_DEFINITION, "");
+        src = src.replace(ABSENCE_ASSERTION, "");
         src = stripComments(src);
         for (const name of NAMES) {
           if (src.includes(name)) hits.push(`${rel}: ${name}`);

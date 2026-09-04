@@ -4,7 +4,7 @@
   "evaluator": "scripts/check-tests-typecheck.mjs",
   "direction": "down",
   "description": "TEST-SUITE TYPE CHECKING. tsconfig.json excludes `**/*.test.ts` and never included `tests/**`, so 700+ files and ~9,200 tests were type-checked by nothing — and a test is the worst place to lose it, because a type error there is invisible at runtime too (`expect(x.nonExistentField).toBeUndefined()` passes forever, and an import of a removed symbol only fails if the line executes). Unit 101 hit exactly that. Counted by scripts/check-tests-typecheck.mjs over tsconfig.tests.json, bidirectional, down-only.",
-  "baselineCount": 162,
+  "baselineCount": 160,
   "minima": {
     "filesLoaded": 6000
   },
