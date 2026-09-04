@@ -30,6 +30,7 @@
 import { db } from "../db";
 import { and, eq, sql } from "drizzle-orm";
 import { outreachAbTests, outreachAbOutcomes } from "@shared/schema";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
 
@@ -99,8 +100,15 @@ export interface AbOutcomeTally {
 export interface AbTestStorage {
   /** Insert or overwrite a test (Map.set semantics, org-guarded by caller). */
   upsertTest(test: AbTest): Promise<AbTest>;
-  /** Fetch one test; when `orgId` is given the lookup is org-scoped. */
-  getTest(testId: string, orgId?: number): Promise<AbTest | undefined>;
+  /** Fetch one test, always scoped to one org. There is no unscoped form. */
+  getTest(testId: string, orgId: number): Promise<AbTest | undefined>;
+  /**
+   * "Is this id already taken, by anyone?" — a DIFFERENT question from
+   * getTest, and the only cross-org one this engine asks. Split out so the
+   * unscoped read names itself instead of hiding as `getTest(id)` with the
+   * org argument quietly omitted.
+   */
+  findTestOwnerAnyOrg(testId: string): Promise<AbTest | undefined>;
   /** All tests belonging to an org. */
   listTests(orgId: number): Promise<AbTest[]>;
   /** Append one outcome event. */
@@ -160,11 +168,28 @@ export const drizzleAbTestStorage: AbTestStorage = {
   },
 
   async getTest(testId, orgId) {
-    const where =
-      orgId === undefined
-        ? eq(outreachAbTests.id, testId)
-        : and(eq(outreachAbTests.id, testId), eq(outreachAbTests.organizationId, orgId));
-    const [row] = await db.select().from(outreachAbTests).where(where).limit(1);
+    const [row] = await db
+      .select()
+      .from(outreachAbTests)
+      .where(and(eq(outreachAbTests.id, testId), eq(outreachAbTests.organizationId, orgId)))
+      .limit(1);
+    return row ? rowToTest(row) : undefined;
+  },
+
+  async findTestOwnerAnyOrg(testId) {
+    // Cross-org on purpose, through the explicit hatch. createTest refuses an
+    // id already owned by ANOTHER org — "ids are global, orgs are not" — which
+    // cannot be answered from inside one org. It used to be spelled
+    // `getTest(id)` with the optional org argument omitted, which is
+    // indistinguishable from forgetting it, and the org-scope lint reported the
+    // whole function as unscoped because of this one caller.
+    const [row] = await unscopedForPlatformOps(
+      "A/B test id collision check: ids are global while orgs are not, so createTest must see whether another org already owns this id",
+    )
+      .select()
+      .from(outreachAbTests)
+      .where(eq(outreachAbTests.id, testId))
+      .limit(1);
     return row ? rowToTest(row) : undefined;
   },
 
@@ -362,7 +387,7 @@ export class AbTestEngine {
    * a DIFFERENT org is refused — ids are global, orgs are not.
    */
   async createTest(test: Omit<AbTest, "startedAt" | "status">): Promise<AbTest> {
-    const existing = await this.storage.getTest(test.id);
+    const existing = await this.storage.findTestOwnerAnyOrg(test.id);
     if (existing && existing.orgId !== test.orgId) {
       throw new Error(`A/B test id "${test.id}" is already in use`);
     }
@@ -376,8 +401,8 @@ export class AbTestEngine {
     return saved;
   }
 
-  /** Fetch a test. Pass `orgId` to scope the lookup to one org. */
-  async getTest(testId: string, orgId?: number): Promise<AbTest | undefined> {
+  /** Fetch a test belonging to `orgId`. Another org's test reads as absent. */
+  async getTest(testId: string, orgId: number): Promise<AbTest | undefined> {
     return this.storage.getTest(testId, orgId);
   }
 
@@ -405,7 +430,7 @@ export const abTestEngine = new AbTestEngine();
 export const createTest = (test: Omit<AbTest, "startedAt" | "status">): Promise<AbTest> =>
   abTestEngine.createTest(test);
 
-export const getTest = (testId: string, orgId?: number): Promise<AbTest | undefined> =>
+export const getTest = (testId: string, orgId: number): Promise<AbTest | undefined> =>
   abTestEngine.getTest(testId, orgId);
 
 export const listTests = (orgId: number): Promise<AbTest[]> => abTestEngine.listTests(orgId);

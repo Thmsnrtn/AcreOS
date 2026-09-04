@@ -6,8 +6,8 @@
   "counts": {
     "rule1": 94,
     "rule2": 74,
-    "rule3": 55,
-    "total": 223
+    "rule3": 52,
+    "total": 220
   },
   "rule1": {
     "method": [
@@ -236,9 +236,6 @@
     "server/routes.ts::GET /api/founder/executive-dashboard::properties",
     "server/routes/lob-webhooks.ts::POST /api/webhooks/lob::mailShipmentPieces",
     "server/routes/public-qr-redirect.ts::GET /r/:code::mailQrScanEvents",
-    "server/services/capitalMarkets.ts::getCapitalRaises::capitalRaises",
-    "server/services/capitalMarkets.ts::listSecurities::noteSecurities",
-    "server/services/complianceAI.ts::getAlertsForOrganization::complianceAlerts",
     "server/services/complianceAI.ts::identifyAffectedProperties::properties",
     "server/services/decisionsInbox.ts::createDirectDecisionCard::decisionsInboxItems",
     "server/services/decisionsInbox.ts::createFromAlert::decisionsInboxItems",
@@ -535,5 +532,5 @@
     "All four are pinned by tests/unit/crossTenantPathsClosed2026_09_04.test.ts,",
     "and each pin was falsified by reverting its fix."
   ],
-  "_UNTRIAGED_2026_09_04": "The 22 entries added on 2026-09-04 are UNTRIAGED, and that is different from every other entry in this file. The 208 that came before were each READ and carry an individual _TRIAGED reason. These came from widening the gate to Drizzle's RELATIONAL query API \u2014 db.query.<table>.findMany / .findFirst, 280 call sites under server/ that `touchedOrgScopedTables` and the rule-3 chain walker, both keyed on `.from(`, had never read. A unit whose only org-table access was relational was skipped before ANY of the three rules ran. They are frozen so the widened gate can fail on anything NEW while these are worked down; an entry here is not a judgement that the query is safe. Two were read on the way in and are worth the next reader's attention first: campaignEnhancements.cloneCampaign reads a campaign by id with no org check and inserts a copy, and matchmaking.findBuyersForListing reads EVERY investor profile in the platform. decisionsInbox.* is the founder's inbox and is probably legitimately cross-org \u2014 which means it wants unscopedForPlatformOps(reason), not a register line. BURN-DOWN: complianceAI.checkPropertyCompliance, complianceAI.generateDisclosure and landCredit.backtestScore were read and FIXED the same day \u2014 all three were live customer routes resolving a property by id with no ownership check. Four more the same day: decisionsInbox.getPendingItems and .getSuppressedDefects are the founder's own platform-wide queue and now go through unscopedForPlatformOps(reason) so the cross-org read is logged and greppable rather than indistinguishable from a forgotten one; campaignEnhancements.cloneCampaign and propertyIntelligenceEnhancements.compareProperties had no callers at all and were deleted."
+  "_UNTRIAGED_2026_09_04": "The 22 entries added on 2026-09-04 are UNTRIAGED, and that is different from every other entry in this file. The 208 that came before were each READ and carry an individual _TRIAGED reason. These came from widening the gate to Drizzle's RELATIONAL query API \u2014 db.query.<table>.findMany / .findFirst, 280 call sites under server/ that `touchedOrgScopedTables` and the rule-3 chain walker, both keyed on `.from(`, had never read. A unit whose only org-table access was relational was skipped before ANY of the three rules ran. They are frozen so the widened gate can fail on anything NEW while these are worked down; an entry here is not a judgement that the query is safe. Two were read on the way in and are worth the next reader's attention first: campaignEnhancements.cloneCampaign reads a campaign by id with no org check and inserts a copy, and matchmaking.findBuyersForListing reads EVERY investor profile in the platform. decisionsInbox.* is the founder's inbox and is probably legitimately cross-org \u2014 which means it wants unscopedForPlatformOps(reason), not a register line. BURN-DOWN: complianceAI.checkPropertyCompliance, complianceAI.generateDisclosure and landCredit.backtestScore were read and FIXED the same day \u2014 all three were live customer routes resolving a property by id with no ownership check. Four more the same day: decisionsInbox.getPendingItems and .getSuppressedDefects are the founder's own platform-wide queue and now go through unscopedForPlatformOps(reason) so the cross-org read is logged and greppable rather than indistinguishable from a forgotten one; campaignEnhancements.cloneCampaign and propertyIntelligenceEnhancements.compareProperties had no callers at all and were deleted. THREE more the same day, taking the untriaged block from 15 to 12: capitalMarkets.listSecurities and .getCapitalRaises both took `organizationId?: number` and built the predicate as `organizationId && status ? \u2026 : status ? eq(status) : undefined` \u2014 so a missing org, or the literal 0, produced a status-only or entirely empty predicate over every tenant's securities and raises. Both callers already passed org.id, so this was latent rather than live; the parameter is now REQUIRED and the org term UNCONDITIONAL, with status only narrowing it. complianceAI.getAlertsForOrganization was never an offender at all \u2014 it was a FALSE POSITIVE of the gate, which could not follow a relational `where:` held in a variable and so could not see the org predicate that was right there. That is fixed in `chainScopeText` in the same commit, and the fix was falsified by reintroducing a `: undefined` arm and confirming rule 3 still fires."
 }

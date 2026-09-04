@@ -166,20 +166,20 @@ class CapitalMarkets {
    * List available securitization offerings
    */
   async listSecurities(
-    organizationId?: number,
+    organizationId: number,
     status?: string
   ): Promise<any[]> {
     try {
-      const where = organizationId && status
+      // The org term is UNCONDITIONAL: status only narrows it. The previous
+      // shape led with `organizationId && status`, so a falsy org — including
+      // the literal 0 this repo has been bitten by before — fell through to a
+      // status-only predicate that read every tenant's rows.
+      const where = status
         ? and(
             eq(noteSecurities.organizationId, organizationId),
             eq(noteSecurities.status, status)
           )
-        : organizationId
-        ? eq(noteSecurities.organizationId, organizationId)
-        : status
-        ? eq(noteSecurities.status, status)
-        : undefined;
+        : eq(noteSecurities.organizationId, organizationId);
 
       return await db.query.noteSecurities.findMany({
         where,
@@ -376,20 +376,20 @@ class CapitalMarkets {
    * Get capital raise campaigns
    */
   async getCapitalRaises(
-    organizationId?: number,
+    organizationId: number,
     status?: string
   ): Promise<any[]> {
     try {
-      const where = organizationId && status
+      // The org term is UNCONDITIONAL: status only narrows it. The previous
+      // shape led with `organizationId && status`, so a falsy org — including
+      // the literal 0 this repo has been bitten by before — fell through to a
+      // status-only predicate that read every tenant's rows.
+      const where = status
         ? and(
             eq(capitalRaises.organizationId, organizationId),
             eq(capitalRaises.status, status)
           )
-        : organizationId
-        ? eq(capitalRaises.organizationId, organizationId)
-        : status
-        ? eq(capitalRaises.status, status)
-        : undefined;
+        : eq(capitalRaises.organizationId, organizationId);
 
       return await db.query.capitalRaises.findMany({
         where,

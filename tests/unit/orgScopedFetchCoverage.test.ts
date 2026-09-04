@@ -243,6 +243,22 @@ const RULE_3_BASELINE = 72;
 const RULE_3_CHAIN_FLOOR = 300;
 
 /**
+ * Rule 2 gained a sanctioned-hatch exemption on 2026-09-04: a lone-id
+ * predicate whose enclosing STATEMENT is rooted in `unscopedForPlatformOps(`
+ * is not reported. That is correct — rule 2 catches a scoped-LOOKING signature
+ * that crosses tenants, and the hatch is the loudest possible form of the
+ * opposite — but an exemption is still a hole, and a hole nobody counts widens.
+ *
+ * So the count is published in the verdict and capped here. It is a ceiling,
+ * not a floor: the number may fall freely, and a diff that raises it has to say
+ * which platform op needs a cross-org by-id read and why. Measured 1 on
+ * 2026-09-04 (abTestEngine.findTestOwnerAnyOrg — "is this A/B test id already
+ * owned by another org?", the one question createTest cannot ask from inside
+ * one org).
+ */
+const HATCH_EXEMPTION_CEILING = 1;
+
+/**
  * BOTH of Drizzle's query spellings reach rule 3.
  *
  * The chain walker keyed on `.from(<table>)` and nothing else, so
@@ -451,6 +467,86 @@ describe("the tenancy lint covers the service layer", () => {
       "a rule 3 baseline entry no longer matches. That is the gate working: " +
         "delete the line in the same commit that scoped the query.",
     ).toBe(0);
+  });
+
+  it("caps how much rule 2 the sanctioned hatch is allowed to silence", () => {
+    const out = run();
+    const m = /rule-2 predicates exempted as sanctioned-hatch roots: (\d+)/.exec(out);
+    expect(
+      m,
+      "the hatch-exemption count is gone from the verdict. Rule 2 skips any " +
+        "lone-id predicate rooted in unscopedForPlatformOps(...); if the gate " +
+        "stops publishing how often it does that, the exemption becomes " +
+        "unbounded and invisible in one edit. Re-point this, do not delete " +
+        "it:\n" + out,
+    ).not.toBeNull();
+    expect(
+      Number(m![1]),
+      "MORE rule-2 predicates are being waived by the sanctioned hatch. Each " +
+        "one is a cross-org read of a row by primary key. The hatch makes that " +
+        "loud and logged, which is why it is allowed at all — it does not make " +
+        "it free. Justify the new one in the diff, then raise this ceiling in " +
+        "the same commit.",
+    ).toBeLessThanOrEqual(HATCH_EXEMPTION_CEILING);
+  });
+
+  it("exempts a by-id read ROOTED in the hatch, and still fails a plain one beside it", () => {
+    // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
+    // The exemption is the dangerous half of the 2026-09-04 change. Written
+    // unit-scoped — "does this function mention unscopedForPlatformOps?" — it
+    // would have turned one sanctioned call into a blanket waiver for every
+    // other by-id read in the same function, which is precisely the shape rule
+    // 2 exists to catch. It is written STATEMENT-scoped instead, and that is a
+    // property no source scan of the gate can confirm. So: two trees, the same
+    // hatch call, differing only by a plain `db.select()` beside it.
+    const hatchOnly = [
+      'import { db } from "../db";',
+      'import { unscopedForPlatformOps } from "../utils/orgScopedDb";',
+      'import { properties } from "@shared/schema";',
+      'import { eq } from "drizzle-orm";',
+      "",
+      "export async function findOwnerAnyOrg(orgId: number, id: number) {",
+      '  const [row] = await unscopedForPlatformOps("id collision probe across orgs")',
+      "    .select().from(properties).where(eq(properties.id, id)).limit(1);",
+      "  return { row, orgId };",
+      "}",
+      "",
+    ];
+
+    const clean = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__hatch_canary__.ts": hatchOnly.join("\n"),
+    });
+    expect(
+      clean.out,
+      "the sanctioned hatch tripped rule 2. Using the one loud, logged, " +
+        "reason-carrying form the codebase offers must not be worse than " +
+        "using a quiet one — that is how a hatch stops being used:\n" + clean.out,
+    ).not.toContain("findOwnerAnyOrg()");
+    expect(clean.out).toMatch(/exempted as sanctioned-hatch roots: [1-9]/);
+
+    const dirty = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__hatch_canary__.ts": [
+        ...hatchOnly.slice(0, -3),
+        "  const [other] = await db",
+        "    .select().from(properties).where(eq(properties.id, id)).limit(1);",
+        "  return { row, other, orgId };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(
+      dirty.failed,
+      "a PLAIN by-id read sitting beside a hatch call did not fail the gate. " +
+        "The exemption has gone unit-scoped: one sanctioned call now waives " +
+        "every unscoped lookup in the same function:\n" + dirty.out,
+    ).toBe(true);
+    expect(dirty.out).toContain("findOwnerAnyOrg()");
+    // Vacuity: prove the difference is the plain read, not a tree the gate
+    // failed to parse in the second run.
+    expect(dirty.out).toMatch(/org-scoped tables: [1-9]/);
+    expect(dirty.out).toMatch(/exempted as sanctioned-hatch roots: [1-9]/);
   });
 
   it("rule 3 FIRES on the exact shape that defeated rules 1 and 2 (canary)", () => {

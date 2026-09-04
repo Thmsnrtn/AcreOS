@@ -1710,19 +1710,60 @@ const LONE_ID_WHERE = /where\(\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*,
  */
 const HOISTED_LONE_ID = /(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*;/g;
 
+/**
+ * Sanctioned-root exemption for rule 2, added 2026-09-04 for the same reason
+ * rule 3 got one on 2026-08-31 — and found the same way: writing a cross-org
+ * read in the ONE form the codebase sanctions made the gate fire.
+ *
+ * `unscopedForPlatformOps(reason)` is deliberately loud: it takes a >=12-char
+ * reason, logs every use, and greps in one line. Rule 1 already accepts it as
+ * org context (ORG_CONTEXT_RE) and rule 3 already skips chains rooted in it.
+ * Rule 2 did not, so a hatch call resolving a row by id — which is precisely
+ * what a platform-op id-collision probe does — was reported as "has an org and
+ * resolves by id anyway". That is a true statement about the text and a false
+ * one about the defect: rule 2 exists to catch a *scoped-looking* signature
+ * that silently crosses tenants, and this signature is the opposite of quiet.
+ *
+ * The exemption is CHAIN-scoped, not unit-scoped: it looks back only to the
+ * enclosing statement's boundary. A unit that calls the hatch once and also
+ * runs a plain `db.select()...where(eq(t.id, x))` still fails rule 2 on the
+ * plain one — see the canary fixture, which pins exactly that.
+ */
+function rootedInSanctionedHatch(methodText, index) {
+  const stmtStart = methodText.lastIndexOf(";", index) + 1;
+  return methodText.slice(stmtStart, index).includes("unscopedForPlatformOps(");
+}
+
+/** Count of lone-id predicates skipped by the hatch exemption, for the floor. */
+let hatchExemptedLoneIds = 0;
 function loneIdPredicates(methodText, orgScopedIdents) {
   const hits = [];
   LONE_ID_WHERE.lastIndex = 0;
   let m;
   while ((m = LONE_ID_WHERE.exec(methodText)) !== null) {
-    if (orgScopedIdents.has(m[1])) hits.push(m[1]);
+    if (!orgScopedIdents.has(m[1])) continue;
+    if (rootedInSanctionedHatch(methodText, m.index)) {
+      hatchExemptedLoneIds += 1;
+      continue;
+    }
+    hits.push(m[1]);
   }
   HOISTED_LONE_ID.lastIndex = 0;
   let h;
   while ((h = HOISTED_LONE_ID.exec(methodText)) !== null) {
     const [, varName, table] = h;
     if (!orgScopedIdents.has(table)) continue;
-    if (new RegExp(`where\\(\\s*${varName}\\s*\\)`).test(methodText)) hits.push(table);
+    // The hoisted case hangs the predicate off a variable, so the hatch — if
+    // there is one — sits on the QUERY statement, not the `const`. Judge the
+    // use site.
+    const useRe = new RegExp(`where\\(\\s*${varName}\\s*\\)`);
+    const use = useRe.exec(methodText);
+    if (!use) continue;
+    if (rootedInSanctionedHatch(methodText, use.index)) {
+      hatchExemptedLoneIds += 1;
+      continue;
+    }
+    hits.push(table);
   }
   return hits;
 }
@@ -1997,6 +2038,16 @@ function chainScopeText(chain, unitText, depth = 0) {
   const idents = new Set([
     ...[...chain.text.matchAll(/\.\.\.\s*([A-Za-z0-9_$]+)/g)].map((m) => m[1]),
     ...[...chain.text.matchAll(/\.\s*where\s*\(\s*([A-Za-z0-9_$]+)\s*\)/g)].map((m) => m[1]),
+    // Drizzle's RELATIONAL form names its predicate as an object PROPERTY —
+    // `findMany({ where: conditions })` — not as a `.where(conditions)` call,
+    // so the line above could not see it. complianceAI.getAlertsForOrganization
+    // builds `const where = status ? and(eq(org…), eq(status…)) : eq(org…)` and
+    // was reported as unscoped on its own correct predicate (2026-09-04). A
+    // gate whose findings are mostly noise trains people to skim it, which
+    // this file's own header says in as many words.
+    ...[...chain.text.matchAll(/\bwhere\s*:\s*([A-Za-z0-9_$]+)\s*[,}]/g)].map((m) => m[1]),
+    // …and the shorthand `{ where }`, where the identifier IS `where`.
+    ...[...chain.text.matchAll(/\{\s*where\s*[,}]/g)].map(() => "where"),
   ]);
   for (const ident of idents) {
     // The declaration's initializer, sliced with balanced brackets so a nested
@@ -2007,18 +2058,48 @@ function chainScopeText(chain, unitText, depth = 0) {
     );
     const dm = declRe.exec(unitText);
     if (dm) {
+      // To the STATEMENT's end, not to the first balanced group.
+      //
+      // This used to stop the moment a bracket group closed at depth 0, which
+      // is right for `const conditions = [ … ];` and wrong for a ternary chain:
+      //
+      //     const where = orgId && status ? and(eq(org…), eq(status…))
+      //                 : orgId ? eq(org…)
+      //                 : status ? eq(status…)
+      //                 : undefined;
+      //
+      // it truncated at the closing paren of the FIRST `and(…)`, so the
+      // `: undefined` arm — the one that makes the query cross-org whenever the
+      // optional organizationId is omitted — was never read, and the initializer
+      // looked unconditionally scoped. The same truncating-reader defect this
+      // repo has now hit six times, in the reader written to avoid it.
       let i = dm.index + dm[0].length;
       let depth = 0;
       for (; i < unitText.length; i++) {
         const ch = unitText[i];
         if (ch === "[" || ch === "(" || ch === "{") depth += 1;
-        else if (ch === "]" || ch === ")" || ch === "}") {
-          depth -= 1;
-          if (depth === 0) { i += 1; break; }
-        } else if (ch === ";" && depth <= 0) break;
+        else if (ch === "]" || ch === ")" || ch === "}") depth -= 1;
+        else if (ch === ";" && depth <= 0) break;
       }
       const initializer = unitText.slice(dm.index, i);
-      text += "\n" + initializer;
+      // A predicate that can be `undefined` is not a predicate.
+      //
+      // Following a `where` variable was added the same day and immediately
+      // certified two queries that are cross-org at runtime:
+      //
+      //     const where = organizationId && status ? and(eq(org…), eq(status…))
+      //                 : organizationId ? eq(org…)
+      //                 : status ? eq(status…)
+      //                 : undefined;
+      //     db.query.noteSecurities.findMany({ where })
+      //
+      // `organizationId?: number` is optional, and `findMany({ where: undefined })`
+      // reads every organization's rows. The org token IS in the initializer, so
+      // crediting it made the widening produce a FALSE NEGATIVE — the first law's
+      // failure inside a change meant to remove one. An initializer with an
+      // `undefined` branch is not credited; the query answers to rule 3 as if the
+      // variable were not there.
+      if (!/\bundefined\b/.test(initializer)) text += "\n" + initializer;
       // Transitive: the clause variable's initializer may itself name the list.
       if (/\.\.\.\s*[A-Za-z0-9_$]+/.test(initializer)) {
         text += "\n" + chainScopeText({ text: initializer }, unitText, depth + 1);
@@ -2383,6 +2464,17 @@ function main() {
       `scanned ${scannedFunctions} async functions, ${scannedRouteHandlers} route handlers; ` +
       `rule 1 baseline ${baselineSeenFunction.size}, ` +
       `rule 2 baseline ${unusedOrgSeenFunction.size} — both down-only`,
+  );
+
+  // The sanctioned hatch is an EXEMPTION, so its usage is a number the gate
+  // must publish rather than absorb. Printed always, including the zero: an
+  // exemption nobody counts is how "use the loud form" quietly becomes "use
+  // the loud form to silence rule 2". The coverage test holds this at a
+  // ceiling, so a new exemption has to be argued for in a diff.
+  console.log(
+    `[check-org-scoped-fetch] rule-2 predicates exempted as sanctioned-hatch ` +
+      `roots: ${hatchExemptedLoneIds} (chain-scoped — a plain by-id read in ` +
+      `the same unit still fails)`,
   );
 
   console.log(

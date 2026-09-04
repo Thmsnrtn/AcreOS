@@ -29,6 +29,7 @@ import {
 function makeFakeStorage() {
   const tests = new Map<string, AbTest>();
   const outcomes: AbOutcome[] = [];
+  let crossOrgProbes = 0;
 
   const storage: AbTestStorage = {
     async upsertTest(test) {
@@ -36,10 +37,19 @@ function makeFakeStorage() {
       return { ...tests.get(test.id)! };
     },
     async getTest(testId, orgId) {
+      // orgId is REQUIRED as of 2026-09-04. It used to be optional, and the
+      // omitted-argument call was how createTest asked its cross-org question
+      // — indistinguishable, at every call site, from forgetting to scope a
+      // read. The org filter here is now unconditional, exactly like the SQL.
       const t = tests.get(testId);
       if (!t) return undefined;
-      if (orgId !== undefined && t.orgId !== orgId) return undefined;
+      if (t.orgId !== orgId) return undefined;
       return { ...t };
+    },
+    async findTestOwnerAnyOrg(testId) {
+      crossOrgProbes += 1;
+      const t = tests.get(testId);
+      return t ? { ...t } : undefined;
     },
     async listTests(orgId) {
       return Array.from(tests.values()).filter((t) => t.orgId === orgId).map((t) => ({ ...t }));
@@ -61,7 +71,11 @@ function makeFakeStorage() {
     },
   };
 
-  return { storage, rawOutcomeCount: () => outcomes.length };
+  return {
+    storage,
+    rawOutcomeCount: () => outcomes.length,
+    crossOrgProbeCount: () => crossOrgProbes,
+  };
 }
 
 const VARIANTS = [
@@ -82,7 +96,7 @@ describe("AbTestEngine — state survives re-instantiation", () => {
 
     // Simulate a restart / a second machine: brand-new engine, same DB.
     const second = new AbTestEngine(fake.storage);
-    const found = await second.getTest("subject-q3");
+    const found = await second.getTest("subject-q3", 7);
 
     expect(found).toBeDefined();
     expect(found!.name).toBe("Subject line Q3");
@@ -141,7 +155,7 @@ describe("AbTestEngine — state survives re-instantiation", () => {
     await engine.createTest({ id: "t", name: "First", orgId: 3, variants: VARIANTS, metric: "open_rate" });
     await engine.createTest({ id: "t", name: "Second", orgId: 3, variants: VARIANTS, metric: "open_rate" });
 
-    const found = await new AbTestEngine(fake.storage).getTest("t");
+    const found = await new AbTestEngine(fake.storage).getTest("t", 3);
     expect(found!.name).toBe("Second");
   });
 
@@ -153,7 +167,17 @@ describe("AbTestEngine — state survives re-instantiation", () => {
       new AbTestEngine(fake.storage).createTest({ id: "t", name: "Org 9's test", orgId: 9, variants: VARIANTS, metric: "open_rate" }),
     ).rejects.toThrow(/already in use/);
 
-    expect((await engine.getTest("t"))!.orgId).toBe(3);
+    expect((await engine.getTest("t", 3))!.orgId).toBe(3);
+    // The refusal is only possible via a read that crosses orgs — ids are
+    // global, orgs are not. That read now has its own name on the storage
+    // seam instead of riding an omitted argument to getTest, so this asserts
+    // WHICH door createTest used, not merely that it refused.
+    expect(
+      fake.crossOrgProbeCount(),
+      "createTest answered 'is this id taken by another org?' without going " +
+        "through findTestOwnerAnyOrg. If it went back to getTest(id) with the " +
+        "org argument dropped, the cross-org read is invisible again.",
+    ).toBeGreaterThan(0);
   });
 
   it("org-scoped getTest hides another org's test", async () => {

@@ -315,6 +315,20 @@ interface CreditScore {
   confidence: CreditScoreConfidence;
 }
 
+/**
+ * Days a property was held before it sold — the only days-to-sell figure the
+ * `properties` table can actually support. Returns null rather than a number
+ * whenever the row cannot answer (never purchased, never sold, or a sale dated
+ * before the purchase, which is bad data rather than a negative holding
+ * period).
+ */
+function daysHeldUntilSale(purchaseDate: Date | null, soldDate: Date | null): number | null {
+  if (!purchaseDate || !soldDate) return null;
+  const ms = soldDate.getTime() - purchaseDate.getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return Math.round(ms / 86_400_000);
+}
+
 class LandCreditScoring {
   // Scoring weights (must sum to 100) — canonical copy exported above so the
   // public partial-LCS path shares the identical methodology.
@@ -1385,7 +1399,12 @@ class LandCreditScoring {
       predictedPerformance: { grade: latestScore.grade, appreciationPct: predictedAppreciation },
       actualPerformance: {
         appreciationPct: Math.round(actualAppreciation * 10) / 10,
-        daysToSell: (property as any)?.daysOnMarket || null,
+        // `properties` has no daysOnMarket column and never has: the cast read
+        // a field off the row that does not exist, so this was `null` for
+        // every property, forever, while reading like a measured outcome. The
+        // real holding period the table CAN answer is soldDate - purchaseDate;
+        // when either is absent there is no answer, and null says so.
+        daysToSell: daysHeldUntilSale(property.purchaseDate, property.soldDate),
       },
       accuracy: Math.round(accuracy),
     };
