@@ -68,6 +68,34 @@ function resolveRequestId(res: Response): string | undefined {
 }
 
 /**
+ * The contract's `error` code for a status nobody named one for.
+ *
+ * The terminal error handler is the only caller and always will be: every
+ * other producer of an error response is an `Errors.*` helper that knows its
+ * own code. This exists because an UNCAUGHT throw carries a status and no
+ * code, and `{ message }` alone is what broke the contract precisely where a
+ * client most needs to tell one failure from another.
+ */
+export function httpErrorCode(status: number): string {
+  switch (status) {
+    case 400: return "BAD_REQUEST";
+    case 401: return "UNAUTHORIZED";
+    case 402: return "PAYMENT_REQUIRED";
+    case 403: return "FORBIDDEN";
+    case 404: return "NOT_FOUND";
+    case 405: return "METHOD_NOT_ALLOWED";
+    case 409: return "CONFLICT";
+    case 410: return "GONE";
+    case 413: return "PAYLOAD_TOO_LARGE";
+    case 415: return "UNSUPPORTED_MEDIA_TYPE";
+    case 422: return "VALIDATION_FAILED";
+    case 423: return "LEGAL_HOLD_ACTIVE";
+    case 429: return "LIMIT_EXCEEDED";
+    default: return `HTTP_${status}`;
+  }
+}
+
+/**
  * Send a standardized error response.
  */
 export function sendError(

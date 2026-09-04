@@ -14,6 +14,7 @@ import { recordStripeWebhookFailure, metricsHandler } from "./metrics";
 import { notifyOnCall } from "./services/oncall";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
+import { terminalErrorHandler } from "./middleware/terminalErrorHandler";
 import { metricsMiddleware } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
 import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
@@ -722,38 +723,12 @@ app.use("/mcp", mcpLimiter);
     app.use(Sentry.expressErrorHandler() as unknown as express.ErrorRequestHandler);
   }
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    // Pillar D / D3 — surface legal-hold violations as 423 Locked with the
-    // case_ref so the client UI can render an actionable "this row is under
-    // legal hold" panel rather than a generic error.
-    if (err?.name === "LegalHoldViolationError") {
-      if (!res.headersSent) {
-        res.status(423).json({
-          error: err.code || "LEGAL_HOLD_ACTIVE",
-          message: err.message || "Resource is under an active legal hold",
-          details: {
-            holdId: err.hold?.id,
-            caseRef: err.hold?.caseRef,
-            scope: err.hold?.scope,
-            resourceType: err.resourceType,
-            resourceId: err.resourceId,
-          },
-          statusCode: 423,
-        });
-      }
-      return;
-    }
-
-    const status = err.status || err.statusCode || 500;
-    // Don't leak internal error details in production
-    const message = status >= 500 && process.env.NODE_ENV === "production"
-      ? "Internal Server Error"
-      : err.message || "Internal Server Error";
-
-    if (!res.headersSent) {
-      res.status(status).json({ message });
-    }
-  });
+  // The one terminal handler, extracted to server/middleware/terminalErrorHandler.ts
+  // so it can be tested. It used to answer `{ message }` — no error code, no
+  // statusCode, and no requestId on the exact case where a customer most needs
+  // one: an unhandled throw. It now routes through the same Errors.* producers
+  // a handled failure uses.
+  app.use(terminalErrorHandler);
 
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
