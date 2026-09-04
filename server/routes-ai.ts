@@ -18,6 +18,7 @@ import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -1112,7 +1113,19 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { paxNudges } = await import("@shared/schema");
       const { eq: _eq } = await import("drizzle-orm");
-      await db.update(paxNudges).set({ dismissedAt: new Date() } as any).where(_eq(paxNudges.id, parseInt(req.params.id)));
+      const { and: _and } = await import("drizzle-orm");
+      // Tenant-scoped: keyed on id alone, this dismissed any organization's
+      // nudge — a caller could silence every other tenant's Pax nudges by
+      // walking the id space (2026-09-04).
+      await db
+        .update(paxNudges)
+        .set({ dismissedAt: new Date() } as any)
+        .where(
+          _and(
+            _eq(paxNudges.id, parseInt(req.params.id)),
+            _eq(paxNudges.organizationId, getOrganizationId(req as AuthenticatedRequest)),
+          ),
+        );
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1767,7 +1780,9 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/va/briefings/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const briefingId = parseInt(req.params.id);
-      const updated = await storage.markBriefingRead(briefingId);
+      // Tenant-scoped: without the org key this returned (and flipped) another
+      // organization's briefing by guessed id (2026-09-04).
+      const updated = await storage.markBriefingRead(briefingId, getOrganizationId(req as AuthenticatedRequest));
       res.json(updated);
     } catch (error: any) {
       Errors.internal(res, error);

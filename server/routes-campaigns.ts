@@ -10,7 +10,11 @@ import {
 } from "@shared/schema";
 
 // Task #202: Partial update schemas derived from insert schemas
-const updateCampaignSchema = insertCampaignSchema.partial();
+// A campaign's tenant is not editable. `insertCampaignSchema` omits only
+// id/createdAt/updatedAt, so `.partial()` accepted `organizationId` and
+// PUT /api/campaigns/:id passed it straight to the update — letting a caller
+// move a campaign into another organization (2026-09-04).
+const updateCampaignSchema = insertCampaignSchema.partial().omit({ organizationId: true });
 const updateTargetCountySchema = insertTargetCountySchema.partial();
 const updateCampaignSequenceSchema = insertCampaignSequenceSchema.partial();
 const updateSequenceStepSchema = insertSequenceStepSchema.partial();
@@ -18,7 +22,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
 import { Errors } from "./utils/errors";
-import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
@@ -711,7 +715,14 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const validated = updateCampaignSchema.parse(req.body);
-      const campaign = await storage.updateCampaign(Number(req.params.id), validated);
+      // Tenant-scoped: updateCampaign's organizationId parameter is optional,
+      // and omitting it here let a caller edit any organization's campaign by
+      // guessing its id (2026-09-04).
+      const campaign = await storage.updateCampaign(
+        Number(req.params.id),
+        validated,
+        getOrganizationId(req as AuthenticatedRequest),
+      );
       if (!campaign) return Errors.notFound(res, "Campaign");
       res.json(campaign);
     } catch (err) {

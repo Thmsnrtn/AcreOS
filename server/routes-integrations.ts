@@ -13,6 +13,7 @@ import { insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES } from "@shared
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -1441,7 +1442,7 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const entityType = req.params.entityType;
       const entityId = Number(req.params.entityId);
-      const values = await storage.getCustomFieldValues(entityType, entityId);
+      const values = await storage.getCustomFieldValues(entityType, entityId, getOrganizationId(req as AuthenticatedRequest));
       res.json(values);
     } catch (err: any) {
       Errors.internal(res, err);

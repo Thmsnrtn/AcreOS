@@ -6,7 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { insertTaskSchema, teamMembers, deals, leads, organizations } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
-import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -360,7 +360,15 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.put("/api/notifications/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const notification = await storage.markNotificationRead(id);
+      // Tenant- and user-scoped. The repo grew both predicates in audit F-23-4
+      // and F-17-1, but this call site never passed them — the fix was built and
+      // left unwired (2026-09-04). routes-sovereign-integration.ts:158 shows the
+      // adopted form.
+      const notification = await storage.markNotificationRead(
+        id,
+        getOrganizationId(req as AuthenticatedRequest),
+        getUserId(req as AuthenticatedRequest),
+      );
       res.json(notification);
     } catch (error: any) {
       logger.error("Mark notification read error", error);

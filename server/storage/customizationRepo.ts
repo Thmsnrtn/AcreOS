@@ -75,7 +75,15 @@ export const customizationRepo = {
   },
 
   // Custom Field Values
-  async getCustomFieldValues(this: DatabaseStorage, entityType: string, entityId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]> {
+  /**
+   * TENANT SCOPE (2026-09-04): `organizationId` is REQUIRED, not optional.
+   * This method previously took no tenant key at all, so the only caller
+   * (GET /api/custom-fields/values/:entityType/:entityId) returned any
+   * organization's custom-field values for a guessed entity id. Values are
+   * reached through their definition, and definitions are org-owned, so the
+   * predicate belongs on the joined definition.
+   */
+  async getCustomFieldValues(this: DatabaseStorage, entityType: string, entityId: number, organizationId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]> {
     const results = await db.select({
       value: customFieldValues,
       definition: customFieldDefinitions,
@@ -83,6 +91,7 @@ export const customizationRepo = {
       .from(customFieldValues)
       .innerJoin(customFieldDefinitions, eq(customFieldValues.definitionId, customFieldDefinitions.id))
       .where(and(
+        eq(customFieldDefinitions.organizationId, organizationId),
         eq(customFieldDefinitions.entityType, entityType),
         eq(customFieldValues.entityId, entityId)
       ))

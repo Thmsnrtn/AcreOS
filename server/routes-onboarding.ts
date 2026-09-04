@@ -23,7 +23,7 @@ import {
   type NoteRole,
 } from "@shared/models/persona-mapping";
 import { Errors } from "./utils/errors";
-import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
 
 const router = Router();
@@ -285,11 +285,19 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
     // when present (populated from parcel data / tax-delinquent imports);
     // leads without a county still match on state so the surface degrades
     // gracefully during the backfill window.
+    // TENANT SCOPE (2026-09-04): this query filtered on state + county ALONE
+    // and returned whole lead rows — every column, including owner names,
+    // mailing addresses and phone numbers — from EVERY organization that had a
+    // lead in that county. The route is behind isAuthenticated + getOrCreateOrg,
+    // so any signed-in customer could read a competitor's pipeline by naming
+    // their county. The org predicate is not optional here and never was.
+    const organizationId = getOrganizationId(req as AuthenticatedRequest);
     const countyLeads = await db
       .select()
       .from(leads)
       .where(
         and(
+          eq(leads.organizationId, organizationId),
           eq(leads.state, String(state)),
           or(isNull(leads.county), eq(leads.county, String(county))),
         ),
