@@ -40,7 +40,15 @@ const ITEMS = [
   },
   {
     q: "What happens on cancel?",
-    a: "Export everything to CSV in one click. No data hostage-taking — AcreOS retains nothing after cancellation.",
+    // "AcreOS retains nothing after cancellation" was false and contradicted
+    // this company's own binding privacy policy, which states 90 days for
+    // account and lead data and seven years for financial records
+    // (client/src/pages/privacy.tsx retention table). The deletion routine
+    // agrees: server/services/orgDeletion.ts retains audit_events under GDPR
+    // Art. 17(3)(b) and detaches rather than deletes the financial ledger.
+    // A public promise the product cannot keep is the one kind of copy this
+    // repo may never ship (2026-09-04 review).
+    a: "Export everything to CSV in one click — leads, properties, deals and notes, or a full backup. No data hostage-taking. After you cancel, your account and lead data are deleted within 90 days; financial records are kept for seven years because lending regulation requires it.",
   },
 ];
 

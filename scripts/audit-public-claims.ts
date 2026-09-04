@@ -168,6 +168,16 @@ const CLAIMS: { claim: string; anchor: string }[] = [
     claim: "Pause everything with one tap, or set Pax to ask before it changes anything.",
     anchor: "Pause everything with one tap, or set Pax to ask before it changes anything.",
   },
+  {
+    // FAQ "What happens on cancel?" — the retention terms, which must match
+    // the binding privacy policy exactly. The previous sentence claimed
+    // "AcreOS retains nothing after cancellation", which both the policy's
+    // retention table and the deletion routine contradict (corrected
+    // 2026-09-04).
+    claim:
+      "After you cancel, your account and lead data are deleted within 90 days; financial records are kept for seven years because lending regulation requires it.",
+    anchor: "deleted within 90 days",
+  },
 ];
 
 /**
@@ -215,6 +225,28 @@ const NUMBER_CLAIM = /\b\d+(?:\.\d+)?\s?(?:seconds?|minutes?|hours?|days?|federa
 
 function buildSources(): Source[] {
   return [
+    {
+      name: "Data retention on cancellation (binding privacy policy + the deletion routine)",
+      ref: "client/src/pages/privacy.tsx retention table + server/services/orgDeletion.ts + server/routes-admin.ts (POST /api/admin/organizations/:id/delete)",
+      content: `
+        The published privacy policy's retention table is the binding
+        statement of what happens after you cancel. Account and organization
+        data, and lead and contact data, are retained for the duration of the
+        active subscription plus 90 days, so that data is deleted within 90
+        days of cancellation. Note and financial records are kept for the
+        duration of the subscription plus seven years, because lending
+        regulation requires that financial records be kept for seven years.
+        The deletion routine agrees rather than exceeding the promise:
+        deleteOrganization reports residual tables instead of claiming
+        completeness, retains audit_events under GDPR Art. 17(3)(b), and
+        detaches the financial ledger (org id nulled) rather than deleting it.
+        Export is real and unconditional: GET /api/export/:entity serves
+        leads, properties, deals and notes as CSV and /api/export/backup
+        serves a full backup, so nothing is held hostage. AcreOS therefore
+        does NOT retain "nothing" after cancellation, and no public surface
+        may say that it does.
+      `,
+    },
     {
       name: "AcreOS enforced landing mechanics",
       ref: "server/routes-leads.ts (emitLeadCreated) + server/services/importExport.ts + shared/workflow-live-triggers.ts",

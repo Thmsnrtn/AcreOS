@@ -173,7 +173,7 @@ export function MonthlyCheckin() {
         </Card>
       </div>
 
-      {/* Second row: Alerts, Dunning, Decisions, Feature Requests */}
+      {/* Second row: Alerts, subscription recovery, recorded events, feature requests */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -197,7 +197,7 @@ export function MonthlyCheckin() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Dunning</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Subscription recovery</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-lg font-semibold">{data.dunning.totalActive} active</p>
@@ -212,11 +212,11 @@ export function MonthlyCheckin() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Autonomous Actions</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recorded events</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{data.autonomousDecisions}</p>
-            <p className="text-xs text-muted-foreground">decisions this month</p>
+            <p className="text-xs text-muted-foreground">logged in the last 30 days</p>
           </CardContent>
         </Card>
 

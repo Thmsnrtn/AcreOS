@@ -549,7 +549,7 @@ export default function NotesPage() {
         <EmptyState
           icon={FileText}
           headline="No notes serviced yet"
-          subtitle="Originate or import a note — Pax handles the periodic statements, dunning on day 11, and the 1099-NEC at year-end."
+          subtitle="Originate or import a note — AcreOS keeps the amortization schedule and the year-end 1099-INT totals, and Pax prepares each borrower payment reminder for your tap."
           cta={{
             label: "Import notes",
             onClick: () => setIsImportOpen(true),
@@ -557,8 +557,8 @@ export default function NotesPage() {
           }}
           actionIcon={Upload}
           tips={[
-            "Import an existing portfolio via CSV — Pax column-maps it to acquired_notes inside 90 seconds.",
-            "Pax feeds each payment into the annual 1099-INT batch the moment it posts.",
+            "Import an existing portfolio by CSV — your column headers are matched automatically, and you review the mapping before anything is saved.",
+            "Every payment you post rolls into that year's interest totals — generate the 1099-INTs from Tax readiness when it's time.",
           ]}
           testId="notes-empty-state"
         />

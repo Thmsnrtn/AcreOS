@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useSearch } from "wouter";
 import { clientLogger } from "@/lib/clientLogger";
+import { PAX_LABELS } from "@shared/pax-glossary";
 
 // Client-side form schema that omits organizationId (added by server)
 const noteFormSchema = insertNoteSchema.omit({ organizationId: true });
@@ -56,6 +57,90 @@ type NoteWithDetails = Note & {
   borrower?: Lead;
   property?: Property;
 };
+
+/**
+ * Borrower payment follow-up — the customer's name for the escalating
+ * sequence of reminders on a note. "Late-payment" would be wrong: the first
+ * rung of the ladder goes out three days BEFORE the payment is due
+ * (server/services/financeAgent.ts BORROWER_LADDER: -3, 0, +5, +15, +30).
+ *
+ * The stage/status values below are stored servicing vocabulary. They are
+ * mapped to words HERE, at the render site — the stored values are untouched.
+ */
+const FOLLOW_UP_STAGE_LABEL: Record<string, string> = {
+  current: "Current",
+  friendly_reminder: "Friendly reminder",
+  formal_notice: "Formal notice",
+  final_warning: "Final warning",
+  default_notice: "Default notice",
+};
+
+const FOLLOW_UP_TYPE_LABEL: Record<string, string> = {
+  upcoming: "Upcoming payment",
+  due: "Payment due",
+  late: "Late payment",
+  final_warning: "Final warning",
+  demand_letter: "Demand letter",
+  contact_logged: "Contact logged",
+};
+
+/**
+ * Reminder status → what actually happened. Only `sent` means a rail accepted
+ * the message (financeAgent.ts REMINDER_STATUS): a rung Pax prepared waits for
+ * a tap, a letter is generated but never mailed, and queued / blocked /
+ * unavailable all mean nothing went out. Printing the raw value let "queued"
+ * read as "sent".
+ */
+const FOLLOW_UP_STATUS_LABEL: Record<string, string> = {
+  scheduled: "Scheduled",
+  queued: "Waiting to go out",
+  awaiting_approval: PAX_LABELS.queue,
+  blocked: "Not sent — blocked",
+  unavailable: "Not sent — no contact on file",
+  document_ready: "Letter ready — not mailed",
+  sent: "Sent",
+  failed: "Not sent — failed",
+  cancelled: "Cancelled",
+  completed: "Logged",
+};
+
+/**
+ * What the "Send reminder" / "Escalate" buttons may claim afterwards, read
+ * from the reminder row's real status. Nothing here says "sent" unless the
+ * row says a rail accepted it.
+ */
+const FOLLOW_UP_OUTCOME_TOAST: Record<string, { title: string; description: string }> = {
+  sent: { title: "Reminder sent", description: "Your borrower has been notified." },
+  awaiting_approval: {
+    title: PAX_LABELS.queue,
+    description: "Pax prepared this reminder. Nothing goes out until you approve it.",
+  },
+  queued: {
+    title: "Nothing sent yet",
+    description: "The reminder is waiting on a send channel — the follow-up history shows where it stands.",
+  },
+  document_ready: {
+    title: "Letter ready",
+    description: "The letter is written. AcreOS does not mail it — send it yourself.",
+  },
+  blocked: {
+    title: "Not sent",
+    description: "Consent or contact rules stopped this one. See the follow-up history.",
+  },
+  unavailable: {
+    title: "Not sent",
+    description: "There is no email or phone on file for this borrower.",
+  },
+  failed: {
+    title: "Not sent",
+    description: "The send failed. See the follow-up history.",
+  },
+  cancelled: { title: "Not sent", description: "This reminder was cancelled." },
+};
+
+/** Anything the maps above do not know is humanised, never printed raw. */
+const humanizeStoredValue = (value: string) =>
+  value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 // `embedded` — mounted inside the /money door's Notes tab (money.tsx),
 // which already renders the app shell. See PageShellProps.embedded (T0-9).
@@ -746,19 +831,21 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     }
   };
 
-  const fetchDunningData = async () => {
+  const fetchDunningData = async (): Promise<any | null> => {
     setIsDunningLoading(true);
     try {
       const res = await fetch(`/api/notes/${note.id}/dunning`, { credentials: 'include' });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       setDunningData(data);
+      return data;
     } catch (err: any) {
       toast({
-        title: "Couldn't load dunning data",
+        title: "Couldn't load follow-up details",
         description: err?.message || "Check your connection and try again.",
         variant: "destructive",
       });
+      return null;
     } finally {
       setIsDunningLoading(false);
     }
@@ -794,8 +881,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         body: JSON.stringify({ action: 'send_reminder', stage: type }),
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      fetchDunningData();
-      toast({ title: "Reminder sent", description: "Your borrower has been notified." });
+      // The route reports that a reminder ROW exists, not that a rail accepted
+      // it — a rung Pax prepared waits for a tap and a letter is never mailed.
+      // Read the row's real status back before claiming anything happened.
+      const body = await res.json().catch(() => ({} as { reminderId?: number }));
+      const refreshed = await fetchDunningData();
+      const row = refreshed?.history?.find((h: any) => h.id === body.reminderId);
+      const outcome = row?.status ? FOLLOW_UP_OUTCOME_TOAST[row.status] : undefined;
+      toast(
+        outcome ?? {
+          title: "Reminder recorded",
+          description: "Its status is in the follow-up history below.",
+        },
+      );
     } catch (err: any) {
       toast({
         title: "Couldn't send reminder",
@@ -1158,7 +1256,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="payments" data-testid="tab-payments">Payments</TabsTrigger>
               <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
-              <TabsTrigger value="dunning" data-testid="tab-dunning">Dunning</TabsTrigger>
+              <TabsTrigger value="dunning" data-testid="tab-dunning">Follow-up</TabsTrigger>
             </TabsList>
 
             <TabsContent value="payments" className="mt-4">
@@ -1438,7 +1536,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   {Array.from({ length: 4 }).map((_, i) => (
                     <Card key={`dunning-skeleton-${i}`} className="glass-panel">
                       <CardContent className="p-4 space-y-2">
-                        <Skeleton className="h-3 w-24" announce={i === 0} announceText="Loading dunning data" />
+                        <Skeleton className="h-3 w-24" announce={i === 0} announceText="Loading payment follow-up" />
                         <Skeleton className="h-6 w-32" announce={false} />
                       </CardContent>
                     </Card>
@@ -1464,19 +1562,21 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <dt className="text-xs text-muted-foreground mb-1">Dunning stage</dt>
+                        <dt className="text-xs text-muted-foreground mb-1">Follow-up stage</dt>
                         <dd>
                           <Badge
                             className={
-                              dunningData.dunningStage === 'current' ? 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos capitalize' :
-                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
-                              dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
-                              dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg capitalize' :
-                              'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/50 dark:text-acr-neg capitalize'
+                              dunningData.dunningStage === 'current' ? 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos' :
+                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn' :
+                              dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn' :
+                              dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg' :
+                              'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/50 dark:text-acr-neg'
                             }
                             data-testid="badge-dunning-stage"
                           >
-                            {dunningData.dunningStage.replace(/_/g, ' ')}
+                            {dunningData.dunningStage
+                              ? FOLLOW_UP_STAGE_LABEL[dunningData.dunningStage] ?? humanizeStoredValue(dunningData.dunningStage)
+                              : 'Unknown'}
                           </Badge>
                         </dd>
                       </CardContent>
@@ -1521,14 +1621,14 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
                   <Card>
                     <CardHeader className="py-3 px-4">
-                      <CardTitle className="text-sm">Dunning history</CardTitle>
+                      <CardTitle className="text-sm">Follow-up history</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                       <div
                         className="max-h-48 overflow-y-auto"
                         tabIndex={0}
                         role="region"
-                        aria-label="Dunning history"
+                        aria-label="Payment follow-up history"
                       >
                         {dunningData.history?.length > 0 ? (
                           <ul className="divide-y">
@@ -1540,19 +1640,21 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                                    <Send className="w-3 h-3" aria-hidden="true" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium capitalize">{h.type?.replace(/_/g, ' ') || 'Action'}</p>
+                                  <p className="text-sm font-medium">
+                                    {h.type ? FOLLOW_UP_TYPE_LABEL[h.type] ?? humanizeStoredValue(h.type) : 'Action'}
+                                  </p>
                                   <p className="text-xs text-muted-foreground tabular-nums">
                                     {h.date ? format(new Date(h.date), 'MMM d, yyyy h:mm a') : 'Unknown date'}
                                   </p>
                                 </div>
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {h.status}
+                                <Badge variant="outline" className="text-xs">
+                                  {h.status ? FOLLOW_UP_STATUS_LABEL[h.status] ?? humanizeStoredValue(h.status) : 'Unknown'}
                                 </Badge>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="p-4 text-sm text-muted-foreground text-center">No dunning history yet.</p>
+                          <p className="p-4 text-sm text-muted-foreground text-center">No follow-ups yet.</p>
                         )}
                       </div>
                     </CardContent>
@@ -1560,9 +1662,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 </>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>Click to load dunning information.</p>
+                  <p>See where this borrower's payment follow-up stands.</p>
                   <Button variant="outline" size="sm" className="mt-2 min-h-11 pointer-fine:sm:min-h-9" onClick={fetchDunningData}>
-                    Load dunning data
+                    Load follow-up
                   </Button>
                 </div>
               )}
