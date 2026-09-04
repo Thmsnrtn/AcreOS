@@ -67,7 +67,7 @@ const APPEALS_HASH = "#appeals";
 
 const SHEET_META: Record<
   Exclude<SheetView, null>,
-  { title: string; description: string; route: string; routeLabel: string }
+  { title: string; description: string; route: string; routeLabel: string; founderOnly?: true }
 > = {
   activity: {
     title: PAX_LABELS.receipts,
@@ -76,6 +76,12 @@ const SHEET_META: Record<
     routeLabel: "Open the full receipts page",
   },
   agents: {
+    // Founder-only (spec §3b "founder-only entries stay gated"): the customer
+    // menu is Controls · What Pax did · Appeals. `founderOnly` is the ONE
+    // gate — the drawer's header, its "Full page" link to the founder route
+    // and its body all hang off it, so a customer cannot reach this wording
+    // even if `view` were set to "agents" some other way.
+    founderOnly: true,
     title: "Agents",
     description: "The agent roster working behind Pax.",
     route: "/founder/agent-queue",
@@ -117,7 +123,11 @@ export function PaxOverflowMenu() {
     return () => window.removeEventListener("hashchange", openFromHash);
   }, []);
 
-  const meta = view ? SHEET_META[view] : null;
+  // The founder gate for the drawer as a whole. Before this, only the drawer
+  // BODY read `isFounder` — the header (title, description, "Full page" link
+  // to /founder/agent-queue) rendered for whoever `view` named.
+  const requested = view ? SHEET_META[view] : null;
+  const meta = requested && (!requested.founderOnly || isFounder) ? requested : null;
 
   return (
     <>
@@ -190,7 +200,7 @@ export function PaxOverflowMenu() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Sheet open={view !== null} onOpenChange={(open) => !open && setView(null)}>
+      <Sheet open={meta !== null} onOpenChange={(open) => !open && setView(null)}>
         <SheetContent
           side="right"
           className="w-full sm:max-w-2xl flex flex-col overflow-hidden p-0"

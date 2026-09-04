@@ -1116,7 +1116,7 @@ export function PaxCopilotRail() {
   return (
     <>
       <aside
-        aria-label={isOpen ? "Pax copilot" : "Pax copilot (collapsed)"}
+        aria-label={isOpen ? "Pax" : "Pax (collapsed)"}
         className={cn(
           // Bold Tahoe re-skin (Wave R, §1.3 rails + §2.2 over-content glass):
           // the Pax rail is a prime glass-depth showcase — an over-content side
@@ -1169,7 +1169,7 @@ export function PaxCopilotRail() {
                 <button
                   type="button"
                   onClick={toggle}
-                  aria-label={observations.length > 0 ? `Open Pax copilot (${observations.length} unread)` : "Open Pax copilot"}
+                  aria-label={observations.length > 0 ? `Open Pax (${observations.length} unread)` : "Open Pax"}
                   aria-expanded={isOpen}
                   className="w-11 h-11 rounded-card flex items-center justify-center hover:bg-primary/10 active:bg-primary/15 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="pax-rail-expand"
@@ -1181,7 +1181,7 @@ export function PaxCopilotRail() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="left">
-                Open Pax Co-Pilot (⌘J)
+                Open Pax (⌘J)
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -1190,7 +1190,7 @@ export function PaxCopilotRail() {
                   Pax
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="left">Pax Co-Pilot</TooltipContent>
+              <TooltipContent side="left">Pax</TooltipContent>
             </Tooltip>
           </div>
         )}
@@ -1545,7 +1545,7 @@ export function PaxCopilotRail() {
                   <div className="text-center py-8">
                     <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-2" aria-hidden="true" />
                     <p className="text-xs text-muted-foreground">
-                      Pax is your AI co-pilot. Ask anything about your business or use the quick actions above.
+                      Ask Pax anything about your business — or start with a quick action above.
                     </p>
                     <p className="text-micro text-muted-foreground/60 mt-2">⌘J to toggle · Enter to send</p>
                   </div>

@@ -236,7 +236,7 @@ export default function DecisionQueuePage() {
     } catch (err: any) {
       setPax(prev => ({
         ...prev,
-        response: `${err.message ?? 'Network error'} — your question is still in the input above. Try again or open the full AI hub.`,
+        response: `${err.message ?? 'Network error'} — your question is still in the input above. Try again, or open Pax for the full conversation.`,
         responseIsError: true,
         isLoading: false,
       }));
@@ -547,9 +547,9 @@ export default function DecisionQueuePage() {
               <a
                 href="/ai"
                 className="text-acr-brand underline hover:no-underline"
-                aria-label="Open AI hub for a full Pax conversation"
+                aria-label="Open Pax for a full conversation"
               >
-                open AI hub
+                open Pax
               </a>.
             </div>
           </form>

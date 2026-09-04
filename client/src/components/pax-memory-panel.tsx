@@ -54,11 +54,11 @@ const GROUP_META: Record<string, { label: string; badgeClass: string }> = {
     badgeClass: "bg-acr-brand/10 text-acr-brand border-acr-brand/20",
   },
   insight: {
-    label: "Insights",
+    label: "What Pax noticed",
     badgeClass: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
   insights: {
-    label: "Insights",
+    label: "What Pax noticed",
     badgeClass: "bg-acr-pos/10 text-acr-pos border-acr-pos/20",
   },
   procedure: {
@@ -166,7 +166,7 @@ function MemoryCard({
           {relative(memory.createdAt)}
         </p>
       </div>
-      <button aria-label="Memory Response"
+      <button aria-label="Delete this memory"
         onClick={() => onDelete(memory.id)}
         disabled={isDeleting}
         className="text-muted-foreground/30 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 mt-0.5 flex-shrink-0 disabled:opacity-30"
