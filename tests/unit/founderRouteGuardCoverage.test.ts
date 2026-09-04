@@ -154,19 +154,128 @@ describe("the founder plane is founder-gated", () => {
     ).toBe(0);
   });
 
-  it("a prefix mount only counts when it is registered FIRST", () => {
+  it("a prefix mount only counts when it is registered FIRST — for EVERY prefix", () => {
     // The /api/admin MFA defect was exactly this: a gate registered below five
     // of the seven routes it was meant to protect, so they reached their
-    // handlers before it ever ran. Asserted structurally so the ordering rule
-    // cannot be dropped from the scanner without this failing.
+    // handlers before it ever ran.
+    //
+    // ── WHY THIS WAS WIDENED (2026-09-04) ───────────────────────────────────
+    // It asserted the ordering for `/api/founder/v11` and nothing else. That is
+    // a rule installed on ONE MEMBER of its population — the third law in
+    // CLAUDE.md — and the members it did not cover are not minor: /api/founder/v12
+    // and /api/founder/v14 front the entire Sovereign Company Protocol surface
+    // (cognitive memory, the event mesh, the integration executor that holds
+    // ENCRYPTED CREDENTIALS, outcome verification, the self-healing mesh). Each
+    // is protected by a single `app.use` whose only claim to working is that it
+    // appears earlier in the file than the registrar that mounts its routes.
+    // Nothing checked that but the eye.
+    //
+    // The population is DERIVED, not typed: every founder prefix gate in
+    // routes.ts, paired with every routes-*.ts module whose source mentions
+    // that prefix, matched to that module's dynamic-import site. A sixth
+    // namespace added next year is covered without anyone editing this test.
     const routesSrc = src("routes.ts");
-    const v11Gate = routesSrc.indexOf("app.use('/api/founder/v11'");
-    const v11Register = routesSrc.indexOf("registerFounderV11Routes(app)");
-    expect(v11Gate, "the v11 prefix gate is gone").toBeGreaterThan(-1);
-    expect(v11Register, "the v11 registrar call is gone").toBeGreaterThan(-1);
-    expect(v11Gate, "the v11 gate is registered AFTER its routes").toBeLessThan(
-      v11Register,
-    );
+
+    // TWO REGISTRATION SHAPES, and only one of them has an ordering to get
+    // wrong. Learned by writing the check and having it fire:
+    //
+    //   app.use('/api/admin/finance', …guards, adminFinanceRouter);   // SAME CALL
+    //   app.use('/api/founder/v12', …guards);  …  registerV12Routes(app);  // SEPARATE
+    //
+    // In the first, the guards precede the router BY CONSTRUCTION — there is no
+    // ordering to violate and no assertion to make. The first draft of this
+    // test treated both alike, using the module's dynamic-import site as a
+    // proxy for where its routes are registered, and reported /api/admin/finance
+    // as an ungated surface. It is not: its router is an argument to the very
+    // call that guards it. The extractor's assumption was wrong, not the code.
+    //
+    // So only BARE gates — an app.use whose arguments end with a guard rather
+    // than a router — carry a real ordering obligation, and only those are
+    // paired below.
+    const gates = new Map<string, number>();
+    const gateRe =
+      /app\.use\(\s*['"](\/api\/[a-z0-9/-]+)['"]\s*,([^;]*?)\)\s*;/g;
+    let g: RegExpExecArray | null;
+    while ((g = gateRe.exec(routesSrc)) !== null) {
+      const args = g[2];
+      if (!args.includes("requireFounder")) continue;
+      // A trailing argument that is not one of the known guards is a router.
+      const last = args.split(",").map((a) => a.trim()).filter(Boolean).pop() ?? "";
+      const isGuard = /^(isAuthenticated|getOrCreateOrg|requireFounder|requireClerkMFA|promptInjectionMiddleware)$/.test(last);
+      if (!isGuard) continue;
+      if (!gates.has(g[1])) gates.set(g[1], g.index);
+    }
+    expect(
+      gates.size,
+      "no founder prefix gates were found in routes.ts at all. The extractor " +
+        "has stopped matching, which reads exactly like every gate being " +
+        "correctly ordered.",
+    ).toBeGreaterThanOrEqual(6); // measured 7 on 2026-09-04, after the
+    // same-call shape was excluded — 16 app.use gates carry requireFounder,
+    // and 9 of them mount their router in the same call, leaving 7 with a real
+    // ordering obligation. The floor sits just under that so a dead extractor
+    // trips it while an ordinary consolidation does not.
+
+    // The five that front the Sovereign Company Protocol are named as well as
+    // derived: a rename that dropped one from the derivation would otherwise
+    // pass in silence.
+    for (const prefix of [
+      "/api/founder/v10",
+      "/api/founder/v11",
+      "/api/founder/v12",
+      "/api/founder/v14",
+      "/api/scp/v2",
+    ]) {
+      expect(gates.has(prefix), `the ${prefix} prefix gate is gone`).toBe(true);
+    }
+
+    const moduleFiles = fs
+      .readdirSync(path.join(ROOT, "server"))
+      .filter((f) => f.startsWith("routes-") && f.endsWith(".ts") && !f.endsWith(".test.ts"));
+
+    let pairsChecked = 0;
+    let unlocatableRegistrars = 0;
+    for (const file of moduleFiles) {
+      const mod = file.replace(/\.ts$/, "");
+      // COMMENTS STRIPPED FIRST. Without this the derivation matched two
+      // modules that only MENTION a prefix in prose: routes-admin.ts explains
+      // that its job-health surface is "not /api/founder/job-health", and
+      // routes-api-docs.ts discusses which families the OpenAPI document
+      // publishes. Neither registers a route under the prefix it names. That is
+      // the class CLAUDE.md records — a source predicate reading the very
+      // documentation that explains what was removed — and it appeared here
+      // within an hour of the law being cited.
+      const body = stripComments(fs.readFileSync(path.join(ROOT, "server", file), "utf8"));
+      const importAt = routesSrc.indexOf(`import("./${mod}")`);
+      for (const [prefix, gateAt] of gates) {
+        if (!body.includes(prefix)) continue;
+        if (importAt === -1) {
+          // COUNTED, never skipped: a registrar whose import site cannot be
+          // found is unchecked, and an unlogged `continue` is how a gate stops
+          // reading a member while still reporting a healthy total.
+          unlocatableRegistrars += 1;
+          continue;
+        }
+        pairsChecked += 1;
+        expect(
+          gateAt,
+          `the ${prefix} gate is registered AFTER ${mod}, so every route that ` +
+            "module mounts under that prefix reaches its handler ungated.",
+        ).toBeLessThan(importAt);
+      }
+    }
+
+    expect(
+      pairsChecked,
+      "no gate/registrar pairs were checked. The derivation is broken, and a " +
+        "test that checks nothing passes for the same reason a correct one does.",
+    ).toBeGreaterThanOrEqual(5);
+    expect(
+      unlocatableRegistrars,
+      "a routes-*.ts module mentions a founder prefix but its import site in " +
+        "routes.ts could not be found, so its ordering went unchecked. Point " +
+        "the derivation at however that module is now registered.",
+    ).toBe(0);
   });
 
   it("the safety-status endpoint that this found stays gated", () => {
