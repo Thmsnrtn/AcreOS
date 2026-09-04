@@ -430,11 +430,14 @@ export async function approvePendingAction(params: {
     return { outcome: "in_flight" };
   }
 
-  // Execute EXACTLY the frozen row.
-  const result = await params.execute(action.toolName, action.args as Record<string, unknown>);
-
-  if (!result.success) {
-    // Nothing actually sent — release the claim so the human can retry.
+  /**
+   * Release a claim nothing came of, so the ask returns to the queue instead
+   * of vanishing. `livePendingPredicate` counts only `pending`, and the
+   * expiry sweep only flips `pending → expired`, so a row left in `approved`
+   * is invisible to the queue, to the badge, to the sweep and to the
+   * customer — permanently, with nothing sent.
+   */
+  const releaseClaim = async (): Promise<void> => {
     await db
       .update(pendingActions)
       .set({ status: "pending", approvedByUserId: null })
@@ -445,6 +448,36 @@ export async function approvePendingAction(params: {
           eq(pendingActions.status, "approved"),
         ),
       );
+    await publishNeedsYou(organizationId);
+  };
+
+  // Execute EXACTLY the frozen row.
+  //
+  // The claim above already moved the row to `approved`, so EVERY path out of
+  // here must either finish it or release it. A returned failure was handled;
+  // a THROWN one was not, and stranded the row forever (2026-09-04 review).
+  // An executor that throws is the same class of event as one that returns
+  // success:false — the codebase already answers that with "release it and
+  // let the human retry", so a throw gets the same answer rather than a
+  // worse one.
+  let result: ToolExecutionResult;
+  try {
+    result = await params.execute(action.toolName, action.args as Record<string, unknown>);
+  } catch (err) {
+    await releaseClaim();
+    logger.error(
+      "[approvalKernel] Executor threw after the claim — released the ask back to the queue",
+      err instanceof Error ? err : undefined,
+    );
+    return {
+      outcome: "execution_failed",
+      error: err instanceof Error ? err.message : "Tool execution failed",
+    };
+  }
+
+  if (!result.success) {
+    // Nothing actually sent — release the claim so the human can retry.
+    await releaseClaim();
     return { outcome: "execution_failed", error: result.error ?? "Tool execution failed" };
   }
 

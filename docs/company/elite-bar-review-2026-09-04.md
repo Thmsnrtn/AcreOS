@@ -2551,6 +2551,37 @@ taken**: the table holds customer-authored draft content, and deleting customer
 data is a founder-only hard-stop. Three reachability entries hold it with that
 reason and will go with the table whenever the drop is authorised.
 
+### 3. What a stranded ask should say after a crash (needs schema + a product call)
+
+`approvePendingAction` claims a row `pending → approved`, runs the executor,
+then finishes or releases it. A returned failure released it; a THROWN one did
+not, so the row sat in `approved` forever — invisible to the queue predicate
+(`status = pending`), to the badge, to the expiry sweep (`pending → expired`)
+and to the customer, with nothing sent. **That half is fixed**: a throw now
+releases the claim exactly as a returned failure does, and the ask goes back to
+the queue answerable.
+
+The other half is not, and should not be guessed at. If the PROCESS dies
+between the claim and the release — a deploy, an OOM, a machine replacement —
+the row is stranded the same way, and no in-process handler can rescue it. The
+sweep would have to do it, which needs two things this session did not decide
+alone:
+
+1. **A `claimed_at` column** on `pending_actions` (schema + migration), so the
+   sweep can tell a claim that is seconds old from one abandoned an hour ago.
+2. **A product decision about what the customer is told.** Releasing a stale
+   claim back to `pending` invites a DOUBLE SEND: if the crash happened *after*
+   the rail accepted the message, re-approving sends it twice. The honest
+   alternative is a distinct state meaning "we do not know whether this went
+   out" — which the customer sees, and which the card must word without
+   claiming either outcome. That is a no-fabrication question, and it changes
+   what `PaxAskCard` renders and what the queue counts.
+
+Recommended: add `claimed_at`, and have the sweep move stale claims to an
+explicit unknown-outcome state rather than back to `pending`. **Decision
+needed** on the customer-facing wording and whether the unknown state counts
+toward "Waiting for your tap".
+
 ### Related, and not a decision — a fix already shipped
 
 The same §1026.41(d)(3) breakdown is summed from `payment_applications`, whose

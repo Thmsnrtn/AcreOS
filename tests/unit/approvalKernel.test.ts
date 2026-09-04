@@ -420,6 +420,44 @@ describe("approve — executes the frozen row exactly once (idempotency)", () =>
     expect(sends()).toHaveLength(1);
   });
 
+  it("an execution that THROWS releases the claim too — an ask must never vanish", async () => {
+    // Before 2026-09-04 only a RETURNED failure released the claim. A thrown
+    // one left the row in `approved`, where the queue predicate
+    // (status = pending) cannot see it, the badge cannot count it and the
+    // expiry sweep (pending → expired) never touches it. The ask disappeared
+    // from the customer's queue permanently, with nothing sent — the worst of
+    // both outcomes. A throw is the same class of event as success:false, so
+    // it gets the same answer.
+    const row = await proposePendingAction({ organizationId: ORG, toolName: "send_email", args: emailArgs });
+    const execute = vi.fn(async () => {
+      throw new Error("SES client blew up");
+    });
+
+    const result = await approvePendingAction({
+      organizationId: ORG,
+      pendingActionId: row.id,
+      approvedByUserId: USER,
+      execute,
+    });
+
+    expect(result.outcome).toBe("execution_failed");
+    expect(result.error).toContain("SES client blew up");
+    // Back in the queue, unclaimed, with nothing recorded as sent.
+    expect(pending()[0].status).toBe("pending");
+    expect(pending()[0].approvedByUserId).toBeNull();
+    expect(sends()).toHaveLength(0);
+
+    // And it is answerable again: the human retries and it goes.
+    const retry = await approvePendingAction({
+      organizationId: ORG,
+      pendingActionId: row.id,
+      approvedByUserId: USER,
+      execute: vi.fn(async () => ({ success: true, data: { id: "msg_1" } })),
+    });
+    expect(retry.outcome).toBe("executed");
+    expect(sends()).toHaveLength(1);
+  });
+
   it("a failed execution releases the claim so the human can retry (no audit row)", async () => {
     const row = await proposePendingAction({ organizationId: ORG, toolName: "send_email", args: emailArgs });
     const execute = vi.fn(async () => ({ success: false, error: "SES not configured" }));
