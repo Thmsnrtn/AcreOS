@@ -90,7 +90,7 @@ async function tenantScopedTables(): Promise<TenantScopedTable[]> {
     JOIN information_schema.tables t
       ON t.table_name = c.table_name AND t.table_schema = c.table_schema
     WHERE c.table_schema = 'public'
-      AND c.column_name IN (${sql.raw(TENANT_KEY_COLUMNS.map((c) => `'${c}'`).join(", "))})
+      AND c.column_name IN (${sql.join(TENANT_KEY_COLUMNS.map((c) => sql`${c}`), sql`, `)})
       AND t.table_type = 'BASE TABLE'
       AND c.table_name != 'organizations'
     ORDER BY c.table_name, c.column_name

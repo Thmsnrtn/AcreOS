@@ -93,7 +93,11 @@ describe("the sweep can see both spellings of the tenant key", () => {
     ).toContain('const TENANT_KEY_COLUMNS = ["organization_id", "org_id"] as const;');
     // And the constant is what the SQL is built from, not a decoration
     // alongside a hardcoded IN list.
-    expect(source).toMatch(/IN \(\$\{sql\.raw\(TENANT_KEY_COLUMNS\./);
+    // Parameterized, not interpolated: `sql.join` binds each spelling as a
+    // placeholder. The first version used `sql.raw`, which the sql-raw ratchet
+    // counts — and rightly, since a raw string is how an interpolation becomes
+    // an injection the day the list stops being a compile-time constant.
+    expect(source).toMatch(/IN \(\$\{sql\.join\(TENANT_KEY_COLUMNS\./);
   });
 
   it("deletes on the column each table actually carries", () => {
