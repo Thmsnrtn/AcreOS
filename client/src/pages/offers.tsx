@@ -43,12 +43,12 @@ import { Verbs } from "@/lib/labels";
 // five themes; replaces raw blue/indigo/purple/amber/emerald/red hardcodes.
 const offerStatuses = [
   { value: "draft", label: "Draft", color: "bg-acr-surface-2 text-acr-ink-3 border-transparent" },
-  { value: "queued", label: "Queued", color: "bg-acr-brand-soft text-acr-brand border-transparent" },
-  { value: "sent", label: "Sent", color: "bg-acr-brand-soft text-acr-brand border-transparent" },
+  { value: "queued", label: "Queued", color: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent" },
+  { value: "sent", label: "Sent", color: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent" },
   { value: "delivered", label: "Delivered", color: "bg-acr-accent/10 text-acr-accent border-transparent" },
-  { value: "responded", label: "Responded", color: "bg-acr-warn-soft text-acr-warn border-transparent" },
-  { value: "accepted", label: "Accepted", color: "bg-acr-pos-soft text-acr-pos border-transparent" },
-  { value: "rejected", label: "Rejected", color: "bg-acr-neg-soft text-acr-neg border-transparent" },
+  { value: "responded", label: "Responded", color: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent" },
+  { value: "accepted", label: "Accepted", color: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent" },
+  { value: "rejected", label: "Rejected", color: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent" },
   { value: "expired", label: "Expired", color: "bg-acr-surface-2 text-acr-ink-3 border-transparent" },
 ];
 

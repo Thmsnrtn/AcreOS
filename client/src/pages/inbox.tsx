@@ -612,7 +612,7 @@ function EmailMessageDetail({
                 {/* Pax draft attribution — only shown after the autodraft
                     lands. User can keep the draft, edit it, or regenerate. */}
                 {paxAttribution && !draftReplyMutation.isPending && (
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-acr-brand-soft text-acr-brand text-xs">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-acr-brand-soft text-acr-brand-soft-ink text-xs">
                     <span className="flex items-center gap-1.5 font-medium">
                       <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                       {paxAttribution}

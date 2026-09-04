@@ -49,9 +49,9 @@ const winningMetricLabels: Record<string, string> = {
 };
 
 const confidenceBadge = (level: number) => {
-  if (level >= 99) return { label: '99%', color: 'bg-acr-pos-soft text-acr-pos' };
+  if (level >= 99) return { label: '99%', color: 'bg-acr-pos-soft text-acr-pos-soft-ink' };
   if (level >= 95) return { label: '95%', color: 'bg-primary/10 text-primary' };
-  if (level >= 90) return { label: '90%', color: 'bg-acr-warn-soft text-acr-warn' };
+  if (level >= 90) return { label: '90%', color: 'bg-acr-warn-soft text-acr-warn-soft-ink' };
   return { label: 'Not significant', color: 'bg-muted text-muted-foreground' };
 };
 
@@ -580,7 +580,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                 </TableCell>
                 <TableCell>
                   {winner ? (
-                    <Badge className="bg-acr-pos-soft text-acr-pos">
+                    <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink">
                       <Trophy className="w-3 h-3 mr-1" />
                       {winner.name}
                     </Badge>
@@ -693,7 +693,7 @@ function TestDetails({ test, onComplete, isPending }: TestDetailsProps) {
                     <span className="font-medium">{variant.name}</span>
                     {variant.isControl && <Badge variant="outline">Control</Badge>}
                     {isWinner && (
-                      <Badge className="bg-acr-pos-soft text-acr-pos">
+                      <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink">
                         <Trophy className="w-3 h-3 mr-1" />
                         Winner
                       </Badge>

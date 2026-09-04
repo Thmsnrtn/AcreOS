@@ -213,9 +213,9 @@ function promptStatus(status: string | null): { label: string; tone: PromptTone 
 }
 
 const TONE_CLASS: Record<PromptTone, string> = {
-  ok: "bg-acr-pos-soft text-acr-pos border-transparent",
+  ok: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
   neutral: "bg-muted text-muted-foreground border-transparent",
-  error: "bg-acr-neg-soft text-acr-neg border-transparent",
+  error: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent",
 };
 
 const RECEIPT_MODE_WORD: Record<ReceiptItem["mode"], string> = {
@@ -406,7 +406,7 @@ export function PaxControls() {
           ) : (
             <Button
               variant="outline"
-              className={cn(TAP, "border-acr-warn text-acr-warn hover:bg-acr-warn-soft")}
+              className={cn(TAP, "border-acr-warn text-acr-warn-soft-ink hover:bg-acr-warn-soft")}
               onClick={() => setPauseOpen(true)}
               disabled={pause.isPending}
               data-testid="button-pax-pause"
@@ -507,7 +507,7 @@ export function PaxControls() {
                 key={s}
                 value={s}
                 variant="outline"
-                className={cn(TAP, "px-4 data-[state=on]:bg-acr-brand-soft data-[state=on]:text-acr-brand")}
+                className={cn(TAP, "px-4 data-[state=on]:bg-acr-brand-soft data-[state=on]:text-acr-brand-soft-ink")}
                 data-testid={`stance-option-${s}`}
               >
                 {STANCE_LABELS[s]}
@@ -701,7 +701,7 @@ function RunRow({
         <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
           {label}
           {badge && (
-            <Badge variant="secondary" className="text-[10px] border-transparent bg-acr-warn-soft text-acr-warn">
+            <Badge variant="secondary" className="text-[10px] border-transparent bg-acr-warn-soft text-acr-warn-soft-ink">
               {badge}
             </Badge>
           )}

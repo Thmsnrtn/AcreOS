@@ -903,7 +903,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
 
               {importResult.errors.length > 0 && (
                 <div className="border border-acr-neg/30 dark:border-acr-neg/30 rounded-card overflow-hidden">
-                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
+                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft p-2 text-sm font-medium text-acr-neg-soft-ink dark:text-acr-neg-soft-ink flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     Errors ({importResult.errors.length})
                   </div>
@@ -1145,10 +1145,10 @@ function PropertyCard({ property, onDelete }: {
           const score = enrichment?.scores?.overallScore ?? enrichment?.scores?.investmentScore;
           if (score == null) return null;
           const color = score >= 70
-            ? "bg-acr-neg-soft text-acr-neg border-acr-neg/30"
+            ? "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg/30"
             : score >= 40
-            ? "bg-acr-warn-soft text-acr-warn border-acr-warn/30"
-            : "bg-acr-pos-soft text-acr-pos border-acr-pos-soft";
+            ? "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn/30"
+            : "bg-acr-pos-soft text-acr-pos-soft-ink border-acr-pos-soft";
           const label = score >= 70 ? "High" : score >= 40 ? "Medium" : "Low";
           return (
             <div className="mt-2">
@@ -1582,9 +1582,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   );
 
   const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-    green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", border: "border-acr-pos-soft dark:border-acr-pos-soft", dot: "bg-acr-pos" },
-    yellow: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30", dot: "bg-acr-warn" },
-    red: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30", dot: "bg-acr-neg" },
+    green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos-soft-ink dark:text-acr-pos-soft-ink", border: "border-acr-pos-soft dark:border-acr-pos-soft", dot: "bg-acr-pos" },
+    yellow: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn-soft-ink dark:text-acr-warn-soft-ink", border: "border-acr-warn/30 dark:border-acr-warn/30", dot: "bg-acr-warn" },
+    red: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/30", text: "text-acr-neg-soft-ink dark:text-acr-neg-soft-ink", border: "border-acr-neg/30 dark:border-acr-neg/30", dot: "bg-acr-neg" },
     gray: { bg: "bg-muted/50", text: "text-muted-foreground", border: "border-muted", dot: "bg-muted-foreground" },
   };
   const sc = signalColors[verdictData.signal];
@@ -2506,7 +2506,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <div
                       key={key}
                       className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
-                        value ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos" : "bg-muted text-muted-foreground"
+                        value ? "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft dark:text-acr-pos-soft-ink" : "bg-muted text-muted-foreground"
                       }`}
                       title={key}
                     >

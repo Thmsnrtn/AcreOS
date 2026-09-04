@@ -21,8 +21,16 @@ describe("StatusBadge", () => {
     expect(html).toContain("Active");
     expect(html).toContain('aria-label="Status: Active"');
     // Active uses the positive semantic token surface.
+    //
+    // The ink assertion names the -soft-ink token deliberately. Until
+    // 2026-09-04 the badge rendered `text-acr-pos` — the semantic hue as text
+    // on a 14%-alpha tint of ITSELF, which is 3.53:1 and fails WCAG AA. It now
+    // uses the solved ink. `toContain("text-acr-pos")` would still pass, by
+    // substring, against either — which is the shape of pin this repository
+    // has been bitten by before (a trigger renamed `…_RENAMED` kept matching
+    // its own old name), so it asserts the whole class.
     expect(html).toContain("bg-acr-pos-soft");
-    expect(html).toContain("text-acr-pos");
+    expect(html).toContain("text-acr-pos-soft-ink");
   });
 
   it("uses the warning tone for pending and warning kinds", () => {
@@ -37,7 +45,7 @@ describe("StatusBadge", () => {
   it("uses the negative tone for error", () => {
     const html = render({ status: "error" });
     expect(html).toContain("bg-acr-neg-soft");
-    expect(html).toContain("text-acr-neg");
+    expect(html).toContain("text-acr-neg-soft-ink");
     expect(html).toContain("Error");
   });
 

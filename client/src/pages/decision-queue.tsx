@@ -76,7 +76,7 @@ function AskPaxButton({ label, message, onAsk }: { label: string; message: strin
     <Button
       size="sm"
       variant="outline"
-      className="text-xs text-acr-brand border-acr-brand-soft hover:bg-acr-brand-soft dark:hover:bg-acr-brand-soft/20 min-h-9"
+      className="text-xs text-acr-brand-soft-ink border-acr-brand-soft hover:bg-acr-brand-soft dark:hover:bg-acr-brand-soft/20 min-h-9"
       onClick={() => onAsk(message, label)}
       aria-label={`Ask Pax about ${label}`}
     >

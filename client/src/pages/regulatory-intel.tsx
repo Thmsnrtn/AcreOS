@@ -282,9 +282,9 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
 }
 
 const RISK_COLORS = {
-  low: "text-acr-pos bg-acr-pos-soft dark:bg-acr-pos-soft/20",
-  medium: "text-acr-warn bg-acr-warn-soft dark:bg-acr-warn-soft/20",
-  high: "text-acr-neg bg-acr-neg-soft dark:bg-acr-neg-soft/20",
+  low: "text-acr-pos-soft-ink bg-acr-pos-soft dark:bg-acr-pos-soft/20",
+  medium: "text-acr-warn-soft-ink bg-acr-warn-soft dark:bg-acr-warn-soft/20",
+  high: "text-acr-neg-soft-ink bg-acr-neg-soft dark:bg-acr-neg-soft/20",
 };
 
 const SEVERITY_ICONS = {

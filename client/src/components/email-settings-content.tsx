@@ -185,7 +185,7 @@ export function EmailSettingsContent() {
   const existingPlatformIdentity = identities.find((i) => i.type === "platform_alias");
 
   const ProviderNotice = !mailReady ? (
-    <div className="p-3 mb-3 border rounded-md bg-acr-warn-soft text-acr-warn flex items-center gap-2">
+    <div className="p-3 mb-3 border rounded-md bg-acr-warn-soft text-acr-warn-soft-ink flex items-center gap-2">
       <AlertCircle className="w-4 h-4" />
       <span className="text-sm">Email provider not configured. Configure in Settings → Providers to enable sending.</span>
     </div>

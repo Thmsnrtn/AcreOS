@@ -69,8 +69,8 @@ type TaskFormValues = z.infer<typeof taskFormSchema>;
 const priorityColors = {
   low: "bg-muted text-muted-foreground",
   medium: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
-  high: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
-  urgent: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg",
+  high: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink",
+  urgent: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink",
 };
 
 const statusIcons = {

@@ -99,11 +99,11 @@ function CardSkeleton() {
 
 function ListingStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    active: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
-    under_offer: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+    active: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink',
+    under_offer: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
     sold: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
     expired: 'bg-muted text-muted-foreground',
-    cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
+    cancelled: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink',
   };
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${map[status] ?? map.active}`}>
@@ -875,12 +875,12 @@ export default function MarketplacePage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                             {isPromoted && (
-                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-warn bg-acr-warn-soft px-1.5 py-0.5 rounded-full">
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-warn-soft-ink bg-acr-warn-soft px-1.5 py-0.5 rounded-full">
                                 <Star className="w-2.5 h-2.5" /> Featured
                               </span>
                             )}
                             {isCompliant && (
-                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-pos bg-acr-pos-soft px-1.5 py-0.5 rounded-full">
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-acr-pos-soft-ink bg-acr-pos-soft px-1.5 py-0.5 rounded-full">
                                 <ShieldCheck className="w-2.5 h-2.5" /> Compliant
                               </span>
                             )}

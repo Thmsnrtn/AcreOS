@@ -158,8 +158,8 @@ export function DecisionQuality() {
                           >
                             <span>{action}</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full tabular-nums ${
-                              outcome.score > 0 ? "bg-acr-pos-soft text-acr-pos" :
-                              outcome.score < 0 ? "bg-acr-neg-soft text-acr-neg" :
+                              outcome.score > 0 ? "bg-acr-pos-soft text-acr-pos-soft-ink" :
+                              outcome.score < 0 ? "bg-acr-neg-soft text-acr-neg-soft-ink" :
                               "bg-muted text-foreground"
                             }`}>
                               {sign}{outcome.score}

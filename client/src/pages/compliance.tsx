@@ -22,9 +22,9 @@ const SEVERITY_LABEL: Record<string, string> = {
 
 function SeverityBadge({ severity }: { severity: string }) {
   const map: Record<string, string> = {
-    critical: "bg-acr-neg-soft text-acr-neg",
-    high: "bg-acr-warn-soft text-acr-warn",
-    medium: "bg-acr-warn-soft text-acr-warn",
+    critical: "bg-acr-neg-soft text-acr-neg-soft-ink",
+    high: "bg-acr-warn-soft text-acr-warn-soft-ink",
+    medium: "bg-acr-warn-soft text-acr-warn-soft-ink",
     low: "bg-acr-accent text-acr-accent",
   };
   const label = SEVERITY_LABEL[severity] ?? severity;
@@ -368,10 +368,10 @@ const COMPLIANCE_DEADLINES = [
 
 const CATEGORY_COLORS: Record<string, string> = {
   "Federal Tax": "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
-  "Tax Strategy": "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
-  "RESPA": "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
-  "TCPA": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
-  "Dodd-Frank": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  "Tax Strategy": "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",
+  "RESPA": "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
+  "TCPA": "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
+  "Dodd-Frank": "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
   "Compliance": "bg-muted text-foreground dark:bg-acr-bg-sunken/30 dark:text-muted-foreground",
 };
 

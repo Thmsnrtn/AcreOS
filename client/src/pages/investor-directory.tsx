@@ -227,7 +227,7 @@ export default function InvestorDirectoryPage() {
                     </div>
                     {myProfile.verificationStatus === "verified" ? (
                       <Badge
-                        className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
+                        className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink"
                         aria-label="Identity verified"
                       >
                         <BadgeCheck className="h-3 w-3 mr-1" aria-hidden="true" />

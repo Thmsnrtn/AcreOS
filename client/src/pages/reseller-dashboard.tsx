@@ -78,10 +78,10 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    active: "bg-acr-pos-soft text-acr-pos",
+    active: "bg-acr-pos-soft text-acr-pos-soft-ink",
     trial: "bg-acr-accent text-acr-accent",
-    suspended: "bg-acr-neg-soft text-acr-neg",
-    onboarding: "bg-acr-warn-soft text-acr-warn",
+    suspended: "bg-acr-neg-soft text-acr-neg-soft-ink",
+    onboarding: "bg-acr-warn-soft text-acr-warn-soft-ink",
   };
   return (
     <span

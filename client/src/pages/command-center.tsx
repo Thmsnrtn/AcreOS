@@ -828,7 +828,7 @@ export default function CommandCenterPage() {
                                       {suggestion.category === "action" && !suggestion.available && suggestion.canUseTrialToken && (
                                         <Badge
                                           variant="outline"
-                                          className="text-xs ml-auto bg-acr-pos-soft text-acr-pos border-acr-pos/30"
+                                          className="text-xs ml-auto bg-acr-pos-soft text-acr-pos-soft-ink border-acr-pos/30"
                                         >
                                           Try Free
                                         </Badge>

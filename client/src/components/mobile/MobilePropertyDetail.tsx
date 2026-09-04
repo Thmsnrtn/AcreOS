@@ -92,9 +92,9 @@ function fmtMoney(v: string | number | null | undefined): string {
 function StatusPill({ status }: { status?: string | null }) {
   const s = (status ?? "prospect").toLowerCase();
   const tone =
-    s === "sold" ? "bg-acr-pos-soft text-acr-pos"
+    s === "sold" ? "bg-acr-pos-soft text-acr-pos-soft-ink"
     : s === "owned" || s === "listed" ? "bg-primary/15 text-primary"
-    : s === "under_contract" ? "bg-acr-warn-soft text-acr-warn"
+    : s === "under_contract" ? "bg-acr-warn-soft text-acr-warn-soft-ink"
     : "bg-muted text-foreground";
   return (
     <Badge variant="secondary" className={`uppercase tracking-wide text-micro ${tone}`}>
@@ -328,7 +328,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
                   ["electric", "water", "sewer", "gas"] as const
                 ).map((u) =>
                   data.utilities?.[u] ? (
-                    <Badge key={u} variant="secondary" className="text-caption bg-acr-pos-soft text-acr-pos">
+                    <Badge key={u} variant="secondary" className="text-caption bg-acr-pos-soft text-acr-pos-soft-ink">
                       <CheckCircle2 className="h-3 w-3 mr-0.5" />
                       {u}
                     </Badge>

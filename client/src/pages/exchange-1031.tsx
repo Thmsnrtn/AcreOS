@@ -335,7 +335,7 @@ export default function Exchange1031Page() {
                     )}
 
                     {ex.taxDeferralEstimateCents && (
-                      <div className="flex items-center gap-2 text-sm text-acr-pos bg-acr-pos-soft p-2 rounded">
+                      <div className="flex items-center gap-2 text-sm text-acr-pos-soft-ink bg-acr-pos-soft p-2 rounded">
                         <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                         Est. tax deferral: <strong className="tabular-nums">{usd(ex.taxDeferralEstimateCents / 100)}</strong>
                       </div>

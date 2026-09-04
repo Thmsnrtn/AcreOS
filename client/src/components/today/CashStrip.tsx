@@ -144,7 +144,7 @@ export function CashStrip({
                 {lateCount > 0 && (
                   <Badge
                     variant="secondary"
-                    className="bg-acr-neg-soft text-acr-neg text-micro py-0 px-1.5 tabular-nums"
+                    className="bg-acr-neg-soft text-acr-neg-soft-ink text-micro py-0 px-1.5 tabular-nums"
                   >
                     {lateCount} late
                   </Badge>

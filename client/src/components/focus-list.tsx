@@ -32,9 +32,9 @@ function getStageIcon(stage: string) {
 function getStageStyle(stage: string) {
   switch (stage) {
     case "hot":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "warm":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "cold":
       return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
@@ -158,9 +158,9 @@ function getActionIcon(type: NextAction["type"]) {
 function getPriorityStyle(priority: NextAction["priority"]) {
   switch (priority) {
     case "high":
-      return "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn dark:border-acr-warn-soft";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn-soft-ink dark:border-acr-warn-soft";
     case "medium":
-      return "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn dark:border-acr-warn-soft";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/20 dark:text-acr-warn-soft-ink dark:border-acr-warn-soft";
     case "low":
       return "bg-muted text-muted-foreground border-border dark:bg-acr-bg-sunken/50 dark:text-muted-foreground dark:border-border";
   }
@@ -462,7 +462,7 @@ export function FocusList() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-8 w-8 text-acr-pos hover:text-acr-pos hover:bg-acr-pos-soft dark:text-acr-pos dark:hover:bg-acr-pos-soft/30"
+                      className="h-8 w-8 text-acr-pos-soft-ink hover:text-acr-pos-soft-ink hover:bg-acr-pos-soft dark:text-acr-pos-soft-ink dark:hover:bg-acr-pos-soft/30"
                       onClick={() => handleMarkContacted ? handleMarkContacted(lead, "manual") : markContactedMutation.mutate(lead.id)}
                       disabled={isPending || markContactedMutation?.isPending}
                       aria-label="Mark as contacted"

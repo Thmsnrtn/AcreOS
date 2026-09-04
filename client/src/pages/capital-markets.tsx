@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 
 function RatingBadge({ rating }: { rating: string }) {
-  const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn" };
+  const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos-soft-ink", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn-soft-ink" };
   return <Badge className={colors[rating] ?? "bg-muted text-muted-foreground"} aria-label={`Credit rating: ${rating}`}>{rating}</Badge>;
 }
 

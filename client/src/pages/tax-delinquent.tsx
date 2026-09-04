@@ -34,9 +34,9 @@ interface DelinquentLead {
 }
 
 const RISK_CONFIG = {
-  critical: { color: "text-acr-neg", bg: "bg-acr-neg-soft", badge: "destructive" as const },
-  high: { color: "text-acr-warn", bg: "bg-acr-warn-soft", badge: "secondary" as const },
-  medium: { color: "text-acr-warn", bg: "bg-acr-warn-soft", badge: "outline" as const },
+  critical: { color: "text-acr-neg-soft-ink", bg: "bg-acr-neg-soft", badge: "destructive" as const },
+  high: { color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft", badge: "secondary" as const },
+  medium: { color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft", badge: "outline" as const },
   low: { color: "text-acr-accent", bg: "bg-acr-accent", badge: "outline" as const },
 };
 

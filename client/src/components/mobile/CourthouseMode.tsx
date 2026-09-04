@@ -153,7 +153,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   if (actionable.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 px-6">
-        <div className="rounded-full bg-acr-pos-soft text-acr-pos p-4 mb-4">
+        <div className="rounded-full bg-acr-pos-soft text-acr-pos-soft-ink p-4 mb-4">
           <Check className="h-8 w-8" />
         </div>
         <h2 className="text-base font-semibold mb-1">Auction complete</h2>
@@ -167,7 +167,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   if (index >= actionable.length) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 px-6">
-        <div className="rounded-full bg-acr-pos-soft text-acr-pos p-4 mb-4">
+        <div className="rounded-full bg-acr-pos-soft text-acr-pos-soft-ink p-4 mb-4">
           <Check className="h-8 w-8" />
         </div>
         <h2 className="text-base font-semibold mb-1">Worksheet cleared</h2>
@@ -343,8 +343,8 @@ function ActionButton({
       className={cn(
         "min-h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1.5 font-semibold text-base active:scale-95 transition-transform",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        tone === "positive" && "bg-acr-pos-soft text-acr-pos",
-        tone === "negative" && "bg-acr-neg-soft text-acr-neg",
+        tone === "positive" && "bg-acr-pos-soft text-acr-pos-soft-ink",
+        tone === "negative" && "bg-acr-neg-soft text-acr-neg-soft-ink",
         tone === "muted" && "bg-muted text-foreground hover:bg-muted/80",
       )}
     >

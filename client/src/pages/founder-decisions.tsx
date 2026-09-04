@@ -107,9 +107,9 @@ type BucketKey = keyof DecisionLogResponse["buckets"];
 function riskBadgeClass(level: string): string {
   switch (level) {
     case "critical":
-      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg";
+      return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink";
     case "high":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink";
     case "medium":
       return "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent";
     default:
@@ -271,9 +271,9 @@ function DecisionRowCard({
                 variant="outline"
                 className={`text-micro ${
                   row.outcomeScore >= 1
-                    ? "bg-acr-pos-soft text-acr-pos"
+                    ? "bg-acr-pos-soft text-acr-pos-soft-ink"
                     : row.outcomeScore <= -1
-                    ? "bg-acr-neg-soft text-acr-neg"
+                    ? "bg-acr-neg-soft text-acr-neg-soft-ink"
                     : "bg-muted text-muted-foreground"
                 }`}
               >

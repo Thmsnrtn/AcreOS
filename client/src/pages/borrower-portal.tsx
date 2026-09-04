@@ -209,7 +209,7 @@ export default function BorrowerPortal() {
                 <div
                   id="borrower-email-error"
                   role="alert"
-                  className="p-3 rounded-card bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg text-sm"
+                  className="p-3 rounded-card bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg-soft-ink dark:text-acr-neg-soft-ink text-sm"
                 >
                   {error}
                 </div>
@@ -1064,11 +1064,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const getPaymentStatusBadge = () => {
-    if (!note.nextPaymentDate) return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' };
+    if (!note.nextPaymentDate) return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink' };
     const daysUntilDue = differenceInDays(new Date(note.nextPaymentDate), new Date());
-    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days past due`, color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg' };
-    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn' };
-    return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos' };
+    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days past due`, color: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink' };
+    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink' };
+    return { status: 'current', label: 'Current', color: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink' };
   };
 
   const paymentStatusBadge = getPaymentStatusBadge();
@@ -1129,8 +1129,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             aria-live={paymentStatusState.type === "success" ? "polite" : "assertive"}
             className={`p-4 rounded-card flex items-center gap-2 ${
               paymentStatusState.type === 'success'
-                ? 'bg-acr-pos-soft dark:bg-acr-pos-soft/30 text-acr-pos dark:text-acr-pos'
-                : 'bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg dark:text-acr-neg'
+                ? 'bg-acr-pos-soft dark:bg-acr-pos-soft/30 text-acr-pos-soft-ink dark:text-acr-pos-soft-ink'
+                : 'bg-acr-neg-soft dark:bg-acr-neg-soft/30 text-acr-neg-soft-ink dark:text-acr-neg-soft-ink'
             }`}
           >
             {paymentStatusState.type === 'success' ? (

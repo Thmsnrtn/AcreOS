@@ -380,7 +380,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             <ul aria-label="Offer price tiers" className="grid grid-cols-1 md:grid-cols-3 gap-4 list-none p-0 m-0">
               <li className="p-3 rounded-md bg-acr-pos-soft dark:bg-acr-pos-soft/20 border border-acr-pos-soft dark:border-acr-pos-soft">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-acr-pos-soft dark:bg-acr-pos-soft/40 text-acr-pos dark:text-acr-pos border-acr-pos dark:border-acr-pos">
+                  <Badge variant="outline" className="bg-acr-pos-soft dark:bg-acr-pos-soft/40 text-acr-pos-soft-ink dark:text-acr-pos-soft-ink border-acr-pos dark:border-acr-pos">
                     Conservative
                   </Badge>
                 </div>
@@ -404,7 +404,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               </li>
               <li className="p-3 rounded-md bg-acr-warn-soft dark:bg-acr-warn-soft/20 border border-acr-warn-soft dark:border-acr-warn-soft">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-acr-warn-soft dark:bg-acr-warn-soft/40 text-acr-warn dark:text-acr-warn border-acr-warn dark:border-acr-warn">
+                  <Badge variant="outline" className="bg-acr-warn-soft dark:bg-acr-warn-soft/40 text-acr-warn-soft-ink dark:text-acr-warn-soft-ink border-acr-warn dark:border-acr-warn">
                     Aggressive
                   </Badge>
                 </div>

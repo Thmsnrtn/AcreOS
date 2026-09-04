@@ -88,8 +88,8 @@ export function TriggerCardArtifact({
                 className={
                   "text-micro tabular-nums " +
                   (delta >= 0
-                    ? "bg-acr-pos-soft text-acr-pos border-transparent"
-                    : "bg-acr-neg-soft text-acr-neg border-transparent")
+                    ? "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent"
+                    : "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent")
                 }
               >
                 {delta >= 0 ? "+" : ""}

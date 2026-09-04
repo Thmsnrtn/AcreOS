@@ -1325,7 +1325,7 @@ export function Sidebar() {
                     {showPaxBadge && (
                       <Badge
                         variant="secondary"
-                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn border-transparent tabular-nums"
+                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn-soft-ink border-transparent tabular-nums"
                         aria-label={`${paxAskCount} waiting for your tap`}
                         data-testid="badge-pax-needs-you"
                       >
@@ -1666,7 +1666,7 @@ export function Sidebar() {
                     {showPaxBadge && (
                       <Badge
                         variant="secondary"
-                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn border-transparent tabular-nums"
+                        className="text-xs shrink-0 bg-acr-warn-soft text-acr-warn-soft-ink border-transparent tabular-nums"
                         aria-label={`${paxAskCount} waiting for your tap`}
                         data-testid="badge-pax-needs-you"
                       >

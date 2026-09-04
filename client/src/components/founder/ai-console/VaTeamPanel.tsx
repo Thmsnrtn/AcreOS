@@ -108,10 +108,10 @@ function getAgentIcon(iconName: string) {
 
 function getStatusColor(status: VAAction["status"]) {
   switch (status) {
-    case "proposed": return "bg-acr-warn-soft text-acr-warn border border-acr-warn/30";
-    case "approved": return "bg-acr-brand-soft text-acr-brand border border-acr-brand/30";
-    case "completed": return "bg-acr-pos-soft text-acr-pos border border-acr-pos/30";
-    case "rejected": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/30";
+    case "proposed": return "bg-acr-warn-soft text-acr-warn-soft-ink border border-acr-warn/30";
+    case "approved": return "bg-acr-brand-soft text-acr-brand-soft-ink border border-acr-brand/30";
+    case "completed": return "bg-acr-pos-soft text-acr-pos-soft-ink border border-acr-pos/30";
+    case "rejected": return "bg-acr-neg-soft text-acr-neg-soft-ink border border-acr-neg/30";
     default: return "bg-muted text-muted-foreground";
   }
 }

@@ -283,8 +283,8 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
             <Badge
               className={
                 aiAnalysis.isSignificant
-                  ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
-                  : "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+                  ? "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink"
+                  : "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
               }
             >
               {aiAnalysis.confidenceLabel}
@@ -319,7 +319,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                         <Badge variant="secondary" aria-label={`Variant ${String.fromCharCode(65 + index)}`}>{String.fromCharCode(65 + index)}</Badge>
                         <CardTitle className="text-sm">{variant.name}</CardTitle>
                         {variant.isWinner && (
-                          <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
+                          <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink">
                             <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
                             Winner
                           </Badge>
@@ -328,17 +328,17 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                       {/* Statistical significance indicator */}
                       <div className="flex items-center gap-1">
                         {!hasEnoughData ? (
-                          <Badge variant="outline" className="text-xs gap-1 bg-acr-warn-soft text-acr-warn border-acr-warn">
+                          <Badge variant="outline" className="text-xs gap-1 bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn">
                             <AlertTriangle className="w-3 h-3" aria-hidden="true" />
                             Need more data
                           </Badge>
                         ) : isSignificantCandidate ? (
-                          <Badge variant="outline" className="text-xs gap-1 bg-acr-pos-soft text-acr-pos border-acr-pos">
+                          <Badge variant="outline" className="text-xs gap-1 bg-acr-pos-soft text-acr-pos-soft-ink border-acr-pos">
                             <CheckCircle className="w-3 h-3" aria-hidden="true" />
                             Enough data
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-xs gap-1 bg-acr-warn-soft text-acr-warn border-acr-warn">
+                          <Badge variant="outline" className="text-xs gap-1 bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn">
                             <AlertTriangle className="w-3 h-3" aria-hidden="true" />
                             Waiting
                           </Badge>

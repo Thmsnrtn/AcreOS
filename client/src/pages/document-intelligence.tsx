@@ -23,9 +23,9 @@ const SEVERITY_LABEL: Record<string, string> = {
 
 function RiskBadge({ severity }: { severity: string }) {
   const map: Record<string, string> = {
-    critical: "bg-acr-neg-soft text-acr-neg",
-    high: "bg-acr-warn-soft text-acr-warn",
-    medium: "bg-acr-warn-soft text-acr-warn",
+    critical: "bg-acr-neg-soft text-acr-neg-soft-ink",
+    high: "bg-acr-warn-soft text-acr-warn-soft-ink",
+    medium: "bg-acr-warn-soft text-acr-warn-soft-ink",
     low: "bg-acr-accent text-acr-accent",
   };
   const label = SEVERITY_LABEL[severity] ?? severity;

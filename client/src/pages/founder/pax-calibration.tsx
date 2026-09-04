@@ -380,7 +380,7 @@ export default function FounderPaxCalibrationPage() {
                         ) : (
                           <Badge
                             variant="secondary"
-                            className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums"
+                            className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent tabular-nums"
                           >
                             {b.n.toLocaleString()}
                           </Badge>

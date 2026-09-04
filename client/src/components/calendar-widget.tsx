@@ -20,9 +20,9 @@ interface CalendarEvent {
 }
 
 const EVENT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  closing: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", dot: "bg-acr-pos" },
+  closing: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos-soft-ink dark:text-acr-pos-soft-ink", dot: "bg-acr-pos" },
   visit: { bg: "bg-acr-accent dark:bg-acr-accent/30", text: "text-acr-accent dark:text-acr-accent", dot: "bg-acr-accent" },
-  follow_up: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn dark:text-acr-warn", dot: "bg-acr-warn" },
+  follow_up: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/30", text: "text-acr-warn-soft-ink dark:text-acr-warn-soft-ink", dot: "bg-acr-warn" },
   other: { bg: "bg-muted dark:bg-acr-bg-sunken/30", text: "text-foreground dark:text-muted-foreground", dot: "bg-muted" },
 };
 

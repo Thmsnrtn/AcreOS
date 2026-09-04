@@ -87,10 +87,10 @@ function useDictate(onResult: (text: string) => void) {
 function StatusPill({ status }: { status?: string | null }) {
   const s = (status ?? "new").toLowerCase();
   const tone =
-    s === "dead" ? "bg-acr-neg-soft text-acr-neg"
-    : s === "closed" ? "bg-acr-pos-soft text-acr-pos"
+    s === "dead" ? "bg-acr-neg-soft text-acr-neg-soft-ink"
+    : s === "closed" ? "bg-acr-pos-soft text-acr-pos-soft-ink"
     : s === "accepted" || s === "under_contract" || s === "qualified"
-      ? "bg-acr-warn-soft text-acr-warn"
+      ? "bg-acr-warn-soft text-acr-warn-soft-ink"
       : s === "responded" || s === "negotiating" || s === "interested" || s === "contacted"
         ? "bg-primary/15 text-primary"
         : "bg-muted text-foreground";
@@ -382,7 +382,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
                   aria-label={dictate.listening ? "Stop dictation" : "Dictate note"}
                   className={`absolute right-2 top-2 h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
                     dictate.listening
-                      ? "bg-acr-neg-soft text-acr-neg animate-pulse"
+                      ? "bg-acr-neg-soft text-acr-neg-soft-ink animate-pulse"
                       : "text-muted-foreground hover:bg-muted active:bg-muted"
                   }`}
                 >

@@ -377,7 +377,7 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
 
 /** Status class set for one severity chip (info renders neutral). */
 export function severityChipClasses(sev: Severity): { text: string; surface: string } {
-  if (sev === "critical") return { text: "text-acr-neg", surface: "bg-acr-neg-soft" };
-  if (sev === "warn") return { text: "text-acr-warn", surface: "bg-acr-warn-soft" };
+  if (sev === "critical") return { text: "text-acr-neg-soft-ink", surface: "bg-acr-neg-soft" };
+  if (sev === "warn") return { text: "text-acr-warn-soft-ink", surface: "bg-acr-warn-soft" };
   return { text: "text-muted-foreground", surface: "bg-muted" };
 }

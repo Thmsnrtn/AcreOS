@@ -103,10 +103,10 @@ type ListingFormValues = z.infer<typeof listingFormSchema>;
 // across all five themes; replaces raw green/yellow/blue/red hardcodes.
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
-  active: "bg-acr-pos-soft text-acr-pos border-transparent",
-  pending_sale: "bg-acr-warn-soft text-acr-warn border-transparent",
-  sold: "bg-acr-brand-soft text-acr-brand border-transparent",
-  withdrawn: "bg-acr-neg-soft text-acr-neg border-transparent",
+  active: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
+  pending_sale: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent",
+  sold: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
+  withdrawn: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent",
 };
 
 export default function ListingsPage() {
@@ -831,13 +831,13 @@ export default function ListingsPage() {
                                     };
                                     const tone =
                                       target.status === "active"
-                                        ? "bg-acr-pos-soft text-acr-pos border-transparent"
+                                        ? "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent"
                                         : target.status === "simulated"
-                                          ? "bg-acr-brand-soft text-acr-brand border-transparent"
+                                          ? "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent"
                                           : target.status === "failed"
-                                            ? "bg-acr-neg-soft text-acr-neg border-transparent"
+                                            ? "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent"
                                             : target.status === "needs_credentials"
-                                              ? "bg-acr-warn-soft text-acr-warn border-transparent"
+                                              ? "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent"
                                               : "bg-acr-surface-2 text-acr-ink-3 border-transparent";
                                     const shown = statusLabel[target.status] ?? target.status;
                                     return (
@@ -955,22 +955,22 @@ export default function ListingsPage() {
                               title={lastResult.error || undefined}
                             >
                               {lastResult.status === "sent" && (
-                                <Badge className="bg-acr-pos-soft text-acr-pos border-transparent">
+                                <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink border-transparent">
                                   Sent
                                 </Badge>
                               )}
                               {lastResult.status === "simulated" && (
-                                <Badge className="bg-acr-brand-soft text-acr-brand border-transparent">
+                                <Badge className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent">
                                   Simulated
                                 </Badge>
                               )}
                               {lastResult.status === "missing_credentials" && (
-                                <Badge className="bg-acr-warn-soft text-acr-warn border-transparent">
+                                <Badge className="bg-acr-warn-soft text-acr-warn-soft-ink border-transparent">
                                   Missing credentials
                                 </Badge>
                               )}
                               {lastResult.status === "failed" && (
-                                <Badge className="bg-acr-neg-soft text-acr-neg border-transparent">
+                                <Badge className="bg-acr-neg-soft text-acr-neg-soft-ink border-transparent">
                                   Failed
                                 </Badge>
                               )}

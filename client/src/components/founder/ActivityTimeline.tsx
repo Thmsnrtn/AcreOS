@@ -172,8 +172,8 @@ export default function ActivityTimeline() {
                         {entry.verification && (
                           <div className={`text-xs px-2 py-1 rounded mb-2 ${
                             entry.verification.success
-                              ? "bg-acr-pos-soft/30 text-acr-pos"
-                              : "bg-acr-neg-soft/30 text-acr-neg"
+                              ? "bg-acr-pos-soft/30 text-acr-pos-soft-ink"
+                              : "bg-acr-neg-soft/30 text-acr-neg-soft-ink"
                           }`}>
                             Outcome: {entry.verification.detail}
                           </div>

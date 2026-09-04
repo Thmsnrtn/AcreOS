@@ -474,9 +474,9 @@ function Stat({
 }) {
   const toneClass =
     tone === "pos"
-      ? "bg-acr-pos-soft text-acr-pos"
+      ? "bg-acr-pos-soft text-acr-pos-soft-ink"
       : tone === "neg"
-        ? "bg-acr-neg-soft text-acr-neg"
+        ? "bg-acr-neg-soft text-acr-neg-soft-ink"
         : "bg-muted text-foreground";
   return (
     <div className={`rounded-md p-3 ${toneClass}`}>

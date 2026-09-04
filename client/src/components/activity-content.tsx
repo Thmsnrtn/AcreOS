@@ -31,11 +31,11 @@ const entityTypeIcons: Record<string, any> = {
 
 const entityTypeColors: Record<string, string> = {
   lead: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
-  property: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
-  deal: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
-  payment: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  property: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft dark:text-acr-pos-soft-ink",
+  deal: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft dark:text-acr-brand-soft-ink",
+  payment: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink",
   note: "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
-  task: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg",
+  task: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink",
 };
 
 const entityTypeRoutes: Record<string, string> = {

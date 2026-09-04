@@ -159,7 +159,7 @@ function getRiskColor(risk: "low" | "moderate" | "high" | undefined): string {
 /** Same rule as getRiskColor: unknown is neutral, never the favourable band. */
 function getRiskBg(risk: "low" | "moderate" | "high" | undefined): string {
   if (!risk) return "bg-muted";
-  const map = { low: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos", moderate: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn", high: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" };
+  const map = { low: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink", moderate: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink", high: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink" };
   return map[risk] ?? "bg-muted";
 }
 
@@ -854,9 +854,9 @@ function PropertyIntelligencePanel({
                 value={
                   intel.floodZone ? (
                     <span className={cn("font-mono text-micro px-1.5 py-0.5 rounded",
-                      intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos" :
-                      intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn" :
-                      intel.floodRisk === "high" ? "bg-acr-neg-soft text-acr-neg" :
+                      intel.floodRisk === "minimal" ? "bg-acr-pos-soft text-acr-pos-soft-ink" :
+                      intel.floodRisk === "moderate" ? "bg-acr-warn-soft text-acr-warn-soft-ink" :
+                      intel.floodRisk === "high" ? "bg-acr-neg-soft text-acr-neg-soft-ink" :
                       "bg-muted text-foreground"
                     )}>
                       FEMA {intel.floodZone}
@@ -1245,7 +1245,7 @@ export default function MapsPage() {
               </Badge>
             )}
             {showPredictionHeatmap && (
-              <Badge className="text-micro shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
+              <Badge className="text-micro shrink-0 bg-acr-brand-soft text-acr-brand-soft-ink hidden md:flex">
                 <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction
               </Badge>
             )}

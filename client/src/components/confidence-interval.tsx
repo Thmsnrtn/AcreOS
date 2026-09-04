@@ -90,10 +90,10 @@ interface DecisionScoreProps {
 }
 
 const DECISION_CONFIG = {
-  strong_buy: { label: "Strong opportunity", color: "text-acr-pos", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
-  buy: { label: "Good opportunity", color: "text-acr-pos", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
-  hold: { label: "Evaluate further", color: "text-acr-warn", bg: "bg-acr-warn-soft", border: "border-acr-warn-soft" },
-  pass: { label: "Below threshold", color: "text-acr-neg", bg: "bg-acr-neg-soft", border: "border-acr-neg-soft" },
+  strong_buy: { label: "Strong opportunity", color: "text-acr-pos-soft-ink", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
+  buy: { label: "Good opportunity", color: "text-acr-pos-soft-ink", bg: "bg-acr-pos-soft", border: "border-acr-pos-soft" },
+  hold: { label: "Evaluate further", color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft", border: "border-acr-warn-soft" },
+  pass: { label: "Below threshold", color: "text-acr-neg-soft-ink", bg: "bg-acr-neg-soft", border: "border-acr-neg-soft" },
 };
 
 export function DecisionScore({ score, maxScore = 100, decision, reasoning, className }: DecisionScoreProps) {
@@ -146,7 +146,7 @@ export function LossFrame({ potentialLoss, timeframe, className }: LossFrameProp
     <div
       role="status"
       aria-label={`Without action, potential loss of ${potentialLoss} within ${timeframe}`}
-      className={cn("text-xs text-acr-warn bg-acr-warn-soft border border-acr-warn-soft rounded-md px-2.5 py-1.5", className)}
+      className={cn("text-xs text-acr-warn-soft-ink bg-acr-warn-soft border border-acr-warn-soft rounded-md px-2.5 py-1.5", className)}
     >
       <span aria-hidden="true">Without action: <span className="font-medium">{potentialLoss}</span> within {timeframe}</span>
     </div>

@@ -83,7 +83,7 @@ export default function AccessibilitySettingsPage() {
           {!isAvailable && (
             <div
               role="alert"
-              className="rounded-md border border-acr-warn bg-acr-warn-soft px-4 py-3 text-sm text-acr-warn dark:border-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+              className="rounded-md border border-acr-warn bg-acr-warn-soft px-4 py-3 text-sm text-acr-warn-soft-ink dark:border-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
             >
               Your browser doesn't expose text-to-speech. Read-aloud controls
               will appear once you switch to a browser that supports the Web

@@ -66,7 +66,7 @@ function getRetentionColor(rate: number): string {
   if (rate >= 0.3) return "bg-acr-pos text-white";
   if (rate >= 0.2) return "bg-acr-pos text-white";
   if (rate >= 0.1) return "bg-acr-pos text-acr-pos";
-  if (rate > 0) return "bg-acr-pos-soft text-acr-pos";
+  if (rate > 0) return "bg-acr-pos-soft text-acr-pos-soft-ink";
   return "bg-muted text-muted-foreground";
 }
 

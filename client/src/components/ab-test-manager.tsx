@@ -46,8 +46,8 @@ const statusIcons: Record<string, any> = {
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground border-transparent",
-  running: "bg-acr-brand-soft text-acr-brand border-transparent",
-  completed: "bg-acr-pos-soft text-acr-pos border-transparent",
+  running: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
+  completed: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
 };
 
 const testTypeLabels: Record<string, string> = {
@@ -57,9 +57,9 @@ const testTypeLabels: Record<string, string> = {
 };
 
 const confidenceBadge = (level: number) => {
-  if (level >= 99) return { label: '99%', variant: 'default' as const, color: 'bg-acr-pos-soft text-acr-pos' };
+  if (level >= 99) return { label: '99%', variant: 'default' as const, color: 'bg-acr-pos-soft text-acr-pos-soft-ink' };
   if (level >= 95) return { label: '95%', variant: 'secondary' as const, color: 'bg-primary/10 text-primary' };
-  if (level >= 90) return { label: '90%', variant: 'outline' as const, color: 'bg-acr-warn-soft text-acr-warn' };
+  if (level >= 90) return { label: '90%', variant: 'outline' as const, color: 'bg-acr-warn-soft text-acr-warn-soft-ink' };
   return { label: 'Not significant', variant: 'outline' as const, color: 'bg-muted text-muted-foreground' };
 };
 
@@ -541,7 +541,7 @@ function AbTestCard({
                     <Badge variant="outline" className="text-xs">Control</Badge>
                   )}
                   {isWinner && (
-                    <Badge className="bg-acr-pos-soft text-acr-pos">
+                    <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink">
                       <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
                       Winner
                     </Badge>

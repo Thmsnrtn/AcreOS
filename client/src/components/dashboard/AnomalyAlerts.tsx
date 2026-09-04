@@ -22,17 +22,17 @@ function getAnomalyStyle(type: string) {
   switch (type) {
     case "positive":
       return {
-        badge: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos border-acr-pos-soft dark:border-acr-pos-soft",
+        badge: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink border-acr-pos-soft dark:border-acr-pos-soft",
         icon: <TrendingUp className="w-3 h-3" aria-hidden="true" />,
       };
     case "negative":
       return {
-        badge: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg border-acr-neg-soft dark:border-acr-neg-soft",
+        badge: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink border-acr-neg-soft dark:border-acr-neg-soft",
         icon: <TrendingDown className="w-3 h-3" aria-hidden="true" />,
       };
     default:
       return {
-        badge: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn border-acr-warn-soft dark:border-acr-warn-soft",
+        badge: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink border-acr-warn-soft dark:border-acr-warn-soft",
         icon: <Minus className="w-3 h-3" aria-hidden="true" />,
       };
   }

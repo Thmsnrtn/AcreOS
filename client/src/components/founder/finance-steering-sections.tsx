@@ -598,7 +598,7 @@ function ScaleUpHistorySection() {
                           variant="secondary"
                           className={
                             d.action === "approve"
-                              ? "text-xs bg-acr-pos-soft text-acr-pos"
+                              ? "text-xs bg-acr-pos-soft text-acr-pos-soft-ink"
                               : "text-xs"
                           }
                         >

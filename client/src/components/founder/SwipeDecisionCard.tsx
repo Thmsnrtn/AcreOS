@@ -255,9 +255,9 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
               </div>
             </div>
             <Badge className={`text-xs ${
-              item.riskLevel === "critical" ? "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" :
-              item.riskLevel === "high" ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" :
-              "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+              item.riskLevel === "critical" ? "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink" :
+              item.riskLevel === "high" ? "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink" :
+              "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
             }`}>
               {naturalRisk(item.riskLevel)}
             </Badge>

@@ -175,7 +175,7 @@ export function MorningBriefing() {
                 </p>
                 {data.pendingDecisions > 0 && (
                   <div className="flex items-center gap-2 mt-3">
-                    <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn tabular-nums" aria-label={`${data.pendingDecisions} pending decision${data.pendingDecisions > 1 ? "s" : ""}`}>
+                    <Badge className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink tabular-nums" aria-label={`${data.pendingDecisions} pending decision${data.pendingDecisions > 1 ? "s" : ""}`}>
                       {data.pendingDecisions} decision{data.pendingDecisions > 1 ? "s" : ""} pending
                     </Badge>
                   </div>

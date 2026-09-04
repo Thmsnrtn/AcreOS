@@ -170,20 +170,20 @@ export function AiOperationsPanel() {
 
   const getPhaseColor = (phase: number) => {
     switch (phase) {
-      case 3: return "bg-acr-brand-soft text-acr-brand";
+      case 3: return "bg-acr-brand-soft text-acr-brand-soft-ink";
       case 4: return "bg-acr-accent/20 text-acr-ink-2";
-      case 5: return "bg-acr-warn-soft text-acr-warn";
-      case 6: return "bg-acr-pos-soft text-acr-pos";
+      case 5: return "bg-acr-warn-soft text-acr-warn-soft-ink";
+      case 6: return "bg-acr-pos-soft text-acr-pos-soft-ink";
       default: return "bg-muted text-muted-foreground";
     }
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case "critical": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/30";
-      case "high": return "bg-acr-neg-soft text-acr-neg border border-acr-neg/20";
-      case "medium": return "bg-acr-warn-soft text-acr-warn border border-acr-warn/30";
-      case "low": return "bg-acr-brand-soft text-acr-brand border border-acr-brand/20";
+      case "critical": return "bg-acr-neg-soft text-acr-neg-soft-ink border border-acr-neg/30";
+      case "high": return "bg-acr-neg-soft text-acr-neg-soft-ink border border-acr-neg/20";
+      case "medium": return "bg-acr-warn-soft text-acr-warn-soft-ink border border-acr-warn/30";
+      case "low": return "bg-acr-brand-soft text-acr-brand-soft-ink border border-acr-brand/20";
       default: return "bg-muted text-muted-foreground";
     }
   };

@@ -68,9 +68,9 @@ function readPrecedents(bundle: Record<string, any> | null): DecisionPrecedent[]
 }
 
 const RISK_BADGE: Record<string, string> = {
-  critical: "bg-acr-neg-soft text-acr-neg border-acr-neg-soft dark:bg-acr-neg-soft/30 dark:text-acr-neg",
-  high: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn",
-  medium: "bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  critical: "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg-soft dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink",
+  high: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
+  medium: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
   low: "bg-acr-accent text-acr-accent border-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
 };
 
@@ -265,7 +265,7 @@ export function DecisionsInbox() {
           <CardTitle className="text-base">
             Decisions inbox
             {pending > 0 && (
-              <Badge className="ml-2 bg-acr-warn-soft text-acr-warn border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn text-xs tabular-nums" aria-label={`${pending} pending`}>
+              <Badge className="ml-2 bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink text-xs tabular-nums" aria-label={`${pending} pending`}>
                 {pending}
               </Badge>
             )}

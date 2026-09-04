@@ -48,11 +48,11 @@ interface StrategicProposal {
 // tones: revenue→pos, ops→warn (operational alerts), risk→neg, retention/
 // product→brand/accent (informational categorization).
 const CATEGORY_COLOR: Record<string, string> = {
-  revenue: "bg-acr-pos-soft text-acr-pos border-transparent",
-  retention: "bg-acr-brand-soft text-acr-brand border-transparent",
+  revenue: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
+  retention: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
   product: "bg-acr-accent/10 text-acr-accent border-transparent",
-  ops: "bg-acr-warn-soft text-acr-warn border-transparent",
-  risk: "bg-acr-neg-soft text-acr-neg border-transparent",
+  ops: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent",
+  risk: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent",
 };
 
 export default function FounderStrategyPage() {

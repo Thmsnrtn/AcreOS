@@ -105,7 +105,7 @@ export function FounderPulseStrip() {
         "flex items-center gap-2 rounded-card border px-3 py-2 min-h-[44px] text-xs transition-colors",
         "hover:bg-muted/40 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         tone === "stale"
-          ? "border-acr-warn/40 bg-acr-warn-soft text-acr-warn"
+          ? "border-acr-warn/40 bg-acr-warn-soft text-acr-warn-soft-ink"
           : "border-border bg-card/60 text-muted-foreground",
       )}
     >

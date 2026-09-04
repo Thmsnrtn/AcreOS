@@ -212,8 +212,8 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
         <span className={cn(
           "text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full font-medium border",
           artifactType === "card" && "text-acr-accent bg-acr-accent border-acr-accent dark:bg-acr-accent dark:text-acr-accent dark:border-acr-accent",
-          artifactType === "table" && "text-acr-brand bg-acr-brand-soft border-acr-brand-soft dark:bg-acr-brand-soft dark:text-acr-brand dark:border-acr-brand-soft",
-          artifactType === "document" && "text-acr-warn bg-acr-warn-soft border-acr-warn-soft dark:bg-acr-warn-soft dark:text-acr-warn dark:border-acr-warn-soft",
+          artifactType === "table" && "text-acr-brand-soft-ink bg-acr-brand-soft border-acr-brand-soft dark:bg-acr-brand-soft dark:text-acr-brand-soft-ink dark:border-acr-brand-soft",
+          artifactType === "document" && "text-acr-warn-soft-ink bg-acr-warn-soft border-acr-warn-soft dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink dark:border-acr-warn-soft",
         )}>
           {artifactType}
         </span>

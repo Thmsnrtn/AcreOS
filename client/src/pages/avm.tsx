@@ -281,7 +281,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
                 </div>
                 <div className="flex items-center justify-between gap-3 mt-1.5">
                   <span
-                    className={`px-1.5 py-0.5 rounded tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-muted-foreground'}`}
+                    className={`px-1.5 py-0.5 rounded tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos-soft-ink' : 'bg-muted text-muted-foreground'}`}
                     aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
                   >
                     {c.similarity}% similar
@@ -326,7 +326,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
                     </td>
                     <td className="px-4 py-2 text-right">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-xs tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-muted-foreground'}`}
+                        className={`px-1.5 py-0.5 rounded text-xs tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos-soft-ink' : 'bg-muted text-muted-foreground'}`}
                         aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
                       >
                         {c.similarity}%

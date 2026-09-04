@@ -150,7 +150,7 @@ function ProjectionCard({
           </TableBody>
         </Table>
         {!projection.withinFreeTier ? (
-          <p className="mt-4 rounded-md border border-acr-warn/30 bg-acr-warn-soft p-3 text-sm text-acr-warn">
+          <p className="mt-4 rounded-md border border-acr-warn/30 bg-acr-warn-soft p-3 text-sm text-acr-warn-soft-ink">
             <strong>Recommendation:</strong> {projection.recommendation}
           </p>
         ) : (

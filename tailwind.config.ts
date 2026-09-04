@@ -189,13 +189,17 @@ export default {
           brand:        acrToken("--acr-brand"),
           "brand-ink":  acrToken("--acr-brand-ink"),
           "brand-soft": acrToken("--acr-brand-soft"),
+          "brand-soft-ink": acrToken("--acr-brand-soft-ink"),
           accent: acrToken("--acr-accent"),
           pos:        acrToken("--acr-pos"),
           "pos-soft": acrToken("--acr-pos-soft"),
+          "pos-soft-ink": acrToken("--acr-pos-soft-ink"),
           warn:       acrToken("--acr-warn"),
           "warn-soft": acrToken("--acr-warn-soft"),
+          "warn-soft-ink": acrToken("--acr-warn-soft-ink"),
           neg:       acrToken("--acr-neg"),
           "neg-soft": acrToken("--acr-neg-soft"),
+          "neg-soft-ink": acrToken("--acr-neg-soft-ink"),
           glow: acrToken("--acr-glow"),
           // Borrower portal — warm public-surface gradient endpoints.
           // Defined as CSS vars in index.css (light + dark) so the portal's

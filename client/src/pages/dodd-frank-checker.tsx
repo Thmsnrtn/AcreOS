@@ -212,7 +212,7 @@ export default function DoddFrankCheckerPage() {
             <p className="text-sm text-muted-foreground">{result.summary}</p>
 
             {result.requiresLicensedMLO && (
-              <div className="bg-acr-neg-soft border border-acr-neg-soft rounded p-3 text-xs text-acr-neg" role="alert">
+              <div className="bg-acr-neg-soft border border-acr-neg-soft rounded p-3 text-xs text-acr-neg-soft-ink" role="alert">
                 <strong>Licensed MLO required.</strong> This deal likely requires a licensed mortgage loan originator.
               </div>
             )}

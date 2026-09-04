@@ -30,15 +30,15 @@ type CountyFormValues = z.infer<typeof countyFormSchema>;
 
 const statusOptions = [
   { value: "researching", label: "Researching", color: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
-  { value: "active", label: "Active", color: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos" },
-  { value: "paused", label: "Paused", color: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
+  { value: "active", label: "Active", color: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink" },
+  { value: "paused", label: "Paused", color: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink" },
   { value: "exhausted", label: "Exhausted", color: "bg-muted text-muted-foreground" },
 ];
 
 const dataSourceTypes = [
-  { value: "tax_delinquent", label: "Tax delinquent", color: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" },
-  { value: "probate", label: "Probate", color: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand" },
-  { value: "vacant", label: "Vacant", color: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
+  { value: "tax_delinquent", label: "Tax delinquent", color: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink" },
+  { value: "probate", label: "Probate", color: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink" },
+  { value: "vacant", label: "Vacant", color: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink" },
   { value: "absentee", label: "Absentee", color: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
 ];
 

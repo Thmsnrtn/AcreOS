@@ -41,9 +41,9 @@ function getActionIcon(type: string) {
 function getPriorityStyle(priority: string) {
   switch (priority) {
     case "high":
-      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg border-acr-neg-soft dark:border-acr-neg-soft";
+      return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink border-acr-neg-soft dark:border-acr-neg-soft";
     case "medium":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn border-acr-warn-soft dark:border-acr-warn-soft";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink border-acr-warn-soft dark:border-acr-warn-soft";
     default:
       return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent border-acr-accent dark:border-acr-accent";
   }

@@ -147,10 +147,10 @@ function nullDueCopy(reason: string | null | undefined): string {
 /** Severity encoded in form as well as number — all semantic acr-* tokens. */
 const DELINQUENCY_CHIP: Record<NoteDelinquencyStatus, { label: string; tone: string }> = {
   current: { label: "Current", tone: "bg-muted text-muted-foreground border-transparent" },
-  early_delinquent: { label: "Early", tone: "bg-acr-warn-soft text-acr-warn border-acr-warn/20" },
-  delinquent: { label: "Delinquent", tone: "bg-acr-warn-soft text-acr-warn border-acr-warn/50 font-semibold" },
-  seriously_delinquent: { label: "Serious", tone: "bg-acr-neg-soft text-acr-neg border-acr-neg/30 font-semibold" },
-  default_candidate: { label: "Default risk", tone: "bg-acr-neg-soft text-acr-neg border-acr-neg/60 font-bold" },
+  early_delinquent: { label: "Early", tone: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn/20" },
+  delinquent: { label: "Delinquent", tone: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn/50 font-semibold" },
+  seriously_delinquent: { label: "Serious", tone: "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg/30 font-semibold" },
+  default_candidate: { label: "Default risk", tone: "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg/60 font-bold" },
 };
 
 const FALLBACK_CHIP = {

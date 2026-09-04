@@ -69,10 +69,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_TONE: Record<string, string> = {
   auth: "bg-primary/10 text-primary",
-  members: "bg-acr-brand-soft text-acr-brand",
-  billing: "bg-acr-warn-soft text-acr-warn",
-  data: "bg-acr-pos-soft text-acr-pos",
-  security: "bg-acr-neg-soft text-acr-neg",
+  members: "bg-acr-brand-soft text-acr-brand-soft-ink",
+  billing: "bg-acr-warn-soft text-acr-warn-soft-ink",
+  data: "bg-acr-pos-soft text-acr-pos-soft-ink",
+  security: "bg-acr-neg-soft text-acr-neg-soft-ink",
 };
 
 function humanizeAction(action: string): string {

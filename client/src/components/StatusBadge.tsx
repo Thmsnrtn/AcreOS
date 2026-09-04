@@ -39,28 +39,28 @@ const STATUS_META: Record<StatusKind, StatusMeta> = {
   active: {
     tone: "green",
     defaultLabel: "Active",
-    surface: "bg-acr-pos-soft text-acr-pos border-acr-pos/20",
+    surface: "bg-acr-pos-soft text-acr-pos-soft-ink border-acr-pos/20",
     pulse: true,
   },
   success: {
     tone: "green",
     defaultLabel: "Success",
-    surface: "bg-acr-pos-soft text-acr-pos border-acr-pos/20",
+    surface: "bg-acr-pos-soft text-acr-pos-soft-ink border-acr-pos/20",
   },
   pending: {
     tone: "amber",
     defaultLabel: "Pending",
-    surface: "bg-acr-warn-soft text-acr-warn border-acr-warn/20",
+    surface: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn/20",
   },
   warning: {
     tone: "amber",
     defaultLabel: "Warning",
-    surface: "bg-acr-warn-soft text-acr-warn border-acr-warn/20",
+    surface: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn/20",
   },
   error: {
     tone: "red",
     defaultLabel: "Error",
-    surface: "bg-acr-neg-soft text-acr-neg border-acr-neg/20",
+    surface: "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg/20",
   },
   inactive: {
     tone: "gray",

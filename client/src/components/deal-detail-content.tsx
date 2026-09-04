@@ -65,12 +65,12 @@ const dealStages = [
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
-  offer_sent: 'bg-acr-brand-soft text-acr-brand',
-  countered: 'bg-acr-warn-soft text-acr-warn',
-  accepted: 'bg-acr-pos-soft text-acr-pos',
-  in_escrow: 'bg-acr-warn-soft text-acr-warn',
-  closed: 'bg-acr-pos-soft text-acr-pos',
-  cancelled: 'bg-acr-neg-soft text-acr-neg',
+  offer_sent: 'bg-acr-brand-soft text-acr-brand-soft-ink',
+  countered: 'bg-acr-warn-soft text-acr-warn-soft-ink',
+  accepted: 'bg-acr-pos-soft text-acr-pos-soft-ink',
+  in_escrow: 'bg-acr-warn-soft text-acr-warn-soft-ink',
+  closed: 'bg-acr-pos-soft text-acr-pos-soft-ink',
+  cancelled: 'bg-acr-neg-soft text-acr-neg-soft-ink',
 };
 
 interface PricingRecommendation {
@@ -704,9 +704,9 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                     const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
                     const pkgStatusColors: Record<string, string> = {
                       draft: "bg-muted text-muted-foreground",
-                      complete: "bg-acr-brand-soft text-acr-brand",
-                      sent: "bg-acr-warn-soft text-acr-warn",
-                      signed: "bg-acr-pos-soft text-acr-pos",
+                      complete: "bg-acr-brand-soft text-acr-brand-soft-ink",
+                      sent: "bg-acr-warn-soft text-acr-warn-soft-ink",
+                      signed: "bg-acr-pos-soft text-acr-pos-soft-ink",
                     };
 
                     return (

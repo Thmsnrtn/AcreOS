@@ -46,8 +46,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 className={cn(
                   "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-micro font-mono tabular-nums",
                   call.status === "running" && "bg-muted/60 text-muted-foreground",
-                  call.status === "complete" && "bg-acr-pos-soft text-acr-pos",
-                  call.status === "failed" && "bg-acr-neg-soft text-acr-neg",
+                  call.status === "complete" && "bg-acr-pos-soft text-acr-pos-soft-ink",
+                  call.status === "failed" && "bg-acr-neg-soft text-acr-neg-soft-ink",
                 )}
               >
                 {call.status === "running" && <ThinkingDots size="sm" />}

@@ -91,7 +91,7 @@ export function FounderFinanceNowTiles() {
         <span className="text-sm font-semibold tracking-tight">Money</span>
         <Badge
           variant="secondary"
-          className="text-xs tabular-nums bg-acr-brand-soft text-acr-brand border-transparent"
+          className="text-xs tabular-nums bg-acr-brand-soft text-acr-brand-soft-ink border-transparent"
         >
           {(showBucketAlarm ? 1 : 0) +
             (showNetNeg ? 1 : 0) +

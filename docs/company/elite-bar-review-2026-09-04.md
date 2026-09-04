@@ -3062,3 +3062,58 @@ whether it declares a founder path. The admin half hardcodes four names — good
 but it cannot notice a fifth registrar nobody added. Deriving means a new
 founder route file is covered the day it is written. Falsified by moving the
 gate beside the admin one, which fails naming the routes that would bypass it.
+
+
+### Every semantic pill failed AA, in 416 places, in every theme
+
+The pill idiom across the app was `bg-acr-warn-soft text-acr-warn` — the
+semantic hue as **text on a 14%-alpha tint of itself**. Composited over the
+page, that is 2.47:1 in the default theme. WCAG 1.4.3 AA wants 4.5:1, and badge
+text is small, which is where it matters most.
+
+Every semantic pair failed, in every theme × mode:
+
+| Pair | Worst ratio before |
+| --- | --- |
+| warn on warn-soft | 2.05:1 (Meadow light) |
+| neg on neg-soft | 2.97:1 (Bedrock dark) |
+| brand on brand-soft | 3.38:1 (Bedrock dark) |
+| pos on pos-soft | 3.53:1 (Bedrock light) |
+
+The team already holds itself to AA — `index.css` carries a "WCAG-AA tuning …
+3.78:1" note — but that audit covered the **ink ramp**: body text on page
+surfaces. It never covered the semantic-on-its-own-tint pairing, because
+nothing enumerated those pairings. A design system with a contrast standard and
+no contrast gate meets the standard exactly where someone remembered to check.
+
+**The fix is computed, not chosen.** A solver reads each of the 12 theme × mode
+blocks, alpha-composites each `-soft` tint over both `--acr-bg` and
+`--acr-surface` — a pill sits on either, so the worse of the two is what has to
+pass — and walks the hue's lightness until it clears 4.5:1 against both. That
+produced 48 `--acr-{brand,pos,warn,neg}-soft-ink` tokens. Where a hue already
+cleared, the ink equals the base and nothing moves. 587 class occurrences across
+108 files switched to the ink token; zero same-hue pairs remain on the base
+colour.
+
+The naming follows the convention already in the file: `--acr-brand-ink` is the
+ink for text *on* `--acr-brand`, so `--acr-warn-soft-ink` is the ink for text on
+`--acr-warn-soft`.
+
+**`scripts/lint-semantic-contrast.mjs` derives rather than lists.** It reads the
+pairings out of `client/src` — so a pill written next week is checked the day it
+is written — and recomputes the ratio from the CSS tokens for every theme. Two
+details earned themselves:
+
+- **The unit is the class string, not the line.** A first version paired every
+  fill on a line with every ink on the same line, and reported `maps.tsx`'s risk
+  map — `{ low: "bg-acr-pos-soft text-acr-pos-soft-ink", moderate:
+  "bg-acr-warn-soft text-acr-warn-soft-ink", … }` — as four cross-hue
+  mismatches. Each string is correctly paired within itself; they merely share a
+  line. A gate that cries wolf on correct code is a gate someone deletes.
+- **The 227 fills that carry no ink of their own are checked too**, against the
+  ambient `--acr-ink`, rather than left outside the population. They pass at
+  9.23:1 worst — but that is now a measured fact rather than an assumption.
+
+Falsified twice: reverting one theme's warn ink reproduces the reviewer's exact
+2.47:1, and putting a single pill back on the base colour names the file and
+line.

@@ -76,9 +76,9 @@ interface ExperimentAnalysis {
 // Experiment status → semantic --acr-* tone (Tier 1 pattern).
 const STATUS_COLOR: Record<Experiment["status"], string> = {
   draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
-  running: "bg-acr-pos-soft text-acr-pos border-transparent",
-  paused: "bg-acr-warn-soft text-acr-warn border-transparent",
-  completed: "bg-acr-brand-soft text-acr-brand border-transparent",
+  running: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
+  paused: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent",
+  completed: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
   aborted: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
 };
 

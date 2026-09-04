@@ -107,9 +107,9 @@ interface FeedResponse {
 }
 
 const motivationColors: Record<string, string> = {
-  "Tax delinquent": "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
-  "Out of state": "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
-  "Inherited property": "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
+  "Tax delinquent": "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink",
+  "Out of state": "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
+  "Inherited property": "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
 };
 
 function lcsColor(grade: string | null): string {
@@ -230,17 +230,17 @@ function HeroDealCard({
                 </Badge>
               ))}
               {signals.environmental.slice(0, 3).map((s) => (
-                <Badge key={s} variant="secondary" className="text-xs bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
+                <Badge key={s} variant="secondary" className="text-xs bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink">
                   {s}
                 </Badge>
               ))}
               {legal?.multipleOwners && (
-                <Badge variant="secondary" className="text-xs bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
+                <Badge variant="secondary" className="text-xs bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink">
                   Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
                 </Badge>
               )}
               {legal?.taxDelinquent && legal?.redemptionMonths != null && (
-                <Badge variant="secondary" className="text-xs bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
+                <Badge variant="secondary" className="text-xs bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink">
                   Tax lien — {legal.redemptionMonths} mo redemption
                 </Badge>
               )}
@@ -407,17 +407,17 @@ function DealCard({
                 </Badge>
               ))}
               {signals.environmental.slice(0, 2).map((s) => (
-                <Badge key={s} variant="secondary" className="text-micro bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">
+                <Badge key={s} variant="secondary" className="text-micro bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink">
                   {s}
                 </Badge>
               ))}
               {legal?.multipleOwners && (
-                <Badge variant="secondary" className="text-micro bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn">
+                <Badge variant="secondary" className="text-micro bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink">
                   Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
                 </Badge>
               )}
               {legal?.taxDelinquent && legal?.redemptionMonths != null && (
-                <Badge variant="secondary" className="text-micro bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">
+                <Badge variant="secondary" className="text-micro bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink">
                   Tax lien — {legal.redemptionMonths} mo redemption
                 </Badge>
               )}

@@ -207,7 +207,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
                     {tool.destructive && (
                       <Badge
                         variant="secondary"
-                        className="ml-auto text-micro bg-acr-warn-soft text-acr-warn border-transparent"
+                        className="ml-auto text-micro bg-acr-warn-soft text-acr-warn-soft-ink border-transparent"
                       >
                         destructive
                       </Badge>

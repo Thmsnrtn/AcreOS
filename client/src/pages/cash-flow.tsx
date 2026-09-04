@@ -49,9 +49,9 @@ function formatDollar(n: number) {
 }
 
 const URGENCY_STYLES: Record<string, string> = {
-  critical: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
-  high: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
-  medium: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
+  critical: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink',
+  high: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
+  medium: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
   low: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
 };
 
@@ -62,10 +62,10 @@ const IMPACT_STYLES: Record<string, string> = {
 };
 
 const PATTERN_STYLES: Record<string, { label: string; color: string; icon: JSX.Element }> = {
-  consistent: { label: 'Consistent', color: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
+  consistent: { label: 'Consistent', color: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
   improving: { label: 'Improving', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
-  declining: { label: 'Declining', color: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
-  erratic: { label: 'Erratic', color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
+  declining: { label: 'Declining', color: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
+  erratic: { label: 'Erratic', color: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
 };
 
 function humanize(s: string): string {
@@ -612,7 +612,7 @@ export default function CashFlowPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium">Note <span className="tabular-nums">#{note.id}</span></p>
                               <Badge
-                                className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+                                className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
                                 aria-label={`Risk score ${riskScore.toFixed(0)} percent`}
                               >
                                 Risk: <span className="tabular-nums ml-1">{riskScore.toFixed(0)}%</span>

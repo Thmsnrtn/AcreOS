@@ -106,11 +106,11 @@ const LAND_STATUS_OPTIONS: LandStatus[] = [
 
 const STATUS_TONES: Record<string, string> = {
   prospect: "bg-muted text-muted-foreground",
-  due_diligence: "bg-acr-warn-soft text-acr-warn",
+  due_diligence: "bg-acr-warn-soft text-acr-warn-soft-ink",
   offer_sent: "bg-primary/10 text-primary",
   under_contract: "bg-primary/10 text-primary",
-  owned: "bg-acr-pos-soft text-acr-pos",
-  listed: "bg-acr-pos-soft text-acr-pos",
+  owned: "bg-acr-pos-soft text-acr-pos-soft-ink",
+  listed: "bg-acr-pos-soft text-acr-pos-soft-ink",
   sold: "bg-muted text-muted-foreground",
 };
 

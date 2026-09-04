@@ -345,7 +345,7 @@ export function PropertyEnrichmentWidget({ enrichmentData }: Props) {
                     key={key}
                     className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
                       value
-                        ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
+                        ? "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink"
                         : "bg-muted text-muted-foreground"
                     }`}
                     title={key}

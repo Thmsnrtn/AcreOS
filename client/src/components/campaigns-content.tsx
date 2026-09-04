@@ -44,9 +44,9 @@ const campaignTypes = [
 const statusColors: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
   scheduled: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
-  active: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
-  paused: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
-  completed: 'bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand',
+  active: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink',
+  paused: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
+  completed: 'bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink',
 };
 
 const pieceTypes = [
@@ -252,8 +252,8 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
 // ─── AI Optimizer Suggestions Panel ──────────────────────────────────────────
 
 const priorityConfig: Record<string, { label: string; className: string }> = {
-  high: { label: "High", className: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg" },
-  medium: { label: "Medium", className: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn" },
+  high: { label: "High", className: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink" },
+  medium: { label: "Medium", className: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink" },
   low: { label: "Low", className: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
 };
 
@@ -305,7 +305,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
             <Lightbulb className="w-4 h-4 text-acr-warn" aria-hidden="true" />
             AI optimization suggestions
             {pending.length > 0 && (
-              <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn ml-1 tabular-nums">
+              <Badge className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink ml-1 tabular-nums">
                 {pending.length}
               </Badge>
             )}
@@ -478,7 +478,7 @@ function MailModeIndicator() {
                 <p className="font-medium">
                   {isTestMode ? 'Test mode' : 'Live mode'}
                 </p>
-                <Badge className={isTestMode ? 'bg-acr-accent text-acr-accent' : 'bg-acr-pos-soft text-acr-pos'}>
+                <Badge className={isTestMode ? 'bg-acr-accent text-acr-accent' : 'bg-acr-pos-soft text-acr-pos-soft-ink'}>
                   {isTestMode ? 'Safe' : 'Active'}
                 </Badge>
               </div>

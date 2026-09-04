@@ -202,7 +202,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <p className="font-medium">{addr.address}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="outline" className="text-xs">{addr.type}</Badge>
-                        {addr.current && <Badge className="text-xs bg-acr-pos-soft text-acr-pos">Current</Badge>}
+                        {addr.current && <Badge className="text-xs bg-acr-pos-soft text-acr-pos-soft-ink">Current</Badge>}
                       </div>
                     </div>
                   ))}

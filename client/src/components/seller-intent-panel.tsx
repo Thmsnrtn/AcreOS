@@ -38,8 +38,8 @@ interface IntentPrediction {
 }
 
 const CATEGORY_COLORS = {
-  hot: "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg",
-  warm: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  hot: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink",
+  warm: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
   cold: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
   unknown: "bg-muted text-muted-foreground",
 };

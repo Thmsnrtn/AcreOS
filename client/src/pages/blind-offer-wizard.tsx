@@ -513,7 +513,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
               const sourceLabel = comp.source.replace(/_/g, " ");
               return (
                 <li key={i} className={`flex items-center gap-3 p-3 rounded-card border ${i === 0 ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"}`}>
-                  {i === 0 && <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos text-xs" aria-label="Lowest comp">Lowest</Badge>}
+                  {i === 0 && <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink text-xs" aria-label="Lowest comp">Lowest</Badge>}
                   <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
                     <span className="font-semibold tabular-nums">{fmt(comp.pricePerAcre)}/acre</span>
                     <span className="text-muted-foreground tabular-nums">{comp.acres} acres</span>
@@ -641,7 +641,7 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
       {report.warnings.length > 0 && (
         <ul className="space-y-2 list-none p-0 m-0" aria-label="Calculation warnings">
           {report.warnings.map((w: string, i: number) => (
-            <li key={i} className="flex gap-2 p-3 rounded-card border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 text-sm text-acr-warn dark:text-acr-warn" role="alert">
+            <li key={i} className="flex gap-2 p-3 rounded-card border border-acr-warn-soft bg-acr-warn-soft dark:border-acr-warn-soft/50 dark:bg-acr-warn-soft/10 text-sm text-acr-warn-soft-ink dark:text-acr-warn-soft-ink" role="alert">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <span>{w}</span>
             </li>
@@ -835,7 +835,7 @@ function StepExit({ report, onNext, onBack, onGoToComps }: StepExitProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Owner financing</CardTitle>
-              <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">Wealth-building</Badge>
+              <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink">Wealth-building</Badge>
             </div>
             <CardDescription>9% interest, 84-month note — pure passive income.</CardDescription>
           </CardHeader>

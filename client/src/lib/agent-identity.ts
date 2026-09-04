@@ -81,10 +81,10 @@ export function agentTextClass(codename: string | null | undefined): string {
 export function agentBgClass(codename: string | null | undefined): string {
   const tone = getAgentIdentity(codename).tone;
   switch (tone) {
-    case "brand": return "bg-acr-brand-soft text-acr-brand";
-    case "pos":   return "bg-acr-pos-soft text-acr-pos";
-    case "warn":  return "bg-acr-warn-soft text-acr-warn";
-    case "neg":   return "bg-acr-neg-soft text-acr-neg";
+    case "brand": return "bg-acr-brand-soft text-acr-brand-soft-ink";
+    case "pos":   return "bg-acr-pos-soft text-acr-pos-soft-ink";
+    case "warn":  return "bg-acr-warn-soft text-acr-warn-soft-ink";
+    case "neg":   return "bg-acr-neg-soft text-acr-neg-soft-ink";
   }
 }
 

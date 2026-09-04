@@ -36,8 +36,8 @@ interface TitleSearchResult {
 }
 
 const SEVERITY_CONFIG = {
-  blocking: { color: "text-acr-neg", bg: "bg-acr-neg-soft", icon: XCircle },
-  warning: { color: "text-acr-warn", bg: "bg-acr-warn-soft", icon: AlertTriangle },
+  blocking: { color: "text-acr-neg-soft-ink", bg: "bg-acr-neg-soft", icon: XCircle },
+  warning: { color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft", icon: AlertTriangle },
   informational: { color: "text-acr-accent", bg: "bg-acr-accent", icon: FileCheck },
 };
 

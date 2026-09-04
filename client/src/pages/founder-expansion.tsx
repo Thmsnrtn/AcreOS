@@ -42,10 +42,10 @@ interface Candidate {
 }
 
 const STATUS_COLOR: Record<Candidate["status"], string> = {
-  proposed: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
+  proposed: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
   approved: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
   offered: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
-  converted: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
+  converted: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",
   declined: "bg-muted text-muted-foreground",
   rejected: "bg-muted text-muted-foreground",
 };

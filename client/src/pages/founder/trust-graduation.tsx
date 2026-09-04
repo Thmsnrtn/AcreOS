@@ -45,10 +45,10 @@ interface GraduationResponse {
 }
 
 const TIER_BADGE: Record<Tier, { label: string; className: string }> = {
-  silent: { label: "silent", className: "bg-acr-pos-soft text-acr-pos border-transparent" },
-  notify_only: { label: "notify_only", className: "bg-acr-brand-soft text-acr-brand border-transparent" },
+  silent: { label: "silent", className: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent" },
+  notify_only: { label: "notify_only", className: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent" },
   manual: { label: "manual", className: "bg-muted text-muted-foreground border-transparent" },
-  suspended: { label: "suspended", className: "bg-acr-neg-soft text-acr-neg border-transparent" },
+  suspended: { label: "suspended", className: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent" },
 };
 
 export default function FounderTrustGraduationPage() {

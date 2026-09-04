@@ -113,10 +113,10 @@ export default function MarketIntelligencePage() {
     : null;
 
   const investmentGrade = overallScore !== null
-    ? overallScore >= 75 ? { label: "A — Prime", color: "text-acr-pos bg-acr-pos-soft border-acr-pos-soft" }
+    ? overallScore >= 75 ? { label: "A — Prime", color: "text-acr-pos-soft-ink bg-acr-pos-soft border-acr-pos-soft" }
     : overallScore >= 60 ? { label: "B — Strong", color: "text-primary bg-primary/10 border-primary/20" }
-    : overallScore >= 45 ? { label: "C — Moderate", color: "text-acr-warn bg-acr-warn-soft border-acr-warn-soft" }
-    : { label: "D — Weak", color: "text-acr-neg bg-acr-neg-soft border-acr-neg-soft" }
+    : overallScore >= 45 ? { label: "C — Moderate", color: "text-acr-warn-soft-ink bg-acr-warn-soft border-acr-warn-soft" }
+    : { label: "D — Weak", color: "text-acr-neg-soft-ink bg-acr-neg-soft border-acr-neg-soft" }
     : null;
 
   const priceHistory = trends?.historicalPrices?.map((p: any) => ({

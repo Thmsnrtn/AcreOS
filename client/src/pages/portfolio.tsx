@@ -139,10 +139,10 @@ const ALERT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string 
 };
 
 const SEVERITY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  critical: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30" },
-  high: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30" },
-  medium: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30" },
-  low: { bg: "bg-acr-brand-soft", text: "text-acr-brand", border: "border-acr-brand/30" },
+  critical: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft", text: "text-acr-neg-soft-ink dark:text-acr-neg-soft-ink", border: "border-acr-neg/30 dark:border-acr-neg/30" },
+  high: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn-soft-ink dark:text-acr-warn-soft-ink", border: "border-acr-warn/30 dark:border-acr-warn/30" },
+  medium: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn-soft-ink dark:text-acr-warn-soft-ink", border: "border-acr-warn/30 dark:border-acr-warn/30" },
+  low: { bg: "bg-acr-brand-soft", text: "text-acr-brand-soft-ink", border: "border-acr-brand/30" },
 };
 
 // Theme-respondent status colors. CSS variables resolve at render so charts
@@ -416,7 +416,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                     <Bell className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                     <CardTitle className="acr-section-h2 text-section-h2">Portfolio alerts</CardTitle>
                     {!alertsLoading && activeAlerts.length > 0 && (
-                      <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg" aria-live="polite" aria-label={`${activeAlerts.length} active alert${activeAlerts.length === 1 ? "" : "s"}`}>
+                      <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink" aria-live="polite" aria-label={`${activeAlerts.length} active alert${activeAlerts.length === 1 ? "" : "s"}`}>
                         <span className="tabular-nums">{activeAlerts.length}</span> active
                       </Badge>
                     )}
@@ -465,25 +465,25 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                   <div className="space-y-3">
                     <ul className="flex flex-wrap gap-2 mb-4 list-none p-0 m-0" aria-label="Alerts by severity">
                       {criticalAlerts > 0 && (
-                        <li><Badge className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg" aria-label={`${criticalAlerts} critical alert${criticalAlerts === 1 ? "" : "s"}`}>
+                        <li><Badge className="bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink" aria-label={`${criticalAlerts} critical alert${criticalAlerts === 1 ? "" : "s"}`}>
                           <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           <span className="tabular-nums">{criticalAlerts}</span> critical
                         </Badge></li>
                       )}
                       {highAlerts > 0 && (
-                        <li><Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn" aria-label={`${highAlerts} high-severity alert${highAlerts === 1 ? "" : "s"}`}>
+                        <li><Badge className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink" aria-label={`${highAlerts} high-severity alert${highAlerts === 1 ? "" : "s"}`}>
                           <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                           <span className="tabular-nums">{highAlerts}</span> high
                         </Badge></li>
                       )}
                       {mediumAlerts > 0 && (
-                        <li><Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn" aria-label={`${mediumAlerts} medium-severity alert${mediumAlerts === 1 ? "" : "s"}`}>
+                        <li><Badge className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink" aria-label={`${mediumAlerts} medium-severity alert${mediumAlerts === 1 ? "" : "s"}`}>
                           <Info className="w-3 h-3 mr-1" aria-hidden="true" />
                           <span className="tabular-nums">{mediumAlerts}</span> medium
                         </Badge></li>
                       )}
                       {lowAlerts > 0 && (
-                        <li><Badge className="bg-acr-brand-soft text-acr-brand" aria-label={`${lowAlerts} low-severity alert${lowAlerts === 1 ? "" : "s"}`}>
+                        <li><Badge className="bg-acr-brand-soft text-acr-brand-soft-ink" aria-label={`${lowAlerts} low-severity alert${lowAlerts === 1 ? "" : "s"}`}>
                           <Info className="w-3 h-3 mr-1" aria-hidden="true" />
                           <span className="tabular-nums">{lowAlerts}</span> low
                         </Badge></li>
@@ -747,19 +747,19 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                     <div>
                       <p className="text-sm font-medium mb-2">Aging buckets</p>
                       <ul className="flex flex-wrap gap-2 list-none p-0 m-0" aria-label="Notes by aging bucket">
-                        <li><Badge variant="secondary" className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos" aria-label={`Current: ${delinquency?.agingBuckets.current.count || 0}`}>
+                        <li><Badge variant="secondary" className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft dark:text-acr-pos-soft-ink" aria-label={`Current: ${delinquency?.agingBuckets.current.count || 0}`}>
                           <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           Current: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.current.count || 0}</span>
                         </Badge></li>
-                        <li><Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn" aria-label={`30 days late: ${delinquency?.agingBuckets.days30.count || 0}`}>
+                        <li><Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink" aria-label={`30 days late: ${delinquency?.agingBuckets.days30.count || 0}`}>
                           <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                           30 days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days30.count || 0}</span>
                         </Badge></li>
-                        <li><Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn" aria-label={`60 days late: ${delinquency?.agingBuckets.days60.count || 0}`}>
+                        <li><Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink" aria-label={`60 days late: ${delinquency?.agingBuckets.days60.count || 0}`}>
                           <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                           60 days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days60.count || 0}</span>
                         </Badge></li>
-                        <li><Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg" aria-label={`90+ days late: ${delinquency?.agingBuckets.days90Plus.count || 0}`}>
+                        <li><Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink" aria-label={`90+ days late: ${delinquency?.agingBuckets.days90Plus.count || 0}`}>
                           <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                           90+ days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days90Plus.count || 0}</span>
                         </Badge></li>

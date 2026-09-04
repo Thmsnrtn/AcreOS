@@ -398,7 +398,7 @@ function TcpaCompliancePanel() {
                       <TableCell>{lead.firstName} {lead.lastName}</TableCell>
                       <TableCell className="text-muted-foreground">{lead.phone || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn">
+                        <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn-soft-ink">
                           <XCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           No consent
                         </Badge>

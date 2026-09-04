@@ -79,7 +79,7 @@ export function OfflineIndicator() {
   if (isOnline && queuedCount > 0) {
     return (
       <div
-        className="fixed top-0 left-0 right-0 z-toast bg-acr-warn-soft text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3 flex-wrap"
+        className="fixed top-0 left-0 right-0 z-toast bg-acr-warn-soft text-acr-warn-soft-ink px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3 flex-wrap"
         data-testid="queued-indicator"
       >
         <CheckCircle2 className="w-4 h-4" aria-hidden="true" />

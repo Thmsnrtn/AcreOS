@@ -357,9 +357,9 @@ export function getRoleLabel(role: string): string {
 export function getRoleBadgeStyle(role: string): string {
   switch (role) {
     case "owner":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "admin":
-      return "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand";
+      return "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink";
     case "member":
       return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     case "viewer":

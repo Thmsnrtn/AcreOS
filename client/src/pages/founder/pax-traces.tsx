@@ -151,9 +151,9 @@ function TraceRowSkeleton() {
 function ToneBadge({ label, tone }: { label: string; tone: "neutral" | "ok" | "warn" }) {
   const cls =
     tone === "ok"
-      ? "bg-acr-pos-soft text-acr-pos"
+      ? "bg-acr-pos-soft text-acr-pos-soft-ink"
       : tone === "warn"
-      ? "bg-acr-warn-soft text-acr-warn"
+      ? "bg-acr-warn-soft text-acr-warn-soft-ink"
       : "bg-muted text-muted-foreground";
   return (
     <Badge variant="secondary" className={`text-[10px] border-transparent ${cls}`}>
@@ -193,12 +193,12 @@ export default function FounderPaxTracesPage() {
         </div>
         {data && (
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums">
+            <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent tabular-nums">
               <Activity className="w-3 h-3 mr-1" aria-hidden="true" />
               {data.totals.total} total
             </Badge>
             {data.totals.errors > 0 && (
-              <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg border-transparent tabular-nums">
+              <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg-soft-ink border-transparent tabular-nums">
                 <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                 {data.totals.errors} errors
               </Badge>
@@ -257,8 +257,8 @@ export default function FounderPaxTracesPage() {
                         <div
                           className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
                             row.error
-                              ? "bg-acr-neg-soft text-acr-neg"
-                              : "bg-acr-brand-soft text-acr-brand"
+                              ? "bg-acr-neg-soft text-acr-neg-soft-ink"
+                              : "bg-acr-brand-soft text-acr-brand-soft-ink"
                           }`}
                           aria-hidden="true"
                         >

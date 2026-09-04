@@ -57,10 +57,10 @@ interface Goal {
 }
 
 const CATEGORY_CONFIG = {
-  revenue: { label: "Revenue", icon: DollarSign, color: "text-acr-pos", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/20" },
+  revenue: { label: "Revenue", icon: DollarSign, color: "text-acr-pos-soft-ink", bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/20" },
   deals: { label: "Deals", icon: TrendingUp, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20" },
   leads: { label: "Leads", icon: Users, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20" },
-  properties: { label: "Properties", icon: Home, color: "text-acr-warn", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20" },
+  properties: { label: "Properties", icon: Home, color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20" },
   custom: { label: "Custom", icon: Target, color: "text-muted-foreground", bg: "bg-muted dark:bg-acr-bg-sunken/20" },
 };
 

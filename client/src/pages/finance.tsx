@@ -251,10 +251,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   // Status / loan-health → semantic --acr-* tone (Tier 1 pattern).
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-acr-pos-soft text-acr-pos border-transparent';
-      case 'paid_off': return 'bg-acr-brand-soft text-acr-brand border-transparent';
-      case 'defaulted': return 'bg-acr-neg-soft text-acr-neg border-transparent';
-      case 'pending': return 'bg-acr-warn-soft text-acr-warn border-transparent';
+      case 'active': return 'bg-acr-pos-soft text-acr-pos-soft-ink border-transparent';
+      case 'paid_off': return 'bg-acr-brand-soft text-acr-brand-soft-ink border-transparent';
+      case 'defaulted': return 'bg-acr-neg-soft text-acr-neg-soft-ink border-transparent';
+      case 'pending': return 'bg-acr-warn-soft text-acr-warn-soft-ink border-transparent';
       default: return 'bg-acr-surface-2 text-acr-ink-3 border-transparent';
     }
   };
@@ -1566,11 +1566,11 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         <dd>
                           <Badge
                             className={
-                              dunningData.dunningStage === 'current' ? 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos' :
-                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn' :
-                              dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn' :
-                              dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg' :
-                              'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/50 dark:text-acr-neg'
+                              dunningData.dunningStage === 'current' ? 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft dark:text-acr-pos-soft-ink' :
+                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink' :
+                              dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink' :
+                              dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft dark:text-acr-neg-soft-ink' :
+                              'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/50 dark:text-acr-neg-soft-ink'
                             }
                             data-testid="badge-dunning-stage"
                           >

@@ -30,9 +30,9 @@ function CountChip({
   if (value === 0) return null;
   const toneCls =
     tone === "neg"
-      ? "text-acr-neg bg-acr-neg-soft"
+      ? "text-acr-neg-soft-ink bg-acr-neg-soft"
       : tone === "warn"
-        ? "text-acr-warn bg-acr-warn-soft"
+        ? "text-acr-warn-soft-ink bg-acr-warn-soft"
         : "text-muted-foreground bg-muted";
   return (
     <span

@@ -129,9 +129,9 @@ function getStageIcon(stage: string) {
 function getStageStyle(stage: string) {
   switch (stage) {
     case "hot":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "warm":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "cold":
       return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
@@ -142,18 +142,18 @@ function getStageStyle(stage: string) {
 function getRecommendationStyle(rec: "mail" | "maybe" | "skip"): string {
   switch (rec) {
     case "mail":
-      return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
+      return "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink";
     case "maybe":
-      return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
+      return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "skip":
-      return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
+      return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink";
   }
 }
 
 function getScoreColorStyle(score: number): string {
-  if (score >= 70) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
-  if (score >= 40) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-  return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
+  if (score >= 70) return "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink";
+  if (score >= 40) return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
+  return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink";
 }
 
 interface ScoreHistory {
@@ -460,9 +460,9 @@ function getDaysSinceContact(lead: Lead): number {
 }
 
 function getContactAgeStyle(days: number): string {
-  if (days <= 3) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
-  if (days <= 7) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-  return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
+  if (days <= 3) return "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink";
+  if (days <= 7) return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
+  return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink";
 }
 
 function ContactAgeBadge({ lead }: { lead: Lead }) {
@@ -591,7 +591,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink"
             data-testid={`badge-tcpa-${lead.id}`}
           >
             <PhoneOff className="w-3 h-3" />
@@ -614,7 +614,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink"
             data-testid={`badge-tcpa-${lead.id}`}
           >
             <Shield className="w-3 h-3" />
@@ -637,7 +637,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
       <TooltipTrigger asChild>
         <Badge
           variant="outline"
-          className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
+          className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
           data-testid={`badge-tcpa-${lead.id}`}
         >
           <AlertCircle className="w-3 h-3" />
@@ -2164,7 +2164,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 
               {importResult.errors.length > 0 && (
                 <div className="border border-acr-neg-soft dark:border-acr-neg-soft rounded-card overflow-hidden" role="alert">
-                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
+                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft/30 p-2 text-sm font-medium text-acr-neg-soft-ink dark:text-acr-neg-soft-ink flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" aria-hidden="true" />
                     Errors (<span className="tabular-nums">{importResult.errors.length}</span>)
                   </div>
@@ -2229,9 +2229,9 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 function LeadStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
-    contacting: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand",
-    negotiation: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
-    closed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
+    contacting: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
+    negotiation: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
+    closed: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",
     dead: "bg-muted text-muted-foreground",
   };
   

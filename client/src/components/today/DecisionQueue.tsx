@@ -51,12 +51,12 @@ export type DecisionSource =
   | "portfolio-alert";
 
 const sourcePillStyles: Record<DecisionSource, string> = {
-  "pax-priority": "bg-acr-brand-soft text-acr-brand",
-  "pax-suggests": "bg-acr-pos-soft text-acr-pos",
-  "pax-noticed": "bg-acr-brand-soft text-acr-brand",
-  "pax-ask": "bg-acr-warn-soft text-acr-warn",
+  "pax-priority": "bg-acr-brand-soft text-acr-brand-soft-ink",
+  "pax-suggests": "bg-acr-pos-soft text-acr-pos-soft-ink",
+  "pax-noticed": "bg-acr-brand-soft text-acr-brand-soft-ink",
+  "pax-ask": "bg-acr-warn-soft text-acr-warn-soft-ink",
   "ai-queue": "bg-primary/10 text-primary",
-  "portfolio-alert": "bg-acr-warn-soft text-acr-warn",
+  "portfolio-alert": "bg-acr-warn-soft text-acr-warn-soft-ink",
 };
 
 const sourcePillLabel: Record<DecisionSource, string> = {
@@ -288,7 +288,7 @@ export function DecisionQueue({
           <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
           <h2 className="acr-section-h2 text-section-h2">Decision queue</h2>
           {visible.length > 0 && (
-            <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
+            <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent text-xs tabular-nums">
               {visible.length}
             </Badge>
           )}

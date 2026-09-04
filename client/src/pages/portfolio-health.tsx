@@ -27,8 +27,8 @@ interface PortfolioAlert {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { icon: AlertCircle, color: "text-acr-neg", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border-acr-neg-soft dark:border-acr-neg-soft", badge: "destructive" as const },
-  warning: { icon: AlertTriangle, color: "text-acr-warn", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft", badge: "outline" as const },
+  critical: { icon: AlertCircle, color: "text-acr-neg-soft-ink", bg: "bg-acr-neg-soft dark:bg-acr-neg-soft/20 border-acr-neg-soft dark:border-acr-neg-soft", badge: "destructive" as const },
+  warning: { icon: AlertTriangle, color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 border-acr-warn-soft dark:border-acr-warn-soft", badge: "outline" as const },
   info: { icon: Info, color: "text-acr-accent", bg: "bg-acr-accent dark:bg-acr-accent/20 border-acr-accent dark:border-acr-accent", badge: "secondary" as const },
 };
 
