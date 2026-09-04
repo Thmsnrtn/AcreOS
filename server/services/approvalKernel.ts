@@ -24,7 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
@@ -312,6 +312,85 @@ export async function sweepExpiredPendingActions(): Promise<number> {
 }
 
 /**
+ * How long a claim may sit unfinished before the sweep calls it unknown.
+ *
+ * Generous on purpose: a slow send is not a dead process, and re-labelling a
+ * live execution would be its own lie. Five minutes is longer than any
+ * executor here takes and shorter than the gap between deploys.
+ */
+const STALE_CLAIM_MINUTES = 5;
+
+/**
+ * Find the claims nothing finished, and give them a name.
+ *
+ * `approvePendingAction` claims a row pending→approved and only THEN executes.
+ * If the process dies in that window — a machine replaced mid-deploy, an OOM,
+ * the uncaughtException handler calling process.exit — the row stays
+ * `approved` forever. `livePendingPredicate` filters on `pending`, so the
+ * queue and the badge skip it; the expiry sweep above only flips `pending`.
+ * Nothing in this repository read or repaired an `approved` row. Observable
+ * behaviour: the customer tapped Approve, the card disappeared, the message
+ * was never sent, the badge was "correct", and no record of the failure
+ * existed anywhere (2026-09-04 review, CONFIRMED).
+ *
+ * ── WHY NOT RELEASE IT BACK TO `pending` ────────────────────────────────────
+ * Because the claim is the LAST thing we know. The executor may have died
+ * before the send, during it, or after the provider accepted and before the
+ * status write — and this kernel's sends carry no provider idempotency key, so
+ * re-offering the ask means a second tap may send a second message to a real
+ * counterparty. Between silently losing a send and silently duplicating one to
+ * someone outside the company, the honest third answer is to say we do not
+ * know: the row moves to `execution_unknown`, which is NOT in the live
+ * predicate (so nothing re-offers it) and IS a loud error log per row.
+ *
+ * Re-arming these is a deliberate next step and needs the idempotency key
+ * first — `contentHash` is already the natural one. Doing it before then would
+ * trade a defect nobody can see for one a counterparty can.
+ */
+export async function sweepStaleApprovalClaims(): Promise<number> {
+  const stranded = await unscopedForPlatformOps(
+    "approval-claim sweep: cross-org status stamp (approved-but-unfinished -> execution_unknown); writes no org's data into another's",
+  )
+    .update(pendingActions)
+    .set({ status: "execution_unknown" })
+    .where(
+      and(
+        eq(pendingActions.status, "approved"),
+        isNull(pendingActions.executedAt),
+        sql`${pendingActions.claimedAt} IS NOT NULL`,
+        // `make_interval` with a bound parameter rather than an interpolated
+        // interval literal: no sql.raw, and the window stays a real constant
+        // rather than a string spliced into SQL.
+        sql`${pendingActions.claimedAt} < now() - make_interval(mins => ${STALE_CLAIM_MINUTES})`,
+      ),
+    )
+    .returning({
+      id: pendingActions.id,
+      organizationId: pendingActions.organizationId,
+      toolName: pendingActions.toolName,
+    });
+
+  for (const row of stranded) {
+    logger.error(
+      "[approvalKernel] A claimed approval was never finished — marked execution_unknown",
+      undefined,
+      {
+        metadata: {
+          pendingActionId: row.id,
+          orgId: row.organizationId,
+          toolName: row.toolName,
+          note:
+            "The process died between claiming this approval and completing it. Whether the " +
+            "action reached its provider is unknown; it is NOT re-offered, because these sends " +
+            "carry no idempotency key and a second tap could send twice.",
+        },
+      },
+    );
+  }
+  return stranded.length;
+}
+
+/**
  * The artifact executeTool returns INSTEAD of executing. Shaped so the chat
  * UI can render an Approve/Reject card and so the model can tell the user a
  * human tap is required.
@@ -406,7 +485,14 @@ export async function approvePendingAction(params: {
   // Atomic claim: exactly one approval transitions pending→approved.
   const claimed = await db
     .update(pendingActions)
-    .set({ status: "approved", approvedByUserId: params.approvedByUserId ?? null })
+    // `claimedAt` is what makes a stranded claim findable. Without it an
+    // `approved` row that nothing finished is indistinguishable from one
+    // claimed a millisecond ago, so no sweep could safely touch it.
+    .set({
+      status: "approved",
+      approvedByUserId: params.approvedByUserId ?? null,
+      claimedAt: new Date(),
+    })
     .where(
       and(
         eq(pendingActions.id, pendingActionId),
@@ -440,7 +526,7 @@ export async function approvePendingAction(params: {
   const releaseClaim = async (): Promise<void> => {
     await db
       .update(pendingActions)
-      .set({ status: "pending", approvedByUserId: null })
+      .set({ status: "pending", approvedByUserId: null, claimedAt: null })
       .where(
         and(
           eq(pendingActions.id, pendingActionId),

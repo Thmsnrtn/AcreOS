@@ -2694,10 +2694,19 @@ export const pendingActions = pgTable("pending_actions", {
   // client-supplied content never touches the execution.
   args: jsonb("args").notNull().$type<Record<string, unknown>>(),
   contentHash: text("content_hash").notNull(), // sha256(toolName + "\n" + canonicalized args)
-  status: text("status").notNull().default("pending"), // "pending" | "approved" | "executed" | "expired" | "rejected"
+  // "pending" | "approved" | "executed" | "expired" | "rejected" |
+  // "execution_unknown". The last one is written ONLY by the stale-claim
+  // sweep — see approvalKernel.sweepExpiredPendingActions.
+  status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
   createdByUserId: text("created_by_user_id"),
   approvedByUserId: text("approved_by_user_id"),
+  // When the pending→approved claim was taken. Set by the claim, cleared when
+  // the claim is released, and read by the stale-claim sweep: an `approved`
+  // row with no `executed_at` and a claim older than the window is one whose
+  // process died between claiming and finishing, and nothing else in the
+  // system would ever look at it again (2026-09-04 review).
+  claimedAt: timestamp("claimed_at"),
   executedAt: timestamp("executed_at"),
   resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
   // Migration 0250 (customer autonomy clarity program): where the ask came

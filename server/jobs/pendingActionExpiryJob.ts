@@ -24,6 +24,12 @@
  * sweep, and its receipt refers to a row that reads `executed`, which the
  * reader can tell apart — never a fabricated expiry.
  *
+ * It also sweeps STRANDED APPROVAL CLAIMS on the same cadence — rows the
+ * kernel moved pending→approved and never finished because the process died
+ * in between. Those were invisible to every reader and every sweep in the
+ * repo; see approvalKernel.sweepStaleApprovalClaims for why they are marked
+ * `execution_unknown` rather than re-offered.
+ *
  * Same shared runtime as every other job (jobRuntime lock/interval/log);
  * runScheduledJobs.ts calls the start* entrypoint from its orchestrator like
  * the other extracted slices.
@@ -68,7 +74,11 @@ async function readDueRows(): Promise<DueRow[]> {
 }
 
 /** One sweep: read what is due, flip it through the kernel, receipt each row. */
-async function runPendingActionExpirySweep(): Promise<{ flipped: number; receipted: number }> {
+async function runPendingActionExpirySweep(): Promise<{
+  flipped: number;
+  receipted: number;
+  strandedClaims: number;
+}> {
   let due: DueRow[] = [];
   try {
     due = await readDueRows();
@@ -77,8 +87,29 @@ async function runPendingActionExpirySweep(): Promise<{ flipped: number; receipt
     logger.error("[pending-action-expiry] Could not read due rows — flipping without receipts", err as Error);
   }
 
-  const { sweepExpiredPendingActions } = await import("../services/approvalKernel");
+  const { sweepExpiredPendingActions, sweepStaleApprovalClaims } = await import(
+    "../services/approvalKernel"
+  );
   const flipped = await sweepExpiredPendingActions();
+
+  // The OTHER thing that can strand a row, swept on the same cadence.
+  //
+  // approvePendingAction claims pending→approved and only then executes; a
+  // process that dies in that window leaves the row `approved` forever, which
+  // no reader and no sweep in this repo ever looked at. It runs here rather
+  // than in its own job because the two are the same class of bookkeeping over
+  // the same table, and because a second five-minute interval to maintain is
+  // a second one to forget. Its failure must not stop the expiry receipts
+  // below from being written.
+  let strandedClaims = 0;
+  try {
+    strandedClaims = await sweepStaleApprovalClaims();
+  } catch (err) {
+    logger.error(
+      "[pending-action-expiry] Stale-claim sweep failed — expired rows still swept",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   let receipted = 0;
   const stanceByOrg = new Map<number, Awaited<ReturnType<typeof getPaxControls>>>();
@@ -125,17 +156,18 @@ async function runPendingActionExpirySweep(): Promise<{ flipped: number; receipt
     }
   }
 
-  return { flipped, receipted };
+  return { flipped, receipted, strandedClaims };
 }
 
 export function startPendingActionExpiryJob(): void {
   log("Registering pending-action expiry sweep (every 5 minutes)", "pending-action-expiry");
   trackInterval(() => {
     void withJobLock("pending_action_expiry_sweep", SWEEP_LOCK_TTL_SECONDS, async () => {
-      const { flipped, receipted } = await runPendingActionExpirySweep();
-      if (flipped > 0 || receipted > 0) {
+      const { flipped, receipted, strandedClaims } = await runPendingActionExpirySweep();
+      if (flipped > 0 || receipted > 0 || strandedClaims > 0) {
         log(
-          `Pending-action expiry sweep complete: ${flipped} flipped pending → expired, ${receipted} receipt(s) written`,
+          `Pending-action expiry sweep complete: ${flipped} flipped pending → expired, ` +
+            `${receipted} receipt(s) written, ${strandedClaims} stranded claim(s) marked execution_unknown`,
           "pending-action-expiry",
         );
       }

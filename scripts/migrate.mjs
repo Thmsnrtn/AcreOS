@@ -11076,6 +11076,20 @@ END $mig0246$`,
   `ALTER TABLE "territories" ADD COLUMN IF NOT EXISTS "state_code" text`,
   `ALTER TABLE "territories" ADD COLUMN IF NOT EXISTS "assigned_user_id" integer`,
 
+  // ── 0253 — pending_actions.claimed_at (2026-09-04) ──────────────────────
+  // The approval kernel claims a row pending→approved and only then executes.
+  // If the process dies in that window — a machine replaced mid-deploy, an
+  // OOM, the uncaughtException handler calling process.exit — the row stays
+  // `approved` forever: livePendingPredicate filters on `pending`, so the
+  // queue, the badge and the expiry sweep all skip it, and nothing anywhere
+  // reads an `approved` row. The customer tapped Approve, the card vanished,
+  // nothing was sent, and no record of it existed.
+  //
+  // This column is what makes such a row findable: claim time, cleared when a
+  // claim is released, absent on every row written before today.
+  `ALTER TABLE "pending_actions" ADD COLUMN IF NOT EXISTS "claimed_at" timestamp`,
+  `CREATE INDEX IF NOT EXISTS "pending_actions_stale_claim_idx" ON "pending_actions" ("status", "claimed_at") WHERE "executed_at" IS NULL`,
+
   // territories.state_code is declared NOT NULL. Tighten only when the table
   // can satisfy it — a no-op on any release where a row is still missing one,
   // and self-removing in effect once the backfill happens elsewhere.
