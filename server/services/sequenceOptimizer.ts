@@ -780,67 +780,24 @@ Respond in JSON:
     return minConfidence;
   }
 
-  async applyWinningVariant(
-    sequenceId: number,
-    messagePosition: number
-  ): Promise<{ applied: boolean; winningVariant?: string }> {
-    const variants = await db.query.sequencePerformance.findMany({
-      where: and(
-        eq(sequencePerformance.sequenceId, sequenceId),
-        eq(sequencePerformance.messagePosition, messagePosition),
-        sql`${sequencePerformance.variant} IS NOT NULL`
-      ),
-    });
-
-    if (variants.length === 0) {
-      return { applied: false };
-    }
-
-    const firstRecord = variants[0];
-    const testResult = await this.determineABTestWinner(firstRecord.id);
-
-    if (!testResult.hasWinner || !testResult.winningVariant) {
-      return { applied: false };
-    }
-
-    const winner = variants.find((v) => v.variant === testResult.winningVariant);
-
-    if (winner) {
-      await db
-        .update(sequencePerformance)
-        .set({ isWinner: false, updatedAt: new Date() })
-        .where(
-          and(
-            eq(sequencePerformance.sequenceId, sequenceId),
-            eq(sequencePerformance.messagePosition, messagePosition)
-          )
-        );
-
-      await db
-        .update(sequencePerformance)
-        .set({ isWinner: true, updatedAt: new Date() })
-        .where(eq(sequencePerformance.id, winner.id));
-
-      await db.insert(agentEvents).values({
-        organizationId: winner.organizationId,
-        eventType: "ab_test_winner_applied",
-        eventSource: "sequence_optimizer",
-        payload: {
-          sequenceId,
-          messagePosition,
-          winningVariant: testResult.winningVariant,
-          metrics: testResult.metrics,
-        },
-        relatedEntityType: "sequence",
-        relatedEntityId: sequenceId,
-      });
-
-      return { applied: true, winningVariant: testResult.winningVariant };
-    }
-
-    return { applied: false };
-  }
-
+  /*
+   * `applyWinningVariant(sequenceId, messagePosition)` was here and is DELETED
+   * (2026-09-04). Every reference to it in this repository was its own
+   * definition — no route, no job, no service, no test.
+   *
+   * It was also cross-org in both directions. The read
+   * `db.query.sequencePerformance.findMany({ where: and(eq(sequenceId),
+   * eq(messagePosition)) })` named no organization, and `sequence_id` is a
+   * plain integer with no foreign key ("links to marketingSequences if
+   * applicable"); the UPDATE that followed cleared `isWinner` on the same
+   * unscoped predicate. Two organizations holding the same sequence_id would
+   * have read each other's A/B performance and cleared each other's winner.
+   *
+   * It surfaced when the org-scope lint was widened to Drizzle's relational
+   * query API — 280 `db.query.*.findMany` / `.findFirst` call sites that the
+   * gate, keyed on `.from(`, had never read. This was the one offender among
+   * them, and deletion is the cheapest way to satisfy that gate.
+   */
   async getSequenceHealthScore(
     organizationId: number,
     sequenceId: number

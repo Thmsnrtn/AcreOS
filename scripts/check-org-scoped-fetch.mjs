@@ -359,7 +359,6 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/services/dunning.ts::resolveCase",
   "server/services/dunning.ts::retryPayment",
   "server/services/leadNurturer.ts::processLeadsForOrg",
-  "server/services/sequenceOptimizer.ts::applyWinningVariant",
   "server/services/sequenceOptimizer.ts::identifyBestPerformingSegments",
   // ── RULE 2 BASELINE, frozen 2026-08-13 ────────────────────────────────────
   //
@@ -1893,13 +1892,31 @@ const RULE3_BASELINE = new Set([
   "server/storage/supportOpsRepo.ts::getSystemAlerts::systemAlerts",
 ]);
 
-/** `.from(` → the statement's `;` at paren depth 0. */
+/**
+ * Every query CHAIN in a unit, in both of Drizzle's spellings.
+ *
+ * ── THE SECOND SPELLING ─────────────────────────────────────────────────────
+ * This walked `.from(<table>)` and nothing else. Drizzle's RELATIONAL query
+ * API — `db.query.<table>.findMany({ where: … })` — has no `.from(`, so every
+ * one of its call sites was outside the population this gate reads. Measured
+ * 2026-09-04: 280 of them under server/, roughly a seventh of the query
+ * surface, invisible to rule 3 in a gate whose entire subject is tenant
+ * isolation. The org-scope lint's own blind spot, in the shape CLAUDE.md's
+ * third law describes: the rule was right, the population was a regex.
+ *
+ * `db.query.<key>` keys on the SCHEMA EXPORT NAME, the same identifier
+ * `orgScopedIdents` holds, so the two spellings share one table set and one
+ * predicate. Only the entry point differs.
+ */
 function queryChainsFrom(unitText, orgScopedIdents) {
   const chains = [];
-  const re = /\.from\(\s*([A-Za-z0-9_]+)\s*\)/g;
+  // `.from(leads)` and `db.query.leads.findMany(`/`.findFirst(` — group 1 is
+  // the table identifier in both, so the body below is shared.
+  const re =
+    /\.from\(\s*([A-Za-z0-9_]+)\s*\)|\b(?:db|tx)\s*\.\s*query\s*\.\s*([A-Za-z0-9_]+)\s*\.\s*(?:findMany|findFirst)\s*\(/g;
   let m;
   while ((m = re.exec(unitText)) !== null) {
-    const table = m[1];
+    const table = m[1] ?? m[2];
     if (!orgScopedIdents.has(table)) continue;
     // Sanctioned-root exemption (2026-08-31): a chain whose ROOT is
     // unscopedForPlatformOps(...) is the explicit, logged, greppable escape
@@ -2038,6 +2055,18 @@ function touchedOrgScopedTables(methodText, orgScopedIdents) {
   const accessRe = /\b(?:from|(?:db|tx)\s*\.\s*update|(?:db|tx)\s*\.\s*delete)\s*\(\s*([A-Za-z0-9_]+)\s*[),]/g;
   let m;
   while ((m = accessRe.exec(methodText)) !== null) {
+    const ident = m[1];
+    if (orgScopedIdents.has(ident)) touched.add(ident);
+  }
+  // Drizzle's RELATIONAL query API, which has no `.from(` and so was invisible
+  // to this predicate — and therefore to ALL THREE rules, because a unit that
+  // "touches no org-scoped table" is skipped before any of them run. Measured
+  // 2026-09-04: 280 `db.query.<table>.findMany` / `.findFirst` call sites
+  // under server/. The table key is the schema export name, the same
+  // identifier `orgScopedIdents` holds.
+  const relationalRe =
+    /\b(?:db|tx)\s*\.\s*query\s*\.\s*([A-Za-z0-9_]+)\s*\.\s*(?:findMany|findFirst)\s*\(/g;
+  while ((m = relationalRe.exec(methodText)) !== null) {
     const ident = m[1];
     if (orgScopedIdents.has(ident)) touched.add(ident);
   }

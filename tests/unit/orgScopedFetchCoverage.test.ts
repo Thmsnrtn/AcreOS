@@ -239,8 +239,32 @@ const ROUTE_SCAN_FLOOR = 2400;
  */
 const RULE_3_BASELINE = 72;
 
-/** Chains rule 3 must keep seeing; 1,060 measured 2026-08-18. */
+/** Chains rule 3 must keep seeing; 1,060 measured 2026-08-18, 2,088 on 2026-09-04. */
 const RULE_3_CHAIN_FLOOR = 300;
+
+/**
+ * BOTH of Drizzle's query spellings reach rule 3.
+ *
+ * The chain walker keyed on `.from(<table>)` and nothing else, so
+ * `db.query.<table>.findMany({ where: … })` — the relational API, 280 call
+ * sites under server/ — was outside the population entirely. A gate whose
+ * whole subject is tenant isolation could not see a seventh of the queries
+ * (2026-09-04). Widening it surfaced one real offender:
+ * `sequenceOptimizer.applyWinningVariant`, which read AND updated
+ * `sequence_performance` on `(sequence_id, message_position)` with no
+ * organization — and had no callers anywhere, so it was deleted.
+ *
+ * A fixture per spelling, because "the regex still matches `.from(`" and "the
+ * regex still matches both" look identical in a green run.
+ */
+// A NON-id predicate on purpose: `eq(<table>.id, …)` is primary-key
+// resolution, which rule 3 hands to rule 2 by design. A fixture that used it
+// would be excluded and read as "the gate does not see this spelling".
+const CHAIN_SPELLINGS = [
+  { id: "classic-select", query: 'await db.select().from(properties).where(eq(properties.state, st));' },
+  { id: "relational-find-many", query: 'await db.query.properties.findMany({ where: eq(properties.state, st) });' },
+  { id: "relational-find-first", query: 'await db.query.properties.findFirst({ where: eq(properties.state, st) });' },
+];
 
 function run(...args: string[]): string {
   // Runs the real lint. Asserting against its own output is the only way to
@@ -1298,5 +1322,64 @@ describe("the route-handler extractor reads the whole handler (boundary canaries
     expect(out, "the clean fixture's handler was not read either").toMatch(
       /scanned \d+ async functions, [1-9]\d* route handlers/,
     );
+  });
+});
+
+describe("rule 3 reads BOTH of Drizzle's query spellings", () => {
+  // One canary per spelling. The walker keyed on `.from(` alone, so every
+  // `db.query.<table>.findMany` in the repo — 280 of them — was outside the
+  // population; "the regex still matches `.from(`" and "the regex matches
+  // both" are indistinguishable in a green run, so each shape gets its own
+  // fixture with the defect hidden inside it.
+  for (const { id, query } of CHAIN_SPELLINGS) {
+    it(`catches an unscoped ${id}`, () => {
+      const { out, failed } = runOverFixture({
+        "shared/schema.ts": FIXTURE_SCHEMA,
+        "server/services/probe.ts": [
+          'import { db } from "../db";',
+          'import { eq } from "drizzle-orm";',
+          'import { properties } from "@shared/schema";',
+          "",
+          "export async function readOne(organizationId: number, st: string) {",
+          "  // The unit HAS an organization — that is what makes this rule 3 and",
+          "  // not rule 1 — and the query below does not name it.",
+          "  void organizationId;",
+          `  return ${query}`,
+          "}",
+          "",
+        ].join("\n"),
+      });
+      expect(
+        failed,
+        `an unscoped ${id} did not fail the gate — this spelling is outside ` +
+          `the population rule 3 reads:\n${out}`,
+      ).toBe(true);
+      expect(out).toContain("readOne");
+    });
+  }
+
+  it("and passes each spelling when the organization IS named", () => {
+    // The other half: a gate that fails on everything is no more useful than
+    // one that fails on nothing.
+    for (const { id, query } of CHAIN_SPELLINGS) {
+      const scoped = query.replace(
+        /eq\(properties\.state, st\)/,
+        "and(eq(properties.organizationId, organizationId), eq(properties.state, st))",
+      );
+      const { out, failed } = runOverFixture({
+        "shared/schema.ts": FIXTURE_SCHEMA,
+        "server/services/probe.ts": [
+          'import { db } from "../db";',
+          'import { and, eq } from "drizzle-orm";',
+          'import { properties } from "@shared/schema";',
+          "",
+          "export async function readOne(organizationId: number, st: string) {",
+          `  return ${scoped}`,
+          "}",
+          "",
+        ].join("\n"),
+      });
+      expect(failed, `a correctly scoped ${id} was reported as an offender:\n${out}`).toBe(false);
+    }
   });
 });
