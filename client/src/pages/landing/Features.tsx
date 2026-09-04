@@ -28,7 +28,11 @@ const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
   { cat: "Close", t: "E-sign + escrow", d: "Send contracts, track signatures, hand off to title — without leaving the app.", i: "pen" },
   { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices, 1098s. Seller-finance back office.", i: "ledger" },
   { cat: "Operate", t: "Automation builder", d: "No-code workflows. Trigger anything off any event. Pause anything in one click.", i: "flow" },
-  { cat: "Operate", t: "Audit log", d: "Every agent action — what, when, why, what data it used. Full transparency.", i: "audit" },
+  // The receipt row is what activity_log actually carries (server/services/
+  // paxReceipts.ts → when · what · which record · how, pinned by
+  // tests/unit/paxReceiptsAreComplete.test.ts). It does NOT carry a reason or
+  // the data a step consulted, so this card no longer claims either.
+  { cat: "Operate", t: "Audit log", d: "Every change Pax makes: when, what, which record, and whether you approved it, Pax did it on its own, or a rule you turned on ran.", i: "audit" },
   { cat: "Operate", t: "Team + roles", d: "Add a VA, a partner, or a teammate. Granular permissions.", i: "team" },
 ];
 

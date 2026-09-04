@@ -40,7 +40,9 @@ const MECHANICS: MechCard[] = [
     tag: "02",
   },
   {
-    q: "Every deal traced from first touch to closed file — parcels by APN, notes by loan number, rehabs by property ID. Each action timestamped and attributed to operator or agent.",
+    // activity_log carries userId / teamMemberId for a person and agentType for
+    // Pax, so the attribution named here is the one the row actually holds.
+    q: "Every deal traced from first touch to closed file — parcels by APN, notes by loan number, rehabs by property ID. Each action timestamped and attributed to the person who did it, or to Pax.",
     n: "Deal audit trail",
     r: "Per-deal activity log",
     tag: "03",

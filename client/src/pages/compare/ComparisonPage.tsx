@@ -130,7 +130,7 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
           data-testid="text-compare-summary"
         >
           {config.positioning ??
-            `AcreOS is built for one loop: pull county data, mail the right owners, capture every seller response, and turn it into an offer — with an autopilot that runs the busywork. Below is how that stacks up against ${config.competitor}, capability by capability. Where we haven't verified ${config.competitor}'s current feature, the cell is left blank rather than guessed.`}
+            `AcreOS is built for one loop: pull county data, mail the right owners, capture every seller response, and turn it into an offer — with Pax doing the busywork and nothing going out to a seller until you tap Approve. Below is how that stacks up against ${config.competitor}, capability by capability. Where we haven't verified ${config.competitor}'s current feature, the cell is left blank rather than guessed.`}
         </p>
       }
     >
@@ -190,9 +190,10 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
             bid real money on.
           </li>
           <li>
-            <span className="font-medium text-foreground">An autopilot, not just a database.</span>{" "}
-            Pax drafts replies, watches your pipeline, and queues next actions — everything
-            outbound waits for your explicit approval before it leaves the building.
+            <span className="font-medium text-foreground">It does the work, not just stores it.</span>{" "}
+            Pax drafts replies, scores your pipeline, keeps your records current, and queues
+            what needs deciding — and nothing goes out to another person until you tap
+            Approve.
           </li>
         </ul>
       </section>

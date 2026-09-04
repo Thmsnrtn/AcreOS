@@ -131,9 +131,12 @@ export default function TermsOfService() {
                   responsible for verifying Pax's outputs before acting on them.
                 </li>
                 <li>
-                  <strong>AcreOS's internal operations are AI-assisted.</strong> AcreOS operates with an
-                  AI executive team assisting the human founder in operating the company. This does not
-                  affect your rights or the enforceability of these Terms.
+                  <strong>AcreOS's internal operations are AI-assisted.</strong> AcreOS uses its own AI
+                  systems to help the founder run the company — drafting, analysis, and routine
+                  operational work. Decisions that bind AcreOS are reserved to the human founder and are
+                  blocked from automatic execution: pricing changes, signing legal documents, spending
+                  above AcreOS's internal limit, and deletion of customer data. This does not affect your
+                  rights or the enforceability of these Terms.
                 </li>
               </ul>
               <p className="text-muted-foreground leading-relaxed">

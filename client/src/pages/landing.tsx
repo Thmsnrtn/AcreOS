@@ -53,14 +53,22 @@ import { FinalCTA } from "./landing/FinalCTA";
 import { Footer } from "./landing/Footer";
 import "./landing/landing.css";
 
+/**
+ * The one public positioning sentence — rendered as the meta description AND
+ * the Open Graph description, so it is typed once. It says what the product
+ * does and what it will not do without you: Pax drafts and keeps records
+ * current, and nothing reaches another person until you tap Approve
+ * (shared/pax-glossary.ts is the customer-facing wording of the same rule).
+ */
+const PAGE_DESCRIPTION =
+  "AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing — Pax does the work and every message waits for your tap.";
+
 export default function LandingPage() {
   // Title is intentionally NOT set here — index.html ships the canonical
   // "AcreOS — The Operating System for Property Investors" title and we don't
   // want a flicker between that and a React-set variant on first paint.
   // Other routes still use useDocumentTitle() for their per-page titles.
-  usePageDescription(
-    "AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing with AI agents that act on your behalf.",
-  );
+  usePageDescription(PAGE_DESCRIPTION);
   // Marketing-touch substrate — record the landing page view (the top of the
   // acquisition funnel) once per mount. Carries the session's captured UTM.
   useEffect(() => {
@@ -72,7 +80,7 @@ export default function LandingPage() {
       <OpenGraph
         url={`${SITE.url}/`}
         title="AcreOS — The Operating System for Property Investors"
-        description="AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing with AI agents that act on your behalf."
+        description={PAGE_DESCRIPTION}
         type="website"
       />
       <JsonLd id="ld-organization" data={organizationSchema()} />

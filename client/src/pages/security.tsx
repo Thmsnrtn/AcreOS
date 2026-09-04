@@ -72,7 +72,7 @@ const SUB_PROCESSORS: SubProcessor[] = [
   },
   {
     vendor: "Anthropic",
-    purpose: "AI assistance (Pax / agent runtime)",
+    purpose: "AI assistance (Pax)",
     dataCategory: "Prompts and context the user submits",
     region: "United States",
   },
