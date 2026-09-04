@@ -179,7 +179,7 @@ function EmailMessageRow({
           ? "bg-[color:var(--acr-brand-soft)]"
           : message.isRead
             ? "hover:bg-[color:var(--acr-surface-2)]"
-            : "bg-[color:var(--acr-brand-soft)]/30 hover:bg-[color:var(--acr-brand-soft)]/50"
+            : "bg-acr-brand-soft/30 hover:bg-acr-brand-soft/50"
       }`}
     >
       <Avatar className="h-9 w-9 flex-shrink-0">

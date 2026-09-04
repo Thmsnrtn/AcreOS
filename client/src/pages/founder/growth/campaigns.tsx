@@ -344,10 +344,10 @@ export default function FounderGrowthCampaignsPage() {
   }
 
   const statusColors: Record<string, string> = {
-    active: "bg-acr-pos-soft text-acr-pos border-[color:var(--acr-pos)]/20",
-    paused: "bg-acr-warn-soft text-acr-warn border-[color:var(--acr-warn)]/20",
+    active: "bg-acr-pos-soft text-acr-pos border-acr-pos/20",
+    paused: "bg-acr-warn-soft text-acr-warn border-acr-warn/20",
     draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
-    completed: "bg-acr-brand-soft text-acr-brand border-[color:var(--acr-brand)]/20",
+    completed: "bg-acr-brand-soft text-acr-brand border-acr-brand/20",
   };
 
   const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {

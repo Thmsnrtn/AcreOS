@@ -41,7 +41,7 @@ export function ReceiptsStrip({ receipts }: ReceiptsStripProps) {
             <Link
               href={r.href}
               data-testid={`receipt-${r.id}`}
-              className="inline-flex items-center gap-1.5 min-h-11 pointer-fine:sm:min-h-9 px-3 py-1.5 rounded-full border border-[color:var(--acr-line-soft)] bg-acr-surface text-sm md:text-xs text-acr-ink-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70 [@media(hover:hover)]:hover:border-[color:var(--acr-brand)]/40"
+              className="inline-flex items-center gap-1.5 min-h-11 pointer-fine:sm:min-h-9 px-3 py-1.5 rounded-full border border-[color:var(--acr-line-soft)] bg-acr-surface text-sm md:text-xs text-acr-ink-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:opacity-70 [@media(hover:hover)]:hover:border-acr-brand/40"
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos shrink-0" aria-hidden="true" />
               <span>{r.label}</span>

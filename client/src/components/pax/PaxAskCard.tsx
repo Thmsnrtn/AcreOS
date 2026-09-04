@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { Verbs } from "@/lib/labels";
 import { formatPaxTime, PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 import { usePaxPaused, type PaxAskDecisionOutcome, type PaxAskItem } from "@/hooks/usePaxNeedsYou";
-import { AlertCircle, CheckCircle2, Clock, Pencil, RotateCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Loader2, Pencil, RotateCcw, XCircle } from "lucide-react";
 
 export type PaxAskCardStatus =
   | "pending"
@@ -180,20 +180,60 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
     }
   }
 
-  // The failed/pending-with-note branch keeps the buttons live; `failed`
-  // reads as a pending card with the server's reason attached.
+  // The failed branch keeps the buttons live: a failed ask is still yours to
+  // retry, and the server's reason is attached to it.
   const showButtons = status === "pending" || status === "failed";
-  const StatusIcon = status === "executed" ? CheckCircle2 : status === "expired" ? Clock : AlertCircle;
+
+  // ── THREE STATES THAT USED TO BE ONE ─────────────────────────────────────
+  // pending, deciding and failed all fell through to the same "else" arm:
+  // identical amber border, identical amber fill, identical AlertCircle in
+  // identical amber. An ask Pax TRIED and could not complete looked exactly
+  // like one nobody has tapped yet, separated only by a 12px status string.
+  // On the approval surface those are the two states that must never be
+  // confused.
+  //
+  // It also spent the warn semantic at rest: a queue of six untouched asks
+  // was a solid wall of amber, leaving nothing louder for the state that
+  // actually warrants alarm.
+  //
+  // So: pending is a NEUTRAL card carrying a single amber left edge — the way
+  // an unread issue is marked, present without shouting. `failed` takes the
+  // negative arm and an XCircle, because it is the one that went wrong.
+  // `deciding` gets a spinner and a dimmed body, so in-flight reads as
+  // in-flight rather than as "the buttons stopped working".
+  const StatusIcon =
+    status === "executed"
+      ? CheckCircle2
+      : status === "expired"
+        ? Clock
+        : status === "failed"
+          ? XCircle
+          : status === "deciding"
+            ? Loader2
+            : AlertCircle;
+
+  const statusTone =
+    status === "executed"
+      ? "text-acr-pos"
+      : status === "expired"
+        ? "text-muted-foreground"
+        : status === "failed"
+          ? "text-acr-neg"
+          : "text-acr-warn";
 
   return (
     <div
       className={cn(
-        "rounded-card border text-sm",
+        "rounded-card border text-sm transition-opacity",
         status === "executed"
           ? "border-acr-pos/30 bg-acr-pos-soft/40"
           : status === "rejected" || status === "expired" || status === "revised"
             ? "border-border bg-muted/40"
-            : "border-acr-warn/40 bg-acr-warn-soft/40",
+            : status === "failed"
+              ? "border-acr-neg/40 bg-acr-neg-soft/40"
+              : // pending and deciding: neutral card, amber left edge only.
+                "border-border bg-card border-l-2 border-l-acr-warn",
+        status === "deciding" && "opacity-70",
         compact ? "p-3 space-y-2" : "p-4 space-y-3",
         className,
       )}
@@ -208,7 +248,11 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
           <StatusIcon
             className={cn(
               "w-3.5 h-3.5 shrink-0",
-              status === "executed" ? "text-acr-pos" : status === "expired" ? "text-muted-foreground" : "text-acr-warn",
+              statusTone,
+              // motion-safe: the spin is information, not decoration, but a
+              // viewer who asked for less motion still gets the icon and the
+              // "Working…" line.
+              status === "deciding" && "motion-safe:animate-spin",
             )}
             aria-hidden="true"
           />

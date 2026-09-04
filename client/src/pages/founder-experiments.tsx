@@ -297,7 +297,7 @@ function ExperimentCard({
             return (
               <li
                 key={v.key}
-                className={`border rounded p-3 ${isLeader ? "border-[color:var(--acr-pos)]/30 bg-acr-pos-soft" : "border-border"}`}
+                className={`border rounded p-3 ${isLeader ? "border-acr-pos/30 bg-acr-pos-soft" : "border-border"}`}
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>

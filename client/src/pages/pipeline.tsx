@@ -153,7 +153,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           pos=closed, brand-soft=quality */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="group" aria-label="Pipeline velocity metrics">
         {hotDeals > 0 && (
-          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-brand)]/30 bg-acr-brand-soft px-3 py-2">
+          <div className="flex items-center gap-2 rounded-card border border-acr-brand/30 bg-acr-brand-soft px-3 py-2">
             <Flame className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{hotDeals} hot</p>
@@ -162,7 +162,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {stalledDeals > 0 && (
-          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-warn)]/30 bg-acr-warn-soft px-3 py-2">
+          <div className="flex items-center gap-2 rounded-card border border-acr-warn/30 bg-acr-warn-soft px-3 py-2">
             <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{stalledDeals} stalled</p>
@@ -182,7 +182,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {avgScore !== null && (
-          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-brand)]/20 bg-acr-brand-soft px-3 py-2">
+          <div className="flex items-center gap-2 rounded-card border border-acr-brand/20 bg-acr-brand-soft px-3 py-2">
             <TrendingUp className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">Score {avgScore}</p>
@@ -191,7 +191,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {closedValue > 0 && (
-          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-pos)]/30 bg-acr-pos-soft px-3 py-2">
+          <div className="flex items-center gap-2 rounded-card border border-acr-pos/30 bg-acr-pos-soft px-3 py-2">
             <TrendingUp className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">

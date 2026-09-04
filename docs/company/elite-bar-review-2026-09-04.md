@@ -2873,3 +2873,107 @@ is how much of it anyone has actually opened.
 
 A new offender is still not covered by the file and fails the gate immediately.
 Reading the backlog does not turn it into permission.
+
+### 4. `CF-Connecting-IP` is trusted unconditionally (needs a mitigation choice)
+
+**Verified, not fixed** — because both mitigations are decisions rather than
+code, and the wrong rate-limit policy locks out real customers.
+
+`getClientIp` returns `CF-Connecting-IP` whenever the header is present, with
+no check that the request actually traversed Cloudflare. The file's own
+reasoning is that `acreos.io` is proxied-DNS and `acreos.fly.dev` 301s to it
+"before any limiter runs," so in practice Cloudflare stamps the header.
+
+That redirect fires on `host === "acreos.fly.dev"` or `*.acreos.fly.dev` and
+nothing else. A request sent **directly to the Fly edge** carrying
+`Host: acreos.io` therefore skips the redirect and reaches the limiters with a
+fully attacker-chosen `CF-Connecting-IP`. Nothing anywhere in `server/` checks
+`CF-Ray`, the peer address, or a shared secret.
+
+**What that actually costs, measured rather than assumed.** The file also
+claims no hot-path limiter keys purely on IP. That claim holds where it
+matters most:
+
+- the auth-attempt limiter (30 / 15 min) keys on submitted email or identifier
+  first, so brute-forcing a named account is still capped;
+- the export limiter keys on org + user;
+- the MCP limiter keys on a hash of the bearer key;
+- the export and MCP fallbacks use `req.ip`, not `getClientIp`, so a forged
+  header does not reach them at all.
+
+What *is* evadable is the broad auth limiter (300 / 15 min), whose key for an
+**unauthenticated** request is the client IP alone, and the QR-scan limiter
+(120 / min). Rotating the header gives a fresh bucket per request. That is
+resource abuse and probe-rate dilution, not account takeover — but it is the
+limiter's entire purpose.
+
+**The two mitigations, and why neither is mine to pick:**
+
+1. *Verify the peer is Cloudflare.* Ship Cloudflare's published ranges and
+   trust the header only when `req.ip` is inside one. Correct and code-only,
+   but a stale list silently downgrades every legitimate visitor to the coarse
+   CF-edge bucket, and the refresh becomes an ongoing obligation.
+2. *Require a secret Cloudflare adds.* A Transform Rule stamping a header the
+   client cannot guess. Strictly stronger and self-maintaining, but it is
+   infrastructure configuration outside this repository and a secret to
+   provision.
+
+A third option — adding a coarse per-`req.ip` backstop limiter — needs a cap
+chosen against real traffic volumes per Cloudflare edge. Guessing it low would
+throttle legitimate users through a busy edge, which is a worse outcome than
+the abuse it prevents.
+
+**Decision needed: which mitigation, and for option 1, who owns refreshing the
+range list.**
+
+### Twenty classes that compiled to nothing, and the state nobody could see
+
+Two design findings, fixed and gated.
+
+**`border-[color:var(--acr-brand)]/30` emits no CSS rule.** Not a rule without
+the alpha — nothing. Tailwind's `asColor` splits the candidate, `parseColor`
+returns null for a `var()`, `withAlphaValue` returns its undefined default, and
+the candidate is dropped. Twenty had accumulated across eight files, including
+both dismissible cards on Today, every urgency tint on the market watchlist and
+all four autonomy-level chips on agent detail.
+
+It is invisible in every way that matters: the build succeeds, the class name
+sits in the JSX reading as intentional, and the element falls back to whatever
+border it would have had anyway — so the page looks *plausible* rather than
+broken.
+
+All twenty are now the token form, which the config's `acrToken` wrapper
+resolves with `color-mix`. Verified by compiling the project's own Tailwind
+config and checking each selector exists: 13 distinct classes, all emitting,
+and zero arbitrary-value selectors in the whole sheet carrying an alpha —
+which is the same measurement, from the other side.
+
+`scripts/lint-dead-token-alpha.mjs` now fails on the spelling and prints the
+token form to replace it with. The config's header comment already documented
+this exact failure for the token spelling — "before this wrapper,
+`bg-acr-pos/10` silently compiled to NOTHING" — and the wrapper fixed that one
+only. Nothing stopped the arbitrary spelling from reintroducing it, and nothing
+noticed for twenty sites. A class that silently does nothing is not a style bug;
+it is a gate-shaped hole in the design system.
+
+**PaxAskCard rendered pending, deciding and failed identically.** The
+container's className had three arms and "else" caught all three, with the same
+AlertCircle in the same amber. An ask Pax tried and could not complete was
+pixel-identical to one nobody had tapped — same border, fill, icon and icon
+colour, separated by a 12px status string. On the approval surface those are
+the two states that must never be confused.
+
+It also spent the alarm colour at rest: six untouched asks were a wall of amber,
+leaving nothing louder for the state that warrants it.
+
+Now: pending is a neutral card with a single amber left edge, the way an unread
+issue is marked; `failed` takes the negative arm and an XCircle; `deciding` gets
+a motion-safe spinner and a dimmed body, so in-flight reads as in-flight rather
+than as "the buttons stopped working".
+
+The test renders the component through its **real state machine** — there is no
+status prop, so each state is reached by the handler outcome that produces it —
+and the assertions are derived: it compares states against each other rather
+than naming the palette. A restyle is free; a restyle that collapses two states
+back into one rendering is not. That is the property that was broken, and the
+only one worth pinning.

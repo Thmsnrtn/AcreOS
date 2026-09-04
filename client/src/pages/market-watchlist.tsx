@@ -100,8 +100,8 @@ const ALERT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string 
 // Severity → semantic --acr-* tone (Tier 1 pattern).
 const SEVERITY_COLORS = {
   low: "border-acr-line bg-acr-surface-2",
-  medium: "border-[color:var(--acr-warn)]/30 bg-acr-warn-soft",
-  high: "border-[color:var(--acr-neg)]/30 bg-acr-neg-soft",
+  medium: "border-acr-warn/30 bg-acr-warn-soft",
+  high: "border-acr-neg/30 bg-acr-neg-soft",
 };
 
 const US_STATES = [

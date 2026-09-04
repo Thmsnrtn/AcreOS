@@ -236,10 +236,10 @@ export default function AgentDetailPage() {
           <CardContent>
             <ul className="grid grid-cols-1 md:grid-cols-4 gap-3" aria-label="Authority levels by trust threshold">
               {[
-                { level: 0, label: "Full autonomy", color: "bg-acr-pos-soft border-[color:var(--acr-pos)]/30", req: 90 },
-                { level: 1, label: "Auto + notify", color: "bg-acr-brand-soft border-[color:var(--acr-brand)]/30", req: 70 },
-                { level: 2, label: "Recommend + wait", color: "bg-acr-warn-soft border-[color:var(--acr-warn)]/30", req: 40 },
-                { level: 3, label: "Always escalate", color: "bg-acr-neg-soft border-[color:var(--acr-neg)]/30", req: 0 },
+                { level: 0, label: "Full autonomy", color: "bg-acr-pos-soft border-acr-pos/30", req: 90 },
+                { level: 1, label: "Auto + notify", color: "bg-acr-brand-soft border-acr-brand/30", req: 70 },
+                { level: 2, label: "Recommend + wait", color: "bg-acr-warn-soft border-acr-warn/30", req: 40 },
+                { level: 3, label: "Always escalate", color: "bg-acr-neg-soft border-acr-neg/30", req: 0 },
               ].map(({ level, label, color, req }) => {
                 const actions = (agent.authorityConfig as any)?.[`level${level}Actions`] || [];
                 const active = trustPct >= req;

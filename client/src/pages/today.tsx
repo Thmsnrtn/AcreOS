@@ -571,7 +571,7 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-acr-neg/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
@@ -637,7 +637,7 @@ export default function TodayPage() {
 
       {/* ── Welcome back (returning user, single card) ───────────────── */}
       {showWelcomeBack && (
-        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-2" data-testid="welcome-back-card">
+        <Card className="rounded-card border-acr-brand/30 bg-acr-brand-soft shadow-acr-2" data-testid="welcome-back-card">
           <CardContent className="p-6 md:p-5 flex items-start justify-between gap-4 md:gap-3">
             <div className="flex items-center gap-3 md:gap-2.5">
               <div className="p-2.5 md:p-2 rounded-card bg-acr-brand-soft shrink-0">
@@ -686,7 +686,7 @@ export default function TodayPage() {
           least one drive-mode lead captured in the last 14 days. */}
       {!showEmptyState && !todayError && showHeadingOut && (
         <Card
-          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-1 mb-4"
+          className="rounded-card border-acr-brand/30 bg-acr-brand-soft shadow-acr-1 mb-4"
           data-testid="card-heading-out"
         >
           <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
