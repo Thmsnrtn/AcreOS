@@ -3016,3 +3016,49 @@ reference is now rendered server-side from the same curated document: no
 external assets, no JavaScript at all, inline `<style>` only, which the policy
 already permits. It cannot be broken by a CDN, an ad blocker, or the next CSP
 tightening.
+
+
+### The second factor was mounted on one prefix, and not the one that matters
+
+`requireClerkMFA` guarded exactly one namespace: `/api/admin`. `/api/founder/*`
+— far larger, and where the consequential operations actually live — had no
+second factor at all.
+
+That namespace holds `DELETE /api/founder/pricing/:tier/promo`, which is a
+**pricing change**: one of the four hard-stops CLAUDE.md declares founder-only
+forever. Beside it sit `/api/founder/finance`, the Meta ad-spend surface, and
+the v10–v14 sovereign control plane — `versions/:id/deploy`,
+`versions/:codename/rollback`, `trust/promote`. Founder identity is asserted by
+email or Clerk user id, so a single compromised founder session reached every
+one of them with nothing else in the way.
+
+**The ordering was the whole job, and it is a trap this repo already sprang
+once.** The admin gate sits at `routes.ts:1852`; the first `/api/founder`
+handler registers at line 800, and the prompt-injection mounts for
+`/api/founder/v10`–`v12` at 989. Putting the new gate beside the existing one —
+the obvious, tidy-looking placement — would have covered nothing while reading
+as correct. That is precisely what the comment on the admin mount records them
+fixing: it had sat ~700 lines too low, silently skipping the second factor on
+five of seven admin surfaces. The gate is therefore mounted above line 800,
+where every founder route is downstream of it.
+
+**No lockout.** `requireClerkMFA`'s matrix passes a user through when they have
+no factor enrolled and the path is not high-trust. The change only requires
+that a founder who *has* enrolled completed the second factor in this session.
+
+**The half deliberately not taken.** Adding `/api/founder/pricing`,
+`/api/founder/money` and `/api/founder/finance` to `HIGH_TRUST_PATH_PREFIXES`
+would require MFA to *be set up*, not merely verified-if-present — the stronger
+and probably right position, and what GitHub's sudo mode and Stripe's payout
+settings both do. It would also lock a founder out of their own pricing
+controls the moment it deployed if they have not enrolled. That is a decision
+about timing and enrolment, not about code, so it is recorded here rather than
+taken.
+
+The ordering test was widened rather than duplicated, and its founder half
+**derives** its registrar list: it reads every `registerX(app)` call in
+`routes.ts`, resolves each to the file that exports it, and asks that file
+whether it declares a founder path. The admin half hardcodes four names — good,
+but it cannot notice a fifth registrar nobody added. Deriving means a new
+founder route file is covered the day it is written. Falsified by moving the
+gate beside the admin one, which fails naming the routes that would bypass it.

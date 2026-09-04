@@ -792,6 +792,39 @@ export async function registerRoutes(
     res.json(service);
   });
 
+  // ── SECOND FACTOR ON THE FOUNDER PLANE ───────────────────────────────────
+  //
+  // requireClerkMFA was mounted on exactly ONE prefix — /api/admin, at the
+  // app.use further down this file. /api/founder/* is the far larger
+  // namespace and had no second factor at all. It holds
+  // DELETE /api/founder/pricing/:tier/promo — a PRICING CHANGE, one of the
+  // four hard-stops CLAUDE.md declares founder-only forever — plus
+  // /api/founder/finance, the Meta ad-spend surface, and the v10-v14
+  // sovereign control plane (versions/:id/deploy, versions/:codename/rollback,
+  // trust/promote). Founder identity is asserted by email or Clerk user id, so
+  // a single compromised founder session reached every hard-stop with nothing
+  // else in the way.
+  //
+  // ORDER IS LOAD-BEARING, AND THIS IS WHY IT SITS HERE RATHER THAN BESIDE
+  // THE /api/admin MOUNT. Express evaluates middleware in REGISTRATION order.
+  // The admin gate is ~1,050 lines below; the first /api/founder handler is
+  // the readiness route immediately after this comment, and the
+  // prompt-injection mounts for /api/founder/v10..v12 follow shortly after.
+  // Registering this next to the admin gate would leave every one of them
+  // reaching its handler first — precisely the bug the comment on that mount
+  // records them fixing once already, which had silently skipped the second
+  // factor on five of seven admin surfaces.
+  //
+  // NO LOCKOUT. requireClerkMFA's matrix passes a user through when they have
+  // no factor enrolled and the path is not high-trust; it only demands that a
+  // founder who HAS enrolled completed the second factor in this session.
+  // Requiring MFA to be SET UP on the money paths means adding them to
+  // HIGH_TRUST_PATH_PREFIXES, which would lock out a founder who has not
+  // enrolled — that is a founder's call to make and to time, and it is
+  // recorded in docs/company/elite-bar-review-2026-09-04.md rather than taken
+  // here.
+  app.use("/api/founder", isAuthenticated, requireClerkMFA);
+
   // ============================================
   // PRE-LAUNCH READINESS CHECK (founder only)
   // Surfaces the exact gaps between current state and production-ready.

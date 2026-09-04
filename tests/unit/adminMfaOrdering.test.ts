@@ -148,3 +148,142 @@ describe("admin MFA gate ordering", () => {
     expect(SRC.indexOf("registerAdminRecoveryRoutes(app)")).toBeGreaterThan(gate);
   });
 });
+
+/**
+ * ── THE SAME GATE, THE LARGER NAMESPACE ──────────────────────────────────────
+ *
+ * requireClerkMFA was mounted on exactly ONE prefix. `/api/founder/*` — a far
+ * larger namespace — had no second factor at all, and it is where the
+ * consequential operations actually live: `DELETE
+ * /api/founder/pricing/:tier/promo` is a PRICING CHANGE, one of the four
+ * hard-stops CLAUDE.md declares founder-only forever; `/api/founder/finance`,
+ * the Meta ad-spend surface, and the v10-v14 sovereign control plane
+ * (`versions/:id/deploy`, `versions/:codename/rollback`, `trust/promote`) sit
+ * beside it. Founder identity is asserted by email or Clerk user id, so a
+ * single compromised founder session reached every one of them.
+ *
+ * The ordering problem is worse here than it was for /api/admin: the first
+ * `/api/founder` handler registers ~1,050 lines ABOVE where the admin gate
+ * sits, so "put it next to the other one" would have silently covered nothing.
+ *
+ * The registrar list below is DERIVED rather than typed. The admin block above
+ * hardcodes four names and guards them with a "does this file still mount
+ * /api/admin" check — good, but it cannot notice a FIFTH registrar nobody
+ * added. Reading routes.ts for every `registerX(app)` call and asking each
+ * one's file whether it declares a founder path means a new founder route file
+ * is covered the day it is written, which is the failure mode this whole
+ * family of gates keeps having.
+ */
+describe("founder MFA gate ordering", () => {
+  const GATE = 'app.use("/api/founder", isAuthenticated, requireClerkMFA)';
+
+  function founderGateIndex(): number {
+    const i = SRC.indexOf(GATE);
+    expect(
+      i,
+      "the /api/founder MFA gate is gone from server/routes.ts. The founder " +
+        "plane holds the pricing, ad-spend and control-plane surfaces; it does " +
+        "not get to be the namespace without a second factor.",
+    ).toBeGreaterThan(-1);
+    return i;
+  }
+
+  /** Every `registerX(app)` call in routes.ts, paired with its defining file. */
+  function registrars(): Array<{ call: string; file: string; index: number }> {
+    const out: Array<{ call: string; file: string; index: number }> = [];
+    const seen = new Set<string>();
+    const re = /\b(register[A-Za-z0-9_]*)\s*\(\s*app\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(SRC)) !== null) {
+      const name = m[1];
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const file = fileDefining(name);
+      if (file) out.push({ call: name, file, index: m.index });
+    }
+    return out;
+  }
+
+  /** Locate the server file that exports a given registrar. */
+  function fileDefining(name: string): string | null {
+    const stack = ["server"];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (!["node_modules", "__tests__", "__mocks__"].includes(entry.name)) stack.push(rel);
+          continue;
+        }
+        if (!entry.name.endsWith(".ts") || /\.(test|spec)\.ts$/.test(entry.name)) continue;
+        const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+        if (new RegExp(`export\\s+(?:async\\s+)?function\\s+${name}\\b`).test(src)) return rel;
+      }
+    }
+    return null;
+  }
+
+  it("is registered exactly once", () => {
+    const matches = SRC.match(
+      /app\.use\(\s*["']\/api\/founder["']\s*,\s*isAuthenticated\s*,\s*requireClerkMFA/g,
+    );
+    expect(matches?.length ?? 0).toBe(1);
+  });
+
+  it("precedes every literal /api/founder route registration", () => {
+    const gate = founderGateIndex();
+    const re = /app\.(?:use|get|post|put|patch|delete)\(\s*["']\/api\/founder[^"']*["']/g;
+    const offenders: string[] = [];
+    let found = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(SRC)) !== null) {
+      found++;
+      if (m.index === gate) continue;
+      if (m.index < gate) offenders.push(`${m[0]}  (line ${SRC.slice(0, m.index).split("\n").length})`);
+    }
+    // Vacuity: an ordering check that finds no routes passes for the wrong
+    // reason. There were 30+ literal /api/founder registrations when this was
+    // written; a scanner or comment-stripper failure must be loud.
+    expect(found, "scanner found almost no /api/founder registrations — it is broken")
+      .toBeGreaterThanOrEqual(10);
+    expect(
+      offenders,
+      "These /api/founder routes are registered ABOVE the MFA gate, so Express\n" +
+        "reaches their handlers first and requireClerkMFA never runs:\n" +
+        offenders.map((o) => `  ✗ ${o}`).join("\n") +
+        '\n\nMove the app.use("/api/founder", …) registration above them.',
+    ).toEqual([]);
+  });
+
+  it("precedes every registrar whose file mounts an /api/founder path", () => {
+    const gate = founderGateIndex();
+    const all = registrars();
+    // Vacuity: the derivation has to be finding registrars at all.
+    expect(all.length, "no registerX(app) calls were resolved to files").toBeGreaterThan(10);
+
+    const founderOnes = all.filter(({ file }) =>
+      fs.readFileSync(path.join(ROOT, file), "utf8").includes("/api/founder"),
+    );
+    expect(
+      founderOnes.length,
+      "no registrar was found to mount /api/founder — the derivation is broken, " +
+        "and a broken derivation reports every ordering as correct",
+    ).toBeGreaterThan(3);
+
+    const offenders = founderOnes.filter((r) => r.index < gate).map((r) => `${r.call}  (${r.file})`);
+    expect(
+      offenders,
+      "These registrars mount /api/founder/* paths and are called ABOVE the MFA\n" +
+        "gate, so their routes bypass it:\n" +
+        offenders.map((o) => `  ✗ ${o}`).join("\n"),
+    ).toEqual([]);
+  });
+
+  it("sits above the admin gate, because the first founder route is far above it", () => {
+    // Not cosmetic. The admin gate is ~1,050 lines below the first
+    // /api/founder handler, so a founder gate placed beside it would cover
+    // nothing while looking correct — the exact shape of the bug the admin
+    // block above records.
+    expect(founderGateIndex()).toBeLessThan(mfaGateIndex());
+  });
+});
