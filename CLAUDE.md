@@ -207,3 +207,61 @@ assertion, because a parser that silently stops matching one member reads
 exactly like that member being clean. Ask of any gate you rely on: *what would
 have to exist for this to be green and the defect still present?* Usually the
 answer is a file it never opened.
+
+#### The population is not just WHICH files — it is where each unit begins and ends
+
+The file can be in the population and still be unread, because a gate does not
+scan files, it scans UNITS, and a unit boundary is a parse decision that fails
+silently.
+
+The tenancy lint (`scripts/check-org-scoped-fetch.mjs`) was widened to route
+files, whose queries all live inside inline `(req, res)` callbacks. Its handler
+extractor took *"the last `async (` inside the registration call"* as the
+handler. But the call text spans the handler's whole body, so a nested
+`db.transaction(async (tx) => …)` sits later in the string and wins: the unit
+became the INNER callback and the outer body — the part with the queries —
+went unread. Three sibling assumptions failed the same way. A trailing comma
+before the closing paren (`},\n);`) made the final argument resolve to
+whitespace. A wrapper (`asyncHandler(async (req, res) => …)`) meant the final
+argument was not an inline function. And requiring `async` dropped sync
+handlers, though an unawaited `db.select()` chain reads exactly as many rows.
+
+Measured 2026-09-04: 51 + 432 + 40 handlers, and the verdict line printed a
+healthy route count the whole time. Fixing the boundaries took the readable
+population from 2,142 to 2,668 handlers and the rule-3 chain walk from 1,831 to
+2,040 — surfacing eight findings that had been invisible.
+
+And the boundary is only as good as the TOKENIZER that finds it. The same gate
+was silently dropping whole declarations because its bracket walkers were not
+real lexers:
+
+- an APOSTROPHE IN A COMMENT (`// deployment doesn't carry it`) opened a string
+  that ran to the next apostrophe anywhere in the file;
+- a REGEX LITERAL holding a quote (`s.replace(/[<>&'"]/g, …)`) did the same —
+  and did it inside `maskComments` itself, so the mask then blanked live code
+  it mistook for comments and left comments unblanked, for every extractor
+  downstream;
+- a NESTED TEMPLATE LITERAL closed the outer template on the inner one, after
+  which every brace and paren sat at the wrong nesting;
+- and the fix for the second introduced a fourth: TypeScript's postfix `!`
+  (`cac.cacUsd! / n`) read as a prefix logical-not, turning a division into a
+  regex that swallowed the rest of the handler.
+
+Four registrations were being dropped, and with them `executeSupportTool` —
+the 91-case switch a model drives while talking to a paying customer, which
+this gate had never once read. Reading it found four cross-org reads of
+`support_resolution_history` returning another tenant's free text into that
+model's context.
+
+The lesson is not "write a real parser". It is that **a walker that cannot
+complete must COUNT the declaration, never skip it** — every one of these was
+an unlogged `continue`. Once the gate printed "declarations whose body could
+not be located", the four became visible in one run.
+
+So a population claim needs TWO floors, not one: how many units were found, and
+that the units are the right spans. The first is a count you can assert
+(`ROUTE_SCAN_FLOOR`). The second only a canary can prove — write a fixture per
+extraction shape you rely on, hide the defect inside it, and confirm the gate
+goes red; then break each shape deliberately and confirm the matching canary
+goes green-to-red on its own. A shape you never wrote a fixture for is a shape
+the gate is free to stop reading.

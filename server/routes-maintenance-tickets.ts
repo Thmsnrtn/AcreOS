@@ -94,12 +94,24 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
         .where(and(eq(maintenanceTickets.id, req.params.id), eq(maintenanceTickets.organizationId, orgId)));
       if (!t) return Errors.notFound(res, "Ticket");
 
+      // SEC (2026-09-04): scoped to the org. The parent ticket is
+      // ownership-checked, but `assignedContractorId` is not a value this
+      // server derived — the dispatch route below wrote it straight from a
+      // request body, and `assigned_contractor_id` is a SOFT FK
+      // (shared/schema/rental.ts) so Postgres accepts a contractor belonging
+      // to any tenant. Without this predicate, dispatching to another org's
+      // contractor id made this route return that contractor's name, business
+      // name, email, phone and trades. "The parent was checked" only carries
+      // to a child whose KEY the platform also chose.
       let assignedContractor = null;
       if (t.assignedContractorId) {
         const [c] = await db.select({
           id: contractors.id, name: contractors.name, businessName: contractors.businessName,
           email: contractors.email, phone: contractors.phone, trades: contractors.trades,
-        }).from(contractors).where(eq(contractors.id, t.assignedContractorId));
+        }).from(contractors).where(and(
+          eq(contractors.id, t.assignedContractorId),
+          eq(contractors.organizationId, orgId),
+        ));
         assignedContractor = c ?? null;
       }
       return res.json({ ticket: t, assignedContractor });
@@ -173,6 +185,23 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const userId = getUserId(req);
       const parsed = dispatchSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      // SEC (2026-09-04): a body-supplied FK must be in the caller's tenant.
+      // `contractorId` arrives from the request and was stored with no check
+      // at all; `assigned_contractor_id` is a soft FK, so the database will
+      // not catch it either. Storing another org's contractor id then made
+      // GET /api/maintenance-tickets/:id disclose that contractor's contact
+      // details. Same rule, same reason as the rehab-line-item check in
+      // routes-contractors.ts.
+      const [contractor] = await db
+        .select({ id: contractors.id })
+        .from(contractors)
+        .where(and(
+          eq(contractors.id, parsed.data.contractorId),
+          eq(contractors.organizationId, orgId),
+        ))
+        .limit(1);
+      if (!contractor) return Errors.notFound(res, "Contractor");
 
       const [updated] = await db.update(maintenanceTickets).set({
         assignedContractorId: parsed.data.contractorId,

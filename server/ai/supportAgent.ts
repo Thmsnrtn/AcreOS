@@ -1353,6 +1353,41 @@ export async function executeSupportTool(
     const origin = options?.origin ?? "support";
     const pauseSafe = PAUSE_SAFE_SUPPORT_TOOLS.has(toolName);
 
+    // ── The ticket must belong to the caller's organization ───────────────
+    // Three cases on this switch read or WRITE `support_tickets` keyed on
+    // nothing but the `ticketId` parameter — `update_ticket_status`,
+    // `draft_customer_response` and `record_customer_feedback`. The function
+    // takes an `org`, so it looks scoped; it was not.
+    //
+    // Nothing was live: all three call sites happen to check first. But that
+    // is a property of the CALLERS, and this function is the confused-deputy
+    // chokepoint — a model drives it, and a fourth caller that forgets is a
+    // cross-tenant write to a paying customer's ticket. The check belongs
+    // here, where it cannot be forgotten, exactly like the permission ladder
+    // below it.
+    //
+    // Founders keep cross-org access, which is the rule the pax-resolve route
+    // already applies (`ticket.organizationId !== org.id && !org.isFounder`);
+    // this states it once instead of once per door. One primary-key read per
+    // invocation, against a model call.
+    if (typeof ticketId === "number" && !org.isFounder) {
+      const [owner] = await db
+        .select({ organizationId: supportTickets.organizationId })
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId))
+        .limit(1);
+      if (!owner || owner.organizationId !== org.id) {
+        logger.warn("[executeSupportTool] Refused — ticket belongs to another organization", {
+          orgId: org.id,
+          metadata: { toolName, ticketId, ticketOrgId: owner?.organizationId ?? null },
+        });
+        return {
+          success: false,
+          error: `Ticket #${ticketId} is not in this workspace, so nothing was run.`,
+        };
+      }
+    }
+
     // ── The org's Pax controls — ONE read per invocation (spec §4.2, §4.3) ─
     // This switch is a dispatch path a model drives while talking to a
     // paying customer — the population blind spot CLAUDE.md documents. It
@@ -2072,7 +2107,16 @@ export async function executeSupportTool(
       
       case "search_resolved_tickets": {
         const { search_query, issue_type, only_successful = true, limit = 5 } = args;
-        
+
+        // TENANT SCOPE. `support_resolution_history` rows carry
+        // `resolutionApproach` and `lessonLearned` — free text an AI wrote
+        // about ONE organization's ticket, which can name that org, its
+        // people, its properties. Read across tenants it lands in the context
+        // of a model that is at that moment talking to a DIFFERENT paying
+        // customer. This query had no organization predicate, and the tenancy
+        // lint had never been able to read this function at all (its walkers
+        // desynchronised on a nested template literal in the same file), so
+        // nothing flagged it. Pax learns from THIS org's history.
         const conditions = [];
         if (only_successful) {
           conditions.push(eq(supportResolutionHistory.wasSuccessful, true));
@@ -2081,10 +2125,13 @@ export async function executeSupportTool(
           conditions.push(eq(supportResolutionHistory.issueType, issue_type));
         }
         
-        // Get resolutions, optionally filtered
+        // Get resolutions, optionally filtered. The `conditions.length > 0`
+        // ternary is gone: the array now always carries the organization
+        // predicate, so `undefined` — a WHERE-less read of every tenant's
+        // rows — is no longer a state this query can reach.
         const resolutions = await db.select()
           .from(supportResolutionHistory)
-          .where(conditions.length > 0 ? and(...conditions) : undefined)
+          .where(and(eq(supportResolutionHistory.organizationId, org.id), ...conditions))
           .orderBy(desc(supportResolutionHistory.createdAt))
           .limit(100);
         
@@ -2193,6 +2240,16 @@ export async function executeSupportTool(
         };
         const startDate = timeFilters[time_period] || timeFilters["30d"];
         
+        // TENANT SCOPE. `support_resolution_history` rows carry
+        // `resolutionApproach` and `lessonLearned` — free text an AI wrote
+        // about ONE organization's ticket, which can name that org, its
+        // people, its properties. Read across tenants it lands in the context
+        // of a model that is at that moment talking to a DIFFERENT paying
+        // customer. This query had no organization predicate, and the tenancy
+        // lint had never been able to read this function at all (its walkers
+        // desynchronised on a nested template literal in the same file), so
+        // nothing flagged it. Aggregates are no safer: platform-wide volumes and success
+        // rates are AcreOS's numbers, not this customer's.
         const conditions = [gte(supportResolutionHistory.createdAt, startDate)];
         if (issue_type) {
           conditions.push(eq(supportResolutionHistory.issueType, issue_type));
@@ -2200,7 +2257,7 @@ export async function executeSupportTool(
         
         const resolutions = await db.select()
           .from(supportResolutionHistory)
-          .where(and(...conditions));
+          .where(and(eq(supportResolutionHistory.organizationId, org.id), ...conditions));
         
         // Calculate stats
         const total = resolutions.length;
@@ -2259,8 +2316,20 @@ export async function executeSupportTool(
         
         // Get all resolutions for this issue type with variants
         const resolutions = await db.select()
+        // TENANT SCOPE. `support_resolution_history` rows carry
+        // `resolutionApproach` and `lessonLearned` — free text an AI wrote
+        // about ONE organization's ticket, which can name that org, its
+        // people, its properties. Read across tenants it lands in the context
+        // of a model that is at that moment talking to a DIFFERENT paying
+        // customer. This query had no organization predicate, and the tenancy
+        // lint had never been able to read this function at all (its walkers
+        // desynchronised on a nested template literal in the same file), so
+        // nothing flagged it. Pax learns from THIS org's history.
           .from(supportResolutionHistory)
-          .where(eq(supportResolutionHistory.issueType, issue_type))
+          .where(and(
+            eq(supportResolutionHistory.organizationId, org.id),
+            eq(supportResolutionHistory.issueType, issue_type),
+          ))
           .orderBy(desc(supportResolutionHistory.createdAt));
         
         // Group by variant name
@@ -4050,6 +4119,15 @@ export async function executeSupportTool(
         const { issue_keywords, issue_type } = args;
         
         // Get all successful resolutions, optionally filtered by type
+        // TENANT SCOPE. `support_resolution_history` rows carry
+        // `resolutionApproach` and `lessonLearned` — free text an AI wrote
+        // about ONE organization's ticket, which can name that org, its
+        // people, its properties. Read across tenants it lands in the context
+        // of a model that is at that moment talking to a DIFFERENT paying
+        // customer. This query had no organization predicate, and the tenancy
+        // lint had never been able to read this function at all (its walkers
+        // desynchronised on a nested template literal in the same file), so
+        // nothing flagged it. Pax learns from THIS org's history.
         const conditions = [eq(supportResolutionHistory.wasSuccessful, true)];
         if (issue_type) {
           conditions.push(eq(supportResolutionHistory.issueType, issue_type));
@@ -4057,7 +4135,7 @@ export async function executeSupportTool(
         
         const resolutions = await db.select()
           .from(supportResolutionHistory)
-          .where(and(...conditions))
+          .where(and(eq(supportResolutionHistory.organizationId, org.id), ...conditions))
           .orderBy(desc(supportResolutionHistory.createdAt))
           .limit(50);
         

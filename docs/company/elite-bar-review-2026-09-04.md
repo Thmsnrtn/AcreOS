@@ -2597,3 +2597,171 @@ paths and backfill the skipped cycles. The gate pins its own revocation
 condition: the day `applyPayment` gains a production importer, the test fails
 and tells whoever wired it to revisit the refusal instead of leaving a
 workaround in place after its cause is gone.
+
+---
+
+## Addendum — a finding the review's own instrument was blind to
+
+Recorded separately because it was not one of the 245 adjudicated findings. It
+was found while acting on them, and it changes how much the tenancy findings in
+the Principal Backend Engineer and Head of Security sections can be trusted.
+
+### The tenancy lint was reading the wrong text on every route file
+
+`scripts/check-org-scoped-fetch.mjs` is the load-bearing gate for tenant
+isolation. It had been widened to cover route files, where every query lives
+inside an inline `(req, res)` callback rather than a named function — so on
+those files the UNIT it reads is the handler, and reading the wrong span of
+text is indistinguishable from not reading the file at all.
+
+Its handler extractor was wrong four ways at once, and each was silent:
+
+| Defect | Handlers affected |
+| --- | --- |
+| Took the LAST `async (` in the registration call, so a nested `db.transaction(async (tx) => …)` won and the outer body went unread | 51 |
+| Took everything after the last depth-0 comma, so a trailing comma before `)` resolved the handler to whitespace | 432 |
+| Required an inline function, so `asyncHandler(async (req, res) => …)` was skipped | 40 |
+| Required `async`, though an unawaited `db.select()` chain reads exactly as many rows | ~20 |
+
+Throughout, the verdict line printed a healthy route count. Nothing in the
+output distinguished "2,142 handlers, all clean" from "2,142 of 2,668 handlers,
+the rest unread."
+
+**Effect of the fix.** Readable handlers 2,142 → 2,668. Rule-3 query chains
+1,831 → 2,040. Units touching org-scoped tables 2,099 → 2,279. Declarations
+whose body could not be located: 0.
+
+**What was hiding.** Eight findings, each read individually before being
+written down, all recorded with reasons in
+`scripts/org-scope-route-widening.json` under `_TRIAGED`. Three founder-only
+surfaces, three signature-verified Twilio webhooks that have no session to
+carry an org, one deliberately unauthenticated postcard-scan redirect, and one
+rule-2 false positive on `innerJoin` conditions. **None is a live cross-tenant
+read.** That is the outcome, not the point — the point is that the gate could
+not have told anyone either way.
+
+**What now prevents the regression.** `ROUTE_SCAN_FLOOR` pins the handler
+population as a number, and five fixture canaries in
+`orgScopedFetchCoverage.test.ts` pin the four extraction shapes plus a clean
+control. Each was falsified: reverting a fix turns its own canary red and
+leaves the others green.
+
+**Why it belongs in this document.** Every tenancy finding in this review was
+produced by agents reading code directly, not by this lint — which is the only
+reason the review is not also compromised. But the standing instrument the
+repository relies on between reviews was measuring a population it could not
+read, and reporting confidence over it. The lesson is now in `CLAUDE.md` under
+the third law: the population is not just which files a gate opens, it is where
+each unit begins and ends.
+
+### The same gate's bracket walkers were not lexers
+
+Fixing the unit boundary exposed a second, deeper layer. The walkers that find
+where a declaration begins and ends tracked quotes and nothing else, so four
+ordinary constructs desynchronised them:
+
+| Construct | Example, from this repository |
+| --- | --- |
+| Apostrophe in a comment | `// deployment doesn't carry it` |
+| Regex literal holding a quote | `s.replace(/[<>&'"]/g, …)` |
+| Nested template literal | a prompt builder nesting three deep |
+| TypeScript postfix `!` before a division | `Math.round((cac.cacUsd! / perCustomer) * 10)` |
+
+The second was the worst: it occurred inside `maskComments`, whose output every
+extractor reads. One regex literal could therefore blank live code the mask
+mistook for a comment and leave real comments unblanked, for the rest of the
+file.
+
+Each failure was an unlogged `continue`. The gate reported a healthy count and
+said nothing about the declarations it had dropped.
+
+**What was hiding.** Four route registrations, and with them `executeSupportTool`
+in `server/ai/supportAgent.ts` — the 91-case dispatch switch a model drives
+while resolving a paying customer's ticket, reachable by any authenticated org
+member through the ticket resolver. The tenancy gate had never read it.
+
+**What reading it found.** Four tools read `support_resolution_history` with no
+organization predicate: `search_resolved_tickets`, `get_similar_resolutions`,
+`get_best_resolution_approach` and the resolution-analytics tool. Three return
+`resolutionApproach` and `lessonLearned` — free text an AI wrote about one
+organization's ticket, which can name that org, its people and its properties —
+into the context of a model that is at that moment talking to a **different**
+paying customer. The fourth returns platform-wide volumes and success rates.
+All four are now scoped to the caller's organization.
+
+Separately, three cases on the same switch read and write `support_tickets`
+keyed on nothing but the `ticketId` parameter. Nothing was live, because all
+three call sites happen to check ownership first. That was a property of the
+callers, so the check now runs once at the top of `executeSupportTool`, where a
+fourth caller cannot forget it. Founders keep cross-org access, matching the
+rule the resolver route already applied.
+
+**What now prevents the regression.** The walkers count what they cannot read,
+so the verdict line carries "declarations whose body could not be located: 0"
+on every run. Two tests pin that zero against this repository and name the two
+declarations that only parse with nesting support. Three further canaries cover
+the regex-with-quote and postfix-division cases, and a population guard fails if
+a query ever appears inside an `app.use` handler, which `ROUTE_VERBS` does not
+read. Each was falsified by reverting its fix.
+
+### Four live cross-tenant paths, found by burning down the debt register
+
+The register the population work produced is a list of unread claims, so it was
+read. A fan-out triaged 58 of the 210 entries, and every DEFECT verdict was put
+to a second reader instructed to refute it. Four survived.
+
+| Verdict | Count |
+| --- | --- |
+| Real cross-tenant defect | 4 |
+| Safe by design | 12 |
+| Lint false positive | 42 |
+
+The hit rate is low, which is the expected shape for a heuristic register. It is
+not zero, which is why the remaining 144 unread entries still have to be read.
+
+**They do not share a missing `WHERE` clause.** In every case the handler did
+scope the thing it looked like it was scoping. What leaked was one step to the
+side.
+
+**A child keyed on an id the caller chose.** `GET /api/maintenance-tickets/:id`
+ownership-checks the ticket, then reads its assigned contractor by bare id. The
+dispatch route writes that contractor id straight from a request body with no
+check at all, and the column is a soft foreign key, so the database does not
+object either. Dispatching to another organization's contractor id made the read
+return that contractor's name, business name, email, phone and trades. Both
+halves are fixed. "The parent was verified" only carries to a child whose key
+the platform also chose.
+
+**A row shipped whole when half of it was public.** `GET
+/api/investor-profiles/directory` used an unprojected `select()`. A cross-org
+directory of verified investors is the feature; shipping
+`verificationDocuments`, the identity-verification document URLs, along with
+`organizationId` and `lastActiveAt` to every authenticated user of every
+organization was not. The schema even labels the split. The query is now a
+column-by-column projection, so adding a column to the table cannot add it to
+the response.
+
+**A guard that is vacuous in the state the system creates most often.** The
+title-order webhook read `if (order.titlePartnerId && order.titlePartnerId !==
+partner.id)`. That is a no-op whenever the field is null, which is exactly what
+order creation writes when no partner matches the territory, and the handler
+then auto-claimed the order for whichever partner called. Any holder of any
+active partner key could walk integer order ids and take over another
+organization's pending order, writing its status and all three document keys.
+The signature check proves who is calling, using that caller's own secret; it
+says nothing about what they may touch. The claim is now bounded by the same
+eligibility rule the router uses to pick a partner in the first place.
+
+**A lookup keyed on the wrong namespace.** `GET /api/borrower/session` resolved
+its note through `getNoteByAccessToken(session.noteId.toString())` — a numeric
+id passed to a lookup keyed on `notes.access_token`, an opaque per-note secret,
+with no organization predicate. That column is client-settable and globally
+unique: the insert schema omits only id and timestamps, and the create path
+honors whatever token is supplied. Any self-serve signup could claim the token
+`"42"` and, from then on, a legitimate borrower of a different organization's
+note 42 was served the attacker's loan — balance, payment history, linked
+property and borrower name — on a Reg-Z consumer surface. It also defeated the
+organization pin the session middleware performs, which only covers id lookups.
+The note is now loaded by id and the session's own organization snapshot.
+
+All four are pinned, and each pin was falsified by reverting its fix.

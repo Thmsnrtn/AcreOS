@@ -450,9 +450,36 @@ export function registerTitlePartnerRoutes(app: Express) {
           return Errors.notFound(res, "Title order");
         }
 
-        // Only the partner this order is assigned to (or any partner if it
-        // was broadcast) may update.
+        // Only the partner this order is assigned to may update it.
         if (order.titlePartnerId && order.titlePartnerId !== partner.id) {
+          return Errors.forbidden(res, "Order not assigned to this partner");
+        }
+
+        // SEC (2026-09-04): "or any partner if it was broadcast" was not a
+        // policy, it was the absence of one. When `titlePartnerId` is NULL —
+        // the state POST /api/title-orders writes whenever routeTitleOrder()
+        // finds no territory match (`titlePartnerId: partner?.id ?? null`,
+        // status "pending") — the check above is vacuous, and the auto-claim
+        // below then handed the order to whichever partner called first. Any
+        // holder of ANY active partner key could walk integer order ids and
+        // take over another organization's pending title order, writing its
+        // status, statusDetails and all three document S3 keys. The HMAC
+        // proves WHO is calling, using that caller's own secret; it says
+        // nothing about which orders they may touch.
+        //
+        // Eligibility is the SAME rule routeTitleOrder() uses to choose a
+        // partner in the first place — a partner scoped to an organization
+        // serves only that organization, and a partner with a NULL
+        // organizationId is platform-wide — so a partner can only claim what
+        // it could have been routed.
+        if (
+          !order.titlePartnerId &&
+          partner.organizationId != null &&
+          partner.organizationId !== order.organizationId
+        ) {
+          logger.warn(
+            `[title-orders.webhook] partner ${partner.id} tried to claim unassigned order ${orderId} outside its organization`,
+          );
           return Errors.forbidden(res, "Order not assigned to this partner");
         }
 

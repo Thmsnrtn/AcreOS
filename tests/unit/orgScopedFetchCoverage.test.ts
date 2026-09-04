@@ -193,6 +193,29 @@ const FUNCTION_RULE_2_BASELINE = 84;
 const FUNCTION_SCAN_FLOOR = 1600;
 
 /**
+ * Vacuity floor for the ROUTE-HANDLER population, measured 2,668 on
+ * 2026-09-04.
+ *
+ * It is separate from FUNCTION_SCAN_FLOOR because the two extractors fail
+ * independently, and the route one failed silently three ways at once:
+ *
+ *   - it took "the LAST `async (` in the registration call" as the handler,
+ *     but the call text spans the handler's whole body, so a nested
+ *     `db.transaction(async (tx) => …)` won and 51 handlers were read at the
+ *     wrong boundary;
+ *   - it dropped every registration written with a trailing comma before the
+ *     closing paren — 432 of them;
+ *   - it dropped every handler registered through a wrapper such as
+ *     `asyncHandler(async (req, res) => …)` — 40 more.
+ *
+ * The gate printed a healthy route count throughout. Fixing the boundary took
+ * the readable population from 2,142 to 2,668 handlers and the rule-3 chain
+ * walk from 1,831 to 2,040 — and surfaced eight findings that had been
+ * invisible. This floor is what makes that kind of silent shrink loud.
+ */
+const ROUTE_SCAN_FLOOR = 2400;
+
+/**
  * RULE 3 — "scoped unit, unscoped query". Down-only ceiling.
  *
  * Added 2026-08-18 after `generateDealFeed` shipped a live cross-tenant read
@@ -281,9 +304,9 @@ const FIXTURE_SCHEMA = [
  * breached floor — a parse that silently stops matching is the same failure as
  * a scan that silently stops scanning.
  */
-function functionShape(out: string): { scanned: number; rule1: number; rule2: number } {
+function functionShape(out: string): { scanned: number; routes: number; rule1: number; rule2: number } {
   const m =
-    /function shape \(widened [^)]*\): scanned (\d+) async functions; rule 1 baseline (\d+), rule 2 baseline (\d+)/.exec(
+    /function shape \(widened [^)]*\): scanned (\d+) async functions, (\d+) route handlers; rule 1 baseline (\d+), rule 2 baseline (\d+)/.exec(
       out,
     );
   expect(
@@ -301,21 +324,47 @@ function functionShape(out: string): { scanned: number; rule1: number; rule2: nu
       "read clean over nothing. Find out why the scan went blind — do NOT " +
       "lower this floor to get green.",
   ).toBeGreaterThan(FUNCTION_SCAN_FLOOR);
-  return { scanned, rule1: Number(m![2]), rule2: Number(m![3]) };
+  const routes = Number(m![2]);
+  expect(
+    routes,
+    `the route-handler scan saw only ${routes} handlers (floor ` +
+      `${ROUTE_SCAN_FLOOR}, measured 2,668 on 2026-09-04). Route handlers are a ` +
+      "SEPARATE population from async functions — on a route file every query " +
+      "lives inside an inline `(req, res)` callback, so a handler extractor " +
+      "that quietly stops resolving them leaves the busiest tenant surface in " +
+      "the codebase unread while every other number on this line stays healthy. " +
+      "Find out why, do NOT lower this floor.",
+  ).toBeGreaterThan(ROUTE_SCAN_FLOOR);
+  return { scanned, routes, rule1: Number(m![3]), rule2: Number(m![4]) };
 }
 
 describe("the tenancy lint covers the service layer", () => {
   it("walks server/services/**", () => {
+    // The walk rooted at server/services when this assertion was written; on
+    // 2026-09-04 it was widened to the whole server tree, so the ROOT is no
+    // longer the thing to pin. The invariant it was defending is unchanged and
+    // now stronger: the services tree must be INSIDE the scanned population,
+    // and the walk must recurse into it. Re-pointed rather than deleted — a
+    // cross-tenant KYC leak shipped from server/services while this walk did
+    // not reach it.
     expect(
       src,
-      "the services branch is gone from the walk. Removing it drops the " +
-        "offender count to zero and the lint keeps passing — which is the " +
-        "state that let a cross-tenant KYC leak ship.",
-    ).toContain('const servicesDir = join(SERVER_DIR, "services");');
-    // Recursive on purpose: three offenders live in services/founder-chat/tools
-    // and one in services/borrower, so a flat readdir would miss them.
-    const at = src.indexOf('const servicesDir = join(SERVER_DIR, "services");');
-    expect(src.slice(at, at + 700), "the services walk stopped recursing").toContain("stack.push(full)");
+      "the walk no longer roots at the server tree, so services may have " +
+        "fallen out of the population again.",
+    ).toContain("const servicesDir = SERVER_DIR;");
+    const at = src.indexOf("const servicesDir = SERVER_DIR;");
+    expect(src.slice(at, at + 700), "the walk stopped recursing").toContain("stack.push(full)");
+    // And services is not quietly excluded on the way down.
+    const exAt = src.indexOf("const EXCLUDED_DIRS = new Set([");
+    const exclusions = src.slice(exAt, src.indexOf("]);", exAt));
+    for (const dir of ["services", "routes", "jobs", "ai"]) {
+      expect(
+        exclusions,
+        `"${dir}" was added to EXCLUDED_DIRS — that removes a whole tenant ` +
+          "surface from the population while every count on the verdict line " +
+          "stays healthy. Excluding a directory is how this gate goes blind.",
+      ).not.toContain(`"${dir}"`);
+    }
   });
 
   it("actually scans the service files (vacuity guard)", () => {
@@ -824,5 +873,430 @@ describe("the debt register only shrinks", () => {
     // never use it. Unit 53's own service would have passed on that basis if it
     // had merely accepted the argument.
     expect(src).toContain("A service can take `orgId` and still hand it to nobody.");
+  });
+});
+
+/**
+ * ── THE ROUTE-HANDLER BOUNDARY ───────────────────────────────────────────────
+ *
+ * On a route file there is no `async function` to extract: every query lives
+ * inside an inline `(req, res)` callback, so the UNIT the gate reads is the
+ * handler, and reading the wrong span of text is the same as not reading it.
+ *
+ * The first version of the handler extractor was wrong in four ways at once,
+ * and every one of them was silent — the verdict line printed a healthy route
+ * count throughout:
+ *
+ *   1. It took "the LAST `async (` inside the registration call" as the
+ *      handler. The call text spans the handler's whole body, so a nested
+ *      `db.transaction(async (tx) => …)` sits later in the string and wins;
+ *      the unit became the INNER callback and the outer body went unread.
+ *      51 of 2,620 handlers under server/.
+ *   2. It took "everything after the last depth-0 comma" as the final
+ *      argument, and a multi-line Express registration usually ends `},\n);` —
+ *      a TRAILING comma. 432 handlers resolved to whitespace and vanished.
+ *   3. It required the final argument to be an inline function, so every
+ *      handler registered through a wrapper — `asyncHandler(async (req, res)
+ *      => …)` — was dropped. 40 more.
+ *   4. It required the handler to be `async`, though an unawaited `db.select()`
+ *      chain leaks exactly as much as an awaited one.
+ *
+ * Each canary below hides an unscoped cross-tenant read in ONE of those four
+ * shapes. If a future "simplification" reintroduces any of them, the gate stops
+ * reading that shape and these turn green — which is the whole failure mode.
+ */
+describe("the route-handler extractor reads the whole handler (boundary canaries)", () => {
+  /** A registration whose handler body holds one scoped and one unscoped read. */
+  function routeFixture(body: string): Record<string, string> {
+    return {
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/routes-__canary__.ts": [
+        'import { db } from "./db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export function registerCanary(api: any) {",
+        body,
+        "}",
+        "",
+      ].join("\n"),
+    };
+  }
+
+  /** The leak every fixture hides, indented to sit inside a handler body. */
+  const LEAK = [
+    "      const leaked = await db.select().from(properties)",
+    "        .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
+    "      res.json(leaked);",
+  ].join("\n");
+
+  function expectCaught(out: string, failed: boolean, route: string, why: string) {
+    expect(failed, `${why}\nThe lint exited ZERO with a cross-tenant read in the tree:\n${out}`).toBe(true);
+    // The route must be named as an OFFENDER, not merely mentioned. Without
+    // this the canary passes vacuously: a registration the walk cannot close
+    // is printed on the "could not be located" line, AND its leak is still
+    // caught against the enclosing registrar function — so `out` contains the
+    // route string and the lint is red, while the handler itself was never
+    // read. That is the exact failure these canaries exist to detect, and it
+    // is what the first version of this helper let through.
+    expect(
+      out,
+      `${why}\nThe route is NOT reported as an offender:\n${out}`,
+    ).toMatch(new RegExp(`(\\[route\\][^\\n]*|\\s\\s)${route.replace(/[.*+?^$()|[\]\\]/g, "\\$&")}\\(\\)`));
+    expect(
+      out,
+      `${why}\nThe registration could not be read at all, so nothing about its ` +
+        `body was checked:\n${out}`,
+    ).toContain("declarations whose body could not be located: 0");
+    expect(out).not.toContain("[check-org-scoped-fetch] PASS");
+    // Vacuity: a tree the gate could not parse would also produce "no PASS".
+    expect(out, "the fixture's org-scoped table was not recognised").toMatch(/org-scoped tables: [1-9]/);
+    expect(out, "no route handler was read at all, so this proves nothing").toMatch(
+      /scanned \d+ async functions, [1-9]\d* route handlers/,
+    );
+  }
+
+  it("catches a leak in a handler that also contains a NESTED async callback", () => {
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          '  api.get("/api/__canary_nested/:id", async (req: any, res: any) => {',
+          "    await db.transaction(async (tx: any) => {",
+          "      await tx.select().from(properties)",
+          "        .where(eq(properties.organizationId, req.organizationId));",
+          "    });",
+          LEAK,
+          "  });",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_nested/:id",
+      "The extractor picked the NESTED async callback as the unit, so the " +
+        "outer handler body — where the leak is — was never read. This is the " +
+        "defect that hid 51 handlers.",
+    );
+  });
+
+  it("catches a leak in a handler registered with a TRAILING comma", () => {
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          "  api.get(",
+          '    "/api/__canary_trailing/:id",',
+          "    async (req: any, res: any) => {",
+          LEAK,
+          "    },",
+          "  );",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_trailing/:id",
+      "The final argument resolved to the whitespace AFTER the trailing comma, " +
+        "so the handler was dropped from the population without a word. This " +
+        "is the defect that hid 432 handlers.",
+    );
+  });
+
+  it("catches a leak in a handler wrapped in asyncHandler(...)", () => {
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          '  api.get("/api/__canary_wrapped/:id", asyncHandler(async (req: any, res: any) => {',
+          LEAK,
+          "  }));",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_wrapped/:id",
+      "The handler sits inside a wrapper call, so the final argument was not " +
+        "an inline function and the route was skipped. This is the defect that " +
+        "hid 40 handlers.",
+    );
+  });
+
+  it("catches a leak in a SYNCHRONOUS handler", () => {
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          '  api.get("/api/__canary_sync/:id", (req: any, res: any) => {',
+          "    const leaked = db.select().from(properties)",
+          "      .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
+          "    leaked.then((rows: any) => res.json(rows));",
+          "  });",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_sync/:id",
+      "The handler was skipped for not being `async`. An unawaited query chain " +
+        "reads exactly as many rows as an awaited one — `async` is not a " +
+        "security property.",
+    );
+  });
+
+  it("still reads a query written DIRECTLY in the registrar, outside every handler", () => {
+    // Queries are attributed to their INNERMOST unit, so a route handler's
+    // body is masked out of the enclosing registrar's text — otherwise every
+    // finding in a route file is reported twice, once against a 1,400-line
+    // function whose name tells a reader nothing (9 such duplicates existed
+    // on 2026-09-04). The risk of that masking is the opposite error: blanking
+    // too much and losing the registrar's OWN queries. This pins that it does
+    // not.
+    const { out, failed } = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/routes-__registrar_canary__.ts": [
+        'import { db } from "./db";',
+        'import { properties } from "@shared/schema";',
+        'import { eq, and, sql } from "drizzle-orm";',
+        "",
+        "export async function registerRegistrarCanaryRoutes(api: any, organizationId: number) {",
+        "  const scoped = await db.select().from(properties)",
+        "    .where(eq(properties.organizationId, organizationId));",
+        '  api.get("/api/__registrar_child/:id", async (req: any, res: any) => {',
+        "    const inner = await db.select().from(properties)",
+        "      .where(eq(properties.organizationId, req.organizationId));",
+        "    res.json(inner);",
+        "  });",
+        "  // Directly in the registrar body, outside every handler.",
+        "  const leaked = await db.select().from(properties)",
+        "    .where(and(sql`LOWER(${properties.state}) = LOWER('TX')`));",
+        "  return { scoped, leaked };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(
+      failed,
+      "masking the nested handler out of the registrar also blanked the " +
+        "registrar's own unscoped query, so a whole class of read became " +
+        `invisible:\n${out}`,
+    ).toBe(true);
+    expect(out).toContain("registerRegistrarCanaryRoutes");
+    // And the handler inside it is still a unit of its own, not folded in.
+    expect(out, "the nested handler was not read as its own unit").toMatch(
+      /scanned \d+ async functions, [1-9]\d* route handlers/,
+    );
+  });
+
+  it("no route shape the extractor does not read carries a query (population guard)", () => {
+    // ROUTE_VERBS is get|post|put|patch|delete|options|head|all — `use` is
+    // deliberately absent, because `app.use(path, router)` mounts a router and
+    // `app.use(path, namedMiddleware)` hands off to a declaration the
+    // async-function extractor already reads.
+    //
+    // That is a POPULATION decision, and a population decision is invisible in
+    // a green result. It holds only while nobody writes `app.use("/x", async
+    // (req, res) => { …a query… })`. Measured 2026-09-04: zero such handlers
+    // exist. This assertion is what makes writing the FIRST one fail here
+    // rather than pass everywhere.
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory()) {
+          if (!["node_modules", "__tests__", "__mocks__", "public", "dist"].includes(e.name)) walk(rel);
+        } else if (e.name.endsWith(".ts") && !/\.(test|spec)\.ts$/.test(e.name)) files.push(rel);
+      }
+    };
+    walk("server");
+    expect(files.length, "the walk found no server files, so this proves nothing").toBeGreaterThan(300);
+
+    // The call must be bounded by REAL paren matching. A regex that scans a
+    // fixed window past `app.use(` runs off the end of the call and matches
+    // `async (` plus a query from unrelated code further down the file — which
+    // is exactly what the first version of this assertion did, reporting
+    // `app.use('/api/founder/vendor-status', …, vendorStatusRouter)` (a plain
+    // router mount) as an inline handler with a query in it.
+    const matchParen = (src: string, open: number): number => {
+      let depth = 0;
+      let quote: string | null = null;
+      let prev = "";
+      for (let i = open; i < src.length; i++) {
+        const ch = src[i];
+        if (quote) {
+          if (ch === quote && prev !== "\\") quote = null;
+        } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+        else if (ch === "(") depth += 1;
+        else if (ch === ")") {
+          depth -= 1;
+          if (depth === 0) return i;
+        }
+        prev = ch;
+      }
+      return -1;
+    };
+
+    const offenders: string[] = [];
+    for (const rel of files) {
+      const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      const re = /\b[A-Za-z_$][\w$]*\.use\s*\(\s*["'`](\/[^"'`]*)["'`]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src)) !== null) {
+        const open = src.indexOf("(", m.index);
+        const close = matchParen(src, open);
+        if (close === -1) continue;
+        const call = src.slice(open, close + 1);
+        re.lastIndex = open;
+        if (!/async\s*\(/.test(call)) continue;
+        if (!/\.(select|insert|update|delete)\s*\(|db\.query\./.test(call)) continue;
+        offenders.push(`${rel} — app.use("${m[1]}", …)`);
+      }
+    }
+    expect(
+      offenders,
+      "A query now lives inside an inline `app.use(path, async (req, res) => …)` " +
+        "handler. `use` is NOT in ROUTE_VERBS, so the tenancy lint does not read " +
+        "these — the handler is outside the population entirely and no rule can " +
+        "fire on it. Add \"use\" to ROUTE_VERBS in " +
+        "scripts/check-org-scoped-fetch.mjs (and re-run to pick up whatever it " +
+        "then finds), or move the query into a named handler.",
+    ).toEqual([]);
+  });
+
+  it("reads every declaration in the repository, including the deeply nested ones", () => {
+    // A `${…}` hole holds arbitrary code, including MORE template literals.
+    // Treating a backtick as a plain quote closes the OUTER template on an
+    // INNER one, after which every brace and paren sits at the wrong nesting
+    // and the enclosing registration never closes — so the declaration leaves
+    // the population with no message at all.
+    //
+    // This is pinned against the REAL repository rather than a fixture on
+    // purpose. The shapes that actually broke the walk are emergent — several
+    // templates and regexes interacting across hundreds of lines — and a
+    // hand-built fixture that "looks nested" balances by luck and proves
+    // nothing. What is checkable, and is exactly the property that matters, is
+    // that NO declaration in this repository is unreadable.
+    //
+    // Measured 2026-09-04: four registrations were being dropped this way,
+    // silently. One of them was `POST /api/founder/escalations/:id/generate-
+    // prompt`, whose prompt builder nests three deep. Worse, the same class of
+    // desynchronisation hid `executeSupportTool` in server/ai/supportAgent.ts
+    // — a 91-case dispatch a model drives while talking to a paying customer,
+    // which this gate had NEVER read. Reading it found four cross-org reads of
+    // support_resolution_history.
+    const out = run();
+    const m = /declarations whose body could not be located: (\d+)/.exec(out);
+    expect(m, `the coverage line is gone or changed shape:\n${out}`).not.toBeNull();
+    expect(
+      Number(m![1]),
+      "A declaration in this repository cannot be read, so this gate says " +
+        "NOTHING about it — no rule can fire on a unit that is not in the " +
+        "population, and the verdict line stays healthy either way. Find out " +
+        "which construct the walk desynchronises on (nested template literals, " +
+        "regex literals holding a quote, and postfix `!`/`++` before a division " +
+        "are the three that have done it) rather than accepting the number.",
+    ).toBe(0);
+  });
+
+  it("reads the specific real declarations that only parse with nesting support", () => {
+    // The zero above is a population claim; these are the two members that
+    // establish it is not zero-by-luck. Both were unreadable until 2026-09-04
+    // and both are consequential: a model-driven tool switch and a founder
+    // route that reads tickets across tenants.
+    const out = run();
+    for (const name of [
+      "server/ai/supportAgent.ts::executeSupportTool",
+      "server/routes-support-tickets.ts::POST /api/founder/escalations/:id/generate-prompt",
+    ]) {
+      expect(
+        out,
+        `${name} is not being read: it is in the route-widening register, so if ` +
+          "the walk could not reach it the register would report it stale. A " +
+          "stale count above zero here means the tokenizer regressed.",
+      ).not.toContain(`  - ${name}`);
+    }
+    expect(out, "the widening register reported stale entries").toMatch(
+      /route-widening debt register[^\n]*0 stale/,
+    );
+  });
+
+  it("reads a handler whose body holds a regex literal containing quotes", () => {
+    // `s.replace(/[<>&'\"]/g, …)` — real code, in
+    // server/routes-founder-letters.ts. Read as a string, the apostrophe
+    // opened a quote that ran to the next apostrophe anywhere in the file.
+    // maskComments had the same bug, so one regex literal could put an
+    // arbitrary amount of a file outside the population, and every extractor
+    // reads maskComments' output.
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          '  api.get("/api/__canary_regex/:id", async (req: any, res: any) => {',
+          "    const esc = (v: string) => v.replace(/[<>&'\"]/g, \"_\");",
+          "    void esc(String(req.params.id));",
+          LEAK,
+          "  });",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_regex/:id",
+      "A regex literal holding a quote desynchronised the walk, so the handler " +
+        "left the population.",
+    );
+  });
+
+  it("does not mistake a division for a regex (postfix ! and ++)", () => {
+    // The regex-vs-division rule is what makes the two canaries above possible,
+    // and getting it wrong fails in the other direction: `cac.cacUsd! / n` has
+    // a TypeScript non-null assertion before the slash, and reading that `!` as
+    // a prefix operator turned the division into a regex literal that swallowed
+    // the rest of the handler. Same for `i++ / 2`.
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          '  api.get("/api/__canary_division/:id", async (req: any, res: any) => {',
+          "    const n: number | null = 7;",
+          "    let i = 2;",
+          "    const a = Math.round((n! / 3) * 10) / 10;",
+          "    const b = i++ / 2;",
+          '    const c = "quote \' here";',
+          "    void a; void b; void c;",
+          LEAK,
+          "  });",
+        ].join("\n"),
+      ),
+    );
+    expectCaught(
+      out,
+      failed,
+      "GET /api/__canary_division/:id",
+      "A division was read as a regex literal, which swallowed the rest of the " +
+        "handler including its unscoped query.",
+    );
+  });
+
+  it("a correctly-scoped route fixture PASSES — these canaries are not 'any route fails'", () => {
+    const { out, failed } = runOverFixture(
+      routeFixture(
+        [
+          "  api.get(",
+          '    "/api/__canary_clean/:id",',
+          "    asyncHandler(async (req: any, res: any) => {",
+          "      const rows = await db.select().from(properties)",
+          "        .where(eq(properties.organizationId, req.organizationId));",
+          "      res.json(rows);",
+          "    }),",
+          "  );",
+        ].join("\n"),
+      ),
+    );
+    expect(failed, `a correctly-scoped route fixture was rejected:\n${out}`).toBe(false);
+    expect(out, "the fixture ran without the gate seeing its table").toMatch(/org-scoped tables: [1-9]/);
+    expect(out, "the clean fixture's handler was not read either").toMatch(
+      /scanned \d+ async functions, [1-9]\d* route handlers/,
+    );
   });
 });

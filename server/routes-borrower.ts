@@ -603,45 +603,46 @@ export function registerBorrowerRoutes(app: Express): void {
   api.get("/api/borrower/session", validateBorrowerSession, async (req, res) => {
     try {
       const session = requireBorrowerSession(req);
-      
-      // Get the note associated with the session
-      const note = await storage.getNoteByAccessToken(session.noteId.toString());
+
+      // SEC (2026-09-04): this used to load the note with
+      // `storage.getNoteByAccessToken(session.noteId.toString())` — the
+      // session's NUMERIC note id passed to a lookup keyed on
+      // `notes.access_token`, an opaque per-note secret. Two things were wrong
+      // and the second is the serious one:
+      //
+      //   1. Namespace confusion. A note id is not an access token, so the
+      //      primary lookup matched only by coincidence and the by-id branch
+      //      below it was doing the real work.
+      //   2. `notes.access_token` is CLIENT-SETTABLE and globally unique.
+      //      `insertNoteSchema` omits only { id, createdAt, updatedAt }, and
+      //      `createNote` honours `noteData.accessToken` verbatim — so any
+      //      self-serve signup can POST /api/notes with
+      //      `{ accessToken: "42" }` and own the token "42" forever. From then
+      //      on, a legitimate borrower of a DIFFERENT organization's note #42
+      //      was served the attacker's loan: balance, payment history, linked
+      //      property and borrower name, on a Reg-Z consumer surface.
+      //
+      // It also defeated the defence `validateBorrowerSession` documents right
+      // above: that middleware re-asserts `note.organization_id ===
+      // session.organization_id` for `notes.id = session.noteId`, and the
+      // token lookup returned a row it had never checked.
+      //
+      // The note is now loaded by id AND the session's own organization
+      // snapshot, so the read cannot leave the tenant the session was minted
+      // in even if the middleware's check is later moved or removed.
+      const [note] = await db
+        .select()
+        .from(notes)
+        .where(
+          session.organizationId != null
+            ? and(eq(notes.id, session.noteId), eq(notes.organizationId, session.organizationId))
+            : eq(notes.id, session.noteId),
+        )
+        .limit(1);
       if (!note) {
-        // Also try getting note by ID directly
-        const noteById = await db.select().from(notes).where(eq(notes.id, session.noteId));
-        if (noteById.length === 0) {
-          return Errors.notFound(res, "loan");
-        }
-        
-        const foundNote = noteById[0];
-        
-        // Get payments for this note
-        const notePayments = await storage.getPayments(foundNote.organizationId, foundNote.id);
-        
-        // Get property info if linked
-        let property = null;
-        if (foundNote.propertyId) {
-          property = await storage.getProperty(foundNote.organizationId, foundNote.propertyId);
-        }
-        
-        // Get borrower info
-        let borrower = null;
-        if (foundNote.borrowerId) {
-          borrower = await storage.getLead(foundNote.organizationId, foundNote.borrowerId);
-        }
-        
-        return res.json({
-          note: { ...foundNote, property },
-          payments: notePayments,
-          borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
-          session: {
-            email: session.email,
-            createdAt: session.createdAt,
-            expiresAt: session.expiresAt,
-          },
-        });
+        return Errors.notFound(res, "loan");
       }
-      
+
       // Get payments for this note
       const notePayments = await storage.getPayments(note.organizationId, note.id);
       

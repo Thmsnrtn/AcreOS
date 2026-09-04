@@ -673,6 +673,35 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   // fixed and removed from these registers in that commit), 35 claims were
   // raised and refuted, and the large majority were class (b). Expect a low hit
   // rate, and verify every claim against the CALLER, not the signature.
+  // ── ADDED 2026-09-04, HAND-VERIFIED, with the fix that made it safe ──────
+  // `executeSupportTool` became readable to this gate for the first time on
+  // 2026-09-04: the walkers desynchronised on a nested template literal in the
+  // same file, so the whole 91-case switch — a model-driven dispatch reachable
+  // by any authenticated org member through POST
+  // /api/support/tickets/:id/pax-resolve — had never been in the population.
+  //
+  // What rule 2 matched, both verified by reading:
+  //   • supportTickets — `update_ticket_status`, `draft_customer_response` and
+  //     `record_customer_feedback` key on the `ticketId` PARAMETER. All three
+  //     call sites happened to check ownership first, so nothing was live, but
+  //     that was a property of the callers. An ownership check now runs ONCE at
+  //     the top of executeSupportTool (founders excepted, matching the
+  //     pax-resolve route's own rule), so a fourth caller cannot forget it.
+  //     The bare-id reads remain, which is what keeps this entry here.
+  //   • paxMemory — the UPDATE keys on `existing[0].id`, and `existing` is read
+  //     three lines above with eq(paxMemory.organizationId, org.id). Verified
+  //     parent; class (b).
+  //
+  // Four cross-org READS were found in the same pass and FIXED rather than
+  // registered: search_resolved_tickets, get_similar_resolutions,
+  // get_best_resolution_approach and the resolution-analytics tool all read
+  // support_resolution_history with no organization predicate, returning
+  // another tenant's `resolutionApproach` and `lessonLearned` free text into
+  // the context of a model then talking to a different paying customer.
+  // It is NOT listed here: this register is a down-only ratchet, and admitting
+  // a key raises it. Debt that appears because the POPULATION grew belongs in
+  // scripts/org-scope-route-widening.json, which is the register for exactly
+  // that and carries the reasoning above under _TRIAGED.
   "server/services/autonomyHealth.ts::gradeRecentDecisions",
   "server/services/customerSupportAutoResolver.ts::sophieGeniusMode",
   "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch",
@@ -844,6 +873,101 @@ function findSchemaFiles() {
  * tables counted as org-scoped whenever unrelated schema text moved —
  * at one point dropping `properties` itself from the org-scoped set.
  */
+/**
+ * Index of the backtick that closes the template literal opening at `start`.
+ *
+ * A template is not a quoted string: `${…}` holes contain arbitrary code,
+ * INCLUDING further template literals. Treating a backtick as a plain quote
+ * and scanning to the next one therefore closes the OUTER template on an
+ * INNER one, after which every brace, paren and quote in between is read at
+ * the wrong nesting.
+ *
+ * Measured 2026-09-04 on `POST /api/founder/escalations/:id/generate-prompt`,
+ * whose prompt builder nests three deep:
+ *
+ *     ${messages.map(m => `**${m.role === 'agent' ? `Pax (${m.agentName})` : 'System'}:** …`)}
+ *
+ * The registration's paren walk ran off the end of the handler and the route
+ * left the population. It was the LAST silently-dropped declaration in the
+ * repository; everything else the walkers could not read is now counted.
+ *
+ * Returns -1 for an unterminated template, which every caller must treat as a
+ * loud skip rather than a guess.
+ */
+function skipTemplate(source, start) {
+  let i = start + 1;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === "\\") { i += 2; continue; }
+    if (c === "`") return i;
+    if (c === "$" && source[i + 1] === "{") {
+      let depth = 1;
+      let prev = "{";
+      i += 2;
+      while (i < source.length && depth > 0) {
+        const d = source[i];
+        if (d === "\\") { i += 2; continue; }
+        if (d === "`") {
+          const end = skipTemplate(source, i);
+          if (end === -1) return -1;
+          i = end + 1;
+          prev = "`";
+          continue;
+        }
+        if (d === "/" && source[i + 1] === "/") {
+          const nl = source.indexOf("\n", i);
+          if (nl === -1) return -1;
+          i = nl + 1;
+          prev = "\n";
+          continue;
+        }
+        if (d === "/" && source[i + 1] === "*") {
+          const e = source.indexOf("*/", i + 2);
+          if (e === -1) return -1;
+          i = e + 2;
+          prev = "/";
+          continue;
+        }
+        // A hole is arbitrary code, so it can hold a regex literal — and this
+        // one does, in the wild: `${(v.notes || "").replace(/"/g, '""')}` in
+        // server/routes-field-scout.ts puts a DOUBLE QUOTE inside a regex
+        // inside a hole inside a template. Read as a string, it desynchronised
+        // the hole's brace count and the whole registration stopped closing.
+        if (d === "/" && regexCanStartAfter(prev, source, i)) {
+          let j = i + 1;
+          let inClass = false;
+          let closed = false;
+          while (j < source.length) {
+            const e = source[j];
+            if (e === "\\") { j += 2; continue; }
+            if (e === "\n") break;
+            if (inClass) { if (e === "]") inClass = false; }
+            else if (e === "[") inClass = true;
+            else if (e === "/") { closed = true; break; }
+            j += 1;
+          }
+          if (closed) { i = j + 1; prev = "/"; continue; }
+        }
+        if (d === '"' || d === "'") {
+          const quote = d;
+          i += 1;
+          while (i < source.length && source[i] !== quote) i += source[i] === "\\" ? 2 : 1;
+          i += 1;
+          prev = quote;
+          continue;
+        }
+        if (d === "{") depth += 1;
+        else if (d === "}") depth -= 1;
+        prev = d;
+        i += 1;
+      }
+      continue;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
 function maskComments(source) {
   const out = source.split("");
   let inString = null;
@@ -855,7 +979,14 @@ function maskComments(source) {
       prevChar = ch;
       continue;
     }
-    if (ch === '"' || ch === "'" || ch === "`") {
+    if (ch === "`") {
+      const end = skipTemplate(source, i);
+      if (end === -1) break; // unterminated — leave the rest untouched
+      i = end;
+      prevChar = "`";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
       inString = ch;
       prevChar = ch;
       continue;
@@ -881,13 +1012,69 @@ function maskComments(source) {
       prevChar = " ";
       continue;
     }
+    // Tried AFTER the two comment branches above, deliberately: `/** doc */`
+    // on a single line closes on its own trailing slash, so a regex check
+    // placed first swallows the comment and leaves its prose as live code.
+    // That cost three org-scoped tables and 36 route handlers when it was
+    // tried the other way round.
+    // A REGEX LITERAL is neither code to scan nor a comment to blank, and its
+    // character class may hold quotes. `s.replace(/[<>&'"]/g, …)` opened a
+    // string on the apostrophe HERE, in the mask itself — after which this
+    // function's own string state was wrong for the rest of the file, so it
+    // blanked live code it mistook for comments and left comments unblanked.
+    // Everything downstream reads this output, so one regex literal could put
+    // an arbitrary amount of a route file outside the population.
+    //
+    // Measured 2026-09-04: it cost four route registrations that no extractor
+    // could then close. The regex branch below matchDelimiter has the same
+    // reason; both use the same regex-vs-division rule.
+    if (ch === "/" && regexCanStartAfter(prevChar, source, i)) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < source.length) {
+        const c = source[j];
+        if (c === "\\") { j += 2; continue; }
+        if (c === "\n") break;
+        if (inClass) { if (c === "]") inClass = false; }
+        else if (c === "[") inClass = true;
+        else if (c === "/") { closed = true; break; }
+        j += 1;
+      }
+      if (closed) { i = j; prevChar = "/"; continue; }
+    }
     prevChar = ch;
   }
   return out.join("");
 }
 
-/** Walk parens from `openIdx` (an opening "(") to its match. */
-function matchParen(source, openIdx) {
+/**
+ * Walk a balanced pair from `openIdx`, skipping strings AND COMMENTS.
+ *
+ * ── WHY COMMENTS ────────────────────────────────────────────────────────────
+ * Both walkers used to track quotes only. An APOSTROPHE IN A COMMENT — English
+ * prose, which this repository is full of — therefore opened a string that ran
+ * until the next apostrophe anywhere in the file, and every bracket in between
+ * was counted wrong or not at all. When the walk cannot close, the extractor
+ * drops the whole declaration, silently.
+ *
+ * Measured 2026-09-04: four route registrations were being dropped this way,
+ * one of them on the sentence
+ *
+ *     // deployment doesn't carry it (never send a placeholder).
+ *
+ * inside `POST /break-glass/email`. Nothing in the verdict said so; the handler
+ * simply was not in the population. A tenant-isolation gate losing units to a
+ * contraction is not a parsing curiosity, it is the third law again: the
+ * population is an assumption, and this one was invisible.
+ *
+ * `<` / `>` are deliberately NOT tracked here — these walk brackets, not
+ * generics — and a regex literal whose character class holds an unmatched
+ * quote would still confuse the string state. `unreadableDeclarations` and the
+ * per-shape scan floors are what keep that honest: a walk that cannot close is
+ * COUNTED, not skipped quietly.
+ */
+function matchDelimiter(source, openIdx, open, close) {
   let depth = 0;
   let inString = null;
   let prevChar = "";
@@ -895,39 +1082,111 @@ function matchParen(source, openIdx) {
     const ch = source[i];
     if (inString) {
       if (ch === inString && prevChar !== "\\") inString = null;
-    } else {
-      if (ch === '"' || ch === "'" || ch === "`") inString = ch;
-      else if (ch === "(") depth += 1;
-      else if (ch === ")") {
-        depth -= 1;
-        if (depth === 0) return i;
+      prevChar = prevChar === "\\" && ch === "\\" ? "" : ch;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "/") {
+      const nl = source.indexOf("\n", i);
+      if (nl === -1) return -1;
+      i = nl;
+      prevChar = "\n";
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      if (end === -1) return -1;
+      i = end + 1;
+      prevChar = "/";
+      continue;
+    }
+    // A REGEX LITERAL, which may hold quotes and brackets that are not code.
+    // `esc = (s) => s.replace(/[<>&'"]/g, …)` in server/routes-founder-letters.ts
+    // put BOTH quote characters inside a character class; the walk opened a
+    // string on the apostrophe and never closed the call, dropping
+    // `GET /sitemap-notes.xml` out of the population without a word.
+    //
+    // Regex-vs-division is decided the standard way: a `/` starts a literal
+    // only where an expression may begin, which is after an operator, an
+    // opening bracket, a comma, a semicolon, or a keyword like `return`.
+    // Getting it wrong is not silent — the walk fails to close and the
+    // declaration is COUNTED as unreadable.
+    if (ch === "/" && regexCanStartAfter(prevChar, source, i)) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < source.length) {
+        const c = source[j];
+        if (c === "\\") { j += 2; continue; }
+        if (c === "\n") break; // an unterminated literal is not a literal
+        if (inClass) { if (c === "]") inClass = false; }
+        else if (c === "[") inClass = true;
+        else if (c === "/") { closed = true; break; }
+        j += 1;
       }
+      if (closed) { i = j; prevChar = "/"; continue; }
+      // Not a regex after all — fall through and treat `/` as division.
+    }
+    if (ch === "`") {
+      const end = skipTemplate(source, i);
+      if (end === -1) return -1;
+      i = end;
+      prevChar = "`";
+      continue;
+    }
+    if (ch === '"' || ch === "'") inString = ch;
+    else if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return i;
     }
     prevChar = ch;
   }
   return -1;
 }
 
+/**
+ * Can a regex literal begin at `idx`? True where an EXPRESSION may begin.
+ *
+ * `prevChar` is the previous character the walk consumed, which is already
+ * comment- and string-aware. Whitespace is walked back over so
+ * `replace(\n  /re/, …)` reads the same as `replace(/re/, …)`.
+ */
+function regexCanStartAfter(prevChar, source, idx) {
+  let k = idx - 1;
+  while (k >= 0 && /\s/.test(source[k])) k -= 1;
+  const c = k >= 0 ? source[k] : "";
+  if (c === "") return true;
+  // POSTFIX operators look exactly like prefix ones one character at a time,
+  // and TypeScript adds a third. `Math.round((cac.cacUsd! / perCustomer) * 10)`
+  // has a non-null assertion before the slash: read as a prefix `!`, the
+  // division became a regex literal that swallowed the rest of the handler.
+  // `x++ / 2` and `x-- / 2` are the same mistake in plain JavaScript.
+  const isPostfix = (op) => {
+    let j = k;
+    while (j >= 0 && source[j] === op) j -= 1;
+    while (j >= 0 && /\s/.test(source[j])) j -= 1;
+    return j >= 0 && /[\w$)\]"'`]/.test(source[j]);
+  };
+  if (c === "!" && isPostfix("!")) return false;
+  if ((c === "+" || c === "-") && source[k - 1] === c && isPostfix(c)) return false;
+  if ("(,=:[!&|?{};+-*%^~<>".includes(c)) return true;
+  // `return /re/`, `typeof /re/`, `case /re/:` — a word boundary before the
+  // slash is a keyword, not an identifier, only for these.
+  const word = /([A-Za-z_$][\w$]*)$/.exec(source.slice(Math.max(0, k - 12), k + 1));
+  if (word && ["return", "typeof", "case", "in", "of", "delete", "void", "instanceof", "new", "do", "else", "yield", "await"].includes(word[1])) {
+    return true;
+  }
+  return false;
+}
+
+/** Walk parens from `openIdx` (an opening "(") to its match. */
+function matchParen(source, openIdx) {
+  return matchDelimiter(source, openIdx, "(", ")");
+}
+
 /** Walk braces from `openIdx` (an opening "{") to its match. */
 function matchBrace(source, openIdx) {
-  let depth = 0;
-  let inString = null;
-  let prevChar = "";
-  for (let i = openIdx; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === inString && prevChar !== "\\") inString = null;
-    } else {
-      if (ch === '"' || ch === "'" || ch === "`") inString = ch;
-      else if (ch === "{") depth += 1;
-      else if (ch === "}") {
-        depth -= 1;
-        if (depth === 0) return i;
-      }
-    }
-    prevChar = ch;
-  }
-  return -1;
+  return matchDelimiter(source, openIdx, "{", "}");
 }
 
 /**
@@ -971,10 +1230,36 @@ function findScannedFiles() {
       files.push(join(subdir, entry));
     }
   }
-  // server/services/** — added 2026-08-13. See the SERVICE LAYER note in the
-  // header: a service that owns its own persistence never passed under this
-  // lint, and one of them was leaking KYC records across tenants.
-  const servicesDir = join(SERVER_DIR, "services");
+  // THE WHOLE SERVER — widened 2026-09-04, and this is the third widening in
+  // this file's life for the same reason each time: the population was the
+  // assumption, not the predicate.
+  //
+  //   2026-08-13  server/services/** joined server/storage — a service that
+  //               owned its own persistence had never passed under the lint,
+  //               and one was leaking KYC records across tenants.
+  //   2026-08-16  the `async function` shape joined the method shape.
+  //   2026-09-04  server/** — routes, jobs, middleware, ai, mcp, utils and
+  //               webhookHandlers had NEVER been read. On that day an
+  //               independent review found six live cross-tenant routes
+  //               (6c8bd244) and two more the next (779bc251). Every one was
+  //               in a file outside this walk. A gate proves its property
+  //               only over the population it actually reads.
+  //
+  // The widening is only half the change and would have been close to
+  // worthless alone: a route file's units are inline `async (req, res) => {}`
+  // handlers, which neither extractor could see, so every query landed on the
+  // enclosing registerRoutes(). `extractRouteHandlers` is the other half.
+  //
+  // EXCLUSIONS are named, not implied. Anything not listed is scanned.
+  const EXCLUDED_DIRS = new Set([
+    "node_modules",
+    "__tests__",
+    "__mocks__",
+    // Generated or vendored surfaces with no hand-written queries.
+    "public",
+    "dist",
+  ]);
+  const servicesDir = SERVER_DIR;
   if (statSync(servicesDir, { throwIfNoEntry: false })?.isDirectory()) {
     const stack = [servicesDir];
     while (stack.length > 0) {
@@ -988,7 +1273,7 @@ function findScannedFiles() {
           continue;
         }
         if (st.isDirectory()) {
-          stack.push(full);
+          if (!EXCLUDED_DIRS.has(entry)) stack.push(full);
           continue;
         }
         if (!entry.endsWith(".ts")) continue;
@@ -1011,6 +1296,14 @@ function findScannedFiles() {
  * so rather than count it as passing. Measured 0 across 910 files.
  */
 const unreadableDeclarations = [];
+
+/**
+ * Routes whose handler is a BARE REFERENCE to a function declared elsewhere.
+ * Not a gap — the referenced declaration is scanned under its own name by the
+ * async-function extractor — but counted and printed so the hand-off is
+ * visible and a sudden growth in it is noticed rather than assumed benign.
+ */
+const namedHandlerReferences = [];
 
 /**
  * Extract every `async <name>(…) { … }` method from a source file as
@@ -1092,10 +1385,217 @@ function extractAsyncFunctions(source) {
     if (braceClose === -1) continue;
     const text = source.slice(match.index, braceClose + 1);
     const line = source.slice(0, match.index).split("\n").length;
-    functions.push({ name, text, line });
+    functions.push({ name, text, line, start: match.index, end: braceClose + 1 });
     fnRe.lastIndex = parenClose;
   }
   return functions;
+}
+
+
+/**
+ * Extract every INLINE ROUTE HANDLER — the third shape, and the one that made
+ * the whole route layer unreadable to this gate.
+ *
+ * WHY IT WAS MISSING, AND WHAT IT COST. The two extractors above key on
+ * `async <name>(` and `async function <name>(`. A route handler is neither:
+ *
+ *     api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => { … })
+ *
+ * It is an anonymous async ARROW passed as an argument. So when this lint's
+ * walk is pointed at a route file, the only unit it can see is the enclosing
+ * registration function — `registerRoutes()` in server/routes.ts is 1,400+
+ * lines and `registerMiscRoutes()` similar — and EVERY query in every handler
+ * is attributed to that one unit. That unit mentions `organizationId`
+ * somewhere, of course it does, so rule 1 can never fire and rule 2 drowns.
+ * The route layer was not merely unscanned: it was unscannable.
+ *
+ * That is why widening the walk is not, by itself, the fix. On 2026-09-04 six
+ * live cross-tenant routes were found BY HAND (commit 6c8bd244) and two more
+ * the day after — every one of them in a route file, in a handler shaped
+ * exactly like the line above.
+ *
+ * The name is the route, not a symbol: `GET /api/leads/:id`. A register entry
+ * an engineer can find in ten seconds beats one naming a 1,400-line function.
+ *
+ * Deliberately narrow. Only `<ident>.<method>(<string literal>, … )` where the
+ * final argument is an async arrow or async function expression. A handler
+ * assembled some other way is NOT guessed at — it falls to the enclosing unit
+ * as before, and `unreadableDeclarations` records what could not be read, the
+ * same honesty the two extractors above already practise.
+ */
+const ROUTE_VERBS = "get|post|put|patch|delete|options|head|all";
+/**
+ * Start of a call's LAST TOP-LEVEL argument.
+ *
+ * ── WHY THE OBVIOUS RULE IS WRONG ───────────────────────────────────────────
+ * This extractor's first version took "the LAST `async (` inside the call
+ * text" as the handler. But the call text spans the handler's whole BODY, so
+ * any nested async callback inside it — `db.transaction(async (tx) => …)`,
+ * `rows.map(async (r) => …)` — is later in the string than the handler itself
+ * and wins. The extracted unit then becomes the INNER callback, and every
+ * query in the outer handler body is invisible to a tenant-isolation gate.
+ *
+ * Measured 2026-09-04: 51 of 2620 route handlers under server/ contained a
+ * nested async callback, so 51 handlers were being read at the wrong
+ * boundary — the exact "population the gate actually reads" failure this file
+ * was widened to fix, reintroduced one level down.
+ *
+ * So the argument list is parsed instead of pattern-matched: walk from the
+ * opening paren tracking (), [], {} depth, skipping strings, template
+ * literals (including their `${}` holes) and comments, and remember where the
+ * last depth-0 comma was. Everything after it is the final argument, which for
+ * an Express registration is the handler and nothing else.
+ *
+ * Returns -1 when the scan cannot complete, which the caller must record as an
+ * unreadable declaration rather than guess at.
+ */
+function lastTopLevelArgStart(source, callOpen, callClose) {
+  let i = callOpen + 1;
+  let depth = 0;
+  let start = i;
+  // A multi-line Express registration usually ends `},\n);` — a TRAILING
+  // comma. Taking "everything after the last depth-0 comma" then yields
+  // whitespace, and the handler is dropped from the population without a
+  // word. 432 of 2620 registrations under server/ are written that way.
+  // The previous argument boundary is kept so the trailing comma can be
+  // stepped back over.
+  let previous = i;
+  while (i < callClose) {
+    const c = source[i];
+    if (c === "\\") { i += 2; continue; }
+    if (c === '"' || c === "'") {
+      const quote = c;
+      i++;
+      while (i < callClose && source[i] !== quote) i += source[i] === "\\" ? 2 : 1;
+      i++;
+      continue;
+    }
+    if (c === "`") {
+      i++;
+      let holes = 0;
+      while (i < callClose) {
+        if (source[i] === "\\") { i += 2; continue; }
+        if (source[i] === "$" && source[i + 1] === "{") { holes++; i += 2; continue; }
+        if (source[i] === "}" && holes > 0) { holes--; i++; continue; }
+        if (source[i] === "`" && holes === 0) break;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "/") { while (i < callClose && source[i] !== "\n") i++; continue; }
+    if (c === "/" && source[i + 1] === "*") {
+      const e = source.indexOf("*/", i + 2);
+      if (e === -1 || e > callClose) return -1;
+      i = e + 2;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") { depth++; i++; continue; }
+    if (c === ")" || c === "]" || c === "}") { depth--; i++; continue; }
+    if (c === "," && depth === 0) { previous = start; start = i + 1; i++; continue; }
+    i++;
+  }
+  return source.slice(start, callClose).trim() === "" ? previous : start;
+}
+
+function extractRouteHandlers(source) {
+  const handlers = [];
+  const re = new RegExp(
+    String.raw`\b([A-Za-z_$][\w$]*)\.(` + ROUTE_VERBS + String.raw`)\s*\(\s*(["'` + "`" + String.raw`])([^"'` + "`" + String.raw`]+)\3`,
+    "g",
+  );
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    const verb = match[2].toUpperCase();
+    const routePath = match[4];
+    // Only a path, never a mount of a router or a bare middleware.
+    if (!routePath.startsWith("/")) continue;
+    const callOpen = source.indexOf("(", match.index);
+    const callClose = matchParen(source, callOpen);
+    if (callClose === -1) {
+      // The walk could not close the registration, so the handler is NOT in
+      // the population. Counted, never skipped quietly — an unreadable unit
+      // that nothing reports is indistinguishable from a clean one.
+      unreadableDeclarations.push(
+        `${verb} ${routePath} (line ${source.slice(0, match.index).split("\n").length}, call did not close)`,
+      );
+      continue;
+    }
+    // The handler is the call's LAST TOP-LEVEL argument — parsed, not
+    // pattern-matched. See lastTopLevelArgStart: taking "the last `async (`
+    // in the call text" picks a nested callback out of the handler's own body
+    // and reads the wrong unit entirely.
+    const argStart = lastTopLevelArgStart(source, callOpen, callClose);
+    const line = source.slice(0, match.index).split("\n").length;
+    if (argStart === -1) {
+      unreadableDeclarations.push(`${verb} ${routePath} (line ${line})`);
+      continue;
+    }
+    // Resolve the final argument to an INLINE function, unwrapping the
+    // call-expression wrappers this codebase registers handlers through —
+    // `asyncHandler(async (req, res) => …)` (40 routes) and
+    // `withCostClass("high", async (req, res) => …)`. Without unwrapping,
+    // every one of those handlers sits outside the population while the gate
+    // reports a healthy route count.
+    let unitStart = argStart;
+    let unitEnd = callClose;
+    let parenOpen = -1;
+    for (let hop = 0; hop < 4; hop++) {
+      const rel = source.slice(unitStart, unitEnd);
+      // Sync handlers count too: an unawaited `db.select()` chain or a
+      // `.then()` is as much a cross-tenant read as an awaited one, and
+      // "it wasn't async" is not a property this gate should depend on.
+      const inline = /^\s*(?:async\s*)?(?:function\s*\*?\s*[A-Za-z0-9_$]*\s*)?\(/.exec(rel);
+      if (inline) { parenOpen = unitStart + inline[0].length - 1; break; }
+      const wrap = /^\s*[A-Za-z_$][\w$]*\s*\(/.exec(rel);
+      if (!wrap) break;
+      const wrapOpen = unitStart + wrap[0].length - 1;
+      const wrapClose = matchParen(source, wrapOpen);
+      if (wrapClose === -1) break;
+      const inner = lastTopLevelArgStart(source, wrapOpen, wrapClose);
+      if (inner === -1) break;
+      unitStart = inner;
+      unitEnd = wrapClose;
+    }
+    if (parenOpen === -1) {
+      // The final argument is a BARE REFERENCE to a handler declared
+      // elsewhere (`router.get("/metrics", metricsHandler)`). That declaration
+      // is read by the async-function extractor under its own name, so this is
+      // a deliberate hand-off, not a gap — counted so the hand-off stays
+      // visible and a growing number is noticed.
+      namedHandlerReferences.push(`${verb} ${routePath} (line ${line})`);
+      continue;
+    }
+    const parenClose = matchParen(source, parenOpen);
+    if (parenClose === -1) {
+      unreadableDeclarations.push(`${verb} ${routePath} (line ${line})`);
+      continue;
+    }
+    const absolute = unitStart;
+    const braceOpen = findBodyBrace(source, parenClose);
+    let text;
+    if (braceOpen === -1) {
+      // An expression-bodied arrow (`(_req, res) => Errors.gone(res, …)`) has
+      // no block, but it still has a body — read it to the end of the unit
+      // rather than dropping it.
+      if (/^\s*(?::[^=]*)?=>\s*[^{\s]/.test(source.slice(parenClose + 1, unitEnd))) {
+        text = source.slice(absolute, unitEnd);
+      } else {
+        unreadableDeclarations.push(`${verb} ${routePath} (line ${line})`);
+        continue;
+      }
+    } else {
+      const braceClose = matchBrace(source, braceOpen);
+      if (braceClose === -1) {
+        unreadableDeclarations.push(`${verb} ${routePath} (line ${line})`);
+        continue;
+      }
+      text = source.slice(absolute, braceClose + 1);
+    }
+    handlers.push({ name: `${verb} ${routePath}`, text, line, start: absolute, end: absolute + text.length });
+    re.lastIndex = callOpen;
+  }
+  return handlers;
 }
 
 
@@ -1276,6 +1776,48 @@ function loneIdPredicates(methodText, orgScopedIdents) {
  * marketplace. The register exists so a NEW one has to be looked at, and so the
  * count can only shrink.
  */
+/**
+ * THE ROUTE-WIDENING DEBT REGISTER — scripts/org-scope-route-widening.json.
+ *
+ * Kept in a separate FILE, deliberately. Every key in the registers above was
+ * read by a human and carries a recorded reason; the 210 keys in that file
+ * were surfaced in one stroke on 2026-09-04 by widening the walk to the whole
+ * server AND teaching this lint the inline route-handler shape, and NONE of
+ * them has been cleared. Mixing the two would quietly convert "verified safe"
+ * into "has been seen by a regex".
+ *
+ * It may only shrink, it excuses nothing new, and its own header states the
+ * obligation. See the file.
+ */
+const ROUTE_WIDENING = JSON.parse(
+  readFileSync(join(__dirname, "org-scope-route-widening.json"), "utf8"),
+);
+const WIDENING_RULE1 = new Set([
+  ...ROUTE_WIDENING.rule1.method,
+  ...ROUTE_WIDENING.rule1.function,
+  ...ROUTE_WIDENING.rule1.route,
+]);
+const WIDENING_RULE2 = new Set([
+  ...ROUTE_WIDENING.rule2.method,
+  ...ROUTE_WIDENING.rule2.function,
+  ...ROUTE_WIDENING.rule2.route,
+]);
+const WIDENING_RULE3 = new Set(ROUTE_WIDENING.rule3);
+
+/**
+ * How many held keys carry an individual, hand-written reason in `_TRIAGED`.
+ *
+ * Counted against the held sets rather than taken from the file's own header,
+ * so a reason left behind for a key that has since been fixed or deleted does
+ * not inflate the number. "Read" has to mean read, or the line is worse than
+ * not printing it.
+ */
+const wideningTriagedCount = Object.keys(ROUTE_WIDENING._TRIAGED ?? {}).filter(
+  (k) => WIDENING_RULE1.has(k) || WIDENING_RULE2.has(k) || WIDENING_RULE3.has(k),
+).length;
+/** Keys actually seen this run, so a stale (fixed) entry can be reported. */
+const wideningSeen = new Set();
+
 const RULE3_BASELINE = new Set([
   "server/services/achAutopay.ts::postReversal::payments",
   "server/services/achAutopay.ts::postSettlement::payments",
@@ -1596,6 +2138,7 @@ function main() {
   let rule3ChainsScanned = 0;
   let scannedMethods = 0;
   let scannedFunctions = 0;
+  let scannedRouteHandlers = 0;
   let methodsTouchingOrgTables = 0;
   let conformingMethods = 0;
 
@@ -1620,12 +2163,47 @@ function main() {
     // what made the function shape a working bypass (see the FUNCTION SHAPE
     // register header). Each shape answers to its own register so the two
     // ratchets stay independently auditable and independently shrinkable.
+    // THREE shapes, one rule. `async name(` is method syntax; `async function
+    // name(` is function syntax; an inline `api.get("/path", …, async (req,
+    // res) => {})` is neither, and it is what a route file is made of. Until
+    // the third was added (2026-09-04) every query in every handler was
+    // attributed to the enclosing registerRoutes() — a 1,400-line unit that
+    // mentions organizationId, so rule 1 could never fire on any of them.
+    const routeUnits = extractRouteHandlers(source).map((u) => ({ ...u, shape: "route" }));
+    // ATTRIBUTE EACH QUERY TO ITS INNERMOST UNIT. A route file's registrar —
+    // `registerRoutes`, `registerMiscRoutes` — is an async function that
+    // ENCLOSES every handler in the file, so without this every finding is
+    // reported twice: once against the handler you can act on, and once
+    // against a 1,400-line function whose name tells a reader nothing. Nine
+    // such duplicates were in the debt register on the day this was written.
+    //
+    // Masking with SPACES rather than deleting keeps the enclosing unit's
+    // remaining text at its original offsets, so nothing downstream that
+    // measures a distance inside that text starts measuring a different thing.
+    // It also leaves the registrar itself genuinely checked: a query written
+    // directly in the registrar body, outside every handler, still belongs to
+    // it and is still read.
+    const maskNested = (u) => {
+      if (typeof u.start !== "number") return u;
+      const inner = routeUnits.filter((h) => h.start >= u.start && h.end <= u.end && h.start !== u.start);
+      if (inner.length === 0) return u;
+      let text = u.text;
+      for (const h of inner) {
+        const a = h.start - u.start;
+        const b = h.end - u.start;
+        if (a < 0 || b > text.length) continue;
+        text = text.slice(0, a) + " ".repeat(b - a) + text.slice(b);
+      }
+      return { ...u, text };
+    };
     const units = [
       ...extractAsyncMethods(source).map((u) => ({ ...u, shape: "method" })),
-      ...extractAsyncFunctions(source).map((u) => ({ ...u, shape: "function" })),
+      ...extractAsyncFunctions(source).map((u) => maskNested({ ...u, shape: "function" })),
+      ...routeUnits,
     ];
     for (const unit of units) {
       if (unit.shape === "method") scannedMethods += 1;
+      else if (unit.shape === "route") scannedRouteHandlers += 1;
       else scannedFunctions += 1;
       const touched = touchedOrgScopedTables(unit.text, orgScopedIdents);
       if (touched.length === 0) continue;
@@ -1641,6 +2219,7 @@ function main() {
         for (const table of new Set(unscopedChains(unit.text, orgScopedIdents, rel))) {
           const chainKey = `${rel}::${unit.name}::${table}`;
           if (RULE3_BASELINE.has(chainKey)) rule3Seen.add(chainKey);
+          else if (WIDENING_RULE3.has(chainKey)) wideningSeen.add(chainKey);
           else newUnscopedChains.push({ key: chainKey, file: rel, line: unit.line, name: unit.name, table });
         }
         // Rule 2: it HAS an org — does it use it? See the note on
@@ -1649,6 +2228,7 @@ function main() {
         if (lone.length > 0) {
           const register = isFn ? BASELINE_FUNCTION_UNUSED_ORG : BASELINE_UNUSED_ORG;
           if (register.has(key)) (isFn ? unusedOrgSeenFunction : unusedOrgSeen).add(key);
+          else if (WIDENING_RULE2.has(key)) wideningSeen.add(key);
           else
             newUnusedOrg.push({
               key,
@@ -1664,6 +2244,8 @@ function main() {
       const register = isFn ? BASELINE_FUNCTION_OFFENDERS : BASELINE_OFFENDERS;
       if (register.has(key)) {
         (isFn ? baselineSeenFunction : baselineSeen).add(key);
+      } else if (WIDENING_RULE1.has(key)) {
+        wideningSeen.add(key);
       } else {
         newOffenders.push({ key, file: rel, line: unit.line, name: unit.name, shape: unit.shape, touched });
       }
@@ -1680,6 +2262,12 @@ function main() {
     ...[...BASELINE_OFFENDERS].filter((k) => !baselineSeen.has(k)),
     ...[...BASELINE_FUNCTION_OFFENDERS].filter((k) => !baselineSeenFunction.has(k)),
   ];
+  // The widening register may only SHRINK. An entry nothing matches has been
+  // fixed (or the code was deleted) — either way it must go, so the count is
+  // a real burn-down and not a number that drifts down by accident.
+  const staleWidening = !SCANNING_REAL_REPO
+    ? []
+    : [...WIDENING_RULE1, ...WIDENING_RULE2, ...WIDENING_RULE3].filter((k) => !wideningSeen.has(k));
   const staleUnusedOrg = !SCANNING_REAL_REPO ? [] : [
     ...[...BASELINE_UNUSED_ORG].filter((k) => !unusedOrgSeen.has(k)),
     ...[...BASELINE_FUNCTION_UNUSED_ORG].filter((k) => !unusedOrgSeenFunction.has(k)),
@@ -1763,7 +2351,7 @@ function main() {
 
   console.log(
     `[check-org-scoped-fetch] function shape (widened 2026-08-16): ` +
-      `scanned ${scannedFunctions} async functions; ` +
+      `scanned ${scannedFunctions} async functions, ${scannedRouteHandlers} route handlers; ` +
       `rule 1 baseline ${baselineSeenFunction.size}, ` +
       `rule 2 baseline ${unusedOrgSeenFunction.size} — both down-only`,
   );
@@ -1787,6 +2375,18 @@ function main() {
           unreadableDeclarations.join("\n  ")),
   );
 
+  // The other way a route leaves this population: its handler is a bare
+  // reference to a function declared elsewhere. That declaration IS scanned,
+  // under its own name, by the async-function extractor — so this is a
+  // hand-off, not a hole. It is printed anyway, because an unprinted hand-off
+  // is indistinguishable from a hole that grew, and the population is exactly
+  // the assumption a green result hides.
+  console.log(
+    `[check-org-scoped-fetch] routes whose handler is a named function ` +
+      `declared elsewhere: ${namedHandlerReferences.length} (read by the ` +
+      `async-function extractor under their own names, not here)`,
+  );
+
   // Rule 3's own vacuity floor. A chain walk that stops finding chains reads
   // as "every query is scoped", which is the exact false green this rule was
   // added to remove.
@@ -1798,6 +2398,34 @@ function main() {
         `measured 947 across the repo on 2026-08-18). A chain walk that sees ` +
         `nothing certifies everything. Do NOT lower this floor.`,
     );
+    process.exit(1);
+  }
+
+  // Say the quiet part out loud on every run, pass or fail. A PASS that does
+  // not mention 210 held entries reads as "the route layer is clean", which
+  // is the exact misreading this register exists to prevent.
+  console.log(
+    `[check-org-scoped-fetch] route-widening debt register: ` +
+      `${WIDENING_RULE1.size} rule-1 + ${WIDENING_RULE2.size} rule-2 + ${WIDENING_RULE3.size} rule-3 = ` +
+      `${WIDENING_RULE1.size + WIDENING_RULE2.size + WIDENING_RULE3.size} held ` +
+      // The split is the point of the line. "Held" alone reads as a backlog;
+      // what a reader needs is how much of it anyone has actually opened,
+      // because an unread entry is not a smaller problem than an unscanned
+      // file — it is the same problem with a number attached.
+      `(${wideningTriagedCount} read, ${WIDENING_RULE1.size + WIDENING_RULE2.size + WIDENING_RULE3.size - wideningTriagedCount} NOT read), ` +
+      `${staleWidening.length} stale — down-only, excuses nothing NEW. ` +
+      `scripts/org-scope-route-widening.json`,
+  );
+  if (staleWidening.length > 0) {
+    console.error("");
+    console.error(
+      "[check-org-scoped-fetch] FAIL — route-widening entries no longer match " +
+        "anything. They were fixed or deleted (good!) — delete them from " +
+        "scripts/org-scope-route-widening.json in the same commit so the " +
+        "burn-down is real and not drift:",
+    );
+    for (const k of staleWidening.slice(0, 25)) console.error(`  - ${k}`);
+    if (staleWidening.length > 25) console.error(`  … and ${staleWidening.length - 25} more`);
     process.exit(1);
   }
 

@@ -1061,8 +1061,36 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
+      // SEC (2026-09-04): PROJECT, do not ship the row. A cross-org directory
+      // of verified investors is the feature — but `select()` with no
+      // projection also shipped the private half of the table to every
+      // authenticated user of every org: `verificationDocuments`, the
+      // identity-verification document URLs written by
+      // POST /api/investor-profiles/verify, plus `organizationId` and
+      // `lastActiveAt`. The schema even labels the split ("Public info" /
+      // "Verification"); the query ignored it.
+      //
+      // The columns below are the "Public info", "Specialization" and
+      // "Reputation" blocks. Adding a column to this table must not add it to
+      // this response — that is the whole point of naming them.
       const profiles = await database
-        .select()
+        .select({
+          id: investorProfiles.id,
+          displayName: investorProfiles.displayName,
+          bio: investorProfiles.bio,
+          location: investorProfiles.location,
+          website: investorProfiles.website,
+          specialties: investorProfiles.specialties,
+          preferredStates: investorProfiles.preferredStates,
+          investmentRange: investorProfiles.investmentRange,
+          isVerified: investorProfiles.isVerified,
+          verifiedAt: investorProfiles.verifiedAt,
+          dealsClosed: investorProfiles.dealsClosed,
+          avgResponseTimeHours: investorProfiles.avgResponseTimeHours,
+          reliabilityScore: investorProfiles.reliabilityScore,
+          rating: investorProfiles.rating,
+          reviewCount: investorProfiles.reviewCount,
+        })
         .from(investorProfiles)
         .where(eq(investorProfiles.isVerified, true))
         .limit(50);
