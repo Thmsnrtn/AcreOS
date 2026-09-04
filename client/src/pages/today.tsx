@@ -217,7 +217,21 @@ export default function TodayPage() {
   }));
   const decisionItems: DecisionItem[] = [...paxAskItems, ...(today?.queue ?? [])];
   const decisionQueueLoading = todayLoading;
-  const pendingDecisionCount = today?.meta?.pendingDecisionCount ?? 0;
+  // THE BADGE IS THE LENGTH OF THE LIST IT SITS ABOVE.
+  //
+  // It used to be `today.meta.pendingDecisionCount` — a SERVER count of
+  // stalledLeads + waitingCounters + stuckDeals (routes-today.ts), a set
+  // disjoint from `decisionItems` rendered 200px below. Three definitions of
+  // "what needs your attention" shipped at once: for an org with 400 leads the
+  // hero said 34, the queue showed 6, and the "Review now" chip opened a third
+  // page that re-derived the buckets from a bare `fetch("/api/leads")` — which
+  // defaults to pageSize 25 and so could only ever see 25 (2026-09-04 review).
+  //
+  // DecisionQueue owns the snooze filter, so it is the only thing that can
+  // know the visible number; it reports it here and nothing recomputes it.
+  // Seeded from the items so the first paint is not a flash of zero.
+  const [visibleDecisionCount, setVisibleDecisionCount] = React.useState<number | null>(null);
+  const pendingDecisionCount = visibleDecisionCount ?? decisionItems.length;
 
   // ── Inline queue resolution (Maren CPO #2) ─────────────────────────────
   // The habit-loop core: resolve a Decision Queue item in place (Done /
@@ -560,7 +574,10 @@ export default function TodayPage() {
             {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}.
             {pendingDecisionCount > 0 ? (
               <span className="acr-cc-greeting-soft">
-                {" "}{plural(pendingDecisionCount, "deal")} need your attention today.
+                {/* "decision", not "deal": the queue mixes leads, deals,
+                    properties and Pax asks, and the old label counted stalled
+                    LEADS as deals. The word matches the list's own name. */}
+                {" "}{plural(pendingDecisionCount, "decision")} need your attention today.
               </span>
             ) : (
               <span className="acr-cc-greeting-soft">
@@ -569,10 +586,23 @@ export default function TodayPage() {
             )}
           </h1>
           {pendingDecisionCount > 0 && (
-            <Link
-              href="/decision-queue"
+            <button
+              type="button"
+              // The queue is on THIS page, ~200px down. The chip used to open
+              // /decision-queue → /admin/decisions, a third derivation of the
+              // same question that re-fetched leads unpaginated and so
+              // under-reported for any org above 25. Scrolling to the list the
+              // badge counts is both the honest destination and the faster one.
+              onClick={() => {
+                const queue = document.querySelector<HTMLElement>(
+                  '[data-testid="section-decision-queue"]',
+                );
+                queue?.scrollIntoView({ behavior: "smooth", block: "start" });
+                queue?.querySelector<HTMLElement>("h2")?.focus?.();
+              }}
               className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-acr-neg/30 text-sm md:text-xs text-acr-neg-soft-ink hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
+              data-testid="button-review-decisions"
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
               <span className="font-medium">Review now</span>
@@ -580,7 +610,7 @@ export default function TodayPage() {
                 <AnimatedCounter value={pendingDecisionCount} />
               </Badge>
               <ArrowRight className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
-            </Link>
+            </button>
           )}
         </div>
       </div>
@@ -767,6 +797,7 @@ export default function TodayPage() {
           totalToday={today?.progress?.total ?? 0}
           onClearAll={handleClearAll}
           isClearing={clearQueue.isPending}
+          onVisibleCountChange={setVisibleDecisionCount}
         />
       )}
 

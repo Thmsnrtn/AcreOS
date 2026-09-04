@@ -137,6 +137,19 @@ interface DecisionQueueProps {
   /** Ids currently mid-resolve (pending PATCH) — disables their controls. */
   resolvingIds?: ReadonlySet<string>;
   /**
+   * How many rows this queue is actually showing, reported up whenever it
+   * changes.
+   *
+   * Today's hero used to say "{N} deals need your attention today" from
+   * `meta.pendingDecisionCount` — a SERVER count of stalledLeads +
+   * waitingCounters + stuckDeals, a set disjoint from the rows rendered 200px
+   * below it. For an org with 400 leads the badge said 34 and the list showed
+   * 6 (2026-09-04 review). The badge is now the length of the list it sits
+   * above, by construction: this component owns the snooze filter, so it is
+   * the only thing that can know the number, and nothing recomputes it.
+   */
+  onVisibleCountChange?: (count: number) => void;
+  /**
    * Finishability (Tier 3C): items the operator marked done TODAY (server-
    * derived from today_queue_state, org-scoped, survives reload) and the
    * day's total (cleared + still in queue). Drives the "N of M cleared"
@@ -248,6 +261,7 @@ export function DecisionQueue({
   isLoading,
   onResolve,
   resolvingIds,
+  onVisibleCountChange,
   clearedToday = 0,
   totalToday = 0,
   onClearAll,
@@ -302,6 +316,12 @@ export function DecisionQueue({
     [items, snoozed],
   );
   const snoozedCount = Object.keys(snoozed).length;
+
+  // Report the visible length up. Effect rather than render-time call so the
+  // parent's setState never runs during this component's render.
+  useEffect(() => {
+    onVisibleCountChange?.(visible.length);
+  }, [visible.length, onVisibleCountChange]);
   // Asks are answered on their card (Approve / Reject / Edit), never
   // cleared or snoozed away: "Clear queue" only counts the server's rows.
   const clearable = visible.filter((it) => it.source !== "pax-ask");
