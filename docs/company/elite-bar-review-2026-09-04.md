@@ -2977,3 +2977,42 @@ and the assertions are derived: it compares states against each other rather
 than naming the palette. A restyle is free; a restyle that collapses two states
 back into one rendering is not. That is the property that was broken, and the
 only one worth pinning.
+
+### A deny-list published the map another gate spends a status code hiding
+
+`GET /api/docs/openapi.json` is deliberately unauthenticated — the mount
+comment says so, and it is served with `Access-Control-Allow-Origin: *`. It
+merged `reflectAppPaths(appRef)`, a walk of the **live Express stack**, into the
+public response, filtered by a 15-entry `PRIVATE_PATH_PREFIXES` deny-list.
+
+A deny-list is allow-by-default. Every route family nobody thought to add was
+published: `/api/scp/v2/*` — the sovereign control plane, whose operations are
+`trust/promote`, `trust/demote`, `evolution/rollback` and `evolution/pause` —
+plus `/api/dsar/`, `/api/legal-hold/`, `/api/dunning/`, `/api/data-api/` and
+`/api/mcp`.
+
+Those endpoints are guarded; `/api/scp/v2` carries `isAuthenticated`,
+`getOrCreateOrg` and `requireFounder`. **What leaked was their existence** — and
+this codebase spends a status code concealing exactly that: `requireFounder`
+returns 404 rather than 403 so a non-founder cannot learn a founder route is
+there. One endpoint was handing out the map the other pays to hide. It also sat
+awkwardly against the standing "no public API before ~50 customers" decision: a
+CORS-open reflection of the router is a public API surface in all but name.
+
+The polarity is now inverted, which is the argument `viewerReadOnlyGate`'s own
+header makes: the public document is the hand-curated spec and nothing else —
+22 paths that are a product artifact, where adding a route to the app cannot
+add it here. Stripe, Twilio and GitHub all publish curated documents for this
+reason. The reflector is kept and exported as `reflectedPathsForAudit()`,
+because "which live routes are undocumented" is a useful signal; it just no
+longer decides what strangers can see.
+
+**The human page had never rendered.** It loaded Swagger UI from `unpkg.com`,
+which is in neither `script-src` nor `style-src`, and in production
+`script-src` requires a per-request nonce — so the browser refused every asset
+and the page was a blank `<div id="swagger-ui">`. Adding unpkg to the CSP would
+loosen a security control for a docs page, which is the wrong trade. The
+reference is now rendered server-side from the same curated document: no
+external assets, no JavaScript at all, inline `<style>` only, which the policy
+already permits. It cannot be broken by a CDN, an ad blocker, or the next CSP
+tightening.
