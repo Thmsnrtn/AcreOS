@@ -8,6 +8,7 @@ import { eq, and, desc, isNull, or } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
 import { logger } from "../utils/logger";
+import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
 // DNS resolution for SSRF protection
 const dnsResolve4 = (host: string): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -712,32 +713,18 @@ export interface BrowseWebResult {
   loadTimeMs: number;
 }
 
-function isPrivateIpv4(ip: string): boolean {
-  const parts = ip.split(".").map(p => parseInt(p, 10));
-  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return false;
-  
-  if (parts[0] === 127) return true;
-  if (parts[0] === 10) return true;
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  if (parts[0] === 169 && parts[1] === 254) return true;
-  if (parts[0] === 0) return true;
-  if (parts.every(p => p === 255)) return true;
-  
-  return false;
-}
-
-function isPrivateIpv6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  if (lower === "::1" || lower === "::") return true;
-  if (lower.startsWith("fe80:")) return true;
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-  if (lower.startsWith("::ffff:")) {
-    const ipv4Part = lower.slice(7);
-    if (isPrivateIpv4(ipv4Part)) return true;
-  }
-  return false;
-}
+// ── ONE IMPLEMENTATION OF "IS THIS ADDRESS REACHABLE" ───────────────────────
+// These were a local pair, and they had drifted from the ones in
+// fileUploadSecurity: the IPv6 half here matched `::ffff:` only when the
+// mapping was written in DOTTED form, so `::ffff:a9fe:a9fe` — the AWS metadata
+// endpoint in hex — passed; it anchored link-local on `fe80:` rather than the
+// fe80::/10 range, so `febf::1` passed; and it modelled neither NAT64 nor
+// multicast nor the uncompressed spelling of loopback.
+//
+// Two implementations of one security rule is a rule as strong as whichever
+// one an attacker reaches. Re-exported under the local names so the call sites
+// below read unchanged, and so a future reader sees that the definition is
+// somewhere else on purpose.
 
 async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean; reason?: string }> {
   try {

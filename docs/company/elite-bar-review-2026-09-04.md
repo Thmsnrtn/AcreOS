@@ -2799,3 +2799,50 @@ The general lesson is worth more than the fix. **A deputy has two sides.** When
 an action is attributed to one human and requested by another, checking either
 one alone is an escalation path in whichever direction is weaker, and which
 direction that is changes with every exemption list the codebase grows.
+
+### The SSRF guard answered a question about spelling, not about destination
+
+`validateUrl` is the chokepoint every user-supplied outbound fetch runs
+through. It checked a literal IPv6 host against a list of four spellings and
+then **skipped DNS**, on the stated grounds that literals "were checked above."
+They were not. `isPrivateIPv6` existed and was applied only to addresses DNS
+returned — never to one a user typed.
+
+An IPv6 address has many spellings for the same 128 bits, so a prefix test
+answers a question about the spelling rather than about the destination. Eight
+got through, confirmed by reverting the fix and watching each one connect:
+
+| URL | Reaches |
+| --- | --- |
+| `http://[::ffff:169.254.169.254]/` | AWS instance metadata |
+| `http://[::ffff:a9fe:a9fe]/` | the same endpoint, hex form |
+| `http://[::ffff:127.0.0.1]/` | loopback |
+| `http://[::ffff:10.0.0.5]/` | RFC 1918 space |
+| `http://[64:ff9b::7f00:1]/` | loopback via NAT64 |
+| `http://[febf::1]/` | link-local, above the `fe80:` prefix |
+| `http://[::]/` | the unspecified address |
+| `http://[ff02::1]/` | link-local multicast |
+
+The first two are credential theft.
+
+The fix normalizes before deciding: expand to eight groups, handle `::`
+compression, an embedded dotted quad and a zone id, then test the address —
+including delegating the low 32 bits of the IPv4-mapped, IPv4-compatible and
+NAT64 families to the IPv4 rules. A literal is now decided as an address, by
+`net.isIP` plus the matching predicate, instead of by a list of strings.
+
+**The second copy mattered more than the first.**
+`server/services/browserAutomation.ts` had its own `isPrivateIpv4` /
+`isPrivateIpv6` pair, and they had drifted the same way — matching `::ffff:`
+only in dotted form, anchoring link-local on the literal `fe80:`, modelling
+neither NAT64 nor multicast. Fixing one copy would have left the other
+reachable. There is now one implementation, browserAutomation consumes it, and
+a test fails if a third appears.
+
+**Why the existing tests did not catch any of this.** `validateUrl.test.ts` had
+nineteen SSRF cases, including two for IPv6: `[::1]` and `[fe80::1]`. Both were
+already in the pattern list when they were written. The file enumerated the
+spellings the implementation already knew and proved nothing about the ones it
+did not — the population failure again, one level below the file list. The
+table of twelve spellings is now the test, so adding a family without adding a
+row leaves the next spelling untested in a way that is visible.
