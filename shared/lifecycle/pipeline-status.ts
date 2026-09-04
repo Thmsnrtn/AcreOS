@@ -97,7 +97,11 @@ export const DEAL_STATUSES = [
  * and had no adoption in the surface that needed it. Any new pipeline query
  * imports this rather than spelling a list again.
  */
-export const TERMINAL_DEAL_STATUSES = ["closed", "cancelled"] as const;
+// Not exported: its only reader is the filter below, and an export with no
+// importer is what the reachability ratchet calls an internal-only export —
+// drop the keyword, keep the code. Export it the day something outside this
+// file needs "which statuses are terminal".
+const TERMINAL_DEAL_STATUSES = ["closed", "cancelled"] as const;
 export const ACTIVE_DEAL_STATUSES = DEAL_STATUSES.filter(
   (s): s is Exclude<DealStatus, "closed" | "cancelled"> =>
     !(TERMINAL_DEAL_STATUSES as readonly string[]).includes(s),
