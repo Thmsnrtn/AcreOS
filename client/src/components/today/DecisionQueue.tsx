@@ -193,6 +193,56 @@ function persistSnoozed(map: Record<string, number>) {
 // Provenance-pill decision list. Replaces the old Start-here / Today's
 // actions / Pax suggests / Pax noticed / AI action queue / Portfolio
 // alerts stack — one prioritized list, source on a pill.
+/**
+ * The queue's loading state, built out of the SAME chrome as a real row.
+ *
+ * It used to be three `<Skeleton className="h-16 w-full" />` blocks — 64px
+ * each against a real row of roughly 150 (a Card with `CardContent ... p-6`,
+ * a badge row, a 15px title, a 12px description and often an inline-resolve
+ * button row), so every Today load produced a visible jump as the
+ * placeholders were replaced by cards more than twice their height.
+ * CLAUDE.md asks for skeletons "matching the content shape"; the repo has 316
+ * raw `h-N w-full` blocks and six files importing the shaped primitives.
+ *
+ * Geometry is DERIVED, not estimated: this renders the real Card and
+ * CardContent with the real padding, radius, shadow and left priority edge,
+ * so the outer box cannot drift from the row it stands in for. Only the bars
+ * inside are approximations, and they are sized from the type scale the row
+ * actually uses.
+ */
+function DecisionQueueSkeleton() {
+  return (
+    <div className="space-y-2" data-testid="decision-queue-skeleton">
+      {[0, 1, 2].map((i) => (
+        <Card
+          key={i}
+          className="rounded-card shadow-acr-1 border-l-2"
+          style={{ borderLeftColor: "var(--acr-line)" }}
+          aria-hidden="true"
+        >
+          <CardContent className="flex items-start gap-4 p-6">
+            <div className="flex-1 min-w-0">
+              {/* origin pill + priority pill */}
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <Skeleton className="h-[18px] w-16 rounded-full" />
+                <Skeleton className="h-[18px] w-20 rounded-full" />
+              </div>
+              {/* 15px title, then the 12px description */}
+              <Skeleton className="h-[15px] w-3/5 my-1" />
+              <Skeleton className="h-3 w-5/6" />
+              {/* the inline-resolve row most items carry */}
+              <div className="flex gap-2 mt-3">
+                <Skeleton className="h-8 w-24 rounded-md" />
+                <Skeleton className="h-8 w-20 rounded-md" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function DecisionQueue({
   items,
   isLoading,
@@ -403,11 +453,7 @@ export function DecisionQueue({
 
       <ContentReveal
         ready={!isLoading}
-        skeleton={
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
-        }
+        skeleton={<DecisionQueueSkeleton />}
       >
         {visible.length === 0 ? (
           // Three honest zero states: snoozed-away, day finished (real

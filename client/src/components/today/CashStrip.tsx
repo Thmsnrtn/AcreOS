@@ -35,6 +35,24 @@ interface CashHistoryPayload {
 // range. The "endpoint sparkline" comment historically here referred to a
 // /api/dashboard/sparkline route that pre-dated /api/today consolidation;
 // we now read history straight off the consolidated payload.
+/**
+ * The strip's title row. Shared by the loading and loaded states so the two
+ * are byte-identical above the card — a header that only appears once the
+ * data lands is itself a layout shift.
+ */
+function CashStripHeader() {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="acr-section-h2 text-section-h2">Cash</h2>
+      <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+        <Link href="/finance">
+          View finance <ArrowRight className="w-3 h-3" aria-hidden="true" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 export function CashStrip({
   isLoading,
   cashOnHand,
@@ -53,25 +71,40 @@ export function CashStrip({
   const pendingHistory = today?.cash?.pendingPayments30History ?? [];
 
   if (isLoading) {
+    // Shaped, not a block. This stood in for a three-column KPI card — icon,
+    // label, value, sparkline and caption per column — with a single
+    // `h-24 w-full`, so the strip grew on every Today load and pushed the
+    // queue below it down. The header is real text and renders immediately
+    // rather than being skeletoned at all; only the card's contents are
+    // unknown. Geometry comes from the same Card / CardContent / grid the
+    // loaded state uses, so it cannot drift.
     return (
       <div data-testid="section-cash-strip">
-        <Skeleton className="h-24 w-full" />
+        <CashStripHeader />
+        <Card className="rounded-card shadow-acr-2" aria-hidden="true">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-start gap-2">
+                <Skeleton className="w-3 h-3 mt-1 shrink-0 rounded-sm" />
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-3 w-24" />
+                  <div className="flex items-baseline justify-between gap-2 mt-1">
+                    <Skeleton className="h-[22px] w-20" />
+                    <Skeleton className="h-6 w-16 rounded-sm" />
+                  </div>
+                  <Skeleton className="h-3 w-28 mt-1" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
     <div data-testid="section-cash-strip">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="acr-section-h2 text-section-h2">
-          Cash
-        </h2>
-        <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-          <Link href="/finance">
-            View finance <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </Link>
-        </Button>
-      </div>
+      <CashStripHeader />
       <Card className="rounded-card shadow-acr-2">
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6">
           <div className="flex items-start gap-2">
