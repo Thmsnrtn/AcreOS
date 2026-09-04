@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from "react";
-import { RefreshCcw } from "lucide-react";
+import { Check, Copy, RefreshCcw } from "lucide-react";
 import { Sentry } from "@/lib/sentry";
 import { ServerErrorPage } from "@/pages/coverage-page";
 import { clientLogger } from "@/lib/clientLogger";
@@ -18,6 +18,8 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorId: string | null;
+  /** null = not attempted; true = the id is on the clipboard; false = it isn't. */
+  copied: boolean | null;
 }
 
 function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
@@ -89,7 +91,7 @@ function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, errorId: null };
+    this.state = { hasError: false, error: null, errorId: null, copied: null };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -128,7 +130,7 @@ export class ErrorBoundary extends Component<Props, State> {
     // the next page renders normally. Without this, a single page crash
     // shows the 500 page on every route until the user hard-refreshes.
     if (this.state.hasError && this.props.resetKey !== prevProps.resetKey) {
-      this.setState({ hasError: false, error: null, errorId: null });
+      this.setState({ hasError: false, error: null, errorId: null, copied: null });
     }
   }
 
@@ -137,7 +139,26 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null, errorId: null });
+    this.setState({ hasError: false, error: null, errorId: null, copied: null });
+  };
+
+  /**
+   * Put the error id on the clipboard so the customer can paste it to
+   * support. The button reports what actually happened: `copied` only flips
+   * to true when the write RESOLVES — a blocked or missing clipboard says so
+   * instead of claiming a copy that never occurred.
+   */
+  handleCopyId = () => {
+    const id = this.state.errorId;
+    if (!id) return;
+    try {
+      void navigator.clipboard
+        .writeText(id)
+        .then(() => this.setState({ copied: true }))
+        .catch(() => this.setState({ copied: false }));
+    } catch {
+      this.setState({ copied: false });
+    }
   };
 
   render() {
@@ -149,8 +170,8 @@ export class ErrorBoundary extends Component<Props, State> {
       // Use the homestead-styled ServerErrorPage for consistency with the
       // rest of the coverage pages (404 / 403 / maintenance). Voice per
       // HANDOFF §8: specific, no "Something went wrong."
-      // Error ID + message are still shown via a debug strip below the
-      // CTAs so engineering can trace incidents.
+      // The error ID is shown below the CTAs so the customer can quote it to
+      // support; the raw message sits behind a plainly-labelled disclosure.
       return (
         <div data-testid="error-boundary" role="alert" aria-live="assertive">
           <ServerErrorPage onRetry={this.handleRetry} />
@@ -171,19 +192,49 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 {this.state.errorId && (
                   <div data-testid="text-error-id">
-                    <span style={{ fontWeight: 600 }}>Trace</span>:{" "}
-                    {this.state.errorId}
+                    <div style={{ fontWeight: 600 }}>Error ID</div>
+                    <div className="mt-0.5 break-all">{this.state.errorId}</div>
+                    <div className="mt-1" style={{ fontFamily: "var(--font-sans, system-ui)" }}>
+                      Give this to support and they can pull up exactly what happened.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={this.handleCopyId}
+                      className="mt-1 inline-flex min-h-11 items-center gap-1 px-2 -mx-2 -my-1 underline-offset-2 hover:underline active:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+                      data-testid="button-copy-error-id"
+                      style={{ color: "var(--acr-ink-2)" }}
+                    >
+                      {this.state.copied === true ? (
+                        <Check className="w-3 h-3" aria-hidden="true" />
+                      ) : (
+                        <Copy className="w-3 h-3" aria-hidden="true" />
+                      )}
+                      {this.state.copied === true
+                        ? "Copied"
+                        : this.state.copied === false
+                          ? "Couldn't copy — select the ID above"
+                          : "Copy error ID"}
+                    </button>
                   </div>
                 )}
                 {this.state.error && (
-                  <div className="mt-1 break-all" data-testid="text-error-details">
-                    {this.state.error.message}
-                  </div>
+                  <details className="mt-2">
+                    <summary
+                      className="py-3 cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+                      data-testid="toggle-error-details"
+                      style={{ color: "var(--acr-ink-2)" }}
+                    >
+                      Technical details
+                    </summary>
+                    <div className="mt-1 break-all" data-testid="text-error-details">
+                      {this.state.error.message}
+                    </div>
+                  </details>
                 )}
                 <button
                   type="button"
                   onClick={this.handleRefresh}
-                  className="mt-2 inline-flex min-h-11 items-center gap-1 px-2 -mx-2 -my-2 underline-offset-2 hover:underline active:opacity-70"
+                  className="mt-2 inline-flex min-h-11 items-center gap-1 px-2 -mx-2 -my-2 underline-offset-2 hover:underline active:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
                   data-testid="button-error-refresh"
                   style={{ color: "var(--acr-ink-2)" }}
                 >

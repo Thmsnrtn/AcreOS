@@ -3,8 +3,15 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { 
-  Rocket, 
+import {
+  PAX_CONTROLS_LABEL,
+  PAX_CONTROLS_PATH,
+  PAX_LABELS,
+  PAX_PAUSE_COPY,
+  PAX_STANDING_LINE,
+} from "@shared/pax-glossary";
+import {
+  Rocket,
   Mail, 
   MessageSquare, 
   Users, 
@@ -85,14 +92,14 @@ const featureGuides = [
   },
   {
     icon: Bot,
-    title: "AI Agents",
-    description: "Pax handles routine work — drafting replies, scoring leads, suggesting follow-ups — so you focus on deals.",
+    title: "Pax",
+    description: PAX_STANDING_LINE,
     details: [
-      "Virtual assistant for answering questions about your data",
-      "Automated lead scoring and prioritization",
-      "AI-generated property descriptions and marketing copy",
-      "Smart follow-up recommendations",
-      "Market analysis and investment suggestions"
+      "Ask about your leads, properties, deals or notes — Pax answers from your own records",
+      "Ask it to update a record — a lead's status, a task, a deal, a calendar event — and it does, leaving a receipt",
+      "Ask for a draft — an email, a text, an offer letter — and it writes one for you to read",
+      "Turn on rules that run by themselves: workflows, campaign sequences, scheduled prompts, lead scoring",
+      `One button under ${PAX_CONTROLS_LABEL} pauses everything that runs on its own`
     ]
   }
 ];
@@ -104,7 +111,7 @@ const faqItems = [
   },
   {
     question: "What's the difference between Platform and Custom credentials?",
-    answer: "Platform credentials use AcreOS's shared sending infrastructure - emails come from our domain and SMS from our numbers. Custom credentials let you connect your own SendGrid, Twilio, or Lob accounts so communications are sent from your branded email domain and phone numbers."
+    answer: "Custom credentials are your own SendGrid, AWS SES, Twilio or Lob accounts, connected under Settings → Your provider keys: mail goes out from your domain and your numbers, and you pay the provider directly. Platform credentials are AcreOS's shared SMS and direct-mail rails, billed to you in credits. Email to a seller or buyer is the exception — it only sends from an email identity you have connected. AcreOS's own address is used for mail to you, like receipts and trial notices."
   },
   {
     question: "How does the credit system work?",
@@ -115,8 +122,25 @@ const faqItems = [
     answer: "Yes! AcreOS supports bulk lead import via CSV files. Navigate to the Leads page and use the Import feature. You can map your CSV columns to AcreOS fields and even deduplicate leads during import."
   },
   {
-    question: "How do AI Agents work?",
-    answer: "AI Agents are specialized assistants that help with specific tasks. The AI section provides a chat interface to ask questions about your data. The Team tab shows autonomous agents working on tasks like lead nurturing and market analysis. Usage counts toward your AI request limits."
+    question: "How does Pax work?",
+    answer:
+      PAX_LABELS.mentalModel.join(" ") +
+      ` The chat and the queue are behind the Pax door in the sidebar. The switches, the receipts and the pause button are under ${PAX_CONTROLS_LABEL}.` +
+      " Most plans include a set number of Pax messages each month; connect your own AI key under Settings → Your provider keys to chat past it."
+  },
+  {
+    question: "Can Pax email or text someone without me?",
+    answer:
+      `No. ${PAX_LABELS.fixedRule}` +
+      ` Pax writes the message and puts it in "${PAX_LABELS.queue}" on the Pax page, with what it wrote and why. You approve it, edit it, or reject it — nothing leaves until you do.` +
+      " Drips and campaign sequences you switched on are the exception: those go out on the schedule you set, and each one has its own switch."
+  },
+  {
+    question: "How do I stop Pax?",
+    answer:
+      `Open ${PAX_CONTROLS_LABEL} and tap Pause, then choose how long. That stops the things that run without you — workflows, campaign sequences, scheduled prompts, lead scoring, borrower reminder prep.` +
+      ` ${PAX_PAUSE_COPY.stillWorks}` +
+      " The same page lists each of them separately, so you can switch off one thing instead of all of it."
   },
   {
     question: "Is my data secure?",
@@ -168,8 +192,17 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
             <div className="flex flex-col items-center text-center p-4 rounded-card bg-muted/50">
               <Sparkles className="w-8 h-8 text-primary mb-2" />
               <span className="font-medium">Automate</span>
-              <span className="text-sm text-muted-foreground">AI agents & smart workflows</span>
+              <span className="text-sm text-muted-foreground">Workflows, sequences & Pax drafts</span>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Button asChild variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9">
+              <Link href="/ai" data-testid="link-help-open-pax">Open Pax</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9">
+              <Link href={PAX_CONTROLS_PATH} data-testid="link-help-pax-controls">{PAX_CONTROLS_LABEL}</Link>
+            </Button>
           </div>
         </CardContent>
       </Card>

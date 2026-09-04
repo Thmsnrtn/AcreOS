@@ -28,7 +28,7 @@ function TabFallback() {
 }
 
 export default function AnalyticsPage() {
-  useDocumentTitle("Insights");
+  useDocumentTitle("Analytics");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   useEffect(() => {
@@ -50,8 +50,8 @@ export default function AnalyticsPage() {
   return (
     <PageShell>
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-insights-title">Insights</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Analytics, team performance, activity, cohort analysis, and attribution.</p>
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-insights-title">Analytics</h1>
+        <p className="text-muted-foreground text-sm md:text-base">Revenue, pipeline and conversion — plus team performance, activity, cohorts, retention and where your deals came from.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-insights">
@@ -62,7 +62,7 @@ export default function AnalyticsPage() {
             data-testid="tab-analytics"
           >
             <BarChart3 className="h-4 w-4" aria-hidden="true" />
-            <span>Analytics</span>
+            <span>Overview</span>
           </TabsTrigger>
           <TabsTrigger
             value="team"

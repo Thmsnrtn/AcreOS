@@ -361,13 +361,13 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label htmlFor={`select-skill-${action.id}`}>Agent skill</Label>
+              <Label htmlFor={`select-skill-${action.id}`}>Pax skill</Label>
               <Select
                 value={action.config.skillId || ""}
                 onValueChange={(v) => updateAction(action.id, { config: { ...action.config, skillId: v } })}
               >
                 <SelectTrigger id={`select-skill-${action.id}`} data-testid={`select-skill-${action.id}`}>
-                  <SelectValue placeholder="Select an AI skill" />
+                  <SelectValue placeholder="Choose a skill" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="analyze_lead">Analyze lead</SelectItem>
