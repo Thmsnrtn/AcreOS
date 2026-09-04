@@ -293,13 +293,21 @@ class ComplianceAI {
   /**
    * Generate disclosure document using AI
    */
+  /**
+   * `organizationId` is required. `POST /api/compliance/disclosures` used to
+   * pass a property id alone, so a caller could generate a disclosure document
+   * from ANOTHER organization's property — and the route then wrote an audit
+   * entry under the CALLER's org, recording a disclosure about a property they
+   * do not own (2026-09-04).
+   */
   async generateDisclosure(
+    organizationId: number,
     propertyId: number,
     disclosureType: 'seller' | 'environmental' | 'zoning'
   ): Promise<string> {
     try {
       const property = await db.query.properties.findFirst({
-        where: eq(properties.id, propertyId),
+        where: and(eq(properties.organizationId, organizationId), eq(properties.id, propertyId)),
       });
 
       if (!property) {
@@ -308,7 +316,10 @@ class ComplianceAI {
 
       // Get any compliance alerts for this property
       const alerts = await db.query.complianceAlerts.findMany({
-        where: eq(complianceAlerts.propertyId, propertyId),
+        where: and(
+          eq(complianceAlerts.organizationId, organizationId),
+          eq(complianceAlerts.propertyId, propertyId),
+        ),
       });
 
       // Build context for AI
@@ -466,7 +477,14 @@ Format as a professional report.`;
   /**
    * Check property compliance status
    */
-  async checkPropertyCompliance(propertyId: number): Promise<{
+  /**
+   * `organizationId` is required and is NOT decoration: this used to take a
+   * property id alone and read every compliance alert carrying it, so
+   * `GET /api/compliance/properties/:id/check` — behind `isAuthenticated,
+   * getOrCreateOrg` and nothing else — returned another organization's
+   * compliance posture for any id the caller typed (2026-09-04).
+   */
+  async checkPropertyCompliance(organizationId: number, propertyId: number): Promise<{
     isCompliant: boolean;
     criticalIssues: number;
     pendingActions: number;
@@ -475,7 +493,10 @@ Format as a professional report.`;
   }> {
     try {
       const alerts = await db.query.complianceAlerts.findMany({
-        where: eq(complianceAlerts.propertyId, propertyId),
+        where: and(
+          eq(complianceAlerts.organizationId, organizationId),
+          eq(complianceAlerts.propertyId, propertyId),
+        ),
       });
 
       const criticalIssues = alerts.filter(a => 

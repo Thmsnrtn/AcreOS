@@ -1324,25 +1324,42 @@ class LandCreditScoring {
   /**
    * Backtest score against historical performance
    */
+  /**
+   * `organizationId` is required. `GET /api/land-credit/backtest/:propertyId`
+   * used to pass the id alone, so any authenticated member of any org could
+   * read another organization's land-credit history for any property id
+   * (2026-09-04).
+   */
   async backtestScore(
+    organizationId: number,
     propertyId: string
   ): Promise<{
     predictedPerformance: { grade: string; appreciationPct: number };
     actualPerformance: { appreciationPct: number; daysToSell: number | null };
     accuracy: number;
   }> {
+    // VERIFIED PARENT, not a column on the child. `land_credit_scores` has no
+    // organization_id by design — its own header records that scores are
+    // "reachable only through the org-owned property row", which is what makes
+    // parcel-identity cohorts possible without walking org structure. So the
+    // ownership check belongs on the PROPERTY, and it comes first: read the
+    // property scoped to the org, and answer nothing if it is not theirs.
+    const property = await db.query.properties.findFirst({
+      where: and(eq(properties.organizationId, organizationId), eq(properties.id, Number(propertyId))),
+    });
+    const EMPTY = {
+      predictedPerformance: { grade: 'N/A', appreciationPct: 0 },
+      actualPerformance: { appreciationPct: 0, daysToSell: null },
+      accuracy: 0,
+    };
+    if (!property) return EMPTY;
+
     const scores = await db.query.landCreditScores.findMany({
       where: eq(landCreditScores.propertyId, Number(propertyId)),
       orderBy: [desc(landCreditScores.createdAt)],
     });
 
-    if (scores.length === 0) {
-      return {
-        predictedPerformance: { grade: 'N/A', appreciationPct: 0 },
-        actualPerformance: { appreciationPct: 0, daysToSell: null },
-        accuracy: 0,
-      };
-    }
+    if (scores.length === 0) return EMPTY;
 
     const latestScore = scores[0];
     // Predicted appreciation based on grade
@@ -1350,10 +1367,6 @@ class LandCreditScoring {
       'A+': 12, 'A': 10, 'B+': 8, 'B': 6, 'C+': 4, 'C': 2, 'D': 0, 'F': -2,
     };
     const predictedAppreciation = gradeAppreciation[latestScore.grade] || 5;
-
-    const property = await db.query.properties.findFirst({
-      where: eq(properties.id, Number(propertyId)),
-    });
 
     // Actual appreciation (from property data). estimatedValue maps to the
     // marketValue column; both numeric columns are stored as strings.

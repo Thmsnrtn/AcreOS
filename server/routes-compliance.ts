@@ -46,7 +46,8 @@ router.get('/properties/:id/alerts', async (req: Request, res: Response) => {
 // GET /properties/:id/check — full compliance check for a property
 router.get('/properties/:id/check', async (req: Request, res: Response) => {
   try {
-    const result = await complianceAI.checkPropertyCompliance(parseInt(req.params.id));
+    const org = req.organization;
+    const result = await complianceAI.checkPropertyCompliance(org.id, parseInt(req.params.id));
     res.json({ result });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -131,7 +132,7 @@ router.post('/disclosures', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { propertyId, disclosureType } = req.body;
-    const disclosure = await complianceAI.generateDisclosure(parseInt(propertyId), disclosureType);
+    const disclosure = await complianceAI.generateDisclosure(org.id, parseInt(propertyId), disclosureType);
 
     try {
       const user = req.user;

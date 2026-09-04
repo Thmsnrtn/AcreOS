@@ -139,7 +139,8 @@ router.post('/personalize', async (req: Request, res: Response) => {
 
 router.get('/backtest/:propertyId', async (req: Request, res: Response) => {
   try {
-    const result = await landCredit.backtestScore(req.params.propertyId);
+    const org = req.organization;
+    const result = await landCredit.backtestScore(org.id, req.params.propertyId);
     res.json(result);
   } catch (error) {
     Errors.internal(res, error);
