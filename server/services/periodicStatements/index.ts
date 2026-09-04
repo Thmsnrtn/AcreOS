@@ -30,7 +30,7 @@
  */
 
 import { db } from "../../db";
-import { notes } from "@shared/schema";
+import { notes, payments } from "@shared/schema";
 import { deriveNextPaymentDate } from "../notes/acquiredNoteSchedule";
 import {
   periodicStatements,
@@ -38,7 +38,7 @@ import {
   type InsertPeriodicStatement,
 } from "@shared/schema/reg-z";
 import { paymentApplications } from "@shared/schema/reg-z";
-import { acquiredNotes, type AcquiredNote } from "@shared/schema/notes-vertical";
+import { acquiredNotes, notePayments, type AcquiredNote } from "@shared/schema/notes-vertical";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "./predicate";
@@ -69,7 +69,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export type StatementSkipCode =
   | "PREDICATE_OUT_OF_SCOPE"
-  | "NO_DERIVABLE_DUE_DATE";
+  | "NO_DERIVABLE_DUE_DATE"
+  // Money moved in the cycle and nothing applied it, so every past-payment
+  // figure would print $0 on a federally mandated disclosure. See
+  // breakdownWouldBeFabricated below (2026-09-04).
+  | "PAYMENTS_NOT_APPLIED";
 
 export interface StatementSkip {
   loanId: string;
@@ -274,6 +278,27 @@ export async function generateStatementsForCycle(
         continue;
       }
 
+      const unapplied = await breakdownWouldBeFabricated(
+        "notes",
+        String(loan.id),
+        organizationId,
+        cycleStart,
+        cycleEnd,
+      );
+      if (unapplied > 0) {
+        await recordSkip(
+          {
+            loanId: String(loan.id),
+            noteTable: "notes",
+            code: "PAYMENTS_NOT_APPLIED",
+            reason: paymentsNotAppliedReason("notes", String(loan.id), unapplied),
+            citation: PAYMENTS_NOT_APPLIED_CITATION,
+          },
+          cycleStart,
+        );
+        continue;
+      }
+
       const generated = await generateOneStatement({
         loan,
         organizationId,
@@ -334,6 +359,27 @@ export async function generateStatementsForCycle(
               "next_payment_date is empty and payment_due_day / first_payment_date / origination_date / maturity_date / paid_through_date do not yield a scheduled payment on or before maturity",
             ),
             citation: DUE_DATE_REFUSAL_CITATION,
+          },
+          cycleStart,
+        );
+        continue;
+      }
+
+      const unappliedAcq = await breakdownWouldBeFabricated(
+        "acquired_notes",
+        acq.id,
+        organizationId,
+        cycleStart,
+        cycleEnd,
+      );
+      if (unappliedAcq > 0) {
+        await recordSkip(
+          {
+            loanId: acq.id,
+            noteTable: "acquired_notes",
+            code: "PAYMENTS_NOT_APPLIED",
+            reason: paymentsNotAppliedReason("acquired_notes", acq.id, unappliedAcq),
+            citation: PAYMENTS_NOT_APPLIED_CITATION,
           },
           cycleStart,
         );
@@ -699,6 +745,107 @@ interface ComputedFields {
     housingCounselorUrl: string;
     riskOfForeclosureNotice: boolean;
   } | undefined;
+}
+
+/**
+ * §1026.41(d)(3) refusal: money moved in this cycle, but nothing applied it.
+ *
+ * The past-payment breakdown, the transactions array and the YTD totals on a
+ * periodic statement are all summed from `payment_applications`. That table
+ * has exactly ONE writer in the whole server — applyPayment in
+ * server/services/paymentApplication/index.ts — and NOTHING imports that
+ * module, so no row has ever been written by production. The statement job,
+ * meanwhile, runs on the 1st of every month for every active organization.
+ *
+ * Payments themselves are posted through five live rails (the borrower
+ * portal, ACH autopay settlement, Stripe webhooks, the note repository and
+ * the manual note-payment route). So for a borrower who actually paid, the
+ * generator would print $0 applied to principal, $0 to interest, $0 to
+ * escrow and "No transactions during this cycle." on a federally mandated
+ * disclosure — a false statement of account, and a fabricated number under
+ * the standing no-fabrication rule.
+ *
+ * A truthful $0 is still allowed: a borrower who paid NOTHING has no
+ * payments in either table and generates a statement as before. This refuses
+ * only the specific contradiction — real payments in the cycle, zero
+ * applications to describe them with.
+ *
+ * This is the interim half. The fix is to wire applyPayment into the posting
+ * paths and backfill; until then a missing statement is a disclosure defect
+ * the skip ledger records, and a WRONG statement is a misrepresentation.
+ * Recorded 2026-09-04.
+ */
+const PAYMENTS_NOT_APPLIED_CITATION = "12 CFR 1026.41(d)(3)";
+
+function paymentsNotAppliedReason(noteTable: string, loanId: string, n: number): string {
+  return (
+    `${n} payment(s) posted for ${noteTable} ${loanId} in this cycle, but payment_applications ` +
+    `holds no rows for them, so every past-payment figure on the statement would read $0. ` +
+    `Refusing to issue a periodic statement that misstates the borrower's account rather than ` +
+    `printing a breakdown no payment supports.`
+  );
+}
+
+/** Count real posted payments for a loan inside the cycle. */
+async function postedPaymentsInCycle(
+  noteTable: "notes" | "acquired_notes",
+  loanId: string,
+  organizationId: number,
+  cycleStart: Date,
+  cycleEnd: Date,
+): Promise<number> {
+  if (noteTable === "notes") {
+    const id = Number(loanId);
+    if (!Number.isFinite(id)) return 0;
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.organizationId, organizationId),
+          eq(payments.noteId, id),
+          gte(payments.paymentDate, cycleStart),
+          lte(payments.paymentDate, cycleEnd),
+          sql`${payments.status} IN ('completed', 'processing')`,
+        ),
+      );
+    return Number(row?.n ?? 0);
+  }
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(notePayments)
+    .where(
+      and(
+        eq(notePayments.organizationId, organizationId),
+        eq(notePayments.noteId, loanId),
+        gte(notePayments.paymentDate, cycleStart.toISOString().slice(0, 10)),
+        lte(notePayments.paymentDate, cycleEnd.toISOString().slice(0, 10)),
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
+/** Zero applications AND real money in the cycle — the contradiction we refuse. */
+async function breakdownWouldBeFabricated(
+  noteTable: "notes" | "acquired_notes",
+  loanId: string,
+  organizationId: number,
+  cycleStart: Date,
+  cycleEnd: Date,
+): Promise<number> {
+  const [applied] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(paymentApplications)
+    .where(
+      and(
+        eq(paymentApplications.organizationId, organizationId),
+        eq(paymentApplications.loanId, loanId),
+        gte(paymentApplications.appliedAt, cycleStart),
+        lte(paymentApplications.appliedAt, cycleEnd),
+      ),
+    );
+  if (Number(applied?.n ?? 0) > 0) return 0;
+  return postedPaymentsInCycle(noteTable, loanId, organizationId, cycleStart, cycleEnd);
 }
 
 async function computeStatementFields(

@@ -2511,3 +2511,58 @@ Everything below is the reviewers' text with the verifier's ruling attached.
 - **Fix:** When the ask count > 0, open the Pax door on the queue with the composer beneath it — the badge and the landing view should agree. Swap the route so the door is `/pax` and `/ai` is the alias, so the URL matches the one word customers are taught. Do not add further destinations under Pax; keep new capability as fabric inside the other doors, per the rule.
 - **Evidence:** Read pax.tsx:515-620 (render is header → GreetingBanner → SuggestedPrompts → CommandCenterPage → PaxDisclosureRail); read pax-overflow-menu.tsx:68-110 (SHEET_META, appeals.route = '/pax'); read App.tsx:827-832; located PaxNeedsYouStrip at command-center.tsx:1432, mounted at :2256.
 - **Verifier:** The route facts hold — App.tsx:827-832 mounts PaxPage at /ai with /pax as a Redirect, and pax-overflow-menu.tsx:93-97 sets SHEET_META.appeals.route = '/pax', round-tripping through that redirect. Both are trivial. The load-bearing consequence claim is wrong: PaxNeedsYouStrip is defined at command-center.tsx:170 and mounted at :994 — inside the composer's `border-t` footer bar, immediately above the file input and the text input, commented 'Host 2 of 4: the pinned queue, desktop and mobile'. It is pinned with the composer, not 'one scroll below the fold'. The finding's own cited lines (:1432 and :2256) resolve to neither the definition nor the mount, so the mobile-fold assertion is unsupported by anything it read. The finding correctly self-labels the rest as a grandfathered tension rather than a rule break; swapping /ai and /pax would churn every deep link for a cosmetic gain.
+
+---
+
+## Awaiting a founder decision
+
+Two items reached a boundary this session's work is not allowed to cross.
+Both are recorded here rather than quietly worked around.
+
+### 1. Register §1026.41(d)(3) in the statute register (raises a ratchet 29 → 30)
+
+The periodic statement's past-payment breakdown, transaction list and
+year-to-date totals are a required disclosure under 12 C.F.R. §1026.41(d)(3),
+and the generator has been producing them since it shipped. That obligation is
+**not in `shared/governance/statuteRegister.ts`**, so the register undercounts
+the legal surface the product implements.
+
+Adding the entry raises `UNREVIEWED_BASELINE` in `statuteRegister.test.ts` from
+29 to 30 — the count of "laws AcreOS implements that no lawyer has read". The
+ratchet may only decrease, and raising it is reserved to the founder.
+
+The exposure did not grow; the register was undercounting it. Declining to
+register the obligation in order to hold the number at 29 would game the metric
+in the exact direction the gate exists to prevent — an unregistered
+implementation is the worst case of "no lawyer has read this", not an exemption
+from it. The honest ways to hold at 29 are to get one of the thirty reviewed,
+not to leave this one unlisted.
+
+The drafted entry cites `tests/unit/regZRefusesUnappliedPayments.test.ts` as its
+enforcement and records the failure mode. It is not committed. **Decision
+needed: ratify the 29 → 30 raise, or direct otherwise.** Either way this belongs
+on the attorney-review worklist.
+
+### 2. Drop the `pax_drafts` table
+
+Wave 1 removed its last reader and its last writer, which is exactly the
+condition `AUTONOMY_SPEC.md` §4.1 set for the drop migration. The drop is **not
+taken**: the table holds customer-authored draft content, and deleting customer
+data is a founder-only hard-stop. Three reachability entries hold it with that
+reason and will go with the table whenever the drop is authorised.
+
+### Related, and not a decision — a fix already shipped
+
+The same §1026.41(d)(3) breakdown is summed from `payment_applications`, whose
+only writer sits in a module nothing imports, while payments post through five
+live rails. A borrower who paid could receive a statement asserting $0 applied
+to principal and "No transactions during this cycle." The generator now REFUSES
+that specific contradiction — real payments in the cycle, zero applications —
+skipping into the existing ledger with a reason and the citation, rather than
+printing a figure no payment supports. A truthful $0 still generates.
+
+That is the interim half. The fix is to wire `applyPayment` into the posting
+paths and backfill the skipped cycles. The gate pins its own revocation
+condition: the day `applyPayment` gains a production importer, the test fails
+and tells whoever wired it to revisit the refusal instead of leaving a
+workaround in place after its cause is gone.
