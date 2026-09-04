@@ -292,7 +292,15 @@ export async function resolveTicketWithPax(
         continue;
       }
 
-      const result = await executeSupportTool(name, args, org, ticketId);
+      // The permission ladder is checked against the person whose ticket this
+      // is (supportAgent.ts's scope gate, 2026-09-04). Pax resolving a ticket
+      // acts on their behalf and must never be able to do more for them than
+      // they could do themselves — without this the resolver would be an
+      // unidentified caller and every side-effecting tool would refuse.
+      const result = await executeSupportTool(name, args, org, ticketId, {
+        origin: "support",
+        userId: ticket.userId,
+      });
       toolResults.push({
         role: "tool",
         tool_call_id: toolCall.id,

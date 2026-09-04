@@ -18,6 +18,12 @@ import { logger } from "../utils/logger";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+import {
+  supportScopeFor,
+  undeclaredSupportScopeMessage,
+  supportScopeRefusalMessage,
+} from "./supportToolScopes";
+import { userHasScope } from "../middleware/roleScope";
 import { proposePendingAction, pendingActionArtifact } from "../services/approvalKernel";
 import { recordPaxEffect } from "../services/paxReceipts";
 import { ALWAYS_ASK_SUPPORT_TOOLS } from "@shared/pax-controls";
@@ -1409,6 +1415,47 @@ export async function executeSupportTool(
         },
       );
       return { success: false, error: paxControlsRefusalMessage(controls) };
+    }
+
+    // ── The permission ladder, on THIS switch too (2026-09-04) ────────────
+    // tools.ts gates every intent on the scope it declares, and its comment
+    // says why: the REST door for an operation could require a permission
+    // while the Pax door for the SAME operation required nothing, and a
+    // member could reach it by typing a sentence. That gate was installed on
+    // ONE dispatch switch. This is the other one — and it is reachable by any
+    // authenticated org member through POST /api/support/tickets/:id/
+    // pax-resolve, which runs the ticket end-to-end through the resolver.
+    //
+    // Pax resolving a ticket acts ON BEHALF OF the person who filed it, so
+    // the ladder is checked against THAT person: the resolver passes the
+    // ticket's userId. Pax must never be able to do more for someone than
+    // they could do themselves.
+    //
+    // Read-only tools (the pause-safe set) are ungated. A side-effecting tool
+    // with NO declared scope is REFUSED, so adding a case without classifying
+    // it fails closed rather than shipping ungated.
+    if (!pauseSafe) {
+      const declaredScope = supportScopeFor(toolName);
+      if (!declaredScope) {
+        logger.warn("[executeSupportTool] Refused — side-effecting tool with no declared scope", {
+          orgId: org.id,
+          metadata: { toolName, ticketId: ticketId ?? null },
+        });
+        return { success: false, error: undeclaredSupportScopeMessage(toolName) };
+      }
+      const callerId = options?.userId ?? null;
+      const permitted = await userHasScope(
+        { id: org.id, ownerId: org.ownerId ?? null },
+        callerId,
+        declaredScope,
+      );
+      if (!permitted) {
+        logger.warn("[executeSupportTool] Refused — caller lacks the tool's declared scope", {
+          orgId: org.id,
+          metadata: { toolName, declaredScope, identified: Boolean(callerId) },
+        });
+        return { success: false, error: supportScopeRefusalMessage(toolName, declaredScope) };
+      }
     }
 
     // ── Dispatch, then the receipt (spec §4.7) ─────────────────────────────

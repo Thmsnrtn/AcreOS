@@ -148,12 +148,19 @@ describe("apply_credit — refused before any gate, everywhere", () => {
   });
 
   it("positive control: the Stripe spy IS wired — retry_payment on the replay reaches invoices.pay", async () => {
+    // The caller is the ORG OWNER. Since 2026-09-04 executeSupportTool checks
+    // the permission ladder like tools.ts does, and apply_billing_fix requires
+    // `financial_write`. `trustedApproval` deliberately does NOT bypass that —
+    // tools.ts states the rule in its own gate: a human tapping Approve on a
+    // frozen action is a witnessed send, not evidence that the human holds the
+    // permission. So the positive control needs a caller who actually does;
+    // "u-1" holds nothing, which is now a refusal rather than a pass.
     const result = await executeSupportTool(
       "apply_billing_fix",
       { fix_type: "retry_payment", invoice_id: "in_1", reason: "card updated" },
       org,
       12,
-      { trustedApproval: true, origin: "approval_replay", userId: "u-1" },
+      { trustedApproval: true, origin: "approval_replay", userId: "u-owner" },
     );
     expect(result.success).toBe(true);
     expect(H.stripeInvoicesPay).toHaveBeenCalledWith("in_1");
