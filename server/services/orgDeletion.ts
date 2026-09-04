@@ -7,10 +7,11 @@
  * is that missing function.
  *
  * Approach — dynamic, multi-pass sweep instead of a hand-ordered list:
- *   1. Enumerate every table carrying an `organization_id` column from
- *      information_schema (the FK graph is 300+ tables and still growing;
- *      a hand-maintained order would rot immediately).
- *   2. DELETE FROM each WHERE organization_id = $orgId. Some deletes fail
+ *   1. Enumerate every table carrying a tenant key — `organization_id` OR
+ *      `org_id`, the two spellings this schema uses — from information_schema
+ *      (the FK graph is 300+ tables and still growing; a hand-maintained order
+ *      would rot immediately).
+ *   2. DELETE FROM each WHERE its tenant key = $orgId. Some deletes fail
  *      on the first pass because a NO ACTION child still holds rows —
  *      passes repeat until a full pass makes no progress (children drain
  *      first, parents succeed on a later pass).
@@ -50,20 +51,59 @@ export interface OrgDeletionResult {
   passes: number;
 }
 
-async function tablesWithOrgColumn(): Promise<string[]> {
-  const res = await db.execute<{ table_name: string }>(sql`
-    SELECT c.table_name
+/**
+ * The two spellings of the tenant key in this schema.
+ *
+ * `organization_id` is the convention; 42 tables use `org_id` instead, and
+ * this sweep enumerated ONLY the first — so it was blind to
+ * `integration_credentials` (the encrypted credential store),
+ * `borrower_messages`, `user_sessions` / `user_activation_events` /
+ * `user_feedback` (per-user history), the whole agent-memory set
+ * (agent_episodic_memory, agent_semantic_memory, agent_working_memory_v13),
+ * `founder_interactions` and the scp_* memory tables.
+ *
+ * None of them is in RETAINED_TABLES, so they were not deliberate retentions
+ * under Art. 17(3) — they were invisible. And because 33 of the 42 carry no
+ * foreign key to `organizations`, they did not even block the final org-row
+ * delete: a run returned `residualTables: []` and `orgRowDeleted: true` with
+ * the rows still there (2026-09-04 review, CONFIRMED).
+ *
+ * A population defined by one literal is the third law's shape. The literal is
+ * now a list, and the completeness of that list is asserted against
+ * shared/schema*.ts — not against this query — in
+ * tests/unit/orgDeletionCoversEveryTenantTable.test.ts, because a test that
+ * derives the population from the deleter agrees with the deleter by
+ * construction.
+ */
+const TENANT_KEY_COLUMNS = ["organization_id", "org_id"] as const;
+
+interface TenantScopedTable {
+  table: string;
+  /** Which of TENANT_KEY_COLUMNS this table actually carries — one or both. */
+  columns: string[];
+}
+
+async function tenantScopedTables(): Promise<TenantScopedTable[]> {
+  const res = await db.execute<{ table_name: string; column_name: string }>(sql`
+    SELECT c.table_name, c.column_name
     FROM information_schema.columns c
     JOIN information_schema.tables t
       ON t.table_name = c.table_name AND t.table_schema = c.table_schema
     WHERE c.table_schema = 'public'
-      AND c.column_name = 'organization_id'
+      AND c.column_name IN (${sql.raw(TENANT_KEY_COLUMNS.map((c) => `'${c}'`).join(", "))})
       AND t.table_type = 'BASE TABLE'
       AND c.table_name != 'organizations'
-    ORDER BY c.table_name
+    ORDER BY c.table_name, c.column_name
   `);
-  const rows = ((res as { rows?: Array<{ table_name: string }> }).rows ?? []) as Array<{ table_name: string }>;
-  return rows.map((r) => r.table_name).filter((t) => !RETAINED_TABLES.has(t));
+  const rows = (res as { rows?: Array<{ table_name: string; column_name: string }> }).rows ?? [];
+  const byTable = new Map<string, string[]>();
+  for (const r of rows) {
+    if (RETAINED_TABLES.has(r.table_name)) continue;
+    const cols = byTable.get(r.table_name);
+    if (cols) cols.push(r.column_name);
+    else byTable.set(r.table_name, [r.column_name]);
+  }
+  return [...byTable].map(([table, columns]) => ({ table, columns }));
 }
 
 /**
@@ -84,9 +124,10 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
   if (!orgRow) throw new Error(`deleteOrganization: org ${orgId} not found`);
   if (orgRow.is_founder) throw new Error(`deleteOrganization: refusing to delete a founder org`);
 
-  const tables = await tablesWithOrgColumn();
+  const tables = await tenantScopedTables();
+  const columnsByTable = new Map(tables.map((t) => [t.table, t.columns]));
   const deletedRowsByTable: Record<string, number> = {};
-  const remaining = new Set(tables);
+  const remaining = new Set(tables.map((t) => t.table));
   let passes = 0;
 
   // Multi-pass: each pass attempts every remaining table; FK-blocked deletes
@@ -97,8 +138,14 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     let progressed = false;
     for (const table of [...remaining]) {
       try {
+        // Whichever spelling(s) this table carries. `OR` rather than one
+        // fixed column: a table with both must be cleared on both, and a
+        // table with only `org_id` was previously not visited at all.
+        const predicate = (columnsByTable.get(table) ?? ["organization_id"])
+          .map((c) => `"${c}" = ${orgId}`)
+          .join(" OR ");
         const res = await db.execute(sql.raw(
-          `DELETE FROM "${table}" WHERE organization_id = ${orgId}`,
+          `DELETE FROM "${table}" WHERE ${predicate}`,
         ));
         const count = (res as { rowCount?: number }).rowCount ?? 0;
         deletedRowsByTable[table] = (deletedRowsByTable[table] ?? 0) + count;
