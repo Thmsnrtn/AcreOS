@@ -519,8 +519,29 @@ export function registerAIRoutes(app: Express): void {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       
+      // CANCELLATION REACHES THE AGENT, not just the socket.
+      //
+      // The Stop button aborts the client's fetch reader. Without this the
+      // server never learned: every `res.write` below became a silent no-op on
+      // the dead socket while the generator ran to completion — more model
+      // calls, more spend, and more executeTool invocations. The approval
+      // kernel gates five send/payment tools; create_deal, update_deal,
+      // update_lead_status, create_property, draft_offer, remember_fact and
+      // trigger_zapier / trigger_make are not among them, and a fired Zapier
+      // automation is not recallable. Someone who pressed Stop because they
+      // saw Pax about to do the wrong thing watched it happen (2026-09-04).
+      //
+      // `req.on("close")` also fires on a NORMAL end, so the abort is
+      // conditional on the response not having finished — otherwise every
+      // successful turn would abort itself on the way out.
+      const controller = new AbortController();
+      req.on("close", () => {
+        if (!res.writableEnded) controller.abort();
+      });
+
       const streamPaxPromptVersion = parsePaxPromptVersion(req.query.paxPrompt);
       const stream = processChatStream(message, org, userId, {
+        signal: controller.signal,
         conversationId,
         agentRole,
         files: normalizedFiles,
@@ -537,6 +558,10 @@ export function registerAIRoutes(app: Express): void {
       let streamPromptTokens: number | undefined;
       let streamCompletionTokens: number | undefined;
       for await (const event of stream) {
+        // Breaking here calls the generator's `return()`, which is the second
+        // half of the stop: the signal ends the current turn's work and this
+        // ends the iteration rather than writing into a socket nobody holds.
+        if (controller.signal.aborted) break;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
         if ((event as any).type === "done") {
           streamCompleted = true;
@@ -563,6 +588,20 @@ export function registerAIRoutes(app: Express): void {
       
       res.end();
     } catch (error: any) {
+      // A cancelled turn is not a failure. The provider SDK throws on abort,
+      // and logging that as "AI Stream error" would bury real ones under every
+      // Stop press — and writing to the socket the customer just closed is
+      // pointless besides.
+      const isAbort =
+        error?.name === "AbortError" ||
+        error?.name === "APIUserAbortError" ||
+        res.writableEnded ||
+        !res.writable;
+      if (isAbort) {
+        logger.info("[AI Stream] turn cancelled by the client");
+        if (!res.writableEnded) res.end();
+        return;
+      }
       logger.error("AI Stream error", error instanceof Error ? error : undefined);
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();

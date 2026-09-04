@@ -1009,6 +1009,24 @@ interface ChatOptions {
   origin?: ExecuteToolOrigin;
   /** The scheduled prompt behind this run, when origin is "scheduled". */
   scheduledTask?: { id: number; name: string } | null;
+  /**
+   * Cancellation, propagated from the caller.
+   *
+   * The customer's Stop button used to abort the client's fetch reader and
+   * nothing else. The SSE route had no `req.on("close")` and threaded no
+   * signal here, so on disconnect every `res.write` became a silent no-op and
+   * this generator ran to completion: more model calls, more spend, and — the
+   * part that matters — more `executeTool` invocations. The approval kernel
+   * gates five send/payment tools; `create_deal`, `update_deal`,
+   * `update_lead_status`, `create_property`, `draft_offer`, `remember_fact`
+   * and `trigger_zapier` / `trigger_make` are not among them. Someone who
+   * pressed Stop BECAUSE they saw Pax about to do the wrong thing watched it
+   * do the wrong thing, invisibly (2026-09-04 review, CONFIRMED).
+   *
+   * For an agent with write tools, cancellation is a safety property rather
+   * than a cost optimisation.
+   */
+  signal?: AbortSignal;
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -1849,7 +1867,9 @@ export async function* processChatStream(
   userId: string,
   options: ChatOptions = {}
 ): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
-  const { agentRole = "executive", files } = options;
+  const { agentRole = "executive", files, signal } = options;
+  /** True once the caller has given up — checked before anything consequential. */
+  const cancelled = () => signal?.aborted === true;
   // Same lane threading as processChat (spec §4.3).
   const toolOptions: ExecuteToolOptions = {
     userId,
@@ -2081,7 +2101,7 @@ export async function* processChatStream(
           max_tokens: 8000,
           // OpenRouter passes thinking param to Anthropic API (cast handles type mismatch)
           thinking: { type: "enabled", budget_tokens: 6000 },
-        } as any);
+        } as any, { signal });
         const msgContent = (thinkingResponse as any).choices?.[0]?.message?.content;
         if (Array.isArray(msgContent)) {
           for (const block of msgContent) {
@@ -2105,7 +2125,7 @@ export async function* processChatStream(
           ],
           max_tokens: 300,
           stream: true,
-        });
+        }, { signal });
         for await (const chunk of thinkingStream) {
           const delta = chunk.choices[0]?.delta?.content;
           if (delta) {
@@ -2131,6 +2151,8 @@ export async function* processChatStream(
   let totalCompletionTokens = 0;
 
   while (continueLoop) {
+    // The customer hung up. Stop before paying for another completion.
+    if (cancelled()) break;
     let stream;
     let streamMaxTokens = 2048;
     try {
@@ -2141,7 +2163,10 @@ export async function* processChatStream(
         max_tokens: streamMaxTokens,
         stream: true,
         stream_options: { include_usage: true }
-      });
+      // The signal goes to the PROVIDER too, not just to our loop: a
+      // completion already in flight is one we are already paying for, and
+      // cancelling it is the difference between stopping and merely ignoring.
+      }, { signal });
     } catch (error: any) {
       const status = error?.status ?? error?.response?.status;
       const msg = String(error?.message ?? "");
@@ -2159,7 +2184,7 @@ export async function* processChatStream(
             max_tokens: retryMax,
             stream: true,
             stream_options: { include_usage: true }
-          });
+          }, { signal });
         } catch (retryErr: any) {
           logger.error(`[AI Stream] ${provider} 402 even after token clamp`, retryErr);
           yield {
@@ -2220,6 +2245,7 @@ export async function* processChatStream(
       const streamAllReadOnly = currentToolCalls.every(tc => STREAM_READ_ONLY.some(p => tc.function.name.startsWith(p)));
       const toolResults: OpenAI.ChatCompletionToolMessageParam[] = [];
 
+      if (cancelled()) break; // hung up before the tools ran — run none of them
       if (streamAllReadOnly && currentToolCalls.length > 1) {
         // Emit all tool_start events first (parallel signal to UI)
         for (const toolCall of currentToolCalls) {
@@ -2259,6 +2285,10 @@ export async function* processChatStream(
           // replaces the old "approval_required" event + dead
           // __paxPendingApprovals map + natural-language "Confirmed, please
           // proceed" loop, which never actually executed anything.)
+          // Per tool, not once per batch: these run one at a time and the
+          // customer can hang up between any two of them. The tool AFTER the
+          // one they saw is exactly the one Stop is meant to prevent.
+          if (cancelled()) break;
           const result = await executeTool(toolCall.function.name, args, org, toolOptions);
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
@@ -2370,7 +2400,7 @@ export async function* processChatStream(
             { role: "user", content: correctionInstruction },
           ],
           max_tokens: 1024,
-        });
+        }, { signal });
         const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
         if (corrected) {
           const reguarded = await guardPaxOutput({
@@ -2453,7 +2483,7 @@ export async function* processChatStream(
               { role: "user", content: correctionInstruction },
             ],
             max_tokens: 1024,
-          });
+          }, { signal });
           const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
           if (corrected) {
             const recheck = evaluateLivePaxOutput(corrected);
