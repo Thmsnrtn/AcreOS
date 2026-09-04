@@ -24,7 +24,7 @@
  * a tap is the human acting, and Pause never gates that.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -101,6 +101,71 @@ function sourceLink(ask: PaxAskItem): { href: string; label: string } | null {
 export function draftAgainHref(ask: PaxAskItem): string {
   const request = `Draft this again: ${ask.verb}${ask.to ? ` (to ${ask.to})` : ""}${ask.text ? ` — "${ask.text}"` : ""}`;
   return `/ai?prefill=${encodeURIComponent(request)}`;
+}
+
+/**
+ * A field name the customer can read.
+ *
+ * The diff used to render `key.replace(/_/g, " ")`, which unpacks snake_case
+ * and leaves camelCase untouched — so `sellerFinancingApr` was shown verbatim
+ * to the operator being asked to authorise a change to their own data. This is
+ * the one branch of the card that must be read most carefully, and it was the
+ * branch speaking in database vocabulary.
+ *
+ * Known initialisms are kept upper-case rather than title-cased into "Apr",
+ * which would read as the month.
+ */
+const FIELD_INITIALISMS = new Set([
+  "apr", "apn", "arv", "avm", "dscr", "hoa", "id", "irr", "ltv", "noi", "poc", "roi", "sms", "ssn", "url", "utm", "zip",
+]);
+
+export function fieldLabel(key: string): string {
+  const words = key
+    .replace(/[_-]+/g, " ")
+    // camelCase and PascalCase, including runs like `APRValue`.
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words
+    .map((w, i) => {
+      const lower = w.toLowerCase();
+      if (FIELD_INITIALISMS.has(lower)) return lower.toUpperCase();
+      return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(" ");
+}
+
+/**
+ * A field value the customer can read.
+ *
+ * Anything non-primitive used to fall through to `JSON.stringify`, so an
+ * object or array was dumped as raw JSON inside the approval card. Lists become
+ * a comma-joined sentence, empty becomes an em dash rather than "" or "null",
+ * and an object that cannot be flattened says how many fields it carries rather
+ * than showing its braces — the customer is being asked to authorise the
+ * change, not to review a payload.
+ */
+export function readableValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return value.map((v) => readableValue(v)).join(", ");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return "—";
+    // Two or three fields read fine inline; more is a payload, and saying so
+    // is more honest than showing braces the reader cannot act on.
+    if (entries.length <= 3) {
+      return entries.map(([k, v]) => `${fieldLabel(k)}: ${readableValue(v)}`).join(", ");
+    }
+    return `${entries.length} fields`;
+  }
+  return String(value);
 }
 
 function outcomeLine(status: PaxAskCardStatus, ask: PaxAskItem): string {
@@ -184,6 +249,32 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
   // retry, and the server's reason is attached to it.
   const showButtons = status === "pending" || status === "failed";
 
+  // ── KEEP THE USER'S PLACE ────────────────────────────────────────────────
+  // Approving unmounts the whole button row, and the Approve button is the
+  // element that had focus. Focus therefore fell back to <body> and a keyboard
+  // or screen-reader user lost their position in the queue entirely — after
+  // the single most consequential action in the product.
+  //
+  // Focus moves to the card itself, which is a labelled group, so the reader
+  // hears which ask resolved and Tab continues from here rather than from the
+  // top of the document. Only when the buttons go away because a DECISION was
+  // made: a card that mounts already-executed never had focus to lose.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const hadButtons = useRef(showButtons);
+  useEffect(() => {
+    const lost = hadButtons.current && !showButtons;
+    hadButtons.current = showButtons;
+    if (!lost || !decision) return;
+    const card = cardRef.current;
+    if (!card) return;
+    // Only if focus actually escaped — never steal it from wherever the user
+    // has since moved.
+    const active = document.activeElement;
+    if (active && active !== document.body && card.contains(active)) return;
+    if (active && active !== document.body && !card.contains(active)) return;
+    card.focus();
+  }, [showButtons, decision]);
+
   // ── THREE STATES THAT USED TO BE ONE ─────────────────────────────────────
   // pending, deciding and failed all fell through to the same "else" arm:
   // identical amber border, identical amber fill, identical AlertCircle in
@@ -223,8 +314,11 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
 
   return (
     <div
+      ref={cardRef}
+      // -1 so it is programmatically focusable without entering the tab order.
+      tabIndex={-1}
       className={cn(
-        "rounded-card border text-sm transition-opacity",
+        "rounded-card border text-sm transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         status === "executed"
           ? "border-acr-pos/30 bg-acr-pos-soft/40"
           : status === "rejected" || status === "expired" || status === "revised"
@@ -256,7 +350,23 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
             )}
             aria-hidden="true"
           />
-          <span className="text-xs font-medium truncate" data-testid={`pax-ask-status-${ask.id}`}>
+          {/*
+            aria-live so the most consequential action in the product actually
+            announces. Approving flips this text from "Waiting for your tap" to
+            "Working…" to "Approved and sent" and unmounts the whole button
+            row — and a screen-reader user was told none of it. There was no
+            live region anywhere on this card.
+
+            polite, not assertive: the customer just pressed the button, so
+            this confirms rather than interrupts. atomic so the phrase is read
+            as one sentence rather than a diff of changed words.
+          */}
+          <span
+            className="text-xs font-medium truncate"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid={`pax-ask-status-${ask.id}`}
+          >
             {outcomeLine(status, ask)}
           </span>
         </div>
@@ -326,7 +436,16 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
             <blockquote
               className={cn(
                 "whitespace-pre-wrap rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm leading-relaxed",
-                compact && "max-h-40 overflow-y-auto",
+                // Capped in BOTH modes. The height limit used to be
+                // `compact &&`, and DecisionQueue mounts this card WITHOUT
+                // compact — so on Today a 400-word draft rendered at full
+                // length and pushed the Approve row below several screens of
+                // its own quoted text. With more than one ask queued, the
+                // second card's controls were unreachable without deliberate
+                // scrolling. A card whose entire job is one decision at a
+                // glance may not make the decision the last thing you reach.
+                "overflow-y-auto",
+                compact ? "max-h-40" : "max-h-64",
               )}
               data-testid={`pax-ask-text-${ask.id}`}
             >
@@ -338,19 +457,17 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
           <dl className="rounded-md border border-border/60 bg-background/60 px-3 py-2 text-xs space-y-1" data-testid={`pax-ask-change-${ask.id}`}>
             {Object.entries(ask.change.after).map(([key, value]) => (
               <div key={key} className="flex gap-2">
-                <dt className="text-muted-foreground shrink-0">{key.replace(/_/g, " ")}</dt>
+                <dt className="text-muted-foreground shrink-0">{fieldLabel(key)}</dt>
                 <dd className="min-w-0 break-words">
                   {ask.change?.before && typeof ask.change.before === "object" && key in (ask.change.before as Record<string, unknown>) ? (
                     <>
                       <span className="line-through text-muted-foreground">
-                        {String((ask.change.before as Record<string, unknown>)[key] ?? "")}
+                        {readableValue((ask.change.before as Record<string, unknown>)[key])}
                       </span>
                       {" → "}
                     </>
                   ) : null}
-                  {typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-                    ? String(value)
-                    : JSON.stringify(value)}
+                  {readableValue(value)}
                 </dd>
               </div>
             ))}

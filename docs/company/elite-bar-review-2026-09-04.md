@@ -3215,3 +3215,49 @@ extracts the pattern from the source and checks it refuses four map spellings
 while still serving `/maps` (the Map door) and `/api/maps/search`. Falsified
 both ways — moving the guard below the mounts fails, and removing the survivor
 assertion fails.
+
+### The approval card worked for the eye and for nothing else
+
+Four confirmed findings on one surface, and they share a cause: the card did
+its job visually and not for any of the other ways a person uses software.
+
+**The decision was the last thing you could reach.** The frozen-text
+blockquote capped its height only in `compact` mode — and `DecisionQueue`
+mounts the card *without* `compact`. So on Today a 400-word draft rendered at
+full length and pushed Approve / Reject / Edit below several screens of its own
+quoted text; with more than one ask queued, the second card's controls were
+unreachable without deliberate scrolling. A card whose entire job is one
+decision at a glance may not make the decision the last thing you reach. Both
+modes now cap and scroll.
+
+**Approving announced nothing.** The status flips "Waiting for your tap" →
+"Working…" → "Approved and sent" and the whole button row unmounts. There was
+no live region anywhere on the card, so a screen-reader user was told none of
+it. The status line is now `aria-live="polite"` and `aria-atomic` — polite
+because the customer just pressed the button, atomic so the phrase is read as
+one sentence rather than a diff of changed words.
+
+**And it destroyed focus.** The Approve button *was* the focused element when
+it unmounted, so focus fell to `<body>` and the user lost their place in the
+queue immediately after the most consequential action in the product. Focus now
+moves to the card, which is a labelled group, so the reader hears which ask
+resolved and Tab continues from there. Only when the buttons go away because a
+decision was made — a card that mounts already-executed never had focus to
+lose, and focus is never stolen from wherever the user has since moved.
+
+**The diff spoke database.** `key.replace(/_/g, " ")` unpacks snake_case and
+leaves camelCase untouched, so `sellerFinancingApr` was shown verbatim to the
+operator being asked to authorise a change to their own data, and any
+non-primitive fell through to `JSON.stringify` and dumped raw JSON into the
+card. `fieldLabel` now handles both conventions and keeps initialisms
+upper-case — "Apr" reads as the month, which is the difference between a label
+and a label that is wrong. `readableValue` renders lists as sentences, absent
+values as an em dash rather than `null`, and an object of more than three
+fields as "4 fields" rather than braces the reader cannot act on.
+
+**And Enter did the wrong thing on the one row that mattered.** Asks are ranked
+first, so the sequence a keyboard user actually performs — land on Today, J to
+the top item, Enter — fired `setLocation("/ai")` and teleported them to the Pax
+door, losing their position. Enter now moves focus to that card's Approve
+control. Deliberately focus rather than approve: a single keystroke must never
+send an email. The user lands on the button, reads it, and presses Enter again.

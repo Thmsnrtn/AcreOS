@@ -256,6 +256,11 @@ export function DecisionQueue({
   // cleared or snoozed away: "Clear queue" only counts the server's rows.
   const clearable = visible.filter((it) => it.source !== "pax-ask");
 
+  // Declared above the keyboard layer because onOpen closes over it: the
+  // closure only runs on a keypress, so the old ordering worked, but a
+  // reader should not have to establish that to trust the code.
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
   // ── Keyboard layer (Tier 3C) — J/K traverses, Enter opens ──────────────
   // Desktop-only (fine pointer + hover); suppressed while typing and while
   // dialogs are open. See hooks/use-keyboard-layer.ts.
@@ -264,11 +269,38 @@ export function DecisionQueue({
     enabled: !isLoading,
     onOpen: (index) => {
       const item = visible[index];
-      if (item) setLocation(item.actionUrl);
+      if (!item) return;
+      // A PAX ASK IS ANSWERED HERE, NOT SOMEWHERE ELSE.
+      //
+      // Asks are ranked first (rank -1), so the sequence a keyboard user
+      // actually performs — land on Today, J to the top item, Enter — used to
+      // fire `setLocation("/ai")` and teleport them to the Pax door. The one
+      // row on the page built to be decided in place was the one row where
+      // Enter navigated away from it, losing their position in the queue.
+      //
+      // Enter now moves focus to the card's Approve control instead of
+      // approving outright. That is deliberate: a single keystroke must never
+      // send an email. The user lands on the button, sees what it says, and
+      // presses Enter again — or Tabs to Reject or Edit.
+      if (item.source === "pax-ask" && item.ask) {
+        const row = rowRefs.current.get(item.id);
+        const approve = row?.querySelector<HTMLButtonElement>(
+          `[data-testid="pax-ask-approve-${item.ask.id}"]`,
+        );
+        if (approve) {
+          approve.focus();
+          return;
+        }
+        // No Approve button means the ask is no longer actionable (executed,
+        // expired, mid-flight). Focus the card so the reader is told which one
+        // rather than being silently ignored.
+        row?.focus();
+        return;
+      }
+      setLocation(item.actionUrl);
     },
   });
   const activeId = activeIndex !== null ? visible[activeIndex]?.id ?? null : null;
-  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
   useEffect(() => {
     if (!activeId) return;
     const el = rowRefs.current.get(activeId);
