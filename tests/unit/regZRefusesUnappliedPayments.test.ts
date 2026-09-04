@@ -93,13 +93,13 @@ describe("the refusal exists and is reachable from both loan loops", () => {
   it("the refusal names the section that authorises it and refuses only the contradiction", () => {
     expect(src).toContain('PAYMENTS_NOT_APPLIED_CITATION = "12 CFR 1026.41(d)(3)"');
     // Zero applications alone is NOT enough — a borrower who paid nothing
-    // still gets a truthful $0 statement. The guard returns 0 (no refusal)
-    // as soon as any application row exists for the cycle.
-    expect(src).toMatch(/if \(Number\(applied\?\.n \?\? 0\) > 0\) return 0;/);
+    // still gets a truthful $0 statement. The guard returns false (no
+    // refusal) as soon as any application row exists for the cycle.
+    expect(src).toMatch(/if \(applied\.length > 0\) return false;/);
   });
 
-  it("the payment count is tenant-scoped on both tables", () => {
-    const fn = src.slice(src.indexOf("async function postedPaymentsInCycle"));
+  it("the posted-payment probe is tenant-scoped on both tables", () => {
+    const fn = src.slice(src.indexOf("async function hasPostedPaymentInCycle"));
     expect(fn).toContain("eq(payments.organizationId, organizationId)");
     expect(fn).toContain("eq(notePayments.organizationId, organizationId)");
   });

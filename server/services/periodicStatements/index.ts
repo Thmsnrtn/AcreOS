@@ -285,13 +285,13 @@ export async function generateStatementsForCycle(
         cycleStart,
         cycleEnd,
       );
-      if (unapplied > 0) {
+      if (unapplied) {
         await recordSkip(
           {
             loanId: String(loan.id),
             noteTable: "notes",
             code: "PAYMENTS_NOT_APPLIED",
-            reason: paymentsNotAppliedReason("notes", String(loan.id), unapplied),
+            reason: paymentsNotAppliedReason("notes", String(loan.id)),
             citation: PAYMENTS_NOT_APPLIED_CITATION,
           },
           cycleStart,
@@ -372,13 +372,13 @@ export async function generateStatementsForCycle(
         cycleStart,
         cycleEnd,
       );
-      if (unappliedAcq > 0) {
+      if (unappliedAcq) {
         await recordSkip(
           {
             loanId: acq.id,
             noteTable: "acquired_notes",
             code: "PAYMENTS_NOT_APPLIED",
-            reason: paymentsNotAppliedReason("acquired_notes", acq.id, unappliedAcq),
+            reason: paymentsNotAppliedReason("acquired_notes", acq.id),
             citation: PAYMENTS_NOT_APPLIED_CITATION,
           },
           cycleStart,
@@ -777,28 +777,35 @@ interface ComputedFields {
  */
 const PAYMENTS_NOT_APPLIED_CITATION = "12 CFR 1026.41(d)(3)";
 
-function paymentsNotAppliedReason(noteTable: string, loanId: string, n: number): string {
+function paymentsNotAppliedReason(noteTable: string, loanId: string): string {
   return (
-    `${n} payment(s) posted for ${noteTable} ${loanId} in this cycle, but payment_applications ` +
+    `Payments were posted for ${noteTable} ${loanId} in this cycle, but payment_applications ` +
     `holds no rows for them, so every past-payment figure on the statement would read $0. ` +
     `Refusing to issue a periodic statement that misstates the borrower's account rather than ` +
     `printing a breakdown no payment supports.`
   );
 }
 
-/** Count real posted payments for a loan inside the cycle. */
-async function postedPaymentsInCycle(
+/**
+ * Does the loan have any real posted payment inside the cycle?
+ *
+ * An EXISTENCE probe, not a count. The refusal only needs to know that money
+ * moved, and a number written into a disclosure ledger is a number someone has
+ * to be able to defend — the reason states the fact and leaves the arithmetic
+ * to the statement that eventually issues.
+ */
+async function hasPostedPaymentInCycle(
   noteTable: "notes" | "acquired_notes",
   loanId: string,
   organizationId: number,
   cycleStart: Date,
   cycleEnd: Date,
-): Promise<number> {
+): Promise<boolean> {
   if (noteTable === "notes") {
     const id = Number(loanId);
-    if (!Number.isFinite(id)) return 0;
-    const [row] = await db
-      .select({ n: sql<number>`count(*)::int` })
+    if (!Number.isFinite(id)) return false;
+    const rows = await db
+      .select({ id: payments.id })
       .from(payments)
       .where(
         and(
@@ -808,11 +815,12 @@ async function postedPaymentsInCycle(
           lte(payments.paymentDate, cycleEnd),
           sql`${payments.status} IN ('completed', 'processing')`,
         ),
-      );
-    return Number(row?.n ?? 0);
+      )
+      .limit(1);
+    return rows.length > 0;
   }
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
+  const rows = await db
+    .select({ id: notePayments.id })
     .from(notePayments)
     .where(
       and(
@@ -821,8 +829,9 @@ async function postedPaymentsInCycle(
         gte(notePayments.paymentDate, cycleStart.toISOString().slice(0, 10)),
         lte(notePayments.paymentDate, cycleEnd.toISOString().slice(0, 10)),
       ),
-    );
-  return Number(row?.n ?? 0);
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Zero applications AND real money in the cycle — the contradiction we refuse. */
@@ -832,9 +841,9 @@ async function breakdownWouldBeFabricated(
   organizationId: number,
   cycleStart: Date,
   cycleEnd: Date,
-): Promise<number> {
-  const [applied] = await db
-    .select({ n: sql<number>`count(*)::int` })
+): Promise<boolean> {
+  const applied = await db
+    .select({ id: paymentApplications.id })
     .from(paymentApplications)
     .where(
       and(
@@ -843,9 +852,12 @@ async function breakdownWouldBeFabricated(
         gte(paymentApplications.appliedAt, cycleStart),
         lte(paymentApplications.appliedAt, cycleEnd),
       ),
-    );
-  if (Number(applied?.n ?? 0) > 0) return 0;
-  return postedPaymentsInCycle(noteTable, loanId, organizationId, cycleStart, cycleEnd);
+    )
+    .limit(1);
+  // A borrower who paid NOTHING still gets a truthful $0 statement: the
+  // contradiction only exists when money moved and nothing applied it.
+  if (applied.length > 0) return false;
+  return hasPostedPaymentInCycle(noteTable, loanId, organizationId, cycleStart, cycleEnd);
 }
 
 async function computeStatementFields(
