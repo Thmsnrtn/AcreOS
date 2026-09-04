@@ -2294,7 +2294,26 @@ export async function registerRoutes(
   });
 
   app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
-  app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
+  // BEHIND THE MARKETPLACE LADDER FLAG, like its three siblings.
+  //
+  // This mount had `isAuthenticated, getOrCreateOrg` and nothing else, while
+  // /api/marketplace, /api/buyer-network and /api/investor-verification all
+  // carry requireLadderFlag("feature_marketplace") — the standing founder
+  // decision that there is no marketplace before ~25 customers. Buyer matching
+  // IS the marketplace, reached through an ungated door.
+  //
+  // It was not theoretical. GET /api/matching/:propertyId/buyers called
+  // matchmaking.findBuyersForListing, which reads EVERY investor_profiles row
+  // on the platform with no organization predicate — display name, bio,
+  // location, investment range (a competitor's buying budget) and
+  // verification_documents — and returned them to any authenticated member of
+  // any org. Surfaced 2026-09-04 when the org-scope lint was widened to
+  // Drizzle's relational query API, which it had never read.
+  //
+  // The flag fails closed, so this is the exposure closed and the ladder
+  // enforced by the same line. Scoping findBuyersForListing itself is still
+  // owed and is held in the widening register.
+  app.use('/api/matching', isAuthenticated, getOrCreateOrg, requireLadderFlag("feature_marketplace"), matchingRouter);
   app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);
   app.use('/api/analytics/cohorts', isAuthenticated, getOrCreateOrg, cohortAnalysisRouter);
   app.use('/api/property-tax', isAuthenticated, getOrCreateOrg, propertyTaxRouter);
