@@ -55,6 +55,14 @@ jobs:
       - name: TypeScript check + ratchets
         run: npm run check
 
+      # Staging is exactly where a missing column surfaces first, and until
+      # 2026-09-04 nothing here had ever built this schema. Same script as
+      # test.yml and deploy.yml — migrations/*.sql, then the Fly
+      # release_command, then its --dry-run, then the declared-vs-built column
+      # mirror. ~20s against the postgres service this job already provisions.
+      - name: Build the schema from this repo and verify it
+        run: npm run db:build-from-repo
+
       - name: Run tests
         run: npx vitest run
         env:

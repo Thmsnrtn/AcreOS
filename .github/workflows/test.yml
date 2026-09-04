@@ -55,9 +55,21 @@ jobs:
       - name: TypeScript check + ratchets
         run: npm run check
 
-      - name: Run database migrations
-        run: npx drizzle-kit migrate
-        continue-on-error: true # migrations may not exist in test env
+      # Build the schema from this repository and gate on the result. This
+      # replaces `npx drizzle-kit migrate` + `continue-on-error: true`, which
+      # could never have worked: drizzle.config.ts records that
+      # migrations/meta/_journal.json was deleted on 2026-05-11, so the
+      # migrator has no journal to read, and continue-on-error hid it.
+      #
+      # The script runs migrations/*.sql, then `node scripts/migrate.mjs` (the
+      # literal Fly release_command), then its --dry-run, then the
+      # declared-vs-built column mirror. ~20s from an empty database.
+      #
+      # The first execution of this path, 2026-09-04, found 37 columns declared
+      # in shared/schema.ts that no DDL in the repo created — enough that
+      # `db.select().from(properties)` failed on the database it built.
+      - name: Build the schema from this repo and verify it
+        run: npm run db:build-from-repo
 
       # Plain `vitest run` — identical to the deploy gate's blocking test step.
       # No `--coverage` here: coverage v8 instrumentation is heavier (OOM risk)

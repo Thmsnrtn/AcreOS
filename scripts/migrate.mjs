@@ -10990,6 +10990,101 @@ END $mig0246$`,
   // index; `stripe_customer_id` is read by every Stripe webhook. Idempotent.
   'CREATE INDEX IF NOT EXISTS "organizations_owner_id_idx" ON "organizations" ("owner_id")',
   'CREATE INDEX IF NOT EXISTS "organizations_stripe_customer_id_idx" ON "organizations" ("stripe_customer_id")',
+
+  // ── 0252 — 37 columns shared/schema.ts declares that no DDL in this repo
+  //          creates (2026-09-04) ────────────────────────────────────────────
+  //
+  // check-schema-migrate-mirror.mjs is TABLE-level by design, and says so:
+  // "Column-level drift ... is left to the DB-backed `migrate.mjs --dry-run`
+  // gate". That deferral was to a gate that did not exist — no workflow in
+  // .github/ ran --dry-run against anything.
+  //
+  // MEASURED 2026-09-04 by building a real PostgreSQL 16 database from this
+  // repository (migrations/*.sql in order, then this script) and diffing
+  // information_schema.columns against getTableConfig() for all 724 declared
+  // tables: 724/724 tables present — the table gate is honest — and 37 of
+  // 9,513 declared COLUMNS absent.
+  //
+  // Not a latent problem. Drizzle's `db.select()` with no projection names
+  // every declared column, so on that database:
+  //
+  //   db.select().from(properties)  →  column "bedrooms" does not exist
+  //   db.select().from(deals)       →  column "deleted_at" does not exist
+  //
+  // both executed and both failed, against 39 and 17 bare-select call sites
+  // respectively. Any environment built from this repo — a DR restore, a new
+  // region, a staging database, the CI job added in the same commit — cannot
+  // read its own properties table. Production has these columns only because
+  // someone once ran `db:push` by hand, which is exactly the provenance the
+  // 83-table exercise of 2026-08-17 set out to end.
+  //
+  // Generated from the Drizzle definitions, never transcribed: hand-copying
+  // 37 columns out of the ORM would reintroduce the drift being removed. Types
+  // and defaults below are getSQLType() / the same defaultSql() reader
+  // scripts/generate-schema-ddl.ts uses. Every statement is IF NOT EXISTS, so
+  // this is a no-op wherever the column already exists — including prod.
+  //
+  // NOT NULL is emitted only where a default exists; ADD COLUMN ... NOT NULL
+  // with no default fails outright on a populated table. `territories`
+  // .state_code is the one such column, so it is added nullable and the DO
+  // block below tightens it the first release where no row would violate it.
+  // Inventing a state code to satisfy the constraint today would be
+  // fabricated data in a tenant table.
+
+  // deals
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp`,
+  `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "deleted_by" text`,
+  // decisions_inbox_items
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "owner_agent_codename" text`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "expected_outcome" text`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "check_in_date" timestamp`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "actual_outcome" text`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "outcome_score" integer`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "outcome_recorded_at" timestamp`,
+  `ALTER TABLE "decisions_inbox_items" ADD COLUMN IF NOT EXISTS "founder_modification" text`,
+  // pax_cross_org_learnings
+  `ALTER TABLE "pax_cross_org_learnings" ADD COLUMN IF NOT EXISTS "contributing_org_ids" jsonb DEFAULT '[]'::jsonb`,
+  // pax_nudges
+  `ALTER TABLE "pax_nudges" ADD COLUMN IF NOT EXISTS "snoozed_until" timestamp`,
+  `ALTER TABLE "pax_nudges" ADD COLUMN IF NOT EXISTS "snooze_count" integer DEFAULT 0`,
+  `ALTER TABLE "pax_nudges" ADD COLUMN IF NOT EXISTS "actioned_at" timestamp`,
+  `ALTER TABLE "pax_nudges" ADD COLUMN IF NOT EXISTS "action_type" text`,
+  // properties
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "bedrooms" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "bathrooms" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "square_feet" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "year_built" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "stories" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "garage_spaces" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "lot_size_sq_ft" integer`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "structure_type" text`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "condition" text`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "after_repair_value" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "estimated_repair_cost" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "monthly_rent" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "cap_rate" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "noi" numeric`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "owning_entity" text`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp`,
+  `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "deleted_by" text`,
+  // scenario_simulations
+  `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "agent_analyses" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "scenarios" jsonb`,
+  `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "recommendation" text`,
+  `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "requested_by" text NOT NULL DEFAULT 'ceo'`,
+  // territories
+  `ALTER TABLE "territories" ADD COLUMN IF NOT EXISTS "state_code" text`,
+  `ALTER TABLE "territories" ADD COLUMN IF NOT EXISTS "assigned_user_id" integer`,
+
+  // territories.state_code is declared NOT NULL. Tighten only when the table
+  // can satisfy it — a no-op on any release where a row is still missing one,
+  // and self-removing in effect once the backfill happens elsewhere.
+  `DO $mig0252$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM "territories" WHERE "state_code" IS NULL) THEN
+    ALTER TABLE "territories" ALTER COLUMN "state_code" SET NOT NULL;
+  END IF;
+END $mig0252$`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -69,6 +69,21 @@ jobs:
       - name: TypeScript check + ratchets
         run: npm run check
 
+      # The release_command's own gate. `node scripts/migrate.mjs` is what Fly
+      # runs on every deploy (fly.toml), and until 2026-09-04 nothing ever ran
+      # it before production did. This builds the schema from migrations/*.sql,
+      # runs the release_command against it, re-validates every statement with
+      # --dry-run, and then requires that every table and column
+      # shared/schema.ts declares actually exists in the result. ~20s.
+      #
+      # It replaces a "Check for pending migrations" step in the deploy job
+      # that globbed `find drizzle -name "*.sql"` — a directory this repo does
+      # not have (migrations live in `migrations/`) — into a variable nothing
+      # read. Three migration steps existed across the workflows; none of them
+      # could fail. Identical step in test.yml, one script, so they cannot drift.
+      - name: Build the schema from this repo and verify it
+        run: npm run db:build-from-repo
+
       - name: Run tests
         run: npx vitest run
         env:
@@ -155,13 +170,6 @@ jobs:
 
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Check for pending migrations
-        run: |
-          # If new migration files exist, they will be applied by the release command
-          MIGRATION_COUNT=$(find drizzle -name "*.sql" -newer fly.toml 2>/dev/null | wc -l)
-          echo "New migrations since last deploy: $MIGRATION_COUNT"
-          echo "MIGRATION_COUNT=$MIGRATION_COUNT" >> $GITHUB_ENV
 
       # ── Pre-deploy baseline (2026-08-25, run 32902473209) ──────────────────
       # Record WHAT production is running BEFORE we touch it. Two consumers:

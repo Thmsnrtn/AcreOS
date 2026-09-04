@@ -1,0 +1,4 @@
+{
+  "_README": "Tables/columns declared in shared/schema.ts that no DDL in this repository creates. EMPTY as of 2026-09-04: a database built from migrations/*.sql + scripts/migrate.mjs has all 724 declared tables and all 9,513 declared columns. An entry here means every query naming it 500s on such a database, so adding one is a regression to be argued for, not routine. The register only shrinks — a stale entry (the thing now exists) fails the gate just as loudly as an unexplained gap.",
+  "entries": []
+}
