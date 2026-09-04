@@ -90,7 +90,13 @@ const withoutComments = (src: string) =>
  * workflow has no business having, which is why the population is "runs the
  * gate suite" and not "has a postgres service".
  */
-const withPostgres = workflows.filter((rel) => /image:\s*postgres:/.test(withoutComments(read(rel))));
+// A postgres service, however the image is spelled: the gating workflows run
+// `pgvector/pgvector:pg16` (shared/schema.ts needs the vector extension), and a
+// predicate pinned to the literal `postgres:16` silently emptied this
+// population the moment that changed.
+const withPostgres = workflows.filter((rel) =>
+  /image:\s*\S*(?:postgres|pgvector)\S*/.test(withoutComments(read(rel))),
+);
 const gatingWorkflows = withPostgres.filter((rel) =>
   withoutComments(read(rel)).includes("npm run check"),
 );

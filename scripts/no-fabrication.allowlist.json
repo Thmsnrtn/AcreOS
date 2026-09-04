@@ -335,6 +335,12 @@
       "line": 38,
       "category": "shuffle",
       "note": "Picks one of 28 curated decorative aerial photos. NOTE FOR WHOEVER WIRES THIS: getRandomImage has ZERO call sites today. Attaching it to a specific parcel or listing would present a stock photo as THAT property's imagery \u2014 fabrication, and the reason this entry says shuffle rather than id. Decorative backgrounds only."
+    },
+    {
+      "file": "client/src/hooks/use-realtime.ts",
+      "line": 138,
+      "category": "jitter",
+      "note": "WebSocket reconnect backoff jitter (0.5x-1.5x). Without it every tab that lost the same server reconnects on the same millisecond and the herd knocks it over again. Nothing customer-visible is derived from it."
     }
   ]
 }

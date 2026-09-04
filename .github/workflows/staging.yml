@@ -23,7 +23,13 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # pgvector, not vanilla postgres:16. shared/schema.ts declares
+        # solene_embedded_records with a `vector(1024)` column, so on an image
+        # without the extension that CREATE TABLE fails and the schema this
+        # repository builds is genuinely missing a table. Found on the first CI
+        # run of the schema gate (2026-09-04): the gate was right, the image was
+        # short. Same postgres 16, same POSTGRES_* env, plus the extension.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: acreos
           POSTGRES_PASSWORD: acreos

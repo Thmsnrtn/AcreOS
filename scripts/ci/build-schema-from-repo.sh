@@ -58,6 +58,18 @@ fi
 MIGRATIONS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/migrations"
 LOG="$(mktemp)"
 
+# Report the one extension the schema needs before anything depends on it.
+# shared/schema.ts declares solene_embedded_records with a `vector(1024)`
+# column; on an image without pgvector that CREATE TABLE fails and the column
+# mirror reports a missing table with no hint as to why. Say it here instead.
+VECTOR_OK="$(psql -tAX -d "$DATABASE_URL" -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" 2>/dev/null | tr -d '[:space:]')"
+if [[ "$VECTOR_OK" != "1" ]]; then
+  echo "[build-schema] WARNING: the 'vector' extension is not available on this server."
+  echo "[build-schema]   shared/schema.ts needs it for solene_embedded_records; the column"
+  echo "[build-schema]   mirror below will report that table missing. Use an image that has"
+  echo "[build-schema]   it (pgvector/pgvector:pg16) rather than allowlisting the table."
+fi
+
 echo "[build-schema] 1/4 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
 for f in $(ls "$MIGRATIONS_DIR"/*.sql | sort); do
   psql -q -v ON_ERROR_STOP=0 -d "$DATABASE_URL" -f "$f" >>"$LOG" 2>&1
