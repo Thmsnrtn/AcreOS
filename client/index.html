@@ -2,7 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is not decoration: WebKit resolves the
+         safe-area-inset-* environment variables to 0 without it. This repo has
+         35 deliberate env(safe-area-inset-*) declarations across 19 files —
+         the mobile bottom navs, the command drawer, PageShell's paddingTop,
+         .mobile-safe-content, Inbox, Maps, DriveMode, CourthouseMode,
+         PullToRefresh — and every one of them was inert on the exact devices
+         it was written for (2026-09-04 review). With
+         apple-mobile-web-app-status-bar-style=black-translucent below, the
+         installed PWA also renders under the status bar, so the top inset is
+         load-bearing too. Pinned by tests/unit/safeAreaInsetsResolve.test.ts.
+         initial-scale=1, not 1.0 — same value, and the form every WebKit doc
+         uses. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#C45C3E" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

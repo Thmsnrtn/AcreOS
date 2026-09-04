@@ -77,7 +77,15 @@ export function MobileBottomNav() {
       <nav
         aria-label="Mobile navigation"
         className="fixed bottom-0 left-0 right-0 z-floating bg-surface-chrome backdrop-blur-lg border-t border-border"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        style={{
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          // Horizontal insets too, now that viewport-fit=cover makes them
+          // resolve: in landscape on a notched device the left or right inset
+          // is non-zero and this bar is `fixed inset-x-0`, so without these the
+          // outermost nav items sit under the notch. Both are 0 in portrait.
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)",
+        }}
         data-testid="mobile-bottom-nav"
       >
         <div className="flex justify-around items-center h-[72px] px-1">
