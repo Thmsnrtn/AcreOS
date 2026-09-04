@@ -764,8 +764,17 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
       switch (name) {
         case 'get_property_valuation': {
           try {
+            // THE ID COMES FROM THE MODEL. Every argument in this switch is
+            // whatever the language model decided to put in a tool call — from
+            // its own reasoning, or from text a counterparty wrote into the
+            // thread it is reading. Resolving a property by that id alone
+            // returned ANOTHER TENANT'S market value, asking price, acreage and
+            // location straight into this organization's negotiation context.
             const property = await db.query.properties.findFirst({
-              where: eq(properties.id, parseInt(args.property_id)),
+              where: and(
+                eq(properties.id, parseInt(args.property_id)),
+                eq(properties.organizationId, Number(organizationId)),
+              ),
             });
             if (!property) return JSON.stringify({ error: 'Property not found' });
             return JSON.stringify({
@@ -782,8 +791,19 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
         case 'get_comparable_sales': {
           try {
+            // Comps are the org's OWN sold parcels. This read had no
+            // organization predicate at all, so it handed a negotiating model
+            // every tenant's private sale price, acreage and location and
+            // called them comparables. Cross-tenant comps are a data-sharing
+            // decision nobody has made — CLAUDE.md's standing DO-NOT-DO list
+            // holds "no residential-comps data plane before its revenue
+            // trigger", and a land-comps plane built out of other customers'
+            // private records is that decision taken by accident.
             const comps = await db.query.properties.findMany({
-              where: eq(properties.status, 'sold'),
+              where: and(
+                eq(properties.status, 'sold'),
+                eq(properties.organizationId, Number(organizationId)),
+              ),
               limit: args.max_results ?? 5,
               orderBy: [desc(properties.updatedAt)],
             });
@@ -803,12 +823,21 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
         case 'get_negotiation_thread': {
           try {
+            // Same model-supplied id, and a negotiation thread is the most
+            // sensitive thing this service holds: counterparty correspondence
+            // and the org's own strategy. Scoped to the caller; a thread that
+            // is not theirs reads as absent.
             const thread = await db.query.negotiationThreads.findFirst({
-              where: eq(negotiationThreads.id, parseInt(args.thread_id)),
+              where: and(
+                eq(negotiationThreads.id, parseInt(args.thread_id)),
+                eq(negotiationThreads.organizationId, Number(organizationId)),
+              ),
             });
             if (!thread) return JSON.stringify({ error: 'Thread not found' });
+            // negotiation_moves carries NO organization column, so it is scoped
+            // through its verified parent — thread.id, not the model's argument.
             const moves = await db.query.negotiationMoves.findMany({
-              where: eq(negotiationMoves.threadId, parseInt(args.thread_id)),
+              where: eq(negotiationMoves.threadId, thread.id),
               orderBy: [desc(negotiationMoves.createdAt)],
               limit: 10,
             });

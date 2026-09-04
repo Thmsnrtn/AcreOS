@@ -8,7 +8,7 @@
 
 import { db } from "../db";
 import { properties } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import { logger } from "../utils/logger";
 import { DISCLAIMER_WORKSHEET } from "./legalDisclaimers";
@@ -93,7 +93,11 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
 
   // The DD engine, comps, and valuation all need the property's coordinates +
   // acreage, so fetch the property first, then gather the rest in parallel.
-  const property = await db.query.properties.findFirst({ where: eq(properties.id, propertyId) });
+  // A due-diligence report on a property, resolved by bare id with `orgId`
+  // right there in the signature.
+  const property = await db.query.properties.findFirst({
+    where: and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)),
+  });
   const lat = Number(property?.latitude ?? 0);
   const lng = Number(property?.longitude ?? 0);
   const propertyAcres = Number(property?.sizeAcres ?? 0);

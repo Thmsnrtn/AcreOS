@@ -1767,7 +1767,32 @@ const ORG_CONTEXT_RE = /[Oo]rganizationId|[Oo]rgId|forOrg\s*\(|unscopedForPlatfo
  * tolerant, and it looks at the WHOLE where() call, so
  * `where(and(eq(t.id, x), eq(t.organizationId, o)))` is fine.
  */
-const LONE_ID_WHERE = /where\(\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*,?\s*\)/g;
+// TWO SPELLINGS OF `where`, and until 2026-09-04 this matched one.
+//
+// The classic builder writes `.where(eq(t.id, x))` — a CALL. Drizzle's
+// relational API writes `{ where: eq(t.id, x) }` — a PROPERTY. This regex
+// required the parenthesis, so every relational by-primary-key read was
+// invisible to rule 2.
+//
+// That mattered more than a missing spelling usually does, because of how rule
+// 3 is drawn: it deliberately SKIPS any chain containing `eq(<table>.id,` on
+// the grounds that "primary-key resolution belongs to rule 2" (see the (b)
+// discriminator). So a relational by-id read fell BETWEEN the two rules —
+// excluded by rule 3 as rule 2's job, and unreadable by rule 2 for want of a
+// bracket. It is the single most dangerous shape in this codebase (a
+// caller-supplied id resolving a row by primary key with no organization
+// predicate), and neither rule could see it.
+//
+// FOUND BY FALSIFYING A FIX, which is the only way it could have been found.
+// negotiationOrchestrator's AI tool handler resolved a property by a
+// MODEL-SUPPLIED id; after scoping it, the mutation that put the defect back
+// left the gate GREEN. Its register entry had covered that chain only
+// incidentally — a second, non-id chain in the same unit — so when that one was
+// scoped the entry went stale and took the by-id chain's only coverage with it.
+//
+// Measured 2026-09-04: 1,069 call-spelling reads the gate could already see,
+// and 79 relational ones it never could.
+const LONE_ID_WHERE = /where\s*[(:]\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*,?\s*\)?/g;
 
 /**
  * `const owned = eq(t.id, x)` … `.where(owned)`.

@@ -6,6 +6,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 
 interface RegulatoryChange {
@@ -103,8 +104,16 @@ class ComplianceAI {
 
       if (!change) return;
 
-      // Find all properties in affected jurisdiction
-      const props = await db.query.properties.findMany({
+      // CROSS-ORG BY DESIGN, and this one is right. A regulatory change in a
+      // state and county affects EVERY organization holding land there, so the
+      // sweep is jurisdiction-wide on purpose — and each alert below is written
+      // against `prop.organizationId`, so every org is told about its OWN
+      // parcels and sees nothing of anyone else's. A per-org predicate here
+      // would mean one customer learned about a rule change and the rest did
+      // not, which is the defect, not the fix.
+      const props = await unscopedForPlatformOps(
+        "regulatory-change fan-out: a rule change in a state and county affects every organization holding land there, and each resulting alert is written against that property's own organizationId",
+      ).query.properties.findMany({
         where: and(
           eq(properties.state, state),
           eq(properties.county, county)

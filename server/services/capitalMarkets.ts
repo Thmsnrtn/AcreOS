@@ -300,7 +300,9 @@ class CapitalMarkets {
   ): Promise<any[]> {
     try {
       const property = await db.query.properties.findFirst({
-        where: eq(properties.id, propertyId),
+        // organizationId is the first parameter of matchLenders; the property
+        // it matches lenders against must be the caller's own.
+        where: and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)),
       });
 
       if (!property) {

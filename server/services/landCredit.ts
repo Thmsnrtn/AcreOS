@@ -1421,8 +1421,15 @@ class LandCreditScoring {
     const { jsPDF } = await import("jspdf");
 
     const score = await this.calculateCreditScore(organizationId, propertyId);
+    // The report renders this property's address, APN and figures into a PDF.
+    // It was resolved by bare id while `organizationId` sat in the signature —
+    // the same shape that produced three live cross-tenant routes in this file's
+    // neighbourhood earlier today.
     const property = await db.query.properties.findFirst({
-      where: eq(properties.id, Number(propertyId)),
+      where: and(
+        eq(properties.id, Number(propertyId)),
+        eq(properties.organizationId, Number(organizationId)),
+      ),
     });
 
     const doc = new jsPDF({ unit: "in", format: "letter" });
