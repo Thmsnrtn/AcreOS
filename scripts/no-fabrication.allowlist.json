@@ -326,9 +326,9 @@
     },
     {
       "file": "client/src/lib/queryClient.ts",
-      "line": 390,
+      "line": 415,
       "category": "id",
-      "note": "Idempotency key fallback, same shape as useOfflineSync:135 \u2014 crypto.randomUUID first."
+      "note": "Idempotency key fallback, same shape as useOfflineSync:135 \u2014 crypto.randomUUID first. (Line moved 390 -> 415 on 2026-09-04 when fetchJsonArray gained its refusal path; the allowlist keys on line NUMBER, so an edit above a legitimate entry reports it stale even though nothing was fixed. Re-pinned, not removed.)"
     },
     {
       "file": "client/src/lib/aerial-images.ts",
