@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clientLogger } from "@/lib/clientLogger";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * useUiState — server-backed UI preference, keyed by (org, user, key) on the
@@ -66,12 +67,12 @@ async function fetchServerValue<T>(key: string): Promise<{ value: T } | null> {
 
 async function putServerValue<T>(key: string, value: T): Promise<void> {
   try {
-    await fetch(`/api/ui-state/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
+    // apiRequest rather than fetch: the catch below only ever fired on a
+    // NETWORK error, so a 4xx/5xx was logged as success and the "failed;
+    // local state retained" line could never appear for the case that
+    // actually loses the write. apiRequest throws on a non-OK status, which
+    // makes the handler that was already written reachable.
+    await apiRequest("PUT", `/api/ui-state/${encodeURIComponent(key)}`, { value });
   } catch (err) {
     clientLogger.warn(`[ui-state] PUT /api/ui-state/${key} failed; local state retained`, err);
   }

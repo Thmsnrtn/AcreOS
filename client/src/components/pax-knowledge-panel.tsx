@@ -7,6 +7,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Paperclip, Trash2, Loader2, BookOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface KnowledgeFile {
   id: number;
@@ -45,6 +47,7 @@ interface PaxKnowledgePanelProps {
 
 export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,35 +62,44 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
     enabled: open,
   });
 
+  // Every mutation below went through a raw fetch() whose result was DISCARDED.
+  // react-query cannot tell a 403 from a 204 when the mutationFn resolves
+  // either way, so onSuccess ran, the cache was invalidated, and the row the
+  // customer had just deleted reappeared with no error anywhere — the UI
+  // reporting an effect that did not happen, which is the client-side form of
+  // the rule this repository already enforces on the server.
+  //
+  // apiRequest throws on a non-OK status (and transparently retries once after
+  // refreshing an expired session), so failure now reaches onError.
+  const failed = (what: string) => (err: Error) =>
+    toast({
+      title: what,
+      description: err.message || "Try again in a moment.",
+      variant: "destructive",
+    });
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
-      await fetch(`/api/ai/knowledge/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ isActive }),
-      });
+      await apiRequest("PATCH", `/api/ai/knowledge/${id}`, { isActive });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/ai/knowledge"] }),
+    onError: failed("Couldn't change that file"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/ai/knowledge/${id}`, { method: "DELETE", credentials: "include" });
+      await apiRequest("DELETE", `/api/ai/knowledge/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/ai/knowledge"] }),
+    onError: failed("Couldn't remove that file"),
   });
 
   const descMutation = useMutation({
     mutationFn: async ({ id, description }: { id: number; description: string }) => {
-      await fetch(`/api/ai/knowledge/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ description }),
-      });
+      await apiRequest("PATCH", `/api/ai/knowledge/${id}`, { description });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/ai/knowledge"] }),
+    onError: failed("Couldn't save that description"),
   });
 
   const uploadFile = async (file: File) => {
@@ -97,13 +109,18 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
     setUploading(true);
     try {
       const content = await readAsDataURL(file);
-      await fetch("/api/ai/knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: file.name, content, mimeType: file.type, sizeBytes: file.size }),
+      // The upload was the worst of the four: it POSTed, ignored the result,
+      // invalidated the cache and cleared the spinner in `finally`, so a
+      // rejected upload was indistinguishable from a successful one.
+      await apiRequest("POST", "/api/ai/knowledge", {
+        name: file.name,
+        content,
+        mimeType: file.type,
+        sizeBytes: file.size,
       });
       qc.invalidateQueries({ queryKey: ["/api/ai/knowledge"] });
+    } catch (err) {
+      failed("Couldn't add that file")(err as Error);
     } finally {
       setUploading(false);
     }

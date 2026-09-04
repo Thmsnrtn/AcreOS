@@ -119,6 +119,7 @@ export default function WelcomeBackPage() {
     // continuing to checkout. The signal is nice-to-have, not load-
     // bearing.
     try {
+      // unchecked-mutation: reactivation survey signal, already documented best-effort above. Nothing in the UI claims it was recorded and it must not block checkout.
       await fetch("/api/subscription/reactivation-survey", {
         method: "POST",
         headers: { "content-type": "application/json" },

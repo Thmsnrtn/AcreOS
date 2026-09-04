@@ -291,15 +291,28 @@ export function useDeleteLead() {
         action: React.createElement("button", {
           className: "shrink-0 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted",
           onClick: async () => {
+            // The restore used to be a raw fetch inside `catch { /* ignore */ }`.
+            // A refused restore therefore looked exactly like a successful one:
+            // the toast dismissed, the caches were invalidated, and the customer
+            // walked away believing they had undone a deletion that is still a
+            // deletion. apiRequest throws on a non-OK status, so the failure now
+            // reaches the person who pressed Undo.
             try {
-              await fetch(`/api/leads/${id}/restore`, { method: "PATCH", credentials: "include" });
+              await apiRequest("PATCH", `/api/leads/${id}/restore`);
               queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
               queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1
               queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
-            } catch { /* ignore */ }
+            } catch (err) {
+              toast({
+                title: "Couldn't undo that",
+                description:
+                  (err as Error)?.message || "The lead is still in trash — try restoring it from there.",
+                variant: "destructive",
+              });
+            }
           },
         }, "Undo") as any,
         duration: 10000,

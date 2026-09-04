@@ -133,6 +133,7 @@ export function useAuth() {
     } catch { /* sessionStorage unavailable */ }
 
     try {
+      // unchecked-mutation: logout must proceed whatever the server says. The local session is cleared either way; blocking on a refused POST would strand the user signed in.
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch { /* best-effort — fall through */ }
 

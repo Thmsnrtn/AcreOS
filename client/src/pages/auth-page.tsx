@@ -145,6 +145,7 @@ function AuthPageClerk() {
     purgingRef.current = true;
     void (async () => {
       try {
+        // unchecked-mutation: logout must proceed whatever the server says — see use-auth.ts.
         await fetch("/api/auth/logout", {
           method: "POST",
           credentials: "include",
@@ -186,6 +187,7 @@ function AuthPageClerk() {
         /* best effort — fall through to reload */
       }
       try {
+        // unchecked-mutation: logout must proceed whatever the server says — see use-auth.ts.
         await fetch("/api/auth/logout", {
           method: "POST",
           credentials: "include",
@@ -286,6 +288,7 @@ function AuthPageClerk() {
     // by the server as signals-not-emitted=false in provisionUser, which
     // is the correct fallback.
     try {
+      // unchecked-mutation: signup attribution signal. Nothing in the UI claims it was recorded, and a failed signal must never block a signup.
       void fetch("/api/auth/signup-signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

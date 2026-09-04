@@ -40,6 +40,7 @@ function reportBlankRender(routePath: string, detail: string): void {
   reportedRoutes.add(routePath);
   const errorId = `blank_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   try {
+    // unchecked-mutation: render-fault telemetry. Same reason as error-boundary.tsx: the reporter must not be able to raise.
     void fetch("/api/client/error-boundary-trip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -211,27 +211,40 @@ function PaxNotificationBadge() {
     staleTime: 30 * 1000,
   });
 
+  const { toast } = useToast();
   const unreadCount = unreadData?.count ?? 0;
   const observations = observationsData?.observations ?? [];
 
+  // These two swallowed EVERYTHING: `catch {}` with no body, and
+  // refetchObservations() ran either way. A dismiss the server refused looked
+  // exactly like one it accepted — the observation reappeared on the refetch
+  // with nothing said, which reads to the customer as the button not working.
+  //
+  // apiRequest throws on a non-OK status; the refetch now happens only after
+  // the server actually agreed, and a failure says so.
+  const observationFailed = (what: string, err: unknown) =>
+    toast({
+      title: what,
+      description: (err as Error)?.message || "Try again in a moment.",
+      variant: "destructive",
+    });
+
   const handleDismiss = async (id: number) => {
     try {
-      await fetch(`/api/pax/observations/${id}/dismiss`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiRequest("POST", `/api/pax/observations/${id}/dismiss`);
       refetchObservations();
-    } catch {}
+    } catch (err) {
+      observationFailed("Couldn't dismiss that", err);
+    }
   };
 
   const handleAcknowledge = async (id: number) => {
     try {
-      await fetch(`/api/pax/observations/${id}/acknowledge`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiRequest("POST", `/api/pax/observations/${id}/acknowledge`);
       refetchObservations();
-    } catch {}
+    } catch (err) {
+      observationFailed("Couldn't acknowledge that", err);
+    }
   };
 
   const severityColor: Record<string, string> = {
@@ -823,6 +836,8 @@ const HIDDEN_MODULES_KEY = "sidebar-hidden-modules";
 
 import { DevBanner } from "@/components/dev-banner";
 import { ProviderStatusBadges } from "@/components/provider-status";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const routePrefetchMap: Record<string, string> = {
   "/leads": "/api/leads",

@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MoonStar } from "lucide-react";
 import { clientLogger } from "@/lib/clientLogger";
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * Notification quiet hours — per-user preference. Phase C.2 of the port.
@@ -67,12 +68,11 @@ export function NotificationQuietHours() {
     }
     patchTimerRef.current = window.setTimeout(() => {
       patchTimerRef.current = undefined;
-      fetch(PREFERENCES_ENDPOINT, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationQuietHours: next }),
-      }).catch((err) => {
+      // apiRequest rather than fetch: the .catch below only ever fired on a
+      // NETWORK error, so a 4xx/5xx was treated as a successful save and the
+      // "PATCH quiet hours failed" line could never appear for the case that
+      // actually loses the setting.
+      apiRequest("PATCH", PREFERENCES_ENDPOINT, { notificationQuietHours: next }).catch((err) => {
         // eslint-disable-next-line no-console
         clientLogger.warn("[notifications] PATCH quiet hours failed; local state retained", err);
       });

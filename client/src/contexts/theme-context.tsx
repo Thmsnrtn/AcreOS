@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { clientLogger } from "@/lib/clientLogger";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * Theme system — five themes × light/dark + five font pairings.
@@ -146,12 +147,12 @@ async function fetchServerPreferences(): Promise<Partial<ThemeConfig> | null> {
 
 async function patchServerPreferences(update: Partial<ThemeConfig>): Promise<void> {
   try {
-    await fetch(PREFERENCES_ENDPOINT, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(update),
-    });
+    // apiRequest rather than fetch: the catch below only ever fired on a
+    // NETWORK error, so a 4xx/5xx was logged as success and the "failed;
+    // local state retained" line could never appear for the case that
+    // actually loses the write. apiRequest throws on a non-OK status, which
+    // makes the handler that was already written reachable.
+    await apiRequest("PATCH", PREFERENCES_ENDPOINT, update);
   } catch (err) {
     // eslint-disable-next-line no-console
     clientLogger.warn("[theme] PATCH /api/me/preferences failed; local state retained", err);

@@ -181,6 +181,7 @@ export function installClerkSessionRecovery(): void {
     const sid = parseSessionId();
     if (!sid) return;
     try {
+      // unchecked-mutation: MUST stay a raw fetch. This is the Clerk session refresh apiRequest itself calls on a 401; routing it through apiRequest would recurse.
       await fetch(`/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.8.0`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },

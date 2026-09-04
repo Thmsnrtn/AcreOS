@@ -3117,3 +3117,60 @@ details earned themselves:
 Falsified twice: reverting one theme's warn ink reproduces the reviewer's exact
 2.47:1, and putting a single pill back on the base colour names the file and
 line.
+
+### The no-fabrication rule had never been applied to the client
+
+CLAUDE.md's standing rule is "Fabrication is never acceptable … no fake
+activity." The server side is enforced: `paxToolsReportRealEffects` exists
+because `schedule_background_job` told a customer their campaign was queued and
+queued nothing.
+
+That gate's population is **server tool switches**. No gate had ever read a
+client mutation handler — and the client had the same defect, 28 times:
+
+```ts
+await fetch(url, { method: "DELETE" });      // result discarded
+onSuccess: () => qc.invalidateQueries(...)   // runs anyway
+```
+
+react-query cannot distinguish a 403 from a 204 when the `mutationFn` resolves
+either way. So `onSuccess` ran, the cache was invalidated, and the row the
+customer had just deleted reappeared with no error anywhere.
+
+The worst shapes, in rough order of harm:
+
+- **An Undo that didn't undo.** The "Lead deleted" toast's Undo button called
+  restore inside `catch { /* ignore */ }`. A refused restore dismissed the
+  toast, invalidated the caches, and left the customer believing they had
+  undone a deletion that is still a deletion.
+- **Failures rendered as empty results.** `match-lenders` and
+  `market-intelligence/compare` parsed the error body as data, so a failure
+  rendered as "no lenders matched" and a comparison of nothing — and the
+  `onError` toast never fired, because the mutation had resolved.
+- **A failure toasted as a partial success.** Syndication read `data.results`
+  off an unchecked response, so a 500 produced "Syndicated to 0/3 platforms" on
+  an action that publishes a listing to third parties.
+- **Optimistic UI with no rollback.** The rating thumb, the nudge dismissal and
+  the project switch all drew the new state and then swallowed the failure, so
+  the control showed one thing and the server held another.
+- **`catch {}` on observation dismiss/acknowledge**, with the refetch running
+  regardless — so the item came straight back and the button read as broken.
+- **Four preference writers whose failure log could never fire.** `use-ui-state`,
+  `use-list-view`, `theme-context`, `notification-quiet-hours` and both push
+  token calls each had a `catch` logging "failed; local state retained" — but
+  `catch` only fires on a *network* error, so a 4xx was logged as success. The
+  handler that was already written is now reachable.
+
+**The count in the original finding was 40; the true number was 28.** The
+review's scan used a 22-line window, which reported `note-assignments-card` as
+unchecked when it checks `res.ok` twenty-five lines down. Recomputed over the
+whole enclosing statement: 212 mutating `fetch()` calls, 184 already checked,
+28 not.
+
+`scripts/lint-unchecked-mutation.mjs` now requires every mutating `fetch()` in
+`client/src` to either check its response or carry an
+`// unchecked-mutation: <reason>` marker. The marker is the point, not a
+loophole: some mutations genuinely must not throw — error telemetry reported
+from inside an error boundary, a logout that has to proceed whatever the server
+says, and the Clerk session refresh that `apiRequest` **itself** calls on a 401,
+which would recurse. Twelve carry one; each names its reason.

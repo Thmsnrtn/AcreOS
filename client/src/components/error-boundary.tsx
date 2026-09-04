@@ -61,6 +61,7 @@ function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
       typeof window !== "undefined"
         ? { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio }
         : null;
+    // unchecked-mutation: error telemetry from inside an error boundary. Throwing here would fault the boundary that is already handling a fault.
     void fetch("/api/client/error-boundary-trip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

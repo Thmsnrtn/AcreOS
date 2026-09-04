@@ -43,6 +43,7 @@ import {
 import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Lightweight markdown renderer ──────────────────────────────────────────
 function PaxMarkdown({ content }: { content: string }) {
@@ -489,7 +490,9 @@ export function PaxCopilotRail() {
   // allow-no-invalidation: onSuccess calls refetchObs() — refetch-based, not key-based
   const dismissMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/pax/observations/${id}/acknowledge`, { method: "POST", credentials: "include" });
+      // Discarded result: a refused acknowledge still ran onSuccess, refetched,
+      // and put the observation straight back with nothing said.
+      await apiRequest("POST", `/api/pax/observations/${id}/acknowledge`);
     },
     onSuccess: () => refetchObs(),
   });
@@ -994,12 +997,13 @@ export function PaxCopilotRail() {
     setActiveProjectId(projectId);
     // Persist to conversation if we have one
     if (activeConversationId) {
-      fetch(`/api/ai/conversations/${activeConversationId}/project`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ projectId }),
-      }).catch(() => {});
+      // setActiveProjectId above has already switched the rail's project. A
+      // discarded PATCH meant the switch survived this session and vanished on
+      // reload; roll it back so the control reflects what was actually saved.
+      const previous = activeProjectId;
+      apiRequest("PATCH", `/api/ai/conversations/${activeConversationId}/project`, { projectId }).catch(
+        () => setActiveProjectId(previous),
+      );
     }
   };
 
@@ -1032,22 +1036,33 @@ export function PaxCopilotRail() {
     if (!messageId.startsWith("db-")) return;
     const numericId = parseInt(messageId.slice(3), 10);
     if (isNaN(numericId)) return;
+    // The optimistic setRatings above has already drawn the thumb. A raw fetch
+    // in `catch {}` meant a refused write left that thumb on screen with
+    // nothing saved — the UI reporting an effect it did not have. On failure
+    // the optimistic state is rolled back so the control tells the truth.
     try {
-      await fetch(`/api/ai/messages/${numericId}/rating`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ rating }),
+      await apiRequest("PATCH", `/api/ai/messages/${numericId}/rating`, { rating });
+    } catch {
+      setRatings((prev) => {
+        const next = { ...prev };
+        delete next[messageId];
+        return next;
       });
-    } catch {}
+    }
   };
 
   // ── Dismiss nudge ─────────────────────────────────────────────────────────
   const handleDismissNudge = async (nudgeId: number) => {
     setDismissedNudgeIds((prev) => [...prev, nudgeId]);
+    // Optimistic dismissal + `catch {}` meant a refused write hid the nudge
+    // for this session and brought it back on the next load, with nothing
+    // said. Roll the optimism back instead so the nudge stays visible and the
+    // customer can try again.
     try {
-      await fetch(`/api/ai/nudges/${nudgeId}/dismiss`, { method: "POST", credentials: "include" });
-    } catch {}
+      await apiRequest("POST", `/api/ai/nudges/${nudgeId}/dismiss`);
+    } catch {
+      setDismissedNudgeIds((prev) => prev.filter((n) => n !== nudgeId));
+    }
   };
 
   // ── Voice mic ─────────────────────────────────────────────────────────────

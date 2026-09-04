@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Platform {
   id: string;
@@ -75,10 +76,12 @@ export default function SyndicationPage() {
     setSyndicating(true);
     setResults(null);
     try {
-      const res = await fetch(`/api/listings/${selectedPropertyId}/syndicate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platforms: selectedPlatforms }),
+      // Unchecked, a 500's body has no `results`, so successCount fell to 0
+      // and the toast read "Syndicated to 0/3 platforms" — a FAILURE dressed
+      // as a partial success, on an action that publishes a listing to third
+      // parties. apiRequest throws, so the catch below tells the truth.
+      const res = await apiRequest("POST", `/api/listings/${selectedPropertyId}/syndicate`, {
+        platforms: selectedPlatforms,
       });
       const data = await res.json();
       setResults(data.results || []);

@@ -28,6 +28,7 @@ export async function touchClerkSession(): Promise<void> {
     );
     const sid = payload?.sid;
     if (!sid) return;
+    // unchecked-mutation: MUST stay a raw fetch. Same reason as clerk-session-recovery.ts: apiRequest calls this path, so it cannot call apiRequest.
     await fetch(
       `/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`,
       {

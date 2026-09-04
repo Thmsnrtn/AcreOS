@@ -17,6 +17,7 @@ import { usd } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { apiRequest } from "@/lib/queryClient";
 
 function HealthBadge({ score }: { score: number }) {
   if (score >= 70) return <StatusBadge status="success" label={`Strong ${score}`} />;
@@ -83,10 +84,10 @@ export default function MarketIntelligencePage() {
   // allow-no-invalidation: comparison renders from mutation.data — read-only analysis
   const compareMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/market-intelligence/compare", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markets: compareList }),
+      // The comparison renders straight from mutation.data, so an unchecked
+      // error body was rendered AS a comparison. apiRequest throws first.
+      const res = await apiRequest("POST", "/api/market-intelligence/compare", {
+        markets: compareList,
       });
       return res.json();
     },

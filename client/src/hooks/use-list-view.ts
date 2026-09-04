@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * Per-list-type view preferences. Phase C.3 of the port.
@@ -77,12 +78,12 @@ async function fetchServer(): Promise<ListViewMap | null> {
 
 async function patchServer(map: ListViewMap): Promise<void> {
   try {
-    await fetch(PREFERENCES_ENDPOINT, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listViews: map }),
-    });
+    // apiRequest rather than fetch: the catch below only ever fired on a
+    // NETWORK error, so a 4xx/5xx was logged as success and the "failed;
+    // local state retained" line could never appear for the case that
+    // actually loses the write. apiRequest throws on a non-OK status, which
+    // makes the handler that was already written reachable.
+    await apiRequest("PATCH", PREFERENCES_ENDPOINT, { listViews: map });
   } catch (err) {
     // eslint-disable-next-line no-console
     clientLogger.warn("[list-view] PATCH /api/me/preferences listViews failed; local state retained", err);

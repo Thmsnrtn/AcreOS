@@ -13,6 +13,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { clientLogger } from "@/lib/clientLogger";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,11 +72,14 @@ export function usePushNotifications(): UsePushNotificationsResult {
   // ── Store device token on server ────────────────────────────────────────────
   const storeTokenOnServer = useCallback(async (token: string) => {
     try {
-      await fetch('/api/push/device-token', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, platform: (window as any).Capacitor?.getPlatform?.() ?? 'unknown' }),
+      // apiRequest rather than fetch: the catch below only ever fired on a
+      // NETWORK error, so a 4xx/5xx was logged as success and the "failed;
+      // local state retained" line could never appear for the case that
+      // actually loses the write. apiRequest throws on a non-OK status, which
+      // makes the handler that was already written reachable.
+      await apiRequest("POST", "/api/push/device-token", {
+        token,
+        platform: (window as any).Capacitor?.getPlatform?.() ?? "unknown",
       });
     } catch (err) {
       clientLogger.warn('[Push] Failed to store device token:', err);
@@ -85,12 +89,10 @@ export function usePushNotifications(): UsePushNotificationsResult {
   // ── Remove device token from server ─────────────────────────────────────────
   const removeTokenFromServer = useCallback(async (token: string) => {
     try {
-      await fetch('/api/push/device-token', {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
+      // Same reason as the store call above: the catch only fired on a network
+      // error, so a refused removal was logged as a success and the device kept
+      // receiving pushes it had asked to stop.
+      await apiRequest("DELETE", "/api/push/device-token", { token });
     } catch (err) {
       clientLogger.warn('[Push] Failed to remove device token:', err);
     }

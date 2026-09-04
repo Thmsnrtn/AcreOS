@@ -8,6 +8,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shield, Clock, X } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 const AGENT_NAMES: Record<string, string> = {
   sophie_csm: "Sophie", forge_revenue: "Forge", sentinel_devops: "Sentinel",
@@ -26,10 +27,11 @@ export default function DelegationManager() {
 
   const revokeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/founder/intelligence/delegations/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // `res.json()` on an unchecked response parses the ERROR body as a
+      // result, so a refused revoke resolved successfully and the delegation
+      // reappeared on the next 60s poll with nothing said. Revoking authority
+      // is exactly the operation that must not fail quietly.
+      const res = await apiRequest("DELETE", `/api/founder/intelligence/delegations/${id}`);
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/intelligence/delegations"] }),

@@ -10,6 +10,7 @@
 
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface FilterPreset {
   id?: number;
@@ -91,7 +92,9 @@ export function useSavedFilters(entityType: string) {
 
   const setDefaultMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/saved-views/${id}/default`, { method: "PATCH" });
+      // Raw fetch discarded: a refused write invalidated the cache anyway, so
+      // the star moved back on the refetch with no explanation.
+      await apiRequest("PATCH", `/api/saved-views/${id}/default`);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });

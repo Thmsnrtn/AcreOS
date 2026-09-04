@@ -322,6 +322,7 @@ export async function flushPendingUtm(): Promise<PendingUtm | null> {
   }
 
   try {
+    // unchecked-mutation: acquisition attribution beacon. Nothing in the UI claims it was recorded.
     await fetch("/api/me/acquisition-utm", {
       method: "POST",
       credentials: "include",

@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Paperclip, Trash2, Loader2, FolderOpen, Plus, CheckCircle2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
 
 interface PaxProject {
@@ -55,6 +57,7 @@ interface PaxProjectPanelProps {
 
 export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProject }: PaxProjectPanelProps) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [selectedProject, setSelectedProject] = useState<number | null>(activeProjectId);
   const [newProjectName, setNewProjectName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -82,14 +85,23 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
     enabled: open && selectedProject != null,
   });
 
+  // Each mutation below discarded its response. react-query cannot tell a 403
+  // from a 204 when the mutationFn resolves either way, so onSuccess ran and
+  // the UI reported an effect that had not happened. createMutation was worse
+  // still: it parsed the ERROR body as a project and handed `proj.id` —
+  // undefined — to setSelectedProject.
+  //
+  // apiRequest throws on a non-OK status, so failure reaches onError.
+  const failed = (what: string) => (err: Error) =>
+    toast({
+      title: what,
+      description: err.message || "Try again in a moment.",
+      variant: "destructive",
+    });
+
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      const r = await fetch("/api/ai/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name }),
-      });
+      const r = await apiRequest("POST", "/api/ai/projects", { name });
       return r.json();
     },
     onSuccess: (proj) => {
@@ -98,27 +110,30 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
       setNewProjectName("");
       setCreating(false);
     },
+    onError: failed("Couldn't create that project"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/ai/projects/${id}`, { method: "DELETE", credentials: "include" });
+      await apiRequest("DELETE", `/api/ai/projects/${id}`);
     },
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ["/api/ai/projects"] });
       if (selectedProject === id) setSelectedProject(null);
       if (activeProjectId === id) onSelectProject(null);
     },
+    onError: failed("Couldn't delete that project"),
   });
 
   const deleteFileMutation = useMutation({
     mutationFn: async ({ projectId, fileId }: { projectId: number; fileId: number }) => {
-      await fetch(`/api/ai/projects/${projectId}/files/${fileId}`, { method: "DELETE", credentials: "include" });
+      await apiRequest("DELETE", `/api/ai/projects/${projectId}/files/${fileId}`);
     },
     onSuccess: (_, { projectId }) => {
       qc.invalidateQueries({ queryKey: ["/api/ai/projects", projectId, "files"] });
       qc.invalidateQueries({ queryKey: ["/api/ai/projects"] });
     },
+    onError: failed("Couldn't remove that file"),
   });
 
   const uploadFile = async (projectId: number, file: File) => {
@@ -126,14 +141,16 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
     setUploadingFor(projectId);
     try {
       const content = await readAsDataURL(file);
-      await fetch(`/api/ai/projects/${projectId}/files`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ fileName: file.name, content, mimeType: file.type, sizeBytes: file.size }),
+      await apiRequest("POST", `/api/ai/projects/${projectId}/files`, {
+        fileName: file.name,
+        content,
+        mimeType: file.type,
+        sizeBytes: file.size,
       });
       qc.invalidateQueries({ queryKey: ["/api/ai/projects", projectId, "files"] });
       qc.invalidateQueries({ queryKey: ["/api/ai/projects"] });
+    } catch (err) {
+      failed("Couldn't add that file")(err as Error);
     } finally {
       setUploadingFor(null);
     }

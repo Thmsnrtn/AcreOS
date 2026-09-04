@@ -555,6 +555,7 @@ export default function OnboardingV2() {
   // ── Step telemetry (best-effort) ─────────────────────────────────────────
   useEffect(() => {
     if (disclosureRequired) return;
+    // unchecked-mutation: onboarding step telemetry. Nothing in the UI claims it was recorded, and a failed beacon must never block the step.
     fetch("/api/onboarding/step-entered", {
       method: "POST",
       credentials: "include",

@@ -16,6 +16,7 @@ import { usd } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { apiRequest } from "@/lib/queryClient";
 
 function RatingBadge({ rating }: { rating: string }) {
   const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos-soft-ink", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn-soft-ink" };
@@ -267,10 +268,14 @@ export default function CapitalMarketsPage() {
   // allow-no-invalidation: lender matches land in page-local state (setMatchResults)
   const matchMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/capital-markets/match-lenders", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealAmount: parseFloat(matchForm.dealAmount), state: matchForm.state, ltv: parseFloat(matchForm.ltv) }),
+      // Unchecked, an error body parsed fine and `data.matches ?? []` made a
+      // FAILURE render as "no lenders matched" — the onError toast below never
+      // fired, because the mutation had resolved. apiRequest throws, so a
+      // failure is a failure rather than an empty result.
+      const res = await apiRequest("POST", "/api/capital-markets/match-lenders", {
+        dealAmount: parseFloat(matchForm.dealAmount),
+        state: matchForm.state,
+        ltv: parseFloat(matchForm.ltv),
       });
       return res.json();
     },

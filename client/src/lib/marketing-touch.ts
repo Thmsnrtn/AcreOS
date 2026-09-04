@@ -133,6 +133,7 @@ export function emitMarketingTouch(input: MarketingTouchInput): void {
       if (ok) return;
     }
     // Fallback: keepalive fetch so an in-flight beacon survives navigation.
+    // unchecked-mutation: marketing touch beacon. Nothing in the UI claims it was recorded.
     void fetch("/api/marketing/touch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
