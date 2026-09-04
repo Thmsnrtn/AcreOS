@@ -42,6 +42,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -311,7 +312,14 @@ interface Note {
 function PaymentForm({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>({
+  const {
+    data: notes = [],
+    isLoading: notesLoading,
+    isError: notesFailed,
+    error: notesError,
+    refetch: refetchNotes,
+    isRefetching: notesRefetching,
+  } = useQuery<Note[]>({
     queryKey: ["/api/notes"],
     queryFn: () => fetchJsonArray<Note>("/api/notes"),
     staleTime: 60_000,
@@ -363,6 +371,24 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
       });
     },
   });
+
+  // A FAILED READ IS NOT AN EMPTY INVENTORY, and this branch comes first.
+  // fetchJsonArray used to return [] on any failure, so a 500 landed the user
+  // on "No notes to log against — add a note first", telling someone with a
+  // book of notes to go and create one.
+  if (notesFailed) {
+    return (
+      <QueryErrorState
+        error={notesError}
+        onRetry={() => void refetchNotes()}
+        isRetrying={notesRefetching}
+        compact
+        title="Couldn't load your notes"
+        description="We couldn't read your note inventory just now. This isn't an empty inventory — try again."
+        testId="quick-add-notes-error"
+      />
+    );
+  }
 
   // No notes in the inventory yet — the payment form has nothing to
   // attach to. Show a clear explanation + jump-to-notes CTA instead of
@@ -479,7 +505,14 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
   // `listPropertiesContract.responseSchema`; we then extract `.data` for the
   // array this form consumes. queryFn fetches the bare path (the contract
   // codifies /api/properties); pageSize is passed via the query key path.
-  const { data: propertiesEnvelope, isLoading: propsLoading } = useQuery({
+  const {
+    data: propertiesEnvelope,
+    isLoading: propsLoading,
+    isError: propsFailed,
+    error: propsError,
+    refetch: refetchProps,
+    isRefetching: propsRefetching,
+  } = useQuery({
     queryKey: ["/api/properties?pageSize=100"],
     queryFn: contractQueryFn(listPropertiesContract),
     staleTime: 60_000,
@@ -515,6 +548,23 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
       });
     },
   });
+
+  // Same order as the payment form, for the same reason: `?? []` on a failed
+  // envelope is indistinguishable from a customer with no properties, and this
+  // branch would have told a landlord with a portfolio to add their first one.
+  if (propsFailed) {
+    return (
+      <QueryErrorState
+        error={propsError}
+        onRetry={() => void refetchProps()}
+        isRetrying={propsRefetching}
+        compact
+        title="Couldn't load your properties"
+        description="We couldn't read your properties just now. This isn't an empty portfolio — try again."
+        testId="quick-add-properties-error"
+      />
+    );
+  }
 
   // No properties — can't open a ticket against nothing. Same pattern
   // as the payment form: clear pointer at where to start.

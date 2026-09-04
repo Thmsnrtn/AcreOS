@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchJsonArray } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -76,7 +77,7 @@ export function PipelineVelocity() {
   // pulling ~half a meg of JSON every time any page that renders this
   // widget mounted. pageSize=100 keeps it consistent with the other
   // ["/api/deals"] consumers so they share cache cleanly.
-  const { data: deals = [], isLoading } = useQuery<Deal[]>({
+  const { data: deals = [], isLoading, isError, error, refetch, isRefetching } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
     queryFn: () => fetchJsonArray<Deal>("/api/deals?pageSize=100"),
   });
@@ -149,6 +150,21 @@ export function PipelineVelocity() {
           <div className="space-y-2">
             {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full" />)}
           </div>
+        ) : isError ? (
+          // BEFORE THE EMPTY BRANCH, and that order is the point. When
+          // fetchJsonArray swallowed failures into [], a failed read fell
+          // through to "No active deals to analyze. Add deals to see pipeline
+          // velocity." — telling a customer with a full pipeline that they had
+          // none, and instructing them to add deals they already have.
+          <QueryErrorState
+            error={error}
+            onRetry={() => void refetch()}
+            isRetrying={isRefetching}
+            compact
+            title="Couldn't load your pipeline"
+            description="We couldn't read your deals just now, so velocity is unknown — not zero."
+            testId="pipeline-velocity-error"
+          />
         ) : !velocityData.length ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             No active deals to analyze. Add deals to see pipeline velocity.

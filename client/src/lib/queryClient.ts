@@ -1,4 +1,5 @@
 import { QueryClient, QueryCache, MutationCache, QueryFunction } from "@tanstack/react-query";
+import { RequestFailedError } from "./fetch-honesty";
 import { toast } from "@/hooks/use-toast";
 import React from "react";
 import { ToastAction } from "@/components/ui/toast";
@@ -338,8 +339,28 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * Use `fetchJsonArray<T>(url)` as a drop-in replacement for those
  * inline queryFns when the endpoint is supposed to return an array.
  * It handles: 401 retry via refreshSessionCookie (inherited from
- * apiRequest), array vs `{data}` envelope normalization, and empty
- * fallback on network failure.
+ * apiRequest) and array vs `{data}` envelope normalization.
+ *
+ * ── IT NO LONGER RETURNS [] ON FAILURE (2026-09-04) ────────────────────────
+ * It used to, and its own docstring called that "empty fallback on network
+ * failure". Across 47 call sites in 15 files, that meant a 500, an unparseable
+ * body or an unrecognised shape all rendered as AN EMPTY LIST — "you have no
+ * deals", "no results", "nothing in your pipeline" — stated as fact about the
+ * customer's own data out of a failure to read it.
+ *
+ * `client/src/lib/fetch-honesty.ts` exists in this same directory to stop
+ * exactly that, and documents the worst case it already cost: a customer with
+ * two hundred parcels shown the NEW-USER ONBOARDING STATE during an API blip
+ * and invited to add their first parcels. Four files adopted those helpers.
+ * This function, with 47 call sites, did the opposite — which is the shape
+ * CLAUDE.md names: authoritative semantics with no adoption is not canonical,
+ * and the surface everyone actually uses is the one that decides product truth.
+ *
+ * Failure now THROWS `RequestFailedError`, so the react-query call lands in its
+ * error state and the page renders `QueryErrorState` with a retry, which is
+ * what CLAUDE.md's UI patterns already prescribe. An empty ARRAY from a
+ * successful response is still an empty array — that is a real answer and is
+ * returned unchanged.
  */
 export async function fetchJsonArray<T>(url: string): Promise<T[]> {
   let res = await fetch(url, { credentials: "include" });
@@ -347,16 +368,20 @@ export async function fetchJsonArray<T>(url: string): Promise<T[]> {
     await refreshSessionCookie();
     res = await fetch(url, { credentials: "include" });
   }
-  if (!res.ok) return [];
+  if (!res.ok) throw new RequestFailedError(res.status, url);
+  let j: unknown;
   try {
-    const j = await res.json();
-    if (Array.isArray(j)) return j as T[];
-    if (Array.isArray(j?.data)) return j.data as T[];
-    if (Array.isArray(j?.items)) return j.items as T[];
-    return [];
+    j = await res.json();
   } catch {
-    return [];
+    // A body that will not parse is not an empty collection.
+    throw new RequestFailedError(res.status, url);
   }
+  if (Array.isArray(j)) return j as T[];
+  const envelope = j as { data?: unknown; items?: unknown } | null;
+  if (Array.isArray(envelope?.data)) return envelope!.data as T[];
+  if (Array.isArray(envelope?.items)) return envelope!.items as T[];
+  // An unrecognised shape is a contract failure, not emptiness.
+  throw new Error(`Expected a list or a { data | items: [...] } envelope from ${url}`);
 }
 
 /**

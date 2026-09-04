@@ -2,6 +2,8 @@ import { useId, useState, useEffect, useRef, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { fetchJsonArray } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -254,10 +256,29 @@ export function TeamChatPanel() {
     refetchInterval: 30_000,
   });
 
-  const { data: messagesData, isLoading: msgsLoading } = useQuery<MessagesResponse>({
+  // `fetch(...).then(r => r.json())` — with NO res.ok check — is what this was.
+  // A 500 whose body is `{"error": "..."}` parses perfectly well, so
+  // `messagesData.messages` came back undefined, `messages` defaulted to [],
+  // and the panel told the team "No messages yet. Start the conversation!"
+  // about a thread they had been using for months. okOrThrow keeps the failure
+  // a failure; the error branch below renders it.
+  const {
+    data: messagesData,
+    isLoading: msgsLoading,
+    isError: msgsFailed,
+    error: msgsError,
+    refetch: refetchMsgs,
+    isRefetching: msgsRefetching,
+  } = useQuery<MessagesResponse>({
     queryKey: ["/api/team-messaging/messages", activeConvId],
-    queryFn: () =>
-      fetch(`/api/team-messaging/conversations/${activeConvId}/messages?limit=80`).then(r => r.json()),
+    queryFn: async () => {
+      const res = await okOrThrow(
+        await fetch(`/api/team-messaging/conversations/${activeConvId}/messages?limit=80`, {
+          credentials: "include",
+        }),
+      );
+      return (await res.json()) as MessagesResponse;
+    },
     enabled: !!activeConvId,
   });
 
@@ -451,7 +472,19 @@ export function TeamChatPanel() {
               ))}
             </div>
           )}
-          {!msgsLoading && messages.length === 0 && activeConvId && (
+          {msgsFailed && activeConvId && (
+            <QueryErrorState
+              error={msgsError}
+              onRetry={() => void refetchMsgs()}
+              isRetrying={msgsRefetching}
+              compact
+              className="mt-8"
+              title="Couldn't load this conversation"
+              description="We couldn't read the messages just now. This isn't an empty thread — try again."
+              testId="team-chat-messages-error"
+            />
+          )}
+          {!msgsLoading && !msgsFailed && messages.length === 0 && activeConvId && (
             <p className="text-muted-foreground text-sm mt-8 text-center">
               No messages yet. Start the conversation!
             </p>
