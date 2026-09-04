@@ -30,6 +30,10 @@
  *   2. remove `import PaxAskCard …` from any HOSTS member → that member fails
  *   3. add a `fetch("/api/pax/pending-actions/1/approve")` to any other
  *      client file → "no second approve path" fails
+ *   4. add a ``data-testid={`pax-ask-approve-${id}`}`` to any other client
+ *      file → "no second approve path" fails; turning DecisionQueue's
+ *      selector into a rendered attribute fails the same assertion, while
+ *      deleting the selector fails the reference half of it
  *
  * idempotent: true — pure source reads, no DB.
  */
@@ -117,6 +121,41 @@ function ifConditionsMentioning(rel: string, literal: string): string[] {
   };
   visit(sf);
   return hits;
+}
+
+/**
+ * The files that RENDER an approve/reject tap — a `data-testid` JSX attribute
+ * whose value is one of the card's tap ids.
+ *
+ * This is an AST walk and not a substring test because the two things that
+ * mention a tap id are opposites. A second file that renders
+ * ``data-testid={`pax-ask-approve-${id}`}`` has grown its own answer control:
+ * that is the defect this gate exists for. A file that REFERENCES the card's
+ * tap by selector — Today's queue moves keyboard focus onto it so Enter lands
+ * on the button instead of sending an email — is delegating to the one card,
+ * which is the behaviour the gate wants. Forbidding the string outright would
+ * have told the next author to duplicate the button rather than focus it.
+ */
+function filesRenderingTap(): string[] {
+  const TAP = /^pax-ask-(approve|reject)-/;
+  return CLIENT_FILES.filter((rel) => {
+    const src = read(rel);
+    if (!/pax-ask-(approve|reject)-/.test(src)) return false;
+    const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let renders = false;
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxAttribute(node) && node.name.getText(sf) === "data-testid" && node.initializer) {
+        // `{`pax-ask-approve-${ask.id}`}` and `"pax-ask-approve-1"` both
+        // normalise to the id text; a selector string is never a JSX
+        // attribute value and so is never reached here at all.
+        const value = node.initializer.getText(sf).replace(/^[{"'`\s]+/, "");
+        if (TAP.test(value)) renders = true;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return renders;
+  });
 }
 
 describe("PaxAskCard — the one card and its four hosts (spec §4.5)", () => {
@@ -276,10 +315,22 @@ describe("PaxAskCard — the one card and its four hosts (spec §4.5)", () => {
     for (const tail of ["/approve", "/reject", "/revise"]) {
       expect(hook).toContain(`/api/pax/pending-actions/\${pendingActionId}${tail}`);
     }
-    // And no file other than the card offers the taps by testid.
-    const tapRenderers = CLIENT_FILES.filter(
-      (rel) => rel !== CARD && /pax-ask-(approve|reject)-/.test(read(rel)),
-    );
-    expect(tapRenderers).toEqual([]);
+    // And no file other than the card RENDERS the taps.
+    expect(filesRenderingTap()).toEqual([CARD]);
+
+    // Both directions of that distinction are exercised by real files, so a
+    // walk that quietly stopped matching JSX attributes cannot read as
+    // "clean": the card must still come back as the one renderer (above),
+    // and Today's queue must still mention a tap id WITHOUT rendering one.
+    // Without this second half, deleting the card's `data-testid` and
+    // deleting the walk's ability to see it look identical.
+    const QUEUE = "client/src/components/today/DecisionQueue.tsx";
+    expect(CLIENT_FILES).toContain(QUEUE);
+    expect(
+      /pax-ask-approve-/.test(read(QUEUE)),
+      "DecisionQueue must still reach the card's Approve control by selector — " +
+        "if that focus move is gone, Enter on a pax-ask row does nothing, and " +
+        "this gate no longer distinguishes a reference from a render",
+    ).toBe(true);
   });
 });

@@ -166,10 +166,15 @@ export function serveStatic(app: Express) {
   // 2026-09-04: GET /assets/index-BHxNHrKf.js.map returned 200 and 5.2 MB of
   // original TypeScript.
   //
-  // 404 rather than 403: a 403 confirms the file is there.
+  // 404 rather than 403: a 403 confirms the file is there. `sendStatus` and
+  // not `status(404).send(...)`: identical on the wire (404, text/plain,
+  // "Not Found"), and it keeps this guard out of the raw-res.status register,
+  // which exists for API error bodies that must carry the
+  // { error, message, statusCode } contract. A static refusal has no body to
+  // get wrong.
   app.use((req, res, next) => {
     if (/\.map(\.gz|\.br)?(\?|$)/.test(req.path)) {
-      res.status(404).type("text/plain").send("Not found");
+      res.sendStatus(404);
       return;
     }
     next();

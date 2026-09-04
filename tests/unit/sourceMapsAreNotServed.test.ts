@@ -107,7 +107,7 @@ describe("the server refuses a .map even if one is present", () => {
   it("answers 404, not 403 — a 403 confirms the file is there", () => {
     const at = statics.indexOf(".map(\\.gz|\\.br)?(\\?|$)");
     const block = statics.slice(at, at + 300);
-    expect(block).toMatch(/status\(404\)/);
+    expect(block).toMatch(/\b(?:res\.sendStatus|res\.status)\(404\)/);
     expect(block).not.toMatch(/status\(403\)/);
   });
 
