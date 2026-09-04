@@ -584,7 +584,8 @@ export interface IStorage {
   deleteCustomFieldDefinition(id: number): Promise<void>;
 
   // Custom Field Values
-  getCustomFieldValues(entityType: string, entityId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]>;
+  /** `organizationId` is REQUIRED — values are reached through org-owned definitions (2026-09-04). */
+  getCustomFieldValues(entityType: string, entityId: number, organizationId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]>;
   setCustomFieldValue(definitionId: number, entityId: number, value: string | null): Promise<CustomFieldValue>;
   deleteCustomFieldValuesForEntity(entityType: string, entityId: number): Promise<void>;
 
