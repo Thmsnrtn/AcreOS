@@ -50,7 +50,6 @@ const BASELINE = new Map([
   ["client/src/components/team-general-channel.tsx", 1],
   ["client/src/components/template-editor.tsx", 3],
   ["client/src/pages/changelog.tsx", 1],
-  ["client/src/pages/command-center.tsx", 1],
   ["client/src/pages/deal-room-share.tsx", 1],
   ["client/src/pages/field-note-detail.tsx", 1],
   ["client/src/pages/field-notes-archive.tsx", 1],

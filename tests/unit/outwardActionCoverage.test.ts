@@ -141,7 +141,7 @@ const PROTECTABLE_SENDS = [
 // reduction being banked instead of recorded.
 // 60 -> 59 (turn 6) -> 57 (turn 7) -> 55 (turn 8) -> 54 (turn 9, the
 // executor churn branch): the agent callers moved onto the witnessed seam.
-const UNPROTECTED_SEND_SITES_BASELINE = 54;
+const UNPROTECTED_SEND_SITES_BASELINE = 52;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

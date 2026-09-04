@@ -189,6 +189,29 @@ export async function proposePendingAction(params: {
   // COUNT (spec §4.5); the id-only event above is kept for its existing pin.
   await publishNeedsYou(params.organizationId);
 
+  // The socket only reaches a tab that is OPEN. The notification lane is how
+  // a customer who is not looking at the app finds out an ask is waiting —
+  // their own tray row and, by their own preference, an email. This call was
+  // the missing half of wave 1: notificationDispatcher.dispatchPaxAskEvent
+  // named "the kernel on a genuinely NEW pending_actions row" as its caller
+  // in its own header, and nothing called it, so the whole lane was built and
+  // never fired (2026-09-04 central verification). Best-effort by the same
+  // contract as the broadcast above: the ask is a fact already.
+  try {
+    const { dispatchPaxAskEvent } = await import("./notificationDispatcher");
+    await dispatchPaxAskEvent({
+      type: "pax:needs_you",
+      orgId: params.organizationId,
+      pendingActionId: inserted[0].id,
+      count: await countPendingActions(params.organizationId),
+    });
+  } catch (err) {
+    logger.warn(
+      "[approvalKernel] pax:needs_you notification failed (the ask is queued regardless)",
+      err instanceof Error ? err : undefined,
+    );
+  }
+
   return inserted[0];
 }
 

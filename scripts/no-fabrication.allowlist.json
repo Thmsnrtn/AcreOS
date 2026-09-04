@@ -248,7 +248,7 @@
     },
     {
       "file": "client/src/components/error-boundary.tsx",
-      "line": 24,
+      "line": 26,
       "category": "id",
       "note": "Client error-report id. Correlates a crash report with its server row; never rendered as a fact."
     },

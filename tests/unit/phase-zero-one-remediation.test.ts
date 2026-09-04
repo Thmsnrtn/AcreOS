@@ -38,12 +38,38 @@ import path from "path";
 
 const CLIENT_SRC = path.resolve(__dirname, "../../client/src");
 const COMMAND_CENTER = path.join(CLIENT_SRC, "pages/command-center.tsx");
+/**
+ * The founder-only agent console (VA roster, activity feed, agent detail, AI
+ * Ops, background services) was extracted OUT of the customer's /ai door on
+ * 2026-09-04 into client/src/components/founder/ai-console/*, where it is
+ * still rendered behind the same isFounder guard. The invariants below —
+ * touch targets use `active:` not `hover:`, the roster/feed/detail columns
+ * are responsive, the AI Ops grid is 1→2→4 — did not stop mattering because
+ * the markup moved, so the assertions FOLLOW it instead of being deleted.
+ * The union is read as one string: any of these files may carry the markup,
+ * and a member that stops existing fails the vacuity check below.
+ */
+const AI_CONSOLE_FILES = [
+  path.join(CLIENT_SRC, "pages/command-center.tsx"),
+  path.join(CLIENT_SRC, "components/founder/ai-console/VaTeamPanel.tsx"),
+  path.join(CLIENT_SRC, "components/founder/ai-console/AiOperationsPanel.tsx"),
+  path.join(CLIENT_SRC, "components/founder/ai-console/BackgroundServicesPanel.tsx"),
+];
 const PAX_PAGE = path.join(CLIENT_SRC, "pages/pax.tsx");
 const PAX_OVERFLOW_MENU = path.join(CLIENT_SRC, "components/pax/pax-overflow-menu.tsx");
 
 function read(p: string): string {
   return fs.readFileSync(p, "utf-8");
 }
+
+describe("the AI-console union is real (vacuity guard)", () => {
+  it("every file the console assertions read exists and has content", () => {
+    for (const f of AI_CONSOLE_FILES) {
+      expect(fs.existsSync(f), `${f} — the console union names a file that is gone`).toBe(true);
+      expect(read(f).length, `${f} is empty`).toBeGreaterThan(500);
+    }
+  });
+});
 
 // ─── 1. Founder-gate on /ai surface (fb46d356) ───────────────────────────────
 
@@ -151,7 +177,7 @@ describe("8d5d3ca2 — touch buttons use active: instead of hover: (iOS double-t
   });
 
   it("agent detail back button (md:hidden) uses active:text-foreground", () => {
-    const src = read(COMMAND_CENTER);
+    const src = AI_CONSOLE_FILES.map(read).join("\n");
     // The className sits BEFORE the aria-label in the JSX. Capture both halves.
     const idx = src.indexOf('aria-label="Back to agent roster"');
     expect(idx, "agent-detail back button not found").toBeGreaterThan(-1);
@@ -162,7 +188,7 @@ describe("8d5d3ca2 — touch buttons use active: instead of hover: (iOS double-t
   });
 
   it("attachment remove button uses active:bg-muted", () => {
-    const src = read(COMMAND_CENTER);
+    const src = AI_CONSOLE_FILES.map(read).join("\n");
     const block = src.match(
       /aria-label={`Remove attachment[\s\S]{0,500}/,
     )?.[0];
@@ -173,7 +199,7 @@ describe("8d5d3ca2 — touch buttons use active: instead of hover: (iOS double-t
   });
 
   it("conversation delete button has [@media(hover:none)] escape for touch", () => {
-    const src = read(COMMAND_CENTER);
+    const src = AI_CONSOLE_FILES.map(read).join("\n");
     // The aria-label is templated: `Delete conversation ${...}`. Anchor on it.
     const idx = src.indexOf("Delete conversation");
     expect(idx, "delete-conversation button not found").toBeGreaterThan(-1);
@@ -189,7 +215,7 @@ describe("8d5d3ca2 — touch buttons use active: instead of hover: (iOS double-t
 // ─── 4. TeamTabContent 3-column responsive collapse (8d5d3ca2) ───────────────
 
 describe("8d5d3ca2 — TeamTabContent 3-column layout collapses for mobile (390px)", () => {
-  const src = read(COMMAND_CENTER);
+  const src = AI_CONSOLE_FILES.map(read).join("\n");
 
   it("roster column is full-width on mobile, w-72 on md+", () => {
     // The fixed `w-72` was clipping at 390px iPhone width. New layout:

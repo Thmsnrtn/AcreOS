@@ -6,7 +6,7 @@
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module \u2014 drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here \u2014 it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
     "unreachedExports": 373,
-    "internalOnlyExports": 1171,
+    "internalOnlyExports": 1169,
     "tablesNoWriter": 57,
     "tablesNoReader": 67,
     "unregisteredRoutes": 4,
@@ -25,6 +25,26 @@
   },
   "minimaNote": "VACUITY FLOORS, not ratchets. Every baseline above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports six reassuring PASS lines \u2014 this repo has already been bitten by exactly that (a block-comment stripper that mispaired and blanked the very lines a scan was counting). These floor the SCAN POPULATIONS the run prints, and the gate exits nonzero if any drops below or is missing entirely. Seeded 2026-08-16 at roughly 75-80% of live (productionFiles 2520, exportFiles 917, pgTables 758, routeCandidateFiles 277) so that a broken walk/extension-filter/regex trips them while ordinary deletion \u2014 the north star of this gate \u2014 does not. If a real deletion wave takes a population under its floor, lower the floor in the same commit and name the wave; do NOT raise a floor to silence anything, and do NOT delete a key (a missing floor FAILS, by design, so an unfloored population cannot exist). A --root fixture run must supply its own --ratchet with fixture-sized minima.",
   "allowlist": [
+    {
+      "kind": "export",
+      "id": "shared/pax-glossary.ts::PAX_FIXED_RULES",
+      "reason": "TEST-INTROSPECTION SEAM (same category as redemptionDeadlineFromAnchor). The constant is composed into three other glossary exports inside this module, so it has no external PRODUCTION consumer by construction. It is exported so paxControlsPage.test.ts can pin the cadences the page prints against the jobs that actually run them ('every 15 min' for lead scoring, 'every 30 min' for borrower reminders, '8 am-9 pm' for texts) \u2014 a number the customer reads must be checkable against the registry that produces it. REVOCATION: if a client or server module imports it directly, this entry is unnecessary; remove it."
+    },
+    {
+      "kind": "export",
+      "id": "shared/schema.ts::paxDrafts",
+      "reason": "AWAITING A FOUNDER-AUTHORISED DROP. Customer-autonomy wave 1 deleted the last reader and the last writer of pax_drafts (server/services/paxDraftService.ts and the first-follow-up approve-and-send route, per AUTONOMY_SPEC.md Section 3d), which is exactly the zero-reader condition Section 4.1 named as the precondition for the drop migration. The drop is NOT taken here: the table holds customer-authored draft content, and deleting customer data is a founder-only hard-stop (CLAUDE.md DO-NOT-DO list). REVOCATION: the founder authorises the drop, the migration lands, and all three pax_drafts entries go with the table."
+    },
+    {
+      "kind": "table-writer",
+      "id": "pax_drafts",
+      "reason": "Same as shared/schema.ts::paxDrafts above \u2014 wave 1 removed the only writer; the drop migration is a founder-only decision because the table holds customer draft content."
+    },
+    {
+      "kind": "table-reader",
+      "id": "pax_drafts",
+      "reason": "Same as shared/schema.ts::paxDrafts above \u2014 wave 1 removed the only reader; the drop migration is a founder-only decision because the table holds customer draft content."
+    },
     {
       "kind": "table-reader",
       "id": "job_locks",
@@ -55,17 +75,7 @@
       "id": "server/services/developerApiService.ts::generateWidgetEmbedCode",
       "reason": "DELIBERATELY-STAGED SEAM, founder ruling (picker, 2026-08-15). The three mounted /developer/* endpoints in routes-epic-services.ts were REMOVED \u2014 they were customer-reachable behind plain isAuthenticated, minted `acr_\u2026` keys that NOTHING verified (the only consumer, mcp-server.ts, matches provider='mcp_api_key' while these wrote provider='api_key'), and served a document titled 'AcreOS Public API' \u2014 while routes-api-keys.ts is kept dormant to honour the same 'no public API before ~50 customers' ladder. The SERVICE is kept on purpose: what was wrong was mounting the surface early, not writing the OpenAPI spec and the key-minting helper. When the ladder trigger fires this module is the starting point, and wiring it means building the verifier that never existed. Removing its callers is what made it an orphan, so this is deletion-revealed, not built-and-abandoned. expansionLadder.test.ts asserts BOTH directions: no mounted route may mint a key or serve the spec, AND this file must still exist."
     },
-    {
-      "kind": "export",
-      "id": "server/jobs/autonomousTaskProcessor.ts::_SKILL_RISK",
-      "reason": "TEST-INTROSPECTION SEAM, and the seam is the point. SKILL_RISK says what each registered skill risks; execute_skill dispatches an arbitrary skill id, so an unmapped skill is unclassified and escalates. autonomyRiskClassification.test.ts cross-checks this map against skillRegistry.getAllSkills() in BOTH directions - every registered skill must be classified, and no entry may name a skill the registry no longer has. Deleting the export is the cheap way to satisfy this linter and it would force the test to hardcode a COPY of the map, which is exactly the drift the test exists to catch: the copy would still pass while the real map went stale. Production consumes the map one line above, inside _inferRiskProfile; what has no external consumer is the export, not the value."
-    },
-    {
-      "kind": "export",
-      "id": "server/jobs/autonomousTaskProcessor.ts::_inferRiskProfile",
-      "reason": "TEST-INTROSPECTION SEAM. This IS the production classifier - processBatch() calls it directly, in this module, on the live auto-execute path - so it is reached in every sense except the one this linter can see (it requires a consumer in a DIFFERENT production file). It is exported so autonomyRiskClassification.test.ts can drive the REAL classifier into the REAL evaluate() rather than restating the rule; that file is the gate proving an unrecognised action cannot auto-execute, and it is only load-bearing because both halves are the genuine implementation. Underscore-prefixed to mark it as the introspection name, matching _SIDEBAR_HIDDEN_ROUTES_REGISTRY."
-    },
-    {
+{
       "kind": "export",
       "id": "server/services/form1098Batch.ts::deriveInterestBoxes",
       "reason": "TEST-INTROSPECTION SEAM, and the seam is the point. This IS the production Box 1 / Box 4 rule \u2014 deriveForm1098, one screen below in this same file, calls it on every 1098 the batch generator emits \u2014 so it is reached in every sense except the one this linter can see (it wants a consumer in a DIFFERENT production file). It is exported so refundReversesLedgerAnd1098.test.ts can drive the REAL splitter over the REAL ledger rows a refund webhook wrote, rather than restating the IRS rule in the test. Dropping the export would force the gate to either re-implement 'which box does a reversal land in' (the exact drift CLAUDE.md's canonical-function law warns about: a rule the test checks that is not the rule the product computes) or to reach it only through deriveForm1098's $600 threshold, which cannot express a sub-threshold Box 4 case at all. The value has a production consumer; what has no external consumer is the keyword."

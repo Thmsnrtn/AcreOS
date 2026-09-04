@@ -66,11 +66,9 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/routes-founder-intelligence.ts": [1, "system-mail"],
   "server/routes-inbound-email.ts": [1, "system-mail"],
   "server/routes-marketplace.ts": [1, "system-mail"],
-  "server/services/agent-skills.ts": [1, "counterparty-byo"],
   "server/services/agentActionExecutors.ts": [0, "agent-autonomous"],
   "server/services/alertPolicy.ts": [3, "system-mail"],
   "server/services/autonomousDecisionExecutor.ts": [0, "agent-autonomous"],
-  "server/services/autonomyGuardrails.ts": [1, "system-mail"],
   "server/services/autopilot/hands/send-email.ts": [1, "witnessed-hand"],
   "server/services/communications.ts": [1, "system-mail"],
   "server/services/credits.ts": [2, "system-mail"],
@@ -80,6 +78,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/services/dunning.ts": [1, "system-mail"],
   "server/services/emailRegistry.ts": [1, "system-mail"],
   "server/services/founderDigest.ts": [2, "system-mail"],
+  // Pax "waiting for your tap" / expiring / expired notifications, delivered
+  // to the org's OWN members by their notification preference, purpose:
+  // "system" (2026-09-04, autonomy wave 1). System mail to our own user is
+  // exactly what the platform sender is for; counterparty mail stays BYO.
+  "server/services/notificationDispatcher.ts": [1, "system-mail"],
   "server/services/oncall.ts": [1, "system-mail"],
   "server/services/periodicStatements/delivery.ts": [1, "system-mail"],
   "server/services/revenueProtection.ts": [3, "system-mail"],

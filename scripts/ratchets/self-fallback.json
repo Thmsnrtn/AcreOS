@@ -14,7 +14,7 @@
     "**/*.test.tsx",
     "**/*.spec.ts"
   ],
-  "baselineCount": 137,
+  "baselineCount": 136,
   "direction": "down",
   "lastBumpNote": "Seeded at 140 on 2026-08-14, one below the 141 measured, because the seeding commit also removed one: `server/utils/permissions.ts` read `user?.id || user.id` on the line directly above `if (!userId) return null`. That is the only member of the population with a failure mode — when `user` is nullish the left side is falsy, so the UNGUARDED right side runs and throws a TypeError, defeating both the optional chain and the null-return that were written to tolerate an absent user. Latent, not live: both callers guard. The other 140 are inert and were left alone on purpose — a 70-file rewrite of `v || v` to `v` changes no behaviour, and the first attempt at exactly that codemod turned `if (!data.results || data.results.length === 0)` into `if (!data.results.length === 0)` across 70 files because the sweep that MEASURED the population and the sweep that REWROTE it were different regexes. Measured 141 / rewrote 194. This gate is the cheap half of that lesson: hold the shape flat, and let the next codemod that collapses a fallback which still matters show up as a count going the wrong way.",
   "minima": {

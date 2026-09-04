@@ -180,7 +180,28 @@ describe("PaxAskCard — the one card and its four hosts (spec §4.5)", () => {
       conditions,
       "command-center.tsx must branch on data.type === \"pending_action\" inside its SSE reader",
     ).not.toHaveLength(0);
-    expect(conditions.some((c) => /data\.type\s*===\s*["']pending_action["']/.test(c))).toBe(true);
+    // The condition must START with the type check, not merely CONTAIN it.
+    // A substring assertion passes a branch that has been switched off:
+    // prefixing `false && ` leaves `data.type === "pending_action"` in the
+    // source and in this condition's text while the body can never run. That
+    // is the same failure CLAUDE.md records for pinning a trigger by name —
+    // the gate matched the mention, not the behaviour, and stayed green
+    // through the probe that was supposed to kill it (2026-09-04).
+    const live = conditions.filter((c) =>
+      /^\(*\s*data\.type\s*===\s*["']pending_action["']/.test(c.replace(/\s+/g, " ").trim()),
+    );
+    expect(
+      live,
+      "the pending_action branch must be reached on its own type check — a " +
+        "condition that only MENTIONS pending_action can be permanently false",
+    ).not.toHaveLength(0);
+    // And no condition guarding this branch may be short-circuited off.
+    for (const c of conditions) {
+      expect(
+        /(^|[^\w.])false\s*&&/.test(c),
+        `the pending_action branch is disabled by a constant: ${c}`,
+      ).toBe(false);
+    }
     // The branch stores the id and refreshes the queue read — it does not format the ask.
     const src = read("client/src/pages/command-center.tsx");
     const branchAt = src.indexOf('data.type === "pending_action"');

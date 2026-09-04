@@ -128,7 +128,6 @@ const BASELINE_OFFENDERS = new Set([
   //   intent is STATED rather than inferred from a filename.
   "server/services/agentOrchestration.ts::approveStep",
   "server/services/alertPolicy.ts::generateWeeklyDigest",
-  "server/services/alerting.ts::runDailyAlertCheck",
   "server/services/customerSupportAutoResolver.ts::attemptResolution",
   "server/services/decisionsInbox.ts::approve",
   "server/services/dunning.ts::getSummary",
@@ -295,7 +294,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/founder-chat/tools/synthesis.ts::handler",
   "server/services/healthCheck.ts::checkTwilio",
   "server/services/leadNurturer.ts::scheduleFollowUp",
-  "server/services/leadNurturer.ts::scoreLead",
   "server/services/leadScoring.ts::calcCampaignTouches",
   "server/services/marketIntelligence.ts::getHistoricalMetrics",
   "server/services/marketIntelligence.ts::getMarketHealth",

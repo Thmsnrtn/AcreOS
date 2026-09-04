@@ -126,21 +126,28 @@ export async function listPaxReceipts(
   const limit = clampLimit(opts.limit);
   const after = decodeCursor(opts.cursor);
 
-  const scope = and(eq(activityLog.organizationId, organizationId), eq(activityLog.agentType, "pax"));
-  const where = after
-    ? and(
-        scope,
-        or(
-          lt(activityLog.createdAt, after.at),
-          and(eq(activityLog.createdAt, after.at), lt(activityLog.id, after.id)),
-        ),
-      )
-    : scope;
-
+  // The org predicate is written INTO the query rather than hoisted into a
+  // `scope` variable. It was hoisted, and the tenancy lint's rule 3 — the one
+  // written after a cross-tenant read shipped in a function that was
+  // org-scoped six other ways — could not follow the variable and flagged
+  // this read. The scoping was real, but a reader (human or lint) should not
+  // have to chase a binding to see the tenant key on a tenant-scoped query.
+  // Drizzle's `and()` drops undefined, so the cursor clause composes here.
   const rows = await db
     .select()
     .from(activityLog)
-    .where(where)
+    .where(
+      and(
+        eq(activityLog.organizationId, organizationId),
+        eq(activityLog.agentType, "pax"),
+        after
+          ? or(
+              lt(activityLog.createdAt, after.at),
+              and(eq(activityLog.createdAt, after.at), lt(activityLog.id, after.id)),
+            )
+          : undefined,
+      ),
+    )
     .orderBy(desc(activityLog.createdAt), desc(activityLog.id))
     .limit(limit + 1);
 

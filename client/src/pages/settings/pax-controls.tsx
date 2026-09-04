@@ -252,6 +252,9 @@ export function PaxControls() {
   const pausedUntil = toDate(data?.pausedUntil);
   const pauseWords = { until: pausedUntil, byName: data?.pausedBy?.name ?? null, timeZone: zone };
 
+  // allow-no-invalidation: settle() writes the fresh controls object into
+  // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
+  // rule cannot follow the useCallback helper.
   const pause = useMutation({
     mutationFn: async (until: PaxPauseOption) => {
       const res = await apiRequest("POST", "/api/pax/pause", { until, timeZone: browserZone() });
@@ -273,6 +276,9 @@ export function PaxControls() {
       toast({ title: PAX_PAGE_COPY.couldNotPause, description: serverMessage(error), variant: "destructive" }),
   });
 
+  // allow-no-invalidation: settle() writes the fresh controls object into
+  // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
+  // rule cannot follow the useCallback helper.
   const resume = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/pax/resume");
@@ -296,6 +302,9 @@ export function PaxControls() {
   });
 
   type Patch = Partial<{ stance: PaxStance; leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean }>;
+  // allow-no-invalidation: settle() writes the fresh controls object into
+  // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
+  // rule cannot follow the useCallback helper.
   const patch = useMutation({
     mutationFn: async (body: Patch) => {
       const res = await apiRequest("PATCH", "/api/pax/controls", body);
@@ -753,6 +762,8 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
 
   // PATCH /api/ai/scheduled-tasks/:id { isActive } — server/routes-ai.ts.
   // (The old tab's toggleMut POSTed a /toggle route that does not exist.)
+  // allow-no-invalidation: refresh() invalidates CONTROLS_KEY and
+  // SCHEDULED_TASKS_KEY; the rule cannot follow the helper.
   const setActive = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
       await apiRequest("PATCH", `/api/ai/scheduled-tasks/${id}`, { isActive });
@@ -762,6 +773,8 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
       toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
   });
 
+  // allow-no-invalidation: refresh() invalidates CONTROLS_KEY and
+  // SCHEDULED_TASKS_KEY; the rule cannot follow the helper.
   const remove = useMutation({
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/ai/scheduled-tasks/${id}`);

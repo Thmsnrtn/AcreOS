@@ -103,6 +103,26 @@ async function runPendingActionExpirySweep(): Promise<{ flipped: number; receipt
       witnessed: false,
     });
     if (written) receipted++;
+
+    // Tell the customer their ask lapsed. dispatchPaxAskEvent's own header
+    // named this sweep as one of its two wave-1 callers and neither was
+    // wired, so the lane was built and never fired (2026-09-04 central
+    // verification). Best-effort by the same contract as the receipt: the
+    // row is already flipped, and a notification that fails must not stop
+    // the sweep from finishing the rest of the batch.
+    try {
+      const { dispatchPaxAskEvent } = await import("../services/notificationDispatcher");
+      await dispatchPaxAskEvent({
+        type: "pax:ask_expired",
+        orgId: row.organizationId,
+        pendingActionId: row.id,
+      });
+    } catch (err) {
+      logger.warn(
+        "[pending-action-expiry] pax:ask_expired notification failed (the row is expired regardless)",
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
 
   return { flipped, receipted };

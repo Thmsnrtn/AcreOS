@@ -273,7 +273,7 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
                 aria-label={`Cancel editing: ${verbAria}`}
                 data-testid={`pax-ask-edit-cancel-${ask.id}`}
               >
-                Cancel
+                {Verbs.CANCEL}
               </Button>
             </div>
           </div>

@@ -5,7 +5,7 @@
   "globs": [
     "server/storage.ts"
   ],
-  "baselineCount": 1682,
+  "baselineCount": 1664,
   "direction": "down",
   "lastBumpNote": "1692 -> 1682 on 2026-07-29: reduction landed by founder ruling #12(c) Wave A ('Nothing lies'). Dead-surface purge (routes-tax-optimization 501 router, /automation twin, Field Scout) plus the skip-trace and rentals rewrites removed these. Locked in per this ratchet's down-only rule.",
   "minima": {
