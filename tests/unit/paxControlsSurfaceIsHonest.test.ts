@@ -43,17 +43,38 @@
  *   - type `Ask before sending` as a literal in any customer component;
  *   - put the word "autopilot" in a customer component's JSX text;
  *   - drop UNATTENDED_PATHS from the page's import;
- *   - change the App.tsx route path away from PAX_CONTROLS_PATH.
+ *   - change the App.tsx route path away from PAX_CONTROLS_PATH;
+ *   - unwrap a founder page in App.tsx (drop FounderProtectedRoute from
+ *     /dunning) — its banned words must start counting;
+ *   - rename FounderProtectedRoute — the derived-guard assertion must go red
+ *     rather than silently exempting nothing.
  *
  * FOUNDER CONTEXT is derived, not hand-listed: (a) founder directories and
- * Founder*-named files by path; (b) any page App.tsx renders ONLY through
- * FounderProtectedRoute or under /founder|/admin (parsed from App.tsx, so a
- * page moved to a customer route is scanned the moment it moves); (c) a
- * literal inside a branch whose condition names `isFounder`, inside an
- * object literal carrying `founderOnly: true`, or under an object key named
- * `founder`, or inside a function/component whose name says founder
- * (NewFounderSidebar); (d) a line carrying the reviewed eslint marker
- * `no-founder-codenames-in-customer-jsx`. Nothing else is exempt.
+ * Founder*-named files by path; (b) any page or component App.tsx mounts
+ * ONLY behind a founder guard — a wrapper DECLARED IN App.tsx that takes a
+ * `component` prop and decides on `isFounder` (today: FounderProtectedRoute),
+ * parsed with the TypeScript AST from the real route table, so a page moved
+ * to a customer route is scanned the moment it moves; (c) a literal inside a
+ * branch whose condition names `isFounder`, inside an object literal carrying
+ * `founderOnly: true`, or under an object key named `founder`, or inside a
+ * function/component whose name says founder (NewFounderSidebar); (d) a line
+ * carrying the reviewed eslint marker `no-founder-codenames-in-customer-jsx`.
+ * Nothing else is exempt.
+ *
+ * WHY THE GUARD, NOT THE PATH (third law — the population is an assumption).
+ * An earlier version of this derivation also treated "mounted under /founder
+ * or /admin" as founder-only. It is not: `/admin/decisions` renders
+ * DecisionQueuePage through ProtectedRoute, deliberately open to every
+ * authenticated user (App.tsx: "autonomous-decision-review is a customer-
+ * facing feature … so non-founders can see the Decisions Inbox for their own
+ * org"). A path prefix is a naming convention; the guard is the authority. It
+ * also matched with a regex that required `{() => <Wrapper component={…}` to
+ * follow `<Route path=…>` immediately, so any route carrying an explanatory
+ * JSX comment — /dunning and /commissions, both FounderProtectedRoute-only —
+ * fell out of the derivation and had their FOUNDER copy reported as customer
+ * violations. Both failure modes are invisible in a green result, which is why
+ * the derivation is asserted below against a known founder page, a known
+ * customer page, and the guard's own name.
  *
  * THE BANNED LIST IS MATCHED IN ITS AUTONOMY SENSE. Over the program's own
  * files (paxGlossaryBannedWords.test.ts) every "threshold" is an autonomy
@@ -110,30 +131,101 @@ const FOUNDER_ALLOWLIST: readonly RegExp[] = [
 ];
 
 /**
- * Pages App.tsx renders ONLY through FounderProtectedRoute (or only under
- * /founder|/admin paths). Parsed from App.tsx so the set cannot drift: a page
- * that gains a customer route is scanned from that commit on.
+ * The real route table, parsed from App.tsx with the TypeScript AST.
+ *
+ * `guards` are the founder guards App.tsx DECLARES (a wrapper taking a
+ * `component` prop whose body decides on `isFounder`) — derived, not spelled,
+ * so a second founder guard is covered the day it is written; the name is
+ * still pinned below so renaming one cannot quietly empty the set.
+ * `modules` maps every local name App.tsx binds to a file under @/pages or
+ * @/components (React.lazy or a static default import).
+ * `mounts` records, for each of those names, ONE FLAG PER PLACE App.tsx mounts
+ * it — true when that mount sits behind a founder guard. A page is founder-only
+ * only when EVERY mount is guarded, so a page that gains one customer route is
+ * scanned from that commit on.
  */
+interface AppRouteFacts {
+  guards: Set<string>;
+  modules: Map<string, string>;
+  mounts: Map<string, boolean[]>;
+}
+
+function parseAppRoutes(): AppRouteFacts {
+  const src = read(APP);
+  const sf = ts.createSourceFile(APP, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  const guards = new Set<string>();
+  for (const st of sf.statements) {
+    if (!ts.isFunctionDeclaration(st) || !st.name || !st.body) continue;
+    if (!/Route$/.test(st.name.text)) continue;
+    if (st.parameters.length === 0 || !/\bcomponent\b/.test(st.parameters[0].getText(sf))) continue;
+    if (/\bisFounder\b/.test(st.body.getText(sf))) guards.add(st.name.text);
+  }
+
+  const modules = new Map<string, string>();
+  for (const m of src.matchAll(
+    /(\w+)\s*=\s*React\.lazy\(\(\)\s*=>\s*import\("@\/((?:pages|components)\/[\w/.-]+)"\)/g,
+  )) {
+    modules.set(m[1], `client/src/${m[2]}`);
+  }
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    const mm = /^@\/((?:pages|components)\/[\w/.-]+)$/.exec(st.moduleSpecifier.text);
+    const local = st.importClause?.name?.text;
+    if (mm && local) modules.set(local, `client/src/${mm[1]}`);
+  }
+
+  const mounts = new Map<string, boolean[]>();
+  const record = (name: string, guarded: boolean) => {
+    if (!modules.has(name)) return;
+    const arr = mounts.get(name) ?? [];
+    arr.push(guarded);
+    mounts.set(name, arr);
+  };
+  /** `component={X}` on a route/guard element, when X is a plain identifier. */
+  const componentOf = (el: ts.JsxOpeningLikeElement): string | null => {
+    for (const a of el.attributes.properties) {
+      if (!ts.isJsxAttribute(a) || a.name.getText(sf) !== "component") continue;
+      const init = a.initializer;
+      if (init && ts.isJsxExpression(init) && init.expression && ts.isIdentifier(init.expression))
+        return init.expression.text;
+      return null;
+    }
+    return null;
+  };
+  const visit = (node: ts.Node, guarded: boolean) => {
+    let inner = guarded;
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const el = ts.isJsxElement(node) ? node.openingElement : node;
+      const tag = el.tagName.getText(sf);
+      inner = guarded || guards.has(tag);
+      const comp = componentOf(el);
+      // `<FounderProtectedRoute component={Page} />` guards Page itself; a
+      // page rendered directly (`<Page />`) is guarded by its ancestors.
+      if (comp) record(comp, inner);
+      record(tag, inner);
+    }
+    ts.forEachChild(node, (child) => visit(child, inner));
+  };
+  visit(sf, false);
+
+  return { guards, modules, mounts };
+}
+
+const APP_ROUTES = parseAppRoutes();
+
+/** Files App.tsx mounts ONLY behind a founder guard. */
 function founderOnlyPages(): Set<string> {
-  const app = read(APP);
-  const lazy = new Map<string, string>(); // component → repo-relative page file
-  for (const m of app.matchAll(/const\s+(\w+)\s*=\s*React\.lazy\(\(\)\s*=>\s*import\("@\/pages\/([\w/.-]+)"\)/g)) {
-    lazy.set(m[1], `client/src/pages/${m[2]}`);
-  }
-  const founderWrapped = new Map<string, boolean[]>();
-  const routeRe = /<Route\s+path=\{?["']([^"'}]+)["']\}?[^>]*>\s*\{\(\)\s*=>\s*<(\w+)\s+component=\{(\w+)\}/g;
-  for (const m of app.matchAll(routeRe)) {
-    const [, routePath, wrapper, component] = m;
-    const isFounder = wrapper === "FounderProtectedRoute" || /^\/(?:founder|admin)(?:\/|$)/.test(routePath);
-    const arr = founderWrapped.get(component) ?? [];
-    arr.push(isFounder);
-    founderWrapped.set(component, arr);
-  }
   const out = new Set<string>();
-  for (const [component, flags] of founderWrapped) {
-    const file = lazy.get(component);
-    if (file && flags.length > 0 && flags.every(Boolean)) {
-      for (const ext of [".tsx", ".ts", "/index.tsx"]) if (exists(file + ext)) out.add(file + ext);
+  for (const [name, flags] of APP_ROUTES.mounts) {
+    if (flags.length === 0 || !flags.every(Boolean)) continue;
+    const file = APP_ROUTES.modules.get(name);
+    if (!file) continue;
+    for (const ext of [".tsx", ".ts", "/index.tsx", "/index.ts"]) {
+      if (exists(file + ext)) {
+        out.add(file + ext);
+        break;
+      }
     }
   }
   return out;
@@ -580,12 +672,65 @@ describe("the scanner can see (vacuity)", () => {
     expect(isFounderPath("client/src/pages/founder/letter.tsx")).toBe(true);
     expect(isFounderPath("client/src/pages/founder-letter.tsx")).toBe(true);
     expect(isFounderPath("client/src/components/mobile/FounderMobileBottomNav.tsx")).toBe(true);
-    expect(FOUNDER_PAGES.size, "App.tsx parse found no FounderProtectedRoute-only pages — the derivation went blind").toBeGreaterThan(0);
-    for (const p of FOUNDER_PAGES) expect(exists(p), `${p} derived from App.tsx but missing on disk`).toBe(true);
-    expect(FOUNDER_PAGES.has("client/src/pages/today.tsx")).toBe(false);
     expect(isFounderPath("client/src/pages/today.tsx")).toBe(false);
     expect(isFounderPath("client/src/components/pax/PaxAskCard.tsx")).toBe(false);
     expect(exists("client/src/pages/founder"), "the founder pages directory moved — re-aim the allowlist").toBe(true);
+    expect(
+      isFounderPath("client/src/components/founder/ai-console/VaTeamPanel.tsx"),
+      "the founder-only AI console left the allowlisted founder directory",
+    ).toBe(true);
+  });
+
+  it("the App.tsx route-table derivation is alive, and says founder only where App.tsx does", () => {
+    // A parser that silently stops matching reads exactly like a clean repo,
+    // so every step of the derivation is pinned to something knowable.
+    expect(APP_ROUTES.modules.size, "App.tsx binds no @/pages or @/components modules — the import parse went blind")
+      .toBeGreaterThanOrEqual(150);
+    expect(APP_ROUTES.mounts.size, "no route mounts were parsed out of App.tsx — the JSX walk went blind")
+      .toBeGreaterThanOrEqual(150);
+
+    // The guard set is DERIVED (a wrapper taking `component` that decides on
+    // isFounder) and then pinned: renaming FounderProtectedRoute must fail
+    // here rather than quietly exempting nothing.
+    expect(
+      [...APP_ROUTES.guards].sort(),
+      "the founder route guard changed — re-read App.tsx before trusting this exemption",
+    ).toEqual(["FounderProtectedRoute"]);
+    expect(APP_ROUTES.guards.has("ProtectedRoute"), "the customer guard was derived as a founder guard").toBe(false);
+    expect(APP_ROUTES.guards.has("FlaggedRoute"), "the flag guard was derived as a founder guard").toBe(false);
+
+    expect(FOUNDER_PAGES.size, "App.tsx parse found no founder-guarded pages — the derivation went blind")
+      .toBeGreaterThanOrEqual(40);
+    for (const p of FOUNDER_PAGES) expect(exists(p), `${p} derived from App.tsx but missing on disk`).toBe(true);
+
+    // Known member, OUTSIDE client/src/pages/founder/: the case the directory
+    // allowlist structurally cannot see. /dunning is FounderProtectedRoute-only
+    // (its API is requireFounder on the whole router), and its route carries an
+    // explanatory JSX comment — the shape the old regex derivation missed.
+    expect(
+      FOUNDER_PAGES.has("client/src/pages/dunning-manager.tsx"),
+      "dunning-manager is FounderProtectedRoute-only in App.tsx but was not derived — the parse is broken",
+    ).toBe(true);
+    expect(FOUNDER_PAGES.has("client/src/pages/commissions.tsx")).toBe(true);
+
+    // Known non-members: customer doors. App.tsx must really mount them, or
+    // "not founder" would be true of a page the parser never saw.
+    const mounted = new Set(
+      [...APP_ROUTES.mounts.keys()].map((name) => APP_ROUTES.modules.get(name)).filter(Boolean) as string[],
+    );
+    for (const door of ["client/src/pages/today", "client/src/pages/finance"]) {
+      expect(mounted.has(door), `${door} is not mounted in App.tsx — this check proves nothing`).toBe(true);
+      expect(FOUNDER_PAGES.has(`${door}.tsx`), `${door} was derived as founder-only`).toBe(false);
+      expect(isFounderPath(`${door}.tsx`)).toBe(false);
+    }
+
+    // A /founder- or /admin-PREFIXED path is not authority: /admin/decisions
+    // renders DecisionQueuePage through ProtectedRoute for every authenticated
+    // user, so its copy stays in the customer population.
+    expect(
+      FOUNDER_PAGES.has("client/src/pages/decision-queue.tsx"),
+      "an /admin path was mistaken for a founder guard — decision-queue is customer-facing",
+    ).toBe(false);
   });
 
   it("every banned entry matches its own planted sample (per-member vacuity)", () => {
