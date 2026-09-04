@@ -2765,3 +2765,37 @@ organization pin the session middleware performs, which only covers id lookups.
 The note is now loaded by id and the session's own organization snapshot.
 
 All four are pinned, and each pin was falsified by reverting its fix.
+
+### Closing a confused deputy on one side opened it on the other
+
+The permission ladder was installed on the support tool switch earlier in this
+program, checked against the person whose ticket Pax is resolving. The rule it
+enforces is right: Pax must never do more for someone than they could do
+themselves.
+
+It is only half the rule, and the other half was reachable.
+
+`POST /api/support/tickets/:id/pax-resolve` authorizes the **organization** and
+nothing else. Its only guard is that the ticket belongs to the caller's org or
+the caller is the founder. Meanwhile `/api/support/` is on
+`VIEWER_WRITE_EXEMPT_PREFIXES`, so the read-only role can POST it — the
+exemption exists so a viewer can contact support about what they can see, which
+is reasonable on its own.
+
+Put together: a viewer could resolve a ticket the **owner** filed, and the
+ladder would then evaluate the owner's scopes. Billing repairs, bulk fixes,
+preference resets and job-queue surgery, reached by a role defined as unable to
+write anything, by picking someone else's ticket.
+
+The effective authority is now the intersection. Both the person the work is
+done for and the person who asked for it must hold the scope, and a call
+carrying no identified human at all is refused rather than passed — an empty
+list satisfies `every`, so the length check is load-bearing. Five assertions pin
+it, including one that fails if `/api/support/` ever leaves the viewer
+exemption, so whoever removes that exemption learns why the intersection exists
+instead of assuming it was redundant.
+
+The general lesson is worth more than the fix. **A deputy has two sides.** When
+an action is attributed to one human and requested by another, checking either
+one alone is an escalation path in whichever direction is weaker, and which
+direction that is changes with every exemption list the codebase grows.

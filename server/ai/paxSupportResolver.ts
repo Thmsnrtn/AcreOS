@@ -182,6 +182,19 @@ export async function resolveTicketWithPax(
   opts: {
     createCompletion?: ChatCompletionFn;
     tryGeniusOnEscalate?: boolean;
+    /**
+     * The signed-in person who ASKED for this resolution, when a human did.
+     *
+     * Distinct from the ticket's author, and the distinction is the point: the
+     * permission ladder is checked against BOTH, so a caller cannot borrow the
+     * author's authority. `POST /api/support/tickets/:id/pax-resolve`
+     * authorises the organization and nothing else, and `/api/support/` is
+     * exempt from the viewer read-only gate.
+     *
+     * Omitted for machine-initiated resolutions, where there is no second
+     * human and the author alone is the subject.
+     */
+    requestedByUserId?: string | null;
   } = {},
 ): Promise<PaxResolveResult> {
   const createCompletion = opts.createCompletion ?? defaultCompletionFn();
@@ -300,6 +313,7 @@ export async function resolveTicketWithPax(
       const result = await executeSupportTool(name, args, org, ticketId, {
         origin: "support",
         userId: ticket.userId,
+        alsoRequireUserId: opts.requestedByUserId ?? null,
       });
       toolResults.push({
         role: "tool",

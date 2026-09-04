@@ -1478,16 +1478,33 @@ export async function executeSupportTool(
         });
         return { success: false, error: undeclaredSupportScopeMessage(toolName) };
       }
-      const callerId = options?.userId ?? null;
-      const permitted = await userHasScope(
-        { id: org.id, ownerId: org.ownerId ?? null },
-        callerId,
-        declaredScope,
-      );
+      // The ladder is checked against EVERY human this action is attributed
+      // to, and it is an intersection, not a choice. `userId` is the person
+      // the work is done for — the ticket's author, so Pax cannot exceed what
+      // they could do themselves. `alsoRequireUserId` is the person who ASKED
+      // for it, which on the resolve endpoint is a different human: that route
+      // authorises the organization and nothing else, and `/api/support/` is
+      // exempt from the viewer read-only gate, so without this a read-only
+      // viewer could resolve a ticket the OWNER filed and borrow the owner's
+      // financial and settings authority through it.
+      const subjects = [options?.userId ?? null, options?.alsoRequireUserId ?? null].filter(
+        (id, i, all) => id != null && all.indexOf(id) === i,
+      ) as string[];
+      // No identified human at all is not "allow" — userHasScope returns false
+      // for a null caller, and an empty list must behave the same way.
+      const permitted =
+        subjects.length > 0 &&
+        (
+          await Promise.all(
+            subjects.map((id) =>
+              userHasScope({ id: org.id, ownerId: org.ownerId ?? null }, id, declaredScope),
+            ),
+          )
+        ).every(Boolean);
       if (!permitted) {
         logger.warn("[executeSupportTool] Refused — caller lacks the tool's declared scope", {
           orgId: org.id,
-          metadata: { toolName, declaredScope, identified: Boolean(callerId) },
+          metadata: { toolName, declaredScope, subjectCount: subjects.length },
         });
         return { success: false, error: supportScopeRefusalMessage(toolName, declaredScope) };
       }

@@ -189,6 +189,78 @@ describe("the gate runs, before dispatch, and fails closed", () => {
   });
 });
 
+describe("the ladder is an INTERSECTION of both humans, not a choice", () => {
+  // ── THE SECOND DEPUTY ──────────────────────────────────────────────────────
+  // Checking the ladder against the ticket's AUTHOR closes one direction: Pax
+  // cannot do more for someone than they could do themselves. It opens the
+  // other. `POST /api/support/tickets/:id/pax-resolve` authorises the
+  // ORGANIZATION and nothing else — its only guard is
+  // `ticket.organizationId !== org.id && !org.isFounder` — and `/api/support/`
+  // sits on VIEWER_WRITE_EXEMPT_PREFIXES, so the read-only role can POST it.
+  //
+  // A viewer could therefore resolve a ticket the OWNER filed, and the ladder
+  // would evaluate the OWNER's scopes: billing repairs, bulk fixes, preference
+  // resets and job-queue surgery, reached by a role defined as unable to write
+  // anything. The effective authority has to be what BOTH people hold.
+  const src = code(SUPPORT);
+
+  it("both subjects are collected, and a single one is not enough", () => {
+    expect(src, "the second subject is gone — the ladder is back to one human").toContain(
+      "options?.alsoRequireUserId",
+    );
+    const gateAt = src.indexOf("supportScopeFor(toolName)");
+    const block = src.slice(gateAt, gateAt + 1800);
+    expect(block).toContain("const subjects = [");
+    expect(
+      block,
+      "the check must hold for EVERY subject. `.some` here would mean either " +
+        "person's authority is enough, which is the escalation itself.",
+    ).toMatch(/\.every\(Boolean\)/);
+    expect(block).not.toMatch(/\.some\(Boolean\)/);
+  });
+
+  it("no identified human at all is refused, not allowed", () => {
+    const gateAt = src.indexOf("supportScopeFor(toolName)");
+    const block = src.slice(gateAt, gateAt + 1800);
+    expect(
+      block,
+      "an empty subject list must fail closed. `[].every(...)` is TRUE in " +
+        "JavaScript, so without the length check a call carrying no user at " +
+        "all would pass every scope.",
+    ).toMatch(/subjects\.length > 0 &&/);
+  });
+
+  it("the resolve route passes the person who ASKED, not only the ticket's author", () => {
+    const route = code("server/routes-support-tickets.ts");
+    const at = route.indexOf("resolveTicketWithPax(ticketId, org");
+    expect(at, "the resolve call is gone — re-point this test").toBeGreaterThan(-1);
+    expect(
+      route.slice(at, at + 200),
+      "the resolve route no longer identifies its caller, so the ladder sees " +
+        "only the ticket's author again and a viewer can borrow the owner's " +
+        "authority",
+    ).toContain("requestedByUserId: getUserId(");
+  });
+
+  it("the resolver forwards it to the ladder", () => {
+    const resolver = code(RESOLVER);
+    const at = resolver.indexOf("executeSupportTool(name, args, org, ticketId");
+    expect(resolver.slice(at, at + 300)).toContain("alsoRequireUserId: opts.requestedByUserId");
+  });
+
+  it("the exemption that makes this reachable is still in place (premise guard)", () => {
+    // If /api/support/ ever leaves the viewer exemption list, this defence is
+    // no longer the only thing standing there — and whoever removes it should
+    // find out here rather than assume the intersection was belt-and-braces.
+    expect(
+      code("server/middleware/viewerReadOnlyGate.ts"),
+      "/api/support/ is no longer exempt from the viewer read-only gate. The " +
+        "intersection above was added because it WAS. Re-read the reasoning " +
+        "before simplifying either side.",
+    ).toContain('"/api/support/"');
+  });
+});
+
 describe("the caller is identified", () => {
   it("the resolver passes the ticket's own user, so the ladder has someone to check", () => {
     const src = code(RESOLVER);

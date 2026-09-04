@@ -11,7 +11,7 @@ import { Errors } from "./utils/errors";
 import { costClass } from "./utils/costClass";
 import { notifyFounderOfTicket } from "./services/supportNotifications";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganization } from "./types/request";
+import { getOrganization, getUserId } from "./types/request";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -237,7 +237,15 @@ export function registerSupportTicketRoutes(app: Express): void {
         }
 
         const { resolveTicketWithPax } = await import("./ai/paxSupportResolver");
-        const result = await resolveTicketWithPax(ticketId, org);
+        // The person asking is not the person the ticket is about. Both go to
+        // the permission ladder, which takes the intersection — this route
+        // authorises the ORGANIZATION and nothing else, and `/api/support/` is
+        // on VIEWER_WRITE_EXEMPT_PREFIXES, so without this a read-only viewer
+        // could resolve a ticket the owner filed and reach the billing,
+        // settings and job-queue tools through the owner's scopes.
+        const result = await resolveTicketWithPax(ticketId, org, {
+          requestedByUserId: getUserId(req as AuthenticatedRequest),
+        });
 
         res.json({
           autoResolved: result.autoResolved,

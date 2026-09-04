@@ -1041,6 +1041,24 @@ export interface ExecuteToolOptions {
   /** The requesting user, recorded as created_by on pending_actions rows. */
   userId?: string;
   /**
+   * A SECOND person whose permissions must ALSO allow the action.
+   *
+   * The support resolver runs a ticket on behalf of the person who filed it,
+   * so the permission ladder is checked against THAT person — Pax must not do
+   * more for someone than they could do themselves. But the request is made by
+   * whoever called the resolve endpoint, and those are not the same human.
+   * `POST /api/support/tickets/:id/pax-resolve` authorises the ORGANIZATION
+   * and nothing else, and `/api/support/` is on
+   * `VIEWER_WRITE_EXEMPT_PREFIXES`, so a read-only viewer could resolve a
+   * ticket the OWNER filed and the ladder would then evaluate the owner's
+   * scopes. Closing the deputy on one side opened it on the other.
+   *
+   * When set, the effective authority is the INTERSECTION: both people must
+   * hold the scope. Absent, only `userId` is checked, which is right for a
+   * path where the requester IS the subject.
+   */
+  alsoRequireUserId?: string | null;
+  /**
    * Where the call came from. Recorded on every ask row and every receipt so
    * "Waiting for your tap" can say "from your scheduled prompt 'Monday lead
    * pull'" and "What Pax did" can say "ran on its own". Defaults to "chat".
