@@ -152,6 +152,29 @@ export function serveStatic(app: Express) {
   // Sidesteps the HTTP/2 + compression middleware bug. Falls through to
   // the normal express.static below when no pre-compressed file exists
   // or the client doesn't advertise br/gzip.
+  // ── SOURCE MAPS ARE NEVER SERVED ─────────────────────────────────────────
+  //
+  // Defence in depth, above BOTH static mounts so neither can reach a .map.
+  // The build deletes them from dist/public after uploading to Sentry
+  // (script/build.ts stripSourceMapsFromDist), which is the real fix; this is
+  // the guarantee that survives a partial build, a stale dist, a hand-copied
+  // artifact, or someone reverting the delete.
+  //
+  // It matters because `sourcemap: "hidden"` only suppresses the
+  // sourceMappingURL COMMENT — the files are still written, and the URL is
+  // derivable from the script tag in the HTML. Observed on production
+  // 2026-09-04: GET /assets/index-BHxNHrKf.js.map returned 200 and 5.2 MB of
+  // original TypeScript.
+  //
+  // 404 rather than 403: a 403 confirms the file is there.
+  app.use((req, res, next) => {
+    if (/\.map(\.gz|\.br)?(\?|$)/.test(req.path)) {
+      res.status(404).type("text/plain").send("Not found");
+      return;
+    }
+    next();
+  });
+
   app.use(preCompressedAssets(distPath));
 
   // Task #193: Static assets with content-hash filenames (e.g., main.abc123.js)

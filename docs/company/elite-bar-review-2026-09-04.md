@@ -3174,3 +3174,44 @@ loophole: some mutations genuinely must not throw — error telemetry reported
 from inside an error boundary, a logout that has to proceed whatever the server
 says, and the Clerk session refresh that `apiRequest` **itself** calls on a 401,
 which would recurse. Twelve carry one; each names its reason.
+
+### Production served 55 MB of the original TypeScript
+
+`vite.config.ts` sets `sourcemap: "hidden"` for production builds. "hidden"
+suppresses the `//# sourceMappingURL` **comment** — it still writes the `.map`
+files. `script/build.ts` uploaded them to Sentry and stopped there, and
+`server/static.ts` mounted `express.static(distPath)` with no extension filter.
+The URL is derivable from the script tag in the HTML.
+
+The review inferred this from the code path and said so honestly — it never
+fetched the production URL. So it was fetched:
+
+```
+GET https://acreos.io/assets/index-BHxNHrKf.js.map  ->  200, 5,239,629 bytes
+```
+
+474 maps, 55 MB, containing the original TypeScript with the comments that name
+the security gates, the founder-only surfaces and the tenant-isolation
+reasoning. It de-minifies JavaScript the browser already receives — no server
+code, no credentials, no tenant data — so this is a readability exposure rather
+than a breach. It was still ours to close.
+
+Closed in three places, because neither half alone is enough:
+
+1. **The build deletes them** after the Sentry upload — Sentry keeps its own
+   copy, so symbolication is unaffected — and covers the `.map.gz` / `.map.br`
+   twins the compression plugin emits beside each one. It runs unconditionally
+   rather than only for production, because a preview build that serves
+   `dist/public` exposes the same files.
+2. **The build asserts none survived.** A silent no-op there would restore the
+   exposure while the log line still read like a success.
+3. **The server refuses `.map` requests** above both static mounts, with 404
+   rather than 403 — a 403 confirms the file is there. That is what survives a
+   partial build, a stale dist, a hand-copied artifact, or someone reverting the
+   delete.
+
+The test exercises the guard's regex behaviourally rather than by text: it
+extracts the pattern from the source and checks it refuses four map spellings
+while still serving `/maps` (the Map door) and `/api/maps/search`. Falsified
+both ways — moving the guard below the mounts fails, and removing the survivor
+assertion fails.

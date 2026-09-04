@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, readdir, unlink } from "fs/promises";
+import { join } from "path";
 import { execSync } from "child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
@@ -92,6 +93,95 @@ async function uploadSourceMapsToSentry(release: string): Promise<void> {
   console.log(`[sentry] source-map upload complete for release=${release}`);
 }
 
+/**
+ * Delete every source map from the SERVED asset directory.
+ *
+ * ── WHY THIS IS NOT OPTIONAL ────────────────────────────────────────────────
+ * `sourcemap: "hidden"` in vite.config.ts suppresses the
+ * `//# sourceMappingURL` comment — but it still WRITES the .map files, and
+ * server/static.ts mounts express.static(distPath) with no extension filter.
+ * The URL is derivable from the script tag in the HTML, so every map was
+ * publicly fetchable.
+ *
+ * Observed on production 2026-09-04, not inferred:
+ *
+ *     GET https://acreos.io/assets/index-BHxNHrKf.js.map  ->  200, 5,239,629 bytes
+ *
+ * 474 maps, 55 MB, containing the original TypeScript with the comments that
+ * name the security gates, the founder-only surfaces and the tenant-isolation
+ * reasoning. It de-minifies JavaScript the browser already receives — no
+ * server code, no credentials, no tenant data — so this is a readability
+ * exposure rather than a breach. It is still ours to close, and the close is
+ * one delete.
+ *
+ * Sentry keeps its own copy, uploaded immediately above, so stack-trace
+ * symbolication is unaffected. Deleting them here rather than not emitting
+ * them is deliberate: the upload needs the files to exist.
+ */
+async function stripSourceMapsFromDist(): Promise<void> {
+  const root = "dist/public";
+  let removed = 0;
+  let bytes = 0;
+
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // the directory may not exist on a partial build
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      // The compression plugin emits .map.gz / .map.br beside each .map, and
+      // those are just as readable. Matching on ".map" anywhere in the tail
+      // catches all three.
+      if (!/\.map(\.gz|\.br)?$/.test(entry.name)) continue;
+      const { statSync } = await import("fs");
+      try {
+        bytes += statSync(full).size;
+      } catch {
+        /* size is for the log line only */
+      }
+      await unlink(full);
+      removed += 1;
+    }
+  }
+
+  await walk(root);
+  console.log(
+    `[build] removed ${removed} source map(s) from ${root} (${(bytes / 1_048_576).toFixed(1)} MB) — ` +
+      "Sentry holds the uploaded copy",
+  );
+
+  // Assert, do not assume. A silent no-op here restores the exposure while the
+  // log line above still reads like a success.
+  const survivors: string[] = [];
+  async function verify(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) await verify(full);
+      else if (/\.map(\.gz|\.br)?$/.test(entry.name)) survivors.push(full);
+    }
+  }
+  await verify(root);
+  if (survivors.length > 0) {
+    throw new Error(
+      `[build] ${survivors.length} source map(s) survived into the served asset directory ` +
+        `and would be publicly fetchable:\n  ${survivors.slice(0, 10).join("\n  ")}`,
+    );
+  }
+}
+
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
@@ -169,6 +259,11 @@ async function buildAll() {
   if (process.env.NODE_ENV === "production") {
     await uploadSourceMapsToSentry(release);
   }
+
+  // ALWAYS, not only in production. A dev or preview build that serves
+  // dist/public exposes the same files, and "we only ship maps by accident on
+  // non-production hosts" is not a property anyone can check.
+  await stripSourceMapsFromDist();
 }
 
 buildAll().catch((err) => {
