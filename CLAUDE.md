@@ -265,3 +265,41 @@ extraction shape you rely on, hide the defect inside it, and confirm the gate
 goes red; then break each shape deliberately and confirm the matching canary
 goes green-to-red on its own. A shape you never wrote a fixture for is a shape
 the gate is free to stop reading.
+
+#### And a gate reads its own documentation as the defect
+
+The most reliable way to write a green gate over a live defect is to forbid a
+string, then explain in a comment which string you forbade. Every fix worth
+making leaves a record of what it removed and why — that record is the thing
+that stops the next author reinstating it — and a substring scan cannot tell
+the record from the thing.
+
+Measured 2026-09-04: FOUR predicates in one day, all of them written that day.
+A workflow scan forbidding `find drizzle` matched the comment explaining why
+`find drizzle` was removed. Its POPULATION predicate — `includes("npm run
+check")` — pulled an unrelated e2e workflow into the gated set on a header
+comment mentioning the command. A mount check, `toContain("app.use(terminal
+ErrorHandler)")`, stayed green with the mount commented out, because the line
+above it names the mount. And a check that `projectedRevenue: totalRevenue *
+1.1` was gone matched the comment recording its deletion.
+
+Three things follow.
+
+**Strip comments before any source predicate, and strip them with a real
+scan** — the two-regex idiom (block comments first, then line comments) eats
+whole files when a `//` line contains `/*`, which this repo has already paid
+for (`tests/helpers/stripComments.ts`).
+
+**A population predicate is a predicate.** It reads comments exactly as
+eagerly as the rule does, and it fails silently in the more dangerous
+direction: a rule that matches a comment goes red and gets fixed, while a
+population that matches a comment goes green over files it should never have
+included, or — worse — a population predicate pinned to a literal (`image:
+postgres:16`) silently empties when that literal changes and the gate passes
+over nothing at all.
+
+**Prefer a parse to a scan where one is available.** Walking `data-testid` JSX
+attributes distinguishes a rendered control from a selector that targets one;
+walking string literals distinguishes a vendor a page NAMES from a vendor a
+comment says was removed. The parser never visits a comment, so the whole
+class disappears rather than being defended against case by case.
