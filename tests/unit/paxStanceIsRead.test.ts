@@ -70,7 +70,13 @@ vi.mock("../../server/services/paxControls", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
   return { ...actual, getPaxControls: H.getPaxControls };
 });
-vi.mock("../../server/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }), insert: () => ({ values: async () => undefined }) } }));
+// The ticket-ownership probe added on 2026-09-04 reads
+// `support_tickets.organization_id` for the ticketId a call carries and REFUSES
+// when it finds nothing — a tool must not act on a ticket that does not exist
+// or belongs to another tenant. The rows below say "ticket 12 is org 7's", so
+// the calls in this file get past that probe and go on testing the stance,
+// which is what they are about.
+vi.mock("../../server/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: 7 }] }) }) }), insert: () => ({ values: async () => undefined }) } }));
 vi.mock("../../server/websocket", () => ({ wsServer: { broadcastToOrg: vi.fn() } }));
 vi.mock("../../server/services/approvalKernel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/approvalKernel")>();

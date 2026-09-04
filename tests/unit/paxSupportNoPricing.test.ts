@@ -53,9 +53,19 @@ vi.mock("../../server/services/paxControls", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/paxControls")>();
   return { ...actual, getPaxControls: H.getPaxControls };
 });
+// The ticket-ownership probe added on 2026-09-04 reads
+// `support_tickets.organization_id` for whatever ticketId a call carries and
+// REFUSES when it finds nothing — a tool must not act on a ticket that does
+// not exist or belongs to another tenant. Every call in this file passes
+// ticketId 12, so the mock has to own it; returning [] made the probe (rightly)
+// refuse and turned the positive control below into a false negative.
 vi.mock("../../server/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => [{ organizationId: 7 }] }),
+      }),
+    }),
     insert: () => ({ values: H.dbInsertValues }),
   },
 }));
