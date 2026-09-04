@@ -10984,6 +10984,12 @@ END $mig0246$`,
             ?| ARRAY['level', 'perAction', 'thresholdsCents']
      )`,
 
+  // ── 0251 — index the two columns an organization is resolved BY ──────────
+  // Mirror of migrations/0251_organizations_hot_indexes.sql. `owner_id` is
+  // read by getOrCreateOrg on nearly every authenticated request and had no
+  // index; `stripe_customer_id` is read by every Stripe webhook. Idempotent.
+  'CREATE INDEX IF NOT EXISTS "organizations_owner_id_idx" ON "organizations" ("owner_id")',
+  'CREATE INDEX IF NOT EXISTS "organizations_stripe_customer_id_idx" ON "organizations" ("stripe_customer_id")',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

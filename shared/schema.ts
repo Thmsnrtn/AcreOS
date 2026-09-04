@@ -403,7 +403,17 @@ export const organizations = pgTable("organizations", {
   brandDensity: text("brand_density"),          // 'compact' | 'comfortable' | 'adaptive' | null (default)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // The hottest lookup in the product: getOrCreateOrg resolves the caller's
+  // organization by owner on nearly every authenticated request
+  // (server/middleware/getOrCreateOrg.ts:116 → storage.getOrganizationByOwner).
+  // It ran as a sequential scan — invisible at a handful of tenants, linear in
+  // customer count forever after (2026-09-04 review).
+  index("organizations_owner_id_idx").on(table.ownerId),
+  // Every Stripe webhook resolves the org by customer id before it can apply
+  // an invoice, a subscription change or a dunning transition.
+  index("organizations_stripe_customer_id_idx").on(table.stripeCustomerId),
+]);
 
 // Team members within an organization
 //
