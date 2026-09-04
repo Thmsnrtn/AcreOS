@@ -8,14 +8,13 @@ import { properties } from "@shared/schema";
 import { eq, and, sql, ne } from "drizzle-orm";
 
 // Item 32: Property comparison
-export async function compareProperties(propertyIds: number[]): Promise<any[]> {
-  const props = [];
-  for (const id of propertyIds.slice(0, 5)) {
-    const prop = await db.query.properties.findFirst({ where: eq(properties.id, id) });
-    if (prop) props.push(prop);
-  }
-  return props;
-}
+/*
+ * `compareProperties(propertyIds)` was here and is DELETED (2026-09-04). It had
+ * no callers, and it read each property by id with no organization predicate —
+ * every sibling in this module takes an `orgId` first (findNearbyProperties,
+ * findDuplicateProperties), which is what made it the outlier. Surfaced by the
+ * org-scope lint's widening to Drizzle's relational query API.
+ */
 
 // Item 35: Nearby properties
 export async function findNearbyProperties(orgId: number, latitude: number, longitude: number, radiusMiles: number = 5): Promise<any[]> {

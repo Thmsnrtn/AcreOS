@@ -4,15 +4,13 @@
   "_THE_OBLIGATION": "This file may only SHRINK. It is a debt register, not an exemption list, and only the 8 keys listed under _TRIAGED have been read. A debt register whose entries nobody has opened is not a smaller problem than an unscanned directory; it is the same problem with a number attached. Triage moves an entry either into a real fix or into the hand-verified register inside check-org-scoped-fetch.mjs with a written reason. A sample of ~57 of these was triaged before this landed and produced two REAL cross-tenant defects out of the sample (routes-doc-system.ts's seller/buyer reads and POST /api/investor-profiles' tenant-assignment injection, both fixed in 779bc251), so the expectation is that more remain in here.",
   "_WHAT_IT_DOES_NOT_EXCUSE": "A NEW offender is not covered by this file and fails the gate immediately. That is the point of landing the widening before the burn-down rather than after: eight live cross-tenant paths were found by hand in files this lint had never opened, and every day it stayed blind was another day a ninth could be written without anything noticing. Reading the backlog does not turn it into permission.",
   "counts": {
-    "rule1": 98,
+    "rule1": 94,
     "rule2": 74,
     "rule3": 55,
-    "total": 227
+    "total": 223
   },
   "rule1": {
     "method": [
-      "server/services/decisionsInbox.ts::getPendingItems",
-      "server/services/decisionsInbox.ts::getSuppressedDefects",
       "server/services/matchmaking.ts::calculateSimilarity",
       "server/services/matchmaking.ts::findBuyersForListing"
     ],
@@ -41,9 +39,7 @@
       "server/routes-title-partners.ts::authenticatePartnerByApiKey",
       "server/services/autonomousDecisionExecutor.ts::buildAlertContext",
       "server/services/autonomousDecisionExecutor.ts::buildFeatureRequestContext",
-      "server/services/campaignEnhancements.ts::cloneCampaign",
-      "server/services/ceoReminders.ts::getContextForReminder",
-      "server/services/propertyIntelligenceEnhancements.ts::compareProperties"
+      "server/services/ceoReminders.ts::getContextForReminder"
     ],
     "route": [
       "server/routes-activation.ts::GET /api/founder/activation/recent",
@@ -539,5 +535,5 @@
     "All four are pinned by tests/unit/crossTenantPathsClosed2026_09_04.test.ts,",
     "and each pin was falsified by reverting its fix."
   ],
-  "_UNTRIAGED_2026_09_04": "The 22 entries added on 2026-09-04 are UNTRIAGED, and that is different from every other entry in this file. The 208 that came before were each READ and carry an individual _TRIAGED reason. These came from widening the gate to Drizzle's RELATIONAL query API \u2014 db.query.<table>.findMany / .findFirst, 280 call sites under server/ that `touchedOrgScopedTables` and the rule-3 chain walker, both keyed on `.from(`, had never read. A unit whose only org-table access was relational was skipped before ANY of the three rules ran. They are frozen so the widened gate can fail on anything NEW while these are worked down; an entry here is not a judgement that the query is safe. Two were read on the way in and are worth the next reader's attention first: campaignEnhancements.cloneCampaign reads a campaign by id with no org check and inserts a copy, and matchmaking.findBuyersForListing reads EVERY investor profile in the platform. decisionsInbox.* is the founder's inbox and is probably legitimately cross-org \u2014 which means it wants unscopedForPlatformOps(reason), not a register line. BURN-DOWN: complianceAI.checkPropertyCompliance, complianceAI.generateDisclosure and landCredit.backtestScore were read and FIXED the same day \u2014 all three were live customer routes resolving a property by id with no ownership check."
+  "_UNTRIAGED_2026_09_04": "The 22 entries added on 2026-09-04 are UNTRIAGED, and that is different from every other entry in this file. The 208 that came before were each READ and carry an individual _TRIAGED reason. These came from widening the gate to Drizzle's RELATIONAL query API \u2014 db.query.<table>.findMany / .findFirst, 280 call sites under server/ that `touchedOrgScopedTables` and the rule-3 chain walker, both keyed on `.from(`, had never read. A unit whose only org-table access was relational was skipped before ANY of the three rules ran. They are frozen so the widened gate can fail on anything NEW while these are worked down; an entry here is not a judgement that the query is safe. Two were read on the way in and are worth the next reader's attention first: campaignEnhancements.cloneCampaign reads a campaign by id with no org check and inserts a copy, and matchmaking.findBuyersForListing reads EVERY investor profile in the platform. decisionsInbox.* is the founder's inbox and is probably legitimately cross-org \u2014 which means it wants unscopedForPlatformOps(reason), not a register line. BURN-DOWN: complianceAI.checkPropertyCompliance, complianceAI.generateDisclosure and landCredit.backtestScore were read and FIXED the same day \u2014 all three were live customer routes resolving a property by id with no ownership check. Four more the same day: decisionsInbox.getPendingItems and .getSuppressedDefects are the founder's own platform-wide queue and now go through unscopedForPlatformOps(reason) so the cross-org read is logged and greppable rather than indistinguishable from a forgotten one; campaignEnhancements.cloneCampaign and propertyIntelligenceEnhancements.compareProperties had no callers at all and were deleted."
 }

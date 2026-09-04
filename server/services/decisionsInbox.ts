@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
   organizations,
@@ -686,7 +687,17 @@ export const decisionsInboxService = {
 
   /** Returns pending items sorted by urgencyScore descending. */
   async getPendingItems() {
-    return db.query.decisionsInboxItems.findMany({
+    // CROSS-ORG BY DESIGN, through the explicit hatch rather than by omission.
+    // This is the FOUNDER's decisions inbox — routes-founder-intelligence is
+    // its only reader, and `resolvedBy: "founder"` is stamped on every
+    // resolution — so a per-org predicate would empty it. What was wrong was
+    // that the cross-org read was indistinguishable from a forgotten one: the
+    // org-scope lint could not see it at all (Drizzle's relational API had no
+    // `.from(` for it to key on), and a reader could not tell design from
+    // oversight. unscopedForPlatformOps logs the reason and makes it greppable.
+    return unscopedForPlatformOps(
+      "founder decisions inbox: the queue is platform-wide by definition; every reader is founder-gated",
+    ).query.decisionsInboxItems.findMany({
       where: eq(decisionsInboxItems.status, "pending"),
       orderBy: desc(decisionsInboxItems.urgencyScore),
     });
@@ -813,7 +824,12 @@ export const decisionsInboxService = {
     total: number;
   }> {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const rows = await db.query.decisionsInboxItems.findMany({
+    // Cross-org for the same reason getPendingItems is, and through the same
+    // hatch: this is the founder's own view of what the inbox SUPPRESSED, and
+    // a per-org predicate would empty it.
+    const rows = await unscopedForPlatformOps(
+      "founder decisions inbox: suppressed-defect review is platform-wide by definition; the only reader is founder-gated",
+    ).query.decisionsInboxItems.findMany({
       where: and(
         eq(decisionsInboxItems.status, "suppressed"),
         gte(decisionsInboxItems.createdAt, cutoff),

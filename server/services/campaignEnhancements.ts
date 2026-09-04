@@ -9,25 +9,19 @@ import { eq, and, sql, count, gte, desc } from "drizzle-orm";
 
 // Item 106: Campaign ROI calculator
 // Item 108: Campaign cloning
-export async function cloneCampaign(campaignId: number, newName: string): Promise<any> {
-  const original = await db.query.campaigns.findFirst({ where: eq(campaigns.id, campaignId) });
-  if (!original) return null;
+/*
+ * `cloneCampaign(campaignId, newName)` was here and is DELETED (2026-09-04).
+ * Nothing in the repository called it — the tests import categorizeResponse,
+ * getCampaignBenchmarks and isHoliday from this module and never it.
+ *
+ * It read `db.query.campaigns.findFirst({ where: eq(campaigns.id, id) })` with
+ * no organization predicate and then inserted a copy of whatever came back, so
+ * the first caller to wire it up would have been able to clone another
+ * organization's campaign — its name, its copy, its targeting — by guessing an
+ * integer. Surfaced when the org-scope lint was widened to Drizzle's
+ * relational query API, which it had never read.
+ */
 
-  const { id: _omitId, ...rest } = original;
-  const clone = { ...rest };
-  clone.name = newName;
-  clone.status = "draft";
-  clone.createdAt = new Date();
-  clone.updatedAt = new Date();
-  (clone as any).totalSent = 0;
-  (clone as any).totalOpened = 0;
-  (clone as any).totalClicked = 0;
-
-  const [inserted] = await db.insert(campaigns).values(clone as any).returning();
-  return inserted;
-}
-
-// Item 112: Response categorization
 export function categorizeResponse(text: string): "interested" | "not_interested" | "wrong_number" | "angry" | "question" | "unknown" {
   const lower = text.toLowerCase();
   if (lower.includes("interested") || lower.includes("tell me more") || lower.includes("how much") || lower.includes("yes")) return "interested";
