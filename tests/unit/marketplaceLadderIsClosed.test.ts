@@ -117,16 +117,67 @@ describe("every marketplace door carries the ladder flag", () => {
   });
 });
 
-describe("the read behind the door is still owed a fix", () => {
-  it("findBuyersForListing is recorded as untriaged tenancy debt", () => {
-    // The flag closes the exposure; it does not scope the query. If the ladder
-    // trigger fires and the flag flips on, this read is live again — so the
-    // obligation is held in the register rather than in someone's memory.
+describe("the read behind the door — the obligation, then the fix", () => {
+  /**
+   * ── THIS ASSERTION WAS REWRITTEN, NOT DELETED (2026-09-04) ────────────────
+   *
+   * It used to read "findBuyersForListing is recorded as untriaged tenancy
+   * debt", and it pinned an OBLIGATION: the ladder flag closes the exposure but
+   * does not scope the query, so if the trigger fires and the flag flips on,
+   * the unscoped read is live again. Holding that in the register rather than
+   * in someone's memory was the entire point.
+   *
+   * The obligation has since been discharged. Deleting the test would delete
+   * the invariant with it; so the assertion is rewritten to the NEW truth, and
+   * it now pins the fix in both directions — the register entry is gone
+   * BECAUSE the code is scoped, and it must not come back by either route.
+   *
+   * The register entry disappearing on its own would be ambiguous: an entry
+   * removed because the query was fixed and an entry removed because someone
+   * tidied the file look identical in JSON. So the code half is asserted too.
+   */
+  it("findBuyersForListing is scoped to the seller, and its debt entry is gone", () => {
     const register = JSON.parse(read("scripts/org-scope-route-widening.json")) as {
       rule1: { method: string[] };
+      rule3: string[];
+      _TRIAGED: Record<string, string>;
       _UNTRIAGED_2026_09_04?: string;
     };
-    expect(register.rule1.method).toContain("server/services/matchmaking.ts::findBuyersForListing");
+
+    expect(
+      register.rule1.method,
+      "findBuyersForListing is back in the rule-1 register, which means the " +
+        "unit lost its organization argument again and the read behind the " +
+        "ladder flag is once more unscoped.",
+    ).not.toContain("server/services/matchmaking.ts::findBuyersForListing");
+
+    // The cross-org PROFILE read remains and is correct — the buyers for your
+    // listing are in other organizations — so it carries a reason of its own
+    // rather than vanishing silently.
+    const chainKey = "server/services/matchmaking.ts::findBuyersForListing::investorProfiles";
+    expect(
+      register.rule3,
+      "the profile read is no longer registered at all. It is a deliberate " +
+        "cross-org read and must stay visible with its reason attached.",
+    ).toContain(chainKey);
+    expect(register._TRIAGED[chainKey], "that entry lost its reason").toBeTruthy();
+
+    // And the code, because a register is a claim about code.
+    const service = read("server/services/matchmaking.ts");
+    const at = service.indexOf("async findBuyersForListing(");
+    expect(at, "findBuyersForListing is gone or renamed").toBeGreaterThan(-1);
+    const body = service.slice(at, at + 2000);
+    expect(
+      body,
+      "the listing is no longer resolved against the caller's organization.",
+    ).toContain("eq(marketplaceListings.sellerOrganizationId, sellerOrganizationId)");
+    expect(
+      body,
+      "matched buyers carry the raw investor_profiles row again, including " +
+        "verification_documents.",
+    ).toContain("publicInvestorFields(profile)");
+
+    // The untriaged block stays, and stays honest about the burn-down.
     expect(register._UNTRIAGED_2026_09_04, "the untriaged block is gone").toBeTruthy();
     expect(register._UNTRIAGED_2026_09_04).toContain("findBuyersForListing");
   });
