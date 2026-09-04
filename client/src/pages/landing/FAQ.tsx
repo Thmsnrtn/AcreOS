@@ -12,7 +12,17 @@ import { LANDING_COPY } from "./copy";
 const ITEMS = [
   {
     q: "Can existing lists be imported?",
-    a: "Yes. AcreOS imports CSVs from PropStream, REISift, Pebble, DataTree, or any source, and dedupes against owners already mailed.",
+    // Named four vendors, of which REISift and Pebble appear nowhere else in
+    // this repository — the import path has no preset for ANY vendor. It is a
+    // generic header map (LEAD_COLUMN_MAP) offered to the customer as
+    // `columnHints`, plus a user-supplied fieldMap for whatever it did not
+    // recognise (server/services/importExport.ts, server/routes-import-export
+    // .ts). "Dedupes against owners already mailed" was also more than the
+    // code does: findDuplicateLeads matches on name / email / phone / address
+    // against leads you already have, with no reference to mail history.
+    // Naming a system on a public page is read as "tested with my data"
+    // (2026-09-04 review); the mechanism below is both true and stronger.
+    a: "Yes. Import a CSV from any source — a skip-trace export, a county list, a plain spreadsheet. AcreOS recognizes the common column headers, lets you map the rest as you import, and skips contacts already in your pipeline.",
   },
   {
     q: "Where does the data come from?",
@@ -28,7 +38,16 @@ const ITEMS = [
   },
   {
     q: "What about existing notes and loans?",
-    a: "AcreOS imports and services notes from Beanstalk, Note Servicing Center, or a CSV. Migration support is included on a 30-min call.",
+    // "Beanstalk" and "Note Servicing Center" appeared in this sentence and
+    // NOWHERE else in client/, server/ or shared/ — there is no importer, no
+    // preset and no integration for either. The CSV half is real and well
+    // built (importNotesFromCSV / importAcquiredNotesFromCSV, NOTE_COLUMN_MAP
+    // served as columnHints, a user fieldMap, and a Reg-Z §1026.43 gate on
+    // originated notes), so it is what the answer now describes.
+    // "Migration support is included on a 30-min call" is an unbounded human
+    // commitment nothing in the product schedules or tracks; it is removed
+    // rather than replaced with a different promise (2026-09-04 review).
+    a: "Import them from a CSV — originated and purchased notes each have their own import, with the common columns recognized and the rest mapped as you go. From there AcreOS carries the loan: balances, posted payments, and the borrower record.",
   },
   {
     q: "Can a partner or assistant share access?",
@@ -36,7 +55,19 @@ const ITEMS = [
   },
   {
     q: "How fast can a new operator get started?",
-    a: "Same day. Define the buy-box, and the first list pulls overnight. Mail can go out the next morning.",
+    // "Define the buy-box, and the first list pulls overnight" described an
+    // engine that does not exist. There is no buy-box scan anywhere in
+    // server/jobs or server/services, and countyAssessorIngestJob — the
+    // county-list worker — is exported and never called, so no scheduled list
+    // pull runs for a customer. copy.ts's own truth-note (lines 42-56) had
+    // already retired the sibling "Monday at 6am" sentence for exactly this
+    // reason; this one survived it.
+    // What genuinely runs on a schedule: lead nurturing scores and stages
+    // leads behind the org's leadScoring switch (server/jobs/leadCampaignJobs
+    // .ts, both stances, pause-aware), and sequenceProcessor sends the drips
+    // you turned on (runScheduledJobs.ts:291). Both are "rules you turned on
+    // run by themselves"; messages still wait for a tap.
+    a: "Same day. Import your first list and the rules you've switched on start working it — scoring and staging happen without you. Drips you turn on send on their own schedule. Every message Pax writes still waits for your tap.",
   },
   {
     q: "What happens on cancel?",

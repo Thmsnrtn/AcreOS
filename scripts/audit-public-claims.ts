@@ -178,6 +178,32 @@ const CLAIMS: { claim: string; anchor: string }[] = [
       "After you cancel, your account and lead data are deleted within 90 days; financial records are kept for seven years because lending regulation requires it.",
     anchor: "deleted within 90 days",
   },
+  {
+    // FAQ "Can existing lists be imported?" — the mechanism, after the four
+    // named vendors were removed (2026-09-04). REISift and Pebble appeared
+    // nowhere else in the repository and the import has no preset for ANY
+    // vendor; "dedupes against owners already mailed" overstated
+    // findDuplicateLeads, which reads leads and never mail history.
+    claim:
+      "AcreOS recognizes the common column headers, lets you map the rest as you import, and skips contacts already in your pipeline.",
+    anchor: "skips contacts already in your pipeline",
+  },
+  {
+    // FAQ "What about existing notes and loans?" — replaces a sentence naming
+    // Beanstalk and Note Servicing Center, neither of which exists anywhere
+    // in this repository, plus an unbounded 30-minute migration call.
+    claim:
+      "Originated and purchased notes each have their own import, and from there AcreOS carries the loan: balances, posted payments, and the borrower record.",
+    anchor: "originated and purchased notes each have their own import",
+  },
+  {
+    // FAQ "How fast can a new operator get started?" — replaces "Define the
+    // buy-box, and the first list pulls overnight", an engine that does not
+    // exist (no buy-box scan; countyAssessorIngestJob has no caller).
+    claim:
+      "The rules you switched on work your list without you — scoring and staging happen on their own, drips you turn on send on their own schedule, and every message Pax writes still waits for your tap.",
+    anchor: "scoring and staging happen without you",
+  },
 ];
 
 /**
@@ -245,6 +271,47 @@ function buildSources(): Source[] {
         serves a full backup, so nothing is held hostage. AcreOS therefore
         does NOT retain "nothing" after cancellation, and no public surface
         may say that it does.
+      `,
+    },
+    {
+      name: "AcreOS import mechanics and the passes that run on a schedule",
+      ref: "server/services/importExport.ts (LEAD_/PROPERTY_/DEAL_/NOTE_COLUMN_MAP, findDuplicateLeads, importNotesFromCSV, importAcquiredNotesFromCSV) + server/routes-import-export.ts (columnHints, userFieldMap) + server/jobs/leadCampaignJobs.ts + server/jobs/runScheduledJobs.ts (sequenceProcessorService.start)",
+      content: `
+        Import is generic and vendor-neutral. There is no column preset for
+        any third-party product: normalizeRow applies a built-in map of common
+        header spellings, the import route offers that map to the customer as
+        columnHints, and a user-supplied fieldMap overrides it for whatever
+        was not recognized. So AcreOS recognizes the common column headers and
+        lets you map the rest as you import, from a CSV of any origin. On lead
+        import, findDuplicateLeads matches name, email, phone and address
+        against the leads that organization already holds and the row is
+        skipped — AcreOS skips contacts already in your pipeline. It does not
+        consult mail history, so no claim may say it dedupes against owners
+        already mailed.
+
+        Notes have two separate importers, not one: importNotesFromCSV for
+        notes the operator originated (with a Reg-Z 1026.43 gate) and
+        importAcquiredNotesFromCSV for notes bought from a prior holder, which
+        requires an acquisition price. Originated and purchased notes each
+        have their own import. From there AcreOS carries the loan in the
+        product: balances are held on the note record (remaining balance,
+        principal and interest), payments are posted through the borrower
+        portal, ACH autopay, Stripe webhooks and the note routes, and there is
+        a borrower record per loan.
+
+        Two passes genuinely run on a schedule for a customer without any
+        further action. Lead nurturing does the scoring and the staging on its
+        own cycle behind the organization's leadScoring switch, at either Pax
+        stance and skipped entirely while paused — scoring and staging happen
+        without the operator doing anything; and sequenceProcessorService
+        sends the drips the customer switched on. Both are rules the customer
+        turned on running by themselves; every message Pax writes still waits
+        for a human tap.
+
+        Nothing else is scheduled for a customer. There is no buy-box scan
+        engine and no scheduled county-list pull: countyAssessorIngestJob is
+        exported and has no caller, so no public surface may claim a list
+        pulls overnight.
       `,
     },
     {
