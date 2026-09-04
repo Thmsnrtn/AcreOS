@@ -63,46 +63,31 @@ export function useWebSocketChannel(
     return cleanup;
   }, [channel, on]);
 
-  // Also listen for specific event types that match common patterns
-  useEffect(() => {
-    // Listen for notification events on founder:activity channel
-    if (channel === "founder:activity") {
-      const cleanups = [
-        on("notification", (payload) => {
-          const event: WSEvent = { type: "notification", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-        on("agent_alert", (payload) => {
-          const event: WSEvent = { type: "agent_alert", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-        on("agent_proposal", (payload) => {
-          const event: WSEvent = { type: "agent_proposal", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-        on("trust_promotion", (payload) => {
-          const event: WSEvent = { type: "trust_promotion", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-        on("action_executed", (payload) => {
-          const event: WSEvent = { type: "action_executed", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-        on("self_healing_executed", (payload) => {
-          const event: WSEvent = { type: "self_healing_executed", channel, payload, timestamp: new Date().toISOString() };
-          setLastEvent(event);
-          callbackRef.current?.(event);
-        }),
-      ];
-
-      return () => { cleanups.forEach((fn) => fn()); };
-    }
-  }, [channel, on]);
+  /*
+   * DELETED 2026-09-04: a second effect that registered TYPED listeners
+   * ("notification", "agent_alert", "agent_proposal", "trust_promotion",
+   * "action_executed", "self_healing_executed") whenever channel ===
+   * "founder:activity".
+   *
+   * use-realtime's dispatchEvent delivers every event to `listeners.get(type)`
+   * AND then unconditionally to `listeners.get("*")`, and this hook registers
+   * into both sets. So a `notification` — the one of those six that is
+   * actually broadcast anywhere in server/ (notificationDispatcher.ts:343, on
+   * founder:activity) — invoked the callback TWICE, and notification-banner
+   * prepended the same row to the tray twice.
+   *
+   * The typed effect also could not have been right even if it had not
+   * duplicated: it fabricated `channel` on the event it built, so an event
+   * arriving on a different channel would have been reported as this one. The
+   * wildcard path above filters on `_channel` and does not.
+   *
+   * The five other names have ZERO broadcast call sites in server/, while
+   * founder:activity carries four types the typed list never mentioned
+   * (briefing_ready, event_mesh_activity, workflow_progress,
+   * workflow_complete) — which the wildcard path has been delivering all
+   * along. The typed list was strictly a subset, strictly duplicated, and
+   * strictly less correct.
+   */
 
   const sendMessage = useCallback((msg: Record<string, any>) => {
     send(msg.type ?? "message", msg);
