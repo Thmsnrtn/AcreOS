@@ -626,14 +626,17 @@ describe("the tenancy lint covers the service layer", () => {
     // 364 while 40 tables leave the population, and every query against them
     // leaves all three rules with it. Measured 2026-09-04: 364 / 40.
     const out = run();
-    const m = /org-scoped tables: (\d+) \(organizationId (\d+), orgId (\d+)\)/.exec(out);
+    const m =
+      /org-scoped tables: (\d+) \(organizationId (\d+), orgId (\d+), org-FK-by-other-name (\d+)\)/.exec(
+        out,
+      );
     expect(
       m,
       "the per-spelling breakdown is gone from the verdict. Without it the " +
         "population is one number again and a dead tenant-key regex is " +
         "invisible. Re-point this, do not delete it:\n" + out,
     ).not.toBeNull();
-    const [, total, canonical, orgId] = m!.map(Number) as unknown as number[];
+    const [, total, canonical, orgIdCount, orgFk] = m!.map(Number) as unknown as number[];
     expect(
       canonical,
       "the `organization_id` tenant-key detector is reading far fewer tables " +
@@ -641,12 +644,91 @@ describe("the tenancy lint covers the service layer", () => {
         "reports itself as fewer offenders, which reads as progress.",
     ).toBeGreaterThan(270);
     expect(
-      orgId,
+      orgIdCount,
       "the `org_id` tenant-key detector has gone quiet. It was added on " +
         "2026-09-04 after 40 tables spent months outside this gate's " +
         "population; a drop here means they are outside it again.",
     ).toBeGreaterThan(28);
-    expect(total).toBe(canonical + orgId);
+    expect(
+      orgFk,
+      "the NOT NULL org-FK arm has gone quiet. It is the only thing that sees " +
+        "a tenant key named by ROLE — seller_organization_id and its siblings " +
+        "on the three marketplace tables. Floor is 2 against a live 3 because " +
+        "the member set is small; the point is that the arm cannot reach zero " +
+        "unnoticed.",
+    ).toBeGreaterThan(2);
+    expect(total).toBe(canonical + orgIdCount + orgFk);
+  });
+
+  it("reads a tenant key named by ROLE, and ignores a nullable provenance FK", () => {
+    // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
+    // The marketplace keys its tables `seller_organization_id`,
+    // `buyer_organization_id`, `bidder_organization_id`. No list of spellings
+    // would ever have caught those, so the third detector arm asks the
+    // SEMANTIC question instead: does a column carry a NOT NULL foreign key to
+    // organizations.id?
+    //
+    // NOT NULL is the whole subtlety, and it is invisible in a green run. An
+    // unconditioned FK arm also swallows `cached_lookups.first_fetched_by` and
+    // `county_discovery_queue.first_requested_by` — nullable PROVENANCE columns
+    // on a shared provider cache and a platform crawl queue, where cross-org
+    // reads are the entire design. So this fixture pins BOTH directions: the
+    // role-named NOT NULL key must be judged, and the nullable provenance FK
+    // must not be.
+    const ROLE_KEYED = [
+      'import { pgTable, serial, integer, text } from "drizzle-orm/pg-core";',
+      'export const organizations = pgTable("organizations", {',
+      '  id: serial("id").primaryKey(),',
+      "});",
+      'export const bazaarListings = pgTable("bazaar_listings", {',
+      '  id: serial("id").primaryKey(),',
+      '  sellerOrganizationId: integer("seller_organization_id").references(() => organizations.id).notNull(),',
+      '  headline: text("headline"),',
+      "});",
+      'export const crawlQueue = pgTable("crawl_queue", {',
+      '  id: serial("id").primaryKey(),',
+      '  firstRequestedBy: integer("first_requested_by").references(() => organizations.id),',
+      '  county: text("county"),',
+      "});",
+      "",
+    ].join("\n");
+
+    const res = runOverFixture({
+      "shared/schema.ts": ROLE_KEYED,
+      "server/services/__rolekey_canary__.ts": [
+        'import { db } from "../db";',
+        'import { bazaarListings, crawlQueue } from "@shared/schema";',
+        'import { eq } from "drizzle-orm";',
+        "",
+        "export async function readEverySellersListings(headline: string) {",
+        "  return await db.select().from(bazaarListings).where(eq(bazaarListings.headline, headline));",
+        "}",
+        "",
+        "export async function readTheCrawlQueue(county: string) {",
+        "  return await db.select().from(crawlQueue).where(eq(crawlQueue.county, county));",
+        "}",
+        "",
+      ].join("\n"),
+    });
+
+    expect(
+      res.failed,
+      "an unscoped read of a table keyed on seller_organization_id did not " +
+        "fail the gate. The org-FK arm has gone, and with it every table whose " +
+        "tenant key is named by role:\n" + res.out,
+    ).toBe(true);
+    expect(res.out).toContain("readEverySellersListings()");
+    expect(
+      res.out,
+      "a NULLABLE provenance FK was treated as a tenant key. `first_fetched_by` " +
+        "and `first_requested_by` record who first ASKED, on a shared cache and " +
+        "a platform crawl queue; judging them turns two correct designs into " +
+        "permanent register entries:\n" + res.out,
+    ).not.toContain("readTheCrawlQueue()");
+    // Vacuity, per spelling: exactly one table was recognised, by the FK arm.
+    expect(res.out).toMatch(
+      /org-scoped tables: 1 \(organizationId 0, orgId 0, org-FK-by-other-name 1\)/,
+    );
   });
 
   it("rule 3 FIRES on the exact shape that defeated rules 1 and 2 (canary)", () => {

@@ -42,7 +42,8 @@ router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
-    const matches = await matchmaking.findBuyersForListing(propertyId);
+    const org = req.organization;
+    const matches = await matchmaking.findBuyersForListing(propertyId, org.id);
     res.json({ matches });
   } catch (err) {
     Errors.internal(res, err);
@@ -54,7 +55,8 @@ router.post("/:id/notify", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
-    const notified = await matchmaking.notifyMatchedBuyers(id);
+    const org = req.organization;
+    const notified = await matchmaking.notifyMatchedBuyers(id, org.id);
     res.json({ notified });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");

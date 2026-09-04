@@ -315,7 +315,13 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/voiceCallAI.ts::extractActionItems",
   "server/services/voiceCallAI.ts::extractKeyData",
   "server/services/voiceCallAI.ts::generateCoachingInsights",
-  "server/services/whiteLabelService.ts::listTenants",
+  // whiteLabelService.ts::listTenants was REMOVED 2026-09-04 — it had never
+  // been an offender. It reads `where(eq(whiteLabelConfigs.parentOrganizationId,
+  // parentOrganizationId))`, which is exactly right; ORG_CONTEXT_RE was
+  // case-sensitive on `organizationId` and so did not match
+  // `parentOrganizationId`. Widening it to `[Oo]rganizationId` for the
+  // marketplace's role-qualified keys cleared this one too, and the gate
+  // reported the entry stale on the next run — which is the register working.
   "server/services/whiteLabelService.ts::resolveFromDomain",
 ]);
 
@@ -1202,12 +1208,33 @@ function matchBrace(source, openIdx) {
  * population entirely, taking every query against them out of all three rules.
  * That is not hypothetical: it is the state this gate was in until 2026-09-04.
  */
-export const orgScopedTablesBySpelling = { organizationId: 0, orgId: 0 };
+export const orgScopedTablesBySpelling = { organizationId: 0, orgId: 0, orgForeignKey: 0 };
+
+/**
+ * A column of ANY NAME carrying a NOT NULL foreign key to organizations.id.
+ *
+ * Not anchored to the column's name — that is the point: the marketplace keys
+ * its tables by ROLE (`seller_organization_id`, `buyer_organization_id`,
+ * `bidder_organization_id`), which no list of spellings would have caught.
+ *
+ * NOT NULL is load-bearing, and was added after measuring. An unconditioned FK
+ * arm also pulls in `cached_lookups.first_fetched_by` and
+ * `county_discovery_queue.first_requested_by` — both NULLABLE, both PROVENANCE
+ * ("the org that first asked"), on a shared provider cache and a platform crawl
+ * queue where cross-org reads are the entire design. A nullable org FK records
+ * who touched a row; a NOT NULL one says whose the row IS. The two name arms
+ * above stay unconditioned, because a column explicitly NAMED organization_id
+ * declares its intent regardless of nullability; this arm INFERS tenancy from a
+ * relationship, and an inference should be the conservative one.
+ */
+const ORG_FOREIGN_KEY_RE =
+  /\b[A-Za-z0-9_]+\s*:\s*[a-zA-Z_]+\s*\(\s*["'`][a-z0-9_]+["'`]\s*\)[^\n]*references\(\s*\(\s*\)\s*=>\s*organizations\.id\s*\)[^\n]*\.notNull\(\)/;
 
 function collectOrgScopedTableIdents() {
   const idents = new Map();
   orgScopedTablesBySpelling.organizationId = 0;
   orgScopedTablesBySpelling.orgId = 0;
+  orgScopedTablesBySpelling.orgForeignKey = 0;
   const callRe = /\bexport\s+const\s+([A-Za-z0-9_]+)\s*=\s*pgTable\s*\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   for (const file of findSchemaFiles()) {
     const source = maskComments(readFileSync(file, "utf8"));
@@ -1231,6 +1258,22 @@ function collectOrgScopedTableIdents() {
         idents.set(ident, tableName);
       } else if (/\borgId\s*:\s*[a-zA-Z_]+\s*\(\s*["'`]org_id["'`]/.test(body)) {
         orgScopedTablesBySpelling.orgId += 1;
+        idents.set(ident, tableName);
+      } else if (ORG_FOREIGN_KEY_RE.test(body)) {
+        // THIRD ARM, and the one that closes the class rather than enumerating
+        // it: a column of ANY name that declares a foreign key to
+        // organizations.id is a tenant key. The marketplace tables name theirs
+        // by ROLE — seller_organization_id, buyer_organization_id,
+        // bidder_organization_id — so no spelling list would ever have caught
+        // them, and all three sat outside this gate's population while the
+        // surface they belong to was found (2026-09-03) serving every tenant's
+        // investor profiles through an ungated door.
+        //
+        // It is an OR with the two name arms, not a replacement for them: 226
+        // tables declare `organization_id` with no `.references()` at all, so
+        // an FK-only predicate would SHRINK the population from 404 to 183 —
+        // a widening that reads as one and is the opposite.
+        orgScopedTablesBySpelling.orgForeignKey += 1;
         idents.set(ident, tableName);
       }
     }
@@ -1697,7 +1740,14 @@ function findBodyBrace(source, parenClose) {
   return -1;
 }
 
-const ORG_CONTEXT_RE = /organizationId|orgId|forOrg\s*\(|unscopedForPlatformOps\s*\(/;
+// Role-QUALIFIED org identifiers count as naming the organization: the
+// marketplace tables key on `sellerOrganizationId`, `buyerOrganizationId` and
+// `bidderOrganizationId`, and a case-sensitive `organizationId` matches none of
+// them — so a chain predicated on exactly the right column read as orgless the
+// moment those tables entered the population (2026-09-04). An identifier
+// ending in OrganizationId / OrgId is an organization reference by
+// construction; nothing else in this codebase is spelled that way.
+const ORG_CONTEXT_RE = /[Oo]rganizationId|[Oo]rgId|forOrg\s*\(|unscopedForPlatformOps\s*\(/;
 
 /**
  * RULE 2 — "has an org and does not use it".
@@ -2470,7 +2520,8 @@ function main() {
   console.log(
     `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size} ` +
       `(organizationId ${orgScopedTablesBySpelling.organizationId}, ` +
-      `orgId ${orgScopedTablesBySpelling.orgId}); ` +
+      `orgId ${orgScopedTablesBySpelling.orgId}, ` +
+      `org-FK-by-other-name ${orgScopedTablesBySpelling.orgForeignKey}); ` +
       `scanned ${scannedMethods} storage + service methods across ${scannedFiles.length} files`,
   );
   console.log(

@@ -15,6 +15,64 @@ interface MatchScore {
   property: any;
 }
 
+/**
+ * The subset of an investor profile that may cross an organization boundary.
+ *
+ * `investor_profiles` groups its own columns with comments — "Public info",
+ * "Specialization", "Verification", "Reputation" — and the buyer-match result
+ * used to return the WHOLE ROW, including `verificationDocuments`: the
+ * counterparty's identity and accreditation paperwork, handed to whoever asked
+ * which buyers matched a listing. `isVerified` is the public form of that fact
+ * and is what a seller actually needs to see; the documents behind it are not
+ * the seller's to read.
+ *
+ * Written as an explicit pick rather than a delete-list so a column ADDED to
+ * the table in future is private by default. That direction matters: an
+ * omission here shows up as a missing field, while an omission from a
+ * blocklist shows up as a leak.
+ */
+export interface PublicInvestorFields {
+  organizationId: number;
+  displayName: string;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  specialties: string[] | null;
+  preferredStates: string[] | null;
+  investmentRange: { min: number; max: number } | null;
+  isVerified: boolean | null;
+  dealsClosed: number | null;
+  reliabilityScore: string | null;
+  rating: string | null;
+  reviewCount: number | null;
+}
+
+export interface BuyerMatch {
+  profile: PublicInvestorFields;
+  score: number;
+  reasons: string[];
+}
+
+function publicInvestorFields(
+  profile: typeof investorProfiles.$inferSelect,
+): PublicInvestorFields {
+  return {
+    organizationId: profile.organizationId,
+    displayName: profile.displayName,
+    bio: profile.bio,
+    location: profile.location,
+    website: profile.website,
+    specialties: profile.specialties ?? null,
+    preferredStates: profile.preferredStates ?? null,
+    investmentRange: profile.investmentRange ?? null,
+    isVerified: profile.isVerified,
+    dealsClosed: profile.dealsClosed,
+    reliabilityScore: profile.reliabilityScore,
+    rating: profile.rating,
+    reviewCount: profile.reviewCount,
+  };
+}
+
 class Matchmaking {
   /**
    * Find matching properties for an investor based on their profile
@@ -149,29 +207,43 @@ class Matchmaking {
    * Find potential buyers for a listing
    */
   async findBuyersForListing(
-    listingId: number
-  ): Promise<any[]> {
+    listingId: number,
+    sellerOrganizationId: number
+  ): Promise<BuyerMatch[]> {
     try {
+      // YOU FIND BUYERS FOR YOUR OWN LISTING. This took a bare listingId and
+      // matched against it for any authenticated caller, so a member of any
+      // organization could enumerate the buyer interest in another tenant's
+      // listing. A listing that is not yours reads as absent.
       const listing = await db.query.marketplaceListings.findFirst({
-        where: eq(marketplaceListings.id, listingId),
+        where: and(
+          eq(marketplaceListings.id, listingId),
+          eq(marketplaceListings.sellerOrganizationId, sellerOrganizationId),
+        ),
       });
 
       if (!listing) {
         return [];
       }
 
-      // Get all investor profiles. investor_profiles has no status column;
+      // Reading every investor profile is CORRECT here and is the point of a
+      // marketplace — the buyers for your listing are, by definition, in other
+      // organizations. What is not correct is handing back the whole row.
+      // investor_profiles has no status column;
       // TODO(tsc): add an activity/status flag to filter active investors.
       const profiles = await db.query.investorProfiles.findMany({});
 
-      const matches = [];
+      const matches: BuyerMatch[] = [];
 
       for (const profile of profiles) {
+        // An org is not a buyer for its own listing.
+        if (profile.organizationId === sellerOrganizationId) continue;
+
         const score = await this.calculateMatchScore(profile, listing);
 
         if (score.score > 60) {
           matches.push({
-            profile,
+            profile: publicInvestorFields(profile),
             score: score.score,
             reasons: score.reasons,
           });
@@ -255,9 +327,9 @@ class Matchmaking {
   /**
    * Notify matched buyers about a new listing
    */
-  async notifyMatchedBuyers(listingId: number): Promise<number> {
+  async notifyMatchedBuyers(listingId: number, sellerOrganizationId: number): Promise<number> {
     try {
-      const matches = await this.findBuyersForListing(listingId);
+      const matches = await this.findBuyersForListing(listingId, sellerOrganizationId);
 
       // In production, would send emails/notifications here
       logger.info(`Would notify ${matches.length} matched buyers for listing ${listingId}`);

@@ -228,11 +228,13 @@ router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response
 router.post('/transactions/complete', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { listingId, salePrice } = req.body;
+    // salePrice is NO LONGER read from the request. The sale price — and with
+    // it the platform fee — comes from the accepted bid, because a caller who
+    // names the price of their own transaction names the fee too.
+    const { listingId } = req.body;
     const transaction = await marketplaceService.completeTransaction(
       listingId,
-      org.id,
-      salePrice
+      org.id
     );
     res.json({ transaction, success: true });
   } catch (error: any) {
@@ -313,7 +315,8 @@ router.get('/matches', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/listings/:id/buyers', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id));
+    const org = req.organization;
+    const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id), org.id);
     res.json({ buyers });
   } catch (error: any) {
     Errors.internal(res, error);

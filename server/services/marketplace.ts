@@ -336,19 +336,22 @@ export class MarketplaceService {
       listing: marketplaceListings,
     })
       .from(marketplaceBids)
-      .leftJoin(marketplaceListings, eq(marketplaceBids.listingId, marketplaceListings.id))
-      .where(eq(marketplaceBids.id, bidId))
+      // INNER join, and the seller predicate is IN THE WHERE rather than a JS
+      // comparison afterwards: the old shape read another organization's bid
+      // row into memory and only then decided the caller had no right to it.
+      // A row you may not act on is a row you should not have fetched.
+      .innerJoin(marketplaceListings, eq(marketplaceBids.listingId, marketplaceListings.id))
+      .where(and(
+        eq(marketplaceBids.id, bidId),
+        eq(marketplaceListings.sellerOrganizationId, sellerOrgId),
+      ))
       .limit(1);
-    
+
     if (results.length === 0) {
-      throw new Error("Bid not found");
+      throw new Error("Bid not found, or your organization does not own the listing it was placed on");
     }
-    
+
     const { bid, listing } = results[0];
-    
-    if (!listing || listing.sellerOrganizationId !== sellerOrgId) {
-      throw new Error("You don't have permission to respond to this bid");
-    }
     
     if (bid.status !== "pending") {
       throw new Error("Bid is no longer pending");
@@ -365,13 +368,19 @@ export class MarketplaceService {
           counterOffer: data?.counterOffer?.toString(),
           respondedAt: new Date(),
         })
-        .where(eq(marketplaceBids.id, bidId));
+        .where(and(
+          eq(marketplaceBids.id, bidId),
+          eq(marketplaceBids.listingId, listing.id),
+        ));
 
       // If accepted, update listing status and create deal room
       if (action === "accept") {
         await tx.update(marketplaceListings)
           .set({ status: "under_offer" })
-          .where(eq(marketplaceListings.id, listing.id));
+          .where(and(
+            eq(marketplaceListings.id, listing.id),
+            eq(marketplaceListings.sellerOrganizationId, sellerOrgId),
+          ));
 
         // Create deal room inside the same transaction
         await tx.insert(dealRooms).values({
@@ -448,20 +457,61 @@ export class MarketplaceService {
   /**
    * Complete a marketplace transaction
    */
+  /**
+   * Record a completed sale.
+   *
+   * AUTHORITY COMES FROM AN ACCEPTED BID, not from the request.
+   *
+   * This used to take `(listingId, buyerOrgId, salePrice)`, read the listing by
+   * id with no ownership or party check, and then mark it sold, write a
+   * transaction row and close the deal room. Any authenticated member of any
+   * organization could therefore mark ANOTHER TENANT'S listing sold — at a
+   * price of their choosing, which also drove the platform fee — and close the
+   * counterparties' deal room with it. Nothing established that the caller had
+   * ever bid, that a bid had been accepted, or that the listing was even under
+   * offer. It was latent only because the marketplace mount fails closed behind
+   * `requireLadderFlag("feature_marketplace")` (2026-09-03); the flag is a door,
+   * not an authority check, and this is the authority check.
+   *
+   * An ACCEPTED bid is the one artefact that establishes both parties and the
+   * agreed amount: the seller created the listing, the buyer bid on it, and the
+   * seller accepted through respondToBid. So the buyer is the bid's own
+   * bidderOrganizationId, the seller is the listing's sellerOrganizationId, and
+   * the sale price is the accepted amount — the counter-offer if the seller
+   * countered and the buyer took it, otherwise the bid. The caller no longer
+   * supplies the price at all, which is what made the platform fee a number the
+   * caller chose.
+   */
   async completeTransaction(
     listingId: number,
-    buyerOrgId: number,
-    salePrice: number
+    buyerOrgId: number
   ) {
-    const listing = await db.select()
-      .from(marketplaceListings)
-      .where(eq(marketplaceListings.id, listingId))
+    const [accepted] = await db.select({
+      bid: marketplaceBids,
+      listing: marketplaceListings,
+    })
+      .from(marketplaceBids)
+      .innerJoin(marketplaceListings, eq(marketplaceBids.listingId, marketplaceListings.id))
+      .where(and(
+        eq(marketplaceBids.listingId, listingId),
+        eq(marketplaceBids.bidderOrganizationId, buyerOrgId),
+        eq(marketplaceBids.status, "accepted"),
+      ))
+      .orderBy(desc(marketplaceBids.respondedAt))
       .limit(1);
-    
-    if (listing.length === 0) {
-      throw new Error("Listing not found");
+
+    if (!accepted) {
+      throw new Error(
+        "No accepted bid from your organization on this listing — a sale can only be completed by the buyer whose bid the seller accepted",
+      );
     }
-    
+
+    const listing = [accepted.listing];
+    const salePrice = Number(accepted.bid.counterOffer ?? accepted.bid.bidAmount);
+    if (!Number.isFinite(salePrice) || salePrice <= 0) {
+      throw new Error("The accepted bid carries no usable amount");
+    }
+
     const platformFeePercent = 1.5;
     const platformFeeCents = Math.round(salePrice * (platformFeePercent / 100) * 100);
 
@@ -485,13 +535,19 @@ export class MarketplaceService {
         closingDate: new Date(),
       }).returning();
 
-      // Update listing
+      // Update listing. The seller predicate is redundant given the join
+      // above and deliberately present anyway: a mutation that names only an
+      // id is indistinguishable from one that forgot to check, both to the
+      // next reader and to the tenancy gate.
       await tx.update(marketplaceListings)
         .set({
           status: "sold",
           soldAt: new Date(),
         })
-        .where(eq(marketplaceListings.id, listingId));
+        .where(and(
+          eq(marketplaceListings.id, listingId),
+          eq(marketplaceListings.sellerOrganizationId, accepted.listing.sellerOrganizationId),
+        ));
 
       // Close deal room
       await tx.update(dealRooms)
@@ -605,18 +661,21 @@ export class MarketplaceService {
     return updated;
   }
   
-  /**
-   * Add property to favorites
-   */
-  async toggleFavorite(organizationId: number, listingId: number) {
-    // In production, would use a separate favorites table
-    // For now, just increment favorites count
-    await db.update(marketplaceListings)
-      .set({ favorites: sql`${marketplaceListings.favorites} + 1` })
-      .where(eq(marketplaceListings.id, listingId));
-    
-    return { success: true };
-  }
+  // toggleFavorite was DELETED 2026-09-04. It took an organizationId and
+  // ignored it, incremented `marketplace_listings.favorites` on ANY listing by
+  // bare id, and returned `{ success: true }` — so it was not a toggle (it only
+  // ever incremented), not per-org (its own comment said "in production, would
+  // use a separate favorites table"), and not authorised (any org could inflate
+  // any tenant's favourite count, a number the listing surface displays). It
+  // had no route and no caller anywhere in server/, client/ or tests/; it
+  // surfaced when marketplace_listings entered the tenancy gate's population on
+  // 2026-09-04 — its tenant key is `seller_organization_id`, which neither the
+  // `organization_id` nor the `org_id` spelling had ever matched.
+  //
+  // Favourites are a real feature when they are per-viewer and reversible, and
+  // that needs a table. Deleting the stub rather than scoping it keeps the
+  // absence honest: the next author builds the feature instead of inheriting a
+  // counter that means nothing.
   
   /**
    * Get marketplace statistics
@@ -742,9 +801,16 @@ export class MarketplaceService {
       throw new Error("Listing not found or you don't have access");
     }
 
+    // The guard above already proved ownership; naming the seller here too
+    // closes the window between the two statements and, just as importantly,
+    // makes the mutation self-evidently scoped to a reader who arrives at this
+    // line without the guard in view.
     const [updated] = await db.update(marketplaceListings)
       .set({ status: "cancelled", updatedAt: new Date() })
-      .where(eq(marketplaceListings.id, listingId))
+      .where(and(
+        eq(marketplaceListings.id, listingId),
+        eq(marketplaceListings.sellerOrganizationId, organizationId),
+      ))
       .returning();
 
     return updated;
@@ -790,7 +856,10 @@ export class MarketplaceService {
         isPremiumPlacement: true,
         premiumExpiresAt: expiresAt,
       })
-      .where(eq(marketplaceListings.id, listingId));
+      .where(and(
+        eq(marketplaceListings.id, listingId),
+        eq(marketplaceListings.sellerOrganizationId, organizationId),
+      ));
     
     // Deduct premium listing credits (5000 cents = $50 equivalent)
     const PREMIUM_COST_CENTS = 5000;
@@ -806,7 +875,10 @@ export class MarketplaceService {
         // Rollback if insufficient credits
         await db.update(marketplaceListings)
           .set({ isPremiumPlacement: false, premiumExpiresAt: null })
-          .where(eq(marketplaceListings.id, listingId));
+          .where(and(
+            eq(marketplaceListings.id, listingId),
+            eq(marketplaceListings.sellerOrganizationId, organizationId),
+          ));
         throw new Error('Insufficient credits for premium placement. Cost: 5,000 credits.');
       }
     } catch (err: any) {

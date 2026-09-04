@@ -353,7 +353,7 @@ const MIN_ORG_SCOPED_TABLES = 270; // live 404 after the org_id widening
  * claim needs a floor per member, or the member is free to disappear.
  * Measured 2026-09-04: organizationId 364, orgId 40.
  */
-const MIN_TENANT_KEY_TABLES = { organizationId: 270, orgId: 28 };
+const MIN_TENANT_KEY_TABLES = { organizationId: 270, orgId: 28, orgForeignKey: 2 };
 const MIN_CONFORMING_TABLES = 160; // live 217
 
 // ----------------------------------------------------------------------------
@@ -532,16 +532,48 @@ const TENANT_KEY_SPELLINGS = [
   { accessor: "orgId", column: "org_id" },
 ];
 
-function tenantKeyAccessor(body) {
-  // Look for a property declaration like
-  //   organizationId: integer("organization_id")…
-  //   orgId: uuid("org_id")…
-  // Robust to whitespace + line breaks.
+/**
+ * A column of ANY NAME carrying a NOT NULL foreign key to organizations.id.
+ *
+ * Added 2026-09-04, after the two name arms above still left three tables out:
+ * the marketplace keys its tenant by ROLE — `sellerOrganizationId`,
+ * `buyerOrganizationId`, `bidderOrganizationId` — which no spelling list can
+ * anticipate. Asking about the RELATIONSHIP instead of the name closes the
+ * class rather than enumerating it.
+ *
+ * NOT NULL is load-bearing and was added after measuring. Without it the arm
+ * also swallows `cached_lookups.first_fetched_by` and
+ * `county_discovery_queue.first_requested_by`: nullable PROVENANCE columns
+ * ("the org that first asked") on a shared provider cache and a platform crawl
+ * queue, where an org-leading index would serve no query and no future
+ * partition. A nullable org FK records who touched a row; a NOT NULL one says
+ * whose the row IS. The name arms stay unconditioned — a column explicitly
+ * NAMED organization_id declares intent regardless of nullability — but this
+ * arm INFERS tenancy from a relationship, and an inference should be
+ * conservative.
+ */
+const ORG_FOREIGN_KEY_ACCESSOR_RE =
+  /\b([A-Za-z0-9_]+)\s*:\s*[a-zA-Z_]+\s*\(\s*["'`][a-z0-9_]+["'`]\s*\)[^\n]*references\(\s*\(\s*\)\s*=>\s*organizations\.id\s*\)[^\n]*\.notNull\(\)/g;
+
+/**
+ * Returns EVERY accessor this table could legitimately lead an index with.
+ *
+ * A list, not one name, because `marketplace_transactions` carries TWO tenant
+ * keys — seller and buyer — and either is a defensible leading column for a
+ * table whose rows belong to both parties. Demanding a specific one would be
+ * the gate inventing a data-model decision it has no basis for.
+ */
+function tenantKeyAccessors(body) {
+  const found = [];
   for (const { accessor, column } of TENANT_KEY_SPELLINGS) {
     const re = new RegExp(`\\b${accessor}\\s*:\\s*[a-zA-Z_]+\\s*\\(\\s*["'\`]${column}["'\`]`);
-    if (re.test(body)) return accessor;
+    if (re.test(body)) found.push(accessor);
   }
-  return null;
+  if (found.length > 0) return found;
+  ORG_FOREIGN_KEY_ACCESSOR_RE.lastIndex = 0;
+  let m;
+  while ((m = ORG_FOREIGN_KEY_ACCESSOR_RE.exec(body)) !== null) found.push(m[1]);
+  return found;
 }
 
 /**
@@ -596,15 +628,19 @@ function main() {
     for (const d of desyncs) parserDesyncs.push({ ...d, file: rel });
     for (const { tableName, body, line } of blocks) {
       scannedTables += 1;
-      const tenantKey = tenantKeyAccessor(body);
-      if (!tenantKey) continue;
+      const tenantKeys = tenantKeyAccessors(body);
+      if (tenantKeys.length === 0) continue;
       orgScopedTables += 1;
-      orgScopedByKey[tenantKey] = (orgScopedByKey[tenantKey] ?? 0) + 1;
+      const bucket = TENANT_KEY_SPELLINGS.some((sp) => sp.accessor === tenantKeys[0])
+        ? tenantKeys[0]
+        : "orgForeignKey";
+      orgScopedByKey[bucket] = (orgScopedByKey[bucket] ?? 0) + 1;
       const leads = extractIndexLeadingColumns(body);
-      // Ask for the SPELLING THIS TABLE USED. A table keyed on `orgId`
+      // Ask for the SPELLINGS THIS TABLE USED. A table keyed on `orgId`
       // indexes `table.orgId`; looking for `table.organizationId` there would
-      // report all 39 of them as offenders on the gate's own vocabulary.
-      const leadsOnOrg = leads.includes(tenantKey);
+      // report all 40 of them as offenders on the gate's own vocabulary — and
+      // a table with two role-named keys conforms by leading with either.
+      const leadsOnOrg = tenantKeys.some((k) => leads.includes(k));
       if (leadsOnOrg) {
         conformingTables += 1;
         continue;
@@ -666,6 +702,12 @@ function main() {
       MIN_TENANT_KEY_TABLES.orgId,
       "40 on 2026-09-04",
     ],
+    [
+      "org-scoped tables keyed by a NOT NULL org FK under another name",
+      orgScopedByKey.orgForeignKey ?? 0,
+      MIN_TENANT_KEY_TABLES.orgForeignKey,
+      "3 on 2026-09-04",
+    ],
   ];
   for (const [label, observed, floor, measured] of floors) {
     if (observed < floor) {
@@ -711,7 +753,8 @@ function main() {
       `(floor ${MIN_SCHEMA_FILES}), pgTable blocks ${scannedTables} (floor ${MIN_PGTABLE_BLOCKS}), ` +
       `org-scoped ${orgScopedTables} (floor ${MIN_ORG_SCOPED_TABLES}; ` +
       `organizationId ${orgScopedByKey.organizationId ?? 0}/${MIN_TENANT_KEY_TABLES.organizationId}, ` +
-      `orgId ${orgScopedByKey.orgId ?? 0}/${MIN_TENANT_KEY_TABLES.orgId}), ` +
+      `orgId ${orgScopedByKey.orgId ?? 0}/${MIN_TENANT_KEY_TABLES.orgId}, ` +
+      `org-FK-by-other-name ${orgScopedByKey.orgForeignKey ?? 0}/${MIN_TENANT_KEY_TABLES.orgForeignKey}), ` +
       `conforming ${conformingTables} (floor ${MIN_CONFORMING_TABLES}); ` +
       `anchors found ${ANCHOR_SCHEMA_FILES.length - missingAnchors.length}/${ANCHOR_SCHEMA_FILES.length}; ` +
       `parser desyncs ${parserDesyncs.length} (must be 0)`,
