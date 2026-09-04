@@ -227,6 +227,21 @@ export function DecisionsInbox() {
   const items = data?.items ?? [];
   const pending = data?.totalPending ?? 0;
 
+  // Declared ABOVE the loading early-return: a hook after a conditional
+  // return changes the hook count the moment loading finishes, which is a
+  // rules-of-hooks violation React can throw on. eslint-plugin-react-hooks
+  // was registered as a no-op stub, so nothing reported it (2026-09-04).
+  const purgeMutation = useMutation({
+    mutationFn: (vars: { olderThanDays: number }) =>
+      apiRequest("POST", "/api/founder/intelligence/decisions-inbox/purge", {
+        olderThanDays: vars.olderThanDays,
+        statuses: ["pending", "deferred"],
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
+    },
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -242,16 +257,6 @@ export function DecisionsInbox() {
     );
   }
 
-  const purgeMutation = useMutation({
-    mutationFn: (vars: { olderThanDays: number }) =>
-      apiRequest("POST", "/api/founder/intelligence/decisions-inbox/purge", {
-        olderThanDays: vars.olderThanDays,
-        statuses: ["pending", "deferred"],
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
-    },
-  });
 
   return (
     <Card>

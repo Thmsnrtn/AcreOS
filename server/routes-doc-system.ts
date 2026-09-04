@@ -98,7 +98,18 @@ async function resolveContextVariables(
 
       // Seller
       if (prop.sellerId) {
-        const [seller] = await db.select().from(leads).where(eq(leads.id, prop.sellerId)).limit(1);
+        // TENANT SCOPE (2026-09-04): keyed on prop.sellerId ALONE. The id is
+        // a foreign key on a property row, and PUT /api/properties/:id spreads
+        // req.body into the update, so a customer could point their OWN
+        // property's sellerId at ANOTHER organization's lead and then render a
+        // document — lifting that lead's name, email and phone into the
+        // output. Two steps, both available to any signed-in customer. The
+        // org predicate makes the second step return nothing.
+        const [seller] = await db
+          .select()
+          .from(leads)
+          .where(and(eq(leads.id, prop.sellerId), eq(leads.organizationId, prop.organizationId)))
+          .limit(1);
         if (seller) {
           ctx['seller_name'] = [seller.firstName, seller.lastName].filter(Boolean).join(' ');
           ctx['seller_first_name'] = seller.firstName ?? '';
@@ -110,7 +121,12 @@ async function resolveContextVariables(
 
       // Buyer
       if (prop.buyerId) {
-        const [buyer] = await db.select().from(leads).where(eq(leads.id, prop.buyerId)).limit(1);
+        // Same shape, same fix as the seller read above.
+        const [buyer] = await db
+          .select()
+          .from(leads)
+          .where(and(eq(leads.id, prop.buyerId), eq(leads.organizationId, prop.organizationId)))
+          .limit(1);
         if (buyer) {
           ctx['buyer_name'] = [buyer.firstName, buyer.lastName].filter(Boolean).join(' ');
           ctx['buyer_first_name'] = buyer.firstName ?? '';

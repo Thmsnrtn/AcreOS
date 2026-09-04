@@ -132,13 +132,20 @@ describe("a learned trust score does not replace the founder's placement", () =>
     expect(res.effectiveLevel).not.toBe(1);
   });
 
+  // An explicit timeout, because this case is genuinely slow rather than
+  // hung: it re-imports the authority gate once per FOUNDER_ONLY action and
+  // measures ~25s alone against the 30s global (vitest.config.ts:26). That
+  // left ~5s of headroom, which parallel workers consume — it timed out in a
+  // full `--maxWorkers=3` run on 2026-09-04 and passed in isolation minutes
+  // later. A test whose result depends on what else is running is not a
+  // signal, so the limit now states what the case actually needs.
   it("never promotes a founder-only action however high the trust score", async () => {
     for (const action of FOUNDER_ONLY) {
       const res = await check(action);
       expect(res.effectiveLevel, `${action} was promoted on trust`).not.toBe(0);
       expect(res.effectiveLevel, `${action} was promoted on trust`).not.toBe(1);
     }
-  });
+  }, 90_000);
 });
 
 describe("a delegation does not convey an action nobody classified", () => {

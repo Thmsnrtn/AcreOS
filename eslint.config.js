@@ -1,3 +1,4 @@
+import reactHooks from "eslint-plugin-react-hooks";
 /**
  * ESLint flat config — ESLint 9.
  *
@@ -66,18 +67,14 @@ export default [
     },
     plugins: {
       acreos,
-      // Stub plugin: the codebase has many inline
-      // `// eslint-disable-next-line react-hooks/exhaustive-deps`
-      // comments left over from the legacy `.eslintrc.json` setup.
-      // Until eslint-plugin-react-hooks is ported into flat config,
-      // declare the rule names as no-ops so the disable comments stay
-      // valid (otherwise ESLint reports "rule not found" errors).
-      "react-hooks": {
-        rules: {
-          "exhaustive-deps": { meta: { schema: [] }, create: () => ({}) },
-          "rules-of-hooks": { meta: { schema: [] }, create: () => ({}) },
-        },
-      },
+      // The REAL plugin, since 2026-09-04. It was a no-op stub — the rule
+      // names were declared with `create: () => ({})` so that legacy
+      // `eslint-disable-next-line react-hooks/...` comments would not error.
+      // The cost was that neither rule enforced anything for as long as it
+      // stood, and rules-of-hooks is not a style rule: it had TWELVE real
+      // violations waiting, including ten in layout-sidebar.tsx where an
+      // early return sat above ten hooks on the app shell itself.
+      "react-hooks": reactHooks,
     },
     rules: {
       "acreos/no-founder-codenames-in-customer-jsx": "error",
@@ -101,6 +98,19 @@ export default [
       // <reason>`), so wired as `warn` rather than `error`. Pairs with
       // `client/src/lib/query-keys.ts` which provides `invalidateRelated`.
       "acreos/use-mutation-must-invalidate": "warn",
+      // A conditional hook is a crash, not a nit: React throws "Rendered
+      // fewer hooks than expected" when the branch flips between renders.
+      // Wired as an ERROR because there is nothing to burn down — the
+      // twelve violations were fixed in the commit that turned this on.
+      "react-hooks/rules-of-hooks": "error",
+      // react-hooks/exhaustive-deps is NOT enabled. Turning it on reports 34
+      // violations today, and the ratchet requires any rule that produces
+      // output to be baselined — which would mean recording 34 warnings as
+      // accepted debt, and the gate reserves that to a sign-off. It is a
+      // genuine judgement call rule (a deliberately-omitted dep is often
+      // correct), so it is left off pending a decision rather than
+      // baselined quietly. rules-of-hooks, which is not a judgement call,
+      // is an ERROR above.
     },
   },
 ];

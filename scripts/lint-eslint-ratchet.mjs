@@ -205,6 +205,7 @@ const CANARY_FIXTURE = [
   "// Every line below violates exactly one baselined rule, on purpose.",
   "export function EslintRatchetCanary() {",
   "  const m = useMutation({ mutationFn: async () => {} });",
+  "  if (m) { useEffect(() => {}, []); }",
   '  const codename = "Atlas";',
   '  const cls = "bg-red-500";',
   "  return (",
@@ -224,6 +225,14 @@ const CANARY_FIXTURE = [
  * expectation here is a rule whose count of 0 is unfalsifiable.
  */
 const CANARY_EXPECTATIONS = {
+  // react-hooks was a NO-OP STUB in eslint.config.js until 2026-09-04 — the
+  // rule names existed so legacy disable comments would not error, and
+  // neither rule enforced anything. Twelve real violations were waiting, ten
+  // of them on the app shell where an early return sat above ten hooks. This
+  // canary is the proof the rule is now ALIVE: a count of 0 for a stubbed
+  // rule is exactly as green as a count of 0 for an enforced one.
+  "react-hooks/rules-of-hooks":
+    "useEffect called inside an if — a conditional hook",
   "acreos/use-mutation-must-invalidate":
     "useMutation({ mutationFn }) with no onSuccess/onSettled/onMutate",
   "acreos/no-founder-codenames-in-customer-jsx":

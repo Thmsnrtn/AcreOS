@@ -885,17 +885,25 @@ export function Sidebar() {
   // unaffected. We branch here (top of Sidebar) so the rest of the function
   // is unchanged for the false case (and for non-founder users).
   const newFounderUI = useNewFounderUI();
-  if (isFounder && newFounderUI && location.startsWith("/founder")) {
-    return (
-      <NewFounderSidebar
-        location={location}
-        isCollapsed={isCollapsed}
-        setIsCollapsed={setIsCollapsed}
-        brandName={brandName}
-        onLogout={() => logout()}
-      />
-    );
-  }
+  // The DECISION is made here; the RETURN happens after every hook below.
+  //
+  // This used to return early, with ten more hooks after it — useContextProfile,
+  // two useState, two useEffect, useQueryClient, useQuery, useWebSocketChannel,
+  // usePaxNeedsYouCount and useCallback. That is a rules-of-hooks violation with
+  // real teeth, because the condition is not stable for the life of the
+  // component: `isFounder` and `newFounderUI` both resolve ASYNCHRONOUSLY, so a
+  // founder's first render can take the long branch and the next one the short
+  // branch, and React throws "Rendered fewer hooks than expected" on the app
+  // shell itself. It is masked today only because PageShell (and therefore this
+  // component) unmounts and remounts on every route change — which means the
+  // masking disappears the moment anyone makes the shell persistent, a change
+  // the frontend review recommends on its own merits. Two findings that are
+  // each other's fuse (2026-09-04).
+  //
+  // eslint-plugin-react-hooks was registered as a NO-OP STUB in
+  // eslint.config.js, so neither rules-of-hooks nor exhaustive-deps has ever
+  // reported anything here.
+  const renderFounderSidebar = isFounder && newFounderUI && location.startsWith("/founder");
 
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const { investorType } = useContextProfile();
@@ -1047,6 +1055,19 @@ export function Sidebar() {
     const apiRoute = routePrefetchMap[href];
     if (apiRoute) prefetchRoute(apiRoute);
   }, []);
+
+  // Every hook above has now run unconditionally. Branch here.
+  if (renderFounderSidebar) {
+    return (
+      <NewFounderSidebar
+        location={location}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        brandName={brandName}
+        onLogout={() => logout()}
+      />
+    );
+  }
 
   const toggleModule = (id: string) => {
     setExpandedModules((prev) => {

@@ -967,31 +967,49 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const body = req.body;
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
+      const { eq, and } = await import("drizzle-orm");
 
       const [existing] = await database
         .select()
         .from(investorProfiles)
         .where(eq(investorProfiles.organizationId, org.id));
 
+      // A profile's tenant and owner are not editable by the caller.
+      // `...body` was spread straight into the update, and — worse — into the
+      // insert AFTER `organizationId: org.id`, so a request carrying
+      // `organizationId` OVERRODE the server's own value and filed the profile
+      // under another organization. Same class as the campaign-reassignment
+      // hole fixed in 6c8bd244 (2026-09-04).
+      const { organizationId: _ignoredOrgId, id: _ignoredId, userId: _ignoredUserId, ...safeBody } =
+        (body ?? {}) as Record<string, unknown>;
+
       if (existing) {
         const [updated] = await database
           .update(investorProfiles)
-          .set({ ...body, updatedAt: new Date() })
-          .where(eq(investorProfiles.id, existing.id))
+          .set({ ...safeBody, updatedAt: new Date() })
+          .where(
+            and(
+              eq(investorProfiles.id, existing.id),
+              eq(investorProfiles.organizationId, org.id),
+            ),
+          )
           .returning();
         res.json({ profile: updated });
       } else {
         const [created] = await database
           .insert(investorProfiles)
+          // The server's own fields come AFTER the spread, so they win. The
+          // cast is only to satisfy Drizzle's overload on a widened body — it
+          // does not reintroduce the hole, because `safeBody` no longer
+          // carries organizationId, id or userId at all.
           .values({
+            ...safeBody,
             organizationId: org.id,
             userId: user?.id || "unknown",
-            ...body,
             verificationStatus: "pending",
             createdAt: new Date(),
             updatedAt: new Date(),
-          })
+          } as unknown as typeof investorProfiles.$inferInsert)
           .returning();
         res.json({ profile: created });
       }

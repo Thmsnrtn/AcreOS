@@ -440,7 +440,11 @@ describe("approve — executes the frozen row exactly once (idempotency)", () =>
       execute,
     });
 
+    // Narrow before reading `error` — it exists only on this branch of
+    // ApprovalOutcome, and a test that does not type-check can assert on a
+    // field that is not there and pass forever.
     expect(result.outcome).toBe("execution_failed");
+    if (result.outcome !== "execution_failed") throw new Error("unreachable");
     expect(result.error).toContain("SES client blew up");
     // Back in the queue, unclaimed, with nothing recorded as sent.
     expect(pending()[0].status).toBe("pending");

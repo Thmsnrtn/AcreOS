@@ -222,7 +222,7 @@ describe("the debt register shrinks", () => {
   });
 });
 
-describe("the six routes that were live", () => {
+describe("the routes that were live", () => {
   const source = (r: string) => fs.readFileSync(path.join(ROOT, r), "utf8");
 
   it("instant-deal-hunt scopes its lead pull to the caller's organization", () => {
@@ -262,6 +262,44 @@ describe("the six routes that were live", () => {
     const call = src.slice(at, at + 260);
     expect(call).toContain("getOrganizationId(");
     expect(call).toContain("getUserId(");
+  });
+
+  it("a generated document cannot lift another org's seller or buyer", () => {
+    // Found 2026-09-04 by widening the tenancy lint's population to the whole
+    // server. `from(leads).where(eq(leads.id, prop.sellerId))` carried no
+    // tenant term, and the id is a foreign key on a property row that
+    // PUT /api/properties/:id spreads req.body into — so a customer could
+    // point their OWN property at another organization's lead and render its
+    // name, email and phone into a document. Two steps, both available to any
+    // signed-in customer.
+    const src = source("server/routes-doc-system.ts");
+    // Anchor on the QUERY, not on `prop.sellerId)` — that substring also
+    // appears in the `if (prop.sellerId)` guard a few lines above, and
+    // anchoring there measured the wrong window entirely.
+    const reads = [...src.matchAll(/\.from\(leads\)[\s\S]{0,320}?\.limit\(1\)/g)].map((m) => m[0]);
+    expect(reads.length, "the seller/buyer lead reads were not found").toBe(2);
+    for (const read of reads) {
+      expect(read, "a lead read in the document context is not tenant-scoped").toContain(
+        "eq(leads.organizationId, prop.organizationId)",
+      );
+    }
+  });
+
+  it("an investor profile cannot be filed under, or moved to, another organization", () => {
+    // The insert spread `...body` AFTER `organizationId: org.id`, so a request
+    // carrying organizationId overrode the server's own value. Same class as
+    // the campaign-reassignment hole above.
+    const src = source("server/routes-misc.ts");
+    const at = src.indexOf('api.post("/api/investor-profiles"');
+    expect(at).toBeGreaterThan(-1);
+    const handler = src.slice(at, at + 2600);
+    // The protected keys are stripped from the body before it is spread...
+    expect(handler).toMatch(/organizationId: _ignoredOrgId[\s\S]*?\.\.\.safeBody/);
+    // ...and the server's own value is written after the spread, not before.
+    const spreadAt = handler.indexOf("...safeBody,\n            organizationId: org.id");
+    expect(spreadAt, "server-owned fields must come after the spread").toBeGreaterThan(-1);
+    // The update is tenant-scoped too.
+    expect(handler).toContain("eq(investorProfiles.organizationId, org.id)");
   });
 
   it("dismissing a Pax nudge is tenant-scoped", () => {

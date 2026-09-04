@@ -74,9 +74,17 @@ const IS_E2E_TEST_AUTH =
     ?.E2E_TEST_AUTH === "1";
 
 export function useAuth() {
+  // IS_E2E_TEST_AUTH is a MODULE-level constant read once from window.__ENV__,
+  // so this branch is fixed for the life of the process and the hook order
+  // never changes between renders. ClerkProvider is genuinely not mounted in
+  // E2E (see main.tsx), so calling useClerk() there would throw. The lint
+  // cannot see that the condition is constant — the comment above this
+  // function has said so since it was written. This is the one suppression in
+  // the file, and it names the reason rather than the rule.
   const { signOut } = IS_E2E_TEST_AUTH
     ? { signOut: async () => {} }
-    : useClerk();
+    : // eslint-disable-next-line react-hooks/rules-of-hooks -- constant branch, see above
+      useClerk();
   const queryClient = useQueryClient();
 
   // In E2E the API-based session is authoritative; force the query on.
