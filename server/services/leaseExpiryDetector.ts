@@ -28,6 +28,7 @@
 import { and, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { rentalLeases, eventMeshEvents } from "@shared/schema";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import { eventMeshPublisher } from "./eventMeshPublisher";
 import {
@@ -145,7 +146,17 @@ export async function runLeaseExpiryScan(now: Date = new Date()): Promise<LeaseE
     const horizon = new Date(today.getTime() + RENEWAL_WINDOW_DAYS * DAY_MS);
     const todayIso = today.toISOString().slice(0, 10);
     const horizonIso = horizon.toISOString().slice(0, 10);
-    const rows = await db
+    // PLATFORM SWEEP, said out loud. This is a daily scheduled job
+    // (server/jobs/expiryDetectorJobs.ts) that reads EVERY organization's
+    // active leases in one pass and publishes a per-org mesh event for each
+    // finding — `organizationId` is selected so every downstream event is
+    // attributed correctly. A per-org predicate here would make the job
+    // scan nothing. What it lacked was any way to tell that from a
+    // forgotten one, which is why it sat in the tenancy register as an
+    // unexplained cross-org read.
+    const rows = await unscopedForPlatformOps(
+      "lease expiry daily sweep: a scheduled platform job that scans every organization's active leases and publishes one per-org mesh event per finding",
+    )
       .select({
         id: rentalLeases.id,
         organizationId: rentalLeases.organizationId,
@@ -184,7 +195,17 @@ export async function runLeaseExpiryScan(now: Date = new Date()): Promise<LeaseE
   if (findings.length > 0) {
     try {
       const keys = findings.map((f) => f.dedupeKey);
-      const existing = await db
+      // READ AND VERIFIED 2026-09-04, because "reads the mesh ledger with no
+      // org predicate" is alarming until you look at the KEY. Every dedupeKey
+      // is `lease-expiry:${lease.id}:${endDate}` and `rental_leases.id` is a
+      // serial PRIMARY KEY — globally unique, not per-org. So this asks "which
+      // of MY OWN keys are already on the channel", a cross-org row can only
+      // match by carrying an id that cannot collide, and the SELECT returns
+      // nothing but the keys the caller already holds. It cannot leak, and it
+      // cannot false-dedupe.
+      const existing = await unscopedForPlatformOps(
+        "lease expiry dedupe ledger: matches globally-unique lease-id keys the caller already holds against the mesh channel, returning only those keys",
+      )
         .select({ key: sql<string>`${eventMeshEvents.payload} ->> 'dedupeKey'` })
         .from(eventMeshEvents)
         .where(

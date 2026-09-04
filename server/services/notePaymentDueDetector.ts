@@ -23,6 +23,7 @@
 import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { eventMeshEvents, notes } from "@shared/schema";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
 import { eventMeshPublisher } from "./eventMeshPublisher";
@@ -171,7 +172,13 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
   let findings: PaymentDueFinding[] = [];
   try {
     const horizon = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * DAY_MS);
-    const rows = await db
+    // PLATFORM SWEEP, said out loud — same shape as leaseExpiryDetector. A
+    // daily scheduled job (server/jobs/expiryDetectorJobs.ts) reads EVERY
+    // organization's active notes and publishes a per-org mesh event per
+    // finding. A per-org predicate here would make the job scan nothing.
+    const rows = await unscopedForPlatformOps(
+      "note payment-due daily sweep: a scheduled platform job that scans every organization's active notes and publishes one per-org mesh event per finding",
+    )
       .select({ id: notes.id, organizationId: notes.organizationId, nextPaymentDate: notes.nextPaymentDate })
       .from(notes)
       .where(and(eq(notes.status, "active"), isNull(notes.deletedAt), lte(notes.nextPaymentDate, horizon)));
@@ -195,7 +202,15 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
   if (findings.length > 0) {
     try {
       const keys = findings.map((f) => f.dedupeKey);
-      const existing = await db
+      // READ AND VERIFIED 2026-09-04. Every dedupeKey is
+      // `note-payment:${note.id}:${dueDate}:${classification}` and `notes.id`
+      // is a serial PRIMARY KEY — globally unique, not per-org — so this asks
+      // "which of MY OWN keys are already on the channel". A cross-org row can
+      // only match by carrying an id that cannot collide, and the SELECT
+      // returns nothing but keys the caller already holds.
+      const existing = await unscopedForPlatformOps(
+        "note payment dedupe ledger: matches globally-unique note-id keys the caller already holds against the mesh channel, returning only those keys",
+      )
         .select({ key: sql<string>`${eventMeshEvents.payload} ->> 'dedupeKey'` })
         .from(eventMeshEvents)
         .where(
@@ -277,7 +292,9 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
   let balloonRows: NoteBalloonRow[] = [];
   try {
     const balloonHorizon = new Date(now.getTime() + BALLOON_WINDOW_DAYS * DAY_MS);
-    balloonRows = await db
+    balloonRows = await unscopedForPlatformOps(
+      "balloon-payment daily sweep: the same scheduled platform job, scanning every organization's notes for an approaching balloon date",
+    )
       .select({
         id: notes.id,
         organizationId: notes.organizationId,
@@ -320,7 +337,15 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
     let alreadyBallooned: Set<string>;
     try {
       const keys = balloonRows.map(balloonKey);
-      const existing = await db
+      // READ AND VERIFIED 2026-09-04. Every dedupeKey is
+      // `note-payment:${note.id}:${dueDate}:${classification}` and `notes.id`
+      // is a serial PRIMARY KEY — globally unique, not per-org — so this asks
+      // "which of MY OWN keys are already on the channel". A cross-org row can
+      // only match by carrying an id that cannot collide, and the SELECT
+      // returns nothing but keys the caller already holds.
+      const existing = await unscopedForPlatformOps(
+        "note payment dedupe ledger: matches globally-unique note-id keys the caller already holds against the mesh channel, returning only those keys",
+      )
         .select({ key: sql<string>`${eventMeshEvents.payload} ->> 'dedupeKey'` })
         .from(eventMeshEvents)
         .where(

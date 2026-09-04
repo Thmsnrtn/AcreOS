@@ -1934,6 +1934,13 @@ const wideningTriagedCount = Object.keys(ROUTE_WIDENING._TRIAGED ?? {}).filter(
 const wideningSeen = new Set();
 
 const RULE3_BASELINE = new Set([
+  // leaseExpiryDetector::rentalLeases and notePaymentDueDetector::notes were
+  // REMOVED 2026-09-04 — fixed, not re-baselined. Both are daily SCHEDULED
+  // PLATFORM JOBS that sweep every organization's leases/notes and publish a
+  // per-org mesh event per finding, so a per-org predicate would make them scan
+  // nothing. They now say that through unscopedForPlatformOps(reason) instead of
+  // reading as forgotten predicates, and the gate reported these entries stale
+  // on the next run — which is the register confirming the change.
   "server/services/achAutopay.ts::postReversal::payments",
   "server/services/achAutopay.ts::postSettlement::payments",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup::achMandates",
@@ -1973,9 +1980,7 @@ const RULE3_BASELINE = new Set([
   "server/services/lcsCalibrator.ts::runLcsCalibrationSweep::deals",
   "server/services/leadScoreDecay.ts::processLeadScoreDecay::leads",
   "server/services/leadScoring.ts::scoreLead::leadScoreHistory",
-  "server/services/leaseExpiryDetector.ts::runLeaseExpiryScan::rentalLeases",
   "server/services/lifecycleProgram.ts::verifyReactivationToken::reactivationTokens",
-  "server/services/notePaymentDueDetector.ts::runNotePaymentDueScan::notes",
   "server/services/offerBatchService.ts::getBatchStatus::offers",
   "server/services/onboarding/firstValueInstrumentation.ts::computeFunnelMetrics::lifecycleEvents",
   "server/services/onboardingAutonomy.ts::listJourneys::onboardingJourneys",
