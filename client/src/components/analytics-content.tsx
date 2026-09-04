@@ -204,13 +204,13 @@ export function AnalyticsContent() {
 
   const { data: executive, isLoading: loadingExecutive } = useQuery<{
     totalRevenue: number;
-    revenueChange: number;
+    revenueChange?: number;
     activeNotesValue: number;
-    notesValueChange: number;
+    notesValueChange?: number;
     dealsInPipeline: number;
-    dealsChange: number;
+    dealsChange?: number;
     leadConversionRate: number;
-    conversionChange: number;
+    conversionChange?: number;
   }>({
     queryKey: [`/api/analytics/executive?range=${dateRange}`],
   });
@@ -219,7 +219,6 @@ export function AnalyticsContent() {
     revenueOverTime: { date: string; revenue: number }[];
     totalRevenue: number;
     avgDealSize: number;
-    projectedRevenue: number;
   }>({
     queryKey: [`/api/analytics/revenue?range=${dateRange}`],
   });
@@ -312,7 +311,6 @@ export function AnalyticsContent() {
     if (revenue) {
       push("Revenue", "Total revenue", revenue.totalRevenue);
       push("Revenue", "Average deal size", revenue.avgDealSize);
-      push("Revenue", "Projected revenue", revenue.projectedRevenue);
     }
     if (leads) {
       push("Leads", "Total leads", leads.totalLeads);

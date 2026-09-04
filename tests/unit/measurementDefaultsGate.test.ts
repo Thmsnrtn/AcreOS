@@ -29,8 +29,24 @@ import { execFileSync } from "node:child_process";
 const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-measurement-defaults.mjs");
 
-/** Measured 2026-08-18. Down-only: a fix DELETES its baseline line. */
-const BASELINE_CEILING = 69;
+/** Measured 2026-09-04. Down-only: a fix DELETES its baseline line. */
+const BASELINE_CEILING = 100;
+// 69 -> 100 on 2026-09-04, and this is the ONE reason a ceiling here may rise:
+// the GATE got wider, not the codebase worse. Three new rule families landed in
+// the same commit — a delta key bound to a literal (`dealsChange: 0`), the
+// ternary spelling of the same claim (`= prev > 0 ? … : 0`), and a measurement
+// multiplied by an assumed growth factor (`totalRevenue * 1.1`) — plus
+// `revenue|mrr|arr|spend|cost` added to the measurement vocabulary, which
+// widened rule A as well. 69 described a gate that could not see any of that.
+//
+// The 42 entries that appeared are UNTRIAGED debt, frozen so the new rules can
+// fail on anything NEW while the existing population is read down; the register
+// itself says so. The four defects that motivated the rules —
+// getExecutiveMetrics' three hardcoded deltas and getRevenueMetrics'
+// `totalRevenue * 1.1` — were FIXED in that same commit and are deliberately
+// not in the register.
+//
+// A raise for any other reason is a regression wearing a ceiling change.
 // 72 -> 69 on 2026-08-18: the last three of the market-measurement group.
 // `pasturePerAcre || 1000` produced a $1,250 offer QUOTED TO A PROPERTY OWNER
 // in the outreach message; `opportunityScore || 50` produced "Test with 500

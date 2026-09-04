@@ -29,6 +29,7 @@
  */
 
 import { Router, type Response } from "express";
+import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -90,7 +91,9 @@ export interface BridgePayload {
 }
 
 const ACTIVE_LEAD_STATUSES_EXCLUDED = ["dead", "closed"];
-const ACTIVE_DEAL_STATUSES = ["negotiating", "offer_sent", "countered", "accepted", "in_escrow"];
+// Imported, not re-declared. This list happened to be correct, but a second
+// copy of a canonical vocabulary is how the analytics one drifted into four
+// statuses that do not exist (2026-09-04).
 
 const CANONICAL_AGENTS = ["Pax", "Sophie", "Forge", "Atlas"] as const;
 

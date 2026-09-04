@@ -79,6 +79,30 @@ export const DEAL_STATUSES = [
   "cancelled",
 ] as const;
 
+/**
+ * The deal statuses that mean "still in the pipeline" — every canonical status
+ * except the two terminal ones.
+ *
+ * DERIVED, not typed: adding a status to DEAL_STATUSES puts it in the pipeline
+ * automatically unless it is terminal, so the two lists cannot drift. That
+ * matters because they already had. `analyticsRepo` counted the pipeline with
+ * an inline `or(status='negotiation', 'pending', 'due_diligence',
+ * 'under_contract')` — NOT ONE of those four is a member of DEAL_STATUSES, and
+ * 'negotiation' is a one-character typo for the schema default 'negotiating'.
+ * routes.ts validates writes against DEAL_STATUSES, so three of the four could
+ * never legitimately be stored: the "Deals in Pipeline" card and the
+ * pipeline-value chart read 0 for every organization, forever (2026-09-04).
+ *
+ * This is the second law's shape exactly — a canonical projection that existed
+ * and had no adoption in the surface that needed it. Any new pipeline query
+ * imports this rather than spelling a list again.
+ */
+export const TERMINAL_DEAL_STATUSES = ["closed", "cancelled"] as const;
+export const ACTIVE_DEAL_STATUSES = DEAL_STATUSES.filter(
+  (s): s is Exclude<DealStatus, "closed" | "cancelled"> =>
+    !(TERMINAL_DEAL_STATUSES as readonly string[]).includes(s),
+);
+
 export type DealStatus = (typeof DEAL_STATUSES)[number];
 export const dealStatusSchema = z.enum(DEAL_STATUSES);
 

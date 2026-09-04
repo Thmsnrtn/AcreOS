@@ -732,19 +732,25 @@ export interface IStorage {
   // Analytics & Reporting
   getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
     totalRevenue: number;
-    revenueChange: number;
+    // Optional means NOT MEASURED, and the type says so. A period-over-period
+    // delta that cannot be computed is omitted rather than sent as 0 — the KPI
+    // card renders any defined change as a trend row and treats `>= 0` as
+    // positive, so a zero reads to the customer as "+0.0% from last period"
+    // (2026-09-04; the no-fabrication hard-stop).
+    revenueChange?: number;
     activeNotesValue: number;
-    notesValueChange: number;
+    notesValueChange?: number;
     dealsInPipeline: number;
-    dealsChange: number;
+    dealsChange?: number;
     leadConversionRate: number;
-    conversionChange: number;
+    conversionChange?: number;
   }>;
   getRevenueMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
     revenueOverTime: { date: string; revenue: number }[];
     totalRevenue: number;
     avgDealSize: number;
-    projectedRevenue: number;
+    // `projectedRevenue` is deliberately absent: it was `totalRevenue * 1.1`,
+    // a flat growth assumption exported to the customer's CSV as a projection.
   }>;
   getLeadMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
     totalLeads: number;

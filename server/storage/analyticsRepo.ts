@@ -6,7 +6,8 @@
 // (the cross-repo self-call this.getActiveNotesValue resolves against the
 // composed prototype — it lives in noteRepo).
 
-import { and, count, eq, gte, lte, or, sql, sum } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt, lte, or, sql, sum } from "drizzle-orm";
+import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { db } from "../db";
 import {
   campaigns,
@@ -39,7 +40,12 @@ export const analyticsRepo = {
         lte(payments.paymentDate, startDate)
       ));
     const prevRevenue = Number(prevPayments[0]?.total || 0);
-    const revenueChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    // `: 0` was here. A customer with no revenue in the prior window is not a
+    // customer whose revenue held flat — the KPI card renders `change >= 0` as
+    // a green up-arrow and a '+' prefix, so a zero read as "+0.0% from last
+    // period" on a period nobody measured. `undefined` is the honest answer and
+    // KPICard already omits the row for it.
+    const revenueChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : undefined;
     
     const currentNotesValue = await this.getActiveNotesValue(orgId);
     
@@ -47,7 +53,13 @@ export const analyticsRepo = {
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
-        or(eq(deals.status, 'negotiation'), eq(deals.status, 'pending'), eq(deals.status, 'due_diligence'), eq(deals.status, 'under_contract'))
+        // Canonical, not spelled again. The four literals that used to be
+        // here — 'negotiation', 'pending', 'due_diligence', 'under_contract' —
+        // are NONE of them members of DEAL_STATUSES, and 'negotiation' is a
+        // typo for the schema default 'negotiating'. routes.ts validates every
+        // write against DEAL_STATUSES, so this card read 0 for every
+        // organization, forever (2026-09-04).
+        inArray(deals.status, ACTIVE_DEAL_STATUSES)
       ));
     const dealsInPipeline = Number(currentDeals[0]?.count || 0);
     
@@ -65,16 +77,61 @@ export const analyticsRepo = {
       ));
     const convertedLeads = Number(convertedLeadsResult[0]?.count || 0);
     const leadConversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
-    
+
+    // The prior window's conversion rate, measured exactly the way the current
+    // one is (leads created in the window as the denominator, leads reaching
+    // 'closed' during it as the numerator) so the delta compares like with
+    // like. `conversionChange: 0` used to sit here as a literal.
+    const prevTotalLeadsResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        gte(leads.createdAt, prevStartDate),
+        lt(leads.createdAt, startDate),
+      ));
+    const prevTotalLeads = Number(prevTotalLeadsResult[0]?.count || 0);
+    const prevConvertedResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        eq(leads.status, 'closed'),
+        gte(leads.updatedAt, prevStartDate),
+        lt(leads.updatedAt, startDate),
+      ));
+    const prevConverted = Number(prevConvertedResult[0]?.count || 0);
+    const prevConversionRate = prevTotalLeads > 0 ? (prevConverted / prevTotalLeads) * 100 : undefined;
+    const conversionChange =
+      prevConversionRate !== undefined && prevConversionRate > 0
+        ? ((leadConversionRate - prevConversionRate) / prevConversionRate) * 100
+        : undefined;
+
+    const round1 = (n: number | undefined) => (n === undefined ? undefined : Number(n.toFixed(1)));
+
     return {
       totalRevenue,
-      revenueChange: Number(revenueChange.toFixed(1)),
+      revenueChange: round1(revenueChange),
       activeNotesValue: currentNotesValue,
-      notesValueChange: 0,
+      // NOT MEASURED, and now says so instead of saying zero.
+      //
+      // `notesValueChange: 0` and `dealsChange: 0` were hardcoded literals, and
+      // KPICard renders any defined `change` as a trend row where `change >= 0`
+      // selects the positive colour, a TrendingUp icon and a '+' prefix. Active
+      // Notes Value and Deals in Pipeline therefore painted a green
+      // "+0.0% from last period" on every load, for every customer, forever —
+      // and handleExportReport pushed both into the customer's CSV as
+      // measurements (2026-09-04 review; the no-fabrication hard-stop).
+      //
+      // Both are POINT-IN-TIME quantities: getActiveNotesValue sums the notes
+      // that are active NOW, and dealsInPipeline counts the deals in an active
+      // status NOW. Neither has a historical snapshot to compare against, so
+      // there is no honest delta to compute here — only one to invent. They are
+      // omitted, which KPICard and the CSV both already handle, until something
+      // stores the history that would make them real.
+      notesValueChange: undefined as number | undefined,
       dealsInPipeline,
-      dealsChange: 0,
+      dealsChange: undefined as number | undefined,
       leadConversionRate: Number(leadConversionRate.toFixed(1)),
-      conversionChange: 0,
+      conversionChange: round1(conversionChange),
     };
   },
 
@@ -116,7 +173,16 @@ export const analyticsRepo = {
       revenueOverTime,
       totalRevenue,
       avgDealSize: Number(avgDealSize.toFixed(2)),
-      projectedRevenue: totalRevenue * 1.1,
+      // `projectedRevenue: totalRevenue * 1.1` was here and is deleted. A flat
+      // 10% growth multiplier is not a projection — it is an assumption wearing
+      // one, and it was exported to the customer's CSV as "Projected revenue".
+      // The standard already exists 200 lines below in this same file:
+      // getConversionRates returns honest-empty with the comment "are NOT
+      // tracked, so we return honest-empty rather than fabricating".
+      // The client's ProjectedMRRCard derives its own figure from the observed
+      // revenueOverTime series, which is a defensible method; this field was
+      // reachable only through the export, and a fabricated number in a
+      // downloadable report is still fabricated.
     };
   },
 
@@ -200,7 +266,11 @@ export const analyticsRepo = {
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
-        or(eq(deals.status, 'dead'), eq(deals.status, 'cancelled'))
+        // 'dead' is a LEAD status (pipeline-status.ts LEAD_STATUSES), never a
+        // deal one, so it matched nothing and the win-rate denominator was
+        // short by every cancelled-but-not-'dead' deal. 'cancelled' is the
+        // deal vocabulary's only loss terminal.
+        eq(deals.status, 'cancelled')
       ));
     const lostDeals = Number(lostDealsResult[0]?.count || 0);
     
@@ -309,12 +379,10 @@ export const analyticsRepo = {
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
-        or(
-          eq(deals.status, 'negotiation'),
-          eq(deals.status, 'pending'),
-          eq(deals.status, 'due_diligence'),
-          eq(deals.status, 'under_contract')
-        )
+        // Same canonical list as getExecutiveMetrics — the pipeline-value
+        // chart repeated the identical four non-canonical literals and was
+        // structurally empty for the same reason.
+        inArray(deals.status, ACTIVE_DEAL_STATUSES)
       ))
       .groupBy(deals.status);
     
@@ -342,7 +410,7 @@ export const analyticsRepo = {
       .where(and(eq(deals.organizationId, orgId), eq(deals.status, 'closed')));
     const lostDeals = await db.select({ count: count() })
       .from(deals)
-      .where(and(eq(deals.organizationId, orgId), or(eq(deals.status, 'dead'), eq(deals.status, 'cancelled'))));
+      .where(and(eq(deals.organizationId, orgId), eq(deals.status, 'cancelled')));
 
     const won = Number(wonDeals[0]?.count || 0);
     const lost = Number(lostDeals[0]?.count || 0);
