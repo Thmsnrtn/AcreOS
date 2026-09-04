@@ -52,6 +52,7 @@ import {
 import { eq, and, gte, lt, lte, desc, count, sql, not, isNull, ne } from "drizzle-orm";
 import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
 import { emailService } from "../services/emailService";
+import { PLAN_LIMITS } from "../services/planLimits";
 import { routeComplexTask } from "../services/aiRouter";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
@@ -82,12 +83,9 @@ const CONFIG = {
   APP_URL: process.env.APP_URL || "https://app.acreos.io",
 };
 
-// Plan limits for upsell detection
-const PLAN_LIMITS: Record<string, { leads: number; deals: number; name: string; nextTier: string }> = {
-  free:    { leads: 50,   deals: 5,   name: "Free",    nextTier: "starter" },
-  starter: { leads: 500,  deals: 50,  name: "Starter", nextTier: "pro" },
-  pro:     { leads: 5000, deals: 500, name: "Pro",     nextTier: "scale" },
-};
+// Plan limits for upsell detection — now imported rather than declared here,
+// so the founder's "approaching plan limits" indicator and this upsell email
+// cannot disagree about what a limit is. See server/services/planLimits.ts.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiting: check if org received a growth email recently

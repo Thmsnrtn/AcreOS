@@ -30,8 +30,30 @@ const ROOT = path.resolve(__dirname, "../..");
 const LINT = path.join(ROOT, "scripts/check-measurement-defaults.mjs");
 
 /** Measured 2026-09-04. Down-only: a fix DELETES its baseline line. */
-const BASELINE_CEILING = 100;
-// 69 -> 100 on 2026-09-04, and this is the ONE reason a ceiling here may rise:
+const BASELINE_CEILING = 106;
+// 100 -> 106 on 2026-09-04, same day and the same single permitted reason: the
+// GATE got wider. Two more rule families landed —
+//
+//   RULE D, a HARDCODED ROW: a name-like key bound to a string literal beside
+//   an observation-only measurement bound to a number, in one object literal.
+//   `{ feature: "Deal Feed", dailyReturnRate: 0.72 }`, five of them, feeding
+//   the founder's briefing a per-feature return rate measured from nothing.
+//
+//   RULE E, a MEASUREMENT DERIVED FROM ARRAY POSITION: `usagePercent: 75 + i * 8`
+//   and `daysToLimit: 14 - i * 3`, attached to REAL organization names and
+//   presented as "orgs approaching plan limits". The org was real; the
+//   percentage was its index.
+//
+// `check-no-fabrication.mjs` read that file every run and passed it, because it
+// forbids non-deterministic value SOURCES — Math.random, seeded PRNGs — and a
+// hardcoded constant is perfectly deterministic. Same lie, quieter mechanism.
+// The seven new entries are the two families rule D was deliberately narrowed
+// AROUND (a commission schedule and base/bull/bear scenarios, both DECISIONS,
+// both overridable) and they carry their reasons in the register. The
+// fabrications that motivated the rules were FIXED in the same commit, and one
+// existing entry was DELETED because the fix removed it.
+//
+// 69 -> 100 earlier on 2026-09-04, and this is the ONE reason a ceiling here may rise:
 // the GATE got wider, not the codebase worse. Three new rule families landed in
 // the same commit — a delta key bound to a literal (`dealsChange: 0`), the
 // ternary spelling of the same claim (`= prev > 0 ? … : 0`), and a measurement
@@ -187,6 +209,83 @@ describe("it fires on the behaviour, not on a literal", () => {
       "export function total(row: { salesVolume?: number | null }) {\n  return row.salesVolume || 0;\n}\n",
     );
     expect(out).toContain("[measurement-defaults] PASS");
+    expect(ok).toBe(true);
+  });
+
+  // ── RULE D — the hardcoded row (added 2026-09-04) ─────────────────────────
+  // The motivating source, verbatim from what shipped in
+  // leadingIndicators.computeLeadingIndicators. Kept as a fixture rather than
+  // a memory: the code is fixed, and the only thing that can prove the gate
+  // still governs it is the defect itself, run through the gate.
+
+  it("catches a hardcoded row: a labelled feature beside an invented rate", () => {
+    const { out, ok } = withProbe(
+      "export const stickiness = [\n" +
+        '  { feature: "Deal Feed", dailyReturnRate: 0.72 },\n' +
+        '  { feature: "Pipeline", dailyReturnRate: 0.68 },\n' +
+        "];\n",
+    );
+    expect(out, `the hardcoded rows were not reported:\n${out}`).toMatch(
+      /dailyReturnRate\s*:\s*row 0\.72/,
+    );
+    expect(out).toMatch(/dailyReturnRate\s*:\s*row 0\.68/);
+    expect(ok).toBe(false);
+  });
+
+  it("does NOT fire on a DECIDED rate in a labelled row", () => {
+    // The discriminator from the other side, and the reason rule D uses a
+    // narrower vocabulary than rule A. A retention period, a price and a
+    // permit duration are things the company DECIDES; firing on them would put
+    // ~100 legitimate constants in the register and teach the next author that
+    // this gate is noise.
+    const { out, ok } = withProbe(
+      "export const policy = [\n" +
+        '  { name: "Audit log", retainDays: 730 },\n' +
+        '  { name: "SMS", costCents: 3 },\n' +
+        "];\n",
+    );
+    expect(out, `a decided constant was flagged:\n${out}`).toContain(
+      "[measurement-defaults] PASS",
+    );
+    expect(ok).toBe(true);
+  });
+
+  // ── RULE E — the measurement made of array position ───────────────────────
+
+  it("catches a measurement computed from a loop index", () => {
+    const { out, ok } = withProbe(
+      "export function signals(orgs: { id: number; name: string }[]) {\n" +
+        "  return orgs.map((org, i) => ({\n" +
+        "    orgId: org.id,\n" +
+        "    orgName: org.name,\n" +
+        "    usagePercent: 75 + i * 8,\n" +
+        "    daysToLimit: 14 - i * 3,\n" +
+        "  }));\n}\n",
+    );
+    expect(out, `a percentage made of array position was not reported:\n${out}`).toMatch(
+      /usagePercent\s*:\s*index/,
+    );
+    expect(out).toMatch(/daysToLimit\s*:\s*index/);
+    expect(ok).toBe(false);
+  });
+
+  it("does NOT fire when the index is ADDRESSING DATA", () => {
+    // The first draft of rule E fired on `stages[i - 1].count`,
+    // `snapshots[i - 1].autonomyScore` and `processedCount: i + 1` — three
+    // legitimate ways of walking real rows. `i + 1` is a position;
+    // `75 + i * 8` is a percentage invented from one.
+    const { out, ok } = withProbe(
+      "export function funnel(stages: { count: number }[]) {\n" +
+        "  return stages.map((s, i) => ({\n" +
+        "    dropoffPercent: i > 0 && stages[i - 1].count > 0\n" +
+        "      ? Math.round((1 - s.count / stages[i - 1].count) * 100)\n" +
+        "      : 0,\n" +
+        "    processedCount: i + 1,\n" +
+        "  }));\n}\n",
+    );
+    expect(out, `a real funnel computation was flagged:\n${out}`).toContain(
+      "[measurement-defaults] PASS",
+    );
     expect(ok).toBe(true);
   });
 });

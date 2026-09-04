@@ -164,6 +164,60 @@ const DELTA_TERNARY_FALLBACK =
 // "Projected revenue". Neither existing gate could see it: no-fabrication
 // scans for Math.random, and rule A matches `?? literal`, not multiplication.
 //
+// ── RULE D — a HARDCODED ROW OF DATA ────────────────────────────────────────
+// `{ feature: "Deal Feed", dailyReturnRate: 0.72 }` — five of these shipped in
+// leadingIndicators.computeLeadingIndicators, feeding the founder's briefing a
+// per-feature "daily return rate" measured from nothing. Rules A–C could not
+// see them: there is no property access, no delta name, and no growth factor.
+// check-no-fabrication.mjs could not either, because it forbids
+// non-deterministic value SOURCES (Math.random, seeded PRNGs) and a hardcoded
+// constant is perfectly deterministic. Same lie, quieter mechanism — and the
+// deterministic form is the more convincing of the two, because it does not
+// change when you reload.
+//
+// THE DISCRIMINATOR is the string label beside the number. A threshold constant
+// (`minScore: 60`, `maxRate: 0.9`) sits alone in a config or a guard; a
+// FABRICATED ROW pairs a human-readable name with a measurement, because it
+// exists to be rendered as one line of a table. So a hit needs a name-like key
+// bound to a STRING literal and a measurement-vocabulary key bound to a NUMBER
+// literal, in the same object literal on the same line.
+const NAMED_KEY = /\b(feature|category|name|label|title|metric|segment|channel|source|tier|plan)\s*:\s*["'`][^"'`]+["'`]/;
+const MEASURED_LITERAL = /\b([A-Za-z_$][\w$]*)\s*:\s*(-?\d+(?:\.\d+)?)\s*[,}]/g;
+
+// A DELIBERATELY NARROWER VOCABULARY THAN RULE A'S, and the narrowing is the
+// rule. Rule A asks "was a measured value replaced by a default", where any
+// measurement word is suspicious. Rule D asks "is this row of a table an
+// OBSERVATION or a DECISION", and most of rule A's vocabulary is ambiguous
+// there: `retainDays: 30` in a retention policy, `costCents: 3` in a price
+// list and `expectedDays: 14` in a permit-duration table are all things the
+// company DECIDED. Firing on those would put ~100 legitimate constants in a
+// register and teach the next author that this gate is noise.
+//
+// These leaves are different: nothing DECIDES a return rate, a percentile or a
+// probability. They can only be observed, so a literal one is a claim about
+// the world that nobody measured.
+const OBSERVATION_ONLY_LEAF =
+  /(rate|percent|pct|probability|propensity|stickiness|retention|velocity|median|average|avg)/i;
+
+// ── RULE E — A MEASUREMENT THAT IS A FUNCTION OF ARRAY POSITION ─────────────
+// `usagePercent: 75 + i * 8` and `daysToLimit: 14 - i * 3`, in the same
+// function, attached to REAL organization names pulled from the database and
+// presented to the founder as "orgs approaching plan limits". The org was real.
+// The percentage was its index in an array.
+//
+// This is narrow on purpose: a measurement-vocabulary key whose initializer
+// does arithmetic on a bare loop index. Nothing legitimate computes a rate,
+// score, percentage or day-count from the position of a row in a list.
+// The index must be SCALED BY A LITERAL (`i * 8`), and the initializer must
+// contain no property access at all. Both conditions were learned by
+// measuring: the first draft fired on `stages[i - 1].count`,
+// `snapshots[i - 1].autonomyScore` and `processedCount: i + 1` — three
+// legitimate ways of walking real data, and exactly the noise that teaches an
+// author to stop reading a gate's output. `i + 1` is a position;
+// `75 + i * 8` is a percentage invented from one.
+const INDEX_DERIVED =
+  /\b([A-Za-z_$][\w$]*)\s*:\s*([^,;{}\n]*\b(?:i|idx|index)\b\s*[*/]\s*\d[^,;{}\n]*)/g;
+
 // A measurement-vocabulary name multiplied by a literal just above 1 is almost
 // always a fabricated projection: nobody writes `revenue * 1.1` to convert a
 // unit. The band is exclusive at both ends — `* 1` is a no-op and `* 2` is
@@ -288,7 +342,32 @@ const BASELINE = new Set([
   "server/services/founderTwin.ts::existing.confidence || 0.5",
   "server/services/intent-router.ts::parsed.confidence || 0.8",
   "server/services/leadScoring.ts::profile.corporateOwnerWeight || 10",
-  "server/services/leadingIndicators.ts::priorActivations?.count || 1",
+  // leadingIndicators.ts::priorActivations?.count || 1 was REMOVED 2026-09-04 —
+  // fixed, not re-baselined. Substituting 1 for a zero divisor made the first
+  // week of any cohort read as a percentage change against a user who did not
+  // exist. `changePercent` is now `number | null`, and null is what "no prior
+  // window to compare against" looks like.
+
+  // ── RULE D REGISTER (added 2026-09-04) ────────────────────────────────────
+  // Both entries are DECISIONS presented as such, which is the line rule D
+  // draws. They are here rather than exempted in code so the judgement is
+  // reviewable, and so that a fourth commission tier or a fourth scenario
+  // arrives as a gate failure someone has to look at.
+  //
+  // commissionService.DEFAULT_CONFIG.tiers — a commission SCHEDULE, and an
+  // overridable one: getCommissionConfig reads a per-org stored config and
+  // falls back to this. A commission rate is set by the company, never observed.
+  "server/services/commissionService.ts::ratePercent: 3.0 (labelled row)",
+  "server/services/commissionService.ts::ratePercent: 4.0 (labelled row)",
+  "server/services/commissionService.ts::ratePercent: 5.0 (labelled row)",
+  "server/services/commissionService.ts::ratePercent: 6.0 (labelled row)",
+  // dealUnderwriting.analyzeScenarios — base/bull/bear SCENARIOS, each row
+  // named as one, and every field overridable through input.customScenarios. A
+  // scenario is a stated assumption the reader can see and change; that is the
+  // opposite of a number presented as measured.
+  "server/services/dealUnderwriting.ts::appreciationRate: 0.03 (labelled row)",
+  "server/services/dealUnderwriting.ts::appreciationRate: 0.07 (labelled row)",
+  "server/services/dealUnderwriting.ts::appreciationRate: -0.02 (labelled row)",
   "server/services/marketPrediction.ts::latest.avgDaysOnMarket || 60",
   "server/services/negotiationOrchestrator.ts::analysis.priceFlexibility || 50",
   "server/services/negotiationOrchestrator.ts::reasoningData.acceptanceProbability || 45",
@@ -393,6 +472,48 @@ for (const file of files) {
         path: deltaTernary[1],
         op: "?:",
         lit: deltaTernary[2],
+      });
+    }
+
+    // Rule D — a hardcoded row: a string label beside a literal measurement.
+    if (NAMED_KEY.test(line)) {
+      MEASURED_LITERAL.lastIndex = 0;
+      let d;
+      while ((d = MEASURED_LITERAL.exec(line)) !== null) {
+        const [, key, lit] = d;
+        expressionsConsidered += 1;
+        if (BENIGN_LEAF.test(key)) continue;
+        if (!OBSERVATION_ONLY_LEAF.test(key)) continue;
+        if (Number(lit) === 0) continue;
+        hits.push({
+          key: `${rel}::${key}: ${lit} (labelled row)`,
+          rel,
+          line: i + 1,
+          path: key,
+          op: ": row",
+          lit,
+        });
+      }
+    }
+
+    // Rule E — a measurement derived from a loop index.
+    INDEX_DERIVED.lastIndex = 0;
+    let e;
+    while ((e = INDEX_DERIVED.exec(line)) !== null) {
+      const [, key, init] = e;
+      expressionsConsidered += 1;
+      if (BENIGN_LEAF.test(key)) continue;
+      if (!MEASUREMENT_LEAF.test(key)) continue;
+      // A property access means the index is addressing DATA, which is what an
+      // index is for. The defect is a number built from position alone.
+      if (/[A-Za-z_$][\w$]*\s*\??\.\s*[A-Za-z_$]/.test(init)) continue;
+      hits.push({
+        key: `${rel}::${key}: derived from array position`,
+        rel,
+        line: i + 1,
+        path: key,
+        op: ": index",
+        lit: "n/a",
       });
     }
 
