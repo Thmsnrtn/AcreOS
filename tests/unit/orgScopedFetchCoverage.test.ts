@@ -549,6 +549,106 @@ describe("the tenancy lint covers the service layer", () => {
     expect(dirty.out).toMatch(/exempted as sanctioned-hatch roots: [1-9]/);
   });
 
+  it("reads a table keyed on org_id, not only organization_id", () => {
+    // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
+    // `collectOrgScopedTableIdents` — the front door that decides which tables
+    // are org-scoped at all — required the literal spelling
+    // `organizationId: <col>("organization_id")` until 2026-09-04. This schema
+    // keys 40 of its tables on `orgId: integer("org_id")`, and a unit whose
+    // only org-table access was one of those reported "touches no org-scoped
+    // table" and was skipped before rules 1, 2 AND 3 ever ran.
+    //
+    // "The regex still matches organization_id" and "the regex matches both"
+    // are indistinguishable in a green run, which is why this is a fixture and
+    // not a source scan. The unscoped fixture must be REPORTED and the scoped
+    // one must NOT — a gate that flags both spellings unconditionally would
+    // pass the first assertion while being useless.
+    const ORGID_SCHEMA = [
+      'import { pgTable, serial, integer, text } from "drizzle-orm/pg-core";',
+      'export const agentNotes = pgTable("agent_notes", {',
+      '  id: serial("id").primaryKey(),',
+      '  orgId: integer("org_id").notNull(),',
+      '  topic: text("topic"),',
+      "});",
+      "",
+    ].join("\n");
+
+    const leaky = runOverFixture({
+      "shared/schema.ts": ORGID_SCHEMA,
+      "server/services/__orgid_canary__.ts": [
+        'import { db } from "../db";',
+        'import { agentNotes } from "@shared/schema";',
+        'import { eq } from "drizzle-orm";',
+        "",
+        "export async function readEveryOrgsNotes(topic: string) {",
+        "  return await db.select().from(agentNotes).where(eq(agentNotes.topic, topic));",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(
+      leaky.failed,
+      "an unscoped read of a table keyed on org_id did not fail the gate. The " +
+        "tenant-key detector has gone back to requiring `organization_id`, " +
+        "which takes 40 tables out of the population before any rule runs:\n" +
+        leaky.out,
+    ).toBe(true);
+    expect(leaky.out).toContain("readEveryOrgsNotes()");
+    // Vacuity + the spelling actually counted, not merely a nonzero total.
+    expect(leaky.out).toMatch(/org-scoped tables: [1-9]\d* \(organizationId 0, orgId [1-9]/);
+
+    const scoped = runOverFixture({
+      "shared/schema.ts": ORGID_SCHEMA,
+      "server/services/__orgid_canary__.ts": [
+        'import { db } from "../db";',
+        'import { agentNotes } from "@shared/schema";',
+        'import { and, eq } from "drizzle-orm";',
+        "",
+        "export async function readOneOrgsNotes(orgId: number, topic: string) {",
+        "  return await db.select().from(agentNotes)",
+        "    .where(and(eq(agentNotes.orgId, orgId), eq(agentNotes.topic, topic)));",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(
+      scoped.out,
+      "a CORRECTLY scoped org_id query was reported. The detector would then " +
+        "be flagging the spelling rather than the defect, and every one of the " +
+        "40 org_id tables would read as an offender:\n" + scoped.out,
+    ).not.toContain("readOneOrgsNotes()");
+    expect(scoped.out).toMatch(/org-scoped tables: [1-9]\d* \(organizationId 0, orgId [1-9]/);
+  });
+
+  it("floors the org-scoped table population PER SPELLING", () => {
+    // A single total cannot tell "both spellings are read" from "one is read
+    // and the other silently stopped matching" — the latter prints a healthy
+    // 364 while 40 tables leave the population, and every query against them
+    // leaves all three rules with it. Measured 2026-09-04: 364 / 40.
+    const out = run();
+    const m = /org-scoped tables: (\d+) \(organizationId (\d+), orgId (\d+)\)/.exec(out);
+    expect(
+      m,
+      "the per-spelling breakdown is gone from the verdict. Without it the " +
+        "population is one number again and a dead tenant-key regex is " +
+        "invisible. Re-point this, do not delete it:\n" + out,
+    ).not.toBeNull();
+    const [, total, canonical, orgId] = m!.map(Number) as unknown as number[];
+    expect(
+      canonical,
+      "the `organization_id` tenant-key detector is reading far fewer tables " +
+        "than the schema declares. Fix the detector — a shrinking population " +
+        "reports itself as fewer offenders, which reads as progress.",
+    ).toBeGreaterThan(270);
+    expect(
+      orgId,
+      "the `org_id` tenant-key detector has gone quiet. It was added on " +
+        "2026-09-04 after 40 tables spent months outside this gate's " +
+        "population; a drop here means they are outside it again.",
+    ).toBeGreaterThan(28);
+    expect(total).toBe(canonical + orgId);
+  });
+
   it("rule 3 FIRES on the exact shape that defeated rules 1 and 2 (canary)", () => {
     // Mutation-as-test. The fixture is the deal-feed defect verbatim: a
     // function that mentions `organizationId` (so rule 1 passes), reading an

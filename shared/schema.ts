@@ -8200,7 +8200,21 @@ export const borrowerMessages = pgTable("borrower_messages", {
   content: text("content").notNull(),
   readAt: timestamp("read_at"), // null = unread
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Leading-org composite (added 2026-09-04). The Drizzle declaration carried
+  // no index callback at all, so this table was invisible to every reader that
+  // works from the schema — and invisible to check-org-leading-index.mjs for a
+  // second reason besides: that gate required the tenant key to be spelled
+  // `organizationId`/`organization_id`, and this one is `orgId`/`org_id`.
+  // The DB is not un-indexed — migrations/0013 creates single-column
+  // idx_borrower_messages_note_id and idx_borrower_messages_org_id — but two
+  // single-column indexes are not a tenant-leading composite, which is the
+  // shard-readiness property the gate exists to hold.
+  // Column order follows the three live queries, all of which filter noteId
+  // inside one org and read in created order: getBorrowerMessages,
+  // markBorrowerMessagesRead and countUnreadBorrowerMessages.
+  index("borrower_messages_org_note_created_idx").on(table.orgId, table.noteId, table.createdAt),
+]);
 
 export const insertBorrowerMessageSchema = createInsertSchema(borrowerMessages).omit({ id: true, createdAt: true });
 export type InsertBorrowerMessage = z.infer<typeof insertBorrowerMessageSchema>;

@@ -3,8 +3,9 @@
 // scripts/check-org-leading-index.mjs
 // ----------------------------------------------------------------------------
 // L3 shard-readiness lint — ensures every pgTable declared in shared/schema*.ts
-// that exposes an `organizationId` column also declares at least one composite
-// index that LEADS with that column.
+// that exposes a TENANT KEY (`organizationId`/`organization_id`, or the other
+// spelling this schema uses, `orgId`/`org_id`) also declares at least one
+// composite index that LEADS with that column.
 //
 // Why
 // ───
@@ -57,9 +58,16 @@
 //   - Tables that bury their indexes outside the `(table) => [ … ]` callback
 //     (e.g. declared as a separate `index()` call appended later) are missed.
 //     We haven't seen this pattern in the repo.
-//   - Tables that use a column name other than `organizationId` for the FK
-//     to `organizations.id` (e.g. `orgId`) aren't picked up — we explicitly
-//     require the canonical name.
+//   - RESOLVED 2026-09-04. This entry used to read "Tables that use a column
+//     name other than `organizationId` (e.g. `orgId`) aren't picked up — we
+//     explicitly require the canonical name", filed as a limitation to raise
+//     "if it becomes real". It was real the whole time: 40 pgTables key their
+//     tenant on `orgId: integer("org_id")`, every one skipped before the index
+//     rule ran, and eleven of them non-conforming. Both spellings are now in
+//     TENANT_KEY_SPELLINGS, each with its own population floor, because a
+//     single total cannot tell "both are read" from "one silently stopped
+//     matching". A limitation nobody measures is indistinguishable from a
+//     limitation that does not exist.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -242,6 +250,45 @@ const BASELINE_OFFENDERS = new Set([
   "provisioned_phone_numbers",
   "va_actions",
   "move_inspections",
+
+  // ── org_id WIDENING, 2026-09-04 ────────────────────────────────────────
+  // This gate required the tenant key to be spelled `organizationId` /
+  // `organization_id`. Its own header listed the other spelling under
+  // "Limitations … raise to the team if they become real". It was real: 39
+  // pgTables key their tenant on `orgId: integer("org_id")`, and every one was
+  // skipped before the index rule ran. Eleven did not conform. One
+  // (borrower_messages) was FIXED in the same commit — it carries a NOT NULL FK
+  // to organizations.id and its declaration had no index callback at all, so it
+  // gained borrower_messages_org_note_created_idx in schema and migrate.mjs.
+  // The ten below are recorded rather than indexed, each for a stated reason.
+  //
+  // personal_bests — a NOT NULL FK tenant key, and a table NOTHING READS OR
+  // WRITES: `server/services/personalBests.ts` queries `deals`, never this
+  // table, and no other module touches it. Indexing a table with no reader
+  // would be work for a query plan that does not exist. The honest follow-up is
+  // deletion, which is a destructive schema change and not this commit's to
+  // make; tables-no-writer already tracks the family.
+  "personal_bests",
+  //
+  // The nine below are V12/V13 agent-infrastructure tables whose `org_id` is
+  // NULLABLE and carries NO foreign key to organizations.id — a tag, not a
+  // tenant key. A leading `(org_id, …)` index on a column that is null for most
+  // rows serves no query and helps no future partition; what these actually
+  // need is an adjudication of whether the column means anything at all, which
+  // is held in scripts/org-scope-route-widening.json where the same tables
+  // account for most of the 88 untriaged tenancy entries. Every one of them
+  // already indexes the key its queries DO use (agent_codename, service_name,
+  // current_stage …), which is the "non-org index leading on a hotter secondary
+  // key that we'd want to keep" case this allowlist was created for.
+  "outcome_verification_contracts",
+  "integration_credentials",
+  "integration_execution_log",
+  "agent_working_memory_v13",
+  "scp_semantic_facts",
+  "scp_procedures",
+  "scp_golden_cases",
+  "scp_shared_memory",
+  "scp_evolution_metrics",
 ]);
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -295,7 +342,18 @@ const SHARED_DIR = join(REPO_ROOT, "shared");
 const ANCHOR_SCHEMA_FILES = ["shared/schema.ts", "shared/schema/rental.ts"];
 const MIN_SCHEMA_FILES = 60; // live 84
 const MIN_PGTABLE_BLOCKS = 560; // live 746
-const MIN_ORG_SCOPED_TABLES = 270; // live 364
+const MIN_ORG_SCOPED_TABLES = 270; // live 404 after the org_id widening
+/**
+ * PER-SPELLING floors, added 2026-09-04 with the org_id widening.
+ *
+ * The aggregate floor above cannot distinguish "both tenant-key spellings are
+ * being read" from "one spelling is being read and the other silently stopped
+ * matching" — the second reads as a healthy 364 while 40 tables go unjudged,
+ * which is the exact state this gate shipped in until today. A population
+ * claim needs a floor per member, or the member is free to disappear.
+ * Measured 2026-09-04: organizationId 364, orgId 40.
+ */
+const MIN_TENANT_KEY_TABLES = { organizationId: 270, orgId: 28 };
 const MIN_CONFORMING_TABLES = 160; // live 217
 
 // ----------------------------------------------------------------------------
@@ -446,15 +504,44 @@ function extractPgTableBlocks(source) {
 // Column + index detectors
 // ----------------------------------------------------------------------------
 
-function hasOrganizationIdColumn(body) {
+/**
+ * The tenant key is spelled TWO ways in this schema, and until 2026-09-04 this
+ * gate only knew one of them.
+ *
+ * The header used to list `orgId` under "Limitations … raise to the team if
+ * they become real". It was real the whole time: 39 pgTables key their tenant
+ * on `orgId: integer("org_id")` rather than the canonical
+ * `organizationId: integer("organization_id")` — a seventh of the org-scoped
+ * population — and every one of them failed `hasOrganizationIdColumn` and was
+ * `continue`d before the index rule ran. Eleven had no index leading on the
+ * tenant key at all; two (`borrower_messages`, `personal_bests`) carry a NOT
+ * NULL FK to organizations.id and declare no index callback whatsoever, so
+ * every per-tenant read on them is a full table scan.
+ *
+ * This is the same front-door blindness `check-org-scoped-fetch.mjs` had when
+ * it keyed on `.from(` and could not see Drizzle's relational API: not a rule
+ * that was wrong, a POPULATION that was smaller than the claim made about it.
+ *
+ * Returns the ACCESSOR the table uses (`organizationId` / `orgId`), because
+ * the index check downstream must look for the same name the column declared —
+ * a table keyed on `orgId` indexes `table.orgId`, and asking for
+ * `table.organizationId` there would report every one of them as an offender.
+ */
+const TENANT_KEY_SPELLINGS = [
+  { accessor: "organizationId", column: "organization_id" },
+  { accessor: "orgId", column: "org_id" },
+];
+
+function tenantKeyAccessor(body) {
   // Look for a property declaration like
   //   organizationId: integer("organization_id")…
-  // or
-  //   organizationId: uuid("organization_id")…
+  //   orgId: uuid("org_id")…
   // Robust to whitespace + line breaks.
-  return /\borganizationId\s*:\s*[a-zA-Z_]+\s*\(\s*["'`]organization_id["'`]/.test(
-    body,
-  );
+  for (const { accessor, column } of TENANT_KEY_SPELLINGS) {
+    const re = new RegExp(`\\b${accessor}\\s*:\\s*[a-zA-Z_]+\\s*\\(\\s*["'\`]${column}["'\`]`);
+    if (re.test(body)) return accessor;
+  }
+  return null;
 }
 
 /**
@@ -490,6 +577,14 @@ function main() {
   const seenInBaseline = new Set();
   let scannedTables = 0;
   let orgScopedTables = 0;
+  /**
+   * Per-SPELLING population. The aggregate floor cannot tell "both spellings
+   * are being read" from "one spelling is being read and the other silently
+   * stopped matching" — the second reads as a healthy 364 while 40 tables go
+   * unjudged, which is exactly the state this gate shipped in for months. Each
+   * spelling therefore carries its own floor below.
+   */
+  const orgScopedByKey = Object.create(null);
   let conformingTables = 0;
 
   const parserDesyncs = [];
@@ -501,10 +596,15 @@ function main() {
     for (const d of desyncs) parserDesyncs.push({ ...d, file: rel });
     for (const { tableName, body, line } of blocks) {
       scannedTables += 1;
-      if (!hasOrganizationIdColumn(body)) continue;
+      const tenantKey = tenantKeyAccessor(body);
+      if (!tenantKey) continue;
       orgScopedTables += 1;
+      orgScopedByKey[tenantKey] = (orgScopedByKey[tenantKey] ?? 0) + 1;
       const leads = extractIndexLeadingColumns(body);
-      const leadsOnOrg = leads.includes("organizationId");
+      // Ask for the SPELLING THIS TABLE USED. A table keyed on `orgId`
+      // indexes `table.orgId`; looking for `table.organizationId` there would
+      // report all 39 of them as offenders on the gate's own vocabulary.
+      const leadsOnOrg = leads.includes(tenantKey);
       if (leadsOnOrg) {
         conformingTables += 1;
         continue;
@@ -552,6 +652,20 @@ function main() {
     ["pgTable blocks", scannedTables, MIN_PGTABLE_BLOCKS, "746 on 2026-08-16"],
     ["org-scoped tables", orgScopedTables, MIN_ORG_SCOPED_TABLES, "364 on 2026-08-16"],
     ["conforming tables", conformingTables, MIN_CONFORMING_TABLES, "217 on 2026-08-16"],
+    // Per-spelling, so a regex that stops matching ONE tenant-key name fails
+    // here instead of quietly shrinking the population under a healthy total.
+    [
+      "org-scoped tables keyed on organizationId",
+      orgScopedByKey.organizationId ?? 0,
+      MIN_TENANT_KEY_TABLES.organizationId,
+      "364 on 2026-09-04",
+    ],
+    [
+      "org-scoped tables keyed on orgId",
+      orgScopedByKey.orgId ?? 0,
+      MIN_TENANT_KEY_TABLES.orgId,
+      "40 on 2026-09-04",
+    ],
   ];
   for (const [label, observed, floor, measured] of floors) {
     if (observed < floor) {
@@ -595,7 +709,9 @@ function main() {
   console.log(
     `[check-org-leading-index] populations vs floors: schema files ${files.length} ` +
       `(floor ${MIN_SCHEMA_FILES}), pgTable blocks ${scannedTables} (floor ${MIN_PGTABLE_BLOCKS}), ` +
-      `org-scoped ${orgScopedTables} (floor ${MIN_ORG_SCOPED_TABLES}), ` +
+      `org-scoped ${orgScopedTables} (floor ${MIN_ORG_SCOPED_TABLES}; ` +
+      `organizationId ${orgScopedByKey.organizationId ?? 0}/${MIN_TENANT_KEY_TABLES.organizationId}, ` +
+      `orgId ${orgScopedByKey.orgId ?? 0}/${MIN_TENANT_KEY_TABLES.orgId}), ` +
       `conforming ${conformingTables} (floor ${MIN_CONFORMING_TABLES}); ` +
       `anchors found ${ANCHOR_SCHEMA_FILES.length - missingAnchors.length}/${ANCHOR_SCHEMA_FILES.length}; ` +
       `parser desyncs ${parserDesyncs.length} (must be 0)`,
@@ -624,10 +740,11 @@ function main() {
     console.error("");
     console.error(
       "[check-org-leading-index] FAIL — the following NEW pgTable " +
-        "declarations have an `organizationId` column but no composite " +
-        "index leading with it. Add an " +
-        "`index(\"<table>_org_…_idx\").on(table.organizationId, …)` " +
-        "covering the dominant query pattern, then mirror the index in " +
+        "declarations have a TENANT KEY column but no composite index " +
+        "leading with it. Add an " +
+        "`index(\"<table>_org_…_idx\").on(table.<tenantKey>, …)` covering the " +
+        "dominant query pattern — using the SAME spelling the table declared, " +
+        "`organizationId` or `orgId` — then mirror the index in " +
         "scripts/migrate.mjs.",
     );
     console.error("");

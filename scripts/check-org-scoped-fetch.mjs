@@ -1192,8 +1192,22 @@ function matchBrace(source, openIdx) {
  * Returns Map<tsIdentifier, tableName> for every exported pgTable whose
  * column map declares an `organizationId` column.
  */
+/**
+ * Per-SPELLING tally of the org-scoped table population, published in the
+ * verdict and floored by the coverage test.
+ *
+ * The aggregate ("org-scoped tables: 404") cannot tell "both tenant-key
+ * spellings are read" from "one is read and the other silently stopped
+ * matching" — the latter prints a healthy 364 while 40 tables leave the
+ * population entirely, taking every query against them out of all three rules.
+ * That is not hypothetical: it is the state this gate was in until 2026-09-04.
+ */
+export const orgScopedTablesBySpelling = { organizationId: 0, orgId: 0 };
+
 function collectOrgScopedTableIdents() {
   const idents = new Map();
+  orgScopedTablesBySpelling.organizationId = 0;
+  orgScopedTablesBySpelling.orgId = 0;
   const callRe = /\bexport\s+const\s+([A-Za-z0-9_]+)\s*=\s*pgTable\s*\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   for (const file of findSchemaFiles()) {
     const source = maskComments(readFileSync(file, "utf8"));
@@ -1205,7 +1219,18 @@ function collectOrgScopedTableIdents() {
       const endIdx = matchParen(source, openIdx);
       if (endIdx === -1) continue;
       const body = source.slice(openIdx + 1, endIdx);
+      // TWO SPELLINGS, and until 2026-09-04 this front door knew one.
+      // `orgId: integer("org_id")` keys 40 of this schema's tables; a unit
+      // whose only org-table access was one of those reported "touches no
+      // org-scoped table" and was skipped before rules 1, 2 AND 3 ran. Same
+      // shape as the `.from(`-only keying fixed earlier the same day, one
+      // layer further out: not a rule that was wrong, a POPULATION smaller
+      // than the claim made about it.
       if (/\borganizationId\s*:\s*[a-zA-Z_]+\s*\(\s*["'`]organization_id["'`]/.test(body)) {
+        orgScopedTablesBySpelling.organizationId += 1;
+        idents.set(ident, tableName);
+      } else if (/\borgId\s*:\s*[a-zA-Z_]+\s*\(\s*["'`]org_id["'`]/.test(body)) {
+        orgScopedTablesBySpelling.orgId += 1;
         idents.set(ident, tableName);
       }
     }
@@ -2443,7 +2468,9 @@ function main() {
   // invisible population was frozen alongside them. `new offenders` and
   // `stale allowlist entries` DO span both shapes: they are the enforcement.
   console.log(
-    `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size}; ` +
+    `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size} ` +
+      `(organizationId ${orgScopedTablesBySpelling.organizationId}, ` +
+      `orgId ${orgScopedTablesBySpelling.orgId}); ` +
       `scanned ${scannedMethods} storage + service methods across ${scannedFiles.length} files`,
   );
   console.log(

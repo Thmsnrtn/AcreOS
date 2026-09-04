@@ -11090,6 +11090,19 @@ END $mig0246$`,
   `ALTER TABLE "pending_actions" ADD COLUMN IF NOT EXISTS "claimed_at" timestamp`,
   `CREATE INDEX IF NOT EXISTS "pending_actions_stale_claim_idx" ON "pending_actions" ("status", "claimed_at") WHERE "executed_at" IS NULL`,
 
+  // ── 0254 — borrower_messages leading-org composite (2026-09-04) ─────────
+  // The Drizzle declaration for borrower_messages carried no index callback,
+  // which is how it stayed outside check-org-leading-index.mjs's conforming
+  // set once that gate learned to read `org_id` tables at all. The DB has had
+  // single-column idx_borrower_messages_note_id / _org_id since migration
+  // 0013; what it lacked is the tenant-LEADING composite that makes a
+  // per-tenant thread read a single index probe and lets the table be
+  // range-partitioned by org without re-indexing.
+  //
+  // Purely additive: the two 0013 indexes stay, and no existing query plan
+  // depends on this one existing.
+  `CREATE INDEX IF NOT EXISTS "borrower_messages_org_note_created_idx" ON "borrower_messages" ("org_id", "note_id", "created_at")`,
+
   // territories.state_code is declared NOT NULL. Tighten only when the table
   // can satisfy it — a no-op on any release where a row is still missing one,
   // and self-removing in effect once the backfill happens elsewhere.

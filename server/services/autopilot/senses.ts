@@ -13,6 +13,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { eventMeshEvents, supportCases } from "@shared/schema";
+import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { logger } from "../../utils/logger";
 
 /**
@@ -53,7 +54,16 @@ export interface DealActivitySignal {
  */
 export async function getDealActivitySignal(windowHours = 24): Promise<DealActivitySignal> {
   try {
-    const [row] = await db
+    // Platform-wide ON PURPOSE, through the explicit hatch. Solene is the
+    // FOUNDER's brain — its tick reads MRR, trials and the founder decision
+    // budget for the whole business — so "deal motion in the last 24h" is a
+    // company number, not a tenant's. The read was already cross-org; what it
+    // lacked was any way to tell that from a forgotten predicate, which is
+    // exactly what made it invisible until `org_id` tables entered the
+    // tenancy gate's population on 2026-09-04.
+    const [row] = await unscopedForPlatformOps(
+      "Solene founder-brain deal-motion sense: counts deal:lifecycle mesh events across the whole business, which is the company-level signal the founder tick reasons over",
+    )
       .select({
         events: sql<number>`count(*)::int`,
         closedWon: sql<number>`count(*) filter (where ${eventMeshEvents.eventType} = 'deal:closed' and ${eventMeshEvents.payload} ->> 'outcome' = 'won')::int`,
