@@ -264,8 +264,20 @@ export interface MailAttributionData {
   responseRate: number;
   costPerResponse: number | null;
   estimatedDeliveryDate: string | null;
-  industryBenchmarkMin: number;
-  industryBenchmarkMax: number;
+  /**
+   * Null unless a benchmark with a real citation is registered server-side
+   * (server/services/benchmarks.ts). It used to be two bare numbers — 1 and 3 —
+   * rendered to the customer as "Industry benchmark: 1–3%" with nothing behind
+   * them, and used to award an "above average" badge.
+   */
+  industryBenchmark: {
+    value: number;
+    rangeMin?: number;
+    rangeMax?: number;
+    unit: string;
+    source: string;
+    asOf: string;
+  } | null;
 }
 
 export function useMailAttribution(campaignId: number) {

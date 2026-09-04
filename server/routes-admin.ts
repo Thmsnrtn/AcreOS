@@ -28,6 +28,7 @@ import {
 } from "@shared/schema";
 import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
 import type { LookupCategory } from "./services/data-source-broker";
+import { benchmarkFor, BENCHMARK_KEYS } from "./services/benchmarks";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -4232,8 +4233,13 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         responseRate: parseFloat(responseRate.toFixed(2)),
         costPerResponse,
         estimatedDeliveryDate,
-        industryBenchmarkMin: 1,
-        industryBenchmarkMax: 3,
+        // Was `industryBenchmarkMin: 1, industryBenchmarkMax: 3` — two uncited
+        // constants rendered to the CUSTOMER as "Industry benchmark: 1–3%",
+        // with a green "above average" badge whenever their real response rate
+        // cleared the invented lower bound. A benchmark is renderable only if
+        // it can say where it came from; none is registered, so this is null
+        // and the card shows the measured rate alone.
+        industryBenchmark: benchmarkFor(BENCHMARK_KEYS.directMailResponseRate),
       });
     } catch (err: any) {
       Errors.internal(res, err);

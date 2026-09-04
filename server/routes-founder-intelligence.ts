@@ -32,6 +32,14 @@ import {
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne, isNull } from "drizzle-orm";
 import { isFounderIdentity } from "./services/founder";
+import { benchmarkFor, BENCHMARK_KEYS } from "./services/benchmarks";
+
+/**
+ * OUR churn alarm thresholds, in percent. An internal policy decision, not a
+ * claim about the industry — which is precisely the distinction that was lost
+ * when both the bar and the verdict read from the same uncited 2.5.
+ */
+const CHURN_STATUS_THRESHOLDS = { healthyAtOrBelowPct: 2.5, watchAtOrBelowPct: 5 } as const;
 import { decisionsInboxService } from "./services/decisionsInbox";
 import { founderDigestService } from "./services/founderDigest";
 import { companyAgentService } from "./services/companyAgents";
@@ -970,8 +978,20 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
         monthlyChurnRate: monthlyChurnRate.toFixed(2),
         totalPayingOrgs: totalPaying,
         cancellationsLast30d: cancelCount30d,
-        industryBenchmark: 2.5, // SaaS average monthly churn %
-        status: monthlyChurnRate <= 2.5 ? "healthy" : monthlyChurnRate <= 5 ? "watch" : "critical",
+        // Was `industryBenchmark: 2.5, // SaaS average monthly churn %` — an
+        // uncited claim about an entire industry, rendered as a comparison bar.
+        // Null until someone registers one with its publisher and year.
+        industryBenchmark: benchmarkFor(BENCHMARK_KEYS.saasMonthlyChurn),
+        // The status thresholds are OURS and are named as such. They used to
+        // reuse the 2.5 as though the industry average set our alarm, which
+        // gave an invented number authority over a categorical verdict. These
+        // are an internal policy — a decision, which a constant may be.
+        status:
+          monthlyChurnRate <= CHURN_STATUS_THRESHOLDS.healthyAtOrBelowPct
+            ? "healthy"
+            : monthlyChurnRate <= CHURN_STATUS_THRESHOLDS.watchAtOrBelowPct
+              ? "watch"
+              : "critical",
       },
       atRiskOrgs: atRiskOrgs.map(org => ({
         ...org,

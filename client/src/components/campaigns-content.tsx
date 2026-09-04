@@ -1178,12 +1178,25 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                     <span className="font-medium tabular-nums">{mailAttribution.responseRate.toFixed(1)}%</span>
                   </div>
                   <Progress value={Math.min(mailAttribution.responseRate, 10)} max={10} className="h-2" />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Industry benchmark: <span className="tabular-nums">{mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%</span>
-                    {mailAttribution.responseRate >= mailAttribution.industryBenchmarkMin && (
-                      <span className="text-acr-pos ml-1">— above average</span>
-                    )}
-                  </p>
+                  {mailAttribution.industryBenchmark && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Industry benchmark:{" "}
+                      <span className="tabular-nums">
+                        {mailAttribution.industryBenchmark.rangeMin != null &&
+                        mailAttribution.industryBenchmark.rangeMax != null
+                          ? `${mailAttribution.industryBenchmark.rangeMin}–${mailAttribution.industryBenchmark.rangeMax}%`
+                          : `${mailAttribution.industryBenchmark.value}%`}
+                      </span>{" "}
+                      <span className="opacity-70">
+                        ({mailAttribution.industryBenchmark.source}, {mailAttribution.industryBenchmark.asOf})
+                      </span>
+                      {mailAttribution.responseRate >=
+                        (mailAttribution.industryBenchmark.rangeMin ??
+                          mailAttribution.industryBenchmark.value) && (
+                        <span className="text-acr-pos ml-1">— above average</span>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 {mailAttribution.costPerResponse !== null && (

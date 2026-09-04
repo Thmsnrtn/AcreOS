@@ -9,7 +9,18 @@ interface ChurnData {
     monthlyChurnRate: string;
     totalPayingOrgs: number;
     cancellationsLast30d: number;
-    industryBenchmark: number;
+    /**
+     * Null unless a benchmark with a real citation is registered server-side
+     * (server/services/benchmarks.ts). It used to be a bare 2.5 commented
+     * "SaaS average monthly churn %", with no source — and it drove two of the
+     * three stats in the row below plus a comparison bar.
+     */
+    industryBenchmark: {
+      value: number;
+      unit: string;
+      source: string;
+      asOf: string;
+    } | null;
     status: "healthy" | "watch" | "critical";
   };
   atRiskOrgs: Array<{
@@ -78,10 +89,11 @@ export function ChurnIntelligence() {
 
   const { churnMetrics, atRiskOrgs, recentCancellations, recommendations } = data;
   const churnRate = parseFloat(churnMetrics.monthlyChurnRate);
-  const vsIndustry = churnRate - churnMetrics.industryBenchmark;
+  const benchmark = churnMetrics.industryBenchmark;
+  const vsIndustry = benchmark ? churnRate - benchmark.value : null;
   const style = STATUS_STYLES[churnMetrics.status] ?? STATUS_STYLES.healthy;
   const churnBarWidth = Math.min(100, (churnRate / 10) * 100);
-  const benchmarkBarWidth = Math.min(100, (churnMetrics.industryBenchmark / 10) * 100);
+  const benchmarkBarWidth = benchmark ? Math.min(100, (benchmark.value / 10) * 100) : 0;
 
   return (
     <Card>
@@ -99,23 +111,30 @@ export function ChurnIntelligence() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Rate vs benchmark */}
-        <dl className="grid grid-cols-3 gap-1 text-center m-0">
+        <dl className={`grid gap-1 text-center m-0 ${benchmark ? "grid-cols-3" : "grid-cols-1"}`}>
           <div>
             <dd className={`text-2xl font-bold tabular-nums m-0 ${churnMetrics.status === "healthy" ? "text-acr-pos" : churnMetrics.status === "watch" ? "text-acr-warn" : "text-acr-neg"}`}>
               {churnRate.toFixed(1)}%
             </dd>
             <dt className="text-caption text-muted-foreground">Your churn</dt>
           </div>
-          <div>
-            <dd className="text-2xl font-bold text-muted-foreground tabular-nums m-0">{churnMetrics.industryBenchmark}%</dd>
-            <dt className="text-caption text-muted-foreground">Industry avg</dt>
-          </div>
-          <div>
-            <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
-              {vsIndustry > 0 ? "+" : ""}{vsIndustry.toFixed(1)}%
-            </dd>
-            <dt className="text-caption text-muted-foreground">vs benchmark</dt>
-          </div>
+          {benchmark && (
+            <div>
+              <dd className="text-2xl font-bold text-muted-foreground tabular-nums m-0">{benchmark.value}%</dd>
+              <dt className="text-caption text-muted-foreground">
+                Industry avg
+                <span className="block opacity-70">{benchmark.source}, {benchmark.asOf}</span>
+              </dt>
+            </div>
+          )}
+          {benchmark && vsIndustry !== null && (
+            <div>
+              <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
+                {vsIndustry > 0 ? "+" : ""}{vsIndustry.toFixed(1)}%
+              </dd>
+              <dt className="text-caption text-muted-foreground">vs benchmark</dt>
+            </div>
+          )}
         </dl>
 
         {/* Visual benchmark comparison bar */}
@@ -137,18 +156,20 @@ export function ChurnIntelligence() {
               />
             </div>
           </div>
-          {/* Industry */}
-          <div className="space-y-0.5">
-            <div className="flex justify-between text-micro text-muted-foreground mb-0.5">
-              <span>Industry avg</span>
+          {/* Industry — only when a benchmark with a source exists to draw. */}
+          {benchmark && (
+            <div className="space-y-0.5">
+              <div className="flex justify-between text-micro text-muted-foreground mb-0.5">
+                <span>Industry avg</span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-muted-foreground/40 transition-all"
+                  style={{ width: `${benchmarkBarWidth}%` }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-muted-foreground/40 transition-all"
-                style={{ width: `${benchmarkBarWidth}%` }}
-              />
-            </div>
-          </div>
+          )}
         </div>
 
         {/* At-risk orgs */}
