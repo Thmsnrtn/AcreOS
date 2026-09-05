@@ -774,18 +774,66 @@ Evidence: Search for "Podolsky" in client source files.
 Remediation plan: Replace all instances with generic or AcreOS-branded alternatives.
 Resolving commits: 23225e2
 
+### DEFECT-0074
+Title: Security Gate red on every push since 2026-09-04 — Trivy filesystem scan, cause unread
+Severity: P1
+Status: OPEN
+Surfaced by lenses: CI verification (2026-09-05, autonomous session)
+Description: `.github/workflows/security.yml` has failed on EVERY run since #1468
+(`7e6d53c4`, 2026-09-04 05:05). The last green was #1467 (`deaa5191`,
+2026-09-02 19:04) — 37 consecutive failures at the time of writing, spanning
+every push to main since. The failing job is "Trivy Filesystem & Secret Scan";
+npm audit, CodeQL and the container scan all pass, so this is an fs-scope
+finding (the job runs `--scanners vuln,secret,misconfig` at
+CRITICAL,HIGH,MEDIUM) that `npm audit` cannot see. The "Security Gate" job then
+fails on it, so the workflow's conclusion has been red continuously.
+
+This violates the policy stated in `.trivyignore`'s own header: "a permanently-
+red Security Gate trains everyone to ignore it, so we keep the gate GREEN and
+document each exception here instead." Whatever the finding is, it has been
+neither fixed nor dispositioned for two days.
+
+Evidence: GitHub Actions workflow 245389657, runs #1467 (success) → #1468..#1504
+(all failure). Run 33993869331 job "Trivy Filesystem & Secret Scan" exits 1 after
+`trivy fs .`; job "Security Gate" reports `Trivy fs: failure` with npm/CodeQL/
+image all `success`.
+
+WHY THE CAUSE IS NOT RECORDED HERE: the scan emits SARIF to the Security tab
+rather than a table to the log, and both routes to it were closed to the session
+that found this — `GET /code-scanning/alerts` returns 403 "Resource not
+accessible by integration", and the Trivy installer cannot resolve GitHub
+release tags through the sandbox proxy. Guessing at a CVE, or silencing it with
+a `.trivyignore` entry written without reading the finding, is exactly what that
+file forbids. Someone with Security-tab access or a local Trivy can name it in
+minutes.
+
+Remediation plan: (1) Read the finding — Security tab → Code scanning → filter
+tool `Trivy`, category `trivy-filesystem`; or run `trivy fs .` locally with the
+same flags. (2) Fix it, or add a `.trivyignore` entry with the dated assessment
+and re-review trigger the file's existing entries model. (3) Confirm the gate
+returns green, because a red gate that stays red is the failure mode the file
+was written to prevent.
+
+Note on how it went unseen for two days: it is invisible from the branch.
+`Security Scanning` does not run on feature-branch pushes — a branch push
+triggers three workflows (Test, E2E Mobile, Customer Surface Monitor) while a
+push to main triggers thirteen. A pre-merge check that enumerates the branch's
+runs is complete and still misses this entirely; the post-merge check has to
+enumerate every run for the SHA on main.
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
+| OPEN   | 0   | 1   | 19  | 20    |
 | FIXED  | 12  | 36  | 0   | 48    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **39** | **19** | **70** |
+| **Total** | **12** | **40** | **19** | **71** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open (not blocking launch).
+All P0 defects resolved. ONE P1 IS OPEN — DEFECT-0074, the Security Gate red on every
+push since 2026-09-04, cause unread. 19 P2s remain open (not blocking launch).
 
 ### Fixed Defects Summary
 
