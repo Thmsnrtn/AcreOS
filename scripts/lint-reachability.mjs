@@ -803,7 +803,29 @@ const WRITE_RES = [
 const READ_RES = [
   /\.from\s*\(\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)/g,
   /(?:[Jj]oin|\$count|selectDistinctOn)\s*\(\s*(?:[A-Za-z_$][\w$]*\.)?([A-Za-z_$][\w$]*)/g,
-  /\bdb\.query\.([A-Za-z_$][\w$]*)/g,
+  //
+  // THE RELATIONAL READ, WHATEVER THE HANDLE IS SPELLED.
+  //
+  // This was `/\bdb\.query\.(\w+)/` — pinned to the literal receiver `db`.
+  // That is a POPULATION claim disguised as a pattern: it says "a relational
+  // read is one written on a variable named db", and every read written on
+  // anything else was outside the set this gate measured.
+  //
+  // It cost a false accusation the day the tenancy burn-down started routing
+  // deliberate cross-org reads through `unscopedForPlatformOps(reason).query.x`
+  // — the sanctioned, logged hatch. The receiver became a call expression, the
+  // regex stopped matching, and `scp_golden_cases` was reported as a table
+  // NOTHING READS while two founder routes read it. Under this linter's own
+  // stated bias — a MISS beats an ACCUSATION, because the action a false
+  // "no reader" invites is DROP TABLE — that is the expensive direction to be
+  // wrong in, and it would have recurred on every future hatch conversion.
+  //
+  // So: accept the two bare handles this repo uses (`db`, and `tx` inside a
+  // transaction) plus ANY call expression, which is what the hatch and any
+  // future wrapper look like. Deliberately NOT a bare `\.query\.` — that
+  // matches `req.query.<param>` in every route file, which would silently mark
+  // a table as read because a query STRING parameter shares its name.
+  /(?:\bdb|\btx|\))\s*\.query\.([A-Za-z_$][\w$]*)/g,
   /\bfrom\s+["'`]?([A-Za-z_][\w]*)/gi, // raw SQL (module specifiers can't match)
   /\bjoin\s+["'`]?([A-Za-z_][\w]*)/gi,
 ];

@@ -129,7 +129,15 @@ export const decisionsInboxService = {
     options?: DecisionCardOption[];
     prediction?: OutcomePrediction;
   }): Promise<{ autoResolved: boolean; itemId?: number }> {
-    const ticket = await db.query.supportTickets.findFirst({
+    // By primary key, and deliberately not org-scoped: this is the founder's
+    // escalation path and the function is handed nothing but a ticket id. The
+    // caller-side chokepoint in executeSupportTool refuses a ticketId outside
+    // the caller's own org before any tool case runs (founders excepted), and
+    // the card created below inherits the TICKET's lane rather than inventing
+    // one — so the read never widens what the caller could already reach.
+    const ticket = await unscopedForPlatformOps(
+      "support ticket by primary key on the founder escalation path; caller-side ownership check lives in executeSupportTool and the resulting card inherits the ticket's organizationId",
+    ).query.supportTickets.findFirst({
       where: eq(supportTickets.id, ticketId),
       with: { organization: true },
     });
@@ -215,14 +223,19 @@ export const decisionsInboxService = {
     alertId: number,
     opts?: { options?: DecisionCardOption[]; prediction?: OutcomePrediction },
   ): Promise<number | null> {
-    const alert = await db.query.systemAlerts.findFirst({
+    const alert = await unscopedForPlatformOps(
+      "system alert by primary key for the founder's inbox: systemAlerts is AcreOS's own infrastructure-alert table and the caller holds only the alert id",
+    ).query.systemAlerts.findFirst({
       where: eq(systemAlerts.id, alertId),
     });
     if (!alert || alert.severity !== "critical") return null;
 
-    // Dedup
+    // Dedup. The card below is inserted founder-global (no organizationId), so
+    // the lane this dedupes within is the null lane — an org-tagged card that
+    // happens to cite the same alert is a different row, not a duplicate.
     const existing = await db.query.decisionsInboxItems.findFirst({
       where: and(
+        isNull(decisionsInboxItems.organizationId),
         eq(decisionsInboxItems.sourceAlertId, alertId),
         eq(decisionsInboxItems.status, "pending"),
       ),
@@ -473,8 +486,12 @@ export const decisionsInboxService = {
     subject: string;
     options: DecisionCardOption[];
   }): Promise<{ itemId: number | null; created: boolean }> {
+    // Founder-global card (the insert below pins organizationId: null), so the
+    // dedupe lane is the null lane. `null` matches only `null` — an org-tagged
+    // card carrying the same subject is not a duplicate of this one.
     const existing = await db.query.decisionsInboxItems.findFirst({
       where: and(
+        isNull(decisionsInboxItems.organizationId),
         or(
           eq(decisionsInboxItems.status, "pending"),
           eq(decisionsInboxItems.status, "deferred"),
@@ -521,8 +538,16 @@ export const decisionsInboxService = {
     expectedOutcome: string | null;
     resolvedAt: Date | null;
   }): Promise<{ itemId: number | null; created: boolean }> {
+    // The check-in inherits the original card's lane (the insert below copies
+    // original.organizationId), so it dedupes within that lane. Note the shape:
+    // a plain eq() would compile to `organization_id = NULL` for a
+    // founder-global original — matching nothing, so every run would create
+    // another check-in. `null` matches only `null`.
     const existing = await db.query.decisionsInboxItems.findFirst({
       where: and(
+        original.organizationId == null
+          ? isNull(decisionsInboxItems.organizationId)
+          : eq(decisionsInboxItems.organizationId, original.organizationId),
         eq(decisionsInboxItems.itemType, "outcome_check_in"),
         or(
           eq(decisionsInboxItems.status, "pending"),
@@ -614,8 +639,11 @@ export const decisionsInboxService = {
     const { SHADOW_PROMOTION_ITEM_TYPE, PROMOTION_OPTION_GRANT, PROMOTION_OPTION_HOLD, buildPromotionCardBody } =
       await import("./autopilot/promotionRequest");
 
+    // Founder-global card (the insert below pins organizationId: null) — the
+    // autopilot's authority level is platform-wide, not per-tenant.
     const existing = await db.query.decisionsInboxItems.findFirst({
       where: and(
+        isNull(decisionsInboxItems.organizationId),
         eq(decisionsInboxItems.itemType, SHADOW_PROMOTION_ITEM_TYPE),
         or(
           eq(decisionsInboxItems.status, "pending"),

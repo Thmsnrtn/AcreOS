@@ -279,8 +279,25 @@ const RULE_3_CHAIN_FLOOR = 300;
  * they now say so in a logged, greppable sentence instead of by omission. That
  * is the trade this exemption exists to make — and the ceiling is what stops it
  * being made silently.
+ *
+ * 4 → 6 on 2026-09-05, as the decisions-inbox pair converted. Both are
+ * by-primary-key reads on the FOUNDER's own queue, and in both the row that
+ * comes back is what supplies the lane — there is no caller org to scope to:
+ *
+ *   decisionsInbox.createFromAlert   resolves a systemAlerts row by id.
+ *     system_alerts is AcreOS's own infrastructure-alert table and the founder
+ *     card it produces is inserted with no organizationId at all.
+ *
+ *   decisionsInbox.createFromEscalation   resolves a supportTickets row by id
+ *     on the escalation path. The confused-deputy check lives one frame up, in
+ *     executeSupportTool, which refuses a ticketId outside the caller's own org
+ *     before any tool case runs (founders excepted); the card created here then
+ *     inherits the TICKET's organizationId rather than inventing one. So the
+ *     read never widens what the caller could already reach — but it is a
+ *     property of the CALLER, which is exactly why it is hatched loudly here
+ *     and not left to omission.
  */
-const HATCH_EXEMPTION_CEILING = 4;
+const HATCH_EXEMPTION_CEILING = 6;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.

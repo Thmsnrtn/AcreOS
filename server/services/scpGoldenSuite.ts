@@ -16,6 +16,7 @@ import { db } from "../db";
 import { scpGoldenCases, scpEvolutionMetrics, companyAgents } from "@shared/schema";
 import { eq, and, sql, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import crypto from "crypto";
 import {
   getAgentVersion,
@@ -138,7 +139,9 @@ export async function promoteToGoldenCase(
  * Get all golden cases for an agent from the DB.
  */
 export async function getGoldenCases(agent: string): Promise<typeof scpGoldenCases.$inferSelect[]> {
-  return db.query.scpGoldenCases.findMany({
+  return unscopedForPlatformOps(
+    "golden cases for one internal company agent — AcreOS's OWN company-agent regression suite. The table carries a nullable org_id, but promoteToGolden — its only writer — never sets it, so every row is platform-owned, and every reader is behind app.use('/api/scp/v2', isAuthenticated, requireFounder)",
+  ).query.scpGoldenCases.findMany({
     where: eq(scpGoldenCases.agentCodename, agent),
     orderBy: [sql`created_at DESC`],
   });
@@ -152,7 +155,9 @@ export async function getAllGoldenCases(): Promise<{
   byAgent: Record<string, number>;
   recentCases: typeof scpGoldenCases.$inferSelect[];
 }> {
-  const allCases = await db.query.scpGoldenCases.findMany({
+  const allCases = await unscopedForPlatformOps(
+    "golden cases across every internal company agent — AcreOS's OWN company-agent regression suite. The table carries a nullable org_id, but promoteToGolden — its only writer — never sets it, so every row is platform-owned, and every reader is behind app.use('/api/scp/v2', isAuthenticated, requireFounder)",
+  ).query.scpGoldenCases.findMany({
     orderBy: [sql`created_at DESC`],
   });
 
