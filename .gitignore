@@ -72,6 +72,12 @@ tests/e2e-intelligent/runs/**/_RESUME-HERE.md
 # of attachments per pass. Persisted artifacts live in CI, not the repo.
 tests/e2e-desktop-feel/results/
 tests/e2e-mobile/results/
+# Added 2026-09-05. Its two siblings above have been ignored since the
+# desktop-feel matrix started producing artifacts; this one was missing
+# because the customer-journey audit had never run — 366 scheduled CI runs,
+# every one of them exiting at the TARGET_URL guard before Playwright started.
+# The first local run of it dropped a 371KB report into the working tree.
+tests/e2e-customer-journey/results/
 test-results/
 
 # Dev founder bypass artifacts (REMOVE_BEFORE_LAUNCH — see Gap 1.1.G)
