@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 // Sidebar / useSidebarCollapsed removed 2026-05-20 — this page is no longer
 // rendered as a standalone route. The parent PageShell in pages/pax.tsx
@@ -52,6 +52,7 @@ import {
   usePaxAskActions,
   usePaxAskById,
   usePaxNeedsYou,
+  type PaxAskItem,
 } from "@/hooks/usePaxNeedsYou";
 import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
 import { formatDate } from "@/lib/format";
@@ -167,13 +168,58 @@ function ConversationAsk({ pendingActionId }: { pendingActionId: number }) {
   );
 }
 
+/**
+ * How long an answered ask stays on screen after the tap.
+ *
+ * An answered row leaves `GET /api/pax/needs-you` immediately — the server
+ * returns only `pending` and `expired` — so the card UNMOUNTED the instant it
+ * was tapped, and the outcome line it renders ("Rejected — nothing was sent",
+ * "Approved and sent") was never readable. The most consequential control in
+ * the product confirmed nothing; the card simply vanished, which reads the same
+ * as a tap that did nothing at all.
+ *
+ * `PaxAskCard` was built for the other behaviour: it holds its own decision
+ * state and puts an `aria-live` region on that line specifically so the outcome
+ * ANNOUNCES. None of that could fire against an unmounted component.
+ *
+ * Six seconds: long enough to read one short sentence, short enough that the
+ * queue does not accumulate answered cards. Held per id, cleared on unmount.
+ */
+const ANSWERED_LINGER_MS = 6_000;
+
 function PaxNeedsYouStrip() {
   const { pending, expired, isLoading, isError } = usePaxNeedsYou();
   const { approve, reject, revise } = usePaxAskActions();
   const [open, setOpen] = useState(false);
+  const [answered, setAnswered] = useState<PaxAskItem[]>([]);
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    const pendingTimers = timers.current;
+    return () => pendingTimers.forEach((t) => window.clearTimeout(t));
+  }, []);
+
+  /** Hold the card on screen through its own decision animation and outcome. */
+  const retain = useCallback((ask: PaxAskItem) => {
+    setAnswered((prev) => (prev.some((a) => a.id === ask.id) ? prev : [...prev, ask]));
+    timers.current.push(
+      window.setTimeout(() => {
+        setAnswered((prev) => prev.filter((a) => a.id !== ask.id));
+      }, ANSWERED_LINGER_MS),
+    );
+  }, []);
+
   const count = pending.length;
+  // Answered-but-lingering cards keep the strip mounted: without this the last
+  // ask in the queue takes the whole strip down with it the moment it is
+  // answered, which is the same disappearance by another route.
+  const lingering = answered.filter(
+    (a) => !pending.some((p) => p.id === a.id) && !expired.some((e) => e.id === a.id),
+  );
   // No chrome for an empty queue — and no number until the server has answered.
-  if (isLoading || isError || (count === 0 && expired.length === 0)) return null;
+  if (isLoading || isError || (count === 0 && expired.length === 0 && lingering.length === 0)) {
+    return null;
+  }
   const label = `${PAX_LABELS.queue} (${count})`;
   return (
     <section
@@ -204,14 +250,14 @@ function PaxNeedsYouStrip() {
       </button>
       {open && (
         <div id="pax-needs-you-list" className="px-3 pb-3 space-y-2 max-h-[50vh] overflow-y-auto" data-testid="pax-needs-you-list">
-          {pending.map((ask) => (
+          {[...pending, ...lingering].map((ask) => (
             <PaxAskCard
               key={ask.id}
               ask={ask}
               compact
-              onApprove={(a) => approve(a.id)}
-              onReject={(a) => reject(a.id)}
-              onRevise={(a, args) => revise(a.id, args)}
+              onApprove={(a) => { retain(a); return approve(a.id); }}
+              onReject={(a) => { retain(a); return reject(a.id); }}
+              onRevise={(a, args) => { retain(a); return revise(a.id, args); }}
             />
           ))}
           {expired.map((ask) => (
@@ -219,9 +265,9 @@ function PaxNeedsYouStrip() {
               key={ask.id}
               ask={ask}
               compact
-              onApprove={(a) => approve(a.id)}
-              onReject={(a) => reject(a.id)}
-              onRevise={(a, args) => revise(a.id, args)}
+              onApprove={(a) => { retain(a); return approve(a.id); }}
+              onReject={(a) => { retain(a); return reject(a.id); }}
+              onRevise={(a, args) => { retain(a); return revise(a.id, args); }}
             />
           ))}
         </div>
