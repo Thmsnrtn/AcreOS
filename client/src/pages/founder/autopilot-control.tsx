@@ -1055,7 +1055,7 @@ function TestPageButton() {
 }
 
 // ── Safety net outside the app (founder decision 2026-07-28 #8) ─────────────
-// Three watchdogs run on GitHub Actions — genuinely outside AcreOS, so they
+// The GitHub-Actions automations — genuinely outside AcreOS, so they
 // still work when the app is dark. HONESTY RULE: this app CANNOT read GitHub
 // repo secrets, so nothing here is ever shown as armed ("no green check") —
 // each entry says exactly what is knowable from here and how the founder can
@@ -1117,6 +1117,62 @@ const EXTERNAL_WATCHDOGS: ExternalWatchdogInfo[] = [
       'Prove it: Actions tab → Release Watchdog → Run workflow → the run should end green with "Alert spine wired".',
     ],
   },
+  // ── The three quality audits ──────────────────────────────────────────────
+  // Added 2026-09-05 after checking what their runs actually DID rather than
+  // what their code says. The state lines below say "Can't verify from here"
+  // like every other entry, and deliberately so: the app cannot read GitHub
+  // secrets, so a rendered claim about how many runs were dormant would be a
+  // measurement that decays into a lie the day the founder sets the secret.
+  // The measurement belongs here, dated, not on the screen. All three share TARGET_URL, none of which was set:
+  // desktop-feel and customer-journey exited 0 on that branch and reported
+  // SUCCESS on every scheduled run since they were created; borrower-cookie
+  // exited 1 and reported FAILURE. Both readings describe the CONFIGURATION
+  // while looking like a verdict on the PRODUCT, which is why they belong on
+  // this list — the only list in the app that says out loud which automations
+  // cannot speak for themselves.
+  {
+    key: "desktop-feel-audit",
+    title: "Desktop-feel audit",
+    what: "Every 6 hours, walks the desktop viewports on the live site and checks focus rings, hover affordances and layout.",
+    stateLine:
+      "Can't verify from here — dormant until you set TARGET_URL, and a dormant run still reports a green check. Read the run's summary, not its badge.",
+    secrets: ["TARGET_URL", "E2E_TEST_AUTH_TOKEN", "SOLENE_PAGE_SECRET"],
+    how: [
+      'Terminal: gh secret set TARGET_URL --body "https://<your-staging-host>"',
+      "Terminal: gh secret set E2E_TEST_AUTH_TOKEN --body \"<signed token>\" — the authed viewports need it.",
+      "Point it at STAGING, not production: these audits click through real flows.",
+      "SOLENE_PAGE_SECRET is the pager: without it a red audit opens a GitHub issue and nothing reaches your phone.",
+      'Prove it: Actions tab → Desktop-feel Audit → Run workflow → the summary must NOT say "DID NOT RUN".',
+    ],
+  },
+  {
+    key: "customer-journey-audit",
+    title: "Customer-journey audit",
+    what: "Every 6 hours, walks the end-to-end customer journey across every viewport on the live site.",
+    stateLine:
+      "Can't verify from here — same TARGET_URL as the desktop-feel audit, and the same green check while dormant.",
+    secrets: ["TARGET_URL", "E2E_TEST_AUTH_TOKEN", "SOLENE_PAGE_SECRET"],
+    how: [
+      'Terminal: gh secret set TARGET_URL --body "https://<your-staging-host>"',
+      "Web: github.com/Thmsnrtn/AcreOS → Settings → Secrets and variables → Actions → New repository secret (exact names above).",
+      "SOLENE_PAGE_SECRET is the pager: without it a red audit opens a GitHub issue and nothing reaches your phone.",
+      'Prove it: Actions tab → Customer Journey Audit → Run workflow → the summary must NOT say "DID NOT RUN".',
+    ],
+  },
+  {
+    key: "borrower-cookie-e2e",
+    title: "Borrower statement flow",
+    what: "Daily, proves a borrower can exchange their link for a session cookie and pull a statement — and that nothing else can.",
+    stateLine:
+      "Can't verify from here — dormant until you set TARGET_URL. Its red used to mean \u201cunconfigured\u201d; it now means the borrower flow is actually broken.",
+    secrets: ["TARGET_URL", "E2E_DATABASE_URL", "BORROWER_SESSION_SECRET"],
+    how: [
+      'Terminal: gh secret set TARGET_URL --body "https://<your-staging-host>"',
+      "Terminal: gh secret set E2E_DATABASE_URL --body \"<throwaway postgres the target also reads>\" — never the production database.",
+      "Terminal: gh secret set BORROWER_SESSION_SECRET --body \"<the signing secret in use at TARGET_URL>\"",
+      'Prove it: Actions tab → Borrower Cookie-Session E2E → Run workflow → the summary must NOT say "DID NOT RUN".',
+    ],
+  },
 ];
 
 function ExternalSafetyNetSection() {
@@ -1158,9 +1214,12 @@ function ExternalSafetyNetSection() {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Safety net outside the app</p>
           <p className="text-xs text-muted-foreground">
-            Three watchdogs run on GitHub's computers, independent of AcreOS — they keep working when the app is dark.
-            This app cannot read GitHub's secrets, so it never claims one is armed: each line below says what's honestly
-            knowable and how to arm or verify it yourself.
+            {/* Counted from the list, never typed. "Three watchdogs" was correct
+                until the day three quality audits joined it, and a hardcoded
+                number in prose is the cheapest way to make a page lie. */}
+            {EXTERNAL_WATCHDOGS.length} automations run on GitHub's computers, independent of AcreOS — they keep working
+            when the app is dark. This app cannot read GitHub's secrets, so it never claims one is armed: each line below
+            says what's honestly knowable and how to arm or verify it yourself.
           </p>
         </div>
         <Button

@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(__dirname, "../..");
@@ -36,11 +36,82 @@ function secretsUsedBy(workflowRel: string): string[] {
   return [...names];
 }
 
-const WORKFLOWS = [
-  ".github/workflows/uptime-probe.yml",
-  ".github/workflows/release-watchdog.yml",
-  ".github/workflows/daily-pulse.yml",
-] as const;
+/**
+ * THE POPULATION — derived, not typed.
+ *
+ * This was a hardcoded list of three workflows, and on 2026-09-05 that turned
+ * out to be a claim about the card's completeness that nothing checked. Three
+ * MORE secret-gated automations existed the whole time — the desktop-feel,
+ * customer-journey and borrower-cookie audits, all gated on `TARGET_URL` — and
+ * none of their secrets appeared on the card. Neither did `SOLENE_PAGE_SECRET`,
+ * the paging channel three red paths use, nor `SENTRY_AUTH_TOKEN`. Four of
+ * seven documented, with a green gate over the other three, because the gate's
+ * population was written down instead of found.
+ *
+ * A dormancy-gated workflow is one that CHECKS FOR A SECRET AND CHANGES
+ * BEHAVIOUR when it is absent — `if [ -z "${X:-}" ]` over a name it also reads
+ * from `secrets.`. That predicate finds them; a list does not.
+ *
+ * Comments are stripped first, population included. The three audits carry
+ * explanatory comments naming `TARGET_URL` and the guard itself, and a
+ * predicate that reads its own documentation is the trap this repo has already
+ * paid for four times in one day.
+ */
+const withoutComments = (src: string) =>
+  src.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+
+/** Guard-gated secrets in one workflow: `-z "${X:-}"` where X is a secret. */
+function dormancyGatedSecrets(workflowRel: string): string[] {
+  const src = withoutComments(read(workflowRel));
+  const guarded = new Set(
+    [...src.matchAll(/-z\s+"\$\{?([A-Za-z_][A-Za-z0-9_]*)(?::-)?\}?"/g)].map((m) => m[1]),
+  );
+  const fromSecrets = new Set(
+    [...src.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map((m) => m[1]).filter((n) => n !== "GITHUB_TOKEN"),
+  );
+  // A guard usually names the ENV var, which is bound to the secret above it.
+  const envToSecret = new Map(
+    [...src.matchAll(
+      /^\s*([A-Z_][A-Z0-9_]*):\s*\$\{\{\s*(?:github\.event\.inputs\.\w+\s*\|\|\s*)?secrets\.([A-Za-z0-9_]+)\s*\}\}/gm,
+    )].map((m) => [m[1], m[2]] as const),
+  );
+  const out = new Set<string>();
+  for (const g of guarded) {
+    if (fromSecrets.has(g)) out.add(g);
+    const mapped = envToSecret.get(g);
+    if (mapped) out.add(mapped);
+  }
+  return [...out].sort();
+}
+
+const ALL_WORKFLOWS = readdirSync(path.join(root, ".github/workflows"))
+  .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+  .map((f) => `.github/workflows/${f}`)
+  .sort();
+
+/** Every workflow that goes quiet without a secret the founder must set. */
+const WORKFLOWS = ALL_WORKFLOWS.filter((rel) => dormancyGatedSecrets(rel).length > 0);
+
+/**
+ * WORD-BOUNDED, not `toContain`.
+ *
+ * Falsifying this file caught its own assertion: replacing `TARGET_URL` with
+ * `TARGET_URL_REDACTED` throughout the card left every `toContain("TARGET_URL")`
+ * satisfied, so the gate certified a card that no longer names the secret. That
+ * is the substring trap CLAUDE.md records paying for once already — a trigger
+ * pinned by name surviving a rename to `…_RENAMED`.
+ */
+const names = (haystack: string, needle: string) =>
+  new RegExp(`(?<![A-Za-z0-9_])${needle}(?![A-Za-z0-9_])`).test(haystack);
+
+/** The `secrets: [...]` arrays in EXTERNAL_WATCHDOGS, parsed rather than grepped. */
+function panelSecrets(sectionSrc: string): string[] {
+  const out = new Set<string>();
+  for (const m of sectionSrc.matchAll(/secrets:\s*\[([^\]]*)\]/g)) {
+    for (const q of m[1].matchAll(/"([A-Za-z0-9_]+)"/g)) out.add(q[1]);
+  }
+  return [...out].sort();
+}
 
 const card = read("docs/runbooks/break-glass-card.md");
 const controls = read("client/src/pages/founder/autopilot-control.tsx");
@@ -61,11 +132,36 @@ describe("workflow secret names (ground truth parsed from the .yml files)", () =
 });
 
 describe("docs/runbooks/break-glass-card.md — the one-pager", () => {
-  it("contains every secret name any external watchdog actually uses, verbatim", () => {
-    for (const wf of WORKFLOWS) {
-      for (const name of secretsUsedBy(wf)) {
-        expect(card, `card must name ${name} (used by ${wf})`).toContain(name);
-      }
+  it("reads a real population of dormancy-gated workflows (vacuity guard)", () => {
+    // The floor is the whole point. If the guard predicate stops matching, this
+    // gate passes over an EMPTY set — which reads exactly like a complete card.
+    expect(ALL_WORKFLOWS.length, "no workflows were read at all").toBeGreaterThan(10);
+    expect(
+      WORKFLOWS.length,
+      "no dormancy-gated workflow was found. Eight existed on 2026-09-05 " +
+        "(uptime-probe, release-watchdog, daily-pulse, deploy, customer-surface-monitor " +
+        "and the three quality audits). Re-point dormancyGatedSecrets — do not " +
+        "let this population empty.",
+    ).toBeGreaterThanOrEqual(6);
+  });
+
+  it("names every secret whose ABSENCE silently changes behaviour, verbatim", () => {
+    // Not "every secret these workflows use" — deploy.yml's FLY_API_TOKEN is CI
+    // plumbing the founder never touches during an outage, and putting it here
+    // would make the card longer without making it truer. The card's job is the
+    // set whose absence makes an automation go quiet, which is exactly the set
+    // the guard predicate finds.
+    const gated = [...new Set(WORKFLOWS.flatMap((wf) => dormancyGatedSecrets(wf)))].sort();
+    expect(gated.length, "the guard predicate found no gated secrets at all").toBeGreaterThanOrEqual(6);
+    for (const name of gated) {
+      const users = WORKFLOWS.filter((wf) => dormancyGatedSecrets(wf).includes(name));
+      expect(
+        names(card, name),
+        `card must name ${name} — without it ${users.join(", ")} goes quiet, and the ` +
+          "founder has no record from outside the app that the secret exists. That is " +
+          "how TARGET_URL, SOLENE_PAGE_SECRET and SENTRY_AUTH_TOKEN were missing from " +
+          "this card while three audits reported success for months.",
+      ).toBe(true);
     }
   });
 
@@ -121,12 +217,46 @@ describe("autopilot-control.tsx — 'Safety net outside the app' section", () =>
     expect(section).toContain('data-testid="email-break-glass-card"');
   });
 
-  it("lists all three external watchdogs with the exact dormant-arming secret names", () => {
-    for (const key of ["daily-pulse", "uptime-probe", "release-watchdog"]) {
-      expect(section).toContain(`key: "${key}"`);
+  it("lists every dormancy-gated automation with the exact arming secret names", () => {
+    // Was three keys, typed. That list WAS the panel's completeness claim, and
+    // nothing checked it — so when three TARGET_URL-gated audits appeared, the
+    // panel stayed silent about them and this test stayed green.
+    for (const key of [
+      "daily-pulse", "uptime-probe", "release-watchdog",
+      "desktop-feel-audit", "customer-journey-audit", "borrower-cookie-e2e",
+    ]) {
+      expect(section, `${key} is dormancy-gated but absent from the panel`).toContain(`key: "${key}"`);
     }
-    for (const name of ["UPTIME_PROBE_URL", "UPTIME_PROBE_TOKEN", "DEPLOY_ALERT_WEBHOOK", "NTFY_TOPIC"]) {
-      expect(section).toContain(name);
+  });
+
+  it("every gated secret the card documents is armable from the panel too", () => {
+    // The card is the OFFLINE copy; the panel is the in-app one. A secret on one
+    // and not the other means the founder's answer depends on which he happens
+    // to look at.
+    //
+    // Asserted against the parsed `secrets:` ARRAYS, not the section text —
+    // falsification caught that too. Deleting SOLENE_PAGE_SECRET from the arrays
+    // left the test green, because the prose in a `how:` step still mentioned it.
+    // The arrays are what the UI renders as "Secrets to set"; prose is not.
+    //
+    // SENTRY_AUTH_TOKEN is the deliberate exception, named rather than filtered
+    // silently: it gates sourcemap upload inside the deploy pipeline, not an
+    // automation that watches the business. It belongs on the card (it explains
+    // an unreadable stack trace) and not in a panel whose subject is "what is
+    // watching while I sleep".
+    const PIPELINE_ONLY = new Set(["SENTRY_AUTH_TOKEN"]);
+    const gated = [...new Set(WORKFLOWS.flatMap((wf) => dormancyGatedSecrets(wf)))]
+      .filter((n) => !PIPELINE_ONLY.has(n))
+      .sort();
+    const armable = panelSecrets(section);
+    expect(gated.length).toBeGreaterThanOrEqual(5);
+    expect(armable.length, "no `secrets: [...]` arrays were parsed out of the panel").toBeGreaterThanOrEqual(5);
+    for (const name of gated) {
+      expect(
+        armable,
+        `${name} gates an automation the card tells the founder about, but the ` +
+          "in-app panel never offers it as a secret to set.",
+      ).toContain(name);
     }
   });
 
