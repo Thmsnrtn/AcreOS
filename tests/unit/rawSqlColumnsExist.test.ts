@@ -61,11 +61,21 @@ import * as schema from "../../shared/schema";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
-const SERVER = path.join(ROOT, "server");
+/**
+ * THE POPULATION, and why it is three roots rather than one.
+ *
+ * This started as `server/` alone, and on 2026-09-05 that omission cost three
+ * red CI workflows. `scripts/seed-test-borrower.mjs` inserted into a `stage`
+ * column that `leads` does not have; the statement threw, the borrower-cookie
+ * E2E could not seed, and the workflow had been red for it. A gate that reads
+ * only production code proves nothing about the fixtures CI runs FIRST — and a
+ * fixture that cannot run takes every test behind it with it.
+ */
+const ROOTS = ["server", "scripts", "tests"].map((d) => path.join(ROOT, d));
 
 /** Baselines, measured 2026-09-05. Down-only for ghosts; floors for population. */
 const MAX_GHOSTS = 0;
-const MAX_UNRESOLVED = 48;
+const MAX_UNRESOLVED = 69;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 
@@ -76,7 +86,7 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const f = path.join(dir, e.name);
     if (e.isDirectory()) walk(f, out);
-    else if (f.endsWith(".ts")) out.push(f);
+    else if (/\.(ts|mjs|js)$/.test(f) && !f.endsWith(".d.ts")) out.push(f);
   }
   return out;
 }
@@ -87,7 +97,13 @@ function walk(dir: string, out: string[] = []): string[] {
  */
 function outermostSqlTemplates(src: string) {
   const out: Array<{ start: number; text: string }> = [];
-  const re = /\bsql(?:\.raw)?`/g;
+  // `sql` tagged templates AND raw templates handed to a driver's query()/
+  // execute(). The second is not a footnote: EVERY database fixture in
+  // scripts/ and tests/ is `client.query(`INSERT INTO …`)`, so a gate that
+  // reads only the `sql` tag scans production code and none of the seeds CI
+  // runs before it. That is how `INSERT INTO leads (… stage)` — a column
+  // `leads` does not have — sat in a seeded workflow uncaught.
+  const re = /\b(?:sql(?:\.raw)?|\.\s*(?:query|execute|unsafe))\s*\(?\s*`/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     const open = m.index + m[0].length - 1;
@@ -109,6 +125,17 @@ function outermostSqlTemplates(src: string) {
 
 const BARE = /(?<![$.\w"])\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b\s*(?:>=|<=|>|<|=|!=|\bIS\b)/gi;
 const QUALIFIED = /\b([a-z][a-z0-9_]*)\.([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/gi;
+/**
+ * `INSERT INTO <table> (col, col, …)`.
+ *
+ * A column list is NOT a comparison, so `BARE` — which requires an operator
+ * after the identifier — never sees it. That is the shape every database
+ * fixture is written in, and the shape the defect that prompted this arm took:
+ * `INSERT INTO leads (… , stage)` against a table with no `stage` column. The
+ * first draft of this gate went green on that mutation, which is the only
+ * reason the gap is known.
+ */
+const INSERT_COLUMNS = /\binsert\s+into\s+"?([a-z_][a-z0-9_]*)"?\s*\(([^)]*)\)/gi;
 /** `FROM organizations o`, `JOIN users u ON …`, `UPDATE referrals SET …`. */
 const TABLE_REF = /\b(?:from|join|into|update)\s+"?([a-z_][a-z0-9_]*)"?(?:\s+(?:as\s+)?(?!on\b|set\b|where\b|values\b|select\b|using\b)([a-z][a-z0-9_]*))?/gi;
 const CHAIN = /(?:\.from\(\s*([A-Za-z_$][\w$]*)|\b(?:db|tx)\.(?:update|insert|delete)\(\s*([A-Za-z_$][\w$]*)|\b(?:db|tx)\.query\.([A-Za-z_$][\w$]*))/g;
@@ -133,7 +160,7 @@ function scan() {
   let templates = 0, withColumns = 0, unresolved = 0;
   const ghosts: Finding[] = [];
 
-  for (const f of walk(SERVER)) {
+  for (const f of ROOTS.flatMap((r) => walk(r))) {
     const src = stripComments(fs.readFileSync(f, "utf8"));
     for (const t of outermostSqlTemplates(src)) {
       templates++;
@@ -143,7 +170,17 @@ function scan() {
         .filter((n) => !NOT_COLUMNS.has(n));
       const qualified = [...lit.matchAll(QUALIFIED)]
         .map((q) => [q[1].toLowerCase(), q[2].toLowerCase()] as const);
-      if (!bare.length && !qualified.length) continue;
+      // Column lists resolve against the table the INSERT names, directly —
+      // never the union, since an INSERT touches exactly one table.
+      const inserted: Array<readonly [string, string]> = [];
+      for (const ins of lit.matchAll(INSERT_COLUMNS)) {
+        const table = ins[1].toLowerCase();
+        for (const raw of ins[2].split(",")) {
+          const col = raw.trim().replace(/^"|"$/g, "").toLowerCase();
+          if (/^[a-z][a-z0-9_]*$/.test(col)) inserted.push([table, col] as const);
+        }
+      }
+      if (!bare.length && !qualified.length && !inserted.length) continue;
       withColumns++;
 
       // Tables named by the template itself, with their aliases.
@@ -182,6 +219,13 @@ function scan() {
       const excerpt = lit.split("\n").join(" ").replace(/\s+/g, " ").trim().slice(0, 70);
       for (const n of bare) {
         if (!union.has(n)) ghosts.push({ file: rel, column: n, where: excerpt });
+      }
+      for (const [table, col] of inserted) {
+        const cols = bySqlName.get(table);
+        if (!cols) continue; // not a table this schema declares
+        if (!cols.has(col)) {
+          ghosts.push({ file: rel, column: `${table}.${col}`, where: excerpt });
+        }
       }
       // A qualified reference resolves against ITS OWN table, which is what a
       // union over joined tables hides: `u.organization_id` passed while

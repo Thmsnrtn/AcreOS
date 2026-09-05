@@ -86,7 +86,14 @@ const RESOURCES: ResourceSpec[] = [
     sensitivity: "FINANCIAL: borrower, principal, rate, payment schedule",
     path: (id) => `/api/notes/${id}`,
     seed: (c, org) =>
-      ins(c, `INSERT INTO notes (organization_id, original_principal, current_balance, interest_rate, term_months, monthly_payment, start_date, first_payment_date) VALUES ($1,50000,48000,9.5,120,650,'2026-01-01','2026-02-01') RETURNING id`, [org]),
+      // `status` is left to its DEFAULT of 'active' by omission, and an active
+      // note trips the DB-level CHECK `notes_atr_origination_gate` without a
+      // §1026.43 determination or a statutory exemption — so this canary could
+      // never be seeded. 'pending' is the honest fix rather than claiming an
+      // exemption: an IDOR probe needs the row to EXIST and be org-scoped, not
+      // to have been originated, and a fixture should not assert a compliance
+      // fact it has no basis for.
+      ins(c, `INSERT INTO notes (organization_id, original_principal, current_balance, interest_rate, term_months, monthly_payment, start_date, first_payment_date, status) VALUES ($1,50000,48000,9.5,120,650,'2026-01-01','2026-02-01','pending') RETURNING id`, [org]),
   },
   {
     type: "generated-documents",

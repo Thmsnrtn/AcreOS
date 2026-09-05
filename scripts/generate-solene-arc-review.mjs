@@ -186,9 +186,14 @@ async function pageEventsAggregate(pool, start, end) {
   if (!pool) return { available: false, note: "DATABASE_URL unset" };
   try {
     const { rows } = await pool.query(
+      // `fired_at`, not `created_at` — solene_page_events has no created_at
+      // column, so this statement threw on every run and the soft-fail below
+      // recorded it as "unavailable". The page-event section of the arc review
+      // has therefore always been empty, and looked exactly like a period with
+      // no pages in it.
       `SELECT severity, COUNT(*)::int AS n
          FROM solene_page_events
-        WHERE created_at >= $1 AND created_at < $2
+        WHERE fired_at >= $1 AND fired_at < $2
         GROUP BY severity
         ORDER BY n DESC`,
       [start.toISOString(), end.toISOString()],

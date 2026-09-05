@@ -144,12 +144,18 @@ async function cmdSeed(client) {
     `DELETE FROM leads WHERE organization_id = $1 AND email = $2`,
     [orgId, BORROWER_EMAIL],
   );
+  // `leads` has NO `stage` column — the pipeline position it was reaching for
+  // is `status`, which is already 'closed' here, and the only other stage-ish
+  // column is `nurturing_stage` (hot/warm/cold/dead/new), which has no
+  // 'converted' value. So the column is dropped rather than remapped: naming a
+  // column that does not exist made this INSERT throw, and it threw before the
+  // note seed, so the borrower-cookie E2E workflow never reached either.
   const { rows: leadRows } = await client.query(
     `INSERT INTO leads
        (organization_id, type, first_name, last_name, email, phone,
-        status, source, stage)
+        status, source)
        VALUES ($1, 'buyer', 'Testy', 'Borrower', $2, '+15555550199',
-               'closed', $3, 'converted')
+               'closed', $3)
      RETURNING id`,
     [orgId, BORROWER_EMAIL, SENTINEL],
   );
@@ -158,6 +164,16 @@ async function cmdSeed(client) {
   // 4. note — drop the prior sentinel-tagged row (matched via the lead) and
   // re-insert with a fresh access token. notes.access_token is UNIQUE; we
   // can't UPSERT-on-token because we want a fresh token each seed cycle.
+  //
+  // `atr_exemption_code` is REQUIRED for an active note by the DB-level CHECK
+  // `notes_atr_origination_gate`; without it this INSERT threw and the
+  // borrower-cookie E2E workflow could not seed at all. `legacy` is the
+  // accurate code, not the convenient one: the seeded org is investor_type
+  // 'notes' — a note BUYER — so this note was originated elsewhere and
+  // acquired, which is exactly what that grandfather marker denotes. The other
+  // three codes would each assert something false here (there is no collateral
+  // row to call raw_land, the borrower is a natural person, and nothing marks
+  // the credit as business-purpose).
   await client.query(
     `DELETE FROM notes WHERE organization_id = $1 AND borrower_id = $2`,
     [orgId, borrowerId],
@@ -172,12 +188,12 @@ async function cmdSeed(client) {
         original_principal, current_balance, interest_rate, term_months,
         monthly_payment, service_fee, late_fee, grace_period_days,
         start_date, first_payment_date, next_payment_date, maturity_date,
-        status, access_token)
+        status, access_token, atr_exemption_code)
        VALUES ($1, $2,
                '50000', '49250', '8.5', 120,
                '619.96', '0', '25', 10,
                $3, $4, $4, $5,
-               'active', $6)
+               'active', $6, 'legacy')
      RETURNING id`,
     [orgId, borrowerId, now, firstPayment, maturity, accessToken],
   );
