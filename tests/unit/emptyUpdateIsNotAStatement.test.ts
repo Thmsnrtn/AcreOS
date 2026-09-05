@@ -1,8 +1,12 @@
 /**
- * An update builder whose fields are ALL optional must refuse to emit a statement.
+ * An update whose SET ends up empty must refuse to emit a statement.
  *
- * Drizzle renders `.set({})` as `UPDATE <table> SET  WHERE …` — a Postgres
- * SYNTAX ERROR, not a no-op. So a builder that adds every field conditionally
+ * Drizzle renders an empty SET as `UPDATE <table> SET  WHERE …` — a Postgres
+ * SYNTAX ERROR, not a no-op. "Empty" is broader than `.set({})`: Drizzle DROPS
+ * UNDEFINED VALUES, so a set whose keys are all present and whose values all
+ * happen to be undefined renders the same malformed statement. The block at the
+ * bottom of this file pins that mechanism against the real dialect; the scan
+ * below covers the one SHAPE a source reader can see. So a builder that adds every field conditionally
  * and never seeds one is a 500 waiting for a caller who patches nothing:
  *
  *     const updateData: Record<string, any> = {};
@@ -39,6 +43,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { eq } from "drizzle-orm";
+import { organizations } from "@shared/schema";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -113,5 +120,65 @@ describe("update builders with all-optional fields never emit an empty SET", () 
       .filter((s) => !s.seeded && !s.guarded)
       .map((s) => `${s.file}:${s.line} (const ${s.name})`);
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * ── THE MECHANISM, RENDERED RATHER THAN ASSUMED ───────────────────────────
+ * The scan above hunts one SHAPE: an object built up conditionally and never
+ * seeded. That shape is real, and `governanceBrainV13.updatePolicy` was a real
+ * instance of it. But the header of this file used to say the hazard is
+ * `.set({})`, and that description is too narrow — which is why a statement
+ * seen in a CI postgres log,
+ *
+ *     update "organizations" set  where "organizations"."id" = $1
+ *
+ * went unexplained after that fix landed. All 51 `.update(organizations)` sites
+ * in server/ were scanned for both syntactic shapes; none can produce it.
+ *
+ * Rendered through Drizzle's own pg dialect, the reason is plain: DRIZZLE DROPS
+ * UNDEFINED VALUES. A `.set()` whose keys are all present but whose values all
+ * happen to be `undefined` at runtime emits the identical malformed statement.
+ * No source scan can see that — it is a question about values, not shapes.
+ *
+ * So the class is "an update whose SET is empty AFTER undefined values are
+ * dropped", and the syntactic scan above covers one corner of it. This block
+ * pins the mechanism itself so the next reader inherits the real rule instead
+ * of the narrow one, and so a Drizzle upgrade that starts THROWING here (which
+ * would be an improvement) is noticed rather than silently changing the risk.
+ */
+describe("the mechanism: Drizzle drops undefined, and an empty SET is malformed SQL", () => {
+  const dialect = new PgDialect();
+  const render = (set: Record<string, unknown>) => {
+    // The set object is handed to the builder exactly as a caller writes it —
+    // no pre-mapping — because the question is what Drizzle does with the
+    // values a caller actually passes.
+    const anyDialect = dialect as unknown as { buildUpdateQuery: (c: unknown) => never };
+    return dialect.sqlToQuery(
+      anyDialect.buildUpdateQuery({
+        table: organizations,
+        set,
+        where: eq(organizations.id, 1),
+      }),
+    ).sql;
+  };
+
+  it("all-undefined values render the SAME malformed statement as {}", () => {
+    const empty = render({});
+    const allUndefined = render({ name: undefined, tier: undefined });
+    expect(empty, "a literally empty set should render `set  where`").toMatch(/set\s+where/);
+    expect(
+      allUndefined,
+      "if this ever stops matching the empty case, Drizzle's undefined handling " +
+        "changed — re-derive the rule above before trusting the scan alone.",
+    ).toBe(empty);
+    // And it is exactly the line that appeared in the CI log.
+    expect(allUndefined).toBe('update "organizations" set  where "organizations"."id" = $1');
+  });
+
+  it("one defined value is enough to make it a real statement", () => {
+    const one = render({ name: "x", tier: undefined });
+    expect(one).toMatch(/set "name" = \$1/);
+    expect(one, "the undefined sibling must not appear").not.toMatch(/tier/);
   });
 });
