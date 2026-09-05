@@ -52,7 +52,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { deadmanPageState, jobHealthLogs } from "@shared/schema";
+import { deadmanPageState, jobHealthLogs, jobRuns } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { raiseAlert, seedPageThrottle } from "../services/alertSpine";
 import { recordFinding } from "../services/audit/domainAudit";
@@ -103,11 +103,32 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
       // ANY status counts as liveness: success | failed | timeout |
       // skipped_lock. A lock-skipped job is alive; a failed job is alive (and
       // already separately alarmed). We only care that SOMETHING ran.
-      const [row] = await db
+      //
+      // BOTH TABLES, because this codebase records liveness in two of them and
+      // reading one is a population claim, not a query. `withJobLock` writes
+      // `job_health_logs`; `scheduleSelfRescheduling` writes `job_runs` — a
+      // row before every run and an update after it. A job registered through
+      // the scheduler whose body never calls withJobLock emits nothing into
+      // job_health_logs at all, so against that table alone it is
+      // indistinguishable from a job that has never run — and adding it to the
+      // roster would have paged it as permanently dark rather than watched it.
+      //
+      // Measured 2026-09-05: 13 live scheduled jobs were in exactly that
+      // position, sequence_processor and the two revenue-recognition workers
+      // among them. They were absent from JOB_ROSTER, which read as "nothing to
+      // watch" and was really "nothing this query could see".
+      const [health] = await db
         .select({ lastSeen: sql<Date | null>`max(${jobHealthLogs.runStartedAt})` })
         .from(jobHealthLogs)
         .where(sql`${jobHealthLogs.jobName} = ${entry.name}`);
-      lastSeenMs = row?.lastSeen ? new Date(row.lastSeen).getTime() : null;
+      const [runs] = await db
+        .select({ lastSeen: sql<Date | null>`max(${jobRuns.startedAt})` })
+        .from(jobRuns)
+        .where(sql`${jobRuns.jobName} = ${entry.name}`);
+      const seen = [health?.lastSeen, runs?.lastSeen]
+        .filter((d): d is Date => d != null)
+        .map((d) => new Date(d).getTime());
+      lastSeenMs = seen.length > 0 ? Math.max(...seen) : null;
     } catch (err) {
       // Best-effort: if the query itself fails, log and skip this job rather
       // than crash the whole sweep. A DB outage is alarmed elsewhere.

@@ -343,6 +343,56 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "team_system_audit_weekly", intervalMs: WEEK, critical: false },
   { name: "team_system_audit_continuous", intervalMs: HOUR, critical: false },
 
+  // ── scheduleSelfRescheduling jobs the deadman could not see ────────────────
+  // Thirteen live jobs registered through scheduleSelfRescheduling whose bodies
+  // never call withJobLock. They record liveness in `job_runs`; the deadman read
+  // `job_health_logs` and nothing else, so rostering them before 2026-09-05
+  // would have paged every one as permanently dark. The deadman reads BOTH
+  // tables now, which is what makes these rows watchable rather than noisy.
+  //
+  // They were invisible twice over: jobRosterCoverage only knew the withJobLock
+  // spelling, so "no roster row" read as "not a job" instead of "a job nobody
+  // watches". The coverage test now derives BOTH registration shapes.
+  //
+  // Criticality follows the roster's existing precedent — true where a dark job
+  // silently stops a money, compliance or customer-visible obligation.
+  { name: "sequence_processor", intervalMs: MIN, critical: true },
+  { name: "recognition_worker", intervalMs: HOUR, critical: true },
+  // Registered daily; the ASC 606 close work is gated to the month boundary
+  // inside the run body, so daily is the liveness cadence and MONTH is not.
+  { name: "asc606_monthly_recognition", intervalMs: DAY, critical: true },
+  // A statutory response clock. Dark, the overdue DSARs simply stop being
+  // announced — the same reason access_review_quarterly is critical.
+  { name: "dsar_overdue_alert", intervalMs: HOUR, critical: true },
+  { name: "pre_churn_ladder_sweep", intervalMs: DAY, critical: false },
+  { name: "etl_orchestrator", intervalMs: 5 * MIN, critical: false },
+  { name: "cost_optimizer", intervalMs: DAY, critical: false },
+  { name: "embedding_refresh", intervalMs: 6 * MIN, critical: false },
+  { name: "property_vision_reimaging", intervalMs: DAY, critical: false },
+  { name: "vm_resource_tracker", intervalMs: 5 * MIN, critical: false },
+  { name: "migration_jobs", intervalMs: 10 * 1000, critical: false },
+  { name: "idempotency_cache_cleanup", intervalMs: 10 * MIN, critical: false },
+  { name: "clean_expired_job_locks", intervalMs: 5 * MIN, critical: false },
+
+  // ── Registered outside runScheduledJobs, and outside the roster until now ──
+  // Both jobs are real scheduleSelfRescheduling registrations that have been
+  // running the whole time; neither had a roster row, so deadmanCheck could not
+  // page on either going dark. They were invisible because jobRosterCoverage's
+  // population was a TYPED LIST of files, and neither file was on it — the
+  // parity test was green over a set that excluded them (2026-09-05). That list
+  // is derived from the tree now, so a lock literal in a new file joins the
+  // population by existing.
+  //
+  // revenue_protection is critical on its own history: the comment above its
+  // registration records a window where the pass "never scored a single org",
+  // and it is the job that sends retention email — dark, churn scoring simply
+  // stops with nothing to show for it.
+  { name: "revenue_protection", intervalMs: 6 * HOUR, critical: true },
+  // Housekeeping, but security-adjacent: expired borrower statement sessions
+  // linger in the table until this sweeps them. Non-critical because
+  // verification refuses an expired session on read regardless of the row.
+  { name: "clean_borrower_sessions", intervalMs: HOUR, critical: false },
+
   // ── Compliance / sanctions (customer-blocking if dark) ─────────────────────
   { name: "ofac_sdn_refresh", intervalMs: DAY, critical: true },
   { name: "sanctions_list_entries_sync", intervalMs: DAY, critical: true },

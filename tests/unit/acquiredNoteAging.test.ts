@@ -275,11 +275,26 @@ describe("the sweep is actually wired — the defect class this repo keeps hitti
     // last had — which reads on every surface as "everyone is current".
     const registry = read("server/jobs/jobRegistry.ts");
     expect(registry).toContain(`"${ACQUIRED_NOTE_AGING_JOB_NAME}"`);
-    const coverage = read("tests/unit/jobRosterCoverage.test.ts");
+
+    // The second half of this used to assert that the string
+    // "server/jobs/acquiredNoteAging.ts" appeared in jobRosterCoverage.test.ts
+    // — a check that THIS FILE was on that gate's hand-maintained SCANNED_FILES
+    // list, because a file off the list is a lock the parity gate cannot see.
+    //
+    // That list is gone (2026-09-05): it was itself the blind spot, hiding two
+    // withJobLock jobs and thirteen scheduleSelfRescheduling ones, and the gate
+    // now walks server/ and finds every registration by shape. The INVARIANT
+    // this assertion protected is unchanged and is stated directly instead of
+    // through the list: the sweep's lock literal must be discoverable in this
+    // file by the same predicate the gate uses, so the roster row above is
+    // backed by a registration the gate can actually see.
+    const job = read("server/jobs/acquiredNoteAging.ts");
     expect(
-      coverage,
-      "acquiredNoteAging.ts must be in SCANNED_FILES or the roster parity check cannot see its lock",
-    ).toContain("server/jobs/acquiredNoteAging.ts");
+      new RegExp(`withJobLock\\(\\s*(["'])${ACQUIRED_NOTE_AGING_JOB_NAME}\\1`).test(job),
+      "acquiredNoteAging.ts no longer carries its own withJobLock literal, so " +
+        "the roster-parity walk cannot find it and the roster row above becomes " +
+        "a phantom — the deadman would be watching a name nothing registers.",
+    ).toBe(true);
   });
 
   it("the API actually SENDS the fields the note surfaces render", () => {
