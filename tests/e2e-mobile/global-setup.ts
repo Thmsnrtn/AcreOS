@@ -15,7 +15,7 @@
  *   DATABASE_URL    — points at a throwaway Postgres (CI service / local).
  *   E2E_TEST_AUTH=1 — so the app accepts the injected test user.
  */
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
@@ -85,12 +85,80 @@ export default async function globalSetup() {
     }
   }
 
-  // 2. Push the full schema (creates every table). --force skips prompts.
+  // 2. Push the full schema (creates every table).
+  //
+  // ── WHY THIS IS NOT `execSync(..., { stdio: "inherit" })` ────────────────
+  // The line here used to be exactly that, under the comment "--force skips
+  // prompts". It does not. `--force` suppresses drizzle-kit's ordinary
+  // confirmations, but the DATA-LOSS confirmation still renders whenever a
+  // statement could destroy rows — e.g. adding a unique constraint to a table
+  // that already has any:
+  //
+  //   · You're about to add event_mesh_events_event_id_unique unique
+  //     constraint to the table, which contains 53 items. … Do you want to
+  //     truncate event_mesh_events table?
+  //   Error: Interactive prompts require a TTY terminal …
+  //
+  // And then — measured 2026-09-05, this is the part that matters —
+  // DRIZZLE-KIT EXITS 0. It prints a fatal error, applies NOTHING, and reports
+  // success. `execSync` saw a clean exit, the seed ran, and 54 customer-journey
+  // specs executed against a schema that had never been pushed. The suite was
+  // not measuring the product; it was measuring whatever tables happened to be
+  // in the database already.
+  //
+  // Three suites share this setup — mobile, desktop-feel and customer-journey —
+  // so a false green here can certify all of them. It is latent in CI only
+  // because the Postgres service container starts empty on every run; it fires
+  // the moment the target database is reused or long-lived.
+  //
+  // So: read the OUTPUT, and then verify the PROPERTY. An exit code from a tool
+  // that exits 0 on failure is not evidence that the schema exists.
   console.log("[e2e] pushing schema to test DB…");
-  execSync("npx drizzle-kit push --force", {
-    stdio: "inherit",
+  const push = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
+    encoding: "utf8",
     env: process.env,
+    maxBuffer: 64 * 1024 * 1024,
   });
+  const pushOutput = `${push.stdout ?? ""}${push.stderr ?? ""}`;
+  process.stdout.write(pushOutput);
+  if (push.status !== 0) {
+    throw new Error(`[e2e] drizzle-kit push exited ${push.status} — schema not applied`);
+  }
+  if (/Interactive prompts require a TTY/i.test(pushOutput)) {
+    throw new Error(
+      "[e2e] drizzle-kit push hit an interactive data-loss prompt and applied " +
+        "NOTHING (it still exits 0). The target database is not empty and a " +
+        "statement in this push would destroy rows. Point DATABASE_URL at a " +
+        "fresh database — never at one carrying data you want.\n\n" +
+        pushOutput.split("\n").filter((l) => l.startsWith("·")).join("\n"),
+    );
+  }
+
+  // Independent of what the tool said: does the schema actually exist? This
+  // catches every other way a push can silently do nothing, not just the
+  // prompt above.
+  {
+    const verify = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await verify.connect();
+    try {
+      const { rows } = await verify.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM information_schema.tables WHERE table_schema = 'public'",
+      );
+      const tableCount = Number(rows[0]?.count ?? 0);
+      // 735 tables on 2026-09-05. The floor is deliberately far below that —
+      // it is here to catch "nothing was applied", not to track the schema.
+      if (tableCount < 200) {
+        throw new Error(
+          `[e2e] schema push reported success but the database has only ${tableCount} ` +
+            "public tables. Nothing meaningful was applied — refusing to seed and " +
+            "run specs against a schema that does not exist.",
+        );
+      }
+      console.log(`[e2e] schema verified: ${tableCount} public tables`);
+    } finally {
+      await verify.end();
+    }
+  }
 
   // 3. Seed an onboarded user + org + active membership.
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
