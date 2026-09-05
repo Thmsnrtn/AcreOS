@@ -466,6 +466,21 @@ class GovernanceBrainService {
     if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
     if (updates.sunsetDate !== undefined) updateData.sunsetDate = updates.sunsetDate;
 
+    // Nothing to change is not an error, and it is not a statement either.
+    // Every field above is optional, so an empty `updates` leaves `updateData`
+    // empty — and Drizzle renders that as `UPDATE governance_policies SET
+    // WHERE policy_id = $1`, which Postgres rejects with a syntax error. The
+    // caller asked for no change; give them the current row. (Same shape and
+    // same remedy as `marketWatchlist.updateEntry`, which already guards this.)
+    if (Object.keys(updateData).length === 0) {
+      const [current] = await db
+        .select()
+        .from(governancePolicies)
+        .where(eq(governancePolicies.policyId, policyId))
+        .limit(1);
+      return current ?? null;
+    }
+
     const [policy] = await db
       .update(governancePolicies)
       .set(updateData)
