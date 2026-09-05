@@ -2705,6 +2705,38 @@ function main() {
       `${staleWidening.length} stale — down-only, excuses nothing NEW. ` +
       `scripts/org-scope-route-widening.json`,
   );
+
+  // And the VERDICT MIX, derived on every run.
+  //
+  // This tally used to live as prose inside the register's own
+  // _TRIAGE_PROGRESS, and by 2026-09-05 that block said "31 UNREACHABLE" three
+  // lines below a paragraph explaining that UNREACHABLE had been retired as a
+  // verdict — a document contradicting itself about its own contents. A count
+  // typed into prose is stale the day the contents change, which is the same
+  // rot as a page hardcoding "three watchdogs" beside a list of six.
+  //
+  // "271 held" answers how much; this answers OF WHAT, which is the question
+  // that decides whether the number is debt at all. Most of it is not: an entry
+  // read and ruled SAFE BY DESIGN belongs in the hand-verified register inside
+  // this file, per the register's own _THE_OBLIGATION.
+  {
+    const leading = (note) => {
+      const m = /^\s*([A-Z][A-Z0-9 _\-/]{2,40}?)(?=[\s]*[(.,:—-]|\s+\d)/.exec(String(note ?? ""));
+      return m ? m[1].trim() : "(unlabelled)";
+    };
+    const held = new Set([...WIDENING_RULE1, ...WIDENING_RULE2, ...WIDENING_RULE3]);
+    const mix = new Map();
+    for (const [key, note] of Object.entries(ROUTE_WIDENING._TRIAGED ?? {})) {
+      if (!held.has(key)) continue;
+      const verdict = leading(note);
+      mix.set(verdict, (mix.get(verdict) ?? 0) + 1);
+    }
+    const rendered = [...mix.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([verdict, n]) => `${n} ${verdict}`)
+      .join(", ");
+    console.log(`[check-org-scoped-fetch] register verdicts: ${rendered || "(none)"}`);
+  }
   if (staleWidening.length > 0) {
     console.error("");
     console.error(

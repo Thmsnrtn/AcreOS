@@ -613,6 +613,50 @@ describe("the tenancy lint covers the service layer", () => {
     ).toEqual([]);
   });
 
+  it("prints the verdict mix, so the register's contents cannot rot into prose", () => {
+    // ── WHY ───────────────────────────────────────────────────────────────
+    // This tally used to be typed into the register's own _TRIAGE_PROGRESS.
+    // By 2026-09-05 that block read "31 UNREACHABLE" three lines below a
+    // paragraph explaining UNREACHABLE had been RETIRED as a verdict, plus a
+    // duplicated sentence and a "these 300 remain debt" when 271 were held —
+    // a document contradicting itself about its own contents, introduced by
+    // prepending a new narrative onto an old one without reconciling.
+    //
+    // The prose no longer carries a tally; it points here. That makes this
+    // line a promise the register depends on, which is why it is pinned.
+    const out = run();
+    const m = /register verdicts: (.+)/.exec(out);
+    expect(
+      m,
+      "the verdict mix is gone from the gate's output, and the register's " +
+        "_TRIAGE_PROGRESS explicitly tells readers to find it here. Re-point " +
+        "this, or the pointer becomes a dead reference:\n" + out,
+    ).not.toBeNull();
+
+    // It must be DERIVED, not a constant that drifts the same way the prose did.
+    const line = m![1];
+    const pairs = [...line.matchAll(/(\d+) ([A-Z(][^,]*)/g)].map(([, n]) => Number(n));
+    expect(pairs.length, `no verdict counts parsed from: ${line}`).toBeGreaterThan(3);
+
+    // The parts must sum to the held total the line above reports — the check
+    // that catches a tally computed over the wrong population.
+    //
+    // Note on its own probe: removing the held-set filter alone does NOT fail
+    // this, because the orphan gate below keeps _TRIAGED and the held set
+    // identical, so the unfiltered mix is the same set. It fails once an orphan
+    // exists AND the filter is gone — verified that way rather than claimed. A
+    // mutation that cannot change the output demonstrates nothing about the
+    // assertion, which is the third time in this session a probe read as a
+    // passing gate while landing on nothing.
+    const heldMatch = /= (\d+) held/.exec(out);
+    expect(heldMatch, "the held total is gone from the verdict line").not.toBeNull();
+    expect(
+      pairs.reduce((a, b) => a + b, 0),
+      "the verdict counts do not sum to the held total, so the mix is being " +
+        "computed over a different set than the register holds.",
+    ).toBe(Number(heldMatch![1]));
+  });
+
   it("caps how much rule 2 the sanctioned hatch is allowed to silence", () => {
     const out = run();
     const m = /rule-2 predicates exempted as sanctioned-hatch roots: (\d+)/.exec(out);
