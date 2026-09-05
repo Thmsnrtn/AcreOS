@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, MessageCircle, MessagesSquare, ChevronLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
+import { ChatUnavailable } from "@/components/founder-chat/ChatUnavailable";
 import type { ChatThread } from "@shared/founder-chat/artifacts";
 
 interface ThreadSidebarProps {
@@ -27,7 +28,13 @@ export function ThreadSidebar({
   mobileOpen = false,
   onMobileClose,
 }: ThreadSidebarProps) {
-  const { threads, isLoading, createThread } = useFounderChatThreads();
+  const {
+    threads,
+    isLoading,
+    isError: threadsFailed,
+    refetch: retryThreads,
+    createThread,
+  } = useFounderChatThreads();
   const [collapsedDesktop, setCollapsedDesktop] = useState(false);
 
   const handleNew = async () => {
@@ -129,6 +136,14 @@ export function ThreadSidebar({
             >
               {isLoading ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">Loading…</p>
+              ) : threadsFailed ? (
+                // A failed read used to render as an empty <ul> — silent, but
+                // still "you have no conversations" to anyone reading it.
+                <ChatUnavailable
+                  variant="threads"
+                  onRetry={() => void retryThreads()}
+                  className="flex-none items-start px-2 py-3 text-left"
+                />
               ) : (
                 <ul className="space-y-0.5" role="list">
                   {threads.map((t) => (

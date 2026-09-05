@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
+import { ChatUnavailable } from "@/components/founder-chat/ChatUnavailable";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { SPRING_SOFT } from "@/lib/motion";
 import { useRespectfulTransition } from "@/lib/motion-tokens";
@@ -55,7 +56,11 @@ export function BridgeAtlasSheet({
   pageContext,
   onStreamingChange,
 }: BridgeAtlasSheetProps) {
-  const { threads } = useFounderChatThreads();
+  const {
+    threads,
+    isError: threadsFailed,
+    refetch: retryThreads,
+  } = useFounderChatThreads();
   // Resolve the real (serial-integer) default thread; `null` until the
   // list loads. useFounderChat no-ops on null instead of firing a bogus
   // "default" id at the server.
@@ -64,8 +69,16 @@ export function BridgeAtlasSheet({
     [threads],
   );
 
-  const { messages, sendMessage, isStreaming, activeToolCalls, status } =
-    useFounderChat(activeThreadId);
+  const {
+    messages,
+    sendMessage,
+    isStreaming,
+    activeToolCalls,
+    status,
+    historyUnavailable,
+    retryHistory,
+    historyRetrying,
+  } = useFounderChat(activeThreadId);
 
   useEffect(() => {
     onStreamingChange?.(isStreaming);
@@ -176,10 +189,14 @@ export function BridgeAtlasSheet({
               <p className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
                 Atlas
               </p>
+              {/* A failed read leaves latestAtlas undefined, which used to
+                  greet the founder as though they had no thread at all. */}
               <p className="line-clamp-2 text-sm text-foreground/90">
-                {latestAtlas
-                  ? extractPreview(latestAtlas)
-                  : "Morning, Tom. Tap to start a thread."}
+                {threadsFailed || historyUnavailable
+                  ? "Couldn't load your conversations. Tap to retry."
+                  : latestAtlas
+                    ? extractPreview(latestAtlas)
+                    : "Morning, Tom. Tap to start a thread."}
               </p>
             </div>
           </div>
@@ -190,11 +207,19 @@ export function BridgeAtlasSheet({
           {/* Expanded: full chat */}
           <div className="flex flex-1 min-h-0 flex-col">
             <div className="flex-1 min-h-0 overflow-hidden">
-              <MessageList
-                messages={messages}
-                isStreaming={isStreaming}
-                activeToolCalls={activeToolCalls}
-              />
+              {threadsFailed || historyUnavailable ? (
+                <ChatUnavailable
+                  variant={threadsFailed ? "threads" : "history"}
+                  onRetry={() => (threadsFailed ? void retryThreads() : retryHistory())}
+                  retrying={historyRetrying}
+                />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  activeToolCalls={activeToolCalls}
+                />
+              )}
             </div>
             <Composer
               onSubmit={async (text) => {

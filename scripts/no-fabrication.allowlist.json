@@ -284,7 +284,7 @@
     },
     {
       "file": "client/src/hooks/use-founder-chat.ts",
-      "line": 223,
+      "line": 242,
       "category": "id",
       "note": "Optimistic local id for the user's own message, replaced by the server id on ack."
     },

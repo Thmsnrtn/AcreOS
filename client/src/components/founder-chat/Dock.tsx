@@ -58,6 +58,7 @@ import { useNewFounderUI } from "@/lib/featureFlags";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
+import { ChatUnavailable } from "@/components/founder-chat/ChatUnavailable";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { ThinkingDots } from "@/components/founder-chat/ThinkingDots";
 import {
@@ -114,7 +115,11 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
     writeStoredOpen(next);
   }, []);
 
-  const { threads } = useFounderChatThreads();
+  const {
+    threads,
+    isError: threadsFailed,
+    refetch: retryThreads,
+  } = useFounderChatThreads();
   const defaultThread = useMemo(
     () => threads.find((t) => t.isDefault) ?? threads[0],
     [threads],
@@ -127,6 +132,9 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
     isStreaming,
     activeToolCalls,
     status,
+    historyUnavailable,
+    retryHistory,
+    historyRetrying,
   } = useFounderChat(threadId);
 
   // Wrap sendMessage so every dock-originated turn auto-attaches the
@@ -348,11 +356,19 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
                 </button>
               </header>
 
-              <MessageList
-                messages={messages}
-                isStreaming={isStreaming}
-                activeToolCalls={activeToolCalls}
-              />
+              {threadsFailed || historyUnavailable ? (
+                <ChatUnavailable
+                  variant={threadsFailed ? "threads" : "history"}
+                  onRetry={() => (threadsFailed ? void retryThreads() : retryHistory())}
+                  retrying={historyRetrying}
+                />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  activeToolCalls={activeToolCalls}
+                />
+              )}
 
               <Composer
                 onSubmit={sendFromDock}

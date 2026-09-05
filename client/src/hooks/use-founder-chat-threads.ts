@@ -14,6 +14,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { formatDate } from "@/lib/format";
 import type { ChatThread } from "@shared/founder-chat/artifacts";
 
@@ -44,16 +45,15 @@ export function useFounderChatThreads() {
     queryKey: ["/api/founder/chat/threads"],
     staleTime: 60_000,
     queryFn: async ({ queryKey }) => {
+      // A failed read is not "you have no conversations". This returned [] on
+      // any failure, and Dock.tsx picks `threads[0]` as the active thread — so
+      // a blip left the founder's chat dock with no thread selected and no
+      // explanation, which looks exactly like a brand-new account.
       const url = queryKey[0] as string;
-      try {
-        const res = await fetch(url, { credentials: "include" });
-        if (!res.ok) return [];
-        const body = (await res.json()) as { threads?: FounderThreadRow[] };
-        const rows = Array.isArray(body?.threads) ? body.threads : [];
-        return rows.map(normalizeThread);
-      } catch {
-        return [];
-      }
+      const res = await okOrThrow(await fetch(url, { credentials: "include" }));
+      const body = (await res.json()) as { threads?: FounderThreadRow[] };
+      const rows = Array.isArray(body?.threads) ? body.threads : [];
+      return rows.map(normalizeThread);
     },
   });
 

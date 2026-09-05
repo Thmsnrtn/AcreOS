@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
+import { ChatUnavailable } from "@/components/founder-chat/ChatUnavailable";
 import { MessageList } from "@/components/founder-chat/MessageList";
 import { SPRING_SOFT } from "@/lib/motion";
 import { useRespectfulTransition } from "@/lib/motion-tokens";
@@ -45,7 +46,11 @@ export function BridgeAtlasPane({
   className,
   onStreamingChange,
 }: BridgeAtlasPaneProps) {
-  const { threads } = useFounderChatThreads();
+  const {
+    threads,
+    isError: threadsFailed,
+    refetch: retryThreads,
+  } = useFounderChatThreads();
   // Real serial-integer thread id, or `null` until the list loads.
   // useFounderChat no-ops on null rather than firing a bogus "default" id.
   const defaultThreadId = useMemo(
@@ -67,8 +72,16 @@ export function BridgeAtlasPane({
   const threadsOpenTransition = useRespectfulTransition(SPRING_SOFT);
   const threadsCloseTransition = useRespectfulTransition({ duration: 0.15 });
 
-  const { messages, sendMessage, isStreaming, activeToolCalls, status } =
-    useFounderChat(activeThreadId);
+  const {
+    messages,
+    sendMessage,
+    isStreaming,
+    activeToolCalls,
+    status,
+    historyUnavailable,
+    retryHistory,
+    historyRetrying,
+  } = useFounderChat(activeThreadId);
 
   // Notify parent whenever streaming flips — drives the BridgeHeader
   // LiveDot. Stable callback identity not required; the effect only
@@ -106,7 +119,8 @@ export function BridgeAtlasPane({
             )}
           >
             <MessagesSquare className="h-3 w-3" aria-hidden />
-            {threads.length}
+            {/* A failed thread read must not render as the count zero. */}
+            {threadsFailed ? "—" : threads.length}
             <ChevronDown
               className={cn("h-3 w-3 transition-transform duration-200", threadsOpen && "rotate-180")}
               aria-hidden
@@ -161,11 +175,19 @@ export function BridgeAtlasPane({
 
       {/* Messages — fills available height */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <MessageList
-          messages={messages}
-          isStreaming={isStreaming}
-          activeToolCalls={activeToolCalls}
-        />
+        {threadsFailed || historyUnavailable ? (
+          <ChatUnavailable
+            variant={threadsFailed ? "threads" : "history"}
+            onRetry={() => (threadsFailed ? void retryThreads() : retryHistory())}
+            retrying={historyRetrying}
+          />
+        ) : (
+          <MessageList
+            messages={messages}
+            isStreaming={isStreaming}
+            activeToolCalls={activeToolCalls}
+          />
+        )}
       </div>
 
       {/* Composer — pinned bottom */}

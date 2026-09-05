@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import type {
   Artifact,
   ChatMessage,
@@ -53,6 +54,17 @@ interface UseFounderChatResult {
   isStreaming: boolean;
   /** Live tool-call list for the in-flight assistant message. */
   activeToolCalls: Array<{ name: string; status: "running" | "complete" | "failed" }>;
+  /**
+   * The thread's stored history could not be read. DISTINCT from `status`,
+   * which tracks the send lifecycle: this says the conversation on screen is
+   * incomplete, not that a message failed to send. Render it — an empty list
+   * with no explanation reads as "no messages yet".
+   */
+  historyUnavailable: boolean;
+  /** Retry the history read. */
+  retryHistory: () => void;
+  /** True while that retry is in flight. */
+  historyRetrying: boolean;
 }
 
 /**
@@ -83,22 +95,29 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
   // Initial hydration. on404 fall back to empty list — Phase B will
   // populate this endpoint; pre-Phase-B we just start with a clean
   // thread.
-  const { data: serverMessages = [] } = useQuery<ChatMessage[]>({
+  // HISTORY FAILURE IS ITS OWN STATE, not an empty thread. This returned []
+  // on any failure — a 500, a network drop, an unparseable body — and the UI
+  // renders an empty message list as "no messages yet", so a founder whose
+  // thread had months of history saw a blank conversation with nothing to
+  // indicate a read had failed. It is reported separately from `status`
+  // because that machine tracks the SEND lifecycle; a history-load failure is
+  // not a failed send and must not read as one.
+  const {
+    data: serverMessages = [],
+    isError: historyUnavailable,
+    refetch: retryHistory,
+    isRefetching: historyRetrying,
+  } = useQuery<ChatMessage[]>({
     queryKey: [`/api/founder/chat/threads/${numericThreadId}/messages`],
     enabled: numericThreadId !== null,
     staleTime: 30_000,
     queryFn: async () => {
       const url = `/api/founder/chat/threads/${numericThreadId}/messages`;
-      try {
-        const res = await fetch(url, { credentials: "include" });
-        if (!res.ok) return [];
-        const body = (await res.json()) as
-          | ChatMessage[]
-          | { messages?: ChatMessage[] };
-        return Array.isArray(body) ? body : (body.messages ?? []);
-      } catch {
-        return [];
-      }
+      const res = await okOrThrow(await fetch(url, { credentials: "include" }));
+      const body = (await res.json()) as
+        | ChatMessage[]
+        | { messages?: ChatMessage[] };
+      return Array.isArray(body) ? body : (body.messages ?? []);
     },
   });
 
@@ -319,6 +338,9 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
     appendLocal,
     isStreaming: status === "streaming",
     activeToolCalls,
+    historyUnavailable,
+    retryHistory: () => void retryHistory(),
+    historyRetrying,
   };
 }
 
