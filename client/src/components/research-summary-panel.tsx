@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { nullOn404 } from "@/lib/fetch-honesty";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -163,8 +164,11 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         const res = await fetch(`/api/properties/${property.id}/comps?radius=5`, {
           credentials: "include",
         });
-        if (!res.ok) return null;
-        const data = await res.json();
+        // A 404 means this property has no comps — a real answer. Anything
+        // else is a failed read, and rendering it as "no comps" states a fact
+        // about the market out of a failure to look at it.
+        const data = await nullOn404<any>(res);
+        if (data === null) return null;
         return {
           averagePricePerAcre: data.marketAnalysis?.averagePricePerAcre || null,
           medianPricePerAcre: data.marketAnalysis?.medianPricePerAcre || null,

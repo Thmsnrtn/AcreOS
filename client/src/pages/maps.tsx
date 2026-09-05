@@ -67,7 +67,7 @@ import { findStateWarning, isUplBlocked } from "@/lib/upl-gating";
 import { StateUplBanner } from "@/components/upl-gating-banner";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { QueryErrorState } from "@/components/query-error-state";
-import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
+import { okOrThrow, listFrom, nullOn404 } from "@/lib/fetch-honesty";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
@@ -482,8 +482,10 @@ function PropertyIntelligencePanel({
     queryKey: ["/api/avm", property.id],
     queryFn: async () => {
       const res = await fetch(`/api/avm/${property.id}`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
+      // A 404 means no automated valuation exists for this parcel. Every other
+      // status is a failed read, and "we could not value it" is not the same
+      // fact as "there is no valuation".
+      return nullOn404<{ valuation?: Record<string, any> | null }>(res);
     },
     staleTime: 10 * 60 * 1000,
   });

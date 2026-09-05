@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { nullOn404 } from "@/lib/fetch-honesty";
 import {
   Card,
   CardContent,
@@ -413,12 +414,11 @@ function UnitEconomicsSection() {
       const res = await fetch("/api/founder/money/unit-economics", {
         credentials: "include",
       });
-      if (!res.ok) return null;
-      try {
-        return (await res.json()) as UnitEconomics;
-      } catch {
-        return null;
-      }
+      // nullOn404: a 404 is a real answer here (nothing computed yet); every
+      // other status is a failure and now throws instead of rendering as
+      // "no data". The inner catch went with it — a body that will not parse
+      // is not an absent measurement either.
+      return (await nullOn404<UnitEconomics>(res)) ?? null;
     },
     staleTime: 5 * 60_000,
     retry: false,
@@ -850,12 +850,11 @@ export default function FounderMoneyPage() {
       const res = await fetch("/api/founder/money/paid-data-readiness", {
         credentials: "include",
       });
-      if (!res.ok) return null;
-      try {
-        return (await res.json()) as PaidDataReadiness;
-      } catch {
-        return null;
-      }
+      // nullOn404: a 404 is a real answer here (nothing computed yet); every
+      // other status is a failure and now throws instead of rendering as
+      // "no data". The inner catch went with it — a body that will not parse
+      // is not an absent measurement either.
+      return (await nullOn404<PaidDataReadiness>(res)) ?? null;
     },
     staleTime: 5 * 60_000,
     retry: false,

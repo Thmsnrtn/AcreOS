@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { okOrThrow } from "@/lib/fetch-honesty";
+import { nullOn404, okOrThrow } from "@/lib/fetch-honesty";
 
 // ─── Sovereign Dashboard hooks (Phase A) ─────────────────────────────────────
 
@@ -55,8 +55,9 @@ export function useAutonomyScore() {
     queryKey: ["/api/founder/v14/autonomy/score"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v14/autonomy/score", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
+      // A 404 means no score has been computed yet — a real answer. A 500 is
+      // not, and used to render identically.
+      return nullOn404(res);
     },
     staleTime: 60_000,
   });
@@ -112,7 +113,9 @@ export function useRevenueAttribution() {
     queryKey: ["/api/founder/v11/attribution/reports"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v11/attribution/reports", { credentials: "include" });
-      if (!res.ok) return null;
+      // Same distinction: no report yet is an answer, a failed read is not.
+      if (res.status === 404) return null;
+      await okOrThrow(res);
       const reports = await res.json();
       if (!Array.isArray(reports) || reports.length === 0) return null;
       // Latest revenue_attribution_reports row → the graph summary shape

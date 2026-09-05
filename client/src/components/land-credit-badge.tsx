@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { nullOn404 } from "@/lib/fetch-honesty";
 
 type Grade = "A+" | "A" | "B+" | "B" | "C+" | "C" | "D" | "F";
 
@@ -96,6 +97,31 @@ function ScoreCircle({ score, grade, sizeClass, textClass, gradeTextClass }: {
   );
 }
 
+/**
+ * Only the fields this badge reads. Named rather than left as `any` because
+ * nullOn404 is generic and an unannotated call inferred `{}`, which then made
+ * every `latest.*` read an error — the type is the documentation of what the
+ * endpoint is relied on to return.
+ */
+interface LandCreditFactorScore {
+  score?: number;
+}
+interface LandCreditHistoryEntry {
+  score?: number;
+  grade?: string;
+  factors?: {
+    location?: LandCreditFactorScore;
+    physical?: LandCreditFactorScore;
+    legal?: LandCreditFactorScore;
+    financial?: LandCreditFactorScore;
+    environmental?: LandCreditFactorScore;
+    market?: LandCreditFactorScore;
+  };
+}
+interface LandCreditHistoryResponse {
+  history?: LandCreditHistoryEntry[];
+}
+
 export function LandCreditBadge({ propertyId, score, grade, size = "md", dimensions }: LandCreditBadgeProps) {
   const skipFetch = score !== undefined || !propertyId;
 
@@ -103,8 +129,10 @@ export function LandCreditBadge({ propertyId, score, grade, size = "md", dimensi
     queryKey: ["land-credit", "property", propertyId],
     queryFn: async () => {
       const res = await fetch(`/api/land-credit/property/${propertyId}`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
+      // A 404 means this property has no land-credit score yet — a real answer,
+      // and the badge correctly renders nothing. A 500 rendered identically,
+      // so a scored property looked unscored whenever the read failed.
+      return nullOn404<LandCreditHistoryResponse>(res);
     },
     enabled: !skipFetch,
     staleTime: 5 * 60 * 1000,
