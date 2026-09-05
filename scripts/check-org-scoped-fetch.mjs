@@ -710,7 +710,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/autonomyHealth.ts::gradeRecentDecisions",
   "server/services/customerSupportAutoResolver.ts::sophieGeniusMode",
   "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch",
-  "server/services/executionEngine.ts::validateSafetyGates",
   "server/services/inboundEmailService.ts::processInboundEmail",
   "server/services/leadScoreDecay.ts::decayOrganizationLeads",
   "server/services/migrationJobs.ts::processCommunicationsImport",
@@ -1829,8 +1828,52 @@ const HOISTED_LONE_ID = /(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*eq\(\s*([A-Za-z0-
  * runs a plain `db.select()...where(eq(t.id, x))` still fails rule 2 on the
  * plain one — see the canary fixture, which pins exactly that.
  */
+/**
+ * The start of the statement containing `index` — the offset just after the
+ * last `;` that is real CODE rather than text inside a string.
+ *
+ * `lastIndexOf(";", index)` cannot tell a statement terminator from a semicolon
+ * inside a string literal, and the difference is not academic here. The
+ * sanctioned hatch takes a REASON SENTENCE, and a reason that contains a
+ * semicolon —
+ *
+ *   unscopedForPlatformOps(
+ *     "daily referral maturity sweep resolves each referrer's own organization
+ *      from their user id; there is no caller org to scope by",
+ *   ).select(...).from(teamMembers)
+ *
+ * — moved the "statement start" INTO the reason, so the lookback below never
+ * reached the call and rule 3 flagged the very form the hatch exists to
+ * satisfy. Silent, and in the direction that looks like a finding.
+ *
+ * Scanning forward with string and template awareness is the only version that
+ * is right; walking backwards cannot know whether a quote opens or closes.
+ */
+function statementStart(text, index) {
+  let start = 0;
+  let i = 0;
+  while (i < index) {
+    const c = text[i];
+    if (c === "\\") { i += 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      i += 1;
+      while (i < index) {
+        if (text[i] === "\\") { i += 2; continue; }
+        if (text[i] === quote) break;
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    if (c === ";") start = i + 1;
+    i += 1;
+  }
+  return start;
+}
+
 function rootedInSanctionedHatch(methodText, index) {
-  const stmtStart = methodText.lastIndexOf(";", index) + 1;
+  const stmtStart = statementStart(methodText, index);
   return methodText.slice(stmtStart, index).includes("unscopedForPlatformOps(");
 }
 
@@ -2073,7 +2116,7 @@ function queryChainsFrom(unitText, orgScopedIdents) {
     // the form exists to satisfy. Look back to the chain's start (the
     // previous statement boundary) and skip chains rooted in the hatch.
     // A plain db.select() in the same unit still answers to rule 3.
-    const stmtStart = unitText.lastIndexOf(";", m.index) + 1;
+    const stmtStart = statementStart(unitText, m.index);
     if (unitText.slice(stmtStart, m.index).includes("unscopedForPlatformOps(")) continue;
     let depth = 0;
     let end = -1;

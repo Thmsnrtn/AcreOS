@@ -198,9 +198,13 @@ class AdaptiveStrategyService {
   async recordOutcome(
     assignmentId: number,
     outcome: string,
-    outcomeValue?: number,
+    outcomeValue: number | undefined,
+    orgId: number | null,
   ): Promise<StrategyAssignmentEntry> {
-    // Record outcome on the assignment
+    // `assignmentId` is a bare serial primary key — an id space every tenant
+    // shares — and both writes below take it on trust. `orgId` is the caller's
+    // lane and is required for that reason; `null` means the platform lane and
+    // matches only rows with no org tag, never "any org".
     const [assignment] = await db
       .update(strategyAssignments)
       .set({
@@ -208,7 +212,10 @@ class AdaptiveStrategyService {
         outcomeValue: outcomeValue !== undefined ? String(outcomeValue) : null,
         outcomeRecordedAt: new Date(),
       })
-      .where(eq(strategyAssignments.id, assignmentId))
+      .where(and(
+        eq(strategyAssignments.id, assignmentId),
+        orgId == null ? isNull(strategyAssignments.orgId) : eq(strategyAssignments.orgId, orgId),
+      ))
       .returning();
 
     if (!assignment) {
@@ -224,7 +231,10 @@ class AdaptiveStrategyService {
     const [strategy] = await db
       .select()
       .from(agentStrategies)
-      .where(eq(agentStrategies.strategyId, assignment.strategyId));
+      .where(and(
+        eq(agentStrategies.strategyId, assignment.strategyId),
+        orgId == null ? isNull(agentStrategies.orgId) : eq(agentStrategies.orgId, orgId),
+      ));
 
     if (!strategy) {
       return assignment;
@@ -257,7 +267,10 @@ class AdaptiveStrategyService {
         thompsonBeta: newBeta,
         updatedAt: new Date(),
       })
-      .where(eq(agentStrategies.strategyId, assignment.strategyId));
+      .where(and(
+        eq(agentStrategies.strategyId, assignment.strategyId),
+        orgId == null ? isNull(agentStrategies.orgId) : eq(agentStrategies.orgId, orgId),
+      ));
 
     return assignment;
   }

@@ -655,9 +655,30 @@ Respond in JSON:
     };
   }
 
-  async determineABTestWinner(performanceRecordId: number): Promise<ABTestResult> {
+  /**
+   * `organizationId` is the CALLER's org, and it is not optional.
+   *
+   * The variant sweep below looks scoped — it names `organizationId` — but it
+   * took that org FROM THE ROW the caller-supplied id resolved to, so the
+   * predicate followed the id rather than the caller. Passing another org's
+   * `performanceRecordId` returned that tenant's whole variant set: per-variant
+   * sent/delivered/opened/replied, the derived rates, the winning variant name,
+   * and rows carrying `subjectLine` and `templateContent`. `sequence_id` has no
+   * foreign key, so ids collide across orgs freely.
+   *
+   * This is the shape that got `applyWinningVariant` — its sibling in this
+   * file, also with zero callers — deleted on 2026-09-04. Kept and scoped
+   * rather than deleted because the A/B lifecycle's other half
+   * (`startABTest`) is live.
+   */
+  async determineABTestWinner(
+    performanceRecordId: number, organizationId: number,
+  ): Promise<ABTestResult> {
     const record = await db.query.sequencePerformance.findFirst({
-      where: eq(sequencePerformance.id, performanceRecordId),
+      where: and(
+        eq(sequencePerformance.id, performanceRecordId),
+        eq(sequencePerformance.organizationId, organizationId),
+      ),
     });
 
     if (!record || !record.variant) {
@@ -666,7 +687,7 @@ Respond in JSON:
 
     const allVariants = await db.query.sequencePerformance.findMany({
       where: and(
-        eq(sequencePerformance.organizationId, record.organizationId),
+        eq(sequencePerformance.organizationId, organizationId),
         eq(sequencePerformance.sequenceId!, record.sequenceId!),
         eq(sequencePerformance.messagePosition, record.messagePosition)
       ),

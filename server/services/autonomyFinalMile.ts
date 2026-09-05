@@ -9,6 +9,7 @@
  */
 
 import { db } from "../db";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { agentEvents } from "@shared/schema";
 import { eq, and, sql, desc, gte, lt, inArray } from "drizzle-orm";
 import { wsServer } from "../websocket";
@@ -277,7 +278,12 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
     // metadata flag; we now gate on status === "consensus_reached" and flip the
     // row to "closed" after execution. Consensus payload is stored as JSON text
     // in the `resolution` column.
-    const resolved = await db
+    // A scheduled platform sweep: it must see every org's resolved dialogues,
+    // and then execute each one under ITS OWN org — which is the part that was
+    // missing.
+    const resolved = await unscopedForPlatformOps(
+      "scheduled consensus executor sweeps all orgs' resolved dialogues; each row is then executed under its own dialogue.orgId",
+    )
       .select()
       .from(agentDialogues)
       .where(eq(agentDialogues.status, "consensus_reached"))
@@ -294,12 +300,26 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
       }
       const resolution = consensus?.resolution ?? consensus?.decision;
 
-      if (resolution) {
+      // A dialogue with no org attribution cannot be executed as anyone.
+      // `agent_dialogues.org_id` is nullable — a tag, not an enforced key — and
+      // this used to hardcode `orgId: 0`, so EVERY org's resolved dialogue was
+      // executed as the platform org: `create_task` wrote org N's decision into
+      // org 0, `recordOutcome` stamped org 0 on `agent_events` (where
+      // organization_id IS a real tenant key), and any id in the resolution
+      // payload reached executionEngine's task/deal handlers under the wrong
+      // tenant. The row's own org is the only attribution it has; without one,
+      // skip it and say so rather than guessing.
+      const dialogueOrgId = dialogue.orgId;
+      if (resolution && dialogueOrgId == null) {
+        logger.warn(
+          `[consensus-exec] Dialogue ${dialogue.id} has consensus but no org attribution — not executing`,
+        );
+      } else if (resolution && dialogueOrgId != null) {
         try {
           // Execute the consensus resolution
           const { executionEngine } = await import("./executionEngine");
           await executionEngine.execute({
-            orgId: 0,
+            orgId: dialogueOrgId,
             agentCodename: "system",
             action: resolution.action ?? "send_alert",
             input: resolution.input ?? { title: "Consensus Decision", message: `Consensus reached on: ${dialogue.topic}` },
@@ -308,7 +328,10 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
           // Mark as executed by closing the dialogue.
           await db.update(agentDialogues)
             .set({ status: "closed", resolvedAt: new Date() })
-            .where(eq(agentDialogues.id, dialogue.id));
+            .where(and(
+              eq(agentDialogues.id, dialogue.id),
+              eq(agentDialogues.orgId, dialogueOrgId),
+            ));
 
           executed++;
         } catch {}

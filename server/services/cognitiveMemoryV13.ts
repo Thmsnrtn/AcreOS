@@ -11,7 +11,7 @@ import {
   agentEpisodicMemory, agentSemanticMemory, agentWorkingMemoryV13, memoryAccessLog,
   type AgentEpisodicMemoryEntry, type AgentSemanticMemoryEntry, type AgentWorkingMemoryEntry,
 } from "@shared/schema";
-import { eq, and, desc, gte, lte, sql, inArray, like } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, inArray, like, isNull } from "drizzle-orm";
 import crypto from "crypto";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,6 +44,11 @@ interface ExtractFactData {
 }
 
 interface QueryFactsQuery {
+  /**
+   * WHICH TENANT'S FACTS. Required, and `null` is a real value meaning the
+   * platform lane — see `factLane` below for why this is not optional.
+   */
+  orgId: number | null;
   category?: string;
   minConfidence?: number;
   includeShared?: boolean;
@@ -125,12 +130,38 @@ class CognitiveMemoryService {
     return results;
   }
 
+  /**
+   * The tenant lane a fact belongs to.
+   *
+   * `agent_semantic_memory.org_id` is nullable, and BOTH values are meaningful:
+   * a fact written by `feedbackLoopV14` carries the org whose founder produced
+   * the override, while `trustAuthorityEscalation` writes an agent's own
+   * promotion with no org at all — a platform fact about a global codename.
+   *
+   * So the org tag is part of a fact's IDENTITY, not a filter over it. The
+   * dedupe lookup used to compare only (codename, category, fact) and the fact
+   * TEXT carries no tenant: `synthesizeRule` builds
+   * `Founder consistently overrides ${agent} in category "${c}": replaces …`,
+   * and agent codenames are global. Two orgs whose founders override the same
+   * agent the same way produced BYTE-IDENTICAL text, matched each other's row,
+   * and merged org B's source episode ids into a row tagged org A while
+   * bumping org A's confidence and handing org A's row back to org B.
+   *
+   * `null` therefore matches only `null`. A missing lane is never a wildcard.
+   */
+  private factLane(orgId: number | null | undefined) {
+    return orgId == null
+      ? isNull(agentSemanticMemory.orgId)
+      : eq(agentSemanticMemory.orgId, orgId);
+  }
+
   /** Create or reinforce a semantic memory (same category + exact fact text = reinforce). */
   async extractFact(agentCodename: string, data: ExtractFactData): Promise<AgentSemanticMemoryEntry> {
     const [existing] = await db.select().from(agentSemanticMemory).where(and(
       eq(agentSemanticMemory.agentCodename, agentCodename),
       eq(agentSemanticMemory.category, data.category),
       eq(agentSemanticMemory.fact, data.fact),
+      this.factLane(data.orgId),
     )).limit(1);
 
     if (existing) {
@@ -141,7 +172,14 @@ class CognitiveMemoryService {
         sourceEpisodes: mergedSources,
         confidence: Math.min(100, existing.confidence + Math.floor(10 / newCount)),
         updatedAt: new Date(),
-      }).where(eq(agentSemanticMemory.id, existing.id)).returning();
+      // The lane is repeated here deliberately: `existing.id` is only a safe
+      // sole predicate because the lookup above was lane-scoped, and a
+      // predicate that depends on another statement to be correct is one edit
+      // away from not being.
+      }).where(and(
+        eq(agentSemanticMemory.id, existing.id),
+        this.factLane(data.orgId),
+      )).returning();
       return updated;
     }
 
@@ -158,7 +196,10 @@ class CognitiveMemoryService {
   /** Query semantic memories. If includeShared, also return facts shared with this agent. */
   async queryFacts(agentCodename: string, query: QueryFactsQuery): Promise<AgentSemanticMemoryEntry[]> {
     const limit = query.limit ?? 50;
-    const ownConditions = [eq(agentSemanticMemory.agentCodename, agentCodename)];
+    const ownConditions = [
+      eq(agentSemanticMemory.agentCodename, agentCodename),
+      this.factLane(query.orgId),
+    ];
     if (query.category) ownConditions.push(eq(agentSemanticMemory.category, query.category));
     if (query.minConfidence) ownConditions.push(gte(agentSemanticMemory.confidence, query.minConfidence));
 
@@ -168,6 +209,9 @@ class CognitiveMemoryService {
     if (query.includeShared) {
       const sharedConditions = [
         eq(agentSemanticMemory.isShared, true),
+        // Sharing is between AGENTS, never across tenants: a fact shared with
+        // every agent is still owned by the org that learned it.
+        this.factLane(query.orgId),
         sql`${agentSemanticMemory.sharedWithAgents}::jsonb @> ${JSON.stringify([agentCodename])}::jsonb`,
       ];
       if (query.category) sharedConditions.push(eq(agentSemanticMemory.category, query.category));
@@ -191,16 +235,24 @@ class CognitiveMemoryService {
     return results;
   }
 
-  /** Mark a semantic memory as shared and add agents to sharedWithAgents. */
-  async shareFact(factId: number, withAgents: string[]): Promise<AgentSemanticMemoryEntry | null> {
+  /**
+   * Mark a semantic memory as shared and add agents to sharedWithAgents.
+   *
+   * `orgId` is required for the same reason `queryFacts` requires it: this
+   * resolves a row by bare serial primary key, an id space shared by every
+   * tenant, and there is no caller today to infer the lane from.
+   */
+  async shareFact(
+    factId: number, withAgents: string[], orgId: number | null,
+  ): Promise<AgentSemanticMemoryEntry | null> {
     const [existing] = await db.select().from(agentSemanticMemory)
-      .where(eq(agentSemanticMemory.id, factId)).limit(1);
+      .where(and(eq(agentSemanticMemory.id, factId), this.factLane(orgId))).limit(1);
     if (!existing) return null;
 
     const merged = [...new Set([...(existing.sharedWithAgents as string[]), ...withAgents])];
     const [updated] = await db.update(agentSemanticMemory).set({
       isShared: true, sharedWithAgents: merged, updatedAt: new Date(),
-    }).where(eq(agentSemanticMemory.id, factId)).returning();
+    }).where(and(eq(agentSemanticMemory.id, factId), this.factLane(orgId))).returning();
     return updated;
   }
 

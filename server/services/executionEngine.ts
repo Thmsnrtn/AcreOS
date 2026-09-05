@@ -66,9 +66,16 @@ const actionRegistry: Record<string, ActionExecutor> = {
     const { leadId, newStatus, reason } = ctx.input;
     if (!leadId || !newStatus) return fail("leadId and newStatus required");
 
-    await db.update(leads)
+    // `leadId` comes from the action input — a model's or a consensus payload's
+    // idea of an id, not something this engine chose. Scoped to the executing
+    // org, and the effect is REPORTED FROM THE ROWS THAT CHANGED: an id from
+    // another tenant now matches nothing and is reported as nothing, instead of
+    // being written and then announced as done.
+    const updatedLeads = await db.update(leads)
       .set({ status: newStatus })
-      .where(eq(leads.id, leadId));
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId)))
+      .returning({ id: leads.id });
+    if (updatedLeads.length === 0) return fail(`Lead ${leadId} not found`);
 
     await logAgentAction(ctx, "lead_status_changed", { leadId, newStatus, reason });
     return success({ leadId, newStatus }, [`Lead ${leadId} status → ${newStatus}`]);
@@ -80,9 +87,11 @@ const actionRegistry: Record<string, ActionExecutor> = {
     const { dealId, newStage } = ctx.input;
     if (!dealId) return fail("dealId required");
 
-    await db.update(deals)
+    const advancedDeals = await db.update(deals)
       .set({ status: newStage ?? "closing" })
-      .where(eq(deals.id, dealId));
+      .where(and(eq(deals.id, dealId), eq(deals.organizationId, ctx.orgId)))
+      .returning({ id: deals.id });
+    if (advancedDeals.length === 0) return fail(`Deal ${dealId} not found`);
 
     await logAgentAction(ctx, "deal_advanced", { dealId, newStage });
     wsServer.broadcast(`deal:${dealId}`, "deal_updated", { dealId, stage: newStage });
@@ -122,9 +131,11 @@ const actionRegistry: Record<string, ActionExecutor> = {
     const { taskId, notes: taskNotes } = ctx.input;
     if (!taskId) return fail("taskId required");
 
-    await db.update(tasks)
+    const completedTasks = await db.update(tasks)
       .set({ status: "completed", completedAt: new Date() })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.organizationId, ctx.orgId)))
+      .returning({ id: tasks.id });
+    if (completedTasks.length === 0) return fail(`Task ${taskId} not found`);
 
     await logAgentAction(ctx, "task_completed", { taskId, notes: taskNotes });
     return success({ taskId }, [`Task ${taskId} completed`]);
@@ -449,7 +460,9 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
   // Deal actions require LTV check if deal involves financing
   if (ctx.action === "advance_deal_stage" && ctx.input.dealId) {
     try {
-      const [deal] = await db.select().from(deals).where(eq(deals.id, ctx.input.dealId)).limit(1);
+      const [deal] = await db.select().from(deals)
+        .where(and(eq(deals.id, ctx.input.dealId), eq(deals.organizationId, ctx.orgId)))
+        .limit(1);
       if (deal && deal.offerAmount) {
         const amount = parseFloat(String(deal.offerAmount));
         if (amount > 50000) {
@@ -606,6 +619,20 @@ class AutonomousExecutionEngine {
    */
   registerAction(action: string, executor: ActionExecutor): void {
     actionRegistry[action] = executor;
+  }
+
+  /**
+   * The executor for one action, or undefined.
+   *
+   * The counterpart to `registerAction`, and the seam a handler can be
+   * exercised through on its own terms. `execute()` runs the safety gates
+   * first, and some handlers — `advance_deal_stage`, structurally
+   * founder-gated — are refused there and never reached, so a test driven
+   * through `execute()` reads the GATE's refusal as though it were the
+   * handler's. That is a green over an untested unit.
+   */
+  getActionExecutor(action: string): ActionExecutor | undefined {
+    return actionRegistry[action];
   }
 }
 

@@ -490,6 +490,71 @@ describe("the tenancy lint covers the service layer", () => {
     ).toBeLessThanOrEqual(HATCH_EXEMPTION_CEILING);
   });
 
+  it("recognises the hatch when its REASON contains a semicolon", () => {
+    // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
+    // Both hatch lookbacks used `lastIndexOf(";", index)` to find the start of
+    // the enclosing statement. The hatch takes a REASON SENTENCE, and a reason
+    // containing a semicolon moved that "statement start" INTO the string — so
+    // the lookback never reached `unscopedForPlatformOps(` and the gate flagged
+    // the one form it exists to satisfy. Found the day it happened, on a real
+    // reason: "…from their user id; there is no caller org to scope by".
+    //
+    // Silent, and in the direction that reads as a genuine finding — the author
+    // is told to scope a query that is already declared, and the obvious next
+    // move is to register it as debt instead. The boundary finder is string-
+    // aware now, and this pins that: a semicolon inside the reason must not
+    // change the verdict, and must not widen it either.
+    const withSemicolonReason = [
+      'import { db } from "../db";',
+      'import { unscopedForPlatformOps } from "../utils/orgScopedDb";',
+      'import { properties } from "@shared/schema";',
+      'import { eq } from "drizzle-orm";',
+      "",
+      "export async function sweepAnyOrg(orgId: number, id: number) {",
+      "  const [row] = await unscopedForPlatformOps(",
+      '    "platform sweep resolves the row from an id; there is no caller org to scope by",',
+      "  )",
+      "    .select().from(properties).where(eq(properties.id, id)).limit(1);",
+      "  return { row, orgId };",
+      "}",
+      "",
+    ];
+
+    const clean = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__hatch_semicolon_canary__.ts": withSemicolonReason.join("\n"),
+    });
+    expect(
+      clean.out,
+      "a semicolon inside the hatch's REASON hid the hatch from the gate. The " +
+        "statement-boundary walker has gone back to lastIndexOf(';'), which " +
+        "cannot tell a terminator from text inside a string:\n" + clean.out,
+    ).not.toContain("sweepAnyOrg()");
+    // Vacuity: the run must have read a real schema, or "not reported" means
+    // nothing.
+    expect(clean.out).toMatch(/org-scoped tables: [1-9]/);
+
+    // …and the exemption is still STATEMENT-scoped, semicolon or not.
+    const dirty = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__hatch_semicolon_canary__.ts": [
+        ...withSemicolonReason.slice(0, -3),
+        "  const [other] = await db",
+        "    .select().from(properties).where(eq(properties.id, id)).limit(1);",
+        "  return { row, other, orgId };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(
+      dirty.failed,
+      "a plain by-id read beside a semicolon-reason hatch call did not fail. " +
+        "Teaching the boundary finder about strings must not have widened the " +
+        "exemption past the one statement it belongs to:\n" + dirty.out,
+    ).toBe(true);
+    expect(dirty.out).toContain("sweepAnyOrg()");
+  });
+
   it("exempts a by-id read ROOTED in the hatch, and still fails a plain one beside it", () => {
     // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
     // The exemption is the dangerous half of the 2026-09-04 change. Written

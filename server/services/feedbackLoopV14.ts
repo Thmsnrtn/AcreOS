@@ -10,7 +10,6 @@ import { founderOverrides, feedbackLearnings, type FounderOverrideEntry, type Fe
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
 import { cognitiveMemoryService } from "./cognitiveMemoryV13";
-import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { governanceBrainService } from "./governanceBrainV13";
 import { logger } from "../utils/logger";
 
@@ -288,9 +287,13 @@ class FeedbackLoopService {
         });
         // Verify the fact was actually stored by retrieving it.
         // CognitiveMemoryService has no recall(); query the semantic facts.
+        // Scoped to THIS learning's org. Unscoped, any org's founder_feedback
+        // fact for a global agent codename satisfied the check, so a failed
+        // write for org B reported verified:true off org A's row — and that
+        // flag is persisted into org B's appliedToMemory two lines down.
         const verifyRecall = await cognitiveMemoryService.queryFacts(
           ruleConfig.agent_codename ?? "system",
-          { category: "founder_feedback", limit: 1 },
+          { orgId: learning.orgId, category: "founder_feedback", limit: 1 },
         );
         const verified = verifyRecall && verifyRecall.length > 0;
         appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString(), verified });
@@ -306,27 +309,33 @@ class FeedbackLoopService {
       summary.memory = { applied: true, factId: String(appliedToMemory[0]?.factId) };
     }
 
-    // b. Strategy — record negative outcome and VERIFY strategy parameters updated
+    // b. Strategy — NOT PROPAGATED, because the link this needs does not exist.
+    //
+    // A founder override records `originalDecisionId`, a TEXT decision id.
+    // `strategy_assignments` is keyed by a serial primary key and carries no
+    // decision column, so there is no join from an override to the assignment
+    // whose strategy produced the overridden decision. The previous code closed
+    // that gap by inventing one — `recordOutcome(parseInt(src.originalDecisionId,
+    // 10) || 0, …)` — which read a decision id as a row number and wrote a
+    // negative outcome, and a Thompson beta bump, onto whatever assignment
+    // happened to hold it. Different id space, and (before the org lane landed
+    // in adaptiveStrategyV13) frequently a different tenant.
+    //
+    // Its verification could not fail either: `thompsonBeta` DEFAULTS to 1, so
+    // `strategies.some(s => s.beta > 0)` was true for every strategy that
+    // exists, whether or not the write landed — a green check over a write that
+    // was hitting the wrong row. It reported `verified: true` to the founder.
+    //
+    // So this reports what is true: nothing was propagated, and why. Restoring
+    // it needs a real link (an assignment id on the decision, or a decision id
+    // on the assignment) — not a cast.
     if (appliedToStrategies.length === 0) {
-      try {
-        const srcIds = learning.sourceOverrideIds as string[];
-        if (srcIds.length > 0) {
-          const [src] = await db.select().from(founderOverrides).where(eq(founderOverrides.overrideId, srcIds[0])).limit(1);
-          if (src?.originalDecisionId) {
-            await adaptiveStrategyService.recordOutcome(parseInt(src.originalDecisionId, 10) || 0, `Overridden by founder: ${learning.rule}`, 0);
-            // Verify the strategy's beta (failure count) actually increased.
-            // AdaptiveStrategyService has no listStrategies(); use the
-            // performance query which returns the strategy rows.
-            const { strategies } = await adaptiveStrategyService.getStrategyPerformance(ruleConfig.agent_codename ?? "system");
-            const verified = strategies.some((s: any) => s.beta > 0);
-            appliedToStrategies.push({ assignmentId: src.originalDecisionId, appliedAt: new Date().toISOString(), verified });
-            summary.strategy = { applied: true, details: `Recorded negative outcome for assignment ${src.originalDecisionId}`, verified };
-          }
-        }
-      } catch (err: any) {
-        summary.strategy = { applied: false, error: err.message };
-        logger.warn(`[FeedbackLoop] Strategy propagation failed: ${err.message}`);
-      }
+      summary.strategy = {
+        applied: false,
+        details:
+          "No link from a founder override to a strategy assignment exists in the schema " +
+          "(founder_overrides.original_decision_id is a decision id; strategy_assignments has no decision column).",
+      };
     } else {
       summary.strategy = { applied: true, details: "Already propagated" };
     }
