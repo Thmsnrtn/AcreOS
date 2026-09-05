@@ -303,3 +303,30 @@ attributes distinguishes a rendered control from a selector that targets one;
 walking string literals distinguishes a vendor a page NAMES from a vendor a
 comment says was removed. The parser never visits a comment, so the whole
 class disappears rather than being defended against case by case.
+
+#### The population includes the CI runs you did not look at
+
+The same law governs how you verify a merge, and it is easier to break there
+because the population is invisible by default.
+
+A push to a feature branch triggers three workflows in this repo. A push to
+`main` triggers thirteen. Watching a branch's three, then fast-forwarding, is a
+verification that is *complete over the population it reads* and blind to ten
+workflows — including `Security Scanning`, which does not run on branches at
+all.
+
+Measured 2026-09-05: that gap hid a red security gate for two days and
+37 consecutive runs, across nine fast-forwards. Every one of them was reported
+green, and every report was true about the three runs it had read.
+
+So: before fast-forwarding `main`, enumerate EVERY workflow run for the SHA and
+assert the set of non-success conclusions is empty. Not the three you know
+about — the ones the API returns. And when one is red, read it before merging,
+because "it was already red" is a claim about history that has to be checked
+against the run list, not remembered.
+
+A corollary for any gate whose verdict depends on an external database — a CVE
+feed, a licence list, a blocklist: it can go red with no commit, which is the
+point of it. That makes such a gate's failure output load-bearing in a way an
+ordinary test's is not. If it fails and the log does not say what it found, the
+gate has no path to green except deleting it. Make it print.

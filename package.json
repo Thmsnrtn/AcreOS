@@ -226,6 +226,7 @@
     "@tailwindcss/typography": "^0.5.20",
     "@types/compression": "1.8.1",
     "@types/express": "4.17.21",
+    "@types/js-yaml": "4.0.9",
     "@types/mapbox__mapbox-gl-draw": "1.4.9",
     "@types/node": "25.5.0",
     "@types/pdf-parse": "1.1.5",
@@ -247,6 +248,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.3",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "js-yaml": "4.3.2",
     "postcss": "^8.5.16",
     "prettier": "^3.9.4",
     "rollup-plugin-visualizer": "6.0.11",
@@ -269,7 +271,15 @@
     "tar": "^7.5.16",
     "protobufjs": "^7.6.3",
     "@opentelemetry/core": "^2.8.0",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "qs": "^6.16.0",
+    "@xmldom/xmldom": "^0.8.15",
+    "posthog-js": {
+      "fflate": "^0.4.9"
+    },
+    "jspdf": {
+      "fflate": "^0.8.3"
+    }
   },
   "engines": {
     "node": ">=22"

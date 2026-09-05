@@ -775,65 +775,103 @@ Remediation plan: Replace all instances with generic or AcreOS-branded alternati
 Resolving commits: 23225e2
 
 ### DEFECT-0074
-Title: Security Gate red on every push since 2026-09-04 — Trivy filesystem scan, cause unread
+Title: Security Gate red on every push since 2026-09-04 — five MEDIUM npm CVEs, and a scan whose failure could not be read
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: CI verification (2026-09-05, autonomous session)
-Description: `.github/workflows/security.yml` has failed on EVERY run since #1468
-(`7e6d53c4`, 2026-09-04 05:05). The last green was #1467 (`deaa5191`,
-2026-09-02 19:04) — 37 consecutive failures at the time of writing, spanning
-every push to main since. The failing job is "Trivy Filesystem & Secret Scan";
-npm audit, CodeQL and the container scan all pass, so this is an fs-scope
-finding (the job runs `--scanners vuln,secret,misconfig` at
-CRITICAL,HIGH,MEDIUM) that `npm audit` cannot see. The "Security Gate" job then
-fails on it, so the workflow's conclusion has been red continuously.
+Description: `.github/workflows/security.yml` failed on EVERY run from #1468
+(`7e6d53c4`, 2026-09-04 05:05) onward. Last green: #1467 (`deaa5191`,
+2026-09-02 19:04) — 37 consecutive failures spanning every push to main in
+between. The failing job was "Trivy Filesystem & Secret Scan"; npm audit,
+CodeQL and the container scan were green throughout.
 
-This violates the policy stated in `.trivyignore`'s own header: "a permanently-
-red Security Gate trains everyone to ignore it, so we keep the gate GREEN and
-document each exception here instead." Whatever the finding is, it has been
-neither fixed nor dispositioned for two days.
+TWO DEFECTS, and the second is the one that cost the two days.
 
-Evidence: GitHub Actions workflow 245389657, runs #1467 (success) → #1468..#1504
-(all failure). Run 33993869331 job "Trivy Filesystem & Secret Scan" exits 1 after
-`trivy fs .`; job "Security Gate" reports `Trivy fs: failure` with npm/CodeQL/
-image all `success`.
+**(a) The finding.** Five MEDIUM npm advisories against transitive
+dependencies, all with fixes published:
 
-WHY THE CAUSE IS NOT RECORDED HERE: the scan emits SARIF to the Security tab
-rather than a table to the log, and both routes to it were closed to the session
-that found this — `GET /code-scanning/alerts` returns 403 "Resource not
-accessible by integration", and the Trivy installer cannot resolve GitHub
-release tags through the sandbox proxy. Guessing at a CVE, or silencing it with
-a `.trivyignore` entry written without reading the finding, is exactly what that
-file forbids. Someone with Security-tab access or a local Trivy can name it in
-minutes.
+| Package | Installed | CVE | Fixed in |
+| --- | --- | --- | --- |
+| `@xmldom/xmldom` (via `mammoth`, `@capacitor/cli`→`plist`) | 0.8.13 | CVE-2026-83610 — XML fragment injection via invalid EntityReference serialization | 0.8.15 |
+| `fflate` (via `posthog-js`) | 0.4.8 | CVE-2026-45820 — DoS via crafted ZIP archives | 0.4.9 |
+| `fflate` (via `jspdf`) | 0.8.2 | CVE-2026-45820 — same | 0.8.3 |
+| `qs` (via `express`, `body-parser`, `supertest`→`superagent`) | 6.15.2 | CVE-2026-82417 — DoS in `stringify` | 6.16.0 |
+| `qs` | 6.15.2 | CVE-2026-82562 — DoS via array-limit bypass | 6.16.0 |
 
-Remediation plan: (1) Read the finding — Security tab → Code scanning → filter
-tool `Trivy`, category `trivy-filesystem`; or run `trivy fs .` locally with the
-same flags. (2) Fix it, or add a `.trivyignore` entry with the dated assessment
-and re-review trigger the file's existing entries model. (3) Confirm the gate
-returns green, because a red gate that stays red is the failure mode the file
-was written to prevent.
+The fs job's declared policy is CRITICAL,HIGH,MEDIUM; `npm audit` in the same
+workflow gates on critical/high only. That difference is the whole reason one
+job was red while the other was green, and it is by design — not a bug.
 
-Note on how it went unseen for two days: it is invisible from the branch.
-`Security Scanning` does not run on feature-branch pushes — a branch push
-triggers three workflows (Test, E2E Mobile, Customer Surface Monitor) while a
-push to main triggers thirteen. A pre-merge check that enumerates the branch's
-runs is complete and still misses this entirely; the post-merge check has to
-enumerate every run for the SHA on main.
+NOTHING IN THE REPO CHANGED. `package.json` and `package-lock.json` are
+byte-identical between `deaa5191` (green) and `7e6d53c4` (red) — `git diff
+deaa5191..7e6d53c4 -- package.json package-lock.json` is empty, and all three
+packages last moved in the lockfile on 2026-07-16 (`51b2efa1`). The gate
+flipped because the trivy vulnerability DB learned these CVEs on 2026-09-03/04.
+A vulnerability gate is *supposed* to be able to go red without a commit; that
+is the point of it. Which makes (b) the real defect.
 
----
+**(b) The failure could not be read.** The gating step writes SARIF to a file
+and exits 1. It prints NOTHING about what it found. The only route to the
+finding was the code-scanning UI, which returns 403 "Resource not accessible by
+integration" to a token, so for two days the answer to "why is security red"
+was unavailable to anyone reading the log. That is precisely the state
+`.trivyignore`'s own header exists to prevent: "a permanently-red Security Gate
+trains everyone to ignore it, so we keep the gate GREEN and document each
+exception here instead." You cannot document an exception you cannot read.
+
+The fix for (b) already existed — on the OTHER job. The container scan got a
+non-gating findings table on 2026-07-08, with a comment giving exactly this
+reason ("every gate failure sent someone spelunking the code-scanning UI").
+Whoever wrote it fixed the job in front of them; the sibling job four sections
+down the same file, running the same action in the same silent mode, was never
+touched, and it is the one that went red for 37 runs. Third law: a gate proves
+its property only over the population it actually reads, and that population
+was one job because a human enumerated it from memory.
+
+Evidence: GitHub Actions workflow 245389657, runs #1467 (success) → #1468…#1504
+(failure). Reproduced locally with Trivy built from source
+(`GOEXPERIMENT=jsonv2 go install github.com/aquasecurity/trivy/cmd/trivy`),
+run with the gating step's exact flags —
+`trivy fs --scanners vuln,secret,misconfig --severity CRITICAL,HIGH,MEDIUM
+--exit-code 1 .`:
+
+- on the unmodified lockfile: **exit 1**, `Total: 5 (MEDIUM: 5, HIGH: 0, CRITICAL: 0)`
+- after the overrides below: **exit 0**, 0 vulnerabilities / 0 secrets / 0 misconfigurations
+
+Secret and misconfig scanners were clean at ≥MEDIUM in both runs, so the five
+npm advisories were the entire cause.
+
+Remediation plan (all applied):
+1. Three `overrides` entries in `package.json` — `qs: ^6.16.0`,
+   `@xmldom/xmldom: ^0.8.15`, and nested `posthog-js → fflate: ^0.4.9` /
+   `jspdf → fflate: ^0.8.3`. The fflate override is nested deliberately: a
+   single global `fflate: ^0.8.3` would drag `posthog-js` across a 0.4→0.8
+   boundary to fix a CVE that 0.4.9 already fixes.
+2. A non-gating findings table in the trivy-fs job, mirroring the container
+   job's — same scanners, same severity set, so it cannot print "no findings"
+   on a red job.
+3. `tests/unit/aGatingScanCanBeRead.test.ts` — enumerates every trivy-action
+   step in every workflow, and requires each GATING step (`exit-code: 1`) to be
+   preceded in the SAME JOB by a readable one (`format: table`, `exit-code: 0`)
+   that is at least as wide in severity, scanners and scan-type. Falsified
+   against four mutations (remove the table; narrow its severity; drop a
+   scanner from it; make it gating) — each turns the suite red. A third scan
+   job added later without a table is what fails here.
+
+Resolving commits: see `fix(security)` for the gate returning green,
+2026-09-05.
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 19  | 20    |
-| FIXED  | 12  | 36  | 0   | 48    |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 12  | 37  | 0   | 49    |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **40** | **19** | **71** |
 
-All P0 defects resolved. ONE P1 IS OPEN — DEFECT-0074, the Security Gate red on every
-push since 2026-09-04, cause unread. 19 P2s remain open (not blocking launch).
+All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
+(not blocking launch).
 
 ### Fixed Defects Summary
 
