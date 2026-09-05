@@ -121,6 +121,13 @@ async function getJobRunRow(name: string): Promise<JobRunRow | null> {
 }
 
 async function recordSkip(name: string, reason: string, fingerprint: string | null): Promise<void> {
+  // The table is lazily created, so EVERY statement that names it has to
+  // ensure it first. `getJobRunRow` did; the two writers did not — and the
+  // catch below turned "relation intelligence_job_runs does not exist" into a
+  // warn, so a skip that was never recorded looked exactly like a skip that
+  // was. The coordinator's whole job is deduping AI work; losing the record
+  // silently means the next tick re-runs work it meant to skip.
+  await ensureTable();
   try {
     await db.execute(sql`
       INSERT INTO intelligence_job_runs (name, last_ran_at, last_fingerprint, last_skipped, last_skip_reason, total_runs, total_skips)
@@ -225,6 +232,11 @@ export async function shouldRunAIJob(
  * Pair with shouldRunAIJob via try/finally for guaranteed bookkeeping.
  */
 export async function recordJobRun(name: string, fingerprint?: string | null): Promise<void> {
+  // Same reason as recordSkip — and this one is EXPORTED, so it can be called
+  // without `shouldRunAIJob` ever having run in this process. The doc comment
+  // asks callers to pair them; nothing enforces that, so the ensure belongs
+  // here rather than in the pairing.
+  await ensureTable();
   try {
     await db.execute(sql`
       INSERT INTO intelligence_job_runs (name, last_ran_at, last_fingerprint, last_skipped, last_skip_reason, total_runs, total_skips)
