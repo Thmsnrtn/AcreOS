@@ -30,7 +30,7 @@ resolvers.atlas_cto = async () => {
   const yesterday = new Date(now.getTime() - 86400000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
-  const [jobLogs, critAlerts, totalAlerts, errorLogs] = await Promise.allSettled([
+  const [jobLogs, critAlerts, totalAlerts] = await Promise.allSettled([
     db.select().from(jobHealthLogs)
       .where(gte(jobHealthLogs.runStartedAt, yesterday))
       .orderBy(desc(jobHealthLogs.runStartedAt)).limit(100),
@@ -38,8 +38,6 @@ resolvers.atlas_cto = async () => {
       .where(and(eq(systemAlerts.severity, "critical"), gte(systemAlerts.createdAt, yesterday))),
     db.select({ count: count() }).from(systemAlerts)
       .where(gte(systemAlerts.createdAt, sevenDaysAgo)),
-    db.select({ count: count() }).from(apiUsageLogs)
-      .where(and(gte(apiUsageLogs.createdAt, yesterday), sql`status_code >= 500`)),
   ]);
 
   const jobs = jobLogs.status === "fulfilled" ? jobLogs.value : [];
@@ -55,7 +53,19 @@ resolvers.atlas_cto = async () => {
     successRate: jobs.length > 0 ? Math.round((healthy / jobs.length) * 100) : 100,
     criticalAlertsLast24h: critAlerts.status === "fulfilled" ? Number(critAlerts.value[0]?.count || 0) : 0,
     totalAlertsLast7d: totalAlerts.status === "fulfilled" ? Number(totalAlerts.value[0]?.count || 0) : 0,
-    serverErrorsLast24h: errorLogs.status === "fulfilled" ? Number(errorLogs.value[0]?.count || 0) : 0,
+    // NOT MEASURED, and null says so rather than 0.
+    //
+    // This was a count over `api_usage_logs` with `sql`status_code >= 500``.
+    // That table records service / action / count / estimated cost — it has NO
+    // status column and never has, so the query threw "column status_code does
+    // not exist" on EVERY run. `Promise.allSettled` swallowed the rejection and
+    // the `: 0` fallback reported ZERO SERVER ERRORS IN 24 HOURS to the agent:
+    // a permanent all-clear manufactured out of a query that could not run.
+    //
+    // Nothing in this schema records an HTTP status for inbound API calls
+    // (`webhook_deliveries.status_code` is outbound webhook delivery, a
+    // different measurement), so there is no honest number to put here.
+    serverErrorsLast24h: null,
   };
 };
 
@@ -287,11 +297,9 @@ resolvers.compass_pm = async () => {
 resolvers.crucible_qa = async () => {
   const yesterday = new Date(Date.now() - 86400000);
 
-  const [jobLogs, errorCount] = await Promise.allSettled([
+  const [jobLogs] = await Promise.allSettled([
     db.select().from(jobHealthLogs)
       .where(gte(jobHealthLogs.runStartedAt, yesterday)).limit(100),
-    db.select({ count: count() }).from(apiUsageLogs)
-      .where(and(gte(apiUsageLogs.createdAt, yesterday), sql`status_code >= 400`)),
   ]);
 
   const jobs = jobLogs.status === "fulfilled" ? jobLogs.value : [];
@@ -302,7 +310,11 @@ resolvers.crucible_qa = async () => {
     jobsHealthy: healthy,
     jobsFailed: failed,
     jobSuccessRate: jobs.length > 0 ? Math.round((healthy / jobs.length) * 100) : 100,
-    apiErrorsLast24h: errorCount.status === "fulfilled" ? Number(errorCount.value[0]?.count || 0) : 0,
+    // NOT MEASURED — see serverErrorsLast24h in atlas_cto for the whole story.
+    // The same impossible `status_code` count sat here, reporting 0, which also
+    // meant the one alarm that reads this value (`apiErrorsLast24h > 10` in
+    // agentProactiveEngine) could never fire.
+    apiErrorsLast24h: null,
   };
 };
 

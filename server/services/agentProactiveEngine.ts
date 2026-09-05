@@ -256,15 +256,23 @@ const BEHAVIORS: ProactiveBehavior[] = [
     description: "Crucible checks error rates and job quality daily",
     check: async () => {
       const data = await resolveAgentData("crucible_qa");
+      // `apiErrorsLast24h` is null — the measurement does not exist in this
+      // schema (see agentDataResolvers). It used to be a permanent 0 produced
+      // by a query that could not run, so this clause has never once been able
+      // to fire; the guard makes that visible instead of implied.
+      const apiErrors =
+        typeof data.apiErrorsLast24h === "number" ? data.apiErrorsLast24h : null;
       return {
-        shouldAct: data.jobsFailed > 0 || data.apiErrorsLast24h > 10,
+        shouldAct: data.jobsFailed > 0 || (apiErrors !== null && apiErrors > 10),
         context: data,
       };
     },
     act: async (ctx) => {
       const issues = [];
       if (ctx.jobsFailed > 0) issues.push(`${ctx.jobsFailed} failed job(s)`);
-      if (ctx.apiErrorsLast24h > 10) issues.push(`${ctx.apiErrorsLast24h} API errors in 24h`);
+      if (typeof ctx.apiErrorsLast24h === "number" && ctx.apiErrorsLast24h > 10) {
+        issues.push(`${ctx.apiErrorsLast24h} API errors in 24h`);
+      }
       await agentCommsService.broadcast({
         from: "crucible_qa",
         channel: "incidents",

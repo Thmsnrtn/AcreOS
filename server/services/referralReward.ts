@@ -30,8 +30,9 @@
 import { eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { referrals } from "@shared/models/auth";
-import { organizations } from "@shared/schema";
+import { organizations, teamMembers } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 /** Cents credited to EACH side (the "a month each" denomination, Pro ≈ $49). */
@@ -86,12 +87,20 @@ async function creditOrg(orgId: number, cents: number, memo: string): Promise<vo
 
 /** The non-terminal referral (if any) whose referee belongs to this org. */
 async function referralForOrg(orgId: number) {
-  const userRows = await db.execute<{ id: string }>(
-    sql`SELECT id FROM users WHERE organization_id = ${orgId}`,
-  );
-  const userIds = (Array.isArray(userRows) ? userRows : (userRows as { rows?: Array<{ id: string }> }).rows ?? [])
-    .map((r) => r.id)
-    .filter(Boolean);
+  // A user's organization lives in `team_members`, NOT on `users`.
+  //
+  // This was `SELECT id FROM users WHERE organization_id = ${orgId}`, and
+  // `users` has no `organization_id` column — it never has. The statement threw
+  // "column organization_id does not exist" on every call, markReferralPaid's
+  // catch turned that into `{ marked: false }`, and the whole reward path went
+  // quiet: no referee credit at first paid invoice, no referrer credit at
+  // maturity. A program with real money attached ($49 a side, $98 annual, $100
+  // and $250 milestones) that had never once paid out.
+  const members = await db
+    .select({ userId: teamMembers.userId })
+    .from(teamMembers)
+    .where(eq(teamMembers.organizationId, orgId));
+  const userIds = members.map((m) => m.userId).filter(Boolean);
   if (userIds.length === 0) return null;
   const [referral] = await db
     .select()
@@ -155,19 +164,26 @@ export async function matureReferralRewards(): Promise<{ converted: number; void
   for (const row of due) {
     try {
       // The referee's org and its live billing state.
-      const orgRows = await db.execute<{ id: number; subscription_status: string; billing_interval: string }>(sql`
-        SELECT o.id, o.subscription_status, o.billing_interval
-        FROM organizations o JOIN users u ON u.organization_id = o.id
-        WHERE u.id = ${row.referee_id} LIMIT 1
-      `);
-      const org = (Array.isArray(orgRows)
-        ? orgRows
-        : (orgRows as { rows?: Array<{ id: number; subscription_status: string; billing_interval: string }> }).rows ?? [])[0];
+      // Same ghost join as above (`JOIN users u ON u.organization_id = o.id`),
+      // so every referral reaching maturity threw here and was logged as one
+      // failed claim — never converted, never voided.
+      const [org] = row.referee_id
+        ? await db
+            .select({
+              id: organizations.id,
+              subscriptionStatus: organizations.subscriptionStatus,
+              billingInterval: organizations.billingInterval,
+            })
+            .from(organizations)
+            .innerJoin(teamMembers, eq(teamMembers.organizationId, organizations.id))
+            .where(eq(teamMembers.userId, row.referee_id))
+            .limit(1)
+        : [];
 
-      const retained = org && org.subscription_status === "active";
+      const retained = org && org.subscriptionStatus === "active";
       const targetStatus = retained ? "converted" : "voided";
       const referrerCents = retained
-        ? REFERRAL_REWARD_CENTS + (org.billing_interval === "yearly" ? REFERRAL_ANNUAL_BONUS_CENTS : 0)
+        ? REFERRAL_REWARD_CENTS + (org!.billingInterval === "yearly" ? REFERRAL_ANNUAL_BONUS_CENTS : 0)
         : 0;
 
       const claimed = await db.execute<{ id: number }>(sql`
@@ -186,12 +202,16 @@ export async function matureReferralRewards(): Promise<{ converted: number; void
         continue;
       }
 
-      const referrerOrgRows = await db.execute<{ organization_id: number }>(
-        sql`SELECT organization_id FROM users WHERE id = ${row.referrer_id} LIMIT 1`,
-      );
-      const referrerOrgId = (Array.isArray(referrerOrgRows)
-        ? referrerOrgRows
-        : (referrerOrgRows as { rows?: Array<{ organization_id: number }> }).rows ?? [])[0]?.organization_id;
+      // A scheduled platform sweep with no caller org: the whole question is
+      // WHICH org the referrer belongs to, so there is nothing to scope by.
+      const [referrerMember] = await unscopedForPlatformOps(
+        "daily referral maturity sweep resolves each referrer's own organization from their user id; there is no caller org to scope by",
+      )
+        .select({ organizationId: teamMembers.organizationId })
+        .from(teamMembers)
+        .where(eq(teamMembers.userId, row.referrer_id))
+        .limit(1);
+      const referrerOrgId = referrerMember?.organizationId;
 
       if (referrerOrgId) {
         await creditOrg(referrerOrgId, referrerCents, "AcreOS referral reward — your referral converted");

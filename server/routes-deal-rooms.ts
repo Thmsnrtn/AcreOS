@@ -23,8 +23,10 @@ import {
   dealRooms,
   dealRoomMessages,
   dealRoomDocuments,
+  teamMembers,
+  users,
 } from '@shared/schema';
-import { eq, desc, and, asc } from 'drizzle-orm';
+import { eq, desc, and, asc, isNotNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
 import { validateUrl, SSRFBlockedError } from './middleware/fileUploadSecurity';
@@ -759,11 +761,23 @@ export function registerPublicDealRoomRoute(app: Express): void {
           participants.find((p) => p.role === "seller")?.organizationId ??
           participants[0]?.organizationId;
         if (sharerOrgId) {
-          const codeRows = await db.execute<{ referral_code: string }>(
-            sql`SELECT referral_code FROM users WHERE organization_id = ${sharerOrgId} AND referral_code IS NOT NULL LIMIT 1`,
-          );
-          const rows = Array.isArray(codeRows) ? codeRows : (codeRows as { rows?: Array<{ referral_code: string }> }).rows ?? [];
-          refCode = rows[0]?.referral_code ?? null;
+          // A user's organization lives in `team_members`, not on `users`.
+          // This was `SELECT referral_code FROM users WHERE organization_id =
+          // …`, and `users` has no `organization_id` column, so the statement
+          // threw on every request. The catch below set refCode = null, which
+          // is also what "this org has no referral code" looks like — so the
+          // attribution on every shared deal room has silently been absent
+          // rather than merely unavailable.
+          const [row] = await db
+            .select({ referralCode: users.referralCode })
+            .from(teamMembers)
+            .innerJoin(users, eq(users.id, teamMembers.userId))
+            .where(and(
+              eq(teamMembers.organizationId, sharerOrgId),
+              isNotNull(users.referralCode),
+            ))
+            .limit(1);
+          refCode = row?.referralCode ?? null;
         }
       } catch {
         refCode = null; // attribution is best-effort — never break the public page

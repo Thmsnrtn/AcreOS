@@ -17,6 +17,24 @@
  *      zero credit.
  *   3. The milestone bonus fires exactly at the crossing conversion.
  *   4. Stripe being down never loses the ledger credit.
+ *
+ * ── WHY THIS MOCK WAS REWRITTEN (2026-09-05) ────────────────────────────────
+ * It used to answer three queries THE DATABASE REJECTS. The service resolved a
+ * user's organization with `SELECT id FROM users WHERE organization_id = $1`,
+ * `JOIN users u ON u.organization_id = o.id` and `SELECT organization_id FROM
+ * users WHERE id = $1` — and `users` has no `organization_id` column. A user's
+ * org lives in `team_members`.
+ *
+ * This suite dispatched on SQL TEXT, so `text.includes("SELECT id FROM users")`
+ * happily returned a fixture row and every assertion below passed, while in
+ * production each statement threw into a catch: no referee credit at first paid
+ * invoice, no conversion or void at maturity, no referrer credit. GREEN SUITE,
+ * DEAD PROGRAM — the mock agreed with an implementation that could not run.
+ *
+ * The assertions are UNCHANGED. Only the mock moved, to serve the shapes the
+ * service now issues (typed Drizzle reads through `team_members`), so the
+ * invariants this suite was written to pin survive intact and are now pinned
+ * against something that works.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -26,7 +44,7 @@ const state = {
   referralRow: null as any,
   claimSucceeds: true,
   dueRows: [] as Array<{ id: number; referrer_id: string; referee_id: string | null }>,
-  refereeOrg: { id: 7, subscription_status: "active", billing_interval: "monthly" } as any,
+  refereeOrg: { id: 7, subscriptionStatus: "active", billingInterval: "monthly" } as any,
   convertedCount: 1,
   referrerOrgId: 42 as number | null,
   stripeCustomerId: "cus_x" as string | null,
@@ -39,7 +57,12 @@ vi.mock("@shared/models/auth", () => ({
   referrals: { refereeId: "r.referee", __k: "referrals" },
 }));
 vi.mock("@shared/schema", () => ({
-  organizations: { id: "o.id", stripeCustomerId: "o.stripe", __k: "orgs" },
+  organizations: {
+    id: "o.id", stripeCustomerId: "o.stripe",
+    subscriptionStatus: "o.subStatus", billingInterval: "o.billingInterval",
+    __k: "orgs",
+  },
+  teamMembers: { organizationId: "tm.orgId", userId: "tm.userId", __k: "teamMembers" },
 }));
 vi.mock("drizzle-orm", () => ({
   eq: (a: any, b: any) => ({ op: "eq", a, b }),
@@ -54,36 +77,63 @@ vi.mock("drizzle-orm", () => ({
   ),
 }));
 
+/**
+ * Rows for one builder chain, chosen by the TABLES it names — not by SQL text.
+ * Text dispatch is what let this suite answer a query the database rejects.
+ */
+function rowsFor(st: { table: any; joined: any; limited: boolean }): any[] {
+  const table = st.table?.__k;
+  const joined = st.joined?.__k;
+
+  if (table === "referrals") return state.referralRow ? [state.referralRow] : [];
+
+  // The referee's org and billing state, reached THROUGH team_members.
+  if (table === "orgs" && joined === "teamMembers") {
+    return state.refereeOrg ? [state.refereeOrg] : [];
+  }
+  // redeemAsStripeBalance: the org's Stripe customer.
+  if (table === "orgs") return [{ stripeCustomerId: state.stripeCustomerId }];
+
+  if (table === "teamMembers") {
+    // Two distinct reads, distinguished by shape rather than by text:
+    //   referralForOrg   org  → every member's userId   (no limit)
+    //   referrer lookup  user → that member's org       (limit 1)
+    return st.limited
+      ? state.referrerOrgId
+        ? [{ organizationId: state.referrerOrgId }]
+        : []
+      : state.orgUsers.map((u) => ({ userId: u.id }));
+  }
+  return [];
+}
+
 vi.mock("../../server/db", () => ({
   db: {
     select: (_proj?: any) => ({
-      from: (t: any) => ({
-        where: () => ({
-          limit: () =>
-            Promise.resolve(
-              t?.__k === "referrals"
-                ? state.referralRow
-                  ? [state.referralRow]
-                  : []
-                : [{ stripeCustomerId: state.stripeCustomerId }],
-            ),
-        }),
-      }),
+      from: (t: any) => {
+        const st = { table: t, joined: null as any, limited: false };
+        const api: any = {
+          innerJoin: (j: any) => { st.joined = j; return api; },
+          leftJoin: (j: any) => { st.joined = j; return api; },
+          where: () => api,
+          orderBy: () => api,
+          limit: () => { st.limited = true; return api; },
+          // Thenable: the chain resolves whether or not `.limit()` was called,
+          // which is the difference between the two team_members reads.
+          then: (res: any, rej: any) => Promise.resolve(rowsFor(st)).then(res, rej),
+        };
+        return api;
+      },
     }),
     execute: (q: any) => {
       const text: string = q?.text ?? "";
       state.executed.push({ text, values: q?.values ?? [] });
-      if (text.includes("SELECT id FROM users")) return Promise.resolve({ rows: state.orgUsers });
       if (text.includes("FROM referrals") && text.includes("status = 'paid'"))
         return Promise.resolve({ rows: state.dueRows });
       if (text.includes("UPDATE referrals"))
         return Promise.resolve({ rows: state.claimSucceeds ? [{ id: 1 }] : [] });
-      if (text.includes("o.subscription_status"))
-        return Promise.resolve({ rows: state.refereeOrg ? [state.refereeOrg] : [] });
       if (text.includes("count(*)"))
         return Promise.resolve({ rows: [{ n: String(state.convertedCount) }] });
-      if (text.includes("SELECT organization_id FROM users"))
-        return Promise.resolve({ rows: state.referrerOrgId ? [{ organization_id: state.referrerOrgId }] : [] });
       return Promise.resolve({ rows: [] });
     },
   },
@@ -114,7 +164,7 @@ beforeEach(() => {
   state.referralRow = { id: 1, referrerId: "user_referrer", refereeId: "user_ref_1", status: "signed_up" };
   state.claimSucceeds = true;
   state.dueRows = [{ id: 1, referrer_id: "user_referrer", referee_id: "user_ref_1" }];
-  state.refereeOrg = { id: 7, subscription_status: "active", billing_interval: "monthly" };
+  state.refereeOrg = { id: 7, subscriptionStatus: "active", billingInterval: "monthly" };
   state.convertedCount = 1;
   state.referrerOrgId = 42;
   state.stripeCustomerId = "cus_x";
@@ -176,7 +226,7 @@ describe("matureReferralRewards — the referrer's moment, after the hold", () =
   });
 
   it("pays the annual bonus when the referee bills yearly ($98 total)", async () => {
-    state.refereeOrg = { ...state.refereeOrg, billing_interval: "yearly" };
+    state.refereeOrg = { ...state.refereeOrg, billingInterval: "yearly" };
     const { matureReferralRewards, REFERRAL_REWARD_CENTS, REFERRAL_ANNUAL_BONUS_CENTS } =
       await import("../../server/services/referralReward");
     await matureReferralRewards();
@@ -184,7 +234,7 @@ describe("matureReferralRewards — the referrer's moment, after the hold", () =
   });
 
   it("VOIDS an unretained referral — no credit to anyone", async () => {
-    state.refereeOrg = { ...state.refereeOrg, subscription_status: "canceled" };
+    state.refereeOrg = { ...state.refereeOrg, subscriptionStatus: "canceled" };
     const { matureReferralRewards } = await import("../../server/services/referralReward");
     const r = await matureReferralRewards();
     expect(r.converted).toBe(0);
