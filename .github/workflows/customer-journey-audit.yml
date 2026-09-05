@@ -37,6 +37,16 @@ on:
         required: false
         type: string
 
+# Both of this workflow's github-script steps write issues, and neither had
+# ever actually run — every scheduled run stopped at the TARGET_URL guard —
+# so nothing here has been exercised against the repository's DEFAULT token
+# permissions. Declaring them makes the grant explicit instead of inherited,
+# which is the difference between the notice reaching a person and a 403 that
+# reads as one more failed audit.
+permissions:
+  contents: read
+  issues: write # the customer-journey RED issue and the unconfigured-audit notice
+
 jobs:
   customer-journey-audit:
     name: Walk customer journey (9 viewports × 2 themes)
@@ -82,6 +92,17 @@ jobs:
           fi
           echo "Auditing $TARGET_URL"
           echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # An audit that could not run is its OWN state — not a pass. Without this
+      # the job exits 0 and the check goes green, which is what hundreds of consecutive
+      # runs of this workflow did while never opening a browser.
+      - name: Announce that this audit did not run
+        if: steps.guard.outputs.skip == 'true'
+        uses: ./.github/actions/audit-unconfigured
+        with:
+          audit: "customer-journey audit"
+          missing: "TARGET_URL"
+          what-it-covers: "the end-to-end customer journey across every viewport"
 
       - name: Run customer-journey audit
         id: audit

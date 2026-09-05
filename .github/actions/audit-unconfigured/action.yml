@@ -1,0 +1,129 @@
+name: "Announce an audit that could not run"
+description: >-
+  The single honest outcome for a scheduled audit whose target is not
+  configured. Writes a job summary saying the audit DID NOT RUN, and — on
+  scheduled runs only — files one standing issue per audit so the fact reaches
+  a person exactly once instead of never.
+
+# ── WHY THIS EXISTS ───────────────────────────────────────────────────────────
+# Measured 2026-09-05, from the GitHub Actions API rather than from the code:
+#
+#   Desktop-feel Audit          366 runs, 366 SUCCESS  — none audited anything
+#   Customer Journey Audit      same shape
+#   Borrower Cookie-Session E2E  94 runs,  94 FAILURE  — none reached a check
+#
+# All three take `TARGET_URL` from a repository secret that is not set. The
+# first two exit 0 on that branch, so a green check has meant "the customer
+# journey is fine" for 366 consecutive runs of an audit that never opened a
+# browser. The third exits 1, so its red has meant "unconfigured" — which is
+# indistinguishable from the red it exists to raise, "the borrower flow is
+# broken", and after 94 identical reds nobody was reading either.
+#
+# This is the repo's own third law at the level of CI: a gate proves its
+# property only over the population it actually reads, and an EMPTY population
+# reports exactly like a clean one. The population here was zero runs.
+#
+# Neither green-and-silent nor red-forever is the answer, because neither is
+# distinguishable from the thing it is supposed to measure. The state
+# "configured to run, and did not" is its OWN state and needs its own signal:
+# visible in the run (summary + warning annotation), durable outside it (one
+# open issue), and quiet on repeat (an existing open issue is not re-commented,
+# so a 6-hourly schedule does not become 4 notifications a day).
+#
+# Setting the secret is a founder action — this action deliberately does not
+# invent a target, weaken the guard, or point an audit at production. It makes
+# the unconfigured state impossible to mistake for a passing one.
+
+inputs:
+  audit:
+    description: "Human name of the audit, e.g. 'customer-journey'. Used as the issue's identity."
+    required: true
+  missing:
+    description: "Comma-separated names of the secrets that are not set, e.g. 'TARGET_URL, E2E_TEST_AUTH_TOKEN'."
+    required: true
+  what-it-covers:
+    description: "One line naming what goes unmeasured while this audit cannot run."
+    required: true
+  label:
+    description: "Issue label used to find this audit's standing issue."
+    required: false
+    default: "audit-unconfigured"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Say so in the run
+      shell: bash
+      env:
+        AUDIT: ${{ inputs.audit }}
+        MISSING: ${{ inputs.missing }}
+        COVERS: ${{ inputs.what-it-covers }}
+      run: |
+        echo "::warning title=${AUDIT} did not run::${MISSING} not set — this run measured nothing."
+        {
+          echo "## ⚠️ \`${AUDIT}\` DID NOT RUN"
+          echo
+          echo "This job finished without auditing anything. It is **not** a pass."
+          echo
+          echo "| | |"
+          echo "|---|---|"
+          echo "| Not configured | \`${MISSING}\` |"
+          echo "| Unmeasured while this is unset | ${COVERS} |"
+          echo "| Trigger | \`${GITHUB_EVENT_NAME}\` |"
+          echo
+          echo "A repository admin sets the secret(s) under Settings → Secrets and variables → Actions."
+          echo "Point them at a staging deployment, never at production."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: File one standing issue
+      if: github.event_name == 'schedule'
+      # NON-FATAL on purpose. If the token cannot write issues, the run must
+      # still end as "this audit did not run" — the summary and the warning
+      # annotation above already said so. Letting a 403 here fail the job would
+      # rebuild the exact ambiguity this action exists to remove: a red that
+      # means "unconfigured" sitting in the same column as a red that means
+      # "the audited flow is broken".
+      continue-on-error: true
+      uses: actions/github-script@v9
+      env:
+        AUDIT: ${{ inputs.audit }}
+        MISSING: ${{ inputs.missing }}
+        COVERS: ${{ inputs.what-it-covers }}
+        LABEL: ${{ inputs.label }}
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const audit = process.env.AUDIT;
+          const title = `audit unconfigured: ${audit} has never run`;
+
+          // Quiet on repeat. A standing configuration fact is worth saying
+          // ONCE — commenting on every scheduled run would turn a 6-hourly
+          // cron into four notifications a day, which is how the 366 silent
+          // successes got ignored in the first place.
+          const existing = await github.rest.issues.listForRepo({
+            owner, repo, state: "open", labels: process.env.LABEL, per_page: 50,
+          });
+          if (existing.data.some((i) => i.title === title)) return;
+
+          const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+          const body = [
+            `\`${audit}\` is on a schedule and cannot run: **${process.env.MISSING}** is not set.`,
+            ``,
+            `Every scheduled run so far has finished without auditing anything.`,
+            `**${process.env.COVERS}** is therefore unmeasured, and the workflow's`,
+            `conclusion says nothing about it either way.`,
+            ``,
+            `**Latest run:** ${runUrl}`,
+            ``,
+            `To enable it: set the secret(s) under Settings → Secrets and variables → Actions,`,
+            `pointing at a staging deployment rather than production. To retire the audit instead,`,
+            `remove its \`schedule:\` trigger — either is a decision, and both beat a run that`,
+            `reports a conclusion it did not earn.`,
+            ``,
+            `Auto-opened once by \`.github/actions/audit-unconfigured\`. Closing this issue`,
+            `without changing the configuration will reopen it on the next scheduled run.`,
+          ].join("\n");
+
+          await github.rest.issues.create({
+            owner, repo, title, body, labels: [process.env.LABEL],
+          });
