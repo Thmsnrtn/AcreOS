@@ -581,6 +581,38 @@ describe("the tenancy lint covers the service layer", () => {
     ).toEqual([]);
   });
 
+  it("no register entry rests on a HOLDING verdict", () => {
+    // ── WHY ───────────────────────────────────────────────────────────────
+    // "UNREACHABLE" was a placeholder, not a ruling: it says the flag is real
+    // and the method has no caller, which settles nothing about what to DO.
+    // Thirty entries carried it for a day and read as triaged the whole time —
+    // the same failure as a note that says UNREAD while being counted among the
+    // read, one level up. A verdict nobody converts is how an entry stays
+    // unexamined while looking finished.
+    //
+    // They were converted on 2026-09-05 into durable verdicts: KILL-PENDING
+    // with a deletion-ledger row that carries the ratchet collateral, or
+    // BLOCKED ON A LIVE CONSUMER where a live reader makes deletion a founder
+    // tranche. A note may still SAY "unreachable" while explaining itself — what
+    // it may not do is lead with it as the whole answer.
+    const register = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "scripts/org-scope-route-widening.json"), "utf8"),
+    ) as { _TRIAGED: Record<string, string> };
+    const notes = Object.entries(register._TRIAGED);
+    expect(notes.length, "the register has no reasons — this assertion would be vacuous").toBeGreaterThan(100);
+
+    const HOLDING = /^\s*(UNREACHABLE|TODO|TBD|PENDING TRIAGE|UNTRIAGED)\b/;
+    const holding = notes.filter(([, note]) => HOLDING.test(note)).map(([k]) => k);
+    expect(
+      holding,
+      "these entries lead with a HOLDING verdict, which records that someone " +
+        "looked without recording what to do about it. Convert each to a durable " +
+        "one — a fix, a scoped query, a hatch with a reason, or a KILL-pending row " +
+        "in docs/company/deletion-ledger.md naming the ratchet collateral so the " +
+        "founder's ruling is cheap to execute:\n  " + holding.join("\n  "),
+    ).toEqual([]);
+  });
+
   it("caps how much rule 2 the sanctioned hatch is allowed to silence", () => {
     const out = run();
     const m = /rule-2 predicates exempted as sanctioned-hatch roots: (\d+)/.exec(out);
