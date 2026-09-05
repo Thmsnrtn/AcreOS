@@ -37,7 +37,13 @@ The landing's claim that these five investor types are "already in the product" 
 
 ## Methodology
 
-This is a **code-walk verification**, not a live browser test. The browser sandbox cannot run the authed app from here (per `reference_browser_verification.md`). The walk covers:
+This is a **code-walk verification**, not a live browser test. It was written on the
+understanding that the browser sandbox could not run the authed app from here, citing
+`reference_browser_verification.md` — a file that does not exist in this repository
+(checked 2026-09-05). The limitation is not real either: the desktop-feel matrix ran
+350 contracts against a local authed server on 2026-09-05 and found a defect. This
+walk stands on its own merits as a code review; it is no longer the ONLY option, and a
+future pass over these verticals can drive the real app. The walk covers:
 
 1. `shared/business-types.ts` — declared maturity
 2. `client/src/pages/landing/Positioning.tsx` — what the landing claims

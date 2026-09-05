@@ -23,11 +23,19 @@ import { defineConfig, devices } from "@playwright/test";
  *   single failure (no "which theme failed?" guessing).
  *
  * Base URL:
- *   Defaults to http://localhost:5000 for documentation parity with the
- *   other configs. NOTE: per reference_browser_verification.md, the local
- *   Claude sandbox CANNOT drive a browser (loopback blocked). The CI
- *   runner sets PLAYWRIGHT_BASE_URL / TARGET_URL to the live production
- *   surface, where the E2E_TEST_AUTH bypass is gated by an HTTP header.
+ *   Defaults to http://localhost:5000, and that default WORKS — with no
+ *   TARGET_URL the config starts its own server and runs the matrix against
+ *   it. This header used to say "the local Claude sandbox CANNOT drive a
+ *   browser (loopback blocked)". Measured 2026-09-05: it can. This matrix ran
+ *   350 contracts locally that afternoon and found a real defect (11 hover-only
+ *   controls on /settings, C7). A limitation nobody re-measures is
+ *   indistinguishable from one that does not exist.
+ *
+ *   The CI runner sets PLAYWRIGHT_BASE_URL / TARGET_URL to a deployed surface,
+ *   where the E2E_TEST_AUTH bypass is gated by an HTTP header. Unlike the
+ *   customer-journey suite, THIS one runs correctly either way: its contracts
+ *   assert viewport and styling properties of the authenticated app, which is
+ *   what a local E2E_TEST_AUTH=1 server gives it.
  *
  * Sibling configs (NOT replaced):
  *   - playwright.mobile.config.ts — fast-feedback 5-project mobile subset.

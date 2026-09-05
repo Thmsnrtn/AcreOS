@@ -21,10 +21,39 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Base URL:
  *   Defaults to http://localhost:5000 for documentation parity with the
- *   other configs. NOTE: per reference_browser_verification.md, the local
- *   Claude sandbox CANNOT drive a browser (loopback blocked). The CI
- *   runner sets PLAYWRIGHT_BASE_URL / TARGET_URL to the live production
- *   surface, where the E2E_TEST_AUTH bypass is gated by an HTTP header.
+ *   other configs. The CI runner sets PLAYWRIGHT_BASE_URL / TARGET_URL to a
+ *   deployed surface, where the E2E_TEST_AUTH bypass is gated by an HTTP
+ *   header — which is what makes a SIGNED-OUT landing page reachable there.
+ *
+ * ── RUNNING THIS LOCALLY: read this first ─────────────────────────────────
+ * Two things this header used to say or imply are wrong, both measured
+ * 2026-09-05 by running it.
+ *
+ * 1. It said "the local Claude sandbox CANNOT drive a browser (loopback
+ *    blocked)". It can. The desktop-feel matrix ran 350 contracts against
+ *    http://localhost:5000 the same afternoon. A limitation nobody re-measures
+ *    is indistinguishable from one that does not exist, and this one had
+ *    outlived whatever made it true.
+ *
+ * 2. `npx playwright test --config=…` against a LOCAL server with
+ *    E2E_TEST_AUTH=1 cannot pass, and not for a product reason. That flag makes
+ *    `isAuthenticated` inject `resolveTestUserId(req.headers.cookie)` on EVERY
+ *    request (server/auth/clerkAuth.ts), defaulting to the seeded customer when
+ *    no cookie is present — so `/` redirects to `/today` and there is no
+ *    landing page at all. CJ1 opens on the signed-out landing CTA. Measured:
+ *    36 failed / 18 skipped, of which 18 are `landing primary CTA missing` for
+ *    exactly this reason, and the remainder are downstream of the same
+ *    unrepresentative auth state.
+ *
+ *    So a local run of THIS suite needs a signed-out mode — the bypass gated on
+ *    the `x-e2e-test-auth` header locally as it is on a deployed target, rather
+ *    than on the env flag alone. That is an auth change and belongs in its own
+ *    piece of work; until it exists, a green or red result from a local run of
+ *    this config says nothing about the customer journey.
+ *
+ *    The feel suites are unaffected: they assert viewport and styling
+ *    properties of the authenticated app, which is exactly what the flag gives
+ *    them.
  *
  * Sibling configs (NOT replaced):
  *   - playwright.mobile.config.ts — fast-feedback 5-project mobile subset
@@ -164,11 +193,19 @@ export default defineConfig({
     : [["list"], ["json", { outputFile: "tests/e2e-customer-journey/results/playwright-report.json" }]],
   outputDir: "test-results/customer-journey",
   use: {
-    // Default to localhost:5000 for documentation parity. The local
-    // Claude sandbox cannot drive a browser at loopback addresses (see
-    // reference_browser_verification.md); CI overrides via TARGET_URL /
-    // PLAYWRIGHT_BASE_URL to the live production surface, where the
-    // test-auth bypass is gated by header + signed token.
+    // Default to localhost:5000. Driving a browser at loopback works — see the
+    // header. What does NOT work locally is this suite's signed-out first step
+    // while E2E_TEST_AUTH=1 authenticates every request.
+    //
+    // The claim that used to sit here cited `reference_browser_verification.md`
+    // as its authority. That file does not exist in this repository (checked
+    // 2026-09-05; the only other citation of it is
+    // docs/internal/multi-vertical-verification.md:40, which declines to run a
+    // live browser test on the same missing authority). A limitation is worth
+    // exactly as much as the last time someone measured it.
+    //
+    // CI overrides via TARGET_URL / PLAYWRIGHT_BASE_URL to a deployed surface,
+    // where the test-auth bypass is gated by header + signed token.
     baseURL:
       process.env.TARGET_URL ??
       process.env.PLAYWRIGHT_BASE_URL ??
