@@ -56,9 +56,29 @@ vi.mock("../../server/utils/logger", () => ({
 const ROOT = path.resolve(__dirname, "../..");
 const exists = (rel: string) => fs.existsSync(path.join(ROOT, rel));
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
-/** Ratchets assert on CODE, not prose — a comment naming the gate is not a gate. */
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+/**
+ * Ratchets assert on CODE, not prose — a comment naming the gate is not a gate.
+ *
+ * This was the two-regex idiom (block comments, then line comments), and it was
+ * eating the code it was meant to read. Measured 2026-09-05 against the correct
+ * single-pass scanner, over the files this suite actually opens:
+ *
+ *   server/jobs/runScheduledJobs.ts   12,465 characters / 260 code lines gone
+ *   server/ai/supportAgent.ts          4,490 characters /  73 code lines gone
+ *
+ * Both are registry members. supportAgent.ts is the 91-case dispatch a model
+ * drives while talking to a paying customer — the population blind spot
+ * CLAUDE.md documents — and this suite was reasoning about a copy of it with
+ * 4.5KB missing.
+ *
+ * Nothing was wrong TODAY: every assertion still lands in a surviving region,
+ * and the suite passes identically with the correct stripper. That is the
+ * point. A `not.toContain(...)` is satisfied by any region the stripper ate, so
+ * a scanner that silently deletes code cannot be trusted to have been lucky
+ * twice — and the promise on the other side of these assertions is the one the
+ * Pax page makes to a customer about what Pause stops.
+ */
+import { stripComments } from "../helpers/stripComments";
 const codeOf = (rel: string) => stripComments(read(rel));
 
 /** The call shapes that count as "consulted the org's pause state". */
@@ -507,19 +527,60 @@ const JOB_MODULES_COVERED_VIA: Readonly<Record<string, UnattendedPathId>> = {
 /** Job modules that match a shape but are NOT a Pax path — with the reason. */
 const JOB_MODULE_EXEMPTIONS: Readonly<Record<string, string>> = {};
 
+/**
+ * The two spellings that REGISTER a scheduled job. A module is a "job module"
+ * because it registers one, not because of where it happens to live.
+ *
+ * This walked `server/jobs` while the header above claimed "every JOB_ROSTER
+ * entry" — a directory standing in for the roster. Measured 2026-09-05 that gap
+ * had no offender (the one acting module outside the directory,
+ * server/services/sequenceProcessor.ts, is a registry member in its own right),
+ * but it is the third law in waiting: a job that sends on an org's behalf from
+ * server/services/ would never have entered this population, and Pause would
+ * not stop it while the page said it did.
+ */
+const JOB_REGISTRATION_SHAPES = [
+  /withJobLock\(\s*(["'])[^"']+\1/g,
+  /scheduleSelfRescheduling\(\s*\{[\s\S]{0,200}?name:\s*(["'])[^"']+\1/g,
+];
+
 describe("every job module that acts on an org's behalf is covered by a registry member", () => {
-  it("derives the acting job modules from server/jobs and JOB_ROSTER and finds each covered (vacuity: at least three)", () => {
+  it("derives the acting job modules from every job REGISTRATION under server/ and finds each covered (vacuity: at least three)", () => {
     expect(JOB_ROSTER.length, "the roster went blind").toBeGreaterThan(50);
     const members = new Set(memberFiles());
     const acting: string[] = [];
     let scanned = 0;
-    for (const full of walkTs(path.join(ROOT, "server", "jobs"))) {
+    let registering = 0;
+    // THE UNION, and both halves are load-bearing.
+    //
+    // `server/jobs/**` alone was the old population and it misses a module that
+    // registers a job from elsewhere — server/services/sequenceProcessor.ts
+    // registers `sequence_processor` and sends on an org's behalf.
+    //
+    // "registers a job" alone is not a superset of it: server/jobs/
+    // borrowerDunningLadder.ts ACTS but is invoked by runScheduledJobs rather
+    // than registering itself, so keying only on registration drops it — which
+    // is what the first draft of this widening did, and what the stale-entry
+    // check below caught within the minute.
+    const inJobsDir = (rel: string) => rel.startsWith("server/jobs/");
+    for (const full of walkTs(path.join(ROOT, "server"))) {
       scanned++;
       const rel = path.relative(ROOT, full).split(path.sep).join("/");
       const code = stripComments(fs.readFileSync(full, "utf-8"));
+      const registersAJob = JOB_REGISTRATION_SHAPES.some((re) =>
+        new RegExp(re.source, "g").test(code),
+      );
+      if (registersAJob) registering++;
+      if (!registersAJob && !inJobsDir(rel)) continue;
       if (ACTING_SHAPES.some((shape) => code.includes(shape))) acting.push(rel);
     }
-    expect(scanned, "server/jobs walk went blind").toBeGreaterThan(10);
+    expect(scanned, "the server walk went blind").toBeGreaterThan(500);
+    expect(
+      registering,
+      "no file registers a scheduled job — the registration shapes went blind, " +
+        "which empties this population and makes every assertion below vacuous " +
+        "(19 files registered one on 2026-09-05)",
+    ).toBeGreaterThanOrEqual(10);
     expect(acting.length, "no acting job module found — the shape list went blind").toBeGreaterThanOrEqual(3);
 
     const uncovered = acting.filter(
