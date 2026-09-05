@@ -71,6 +71,31 @@ const HOVER_COMPANION_TARGETS = "button, a, [role='button'], [role='link']";
 // the gate stays honest about what AcreOS controls vs vendor-rendered.
 const VENDOR_RENDERED_ROUTES = new Set<string>(["/settings"]);
 
+/**
+ * Wait for the app to leave its loading shell before measuring anything.
+ *
+ * `networkidle` is a NETWORK signal, not a render signal. On WebKit it settles
+ * while `PageLoader` is still up, and the body-text assertions below then
+ * measured the shell: `innerText` of exactly 34 characters — "Skip to
+ * content / A / Loading AcreOS…" — on every WebKit device, on /deals, /money,
+ * /inbox, /maps and /ai, reported as "the route mounted but rendered no
+ * meaningful content". The routes were fine; a direct probe showed each one
+ * fully rendered about two seconds in. Chromium's timing happened to hide it,
+ * which is why this only ever failed on the engine that dominates the actual
+ * audience.
+ *
+ * The failure is DELIBERATELY SWALLOWED. A route that genuinely never leaves
+ * the shell must still reach the assertion and fail there, with the real
+ * message about what the body contained — not die here on a timeout that says
+ * nothing about the route. This is a measurement point, not a gate.
+ */
+async function settleAppShell(page: import("@playwright/test").Page) {
+  await page
+    .locator('[data-testid="app-loading"]')
+    .waitFor({ state: "detached", timeout: 15_000 })
+    .catch(() => {});
+}
+
 test.describe("Krieger mobile-feel contracts", () => {
   test.beforeEach(async ({ context }) => {
     // Test-auth bypass shape from nav-smoke.spec.ts — the server accepts
@@ -430,6 +455,7 @@ test.describe("Krieger C1: no-blank-dialog", () => {
       // to do its intended best-effort job. Bound it: idle if quick,
       // proceed regardless.
       await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+      await settleAppShell(page);
 
       const triggers = page.locator(DIALOG_TRIGGER_SELECTORS.join(", "));
       const triggerCount = await triggers.count();
@@ -507,6 +533,7 @@ test.describe("Krieger C2: no-blank-route", () => {
       // never resolves on routes with a reconnecting WebSocket and starves
       // the whole test budget.
       await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+      await settleAppShell(page);
 
       const bodyTextLen = await page.evaluate(
         () => (document.body?.innerText || "").trim().length,

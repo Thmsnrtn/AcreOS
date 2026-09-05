@@ -537,12 +537,19 @@ const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
 // Intentionally branded (not a bare spinner) — users bouncing off a blank
 // page with a tiny loader read the app as "is this still working?" A small
 // AcreOS moment with a subtle pulse keeps them oriented.
+// `data-testid="app-loading"` is load-bearing for the mobile E2E contracts.
+// They settle on `networkidle` — a NETWORK signal — which on WebKit fires while
+// this shell is still up; they then measured the shell (innerText of exactly 34
+// characters, on every WebKit device and five routes) and reported it as a
+// blank route. The testid is the RENDER signal they wait to detach before
+// measuring anything. Keep it stable.
 function PageLoader() {
   return (
     <div
       className="min-h-[100dvh] flex items-center justify-center bg-background px-4"
       role="status"
       aria-label="Loading AcreOS"
+      data-testid="app-loading"
     >
       <div className="flex flex-col items-center gap-4">
         <div className="relative">

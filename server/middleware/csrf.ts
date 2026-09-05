@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+import { e2eTestAuthEnabled } from "../auth/testAuth";
+
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -102,7 +104,23 @@ function ensureCsrfCookie(req: Request, res: Response): void {
   res.cookie(CSRF_COOKIE, token, {
     path: "/",
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // `Secure` in production, EXCEPT under the E2E bypass — which runs a
+    // production build over plain http://localhost.
+    //
+    // A `Secure` cookie on an insecure origin is DROPPED. Chromium grants
+    // localhost a trustworthy-origin exception and keeps it; WEBKIT DOES NOT.
+    // So on WebKit `document.cookie` held no `csrf_token`, the client mirrored
+    // an empty `x-csrf-token`, and every mutation came back 403 "CSRF token
+    // validation failed" — including approving or rejecting a Pax ask, the
+    // most consequential control in the product. The E2E suite reported it as
+    // a product failure; the app was never reached.
+    //
+    // Gated on `e2eTestAuthEnabled()` rather than on a new flag, because that
+    // predicate is already hard-gated: it requires E2E_TEST_AUTH=1 AND the
+    // absence of FLY_APP_NAME, and the process FATALs on boot if that flag is
+    // ever seen on a Fly machine. This cannot relax the attribute in any
+    // deployed environment.
+    secure: process.env.NODE_ENV === "production" && !e2eTestAuthEnabled(),
     httpOnly: false, // double-submit requires JS to read it
     // No maxAge → session cookie, rotated per browser session.
   });
