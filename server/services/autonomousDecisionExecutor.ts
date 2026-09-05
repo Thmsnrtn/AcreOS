@@ -334,9 +334,33 @@ HARD RULES (never violate):
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function buildSupportEscalationContext(item: any): Promise<string> {
+  // The card's own lane bounds the ticket it may pull in.
+  //
+  // This resolved supportTickets by `item.sourceTicketId` alone while
+  // `item.organizationId` sat in scope — used three lines down to PRINT the org
+  // into the prompt, never to filter. Nothing was live: the only writer of
+  // sourceTicketId (decisionsInbox.createFromEscalation) sets both fields from
+  // the same ticket, so the id and the lane already agree. But that is a
+  // property of the WRITER, and what comes back here is pasted verbatim into a
+  // model prompt — subject, status and the last ten messages of a customer
+  // conversation. A card whose sourceTicketId ever pointed outside its own org
+  // would hand another tenant's support thread to the executor, and nothing in
+  // this function would have noticed.
+  //
+  // Scoped when the card carries a lane, which for this itemType it always
+  // does (support_escalation cards copy a NOT NULL supportTickets.organizationId).
+  // A founder-global card has no lane to check against, so it keeps the by-id
+  // read rather than silently matching nothing — `null` is a lane, and
+  // eq(col, null) would return no ticket at all.
+  const escalationOrgId: number | null = item.organizationId ?? null;
   const ticket = item.sourceTicketId
     ? await db.query.supportTickets.findFirst({
-        where: eq(supportTickets.id, item.sourceTicketId),
+        where: escalationOrgId == null
+          ? eq(supportTickets.id, item.sourceTicketId)
+          : and(
+              eq(supportTickets.id, item.sourceTicketId),
+              eq(supportTickets.organizationId, escalationOrgId),
+            ),
         with: { organization: true },
       })
     : null;

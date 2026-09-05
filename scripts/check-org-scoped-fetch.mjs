@@ -1995,8 +1995,25 @@ const WIDENING_RULE3 = new Set(ROUTE_WIDENING.rule3);
  * not inflate the number. "Read" has to mean read, or the line is worse than
  * not printing it.
  */
-const wideningTriagedCount = Object.keys(ROUTE_WIDENING._TRIAGED ?? {}).filter(
-  (k) => WIDENING_RULE1.has(k) || WIDENING_RULE2.has(k) || WIDENING_RULE3.has(k),
+/**
+ * A note that says it is UNREAD does not count as read.
+ *
+ * The predicate above was "a `_TRIAGED` key exists", which is presence of
+ * DOCUMENTATION rather than presence of a RULING — and on 2026-09-05 two of the
+ * notes it counted opened with the words "UNREAD as of 2026-09-04". The verdict
+ * line printed "272 read, 0 NOT read" over them, which is the failure this
+ * block's own comment warns about, committed by the code the comment sits on.
+ *
+ * It is the fourth law in its purest form: the gate read its own documentation
+ * as the property. The fix is not a longer comment — it is to make the note say
+ * something the predicate can be wrong about.
+ */
+const declaresItselfUnread = (note) => /\bUNREAD\b/.test(String(note ?? ""));
+
+const wideningTriagedCount = Object.entries(ROUTE_WIDENING._TRIAGED ?? {}).filter(
+  ([k, note]) =>
+    (WIDENING_RULE1.has(k) || WIDENING_RULE2.has(k) || WIDENING_RULE3.has(k)) &&
+    !declaresItselfUnread(note),
 ).length;
 /** Keys actually seen this run, so a stale (fixed) entry can be reported. */
 const wideningSeen = new Set();

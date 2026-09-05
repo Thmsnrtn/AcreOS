@@ -510,6 +510,77 @@ describe("the tenancy lint covers the service layer", () => {
     ).toBe(0);
   });
 
+  it("'read' means read — a note may not declare itself UNREAD and be counted", () => {
+    // ── WHY ───────────────────────────────────────────────────────────────
+    // The verdict line prints "<n> read, <m> NOT read", and the block that
+    // computes it carries the comment "'Read' has to mean read, or the line is
+    // worse than not printing it". The predicate under that comment was
+    // "a _TRIAGED key exists" — presence of DOCUMENTATION, not presence of a
+    // RULING. On 2026-09-05 a held entry whose note opened with the words
+    // "UNREAD as of 2026-09-04" was counted among the read, and the line said
+    // "272 read, 0 NOT read" over it.
+    //
+    // That is the fourth law with no daylight in it: the gate read its own
+    // documentation as the property, and the documentation said the opposite of
+    // the property. Fixing the comment would have changed nothing.
+    const register = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "scripts/org-scope-route-widening.json"), "utf8"),
+    ) as {
+      rule1: { method: string[]; function: string[]; route: string[] };
+      rule2: { method: string[]; function: string[]; route: string[] };
+      rule3: string[];
+      _TRIAGED: Record<string, string>;
+    };
+    const held = new Set([
+      ...register.rule1.method, ...register.rule1.function, ...register.rule1.route,
+      ...register.rule2.method, ...register.rule2.function, ...register.rule2.route,
+      ...register.rule3,
+    ]);
+    expect(held.size, "the register is empty — this assertion would be vacuous").toBeGreaterThan(100);
+
+    const selfDeclaredUnread = Object.entries(register._TRIAGED)
+      .filter(([k, note]) => held.has(k) && /\bUNREAD\b/.test(note))
+      .map(([k]) => k);
+    expect(
+      selfDeclaredUnread,
+      "a HELD register entry carries a note that says UNREAD. Either read it and " +
+        "write the ruling, or leave it out of _TRIAGED so the verdict line counts " +
+        "it as unread — what it must not do is sit in both states at once.",
+    ).toEqual([]);
+
+    // And the gate must ENFORCE that, not merely happen to have no offender
+    // today: with zero offenders, a predicate that ignores the note entirely
+    // reads exactly like one that respects it.
+    // Pinned on BOTH halves — the definition and the call inside the filter.
+    // Falsifying this caught the first version: replacing only the definition
+    // with `const _removed = null` left the call site behind, so a scan for the
+    // identifier still matched while the property was gone. A name appearing
+    // somewhere in a file is not the same claim as a name being USED where it
+    // decides the answer.
+    const gate = stripCommentsPreservingLines(src);
+    expect(
+      gate,
+      "the read-count predicate's definition is gone.",
+    ).toMatch(/const\s+declaresItselfUnread\s*=/);
+    expect(
+      gate,
+      "the read count no longer CONSULTS the note. It reverted to counting any " +
+        "key that has a _TRIAGED entry, which is presence of documentation rather " +
+        "than presence of a ruling — the exact thing that let a note reading " +
+        '"UNREAD as of 2026-09-04" be counted among the read.',
+    ).toMatch(/!\s*declaresItselfUnread\s*\(\s*note\s*\)/);
+
+    // A reason left behind for a key that is no longer held is drift: it makes
+    // the file look more triaged than it is, and it is what left an "UNREAD"
+    // note lying around long enough to be believed.
+    const orphans = Object.keys(register._TRIAGED).filter((k) => !held.has(k));
+    expect(
+      orphans,
+      "_TRIAGED reasons whose register key is gone — delete them with the key: " +
+        orphans.join(", "),
+    ).toEqual([]);
+  });
+
   it("caps how much rule 2 the sanctioned hatch is allowed to silence", () => {
     const out = run();
     const m = /rule-2 predicates exempted as sanctioned-hatch roots: (\d+)/.exec(out);
