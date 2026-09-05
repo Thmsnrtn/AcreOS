@@ -17,7 +17,7 @@ import {
   type IntegrationCredential,
   type IntegrationExecutionLogEntry,
 } from "@shared/schema";
-import { eq, and, desc, sql, gte } from "drizzle-orm";
+import { eq, and, or, desc, sql, gte, isNull } from "drizzle-orm";
 
 class IntegrationFrameworkService {
 
@@ -48,6 +48,41 @@ class IntegrationFrameworkService {
     return safe;
   }
 
+  /**
+   * Which credential rows a caller may see for a service name.
+   *
+   * `integration_credentials.org_id` is nullable and untethered — a TAG, not a
+   * tenant key — and `service_name` carries no unique constraint, so two rows
+   * can share one name. Every read here was `where(eq(serviceName, …))` with a
+   * bare `.limit(1)` and NO `orderBy`, which is not "the platform credential":
+   * it is an ARBITRARY row among however many share the name. The moment a
+   * per-org credential exists, `execute` can base64-decode another tenant's
+   * secret and send it as `Authorization: Bearer` to a caller-supplied endpoint.
+   *
+   * Every row today is a founder-registered platform credential, so this is
+   * latent rather than live — but `registerCredential` is wired to
+   * `POST /api/founder/v12/integrations` and takes `req.body` unvalidated, so
+   * `orgId` can be set today and the column is not guaranteed null. The rule:
+   * an org sees its OWN credential and the platform fallback, never another
+   * org's; and `orderBy` makes which one wins a decision rather than an
+   * accident.
+   *
+   * The column is load-bearing elsewhere and must not simply be dropped:
+   * `orgDeletion.TENANT_KEY_COLUMNS` enumerates tables by `org_id`, and
+   * `integration_credentials` is named in the test that pins that sweep.
+   */
+  private credentialLane(orgId: number | null | undefined) {
+    return orgId == null
+      ? isNull(integrationCredentials.orgId)
+      : or(
+          eq(integrationCredentials.orgId, orgId),
+          isNull(integrationCredentials.orgId),
+        );
+  }
+
+  /** The org's own row before the platform fallback — never an arbitrary one. */
+  private static readonly LANE_ORDER = sql`org_id NULLS LAST`;
+
   // ─── THE EXECUTOR ─────────────────────────────────────────────────────────────
 
   async execute(
@@ -67,7 +102,11 @@ class IntegrationFrameworkService {
     const [cred] = await db
       .select()
       .from(integrationCredentials)
-      .where(eq(integrationCredentials.serviceName, serviceName))
+      .where(and(
+        eq(integrationCredentials.serviceName, serviceName),
+        this.credentialLane(params?.orgId),
+      ))
+      .orderBy(IntegrationFrameworkService.LANE_ORDER)
       .limit(1);
 
     if (!cred) {
@@ -241,7 +280,7 @@ class IntegrationFrameworkService {
 
   // ─── Check Rate Limit ─────────────────────────────────────────────────────────
 
-  async checkRateLimit(serviceName: string): Promise<{
+  async checkRateLimit(serviceName: string, orgId: number | null = null): Promise<{
     allowed: boolean;
     used: number;
     limit: number;
@@ -250,7 +289,11 @@ class IntegrationFrameworkService {
     const [cred] = await db
       .select()
       .from(integrationCredentials)
-      .where(eq(integrationCredentials.serviceName, serviceName))
+      .where(and(
+        eq(integrationCredentials.serviceName, serviceName),
+        this.credentialLane(orgId),
+      ))
+      .orderBy(IntegrationFrameworkService.LANE_ORDER)
       .limit(1);
 
     if (!cred) throw new Error(`No credentials for service: ${serviceName}`);
@@ -293,14 +336,23 @@ class IntegrationFrameworkService {
 
   // ─── Reset Circuit Breaker ────────────────────────────────────────────────────
 
-  async resetCircuitBreaker(serviceName: string): Promise<void> {
+  async resetCircuitBreaker(serviceName: string, orgId: number | null = null): Promise<void> {
+    // A WRITE takes the lane EXACTLY — no platform fallback. Reading may fall
+    // back to the shared credential; clearing a breaker must not reach across
+    // to a row the caller did not name. Unscoped, this reset every row sharing
+    // the service name, in every lane.
     await db.update(integrationCredentials)
       .set({
         circuitBreakerOpen: false,
         circuitBreakerFailures: 0,
         circuitBreakerResetAt: null,
       })
-      .where(eq(integrationCredentials.serviceName, serviceName));
+      .where(and(
+        eq(integrationCredentials.serviceName, serviceName),
+        orgId == null
+          ? isNull(integrationCredentials.orgId)
+          : eq(integrationCredentials.orgId, orgId),
+      ));
   }
 
   // ─── Execution History ────────────────────────────────────────────────────────
