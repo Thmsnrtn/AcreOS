@@ -100,8 +100,20 @@ runs:
           // ONCE — commenting on every scheduled run would turn a 6-hourly
           // cron into four notifications a day, which is how the 366 silent
           // successes got ignored in the first place.
+          //
+          // `state: "all"` is the load-bearing word, and the first version of
+          // this action got it wrong: it searched only OPEN issues. Closing the
+          // issue — the most natural response to "noted" — would then make the
+          // next scheduled run find nothing and file a fresh one, four a day,
+          // forever. That is the opposite of the property this block claims,
+          // and it was caught by reading the issue this action had just filed
+          // (#302) rather than by re-reading the code that filed it.
+          //
+          // Filed once per audit, ever. Closing it is a decision, and this
+          // respects it; the dormancy stays visible every run in the job
+          // summary and the warning annotation regardless.
           const existing = await github.rest.issues.listForRepo({
-            owner, repo, state: "open", labels: process.env.LABEL, per_page: 50,
+            owner, repo, state: "all", labels: process.env.LABEL, per_page: 100,
           });
           if (existing.data.some((i) => i.title === title)) return;
 
@@ -120,8 +132,9 @@ runs:
             `remove its \`schedule:\` trigger — either is a decision, and both beat a run that`,
             `reports a conclusion it did not earn.`,
             ``,
-            `Auto-opened once by \`.github/actions/audit-unconfigured\`. Closing this issue`,
-            `without changing the configuration will reopen it on the next scheduled run.`,
+            `Auto-opened by \`.github/actions/audit-unconfigured\`, once and only once.`,
+            `Closing it will not file another — the dormancy stays visible in every run's`,
+            `job summary and warning annotation either way.`,
           ].join("\n");
 
           await github.rest.issues.create({

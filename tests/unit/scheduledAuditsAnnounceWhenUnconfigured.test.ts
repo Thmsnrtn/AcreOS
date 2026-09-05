@@ -98,6 +98,18 @@ describe("the shared announcement exists", () => {
         "to remove, a red meaning \"unconfigured\" in the same column as a red meaning " +
         "\"the audited flow is broken\".",
     ).toContain("continue-on-error: true");
+    // The dedupe must span CLOSED issues too. Searching only open ones means
+    // closing the issue — the natural response to "noted" — makes the next
+    // scheduled run file a fresh one, four a day on a 6-hourly cron. That was
+    // the first version's behaviour, found by reading the issue it had just
+    // filed rather than the code that filed it.
+    const dedupe = /issues\.listForRepo\(\{[\s\S]{0,240}?\}\)/.exec(src);
+    expect(dedupe, "the dedupe lookup is gone — every run would file another issue").not.toBeNull();
+    expect(
+      dedupe![0],
+      "the dedupe searches only OPEN issues, so closing one re-arms it. File " +
+        'once per audit, ever: state: "all".',
+    ).toMatch(/state:\s*["']all["']/);
   });
 });
 
