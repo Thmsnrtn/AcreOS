@@ -357,19 +357,34 @@ class IntegrationFrameworkService {
 
   // ─── Execution History ────────────────────────────────────────────────────────
 
+  /**
+   * `orgId` is REQUIRED, and `null` means the platform lane — never "any org".
+   *
+   * Both filters here are OPTIONAL, so called with neither this was an
+   * unfiltered read of the newest rows across every tenant, returning WHOLE
+   * ROWS: `requestSummary` and `responseSummary` carry whatever the integration
+   * sent and received. It has no callers today, which is exactly why it is
+   * scoped rather than left alone — an unreachable function with this shape is
+   * what someone wires up later believing it safe.
+   */
   async getExecutionHistory(
+    orgId: number | null,
     agentCodename?: string,
     serviceName?: string,
     limit: number = 50,
   ): Promise<IntegrationExecutionLogEntry[]> {
-    const conditions = [];
+    const conditions = [
+      orgId == null
+        ? isNull(integrationExecutionLog.orgId)
+        : eq(integrationExecutionLog.orgId, orgId),
+    ];
     if (agentCodename) conditions.push(eq(integrationExecutionLog.agentCodename, agentCodename));
     if (serviceName) conditions.push(eq(integrationExecutionLog.serviceName, serviceName));
 
     return db
       .select()
       .from(integrationExecutionLog)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(desc(integrationExecutionLog.createdAt))
       .limit(limit);
   }

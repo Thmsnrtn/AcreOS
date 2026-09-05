@@ -592,14 +592,29 @@ class OutcomeVerificationService {
   /**
    * Get contracts by agent codename.
    */
+  /**
+   * `orgId` is REQUIRED, and `null` means the platform lane — never "any org".
+   *
+   * Agent codenames are GLOBAL platform identities, so filtering on the
+   * codename alone sweeps every tenant's verification contracts for that agent
+   * and returns whole rows. Zero callers today; scoped rather than deleted for
+   * the same reason as its sibling in integrationFrameworkV12 — the shape is
+   * the hazard, and it survives being wired up later.
+   */
   async getByAgent(
     agentCodename: string,
+    orgId: number | null,
     limit: number = 50,
   ): Promise<OutcomeVerificationContract[]> {
     return db
       .select()
       .from(outcomeVerificationContracts)
-      .where(eq(outcomeVerificationContracts.agentCodename, agentCodename))
+      .where(and(
+        eq(outcomeVerificationContracts.agentCodename, agentCodename),
+        orgId == null
+          ? isNull(outcomeVerificationContracts.orgId)
+          : eq(outcomeVerificationContracts.orgId, orgId),
+      ))
       .orderBy(desc(outcomeVerificationContracts.createdAt))
       .limit(limit);
   }

@@ -4,10 +4,10 @@
   "_THE_OBLIGATION": "This file may only SHRINK. It is a debt register, not an exemption list, and only the 8 keys listed under _TRIAGED have been read. A debt register whose entries nobody has opened is not a smaller problem than an unscanned directory; it is the same problem with a number attached. Triage moves an entry either into a real fix or into the hand-verified register inside check-org-scoped-fetch.mjs with a written reason. A sample of ~57 of these was triaged before this landed and produced two REAL cross-tenant defects out of the sample (routes-doc-system.ts's seller/buyer reads and POST /api/investor-profiles' tenant-assignment injection, both fixed in 779bc251), so the expectation is that more remain in here.",
   "_WHAT_IT_DOES_NOT_EXCUSE": "A NEW offender is not covered by this file and fails the gate immediately. That is the point of landing the widening before the burn-down rather than after: eight live cross-tenant paths were found by hand in files this lint had never opened, and every day it stayed blind was another day a ninth could be written without anything noticing. Reading the backlog does not turn it into permission.",
   "counts": {
-    "rule1": 149,
+    "rule1": 147,
     "rule2": 85,
     "rule3": 68,
-    "total": 302
+    "total": 300
   },
   "rule1": {
     "method": [
@@ -42,13 +42,11 @@
       "server/services/integrationFrameworkV12.ts::getCircuitBreakerStatus",
       "server/services/integrationFrameworkV12.ts::getCostReport",
       "server/services/integrationFrameworkV12.ts::getCredentials",
-      "server/services/integrationFrameworkV12.ts::getExecutionHistory",
       "server/services/integrationFrameworkV12.ts::getStats",
       "server/services/integrationFrameworkV12.ts::incrementCircuitBreaker",
       "server/services/matchmaking.ts::calculateSimilarity",
       "server/services/outcomeVerificationV12.ts::getAgentVerificationStats",
       "server/services/outcomeVerificationV12.ts::getAllVerificationStats",
-      "server/services/outcomeVerificationV12.ts::getByAgent",
       "server/services/outcomeVerificationV12.ts::getDiscrepancies",
       "server/services/outcomeVerificationV12.ts::getPendingVerifications",
       "server/services/outcomeVerificationV12.ts::getRecent",
