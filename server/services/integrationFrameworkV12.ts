@@ -18,6 +18,7 @@ import {
   type IntegrationExecutionLogEntry,
 } from "@shared/schema";
 import { eq, and, or, desc, sql, gte, isNull } from "drizzle-orm";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 
 class IntegrationFrameworkService {
 
@@ -243,7 +244,9 @@ class IntegrationFrameworkService {
   // ─── Rollback Execution ───────────────────────────────────────────────────────
 
   async rollbackExecution(executionId: number): Promise<IntegrationExecutionLogEntry> {
-    const [entry] = await db
+    const [entry] = await unscopedForPlatformOps(
+      "operator rollback of one integration execution: every row `execute` writes lands with org_id NULL, while the only org on a founder request is the FOUNDER's own — so an org predicate would match nothing and silently empty the operator's view",
+    )
       .select()
       .from(integrationExecutionLog)
       .where(eq(integrationExecutionLog.id, executionId));
@@ -253,7 +256,9 @@ class IntegrationFrameworkService {
     if (entry.rollbackExecuted) throw new Error(`Rollback already executed for ${executionId}`);
 
     // Mark rollback as executed
-    const [updated] = await db.update(integrationExecutionLog)
+    const [updated] = await unscopedForPlatformOps(
+      "marks the execution rolled back; it is the row read above: every row `execute` writes lands with org_id NULL, while the only org on a founder request is the FOUNDER's own — so an org predicate would match nothing and silently empty the operator's view",
+    ).update(integrationExecutionLog)
       .set({ rollbackExecuted: true })
       .where(eq(integrationExecutionLog.id, executionId))
       .returning();
@@ -276,7 +281,12 @@ class IntegrationFrameworkService {
     const conditions = [];
     if (serviceName) conditions.push(eq(integrationCredentials.serviceName, serviceName));
 
-    const creds = await db
+    // The VAULT INDEX. Deliberately every lane: part of the operator's job on
+    // this list is noticing a stray per-org row, which a lane predicate would
+    // hide. `encryptedValue` is stripped from every row before it is returned.
+    const creds = await unscopedForPlatformOps(
+      "credential vault index for the operator, deliberately across every lane so a stray per-org row is visible rather than hidden; the secret is stripped before return",
+    )
       .select()
       .from(integrationCredentials)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -287,7 +297,10 @@ class IntegrationFrameworkService {
 
   // ─── Check Rate Limit ─────────────────────────────────────────────────────────
 
-  async checkRateLimit(serviceName: string, orgId: number | null = null): Promise<{
+  // `orgId` has no default, for the same reason `resetCircuitBreaker` lost
+  // its one: a lane that can be omitted gets omitted, and the omission is
+  // invisible to the type checker.
+  async checkRateLimit(serviceName: string, orgId: number | null): Promise<{
     allowed: boolean;
     used: number;
     limit: number;
@@ -327,7 +340,9 @@ class IntegrationFrameworkService {
     threshold: number;
     resetsAt: Date | null;
   }[]> {
-    const creds = await db
+    const creds = await unscopedForPlatformOps(
+      "circuit-breaker board: an open breaker is an operational fact about an outbound integration, and the operator must see EVERY tripped service before resetting one",
+    )
       .select()
       .from(integrationCredentials)
       .where(eq(integrationCredentials.circuitBreakerOpen, true));
@@ -411,7 +426,9 @@ class IntegrationFrameworkService {
   }> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const entries = await db
+    const entries = await unscopedForPlatformOps(
+      "what our outbound integrations cost is a COMPANY number, not a per-tenant one: every row `execute` writes lands with org_id NULL, while the only org on a founder request is the FOUNDER's own — so an org predicate would match nothing and silently empty the operator's view",
+    )
       .select()
       .from(integrationExecutionLog)
       .where(gte(integrationExecutionLog.createdAt, since));
@@ -456,7 +473,9 @@ class IntegrationFrameworkService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const all = await db.select().from(integrationExecutionLog);
+    const all = await unscopedForPlatformOps(
+      "platform integration-health counters — success rate of OUR outbound calls: every row `execute` writes lands with org_id NULL, while the only org on a founder request is the FOUNDER's own — so an org predicate would match nothing and silently empty the operator's view",
+    ).select().from(integrationExecutionLog);
     const today = all.filter(e => e.createdAt >= todayStart);
 
     const successful = all.filter(e => e.success === true).length;
@@ -467,7 +486,9 @@ class IntegrationFrameworkService {
 
     const totalCost = all.reduce((sum, e) => sum + e.costCents, 0);
 
-    const openCircuits = await db
+    const openCircuits = await unscopedForPlatformOps(
+      "open-breaker count for the platform health panel: the same board getCircuitBreakerStatus serves, and an operator counting tripped services needs every lane",
+    )
       .select()
       .from(integrationCredentials)
       .where(eq(integrationCredentials.circuitBreakerOpen, true));

@@ -255,8 +255,32 @@ const RULE_3_CHAIN_FLOOR = 300;
  * 2026-09-04 (abTestEngine.findTestOwnerAnyOrg — "is this A/B test id already
  * owned by another org?", the one question createTest cannot ask from inside
  * one org).
+ *
+ * 1 → 4 on 2026-09-05, as three SCP platform ops converted from silently
+ * unscoped to explicitly hatched. Each is a by-primary-key read whose row IS
+ * the unit of work, reached from a founder-only surface with no caller org to
+ * scope to — the founder's own organization, which `getOrCreateOrg` supplies,
+ * is not the row's:
+ *
+ *   outcomeVerificationV12.recordVerification   resolves a verification
+ *     contract by its own id, handed down from the platform sweep that selected
+ *     it. The contract carries the lane; the caller does not have one.
+ *
+ *   eventMeshV12.acknowledge   resolves an event by eventId to record delivery.
+ *     The mesh's `system:*` channels carry no orgId at all, and ack is the
+ *     other half of "unprocessed" — scoped, the drain could never mark a
+ *     system-lane event done and would redeliver it forever.
+ *
+ *   integrationFrameworkV12.rollbackExecution   resolves one execution-log row
+ *     by id for the operator. Every row `execute` writes lands with org_id
+ *     NULL, so an org predicate would match nothing at all.
+ *
+ * These three were ALREADY cross-org before this change; what changed is that
+ * they now say so in a logged, greppable sentence instead of by omission. That
+ * is the trade this exemption exists to make — and the ceiling is what stops it
+ * being made silently.
  */
-const HATCH_EXEMPTION_CEILING = 1;
+const HATCH_EXEMPTION_CEILING = 4;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.

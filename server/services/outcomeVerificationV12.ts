@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, lte, gte, sql, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 
 // ─── Verification Method Registry ─────────────────────────────────────────────
 
@@ -263,7 +264,24 @@ async function verifyApiResponse(config: Record<string, any>): Promise<Verificat
   try {
     // Check integration execution log for real API response
     const { integrationExecutionLog } = await import("@shared/schema");
-    const [execution] = await db.select()
+    // Deliberately UNSCOPED, and the reason is not convenience.
+    //
+    // An agent's integration call is a PLATFORM action: `execute` logs it with
+    // `orgId: params?.orgId`, which is normally absent, so the row lands in the
+    // platform lane. Pinning this read to the contract's org would make every
+    // platform-lane execution invisible to a contract that carries one, and
+    // this function would then answer "no execution record found" for calls
+    // that demonstrably succeeded — a FABRICATED verification failure, which
+    // the no-fabrication rule forbids outright.
+    //
+    // The honest caveat, recorded rather than hidden: matching on endpoint
+    // alone with newest-wins means a contract in one lane can be marked
+    // verified on the strength of another lane's execution row. That is an
+    // ATTRIBUTION weakness in what this check proves, not a data leak — only
+    // `responseStatus` and `latencyMs` reach the returned string.
+    const [execution] = await unscopedForPlatformOps(
+      "outcome verification reads the integration execution log, which records PLATFORM-lane agent calls; scoping it to the contract's org would report succeeded calls as missing",
+    ).select()
       .from(integrationExecutionLog)
       .where(sql`${integrationExecutionLog.endpoint} = ${endpoint}`)
       .orderBy(desc(integrationExecutionLog.createdAt))
@@ -293,8 +311,16 @@ async function verifyApiResponse(config: Record<string, any>): Promise<Verificat
  * Handlers receive the contract's own `orgId` as a second argument so a
  * handler that touches an org-scoped table can pin its query to the tenant
  * that owns the contract. Handlers with no org-scoped read simply declare one
- * parameter and ignore it (a 1-arg function is assignable to this 2-arg
- * type) — only `payment_status` needs it today.
+ * parameter and ignore it (a 1-arg function is assignable to this 2-arg type).
+ *
+ * CORRECTION (2026-09-05): this used to end "only `payment_status` needs it
+ * today", and that was wrong. `verifyApiResponse` also reads an org-TAGGED
+ * table (`integration_execution_log`), declares one parameter, and therefore
+ * silently discards the `orgId` the dispatch site is already handing it. It
+ * stays unscoped on purpose — see the reason at its own call — but "needs it"
+ * and "reads an org-tagged table" are different questions, and conflating them
+ * is how a handler that should have been scoped gets written next to one that
+ * should not.
  */
 const VERIFICATION_HANDLERS: Record<
   VerificationMethod,
@@ -358,7 +384,12 @@ class OutcomeVerificationService {
     errors: number;
   }> {
     const now = new Date();
-    const dueContracts = await db
+    // A SCHEDULED SWEEP: every due contract in the business, whoever owns it.
+    // Per-org scoping here would mean one tenant's verifications ran and the
+    // rest silently never did.
+    const dueContracts = await unscopedForPlatformOps(
+      "scheduled outcome-verification sweep processes every due contract across the whole business; a per-org predicate would leave other tenants' verifications unrun",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .where(
@@ -398,7 +429,12 @@ class OutcomeVerificationService {
    * Run verification for a specific contract.
    */
   async verify(contractId: number): Promise<OutcomeVerificationContract> {
-    const [contract] = await db
+    // `contractId` comes from the platform sweep above or a founder route; the
+    // contract IS the unit of work and carries its own lane, so there is no
+    // caller org to scope to.
+    const [contract] = await unscopedForPlatformOps(
+      "a verification contract is resolved by its own id from the platform sweep; the contract carries the lane rather than the caller",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .where(eq(outcomeVerificationContracts.id, contractId))
@@ -481,7 +517,9 @@ class OutcomeVerificationService {
    * Get contracts where claimed outcome differs from verified outcome.
    */
   async getDiscrepancies(): Promise<OutcomeVerificationContract[]> {
-    return db
+    return unscopedForPlatformOps(
+      "founder discrepancy feed: every agent claim that did not hold, across the business; the founder's verification plane is company-level by construction: agent codenames are GLOBAL platform identities and there is no caller org, so a per-org predicate would return nothing",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .where(eq(outcomeVerificationContracts.discrepancyDetected, true))
@@ -497,7 +535,9 @@ class OutcomeVerificationService {
     discrepancies: number;
     accuracyRate: number;
   }> {
-    const contracts = await db
+    const contracts = await unscopedForPlatformOps(
+      "per-agent accuracy across the whole fleet; the founder's verification plane is company-level by construction: agent codenames are GLOBAL platform identities and there is no caller org, so a per-org predicate would return nothing",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .where(eq(outcomeVerificationContracts.agentCodename, agentCodename));
@@ -528,7 +568,9 @@ class OutcomeVerificationService {
     byAgent: Record<string, { total: number; discrepancies: number; accuracy: number }>;
     byMethod: Record<string, { total: number; discrepancies: number }>;
   }> {
-    const allContracts = await db
+    const allContracts = await unscopedForPlatformOps(
+      "system-wide verification statistics; the founder's verification plane is company-level by construction: agent codenames are GLOBAL platform identities and there is no caller org, so a per-org predicate would return nothing",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .orderBy(desc(outcomeVerificationContracts.createdAt));
@@ -582,7 +624,9 @@ class OutcomeVerificationService {
    * Get contracts awaiting verification (pending with future nextVerificationAt).
    */
   async getPendingVerifications(): Promise<OutcomeVerificationContract[]> {
-    return db
+    return unscopedForPlatformOps(
+      "founder pending-verification feed across the whole agent fleet; the founder's verification plane is company-level by construction: agent codenames are GLOBAL platform identities and there is no caller org, so a per-org predicate would return nothing",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .where(isNull(outcomeVerificationContracts.completedAt))
@@ -623,11 +667,17 @@ class OutcomeVerificationService {
    * Get the most recent verification contracts.
    */
   async getRecent(limit: number = 50): Promise<OutcomeVerificationContract[]> {
-    return db
+    // `limit` reaches here as `parseInt(req.query.limit)`, so `?limit=abc`
+    // arrives as NaN and `.limit(NaN)` fails the request with a 500 where a
+    // sane default was the obvious answer.
+    const take = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 500) : 50;
+    return unscopedForPlatformOps(
+      "founder verification timeline — what the agent fleet recently claimed and whether it held; the founder's verification plane is company-level by construction: agent codenames are GLOBAL platform identities and there is no caller org, so a per-org predicate would return nothing",
+    )
       .select()
       .from(outcomeVerificationContracts)
       .orderBy(desc(outcomeVerificationContracts.createdAt))
-      .limit(limit);
+      .limit(take);
   }
 }
 

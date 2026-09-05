@@ -16,6 +16,7 @@ import {
 import { eq, desc, and, like, sql, inArray, lte, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -165,7 +166,9 @@ class EventMeshService {
 
     for (const sub of subs) {
       const pattern = sub.channelPattern.replace(/\*/g, "%");
-      const events = await db
+      const events = await unscopedForPlatformOps(
+        "event-mesh drain reads every unacked event matching a platform subscriber's channel pattern; the event mesh is ONE shared bus, not tenant data: its `system:*` channels carry no orgId at all, so an org predicate would return zero rows for exactly the lanes the operator needs",
+      )
         .select()
         .from(eventMeshEvents)
         .where(
@@ -198,7 +201,13 @@ class EventMeshService {
    * Acknowledge that a subscriber has processed an event.
    */
   async acknowledge(eventId: string, subscriber: string): Promise<void> {
-    const [event] = await db
+    // Ack is DELIVERY BOOKKEEPING for platform singleton subscribers, and it is
+    // the other half of getUnprocessedEvents — "unprocessed" is defined as "not
+    // in ackedBy". Scope the ack to an org and the drain could never mark a
+    // system-lane event done, so it would redeliver forever.
+    const [event] = await unscopedForPlatformOps(
+      "event acknowledgement is delivery bookkeeping for platform subscribers; scoping it would make system-lane events undeliverable-forever",
+    )
       .select()
       .from(eventMeshEvents)
       .where(eq(eventMeshEvents.eventId, eventId))
@@ -208,13 +217,17 @@ class EventMeshService {
 
     const ackedBy = [...(event.ackedBy ?? []), subscriber];
 
-    await db
+    await unscopedForPlatformOps(
+      "marks the event acked for this platform subscriber; the event is the one just read above",
+    )
       .update(eventMeshEvents)
       .set({ ackedBy })
       .where(eq(eventMeshEvents.eventId, eventId));
 
     // Update subscriber stats
-    await db
+    await unscopedForPlatformOps(
+      "subscriber throughput counters describe the shared bus, not a tenant",
+    )
       .update(eventMeshSubscriptions)
       .set({
         eventsProcessed: sql`${eventMeshSubscriptions.eventsProcessed} + 1`,
@@ -227,7 +240,12 @@ class EventMeshService {
    * Move an event to the dead-letter queue.
    */
   async deadLetter(eventId: string, reason: string): Promise<void> {
-    await db
+    // The drain must be able to quarantine a poison event whatever lane it is
+    // on — including none — or one undeliverable event blocks the bus for
+    // everybody.
+    await unscopedForPlatformOps(
+      "platform drain quarantines a poison event on whatever lane it belongs to, including the system lanes that carry no org",
+    )
       .update(eventMeshEvents)
       .set({
         deadLettered: true,
@@ -242,7 +260,9 @@ class EventMeshService {
    * Query dead-letter queue.
    */
   async getDeadLetterEvents(limit: number = 50): Promise<EventMeshEvent[]> {
-    return db
+    return unscopedForPlatformOps(
+      "the dead-letter queue is the platform operator's failure queue, and its contents are disproportionately events with no org at all; the event mesh is ONE shared bus, not tenant data: its `system:*` channels carry no orgId at all, so an org predicate would return zero rows for exactly the lanes the operator needs",
+    )
       .select()
       .from(eventMeshEvents)
       .where(eq(eventMeshEvents.deadLettered, true))
@@ -275,7 +295,9 @@ class EventMeshService {
    * Get events by channel.
    */
   async getEventsByChannel(channel: string, limit: number = 50): Promise<EventMeshEvent[]> {
-    return db
+    return unscopedForPlatformOps(
+      "per-channel view of the operator's event log; the event mesh is ONE shared bus, not tenant data: its `system:*` channels carry no orgId at all, so an org predicate would return zero rows for exactly the lanes the operator needs",
+    )
       .select()
       .from(eventMeshEvents)
       .where(eq(eventMeshEvents.channel, channel))
@@ -289,7 +311,9 @@ class EventMeshService {
    * couldn't serve).
    */
   async getRecentEvents(limit: number = 100): Promise<EventMeshEvent[]> {
-    return db
+    return unscopedForPlatformOps(
+      "the operator's cross-channel mesh firehose; the event mesh is ONE shared bus, not tenant data: its `system:*` channels carry no orgId at all, so an org predicate would return zero rows for exactly the lanes the operator needs",
+    )
       .select()
       .from(eventMeshEvents)
       .orderBy(desc(eventMeshEvents.createdAt))
@@ -337,35 +361,49 @@ class EventMeshService {
     recentEventsPerMinute: number;
     topChannels: Array<{ channel: string; count: number }>;
   }> {
-    const [totalRow] = await db
+    const [totalRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(*)::int` })
       .from(eventMeshEvents);
 
-    const [dlqRow] = await db
+    const [dlqRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(*)::int` })
       .from(eventMeshEvents)
       .where(eq(eventMeshEvents.deadLettered, true));
 
-    const [channelRow] = await db
+    const [channelRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(distinct ${eventMeshEvents.channel})::int` })
       .from(eventMeshEvents);
 
-    const [subRow] = await db
+    const [subRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(*)::int` })
       .from(eventMeshSubscriptions);
 
-    const [activeSubRow] = await db
+    const [activeSubRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(*)::int` })
       .from(eventMeshSubscriptions)
       .where(eq(eventMeshSubscriptions.isActive, true));
 
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const [recentRow] = await db
+    const [recentRow] = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({ count: sql<number>`count(*)::int` })
       .from(eventMeshEvents)
       .where(gte(eventMeshEvents.createdAt, fiveMinAgo));
 
-    const topChannels = await db
+    const topChannels = await unscopedForPlatformOps(
+      "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
+    )
       .select({
         channel: eventMeshEvents.channel,
         count: sql<number>`count(*)::int`,
