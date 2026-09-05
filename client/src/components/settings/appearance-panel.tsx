@@ -137,7 +137,7 @@ export function AppearancePanel() {
                   "flex flex-col items-start rounded-card border p-3 text-left transition-colors min-h-[112px]",
                   themeConfig.theme === t.id
                     ? "border-primary ring-2 ring-primary/30"
-                    : "border-border hover:border-primary/50",
+                    : "border-border hover:border-primary/50 active:border-primary",
                 )}
               >
                 <div className="grid grid-cols-4 gap-1 mb-2 w-full h-6 rounded-md overflow-hidden">
@@ -177,7 +177,7 @@ export function AppearancePanel() {
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                   themeConfig.mode === id
                     ? "bg-background text-foreground shadow-level-1"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground active:text-foreground",
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -209,7 +209,7 @@ export function AppearancePanel() {
                   "flex flex-col items-start rounded-card border p-4 text-left transition-colors",
                   themeConfig.fontPairing === p.id
                     ? "border-primary ring-2 ring-primary/30"
-                    : "border-border hover:border-primary/50",
+                    : "border-border hover:border-primary/50 active:border-primary",
                 )}
               >
                 {/* Sample text in the actual pairing fonts so personality is visible. */}

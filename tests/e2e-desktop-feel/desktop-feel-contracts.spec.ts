@@ -143,6 +143,20 @@ for (const route of ROUTES_TO_AUDIT) {
       await seedTestAuth(page, baseURL ?? "http://localhost:5000");
       await page.goto(route, { waitUntil: "domcontentloaded" });
       await page.waitForLoadState("networkidle").catch(() => {});
+      // networkidle is not hydration. App.tsx's PageLoader is what renders
+      // while a lazy route resolves, and it carries no interactive controls —
+      // so a contract that counts elements can measure an EMPTY page and report
+      // it clean. That is not hypothetical here: C7 on /settings passed at
+      // 1280-light and failed at 1280-dark in the same run, and a direct probe
+      // then found the identical count (11) in both themes across ten runs. The
+      // light run had simply sampled before the appearance panel existed.
+      //
+      // Waiting for the shell's own loading marker to DETACH is the same fix
+      // the mobile-feel contracts carry, for the same reason.
+      await page
+        .locator('[data-testid="app-loading"]')
+        .waitFor({ state: "detached", timeout: 15_000 })
+        .catch(() => {});
     });
 
     // ── Contract 1 ──────────────────────────────────────────────────────
