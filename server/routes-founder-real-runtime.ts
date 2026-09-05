@@ -253,9 +253,20 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
+  // `orgId` is explicit because a breaker reset is a LANE-EXACT write: omitted,
+  // an org-lane breaker had no reset path at all while this cleared the shared
+  // platform row instead. `?orgId=` absent means the platform lane, which is
+  // where every credential registered today lives.
   app.post("/api/founder/v12/integrations/:service/reset-circuit", async (req, res) => {
-    try { await integrationFrameworkService.resetCircuitBreaker(req.params.service); res.json({ success: true }); }
-    catch (err: any) { Errors.internal(res, err); }
+    try {
+      const raw = req.query.orgId;
+      const orgId = raw === undefined || raw === "" ? null : Number(raw);
+      if (orgId !== null && !Number.isInteger(orgId)) {
+        return Errors.badRequest(res, "orgId must be an integer when provided");
+      }
+      await integrationFrameworkService.resetCircuitBreaker(req.params.service, orgId);
+      res.json({ success: true });
+    } catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v12/integrations/costs", async (req, res) => {

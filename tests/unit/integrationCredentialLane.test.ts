@@ -28,6 +28,22 @@
  *
  * The predicates are read out of the drizzle SQL the service actually built,
  * not grepped from its source.
+ *
+ * ── AND THE FIRST VERSION OF THIS SUITE WAS BLIND TO THE WORST CASE ─────────
+ * It pinned the write-lane rule at `resetCircuitBreaker`'s FRONT DOOR only.
+ * Meanwhile `execute` calls it too — on cooldown expiry — and omitted the lane,
+ * so the callee's `orgId: number | null = null` DEFAULT silently sent the
+ * auto-reset to the platform lane. With `credentialLane` admitting an org's own
+ * credential and `LANE_ORDER` ranking it FIRST, that cleared the SHARED row
+ * every other tenant falls back to while the org's own breaker stayed open
+ * forever and kept climbing.
+ *
+ * The suite could not see it: `beforeEach` sets `credRow = null`, so every
+ * `execute` case returned at `if (!cred)` long before the breaker branch. The
+ * one production call site that omitted the lane was outside the population
+ * these tests read — the third law, on this file. The default parameter is gone
+ * (the type system now demands the lane at every call site) and the breaker
+ * branch is driven for real below.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -84,6 +100,25 @@ beforeEach(() => {
   credRow = null;
 });
 
+/** A credential row that is OPEN with an expired cooldown — the auto-reset path. */
+function openBreakerRow(orgId: number | null) {
+  return {
+    id: 7,
+    serviceName: "stripe",
+    orgId,
+    encryptedValue: Buffer.from("sk_test").toString("base64"),
+    allowedAgents: ["atlas"],
+    rateLimitPerMinute: 60,
+    rateLimitUsed: 0,
+    rateLimitResetAt: new Date(Date.now() + 60_000),
+    circuitBreakerOpen: true,
+    circuitBreakerFailures: 5,
+    circuitBreakerThreshold: 5,
+    // In the PAST, so `execute` takes the "cooldown expired — auto-reset" arm.
+    circuitBreakerResetAt: new Date(Date.now() - 60_000),
+  };
+}
+
 describe("v12 integration credentials: a service name is not a lane", () => {
   it("a platform call matches ONLY platform credentials", async () => {
     await integrationFrameworkService.execute("atlas", "stripe", "GET", "https://x.test/y");
@@ -125,9 +160,37 @@ describe("v12 integration credentials: a service name is not a lane", () => {
     expect(sql).not.toContain("is null");
   });
 
-  it("resetCircuitBreaker with no org clears only the platform row", async () => {
-    await integrationFrameworkService.resetCircuitBreaker("stripe");
+  it("resetCircuitBreaker on the platform lane clears only the platform row", async () => {
+    await integrationFrameworkService.resetCircuitBreaker("stripe", null);
     const sql = readPredicate(captured.find((c) => c.kind === "update")!.where);
     expect(sql).toMatch(/org_id.*is null/s);
+  });
+
+  // ── the auto-reset path, which the front-door cases never reached ──────────
+
+  it("execute's cooldown auto-reset clears THE ORG'S row, not the platform row", async () => {
+    credRow = openBreakerRow(5);
+    await integrationFrameworkService.execute("atlas", "stripe", "GET", "https://x.test/y", {
+      orgId: 5,
+    });
+
+    const writes = captured.filter((c) => c.kind === "update");
+    expect(writes.length, "no breaker reset was issued at all").toBeGreaterThan(0);
+    const sql = readPredicate(writes[0].where);
+    expect(sql).toContain("service_name");
+    expect(sql).toContain("org_id");
+    // The whole defect in one assertion: the platform lane is `org_id IS NULL`,
+    // and clearing it from an ORG-lane credential wipes the shared fallback row
+    // every other tenant resolves to.
+    expect(sql).not.toContain("is null");
+  });
+
+  it("execute's auto-reset stays on the platform lane for a platform credential", async () => {
+    credRow = openBreakerRow(null);
+    await integrationFrameworkService.execute("atlas", "stripe", "GET", "https://x.test/y");
+
+    const writes = captured.filter((c) => c.kind === "update");
+    expect(writes.length, "no breaker reset was issued at all").toBeGreaterThan(0);
+    expect(readPredicate(writes[0].where)).toMatch(/org_id.*is null/s);
   });
 });

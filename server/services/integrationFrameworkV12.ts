@@ -139,8 +139,15 @@ class IntegrationFrameworkService {
           orgId: params?.orgId,
         });
       }
-      // Cooldown expired — auto-reset
-      await this.resetCircuitBreaker(serviceName);
+      // Cooldown expired — auto-reset THE ROW WE READ, not the platform row.
+      //
+      // `credentialLane` admits an org's own credential OR the platform
+      // fallback, and LANE_ORDER ranks the org's own row FIRST — so `cred` is
+      // frequently an org-lane row. This call omitted the lane and the callee
+      // defaulted it to the platform lane, so the auto-reset cleared the
+      // SHARED row every other tenant falls back to, while this org's breaker
+      // stayed open forever and kept climbing on the next failure.
+      await this.resetCircuitBreaker(serviceName, cred.orgId ?? null);
     }
 
     // 4. Check rate limit
@@ -336,11 +343,17 @@ class IntegrationFrameworkService {
 
   // ─── Reset Circuit Breaker ────────────────────────────────────────────────────
 
-  async resetCircuitBreaker(serviceName: string, orgId: number | null = null): Promise<void> {
+  async resetCircuitBreaker(serviceName: string, orgId: number | null): Promise<void> {
     // A WRITE takes the lane EXACTLY — no platform fallback. Reading may fall
     // back to the shared credential; clearing a breaker must not reach across
     // to a row the caller did not name. Unscoped, this reset every row sharing
     // the service name, in every lane.
+    //
+    // `orgId` HAS NO DEFAULT, deliberately. It had one — `= null` — and that
+    // is precisely what let `execute`'s cooldown auto-reset omit the lane and
+    // silently clear the PLATFORM row while an org-lane breaker stayed open
+    // forever. A lane that can be forgotten will be; the type system is the
+    // only thing that makes every call site state it.
     await db.update(integrationCredentials)
       .set({
         circuitBreakerOpen: false,
