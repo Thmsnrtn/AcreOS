@@ -1078,6 +1078,25 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "Payment not completed");
       }
 
+      // OWNERSHIP. `sessionId` arrives in the request body, and the only thing
+      // checked above is that SOME session on the lender's connected account
+      // was paid. `payments.transaction_id` is globally unique (migration 0023),
+      // so the first note to record a given session id is the only one that
+      // ever can — a caller who supplied another borrower's session id on the
+      // same lender would credit their own note and permanently block the real
+      // one from recording it.
+      //
+      // Exploiting that needs an unguessable `cs_…` id, so this is defence in
+      // depth rather than an open door; it is also two lines, and the metadata
+      // that settles it is metadata we wrote ourselves at session-create time.
+      const paidForNoteId = stripeSession.metadata?.noteId;
+      if (paidForNoteId !== undefined && Number(paidForNoteId) !== note.id) {
+        logger.warn("Borrower payment verification refused — session belongs to another note", {
+          metadata: { noteId: note.id, sessionNoteId: paidForNoteId },
+        });
+        return Errors.badRequest(res, "That payment does not belong to this loan");
+      }
+
       const paymentAmount = stripeSession.amount_total
         ? stripeSession.amount_total / 100
         : Number(note.monthlyPayment);

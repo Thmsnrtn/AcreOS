@@ -617,12 +617,20 @@ Resolving commits: pending
 ### DEFECT-0058
 Title: Borrower portal payment creates checkout sessions without atomic claim -- double-click drops payment
 Severity: P2
-Status: OPEN
+Status: FIXED (superseded by DEFECT-0081)
 Surfaced by lenses: 51 (RACE-017)
 Description: If a borrower clicks "Pay" twice quickly, two Stripe checkout sessions are created. The second overwrites `pendingCheckoutSessionId`. If the borrower pays on the first (orphaned) session, the webhook verification fails because the stored session ID doesn't match, and the payment is silently dropped despite the borrower being charged.
 Evidence: `server/routes-borrower.ts:220-280`.
-Remediation plan: Use `SELECT FOR UPDATE` on the note before creating a checkout session. Check for existing pending session.
-Resolving commits: pending
+Remediation plan: SUPERSEDED. The 2026-09-06 verification pass established that
+this plan would not have worked: serializing the two writes still leaves one
+slot, and the borrower legitimately has two open sessions (Stripe keeps a
+checkout session alive 24 hours). The defect is on the CONSUMER side — the
+webhook used a one-slot cache as an authorization check — and the entry also
+understated it. The severity is not "a dropped record" but a dropped PAYMENT
+that has already moved on the lender's own connected processor, with no
+reconciliation path. See DEFECT-0081 for the analysis, the fix, and the test
+that had pinned the defect as the intended contract.
+Resolving commits: see DEFECT-0081
 
 ### DEFECT-0059
 Title: Two competing onboarding wizards with no routing logic between them
@@ -1246,18 +1254,90 @@ Evidence: run 34022731609, job 101458168024 — 8 tests, `Test timed out in 3000
 Remediation plan: Done.
 Resolving commits: pending
 
+### DEFECT-0081
+Title: A borrower who opened a second checkout and paid the first lost the payment — the webhook checked recency, not ownership
+Severity: P1
+Status: FIXED
+Surfaced by lenses: DEFECT-0058 verification pass, 2026-09-06
+Description: `WebhookHandlers.processBorrowerPortalPayment` authorized a
+completed Stripe checkout by comparing `session.id` to
+`notes.pending_checkout_session_id`. That column is a ONE-SLOT CACHE:
+`routes-borrower.ts:764` and `:854` overwrite it on every "Pay" click. A
+borrower who opened a second checkout — browser Back and retry, or a re-click
+during the cross-origin navigation, both of which the portal permits because
+`setIsProcessingPayment(false)` runs after `window.location.href` — and then
+completed the FIRST one arrived with a session id the note no longer named. The
+handler returned. No payment row, no balance reduction, no schedule mark, no
+receipt, no retry.
+
+That is not a lost record, it is a lost PAYMENT. Under the founder ruling of
+2026-07-29 ("be the rail, not the provider") the charge is a direct charge on
+the LENDER's own connected processor; AcreOS never sees the money and its
+ledger is the lender's only account of it. Nothing reconciles it back. The
+borrower's next statement still shows the amount due and delinquency advances
+against someone who has paid.
+
+The browser return (`/api/borrower/verify-payment`) records the payment
+idempotently and does NOT consult the pending slot, so the happy path was
+covered. This bit exactly the population a webhook exists for: the borrower who
+closed the tab, lost the redirect, or whose 24-hour portal session expired
+mid-checkout.
+
+The registry's DEFECT-0058 remediation plan (`SELECT FOR UPDATE` before creating
+a session) would not have fixed it. Serializing two writes still leaves one slot,
+and the borrower legitimately has two open sessions — Stripe keeps them alive for
+24 hours.
+
+**A TEST PINNED THE DEFECT AS THE CONTRACT.** `stripeWebhooks.test.ts` Task #77,
+"rejects borrower payment if session ID does not match", asserted exactly this
+behaviour and passed. Per CLAUDE.md wave discipline the assertion was rewritten
+rather than deleted: the invariant it was reaching for — a session that does not
+belong to this note must not be recorded — survives, now checked against
+OWNERSHIP rather than recency.
+
+Second finding, same handler: `noteId` was destructured from the session
+metadata at line 1520 and **never compared to `note.id`**. The one-slot check was
+the only thing standing between a signed event naming one note and a credit to
+another. The replacement is therefore strictly stronger than what it replaces,
+not merely different.
+
+Third finding, sibling path: `POST /api/borrower/verify-payment` resolves the
+note from the authenticated borrower session but takes `sessionId` from the
+request body, and checked only that SOME session on the lender's connected
+account was paid. `payments.transaction_id` is globally unique (migration
+0023 `payments_transaction_id_unique`), so the first note to record a session id
+is the only one that ever can: a caller supplying another borrower's session id
+on the same lender would credit their own note and permanently block the real
+one. Exploiting it needs an unguessable `cs_…` id, so this is defence in depth
+rather than an open door — and it is two lines.
+
+Evidence: `server/webhookHandlers.ts:1535` (before), `server/routes-borrower.ts:1078` (before).
+Remediation plan: Done. Ownership is checked against the metadata AcreOS itself
+wrote in `buildBorrowerCardCheckoutParams` and Stripe signed back; the pending
+slot is cleared only when it still names the completing session, so finishing an
+older checkout cannot wipe the pointer to a newer open one. Absent metadata is
+accepted rather than refused — a guard that refuses on missing evidence would
+turn a hardening change into an outage for anyone mid-checkout at deploy time,
+and that case is asserted.
+
+Falsified: five mutations, each turning a different test red — restore the
+one-slot check; disable the note-ownership check; clear the slot
+unconditionally; disable the verify-payment check; make the verify-payment check
+refuse on absent metadata.
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 42  | 1   | 55    |
+| OPEN   | 0   | 0   | 18  | 18    |
+| FIXED  | 12  | 43  | 2   | 57    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **45** | **20** | **77** |
+| **Total** | **12** | **46** | **20** | **78** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
+All P0 and P1 defects resolved (fixed or justified deferral). 18 P2s remain open
 (not blocking launch).
 
 ### Fixed Defects Summary

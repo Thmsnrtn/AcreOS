@@ -256,23 +256,116 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
     expect(storageMock.updateNote).toHaveBeenCalled();
   });
 
-  it("rejects borrower payment if session ID does not match (Task #77)", async () => {
+  // ── Task #77, rewritten 2026-09-06 (DEFECT-0081) ──────────────────────────
+  //
+  // This test used to assert that a session id differing from
+  // `note.pendingCheckoutSessionId` was REFUSED, and it passed — because that
+  // was what the handler did. But that column is a one-slot cache overwritten
+  // by every later "Pay" click, so what the assertion actually pinned was a
+  // handler that DROPS a completed payment whenever the borrower opened a
+  // second checkout and finished the first. The money has already moved on the
+  // lender's own connected processor by then, and AcreOS's ledger is the
+  // lender's only record of it.
+  //
+  // The invariant the test was reaching for — "a session that does not belong
+  // to this note must not be recorded" — is real and is kept below. It is now
+  // checked against OWNERSHIP (metadata we wrote at session-create time and
+  // Stripe signed back to us) instead of against recency, which is a stronger
+  // check: nothing in this handler had ever compared `noteId` to `note.id`.
+  it("rejects a borrower payment whose metadata names a different note (Task #77)", async () => {
     const session = {
-      id: "cs_borrower_MISMATCH",
-      metadata: { type: "borrower_portal_payment", noteId: "42", accessToken: "token_abc" },
+      id: "cs_borrower_other_note",
+      // Signed by Stripe, but for note 43.
+      metadata: { type: "borrower_portal_payment", noteId: "43", accessToken: "token_abc" },
       amount_total: 50000,
     };
-    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_mismatch"));
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_other_note"));
 
     (storageMock.getNoteByAccessToken as any).mockResolvedValue({
       id: 42,
-      pendingCheckoutSessionId: "cs_different_session", // mismatch
+      organizationId: 1,
+      pendingCheckoutSessionId: "cs_borrower_other_note",
+      currentBalance: "10000",
     });
 
     const payload = Buffer.from("{}");
     await WebhookHandlers.processWebhook(payload, "sig");
 
     expect(storageMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  it("rejects a borrower payment whose metadata names a different organization (Task #77b)", async () => {
+    const session = {
+      id: "cs_borrower_other_org",
+      metadata: {
+        type: "borrower_portal_payment",
+        noteId: "42",
+        organizationId: "7",
+        accessToken: "token_abc",
+      },
+      amount_total: 50000,
+    };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_other_org"));
+
+    (storageMock.getNoteByAccessToken as any).mockResolvedValue({
+      id: 42,
+      organizationId: 1,
+      pendingCheckoutSessionId: "cs_borrower_other_org",
+      currentBalance: "10000",
+    });
+
+    const payload = Buffer.from("{}");
+    await WebhookHandlers.processWebhook(payload, "sig");
+
+    expect(storageMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  // ── The defect itself, as a test ──────────────────────────────────────────
+  //
+  // Borrower clicks Pay, goes Back, clicks Pay again — two open sessions, the
+  // note's one slot now naming the newer — then completes the FIRST. This is
+  // the case the old Task #77 assertion certified as correctly refused.
+  it("records the payment when the pending slot has moved on to a newer session", async () => {
+    const session = {
+      id: "cs_borrower_older",
+      metadata: {
+        type: "borrower_portal_payment",
+        noteId: "42",
+        organizationId: "1",
+        accessToken: "token_abc",
+      },
+      amount_total: 50000,
+    };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_older"));
+
+    (storageMock.getNoteByAccessToken as any).mockResolvedValue({
+      id: 42,
+      organizationId: 1,
+      currentBalance: "10000",
+      monthlyPayment: "500",
+      interestRate: "5",
+      nextPaymentDate: new Date("2026-04-01"),
+      // The borrower's SECOND click already overwrote this.
+      pendingCheckoutSessionId: "cs_borrower_newer",
+      amortizationSchedule: [{ paymentNumber: 1, status: "pending", payment: 500, principal: 450, interest: 50 }],
+      status: "active",
+    });
+
+    const payload = Buffer.from("{}");
+    await WebhookHandlers.processWebhook(payload, "sig");
+
+    expect(
+      storageMock.createPayment,
+      "a completed payment on an older session must still be recorded — the money has already moved",
+    ).toHaveBeenCalled();
+
+    // …and completing the older session must not wipe the pointer to the newer
+    // one, which is still open.
+    const notePatch = (storageMock.updateNote as any).mock.calls.at(-1)?.[1] ?? {};
+    expect(
+      Object.prototype.hasOwnProperty.call(notePatch, "pendingCheckoutSessionId"),
+      "clearing the slot here would drop the still-open newer session",
+    ).toBe(false);
   });
 
   it("skips duplicate borrower payment if already recorded (Task #78)", async () => {

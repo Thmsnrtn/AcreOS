@@ -1530,10 +1530,46 @@ export class WebhookHandlers {
         return;
       }
 
-      // Security: Verify the session ID matches what was stored when payment was initiated
-      // This prevents replay attacks and ensures payment was actually created for this note
-      if (note.pendingCheckoutSessionId !== session.id) {
-        logger.error(`Session ID mismatch for note ${note.id}. Expected: ${note.pendingCheckoutSessionId}, Got: ${session.id}`);
+      // OWNERSHIP, not recency.
+      //
+      // This was `note.pendingCheckoutSessionId !== session.id`, and that column
+      // is a ONE-SLOT CACHE: routes-borrower.ts overwrites it on every "Pay"
+      // click. A borrower who opens a second checkout and then completes the
+      // FIRST one — browser Back and retry, or a re-click during the
+      // cross-origin navigation — arrives here with a session id the note no
+      // longer names, and the handler returned. No payment row, no balance
+      // reduction, no schedule mark, no receipt.
+      //
+      // That is not a lost record, it is a lost PAYMENT. Under the founder
+      // ruling of 2026-07-29 the charge is a direct charge on the lender's own
+      // connected processor; AcreOS never sees the money and its ledger is the
+      // lender's only account of it. Nothing reconciles it back. The borrower's
+      // next statement still shows the amount due and delinquency advances
+      // against someone who has paid.
+      //
+      // The browser return (/api/borrower/verify-payment) covers the happy path,
+      // so this bites exactly the population that most needs a webhook: the
+      // borrower who closed the tab, lost the redirect, or whose 24h portal
+      // session expired mid-checkout.
+      //
+      // The metadata below is OURS — buildBorrowerCardCheckoutParams wrote
+      // noteId and organizationId at session-create time and Stripe signed the
+      // event carrying them back. So authenticity comes from the signature and
+      // OWNERSHIP comes from the metadata. That is strictly stronger than what
+      // it replaces: nothing here ever compared `noteId` to `note.id`, so the
+      // one-slot check was also the only thing standing between a signed event
+      // for one note and a credit to another.
+      if (Number(noteId) !== note.id) {
+        logger.error(
+          `[webhook] borrower payment metadata names note ${noteId} but the access token resolves note ${note.id} — refusing`,
+        );
+        return;
+      }
+      const metadataOrgId = session.metadata?.organizationId;
+      if (metadataOrgId !== undefined && Number(metadataOrgId) !== note.organizationId) {
+        logger.error(
+          `[webhook] borrower payment metadata names org ${metadataOrgId} but note ${note.id} belongs to org ${note.organizationId} — refusing`,
+        );
         return;
       }
 
@@ -1597,7 +1633,13 @@ export class WebhookHandlers {
       await storage.updateNote(note.id, {
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
-        pendingCheckoutSessionId: null, // Clear after successful payment
+        // Clear the pending slot only if it still names THIS session. Clearing
+        // unconditionally would wipe the pointer to a newer session that is
+        // still open, which is the same one-slot confusion in the other
+        // direction.
+        ...(note.pendingCheckoutSessionId === session.id
+          ? { pendingCheckoutSessionId: null }
+          : {}),
       }, note.organizationId);
 
       logger.info(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
