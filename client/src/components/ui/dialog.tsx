@@ -62,6 +62,25 @@ const DialogContent = React.forwardRef<
         // the WebKit combination that left dialog panels unpainted on
         // iOS (frosted page, invisible dialog). modal-surface keeps the
         // glass look with a near-opaque fill and no backdrop-filter.
+        // BOUNDED AND SCROLLABLE — a centred panel taller than the viewport
+        // loses its TOP, not its bottom.
+        //
+        // `top-[50%] translate-y-[-50%]` centres the panel on the viewport, so
+        // content taller than the screen overflows in BOTH directions and the
+        // half above the fold is unreachable: the title, and the close control
+        // at `top-4`. There was no max-height and no overflow container, so
+        // there was also no way to scroll to it.
+        //
+        // `dvh`, not `vh`, is the load-bearing detail on the surface this repo
+        // cares most about: on iOS Safari `100vh` is the height WITHOUT the
+        // browser chrome, so a vh-based bound is itself taller than the visible
+        // area and the panel still overflows. `dvh` tracks the actual visible
+        // viewport as the URL bar shows and hides.
+        //
+        // `overscroll-contain` stops a scroll that reaches the panel's end from
+        // chaining to the page behind it, which on a phone reads as the dialog
+        // dragging the background around under your finger.
+        "max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain",
         "modal-surface rounded-2xl p-6",
         // Spring animation
         "duration-200",
