@@ -1078,14 +1078,61 @@ Resolving commits: `c9220cb4`.
 
 ---
 
+### DEFECT-0078
+Title: The borrower late-fee path charged under a ten-day grace period the note does not contain
+Severity: P1
+Status: FIXED
+Surfaced by lenses: measurement-defaults gate, once DEFECT-0077 made the file readable (2026-09-06)
+Description: `server/routes-borrower.ts:935` and `:1077` — the two payment-post
+handlers — computed `const gracePeriodDays = note.gracePeriodDays ?? 10` and
+passed it to `computeAppliedLateFeeCents`. A note whose record states no grace
+period was therefore assessed under a ten-day clause it does not contain.
+
+Ten days is invented in the borrower's favour; zero would be invented against
+them. Neither is a term anyone agreed to, and this code takes money.
+
+The repo had already reasoned the asymmetry out, and these two sites were
+outside the population that enforced it:
+
+- `acquiredNoteAging.ts:291` measures an unstated term as ZERO, deliberately,
+  because an internal aging signal can be re-derived — and it LOGS the
+  assumption (`note_grace_period_unstated`).
+- `routes-documents.ts:23` and `services/documents.ts:164` decline to state a
+  term at all in a generated instrument, because a signed document cannot be
+  re-derived. Both read the canonical `noteGracePeriodDays` resolver.
+
+An APPLIED FEE is the second kind, not the first: money, recorded, shown to the
+borrower, not re-derivable.
+
+WHY IT WAS INVISIBLE: `lint:measurement-defaults` exists to catch exactly this
+shape and had never seen these lines. Its comment masker was the two-regex
+idiom, and `routes-borrower.ts` is the file CLAUDE.md already names as the one
+that idiom "swallowed 3,000 lines of". The gate went red the moment DEFECT-0077
+made the file readable — no new rule, no new scan, the same gate over the
+population it was always supposed to have.
+
+Evidence: `[measurement-defaults] FAIL — a value read from a data source is
+being replaced by a plausible constant`, naming both lines, immediately after
+`scripts/lib/strip-comments.mjs` was made parser-based.
+
+Remediation plan (applied): both sites resolve through `noteGracePeriodDays`.
+When the record states no term there is no late fee to apply, and the skip is
+logged (`note_late_fee_skipped_grace_unstated`) the way the aging sweep logs
+its assumption. The change can only ever REDUCE a fee charged, never increase
+one.
+
+Resolving commits: `3c95369a`.
+
+---
+
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 39  | 1   | 52    |
+| FIXED  | 12  | 40  | 1   | 53    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **42** | **20** | **74** |
+| **Total** | **12** | **43** | **20** | **75** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
 (not blocking launch).
