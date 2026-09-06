@@ -675,12 +675,43 @@ Resolving commits: pending
 ### DEFECT-0063
 Title: `(req as any)` used 73+ times across 27+ server files
 Severity: P2
-Status: OPEN
-Surfaced by lenses: 1 (ARCH-012), 3 (BE-05), 7 (SEC-011)
-Description: Despite well-defined `AuthenticatedRequest` type and helper functions, 73+ instances of `(req as any)` bypass type safety. Additionally 144 `req.user as any` occurrences exist. These casts hide missing middleware and mask null/undefined bugs.
-Evidence: Concentrated in `routes-admin.ts` (16), `routes-2fa.ts` (8).
-Remediation plan: Replace with `AuthenticatedRequest` and helpers `getOrganization()`, `getUserId()`.
-Resolving commits: pending
+Status: PARTIALLY FIXED — headline is STALE, the `req.user as any` half is live
+Surfaced by lenses: 1 (ARCH-012), 3 (BE-05), 7 (SEC-011); corrected by the
+verification fan-out 2026-09-06
+Description: The headline was true when written and is now dead. Measured at
+HEAD 2026-09-06:
+
+| claim | entry | measured |
+|---|---|---|
+| `(req as any)` in server production | 73+ | **0** |
+| `(req as any)` repo-wide | — | 14, **all under `tests/`** |
+| `routes-admin.ts` | 16 | 0 (file exists) |
+| `routes-2fa.ts` | 8 | **file does not exist** |
+| `req.user as any` in server production | 144 | 135 |
+
+This entry was carrying the same defect DEFECT-0059 did: a registry row read as
+OPEN while the thing it named had already gone. It is corrected here rather than
+closed, because the second half is real — 135 `req.user as any` casts remain in
+production server code, which is the CLAUDE.md standard's actual subject
+("never use `(req as any)` — the Express request is augmented"). 134 are
+`const user = req.user as any;`; the outlier is `const adder = req.user as any;`
+at `server/routes-organization.ts:1341`.
+
+Evidence: `grep -rn "(req as any)" server/ --include=*.ts` returns nothing;
+`grep -rn "req.user as any" server/ --include=*.ts` returns 135.
+Remediation plan: The remaining work is the `req.user as any` sweep to
+`AuthenticatedRequest` + `getUserId()`. Mechanical and large; no user-visible
+impact, so it ranks below the live defects.
+
+Do NOT re-add a `(req as any)` count to this row. That count is zero and is
+already HELD at zero by `scripts/ratchets/req-as-any.json` (baseline 0,
+direction down, with a 1,100-file vacuity floor on the scan population). Which
+is the real lesson of this correction: the ratchet had already driven the
+headline to zero and the registry row never noticed. A defect list that is not
+re-measured against the gates that fix things drifts into fiction in the safe
+direction — it over-reports, and every over-report costs the next reader the
+time to disprove it.
+Resolving commits: the `(req as any)` half predates this registry correction
 
 ### DEFECT-0064
 Title: Ownership data presented without freshness indicator -- stale county data shown as current
@@ -1416,12 +1447,12 @@ Resolving commits: pending
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 15  | 15    |
+| OPEN   | 0   | 0   | 14  | 14    |
 | FIXED  | 12  | 44  | 5   | 61    |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **47** | **20** | **79** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 15 P2s remain open
+All P0 and P1 defects resolved (fixed or justified deferral). 14 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
 
 ### Fixed Defects Summary
