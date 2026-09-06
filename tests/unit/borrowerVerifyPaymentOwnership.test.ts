@@ -66,11 +66,20 @@ vi.mock("../../server/storage", () => {
   return { storage, db: { select: () => makeStep() } };
 });
 
-/** Records whether the handler ever reached the money-writing transaction. */
-const withTransactionSpy = vi.fn(async () => ({ row: { id: 1 }, created: false }) as const);
+/**
+ * Records whether the handler ever reached the money-writing transaction.
+ *
+ * The callback is declared and ignored on purpose: returning the "already
+ * recorded" shape short-circuits the handler at its conflict branch, so the
+ * legitimate-payment case can be observed reaching the transaction without this
+ * test having to stand up an entire drizzle tx.
+ */
+const withTransactionSpy = vi.fn(
+  async (_fn: (tx: unknown) => Promise<unknown>) => ({ row: { id: 1 }, created: false }) as const,
+);
 vi.mock("../../server/db", () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) },
-  withTransaction: (fn: unknown) => withTransactionSpy(fn as never),
+  withTransaction: (fn: (tx: unknown) => Promise<unknown>) => withTransactionSpy(fn),
 }));
 
 vi.mock("../../server/auth", () => ({

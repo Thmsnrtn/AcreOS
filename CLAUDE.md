@@ -304,6 +304,28 @@ walking string literals distinguishes a vendor a page NAMES from a vendor a
 comment says was removed. The parser never visits a comment, so the whole
 class disappears rather than being defended against case by case.
 
+#### And a verdict you read through a pipe is the pipe's verdict
+
+`npm run check 2>&1 | tail -12` reports `tail`'s exit status. It is 0 whether the
+gate passed, failed, or never ran. The failure text scrolls past in the output
+you are reading, which is what makes it survive: the eye reads "…and 136 more /
+Do NOT raise the baseline" as the familiar informational tail of a passing run,
+because on a passing run that is exactly what it is.
+
+Measured 2026-09-06: two commits went to the branch reported as "npm run check
+exit 0" when `check:tests` was failing 161 > 160 in both. Branch CI caught it —
+the point of the CI-as-verifier loop — but the local gate had been decorative for
+the whole session, and the same pipe had been used to "verify" every commit
+before them.
+
+So: never read a gate's verdict through a pipe. Redirect to a file and echo `$?`,
+or `set -o pipefail` first. And when a gate prints its failures to stdout rather
+than stderr, a `grep -c "FAIL"` on the captured file is worth more than the tail.
+
+The sibling mistake, same day: running `npm run check` while still editing files.
+The result then describes a tree that no longer exists — a gate cannot be trusted
+about a file it read before you wrote it. Finish editing, then measure.
+
 #### The population includes the CI runs you did not look at
 
 The same law governs how you verify a merge, and it is easier to break there
