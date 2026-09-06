@@ -107,6 +107,32 @@ export const ACTIVE_DEAL_STATUSES = DEAL_STATUSES.filter(
     !(TERMINAL_DEAL_STATUSES as readonly string[]).includes(s),
 );
 
+/**
+ * A LEGACY value that is not in DEAL_STATUSES and must never be written again.
+ *
+ * `executionEngine.advance_deal_stage` defaulted to `status: newStage ??
+ * "closing"` until 2026-09-06 — so an autopilot call that omitted a stage
+ * silently stored a word the vocabulary does not contain. The writer is gone
+ * (it refuses a missing stage now), but rows written before that are still out
+ * there and this repo does not guess at production data.
+ *
+ * Three revenue surfaces had each independently written `('closed',
+ * 'closing')` inline to compensate — portfolioPnl, cohortAnalysis and
+ * attributionService. That is precisely the drift ACTIVE_DEAL_STATUSES's
+ * comment above says was already paid for once: a compensation spelled three
+ * times is three places to forget it. It lives here now, exported, so the
+ * readers share ONE list and the day someone backfills the rows there is ONE
+ * definition to retire.
+ */
+const LEGACY_CLOSING_DEAL_STATUS = "closing";
+
+/**
+ * Every status that means "this deal produced revenue" — the canonical
+ * terminal `closed`, plus the legacy value above so historical rows keep
+ * counting. Read-only: nothing may WRITE anything here except `closed`.
+ */
+export const CLOSED_DEAL_STATUSES = ["closed", LEGACY_CLOSING_DEAL_STATUS] as const;
+
 export type DealStatus = (typeof DEAL_STATUSES)[number];
 export const dealStatusSchema = z.enum(DEAL_STATUSES);
 

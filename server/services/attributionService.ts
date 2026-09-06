@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, count, avg, sum } from "drizzle-orm";
 
+import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface AttributionRow {
   campaignId: number | null;
   campaignName: string;
@@ -99,7 +100,7 @@ export async function getAttributionReport(
 
   const revenueByLead = new Map<number, number>();
   for (const d of dealsByLead) {
-    if (d.leadId && (d.status === "closed" || d.status === "closing")) {
+    if (d.leadId && (CLOSED_DEAL_STATUSES as readonly string[]).includes(d.status ?? "")) {
       revenueByLead.set(d.leadId, (revenueByLead.get(d.leadId) ?? 0) + Number(d.purchasePrice ?? 0));
     }
   }

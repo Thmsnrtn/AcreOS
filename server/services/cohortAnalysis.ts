@@ -22,6 +22,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, count, avg } from "drizzle-orm";
 
+import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export type CohortSegment =
   | "source"
   | "state"
@@ -162,7 +163,7 @@ export async function buildCohortReport(
       if (["under_contract", "closed"].includes(status)) underContract++;
 
       const deal = dealByLead.get(lead.id);
-      if (deal && (deal.status === "closed" || deal.status === "closing")) {
+      if (deal && (CLOSED_DEAL_STATUSES as readonly string[]).includes(deal.status ?? "")) {
         closed++;
         if (deal.closedAt && lead.createdAt) {
           const days = (new Date(deal.closedAt).getTime() - new Date(lead.createdAt).getTime()) / 86400000;

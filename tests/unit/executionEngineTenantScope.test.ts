@@ -46,6 +46,19 @@ interface Captured { where: unknown }
 const captured: Captured[] = [];
 /** What the next `.returning()` resolves to — i.e. which rows actually matched. */
 let returningRows: Array<Record<string, unknown>> = [];
+/**
+ * What a pre-read `.limit()` resolves to.
+ *
+ * ADDED 2026-09-06, when `update_lead_status` and `advance_deal_stage` started
+ * reading the row's CURRENT status before writing, so they can validate the
+ * change against LEAD_STATUS_TRANSITIONS / DEAL_STATUS_TRANSITIONS. That read
+ * is a second tenant boundary in each handler and is asserted as one below —
+ * it is not enough that the WRITE names the org if the read that authorises it
+ * does not.
+ */
+let currentRows: Array<Record<string, unknown>> = [];
+/** Only the predicates issued by a SELECT, so the pre-read can be checked alone. */
+const preReads: Array<{ where: unknown }> = [];
 const insertedRows: Array<Record<string, any>> = [];
 
 vi.mock("../../server/db", () => ({
@@ -61,7 +74,8 @@ vi.mock("../../server/db", () => ({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockImplementation((where: unknown) => {
           captured.push({ where });
-          return { limit: vi.fn().mockResolvedValue([]) };
+          preReads.push({ where });
+          return { limit: vi.fn().mockResolvedValue(currentRows) };
         }),
       }),
     })),
@@ -114,9 +128,30 @@ const ORG = 42;
  * below rather than trusted: a fourth handler of this shape must fail here.
  */
 const ID_HANDLERS = [
-  { action: "complete_task", input: { taskId: 7 }, table: "tasks", said: /Task 7 completed/ },
-  { action: "update_lead_status", input: { leadId: 7, newStatus: "warm" }, table: "leads", said: /Lead 7 status/ },
-  { action: "advance_deal_stage", input: { dealId: 7, newStage: "closing" }, table: "deals", said: /Deal 7 advanced/ },
+  { action: "complete_task", input: { taskId: 7 }, table: "tasks", said: /Task 7 completed/, current: "open" },
+  // WERE `newStatus: "warm"` and `newStage: "closing"`. NEITHER IS A REAL
+  // STATUS — "warm" is not in LEAD_STATUSES and "closing" is not in
+  // DEAL_STATUSES — and this suite asserted that both SUCCEEDED, which is
+  // exactly the write the vocabulary exists to prevent. The stub is real now
+  // (2026-09-06): both handlers validate against the canonical table, so the
+  // fixtures move to values that exist and transitions that are legal, and the
+  // refusal gets its own assertions below. The original invariants — the
+  // predicate names the tenant column, and nothing is announced when no row
+  // matched — are untouched.
+  {
+    action: "update_lead_status",
+    input: { leadId: 7, newStatus: "contacted" },
+    table: "leads",
+    said: /Lead 7 status/,
+    current: "new",
+  },
+  {
+    action: "advance_deal_stage",
+    input: { dealId: 7, newStage: "offer_sent" },
+    table: "deals",
+    said: /Deal 7 advanced/,
+    current: "negotiating",
+  },
 ] as const;
 
 /** Column names inside a drizzle SQL predicate, at any nesting depth. */
@@ -129,8 +164,10 @@ function columnsIn(node: any, out: string[] = []): string[] {
 
 beforeEach(() => {
   captured.length = 0;
+  preReads.length = 0;
   insertedRows.length = 0;
   returningRows = [];
+  currentRows = [{ status: "new" }];
 });
 
 describe("executionEngine: caller-supplied ids are scoped to the executing org", () => {
@@ -143,6 +180,7 @@ describe("executionEngine: caller-supplied ids are scoped to the executing org",
 
   it.each(ID_HANDLERS)("$action names the tenant column in its predicate", async (h) => {
     returningRows = [{ id: 7 }];
+    currentRows = [{ status: h.current }];
     await handlerFor(h.action)({
       orgId: ORG, agentCodename: "test-agent", action: h.action, input: { ...h.input },
     } as any);
@@ -156,8 +194,34 @@ describe("executionEngine: caller-supplied ids are scoped to the executing org",
     expect(cols).toContain("organization_id");
   });
 
+  it.each(ID_HANDLERS.filter((h) => h.action !== "complete_task"))(
+    "$action's authorising PRE-READ is org-scoped too",
+    async (h) => {
+      // The status validation added on 2026-09-06 reads the row's current
+      // status to decide whether the transition is legal. That read decides
+      // whether a write is allowed, so it is a tenant boundary in its own
+      // right: a pre-read by bare primary key would let one org's row
+      // authorise a transition applied to... nothing, but it would also leak
+      // that row's status through the refusal message. It names the org.
+      returningRows = [{ id: 7 }];
+      currentRows = [{ status: h.current }];
+      await handlerFor(h.action)({
+        orgId: ORG, agentCodename: "test-agent", action: h.action, input: { ...h.input },
+      } as any);
+
+      expect(preReads.length, `${h.action} issued no SELECT — the pre-read is gone`)
+        .toBeGreaterThan(0);
+      const cols = columnsIn(preReads[0].where);
+      expect(cols, `no columns readable in ${h.action}'s pre-read predicate`).toContain("id");
+      expect(cols).toContain("organization_id");
+    },
+  );
+
   it.each(ID_HANDLERS)("$action reports nothing when no row matched", async (h) => {
     returningRows = []; // the id belonged to another tenant, or to nobody
+    // The pre-read still finds the row, so this isolates the WRITE matching
+    // nothing — the original defect — rather than the new pre-read refusing.
+    currentRows = [{ status: h.current }];
     const result = await handlerFor(h.action)({
       orgId: ORG, agentCodename: "test-agent", action: h.action, input: { ...h.input },
     } as any);
@@ -172,6 +236,7 @@ describe("executionEngine: caller-supplied ids are scoped to the executing org",
 
   it.each(ID_HANDLERS)("$action still succeeds when a row did match", async (h) => {
     returningRows = [{ id: 7 }];
+    currentRows = [{ status: h.current }];
     const result = await handlerFor(h.action)({
       orgId: ORG, agentCodename: "test-agent", action: h.action, input: { ...h.input },
     } as any);

@@ -16,9 +16,10 @@
 
 import { db } from "../db";
 import { deals, notes, payments, properties } from "@shared/schema";
-import { eq, and, gte, lte, sql, sum, count } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lte, sql, sum } from "drizzle-orm";
 import { centsFromDecimal } from "@shared/finance/cents";
 
+import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface PnlPeriod {
   label: string; // "2025-Q3" or "2025-09"
   acquisitionCost: number;
@@ -102,7 +103,7 @@ export async function getPortfolioPnl(
     .where(
       and(
         eq(deals.organizationId, orgId),
-        sql`${deals.status} in ('closed', 'closing')`,
+        inArray(deals.status, CLOSED_DEAL_STATUSES),
         gte(deals.closingDate, fromDate),
         lte(deals.closingDate, toDate)
       )

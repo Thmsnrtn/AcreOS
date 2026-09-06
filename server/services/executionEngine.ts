@@ -19,6 +19,12 @@ import {
   notes, campaigns, jobHealthLogs,
 } from "@shared/schema";
 import { eq, and, sql, desc, lt, gte } from "drizzle-orm";
+import {
+  DEAL_STATUSES,
+  LEAD_STATUSES,
+  validateDealTransition,
+  validateLeadTransition,
+} from "@shared/lifecycle/pipeline-status";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,8 +77,29 @@ const actionRegistry: Record<string, ActionExecutor> = {
     // org, and the effect is REPORTED FROM THE ROWS THAT CHANGED: an id from
     // another tenant now matches nothing and is reported as nothing, instead of
     // being written and then announced as done.
+    //
+    // `newStatus` comes from the same place, and until 2026-09-06 it went into
+    // the column unexamined. The human PATCH route validates every status
+    // change against LEAD_STATUSES and the transition table
+    // (routes-leads.ts:666); this seam — the one a model drives unattended, at
+    // machine rate — did not. A value outside the vocabulary is not a loud
+    // failure, it is a lead that every funnel filter silently stops matching,
+    // which is the exact drift pipeline-status.ts was created to end.
+    const [current] = await db.select({ status: leads.status })
+      .from(leads)
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId)))
+      .limit(1);
+    if (!current) return fail(`Lead ${leadId} not found`);
+
+    const refusal = validateLeadTransition(current.status, String(newStatus));
+    if (refusal) {
+      return fail(
+        `${refusal}. Valid lead statuses: ${LEAD_STATUSES.join(", ")}.`,
+      );
+    }
+
     const updatedLeads = await db.update(leads)
-      .set({ status: newStatus })
+      .set({ status: String(newStatus) })
       .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId)))
       .returning({ id: leads.id });
     if (updatedLeads.length === 0) return fail(`Lead ${leadId} not found`);
@@ -87,8 +114,49 @@ const actionRegistry: Record<string, ActionExecutor> = {
     const { dealId, newStage } = ctx.input;
     if (!dealId) return fail("dealId required");
 
+    // WAS: `.set({ status: newStage ?? "closing" })`.
+    //
+    // Two defects in one expression. "closing" is NOT a member of
+    // DEAL_STATUSES — the pre-close state is `in_escrow` — so an autopilot
+    // call that omitted newStage wrote a value nothing in the vocabulary
+    // knows, and did it silently, at machine rate. A deal parked there is
+    // then:
+    //
+    //   - invisible to every ACTIVE_DEAL_STATUSES filter (the "Deals in
+    //     Pipeline" card, the pipeline-value chart, founder-bridge) — neither
+    //     active nor closed, just gone;
+    //   - counted as REVENUE by portfolioPnl, cohortAnalysis and
+    //     attributionService, each of which spells `('closed', 'closing')`
+    //     inline to compensate; and
+    //   - exempt from the deal state machine, because both human guards read
+    //     `const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus]` and
+    //     then `if (allowedNext && …)` — an unknown current status makes
+    //     `allowedNext` undefined and skips the check entirely
+    //     (routes-deals.ts:730 and :2482).
+    //
+    // And the `??` itself: "advance this deal" with no destination is not a
+    // request to close it. A missing stage is now a refusal, not a default.
+    if (!newStage) {
+      return fail(
+        `newStage required — "advance this deal" with no destination is not a ` +
+        `request to move it to a particular stage. Valid deal statuses: ` +
+        `${DEAL_STATUSES.join(", ")}.`,
+      );
+    }
+
+    const [currentDeal] = await db.select({ status: deals.status })
+      .from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.organizationId, ctx.orgId)))
+      .limit(1);
+    if (!currentDeal) return fail(`Deal ${dealId} not found`);
+
+    const refusal = validateDealTransition(currentDeal.status, String(newStage));
+    if (refusal) {
+      return fail(`${refusal}. Valid deal statuses: ${DEAL_STATUSES.join(", ")}.`);
+    }
+
     const advancedDeals = await db.update(deals)
-      .set({ status: newStage ?? "closing" })
+      .set({ status: String(newStage) })
       .where(and(eq(deals.id, dealId), eq(deals.organizationId, ctx.orgId)))
       .returning({ id: deals.id });
     if (advancedDeals.length === 0) return fail(`Deal ${dealId} not found`);
