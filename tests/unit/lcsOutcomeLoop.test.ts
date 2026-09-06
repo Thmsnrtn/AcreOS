@@ -40,6 +40,13 @@ vi.mock("drizzle-orm", () => ({
   eq: (a: any, b: any) => ({ op: "eq", a, b }),
   gte: (a: any, b: any) => ({ op: "gte", a, b }),
   desc: (a: any) => ({ op: "desc", a }),
+  // ADDED 2026-09-06: lcsCalibrator's status filters moved off hand-written
+  // `sql\`… IN ('closed','closed_won')\`` (whose second term matched no deal,
+  // ever) onto the canonical projections, which use inArray. A mock that omits
+  // an operator the unit calls does not fail at the call — it fails several
+  // assertions later, as "expected 0 to be 20".
+  inArray: (a: any, b: any) => ({ op: "inArray", a, b }),
+  notInArray: (a: any, b: any) => ({ op: "notInArray", a, b }),
   sql: Object.assign((strings: TemplateStringsArray, ..._v: any[]) => ({ op: "sql", strings }), {
     raw: (s: string) => ({ op: "sql.raw", s }),
   }),

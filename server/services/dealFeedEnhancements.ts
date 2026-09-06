@@ -5,8 +5,9 @@
 
 import { db } from "../db";
 import { dailyDealFeed, dealFeedInteractions, deals, properties } from "@shared/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // Item 17: "Why not?" feedback categories
 export type PassReason = "too_expensive" | "wrong_area" | "wrong_size" | "low_quality" | "already_have" | "other";
 
@@ -74,7 +75,10 @@ export async function findSimilarToWins(orgId: number): Promise<any[]> {
     .innerJoin(properties, eq(deals.propertyId, properties.id))
     .where(and(
       eq(deals.organizationId, orgId),
-      sql`${deals.status} = 'closed_won'`,
+      // WAS `= 'closed_won'`, which is not a deal status and matched no row,
+      // ever — so "find similar to wins" had no wins to learn from and
+      // returned [] for every organization. The success terminal is `closed`.
+      inArray(deals.status, [...CLOSED_DEAL_STATUSES]),
     ))
     .limit(10);
 

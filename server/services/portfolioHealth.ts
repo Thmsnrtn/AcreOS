@@ -19,8 +19,9 @@ import {
   deals,
   properties,
 } from '../../shared/schema';
-import { eq, and, lt, isNull, ne, lte } from 'drizzle-orm';
+import { and, eq, isNull, lt, lte, ne, notInArray } from 'drizzle-orm';
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const STALE_LEAD_DAYS = 90;
 const STUCK_DEAL_DAYS = 45;
 const STALE_AVM_DAYS = 90;
@@ -77,8 +78,10 @@ export async function runPortfolioHealthJob(orgId: number): Promise<void> {
     .where(
       and(
         eq(leads.organizationId, orgId),
-        ne(leads.status, 'converted'),
-        ne(leads.status, 'dead'),
+        // `converted` is not a lead status, so that predicate was always
+        // true; the terminal states are `closed` and `dead`, and a closed
+        // lead is not a stale one.
+        notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),
         lt(leads.updatedAt, staleThreshold),
       )
     );

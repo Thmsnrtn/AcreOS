@@ -32,7 +32,56 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { DEAL_STATUSES, ACTIVE_DEAL_STATUSES, LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import {
+  DEAL_STATUSES,
+  ACTIVE_DEAL_STATUSES,
+  ADMINISTRATIVE_DEAL_STATUSES,
+  ALL_FUNNEL_DEAL_STATUSES,
+  CLOSED_DEAL_STATUSES,
+  LEAD_STATUSES,
+  RESOLVED_DEAL_STATUSES,
+} from "@shared/lifecycle/pipeline-status";
+
+/**
+ * The projections a query is ALLOWED to spread into `inArray(deals.status, …)`.
+ *
+ * ADDED 2026-09-06. This gate's own failure message asks the reader to "import
+ * ACTIVE_DEAL_STATUSES / DEAL_STATUSES instead of spelling a list" — and then
+ * failed on exactly that, because its `inArray(deals.status, [ … ])` regex
+ * captured `...CLOSED_DEAL_STATUSES` and compared the spread TEXT against the
+ * vocabulary. Six call sites converted to the canonical form were reported as
+ * six violations.
+ *
+ * So the rule is stated properly rather than relaxed: a spread is acceptable
+ * only when it names a projection listed here, and each of those is checked
+ * BELOW against KNOWN_DEAL_STATUSES at runtime. `[...SOMETHING_ELSE]` is
+ * still a violation, and a projection that starts carrying a value a deal
+ * cannot hold fails too.
+ */
+/**
+ * Every value a deal's status column can legitimately hold — composed HERE
+ * from its parts rather than imported as a bundle.
+ *
+ * A bundled `KNOWN_DEAL_STATUSES` export existed for exactly one line of
+ * this file and nothing in production, which is what the reachability ratchet
+ * calls built-but-unwired and the second law calls not-canonical. Its three
+ * components each have real production consumers; the union is a property of
+ * this test, so it lives in this test.
+ */
+const KNOWN_DEAL_STATUSES: readonly string[] = [
+  ...DEAL_STATUSES,
+  ...ADMINISTRATIVE_DEAL_STATUSES,
+  ...CLOSED_DEAL_STATUSES, // carries the legacy `closing`
+];
+
+const CANONICAL_PROJECTIONS: Record<string, readonly string[]> = {
+  DEAL_STATUSES,
+  ACTIVE_DEAL_STATUSES,
+  ALL_FUNNEL_DEAL_STATUSES,
+  ADMINISTRATIVE_DEAL_STATUSES,
+  CLOSED_DEAL_STATUSES,
+  RESOLVED_DEAL_STATUSES,
+};
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -101,17 +150,41 @@ describe("every deal-status literal in server/ is a real deal status", () => {
     ).toBeGreaterThanOrEqual(5);
   });
 
-  it("no literal outside DEAL_STATUSES is compared against deals.status", () => {
-    const canonical = new Set<string>(DEAL_STATUSES);
+  it("every canonical projection holds only values a deal can really have", () => {
+    // The spread allowance below is only as good as this. A projection that
+    // gained a value outside the known vocabulary would launder it straight
+    // past the rule, which is the failure mode of any allowlist keyed on a
+    // NAME rather than on the thing the name refers to.
+    const known = new Set<string>(KNOWN_DEAL_STATUSES);
+    for (const [name, values] of Object.entries(CANONICAL_PROJECTIONS)) {
+      expect(values.length, `${name} is empty — the import resolved to nothing`).toBeGreaterThan(0);
+      const rogue = values.filter((v) => !known.has(v));
+      expect(rogue, `${name} carries a value no deal can hold`).toEqual([]);
+    }
+  });
+
+  it("no literal outside the known deal vocabulary is compared against deals.status", () => {
+    // Comparisons may name any value a deal CAN hold — funnel, administrative
+    // (`deleted`, written by the soft delete) or legacy (`closing`, written by
+    // executionEngine until 2026-09-06). Writes are narrower, and that is
+    // enforced separately by scripts/check-status-vocabulary.mjs.
+    const known = new Set<string>(KNOWN_DEAL_STATUSES);
     const offenders = hits
-      .filter((h) => !canonical.has(h.value))
+      .filter((h) => {
+        if (h.value.startsWith("...")) {
+          // A spread: acceptable only if it names a checked projection.
+          return !(h.value.slice(3) in CANONICAL_PROJECTIONS);
+        }
+        return !known.has(h.value);
+      })
       .map((h) => `${h.file}: "${h.value}"`);
     expect(
       [...new Set(offenders)],
-      `a deal can never hold these values (routes.ts validates writes against ` +
-        `DEAL_STATUSES), so every query using one silently returns nothing. ` +
-        `Import ACTIVE_DEAL_STATUSES / DEAL_STATUSES from ` +
-        `shared/lifecycle/pipeline-status.ts instead of spelling a list.`,
+      `a deal can never hold these values, so every query using one silently ` +
+        `returns nothing. Import a projection from ` +
+        `shared/lifecycle/pipeline-status.ts instead of spelling a list — and if ` +
+        `you spread one, add it to CANONICAL_PROJECTIONS above so its contents ` +
+        `are checked too.`,
     ).toEqual([]);
   });
 

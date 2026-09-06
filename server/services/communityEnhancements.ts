@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 
+import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // Item 281: In-app knowledge base articles
 export const KNOWLEDGE_BASE = [
   { id: "getting-started", title: "Getting Started with AcreOS", category: "Basics", content: "Welcome to AcreOS! Start by adding your first leads, then explore the Deal Feed for opportunities.", keywords: ["start", "begin", "new", "onboarding"] },
@@ -94,6 +95,10 @@ export async function gatherCaseStudyData(dealId: number, orgId: number) {
     county: property?.county ?? null,
     state: property?.state ?? null,
     acreage: property?.sizeAcres ?? null,
-    strategy: deal.status === "closed_won" ? "successful acquisition" : "in progress",
+    // WAS `=== "closed_won"` — not a deal status, so every deal read as
+    // "in progress" regardless of outcome.
+    strategy: (CLOSED_DEAL_STATUSES as readonly string[]).includes(deal.status ?? "")
+      ? "successful acquisition"
+      : "in progress",
   };
 }

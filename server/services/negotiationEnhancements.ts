@@ -5,8 +5,9 @@
 
 import { db } from "../db";
 import { deals, offers, leads } from "@shared/schema";
-import { eq, and, sql, count, avg, desc } from "drizzle-orm";
+import { and, avg, count, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { ACTIVE_DEAL_STATUSES, ALL_FUNNEL_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // Item 71: Counter-offer templates
 export const COUNTER_OFFER_TEMPLATES: Record<string, { name: string; tone: string; template: string }> = {
   firm: {
@@ -71,11 +72,17 @@ export async function getNegotiationAnalytics(orgId: number): Promise<{
 }> {
   const [closedDeals] = await db.select({ count: count() })
     .from(deals)
-    .where(and(eq(deals.organizationId, orgId), sql`${deals.status} = 'closed_won'`));
+    // WAS `= 'closed_won'` — not a deal status, so the numerator of this
+    // close-rate was ZERO for every organization, forever.
+    .where(and(eq(deals.organizationId, orgId), inArray(deals.status, [...CLOSED_DEAL_STATUSES])));
 
   const [totalDeals] = await db.select({ count: count() })
     .from(deals)
-    .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'new'`));
+    // WAS `!= 'new'` — `new` is a LEAD status, never a deal status, so this
+    // predicate was always true and the denominator was every deal including
+    // soft-deleted ones. The denominator of a close rate is the deals that
+    // reached the funnel at all.
+    .where(and(eq(deals.organizationId, orgId), inArray(deals.status, [...ALL_FUNNEL_DEAL_STATUSES])));
 
   const total = totalDeals?.count ?? 0;
   const closed = closedDeals?.count ?? 0;
@@ -122,7 +129,9 @@ export async function getNegotiationAnalytics(orgId: number): Promise<{
       eq(offers.organizationId, orgId),
       eq(deals.organizationId, orgId),
       sql`${offers.propertyId} IS NOT NULL`,
-      sql`${deals.status} = 'closed_won'`,
+      // WAS `= 'closed_won'` — the same non-status, so avgOffersToClose was
+      // computed from zero closed deals.
+      inArray(deals.status, [...CLOSED_DEAL_STATUSES]),
     ));
   const offersToClose = Number(offersOnClosedWon?.n ?? 0);
 
@@ -185,7 +194,11 @@ export async function getActiveOffers(orgId: number): Promise<any[]> {
     .from(deals)
     .where(and(
       eq(deals.organizationId, orgId),
-      sql`${deals.status} IN ('offer_sent', 'negotiating', 'under_contract')`,
+      // WAS `IN ('offer_sent','negotiating','under_contract')`.
+      // `under_contract` is a LEAD status, so that term matched nothing, and
+      // `accepted`/`in_escrow` — deals with a live offer on them — were
+      // missing. Derived from the vocabulary instead of re-spelled.
+      inArray(deals.status, ACTIVE_DEAL_STATUSES),
     ))
     .orderBy(desc(deals.updatedAt))
     .limit(50);

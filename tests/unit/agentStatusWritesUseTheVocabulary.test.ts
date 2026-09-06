@@ -204,6 +204,55 @@ describe("update_lead_status", () => {
   });
 });
 
+describe("the write-side gate exists, is wired, and knows the whole vocabulary", () => {
+  const PKG = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"),
+  ) as { scripts: Record<string, string> };
+
+  it("runs inside npm run check", () => {
+    expect(PKG.scripts["lint:status-vocabulary"]).toContain(
+      "node scripts/check-status-vocabulary.mjs",
+    );
+    expect(
+      PKG.scripts.check,
+      "lint:status-vocabulary is not in the check chain — it would only ever run by hand",
+    ).toContain("npm run lint:status-vocabulary");
+    // Same in-process ts.createProgram as its two siblings, same ceiling.
+    expect(PKG.scripts["lint:status-vocabulary"]).toMatch(/--max-old-space-size=\d+/);
+  });
+
+  it("legacy values are readable but NOT writable — that is what makes them legacy", () => {
+    // The gate checks writes against FUNNEL ∪ ADMINISTRATIVE and deliberately
+    // not against LEGACY. If that ever inverts, a writer could reintroduce
+    // exactly the value the fix removed and the gate would agree with it.
+    const gate = stripComments(
+      fs.readFileSync(path.resolve(process.cwd(), "scripts/check-status-vocabulary.mjs"), "utf8"),
+    );
+    expect(gate).toContain("ADMINISTRATIVE_LEAD_STATUSES");
+    expect(gate).toContain("ADMINISTRATIVE_DEAL_STATUSES");
+    const writable = /const WRITABLE = \{[\s\S]*?\};/.exec(gate)?.[0] ?? "";
+    expect(writable, "the WRITABLE map is unreadable — the gate's own shape changed").toBeTruthy();
+    expect(
+      writable.includes("LEGACY"),
+      "LEGACY values leaked into the WRITABLE set — a writer could store `closing` " +
+        "or `active` again and this gate would call it fine",
+    ).toBe(false);
+  });
+
+  it("the administrative statuses are the ones production actually writes", () => {
+    // Measured by walking writes, not filters — which is the whole reason
+    // these three were missing from the vocabulary in the first place.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), "shared/lifecycle/pipeline-status.ts"), "utf8",
+    );
+    for (const value of ["archived", "deleted"]) {
+      expect(src, `${value} is written by production and must stay enumerated`).toContain(
+        `"${value}"`,
+      );
+    }
+  });
+});
+
 describe("the source no longer carries the value, and the readers share one list", () => {
   const read = (rel: string) =>
     stripComments(fs.readFileSync(path.resolve(process.cwd(), rel), "utf8"));

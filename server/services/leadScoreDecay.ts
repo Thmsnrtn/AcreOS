@@ -21,10 +21,11 @@ import {
   notifications,
   organizations,
 } from "@shared/schema";
-import { eq, and, lt, sql, gte, isNotNull, desc } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { jobQueueService } from "./jobQueue";
 import { logger } from "../utils/logger";
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const DECAY_PER_WEEK = 0.05; // 5% per week
 const DAYS_BEFORE_COLD_ALERT = 14;
 const COLD_SCORE_DROP_THRESHOLD = 20;
@@ -54,7 +55,11 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
     .where(
       and(
         eq(leads.organizationId, orgId),
-        sql`${leads.status} not in ('closed', 'lost', 'do_not_contact')`
+        // WAS `not in ('closed','lost','do_not_contact')`. Neither `lost`
+        // nor `do_not_contact` is a lead status — opting out is a COLUMN
+        // (`leads.optedOut`), not a status — so both terms were inert while
+        // reading as protection. `dead`, which IS terminal, was missing.
+        notInArray(leads.status, [...TERMINAL_LEAD_STATUSES])
       )
     );
 
@@ -177,7 +182,9 @@ export async function processLeadScoreDecay(): Promise<void> {
   const orgRows = await db
     .selectDistinct({ organizationId: leads.organizationId })
     .from(leads)
-    .where(sql`${leads.status} not in ('closed', 'lost', 'do_not_contact')`);
+    // Same correction as decayOrganizationLeads above: `lost` and
+    // `do_not_contact` are not lead statuses, and `dead` was missing.
+    .where(notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]));
 
   for (const { organizationId } of orgRows) {
     if (!organizationId) continue;

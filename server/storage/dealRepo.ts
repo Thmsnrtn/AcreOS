@@ -1,7 +1,7 @@
 // Deals (CRUD + bulk + pagination + auto-checklist hook).
 // Extracted from the god-class server/storage.ts.
 
-import { and, asc, desc, eq, sql, count, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   deals, properties,
@@ -12,12 +12,13 @@ import { logger } from "../utils/logger";
 import { publishDealLifecycle } from "../services/dealLifecycleEvents";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
+import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
     // Task 223: exclude soft-deleted deals from list queries
     // Audit F-10-2: loud cap — truncation past the cap is logged, not silent.
     const rows = await db.select().from(deals)
-      .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
+      .where(and(eq(deals.organizationId, orgId), notInArray(deals.status, [...ADMINISTRATIVE_DEAL_STATUSES])))
       .orderBy(desc(deals.createdAt))
       .limit(LIST_READ_CAP + 1);
     return capListRead(rows, LIST_READ_CAP, "getDeals", orgId);
@@ -33,7 +34,7 @@ export const dealRepo = {
         : filters?.book === "client"
         ? sql`(${deals.dealBook} = 'client' OR ${deals.dealBook} IS NULL)`
         : undefined;
-    const whereClause = and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`, bookClause);
+    const whereClause = and(eq(deals.organizationId, orgId), notInArray(deals.status, [...ADMINISTRATIVE_DEAL_STATUSES]), bookClause);
     const [{ count: total }] = await db.select({ count: count() }).from(deals).where(whereClause);
     const totalNum = Number(total);
     const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));

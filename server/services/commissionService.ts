@@ -16,7 +16,7 @@ import {
   deals,
   trustLedger,
 } from "@shared/schema";
-import { eq, and, gte, lte, desc, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { startOfYear, endOfYear, format } from "date-fns";
 import { logger } from "../utils/logger";
 // Tiered-commission types + tier resolution live in the pure, browser-safe
@@ -34,6 +34,7 @@ import {
 } from "@shared/commission/split";
 import { projectGci, type GciForecastResult, type PipelineDealInput } from "@shared/commission/forecast";
 
+import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export {
   type CommissionTier,
   type CommissionConfig,
@@ -761,7 +762,10 @@ export async function getGciForecast(
       and(
         eq(deals.organizationId, organizationId),
         inArray(deals.status, ["accepted", "in_escrow"]),
-        sql`${deals.status} != 'deleted'`
+        // The soft-delete value, from the vocabulary rather than spelled
+        // here — `deleted` is an ADMINISTRATIVE deal status, and the day a
+        // second one exists this excludes it too.
+        notInArray(deals.status, [...ADMINISTRATIVE_DEAL_STATUSES])
       )
     );
 

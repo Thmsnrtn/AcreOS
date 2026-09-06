@@ -125,6 +125,14 @@ router.post("/seller-motivation/rescore-org", async (req: Request, res: Response
     const result = await rescoreLeadsForOrg(org.id);
     res.json(result);
   } catch (err: any) {
+    // The batch rescorer refuses: it has no property join, so every score it
+    // could write is derived from placeholder inputs. 501 — "an endpoint that
+    // exists but does not do the thing it names" — is the honest answer, and
+    // it is a better one than the `{processed: 0}` this used to return behind
+    // a filter that matched nothing.
+    if (String(err?.message ?? "").includes("rescoreLeadsForOrg cannot score anything")) {
+      return Errors.notImplemented(res, err.message);
+    }
     Errors.internal(res, err);
   }
 });

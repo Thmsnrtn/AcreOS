@@ -28,6 +28,7 @@ import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
 
+import { ENGAGED_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 interface ScoreFactorResult {
   value: number | boolean | string;
   score: number;
@@ -631,7 +632,11 @@ export class LeadScoringService {
     // If lead has been contacted 3+ times without responding, reduce score
     // If lead has responded previously, boost score significantly
     const touches = Number(lead.responses || 0);
-    const hasResponse = lead.status === "responding" || lead.status === "hot" || lead.status === "contacted";
+    // WAS `"responding" || "hot" || "contacted"`. Neither `responding` nor
+    // `hot` is a lead status, so this reduced to `contacted` — which means
+    // WE reached out, not that they replied. `responded`, `negotiating` and
+    // `accepted` — the actual evidence of a prior response — never counted.
+    const hasResponse = (ENGAGED_LEAD_STATUSES as readonly string[]).includes(lead.status ?? "");
     const isUnresponsive = touches >= 3 && !hasResponse;
 
     let scoreMultiplier = 0.5; // neutral

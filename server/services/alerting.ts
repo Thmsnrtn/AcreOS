@@ -5,6 +5,7 @@ import { storage } from '../storage';
 import { logger } from "../utils/logger";
 import { getPaxControls } from "./paxControls";
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface AgingLead {
   id: number;
   firstName: string;
@@ -342,7 +343,10 @@ export class AlertingService {
     const now = Date.now();
 
     for (const lead of allLeads) {
-      if (lead.status === 'dead' || lead.status === 'closed' || lead.status === 'converted') {
+      // `converted` is not a lead status — the canonical end of the funnel
+      // is `closed`, which is already named beside it, so this third term
+      // was inert. Stated once, from the vocabulary.
+      if ((TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status ?? '')) {
         continue;
       }
 
@@ -436,7 +440,10 @@ export class AlertingService {
     const now = Date.now();
 
     for (const lead of allLeads) {
-      if (lead.status === 'dead' || lead.status === 'closed' || lead.status === 'converted') {
+      // `converted` is not a lead status — the canonical end of the funnel
+      // is `closed`, which is already named beside it, so this third term
+      // was inert. Stated once, from the vocabulary.
+      if ((TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status ?? '')) {
         continue;
       }
 

@@ -7,10 +7,11 @@
 
 import { db } from "../db";
 import { deals, landCreditScores, modelCalibrationLog } from "@shared/schema";
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { raiseAlert } from "./alertSpine";
 
+import { CLOSED_DEAL_STATUSES, RESOLVED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // ── Types ───────────────────────────────────────────────────────────
 
 interface WeightSnapshot {
@@ -198,7 +199,11 @@ export async function runLcsCalibrationSweep(): Promise<{ orgsSwept: number; adj
   const rows = await db
     .selectDistinct({ organizationId: deals.organizationId })
     .from(deals)
-    .where(and(gte(deals.updatedAt, sixMonthsAgo), sql`${deals.status} IN ('closed', 'closed_won', 'dead', 'cancelled')`));
+    // WAS `IN ('closed','closed_won','dead','cancelled')`. `closed_won` is
+    // not a deal status and `dead` is a LEAD status, so two of the four
+    // terms matched nothing; the sweep still found orgs via `closed` and
+    // `cancelled`, but the list read as broader than it was.
+    .where(and(gte(deals.updatedAt, sixMonthsAgo), inArray(deals.status, [...RESOLVED_DEAL_STATUSES])));
   let adjusted = 0;
   for (const row of rows) {
     if (!row.organizationId) continue;
@@ -232,7 +237,8 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
       .where(and(
         eq(deals.organizationId, orgId),
         gte(deals.updatedAt, sixMonthsAgo),
-        sql`${deals.status} IN ('closed', 'closed_won')`,
+        // WAS `IN ('closed','closed_won')` — the second term never matched.
+        inArray(deals.status, [...CLOSED_DEAL_STATUSES]),
       ))
       .limit(500);
 

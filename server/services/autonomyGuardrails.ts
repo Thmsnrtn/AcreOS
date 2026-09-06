@@ -23,6 +23,7 @@ import { eq, and } from "drizzle-orm";
 import { agentMemory } from "@shared/schema";
 import { logger } from "../utils/logger";
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const EMAIL_DAILY_LIMIT = 50;
@@ -131,7 +132,10 @@ export async function checkTcpaBeforeSend(
     }
 
     // Dead/closed leads — never contact autonomously
-    if (["dead", "closed", "lost"].includes(lead.status ?? "")) {
+    // `lost` is not a lead status, so the third term was inert. `dead` and
+    // `closed` — which ARE the terminals — already covered the intent, so
+    // this was misleading rather than broken. Derived now either way.
+    if ((TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status ?? "")) {
       return {
         allowed: false,
         reason: `Lead status is "${lead.status}" — Pax will not contact them`,

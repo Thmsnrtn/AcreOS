@@ -2249,11 +2249,16 @@ const scoreLeadSkill: Skill = {
       let score = 40;
       const factors: { name: string; impact: number; reason: string }[] = [];
 
-      // Motivation signals from status
-      if (lead.status === "motivated") {
-        score += 20;
-        factors.push({ name: "Motivation", impact: 20, reason: "Lead marked as motivated seller" });
-      } else if (lead.status === "interested") {
+      // Motivation signals from status.
+      //
+      // A `lead.status === "motivated"` branch worth +20 sat above this one
+      // and was UNREACHABLE: `motivated` is not a member of LEAD_STATUSES and
+      // nothing has ever written it. It is deleted rather than repaired
+      // because there is no canonical status that means it — seller motivation
+      // is a SCORE (sellerMotivationEngine), not a funnel state, and inventing
+      // a status for it would put a second, competing vocabulary in the same
+      // column.
+      if (lead.status === "interested") {
         score += 10;
         factors.push({ name: "Motivation", impact: 10, reason: "Lead marked as interested" });
       }

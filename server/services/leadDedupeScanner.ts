@@ -20,8 +20,9 @@
 
 import { db } from "../db";
 import { leads, type Lead } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 
+import { ADMINISTRATIVE_LEAD_STATUSES, TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface LeadCluster {
   /** What matched (phone / email / name_address). */
   matchType: "phone" | "email" | "name_address";
@@ -63,7 +64,14 @@ export async function findDuplicateClusters(
     .select()
     .from(leads)
     .where(
-      sql`${leads.organizationId} = ${organizationId} AND ${leads.status} NOT IN ('dead', 'converted', 'deleted')`,
+      // WAS `NOT IN ('dead','converted','deleted')`. `converted` is not a
+      // lead status — the comment above says the intent is "already terminal
+      // states", and those are `closed` and `dead`. `deleted` stays: it is a
+      // real administrative value the soft-delete writes.
+      and(
+        eq(leads.organizationId, organizationId),
+        notInArray(leads.status, [...TERMINAL_LEAD_STATUSES, ...ADMINISTRATIVE_LEAD_STATUSES]),
+      ),
     )
     .limit(50000);
 

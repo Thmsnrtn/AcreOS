@@ -4,7 +4,7 @@
  * Renders lead cohort conversion funnels segmented by:
  *   source | state | county | campaign | import_month | import_quarter
  *
- * Shows: contacted rate, offer rate, closed rate, avg days to close
+ * Shows: contacted rate, negotiation rate, closed rate, avg days to close
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -37,11 +37,11 @@ interface CohortRow {
   segment: string;
   totalLeads: number;
   contacted: number;
-  offerSent: number;
+  negotiating: number;
   underContract: number;
   closed: number;
   contactedRate: number;
-  offerRate: number;
+  negotiationRate: number;
   closedRate: number;
   avgDaysToClose: number | null;
 }
@@ -88,7 +88,11 @@ export function CohortAnalytics() {
       name: c.segment.length > 14 ? c.segment.slice(0, 13) + "…" : c.segment,
       fullName: c.segment,
       Contacted: Math.round(c.contactedRate * 100),
-      "Offer Sent": Math.round(c.offerRate * 100),
+      // Renamed from the old label. The tier counts leads at or past
+      // NEGOTIATION — a lead has no offer-sent state, offers live on
+      // deals — so the previous name described something the data never
+      // measured.
+      Negotiating: Math.round(c.negotiationRate * 100),
       Closed: Math.round(c.closedRate * 100),
     })) ?? [];
 
@@ -173,7 +177,7 @@ export function CohortAnalytics() {
               <CardContent>
                 <div
                   role="img"
-                  aria-label={`Conversion rates by ${SEGMENT_OPTIONS.find(o => o.value === segment)?.label ?? "segment"}: ${chartData.map((d: any) => `${d.fullName ?? d.name} contacted ${d.Contacted}%, offer sent ${d["Offer Sent"]}%, closed ${d.Closed}%`).join("; ")}`}
+                  aria-label={`Conversion rates by ${SEGMENT_OPTIONS.find(o => o.value === segment)?.label ?? "segment"}: ${chartData.map((d: any) => `${d.fullName ?? d.name} contacted ${d.Contacted}%, negotiating ${d.Negotiating}%, closed ${d.Closed}%`).join("; ")}`}
                 >
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
@@ -186,7 +190,7 @@ export function CohortAnalytics() {
                       />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="Contacted" fill={chartColor(0)} radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="Offer Sent" fill={chartColor(1)} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Negotiating" fill={chartColor(1)} radius={[2, 2, 0, 0]} />
                       <Bar dataKey="Closed" fill={chartColor(2)} radius={[2, 2, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -208,7 +212,7 @@ export function CohortAnalytics() {
                       <th scope="col" className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Segment</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Leads</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Contacted</th>
-                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Offer %</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Negotiating %</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Close %</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg days</th>
                     </tr>
@@ -219,7 +223,7 @@ export function CohortAnalytics() {
                         <td className="px-4 py-2 font-medium max-w-[160px] truncate">{row.segment}</td>
                         <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">{row.totalLeads}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{pct(row.contactedRate)}</td>
-                        <td className="px-4 py-2 text-right tabular-nums">{pct(row.offerRate)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{pct(row.negotiationRate)}</td>
                         <td className={`px-4 py-2 text-right font-semibold tabular-nums ${colorForRate(row.closedRate)}`}>
                           {pct(row.closedRate)}
                         </td>

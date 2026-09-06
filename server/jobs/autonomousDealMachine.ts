@@ -284,7 +284,14 @@ async function scoreNewDealsForOrg(
               state: deal.state || "",
               sourceTrackingCode: apnTrackingCode,
               score: motivationResult.score,
-              status: "active",
+              // WAS `"active"`, which is not a member of LEAD_STATUSES — so
+              // every lead this job created was invisible to the funnel
+              // counters, to crmEnhancements' stale-lead sweep (which looks
+              // for `IN ('new','contacted')`), and to the transition table.
+              // A freshly created lead is `new`; that is what the vocabulary
+              // calls it and what every other creator writes. Rows already
+              // carrying "active" stay readable via LEGACY_LEAD_STATUSES.
+              status: "new",
               source: "deal_hunter_auto",
               // leads has no county/apn column; preserved in notes for traceability.
               notes: `Auto-created from Deal Hunter. County: ${deal.county || "N/A"}, APN: ${deal.apn}. Motivation: ${motivationResult.grade} (${motivationResult.score}). Top signal: ${motivationResult.topSignals[0] || "N/A"}`,

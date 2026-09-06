@@ -93,22 +93,22 @@ function columnsIn(node: unknown): string[] {
 
 interface Fixture {
   dealsNotNew: number;
-  dealsClosedWon: number;
+  dealsClosed: number;
   offersRecorded: number;
   leadsWithOffers: number;
   offersWithPct: number;
   avgOfferPct: number | null;
-  offersOnClosedWon: number;
+  offersOnClosed: number;
 }
 
 const EMPTY: Fixture = {
   dealsNotNew: 0,
-  dealsClosedWon: 0,
+  dealsClosed: 0,
   offersRecorded: 0,
   leadsWithOffers: 0,
   offersWithPct: 0,
   avgOfferPct: null,
-  offersOnClosedWon: 0,
+  offersOnClosed: 0,
 };
 
 const ORG = 41;
@@ -141,12 +141,30 @@ async function analytics(f: Fixture, orgId = ORG) {
             const isOffers = ctx.table === "offers";
             const src = rawSql(ctx.where);
             if (isDeals) {
-              // closed_won vs != 'new' — read off the raw SQL fragment.
-              res([{ count: src.includes("closed_won") ? f.dealsClosedWon : f.dealsNotNew }]);
+              // WAS `src.includes("closed_won")`. Both deal counts were
+              // hand-written SQL then, and `closed_won` — the literal this
+              // discriminator keyed on — IS NOT A DEAL STATUS, so the numerator
+              // of the close rate was structurally zero for every organization.
+              // The unit now uses the canonical projections through `inArray`,
+              // which binds parameters instead of embedding a literal, and a
+              // discriminator that reads raw SQL sees the same text for both
+              // queries and silently answers with the wrong fixture.
+              //
+              // Keyed on the BOUND VALUES instead — which is a better test of
+              // the same thing, because it asserts WHICH statuses each count
+              // asks for rather than how the query happens to be spelled.
+              const statuses = bound(ctx.where, "status").map(String);
+              const isClosedQuery = statuses.includes("closed") && !statuses.includes("negotiating");
+              expect(
+                statuses.length,
+                "the deals count no longer binds any status — the query stopped " +
+                  "filtering, and this harness would answer for it anyway",
+              ).toBeGreaterThan(0);
+              res([{ count: isClosedQuery ? f.dealsClosed : f.dealsNotNew }]);
               return;
             }
             if (isOffers && ctx.joined === "deals") {
-              res([{ n: f.offersOnClosedWon }]);
+              res([{ n: f.offersOnClosed }]);
               return;
             }
             if (isOffers && names.includes("avgPct")) {
@@ -187,6 +205,9 @@ describe("getNegotiationAnalytics — nothing recorded means null, not zero", ()
     const { result } = await analytics(EMPTY);
     expect(result.basis).toEqual({
       dealsConsidered: 0,
+      // The RETURNED field keeps its name: it is part of the service's shape
+      // and is read elsewhere. Only the test-local fixtures were renamed, to
+      // stop them describing a status the vocabulary does not have.
       dealsClosedWon: 0,
       offersRecorded: 0,
       offersWithMarketValuePct: 0,
@@ -198,21 +219,21 @@ describe("getNegotiationAnalytics — nothing recorded means null, not zero", ()
 describe("every field moves with the data — none is a constant", () => {
   const A: Fixture = {
     dealsNotNew: 20,
-    dealsClosedWon: 5,
+    dealsClosed: 5,
     offersRecorded: 30,
     leadsWithOffers: 12,
     offersWithPct: 24,
     avgOfferPct: 72,
-    offersOnClosedWon: 11,
+    offersOnClosed: 11,
   };
   const B: Fixture = {
     dealsNotNew: 40,
-    dealsClosedWon: 8,
+    dealsClosed: 8,
     offersRecorded: 90,
     leadsWithOffers: 18,
     offersWithPct: 60,
     avgOfferPct: 55,
-    offersOnClosedWon: 32,
+    offersOnClosed: 32,
   };
 
   it("computes each field from its own inputs, hand-checked", async () => {
@@ -268,8 +289,8 @@ describe("every field moves with the data — none is a constant", () => {
     expect(columnsIn(pctSelect!.avgPct)).toContain("offer_percentage");
   });
 
-  it("no closed-won deal means no offers-to-close average", async () => {
-    const { result } = await analytics({ ...A, dealsClosedWon: 0, offersOnClosedWon: 0 });
+  it("no CLOSED deal means no offers-to-close average", async () => {
+    const { result } = await analytics({ ...A, dealsClosed: 0, offersOnClosed: 0 });
     expect(result.avgOffersToClose).toBeNull();
     expect(result.winRate).toBe(0); // 0 of 20 closed IS a measurement
   });
@@ -278,8 +299,8 @@ describe("every field moves with the data — none is a constant", () => {
 describe("every query is scoped to the calling organization", () => {
   it("each select carries organization_id = the caller's org", async () => {
     const { wheres } = await analytics({
-      dealsNotNew: 3, dealsClosedWon: 1, offersRecorded: 4,
-      leadsWithOffers: 2, offersWithPct: 4, avgOfferPct: 60, offersOnClosedWon: 2,
+      dealsNotNew: 3, dealsClosed: 1, offersRecorded: 4,
+      leadsWithOffers: 2, offersWithPct: 4, avgOfferPct: 60, offersOnClosed: 2,
     }, 999);
     // Five: deals(closed_won), deals(!= new), offers(avg pct), offers(totals),
     // offers x deals(closed_won). Pinned so a query added later has to be

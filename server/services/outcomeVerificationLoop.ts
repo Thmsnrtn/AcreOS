@@ -71,6 +71,10 @@ import { agentEvents, leads, deals, properties, organizations } from "@shared/sc
 import { eq, and, or, sql, desc, gte, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
+import {
+  CLOSED_DEAL_STATUSES,
+  ENGAGED_LEAD_STATUSES,
+} from "@shared/lifecycle/pipeline-status";
 /**
  * `"unverified"` is a first-class result, not a failure to produce one. It
  * means: no observation of this action's effect exists. It is reported, and it
@@ -252,11 +256,17 @@ class OutcomeVerificationLoop {
       if (!lead) {
         return { ...base, outcome: "unverified", reason: `Lead ${leadId} not found in this organization` };
       }
-      const positiveStatuses = ["contacted", "qualified", "offer_sent", "under_contract"];
-      if (positiveStatuses.includes(lead.status)) {
+      // WAS `["contacted", "qualified", "offer_sent", "under_contract"]` and
+      // `status === "dead" || status === "unsubscribed"`. `offer_sent` is a
+      // DEAL status and `unsubscribed` is not a status at all, so both were
+      // dead terms; worse, `responded` and `negotiating` — the strongest
+      // evidence a follow-up worked — were absent, so a lead that REPLIED was
+      // recorded as "status unchanged". This loop feeds agent trust evolution,
+      // so a wrong verdict here is not cosmetic.
+      if ((ENGAGED_LEAD_STATUSES as readonly string[]).includes(lead.status)) {
         return { ...base, outcome: "positive", reason: `Lead progressed to "${lead.status}" after follow-up` };
       }
-      if (lead.status === "dead" || lead.status === "unsubscribed") {
+      if (lead.status === "dead") {
         return { ...base, outcome: "negative", reason: `Lead went to "${lead.status}" after follow-up` };
       }
       // Observed, and it had not moved. That IS a measurement.
@@ -305,11 +315,16 @@ class OutcomeVerificationLoop {
       if (!deal) {
         return { ...base, outcome: "unverified", reason: `Deal ${dealId} not found in this organization` };
       }
-      if (deal.status === "closed_won") {
-        return { ...base, outcome: "negative", reason: "Deal closed won — risk flag was premature" };
+      // WAS `closed_won` / `closed_lost`. NEITHER IS A DEAL STATUS — the
+      // canonical terminals are `closed` and `cancelled` — so the "risk flag
+      // was premature" verdict was unreachable, and a deal that actually
+      // CLOSED fell through to the line below and was reported as "still
+      // active at closed", which is a false statement about a terminal row.
+      if ((CLOSED_DEAL_STATUSES as readonly string[]).includes(deal.status)) {
+        return { ...base, outcome: "negative", reason: "Deal closed — risk flag was premature" };
       }
-      if (deal.status === "closed_lost" || deal.status === "cancelled") {
-        return { ...base, outcome: "positive", reason: "Deal lost/cancelled — risk flag was accurate" };
+      if (deal.status === "cancelled") {
+        return { ...base, outcome: "positive", reason: "Deal cancelled — risk flag was accurate" };
       }
       // Still open: the flag has not yet been proved right or wrong.
       return { ...base, outcome: "unverified", reason: `Deal still active at "${deal.status}" — flag not yet resolved` };

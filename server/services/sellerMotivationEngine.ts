@@ -553,11 +553,69 @@ export function computeSellerMotivationScore(
 // Called by the county assessor ingest pipeline to refresh scores
 // ---------------------------------------------------------------------------
 
+/**
+ * REFUSES (2026-09-06). It cannot compute a motivation score, and the only
+ * thing that stopped it writing fabricated ones was a second bug.
+ *
+ * Two defects, and they were hiding each other.
+ *
+ * (1) THE FILTER SELECTS ON A STATUS THE VOCABULARY DOES NOT CONTAIN.
+ *     `eq(leads.status, "active")`, and "active" is not a member of
+ *     LEAD_STATUSES. pipeline-status.ts's header calls this exact shape a
+ *     filter that "matched NOTHING (those values are never written)".
+ *
+ *     THAT IS NOT TRUE HERE, and the difference matters. `active` IS written:
+ *     server/jobs/autonomousDealMachine.ts inserts every Deal-Hunter
+ *     auto-enrolled lead with `status: "active"`. So this query does not match
+ *     zero rows — it matches PRECISELY the auto-created leads, and only those,
+ *     which is the population whose `score` the Deal Hunter had just set to a
+ *     real motivation score at insert time.
+ *
+ * (2) EVERY SCORING INPUT IS A PLACEHOLDER. The TODO below the loop says it
+ *     plainly: tax-delinquency, ownership, owner-name and valuation signals
+ *     live on the related PROPERTY (properties.dueDiligenceData.distress,
+ *     properties.assessedValue), not on the lead row, and this function never
+ *     joins. So `computeSellerMotivationScore` was called with
+ *     `isTaxDelinquent: false, assessedValue: 0, ownershipYears: 0, …` for
+ *     every lead — the same constant input, hence the same constant score —
+ *     and that score was written over `leads.score`.
+ *
+ * Put together, this was not an inert function — it was an active one, and
+ * what it did was overwrite a REAL score with a fabricated one. Every
+ * Deal-Hunter lead it touched had its motivation score replaced by the
+ * constant that falls out of all-default inputs. A motivation score derived
+ * from `isTaxDelinquent: false, assessedValue: 0, ownershipYears: 0` is a
+ * number presented as a measurement of something it never looked at, which is
+ * the one thing this codebase refuses everywhere.
+ *
+ * And repairing (1) alone would make it worse, not better: widening the filter
+ * to the whole canonical vocabulary would extend the same overwrite from the
+ * auto-created leads to every lead in the organization.
+ *
+ * So it refuses instead, and says which join has to exist first. The route
+ * (`POST /seller-motivation/rescore-org`) answers 501 rather than a cheerful
+ * `{processed: 0}`.
+ *
+ * TO MAKE IT REAL: join `properties` on the lead, read the distress and
+ * valuation columns the scorer actually takes, then delete this throw and
+ * scope the write by organization as well as by id — the UPDATE below resolved
+ * `leads` by bare primary key, relying on the select above having been scoped.
+ */
 export async function rescoreLeadsForOrg(organizationId: number): Promise<{
   processed: number;
   highMotivation: number;
   upgraded: number;
 }> {
+  throw new Error(
+    "rescoreLeadsForOrg cannot score anything: every signal computeSellerMotivationScore " +
+      "takes (tax delinquency, ownership tenure, assessed value, out-of-state owner) lives " +
+      "on the lead's PROPERTY and this function never joins it, so it wrote the same " +
+      "placeholder-derived score over every lead it touched — which were the Deal-Hunter " +
+      "auto-enrolled leads, whose score had just been set to a real one. Wire the property " +
+      "join before re-enabling this.",
+  );
+
+  // eslint-disable-next-line no-unreachable
   const orgLeads = await db
     .select()
     .from(leads)

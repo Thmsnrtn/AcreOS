@@ -15,11 +15,12 @@ import { db } from "../db";
 import {
   leads, deals, tasks, agentEvents, decisionsInboxItems,
 } from "@shared/schema";
-import { eq, and, sql, desc, lt, gte, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { wsServer } from "../websocket";
 import { trustAuthorityEscalation } from "./trustAuthorityEscalation";
 import { logger } from "../utils/logger";
 
+import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Proposal {
@@ -83,7 +84,12 @@ const scanners: Record<string, Scanner> = {
         .from(deals)
         .where(and(
           eq(deals.organizationId, orgId),
-          sql`${deals.status} NOT IN ('closed_won', 'closed_lost', 'cancelled')`,
+          // WAS `NOT IN ('closed_won','closed_lost','cancelled')`. Neither
+          // closed_* value is a deal status, so the filter excluded only
+          // `cancelled` and this scanner proposed "deal going cold" on deals
+          // that had CLOSED a fortnight earlier. Stated positively and
+          // derived, so a new status joins the pipeline automatically.
+          inArray(deals.status, ACTIVE_DEAL_STATUSES),
           lt(deals.updatedAt, twoWeeksAgo),
         ))
         .limit(5);

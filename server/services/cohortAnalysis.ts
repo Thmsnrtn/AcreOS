@@ -22,7 +22,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, count, avg } from "drizzle-orm";
 
-import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { CLOSED_DEAL_STATUSES, ENGAGED_LEAD_STATUSES, NEGOTIATING_LEAD_STATUSES, UNDER_CONTRACT_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 export type CohortSegment =
   | "source"
   | "state"
@@ -35,11 +35,13 @@ export interface CohortRow {
   segment: string;
   totalLeads: number;
   contacted: number;
-  offerSent: number;
+  /** Leads at or past NEGOTIATION. Was `negotiating`, which named a lead
+   *  state that does not exist — offers live on deals, not leads. */
+  negotiating: number;
   underContract: number;
   closed: number;
   contactedRate: number;
-  offerRate: number;
+  negotiationRate: number;
   closedRate: number;
   avgDaysToClose: number | null;
   avgOfferToListRatio: number | null; // offer / estimated value
@@ -150,7 +152,7 @@ export async function buildCohortReport(
   for (const [segment, segLeads] of cohortMap) {
     const total = segLeads.length;
     let contacted = 0;
-    let offerSent = 0;
+    let negotiating = 0;
     let underContract = 0;
     let closed = 0;
     let totalDaysToClose = 0;
@@ -158,9 +160,15 @@ export async function buildCohortReport(
 
     for (const lead of segLeads) {
       const status = lead.status || "new";
-      if (["contacted", "offer_sent", "negotiating", "under_contract", "closed"].includes(status)) contacted++;
-      if (["offer_sent", "negotiating", "under_contract", "closed"].includes(status)) offerSent++;
-      if (["under_contract", "closed"].includes(status)) underContract++;
+      // All three tiers were spelled inline and all three were wrong in the
+      // same way. `offer_sent` is a DEAL status — a lead has no "offer sent"
+      // state, because offers live on deals — so it matched nothing in every
+      // list it appeared in, while `responded`, `interested`, `qualified` and
+      // `accepted` were missing from tiers they plainly belong to. A lead that
+      // REPLIED counted as not yet contacted.
+      if ((ENGAGED_LEAD_STATUSES as readonly string[]).includes(status)) contacted++;
+      if ((NEGOTIATING_LEAD_STATUSES as readonly string[]).includes(status)) negotiating++;
+      if ((UNDER_CONTRACT_LEAD_STATUSES as readonly string[]).includes(status)) underContract++;
 
       const deal = dealByLead.get(lead.id);
       if (deal && (CLOSED_DEAL_STATUSES as readonly string[]).includes(deal.status ?? "")) {
@@ -179,11 +187,11 @@ export async function buildCohortReport(
       segment,
       totalLeads: total,
       contacted,
-      offerSent,
+      negotiating,
       underContract,
       closed,
       contactedRate: total > 0 ? contacted / total : 0,
-      offerRate: total > 0 ? offerSent / total : 0,
+      negotiationRate: total > 0 ? negotiating / total : 0,
       closedRate: total > 0 ? closed / total : 0,
       avgDaysToClose: closedWithDays > 0 ? Math.round(totalDaysToClose / closedWithDays) : null,
       avgOfferToListRatio: null, // computed when AVM data is present

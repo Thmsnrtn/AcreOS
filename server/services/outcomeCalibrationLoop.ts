@@ -20,6 +20,7 @@ import { eq, and, gte, desc, sql, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { recordScoreOutcome, runWeeklyCalibration, type CalibrationResult } from "./modelCalibration";
 
+import { ENGAGED_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 // ── Types ───────────────────────────────────────────────────────────
 
 export interface ConfidenceInterval {
@@ -261,7 +262,11 @@ export async function calibrateSellerIntent(orgId: number): Promise<SellerIntent
       .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)))
       .limit(1);
 
-    if (lead && (lead.status === "contacted" || lead.status === "qualified" || lead.status === "converted")) {
+    // WAS `contacted || qualified || converted`. `converted` is not a lead
+    // status, and this counts leads that RESPONDED to an outreach — so
+    // `responded`, `negotiating` and `accepted`, the strongest evidence of
+    // exactly that, were all missing while an inert term stood in for them.
+    if (lead && (ENGAGED_LEAD_STATUSES as readonly string[]).includes(lead.status ?? "")) {
       respondedCount++;
     }
   }
