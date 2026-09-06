@@ -1083,20 +1083,6 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
   
-  // Agent Tasks
-  async getAgentTask(orgId: number, id: number) {
-    const [task] = await db.select().from(agentTasks)
-      .where(and(eq(agentTasks.organizationId, orgId), eq(agentTasks.id, id)));
-    return task;
-  }
-  
-  async updateAgentTask(id: number, updates: Partial<InsertAgentTask>, organizationId?: number) {
-    const conditions = [eq(agentTasks.id, id)];
-    if (organizationId) conditions.push(eq(agentTasks.organizationId, organizationId));
-    const [updated] = await db.update(agentTasks).set(updates).where(and(...conditions)).returning();
-    return updated;
-  }
-  
   // Conversations & Messages
   async getConversations(orgId: number, filters?: { leadId?: number; channel?: string }) {
     const conditions = [eq(conversations.organizationId, orgId)];

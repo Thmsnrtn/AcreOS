@@ -15,6 +15,7 @@ import {
 import { addMonths } from "../utils/dateUtils";
 import type { DatabaseStorage } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { assertWritablePatch } from "../utils/patch";
 
 // Amortization helpers — co-located with notes since they're only used
 // inside createNote. Original implementations lived in server/storage.ts
@@ -319,7 +320,7 @@ export const noteRepo = {
   async updatePayment(this: DatabaseStorage, id: number, updates: Partial<InsertPayment>, organizationId?: number): Promise<Payment> {
     const conditions = [eq(payments.id, id)];
     if (organizationId) conditions.push(eq(payments.organizationId, organizationId));
-    const [updated] = await db.update(payments).set(updates).where(and(...conditions)).returning();
+    const [updated] = await db.update(payments).set(assertWritablePatch(updates, "payments.updatePayment")).where(and(...conditions)).returning();
     return updated;
   },
 };

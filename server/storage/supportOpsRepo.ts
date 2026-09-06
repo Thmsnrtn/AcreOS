@@ -27,6 +27,7 @@ import {
   type InsertSystemAlert,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const supportOpsRepo = {
   // Usage Records
@@ -276,7 +277,7 @@ export const supportOpsRepo = {
 
   async updateSystemAlert(this: DatabaseStorage, id: number, updates: Partial<InsertSystemAlert>) {
     const [updated] = await db.update(systemAlerts)
-      .set(updates)
+      .set(assertWritablePatch(updates, "system_alerts.updateSystemAlert"))
       .where(eq(systemAlerts.id, id))
       .returning();
     return updated;

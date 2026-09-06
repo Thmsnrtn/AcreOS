@@ -3,6 +3,7 @@ import { apiJobs } from '@shared/schema';
 import { eq, lt, and, or, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { logger } from "../utils/logger";
+import { assertWritablePatch } from "../utils/patch";
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -60,7 +61,7 @@ export class ApiQueueService {
   }
 
   async updateJob(id: string, updates: Partial<typeof apiJobs.$inferInsert>) {
-    await db.update(apiJobs).set(updates).where(eq(apiJobs.id, id));
+    await db.update(apiJobs).set(assertWritablePatch(updates, "api_jobs.updateJob")).where(eq(apiJobs.id, id));
   }
 
   calculateBackoff(attempt: number): number {

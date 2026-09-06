@@ -17,6 +17,7 @@ import {
   type InsertPropertyListing,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const enrichmentRepo = {
   // Skip Traces
@@ -72,7 +73,7 @@ export const enrichmentRepo = {
     }
 
     const [updated] = await db.update(skipTraces)
-      .set(encrypted)
+      .set(assertWritablePatch(encrypted, "skip_traces.updateSkipTrace"))
       .where(and(...conditions))
       .returning();
     return decryptSkipTraceRow(updated)!;

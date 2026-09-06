@@ -38,6 +38,7 @@ import {
   type InsertFieldScoutPhoto,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const growthConfigRepo = {
   // Playbook Instances
@@ -241,7 +242,7 @@ export const growthConfigRepo = {
     error: string;
   }>): Promise<AdCreativeBundle | undefined> {
     const [updated] = await db.update(adCreativeBundles)
-      .set(data)
+      .set(assertWritablePatch(data, "ad_creative_bundles.updateAdCreativeBundle"))
       .where(eq(adCreativeBundles.id, id))
       .returning();
     return updated;

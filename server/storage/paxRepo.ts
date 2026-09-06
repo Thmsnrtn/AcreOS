@@ -24,6 +24,7 @@ import {
   type PaxConnectorInstance,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const paxRepo = {
   // PAX KNOWLEDGE BASE
@@ -47,7 +48,7 @@ export const paxRepo = {
   async updateKnowledgeFile(this: DatabaseStorage, id: number, updates: { isActive?: boolean; description?: string }, organizationId?: number): Promise<void> {
     const conditions = [eq(paxKnowledgeFiles.id, id)];
     if (organizationId) conditions.push(eq(paxKnowledgeFiles.organizationId, organizationId));
-    await db.update(paxKnowledgeFiles).set(updates).where(and(...conditions));
+    await db.update(paxKnowledgeFiles).set(assertWritablePatch(updates, "pax_knowledge_files.updateKnowledgeFile")).where(and(...conditions));
   },
 
   async deleteKnowledgeFile(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {
@@ -83,7 +84,7 @@ export const paxRepo = {
   async updatePaxProject(this: DatabaseStorage, id: number, updates: { name?: string; description?: string; isActive?: boolean }, organizationId?: number): Promise<void> {
     const conditions = [eq(paxProjects.id, id)];
     if (organizationId) conditions.push(eq(paxProjects.organizationId, organizationId));
-    await db.update(paxProjects).set(updates).where(and(...conditions));
+    await db.update(paxProjects).set(assertWritablePatch(updates, "pax_projects.updatePaxProject")).where(and(...conditions));
   },
 
   async deletePaxProject(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {

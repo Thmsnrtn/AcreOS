@@ -15,6 +15,7 @@ import {
   type InsertPaymentReminder,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 /**
  * Statuses a reminder row may sit in while it is still waiting for a rail to
@@ -160,7 +161,7 @@ export const paymentRemindersRepo = {
     const conditions = [eq(paymentReminders.id, id)];
     if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
     const [updated] = await db.update(paymentReminders)
-      .set(updates)
+      .set(assertWritablePatch(updates, "payment_reminders.updatePaymentReminder"))
       .where(and(...conditions))
       .returning();
     return updated;

@@ -19,6 +19,7 @@ import {
   type InsertAiMemory,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const aiRepo = {
   // AI Agent Profiles
@@ -60,7 +61,7 @@ export const aiRepo = {
     const conditions = [eq(aiExecutionRuns.id, id)];
     if (organizationId) conditions.push(eq(aiExecutionRuns.organizationId, organizationId));
     const [updated] = await db.update(aiExecutionRuns)
-      .set(updates)
+      .set(assertWritablePatch(updates, "ai_execution_runs.updateAiExecutionRun"))
       .where(and(...conditions))
       .returning();
     return updated;

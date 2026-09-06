@@ -37,6 +37,7 @@ import {
   type InsertCountyResearch,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const vaEngineRepo = {
   // VA REPLACEMENT ENGINE TABLES
@@ -162,7 +163,7 @@ export const vaEngineRepo = {
     const conditions = [eq(sellerCommunications.id, id)];
     if (organizationId) conditions.push(eq(sellerCommunications.organizationId, organizationId));
     const [updated] = await db.update(sellerCommunications)
-      .set(updates)
+      .set(assertWritablePatch(updates, "seller_communications.updateSellerCommunication"))
       .where(and(...conditions))
       .returning();
     return updated;
@@ -319,7 +320,7 @@ export const vaEngineRepo = {
 
   async updateCollectionEnrollment(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertCollectionEnrollment>): Promise<CollectionEnrollment> {
     const [updated] = await db.update(collectionEnrollments)
-      .set(updates)
+      .set(assertWritablePatch(updates, "collection_enrollments.updateCollectionEnrollment"))
       .where(and(eq(collectionEnrollments.id, id), eq(collectionEnrollments.organizationId, orgId)))
       .returning();
     return updated;

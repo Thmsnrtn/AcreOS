@@ -31,6 +31,7 @@ import {
   type InsertDelinquencyEscalation,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const closingServicingRepo = {
   // Buyer Reservations
@@ -59,7 +60,7 @@ export const closingServicingRepo = {
 
   async updateBuyerReservation(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertBuyerReservation>): Promise<BuyerReservation | undefined> {
     const [updated] = await db.update(buyerReservations)
-      .set(data)
+      .set(assertWritablePatch(data, "buyer_reservations.updateBuyerReservation"))
       .where(and(eq(buyerReservations.id, id), eq(buyerReservations.organizationId, organizationId)))
       .returning();
     return updated;
@@ -136,7 +137,7 @@ export const closingServicingRepo = {
 
   async updateClosingPacket(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertClosingPacket>): Promise<ClosingPacket | undefined> {
     const [updated] = await db.update(closingPackets)
-      .set(data)
+      .set(assertWritablePatch(data, "closing_packets.updateClosingPacket"))
       .where(and(eq(closingPackets.id, id), eq(closingPackets.organizationId, organizationId)))
       .returning();
     return updated;
@@ -184,7 +185,7 @@ export const closingServicingRepo = {
 
   async updateAutopayEnrollment(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertAutopayEnrollment>): Promise<AutopayEnrollment | undefined> {
     const [updated] = await db.update(autopayEnrollments)
-      .set(data)
+      .set(assertWritablePatch(data, "autopay_enrollments.updateAutopayEnrollment"))
       .where(and(eq(autopayEnrollments.id, id), eq(autopayEnrollments.organizationId, organizationId)))
       .returning();
     return updated;
@@ -222,7 +223,7 @@ export const closingServicingRepo = {
 
   async updatePayoffQuote(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertPayoffQuote>): Promise<PayoffQuote | undefined> {
     const [updated] = await db.update(payoffQuotes)
-      .set(data)
+      .set(assertWritablePatch(data, "payoff_quotes.updatePayoffQuote"))
       .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)))
       .returning();
     return updated;

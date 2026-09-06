@@ -23,6 +23,7 @@ import {
   type InsertBorrowerSession,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const platformOpsRepo = {
   // Feature Requests
@@ -149,7 +150,7 @@ export const platformOpsRepo = {
     
     if (existing) {
       const [updated] = await db.update(agentRuns)
-        .set(updates)
+        .set(assertWritablePatch(updates, "agent_runs.updateAgentStatus"))
         .where(eq(agentRuns.agentName, agentName))
         .returning();
       return updated;

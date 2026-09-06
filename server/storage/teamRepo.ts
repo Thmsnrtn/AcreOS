@@ -9,6 +9,7 @@ import {
   type OrgCoOwner, type InsertOrgCoOwner,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const teamRepo = {
   // Team Members
@@ -39,7 +40,7 @@ export const teamRepo = {
   async updateTeamMember(this: DatabaseStorage, id: number, updates: Partial<InsertTeamMember>, organizationId?: number): Promise<TeamMember> {
     const conditions = [eq(teamMembers.id, id)];
     if (organizationId) conditions.push(eq(teamMembers.organizationId, organizationId));
-    const [updated] = await db.update(teamMembers).set(updates).where(and(...conditions)).returning();
+    const [updated] = await db.update(teamMembers).set(assertWritablePatch(updates, "team_members.updateTeamMember")).where(and(...conditions)).returning();
     return updated;
   },
 

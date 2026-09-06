@@ -25,6 +25,7 @@ import {
   type InsertMailingOrderPiece,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const mailRepo = {
   // ============================================
@@ -199,7 +200,7 @@ export const mailRepo = {
     const conditions = [eq(inboxMessages.id, id)];
     if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
-      .set(updates)
+      .set(assertWritablePatch(updates, "inbox_messages.updateInboxMessage"))
       .where(and(...conditions))
       .returning();
     return updated;

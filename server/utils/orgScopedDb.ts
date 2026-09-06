@@ -45,6 +45,7 @@ import { PgTable, type AnyPgColumn, type AnyPgTable } from "drizzle-orm/pg-core"
 import * as schema from "@shared/schema";
 import { db, type PrimaryDb } from "../db";
 import { logger } from "./logger";
+import { assertWritablePatch } from "./patch";
 
 // ----------------------------------------------------------------------------
 // Org-scoped table shape
@@ -194,7 +195,7 @@ export class OrgScopedDb {
   ): Promise<T["$inferSelect"] | undefined> {
     const rows = await db
       .update(table as AnyPgTable)
-      .set(set as never)
+      .set(assertWritablePatch(set, "orgScopedDb.updateById") as never)
       .where(this.scope(table, eq(table.id, id as never)))
       .returning();
     return rows[0] as T["$inferSelect"] | undefined;

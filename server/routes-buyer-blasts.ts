@@ -38,6 +38,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
+import { hasWritableValues } from "./utils/patch";
 import { logger } from "./utils/logger";
 import { sendEmail } from "./services/emailService";
 
@@ -383,6 +384,14 @@ export function registerBuyerBlastRoutes(app: Express): void {
         };
         if (parsed.data.status === "replied_interested" || parsed.data.status === "replied_not_interested") {
           update.respondedAt = new Date();
+        }
+        // Both schema fields are optional, so `{}` parses clean and reaches
+        // here with nothing to set. Unlike its sibling routes this patch has
+        // no unconditional `updatedAt`, so Drizzle would render
+        // `set  where …` — a Postgres syntax error answered as a 500 about
+        // SQL grammar. An empty PATCH body is the client's mistake; say so.
+        if (!hasWritableValues(update)) {
+          return Errors.badRequest(res, "No fields to update");
         }
         const [row] = await db
           .update(buyerBlastRecipients)

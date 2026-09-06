@@ -26,6 +26,7 @@ import {
   type InsertDealChecklist,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const dueDiligenceRepo = {
   // Due Diligence Templates
@@ -49,7 +50,7 @@ export const dueDiligenceRepo = {
     const conditions = [eq(dueDiligenceTemplates.id, id)];
     if (organizationId) conditions.push(eq(dueDiligenceTemplates.organizationId, organizationId));
     const [updated] = await db.update(dueDiligenceTemplates)
-      .set(updates)
+      .set(assertWritablePatch(updates, "due_diligence_templates.updateDueDiligenceTemplate"))
       .where(and(...conditions))
       .returning();
     return updated;
@@ -102,7 +103,7 @@ export const dueDiligenceRepo = {
       updateData.completedBy = null;
     }
     const [updated] = await db.update(dueDiligenceItems)
-      .set(updateData)
+      .set(assertWritablePatch(updateData, "due_diligence_items.updateDueDiligenceItem"))
       .where(eq(dueDiligenceItems.id, id))
       .returning();
     return updated;

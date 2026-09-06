@@ -5,9 +5,9 @@
   "globs": [
     "server/storage.ts"
   ],
-  "baselineCount": 1664,
+  "baselineCount": 1650,
   "direction": "down",
-  "lastBumpNote": "1692 -> 1682 on 2026-07-29: reduction landed by founder ruling #12(c) Wave A ('Nothing lies'). Dead-surface purge (routes-tax-optimization 501 router, /automation twin, Field Scout) plus the skip-trace and rentals rewrites removed these. Locked in per this ratchet's down-only rule.",
+  "lastBumpNote": "LOWERED to 1650 on 2026-09-06: getAgentTask/updateAgentTask moved out to agentWorkflowsRepo, which already owns agent feedback and joins agentTasks to it. The extraction was forced by this ratchet — an empty-patch guard needed one import line in storage.ts, and down-only meant the honest way to pay for it was to carve the methods out rather than raise the number. Their IStorage declarations stay in storage.ts, matching how getAgentStatuses/updateAgentStatus were handled for platformOpsRepo. || PREVIOUS: 1692 -> 1682 on 2026-07-29: reduction landed by founder ruling #12(c) Wave A ('Nothing lies'). Dead-surface purge (routes-tax-optimization 501 router, /automation twin, Field Scout) plus the skip-trace and rentals rewrites removed these. Locked in per this ratchet's down-only rule.",
   "minima": {
     "files": 1
   },

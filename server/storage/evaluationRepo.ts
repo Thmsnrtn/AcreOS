@@ -18,6 +18,7 @@ import {
   type InsertGoNogoMemo,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const evaluationRepo = {
   // DD Assignments
@@ -55,7 +56,7 @@ export const evaluationRepo = {
 
   async updateDDAssignment(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertDdAssignment>): Promise<DdAssignment | undefined> {
     const [updated] = await db.update(ddAssignments)
-      .set(data)
+      .set(assertWritablePatch(data, "dd_assignments.updateDDAssignment"))
       .where(and(eq(ddAssignments.id, id), eq(ddAssignments.organizationId, organizationId)))
       .returning();
     return updated;
@@ -95,7 +96,7 @@ export const evaluationRepo = {
 
   async updateSwotReport(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertSwotReport>): Promise<SwotReport | undefined> {
     const [updated] = await db.update(swotReports)
-      .set(data)
+      .set(assertWritablePatch(data, "swot_reports.updateSwotReport"))
       .where(and(eq(swotReports.id, id), eq(swotReports.organizationId, organizationId)))
       .returning();
     return updated;
@@ -129,7 +130,7 @@ export const evaluationRepo = {
 
   async updateGoNogoMemo(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertGoNogoMemo>): Promise<GoNogoMemo | undefined> {
     const [updated] = await db.update(goNogoMemos)
-      .set(data)
+      .set(assertWritablePatch(data, "go_nogo_memos.updateGoNogoMemo"))
       .where(and(eq(goNogoMemos.id, id), eq(goNogoMemos.organizationId, organizationId)))
       .returning();
     return updated;

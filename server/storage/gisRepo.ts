@@ -26,6 +26,7 @@ import {
 import { normalizeParcelRef } from "@shared/parcel/parcelRef";
 import { logger } from "../utils/logger";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 /**
  * Match a stored county against a parcelRef-normalised county name.
@@ -227,7 +228,7 @@ export const gisRepo = {
 
   async updateDiscoveredEndpoint(this: DatabaseStorage, id: number, updates: Partial<InsertDiscoveredEndpoint>): Promise<DiscoveredEndpoint> {
     const [updated] = await db.update(discoveredEndpoints)
-      .set(updates)
+      .set(assertWritablePatch(updates, "discovered_endpoints.updateDiscoveredEndpoint"))
       .where(eq(discoveredEndpoints.id, id))
       .returning();
     return updated;

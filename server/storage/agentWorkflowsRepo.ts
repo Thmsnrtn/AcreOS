@@ -25,10 +25,37 @@ import {
   type InsertWorkflow,
   type InsertWorkflowRun,
   type InsertScheduledTask,
+  type AgentTask,
+  type InsertAgentTask,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { assertWritablePatch } from "../utils/patch";
 
 export const agentWorkflowsRepo = {
+  // Agent Tasks — extracted from the god-class 2026-09-06 alongside the
+  // empty-patch guard below. They belong here rather than in storage.ts:
+  // this repo already owns agent feedback, and joins agentTasks to it.
+  async getAgentTask(this: DatabaseStorage, orgId: number, id: number): Promise<AgentTask | undefined> {
+    const [task] = await db.select().from(agentTasks)
+      .where(and(eq(agentTasks.organizationId, orgId), eq(agentTasks.id, id)));
+    return task;
+  },
+
+  async updateAgentTask(
+    this: DatabaseStorage,
+    id: number,
+    updates: Partial<InsertAgentTask>,
+    organizationId?: number,
+  ): Promise<AgentTask> {
+    const conditions = [eq(agentTasks.id, id)];
+    if (organizationId) conditions.push(eq(agentTasks.organizationId, organizationId));
+    const [updated] = await db.update(agentTasks)
+      .set(assertWritablePatch(updates, "agent_tasks.updateAgentTask"))
+      .where(and(...conditions))
+      .returning();
+    return updated;
+  },
+
   // Agent Memory
   async createAgentMemory(this: DatabaseStorage, memory: InsertAgentMemory): Promise<AgentMemory> {
     const [created] = await db.insert(agentMemory).values(memory).returning();
@@ -211,7 +238,7 @@ export const agentWorkflowsRepo = {
 
   async updateWorkflowRun(this: DatabaseStorage, id: number, updates: Partial<InsertWorkflowRun>): Promise<WorkflowRun> {
     const [updated] = await db.update(workflowRuns)
-      .set(updates as any)
+      .set(assertWritablePatch(updates, "workflow_runs.updateWorkflowRun") as any)
       .where(eq(workflowRuns.id, id))
       .returning();
     return updated;
