@@ -14,7 +14,10 @@
 // ============================================================================
 
 import { z } from "zod";
-import { insertLeadSchema } from "../schema";
+// Client-safe: this contract reaches the browser through contracts/index.ts,
+// so it composes the plain-zod lead schema rather than the drizzle-zod one.
+// Same accept-set, pinned by clientFormSchemasMatchDrizzle.test.ts.
+import { insertLeadSchema } from "../forms/lead";
 import type { ApiContract } from "./index";
 
 /**

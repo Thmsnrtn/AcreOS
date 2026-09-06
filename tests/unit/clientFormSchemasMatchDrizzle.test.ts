@@ -36,11 +36,17 @@ import { z } from "zod";
 import { insertLeadSchema as drizzleLead } from "@shared/schema";
 import { insertPropertySchema as drizzleProperty } from "@shared/schema";
 import { insertDealSchema as drizzleDeal } from "@shared/schema";
+import { insertNoteSchema as drizzleNote } from "@shared/schema";
+import { insertTargetCountySchema as drizzleCounty } from "@shared/schema";
+import { insertCampaignSchema as drizzleCampaign } from "@shared/schema";
 import { insertAgentTaskSchema as drizzleAgentTask } from "@shared/schema";
 
 import { insertLeadSchema as plainLead } from "@shared/forms/lead";
 import { insertPropertySchema as plainProperty } from "@shared/forms/property";
 import { insertDealSchema as plainDeal } from "@shared/forms/deal";
+import { insertNoteSchema as plainNote } from "@shared/forms/note";
+import { insertTargetCountySchema as plainCounty } from "@shared/forms/target-county";
+import { insertCampaignSchema as plainCampaign } from "@shared/forms/campaign";
 import { insertAgentTaskSchema as plainAgentTask } from "@shared/forms/agent-task";
 
 /** Field name -> whether the schema accepts the object with that key absent. */
@@ -59,6 +65,9 @@ const PAIRS: Array<{ name: string; drizzle: z.ZodTypeAny; plain: z.ZodTypeAny }>
   { name: "insertLeadSchema", drizzle: drizzleLead, plain: plainLead },
   { name: "insertPropertySchema", drizzle: drizzleProperty, plain: plainProperty },
   { name: "insertDealSchema", drizzle: drizzleDeal, plain: plainDeal },
+  { name: "insertNoteSchema", drizzle: drizzleNote, plain: plainNote },
+  { name: "insertTargetCountySchema", drizzle: drizzleCounty, plain: plainCounty },
+  { name: "insertCampaignSchema", drizzle: drizzleCampaign, plain: plainCampaign },
   { name: "insertAgentTaskSchema", drizzle: drizzleAgentTask, plain: plainAgentTask },
 ];
 

@@ -1,14 +1,20 @@
 import { z } from 'zod';
-import { 
-  insertLeadSchema, 
-  insertPropertySchema, 
-  insertNoteSchema, 
-  insertAgentTaskSchema,
-  leads,
-  properties,
-  notes,
-  agentTasks
-} from './schema';
+// CLIENT-SAFE IMPORTS ONLY. This module is imported by three client hooks
+// (use-leads, use-properties, use-notes), so anything it pulls in ships in the
+// browser. `./schema` is a barrel over 84 drizzle modules whose column chains no
+// bundler can prove pure — one VALUE import from it drags all 541 table
+// definitions into the entry chunk.
+//
+// The four table objects below are used ONLY inside `z.custom<typeof
+// X.$inferSelect>()`, which is a pure TYPE position, so `import type` erases
+// them entirely. The four zod schemas are used as VALUES (.omit/.partial/as an
+// `input`), so they come from shared/forms/* — plain zod, pinned against
+// drizzle-zod by clientFormSchemasMatchDrizzle.test.ts.
+import { insertLeadSchema } from './forms/lead';
+import { insertPropertySchema } from './forms/property';
+import { insertNoteSchema } from './forms/note';
+import { insertAgentTaskSchema } from './forms/agent-task';
+import type { leads, properties, notes, agentTasks } from './schema';
 
 export const createAgentTaskInputSchema = insertAgentTaskSchema.omit({ organizationId: true });
 
