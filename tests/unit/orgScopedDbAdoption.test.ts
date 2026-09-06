@@ -88,14 +88,20 @@ const productionFiles = PRODUCTION_ROOTS.flatMap((r) => walk(path.join(ROOT, r))
  * (mailRepo alone holds four `findById` calls), and reporting one as the other
  * is how a number in a comment goes quietly wrong.
  */
+const STRIPPED: Array<{ rel: string; code: string }> = productionFiles
+  .map((abs) => ({ rel: path.relative(ROOT, abs), abs }))
+  .filter((f) => f.rel !== SOURCE)
+  .map((f) => ({ rel: f.rel, code: stripComments(readFileSync(f.abs, "utf8")) }));
+
 function productionCallers(method: string): { files: string[]; calls: number } {
   const re = new RegExp(`\\.\\s*${method}\\s*\\(`, "g");
   const files: string[] = [];
   let calls = 0;
-  for (const abs of productionFiles) {
-    const rel = path.relative(ROOT, abs);
-    if (rel === SOURCE) continue;
-    const found = stripComments(readFileSync(abs, "utf8")).match(re);
+  // Read and stripped ONCE, above. Stripping is a parse now (~6ms per file),
+  // and re-stripping 2,600 files once per method took this suite past vitest's
+  // 30s ceiling the day that landed.
+  for (const { rel, code } of STRIPPED) {
+    const found = code.match(re);
     if (found) {
       files.push(rel);
       calls += found.length;

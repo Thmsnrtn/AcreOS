@@ -290,6 +290,42 @@ describe("the write-side gate exists, is wired, and knows the whole vocabulary",
     ).toBe(false);
   });
 
+  it("reads are checked too, and only inside a leads/deals query chain", () => {
+    const gate = stripComments(
+      fs.readFileSync(path.resolve(process.cwd(), "scripts/check-status-vocabulary.mjs"), "utf8"),
+    );
+    // The chain scoping is the whole reason the read side can be gated at all.
+    // A repo-wide line scan over status literals reports `leadType:
+    // ["seller"]`, `outcome: "positive"` and a `deal_status` context key —
+    // ~40 false positives — and a gate whose findings are mostly false gets
+    // switched off within a day.
+    expect(gate, "the read side is gone").toContain("readOffenders");
+    expect(gate, "the chain scoping is gone — the read side is now repo-wide")
+      .toContain("chainRootOf");
+    expect(gate, "the read floor is gone — a stalled read walk would pass as clean")
+      .toContain("CHAIN_FLOOR");
+    // Reads may name a legacy value; writes may not. Both directions matter.
+    expect(gate).toContain("READABLE");
+  });
+
+  it("the read side PARSES literals rather than scanning chain text", () => {
+    // Written after this gate reported two offenders in customerNarrative that
+    // were the COMMENT explaining what the old code did — the fourth law, in
+    // the gate written to enforce the fix. `getText()` on the chain includes
+    // comments; walking template and string NODES never visits one.
+    const gate = stripComments(
+      fs.readFileSync(path.resolve(process.cwd(), "scripts/check-status-vocabulary.mjs"), "utf8"),
+    );
+    expect(gate).toContain("isTemplateExpression");
+    expect(gate).toContain("isNoSubstitutionTemplateLiteral");
+    // The specific mistake: scanning the chain's raw text.
+    expect(
+      /root\.getText\(/.test(gate),
+      "the read side is reading the chain's raw text again, which includes the " +
+        "comments that document every literal it removed",
+    ).toBe(false);
+  });
+
   it("the administrative statuses are the ones production actually writes", () => {
     // Measured by walking writes, not filters — which is the whole reason
     // these three were missing from the vocabulary in the first place.
