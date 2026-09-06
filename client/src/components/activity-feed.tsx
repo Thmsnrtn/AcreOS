@@ -24,7 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import type { ActivityEvent, ActivityEventType } from "@shared/schema";
-import { ACTIVITY_EVENT_TYPES } from "@shared/schema";
+import { ACTIVITY_EVENT_TYPES } from "@shared/constants/activity";
 
 const eventTypeIcons: Record<ActivityEventType, typeof Mail> = {
   email_sent: Mail,

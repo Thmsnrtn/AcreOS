@@ -278,19 +278,16 @@ export type InsertTenant = typeof tenants.$inferInsert;
 // would drift; one column does not.
 // ----------------------------------------------------------------------------
 
-export const RENTAL_UNIT_KINDS = [
-  "unit",   // apartment / side of a duplex / the whole SFR
-  "pad",    // mobile-home park: tenant owns the home, rents the ground
-  "suite",  // commercial / mixed-use tenancy
-] as const;
-export type RentalUnitKind = typeof RENTAL_UNIT_KINDS[number];
-
-export const RENTAL_UNIT_STATUSES = [
-  "active",   // rentable today — belongs in both occupancy denominators
-  "offline",  // exists but cannot be rented right now (fire, mid-renovation)
-  "retired",  // no longer a rentable slot (combined into another, demolished)
-] as const;
-export type RentalUnitStatus = typeof RENTAL_UNIT_STATUSES[number];
+// The four vocabulary exports moved to shared/constants/rental.ts (runtime-free,
+// so the client can import them without dragging the ORM). Re-exported here so
+// the table definitions below and every server caller are unchanged.
+export {
+  RENTAL_UNIT_KINDS,
+  RENTAL_UNIT_STATUSES,
+  type RentalUnitKind,
+  type RentalUnitStatus,
+} from "../constants/rental";
+import type { RentalUnitKind, RentalUnitStatus } from "../constants/rental";
 
 export const rentalUnits = pgTable(
   "rental_units",

@@ -84,7 +84,7 @@ import {
   parseRentRollPaste,
   type UnitBulkCreateReport,
 } from "@shared/rental/unitInventory";
-import { RENTAL_UNIT_STATUSES, type RentalUnitKind, type RentalUnitStatus } from "@shared/schema";
+import { RENTAL_UNIT_STATUSES, type RentalUnitKind, type RentalUnitStatus } from "@shared/constants/rental";
 
 // ---------------------------------------------------------------------------
 // Wire types

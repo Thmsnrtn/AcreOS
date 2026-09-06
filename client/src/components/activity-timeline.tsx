@@ -26,7 +26,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/empty-state";
 import type { ActivityEvent, ActivityEventType } from "@shared/schema";
-import { ACTIVITY_EVENT_TYPES } from "@shared/schema";
+import { ACTIVITY_EVENT_TYPES } from "@shared/constants/activity";
 
 const eventTypeIcons: Record<ActivityEventType, typeof Mail> = {
   email_sent: Mail,
