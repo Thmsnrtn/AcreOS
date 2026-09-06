@@ -396,7 +396,48 @@ const consideredKeys = new Set();
 // check-org-scoped-fetch's 2026-08-16 widening from method-shape to
 // function-shape: the existing registers did not move at all, so the signal they
 // carry is not diluted by a one-off +54.
-const EXPORT_SOURCE_DIRS = ["server/services", "server/jobs", "shared"];
+/**
+ * THE POPULATION THIS GATE READS — widened 2026-09-06, and the widening is the
+ * point.
+ *
+ * This linter exists to catch built-but-unwired code, which CLAUDE.md names as
+ * this repository's single most common defect. For its whole life it read three
+ * directories: server/services, server/jobs and shared. It had never opened
+ *
+ *     server/middleware   server/utils   server/ai   server/storage
+ *
+ * so every export in them was invisible to the instrument whose entire job is
+ * seeing them. `server/ai` is the same directory CLAUDE.md's third law names as
+ * a load-bearing population — the one whose 91-case dispatch switch no gate had
+ * ever read.
+ *
+ * Measured on widening: unreached-exports 370 -> 434, internal-only 1168 ->
+ * 1242, module-orphans 28 -> 36, opaque-exports 16 -> 19. 149 items became
+ * visible in one step.
+ *
+ * THOSE BASELINES WENT UP, WHICH A DOWN-ONLY RATCHET NORMALLY FORBIDS. The code
+ * did not get worse; the gate started looking. That is the one legitimate reason
+ * a ratchet may rise, and it is why this note exists rather than a one-line bump
+ * — a silent increase here is indistinguishable from the regression the ratchet
+ * is meant to stop. From this point the counts are down-only again, so the value
+ * bought is that NEW dead code in these four directories now fails CI, which it
+ * never could before.
+ *
+ * The 149 are debt, not absolution. They are not triaged here: the precedent
+ * (the 30-entry UNREACHABLE cluster in the deletion ledger) is that a cluster
+ * this size gets one agent per file plus an adversarial second read, and becomes
+ * a ledger row rather than a deletion commit. Adding a directory to this list is
+ * cheap; deleting what it reveals is the work.
+ */
+const EXPORT_SOURCE_DIRS = [
+  "server/services",
+  "server/jobs",
+  "server/middleware",
+  "server/utils",
+  "server/ai",
+  "server/storage",
+  "shared",
+];
 
 const EXPORT_DECL_RE =
   /^[ \t]*export\s+(?:declare\s+)?(?:async\s+)?(function\*?|const|let|var|class|abstract\s+class)\s+([A-Za-z_$][\w$]*)/gm;

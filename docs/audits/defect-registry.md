@@ -1713,6 +1713,65 @@ tests red, including the two-conventions one) and by removing the bare-date guar
 (1 test red).
 Resolving commits: pending
 
+### DEFECT-0087
+Title: The built-but-unwired gate had never opened server/ai, middleware, utils or storage
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census, 2026-09-06 (two families found it independently)
+Description: `lint-reachability.mjs` exists to catch built-but-unwired code —
+which CLAUDE.md names as this repository's single most common defect, the one
+behind route files never mounted, jobs never registered and services with zero
+call sites. Its export-scanning population was three directories:
+
+    const EXPORT_SOURCE_DIRS = ["server/services", "server/jobs", "shared"];
+
+It had never opened `server/middleware`, `server/utils`, `server/ai` or
+`server/storage`. Every export in them was invisible to the instrument whose
+entire purpose is seeing them — and `server/ai` is the same directory CLAUDE.md's
+third law names as a load-bearing population, the one whose 91-case dispatch
+switch no gate had ever read.
+
+This is that law aimed at the gate that enforces it: *"a gate proves its property
+only over the population it actually reads"*, and the population is invisible in
+a green result. The gate reported PASS at 370 unreached exports for its whole
+life, and the number was true about the three directories it read.
+
+MEASURED on widening — 149 items became visible in one step:
+
+| family | was | now | delta |
+|---|---|---|---|
+| unreached-exports | 370 | 434 | +64 |
+| internal-only-exports | 1,168 | 1,242 | +74 |
+| module-orphans | 28 | 36 | +8 |
+| opaque-exports | 16 | 19 | +3 |
+
+Two are already legible as genuinely dead files rather than seam artefacts:
+`server/middleware/customDomainRouter.ts` and `server/middleware/pagination.ts`,
+both "nothing in production imports this file".
+
+Evidence: `scripts/lint-reachability.mjs:399` (before).
+Remediation plan: Done. The four directories are in the population, and the four
+baselines were RAISED to the measured truth.
+
+A raised baseline on a down-only ratchet is normally forbidden, and that is the
+whole reason this entry exists rather than a one-line bump: the code did not get
+worse, the gate started looking, and a silent rise is indistinguishable from the
+regression the ratchet is meant to stop. From here the counts are down-only
+again, so what the widening buys is that NEW dead code in those four directories
+fails CI — which it never could before.
+
+The 149 are debt, not absolution. They are deliberately NOT triaged in this
+commit: the precedent (the 30-entry UNREACHABLE cluster in the deletion ledger)
+is that a cluster this size earns one agent per file plus an adversarial second
+read and becomes a ledger row, not a deletion commit. Adding a directory to the
+list is cheap; deleting what it reveals is the work.
+
+Falsified three ways, each asserted to have landed before its verdict was read:
+a new dead export in `server/ai` -> RED (was invisible); the same in
+`server/middleware` -> RED (was invisible); the same in `server/services`, always
+read -> RED (control, proving the existing behaviour is unchanged).
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
@@ -1720,9 +1779,9 @@ Resolving commits: pending
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 11  | 11    |
-| FIXED  | 12  | 48  | 8   | 68    |
+| FIXED  | 12  | 49  | 8   | 69    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **51** | **20** | **83** |
+| **Total** | **12** | **52** | **20** | **84** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
