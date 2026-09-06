@@ -39,6 +39,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -55,14 +56,6 @@ function clientFiles(): string[] {
   };
   walk(path.join(ROOT, "client/src"));
   return out.sort();
-}
-
-/** Comments blanked, not removed — offsets stay honest and prose cannot trip a code check. */
-function stripComments(src: string): string {
-  const blank = (s: string) => s.replace(/[^\n]/g, " ");
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])(\/\/.*)$/gm, (_a, p: string, c: string) => p + blank(c));
 }
 
 function definersOf(name: string): string[] {

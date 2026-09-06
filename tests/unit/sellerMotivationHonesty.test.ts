@@ -37,6 +37,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   computeSellerMotivationScore,
   type SellerMotivationInput,
@@ -91,7 +92,7 @@ describe("the route refuses instead of scoring from placeholders", () => {
     expect(at, "the seller-motivation route moved — re-anchor this file").toBeGreaterThan(-1);
     return src.slice(at, src.indexOf("\nrouter.", at + 10));
   })();
-  const code = handler.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = stripComments(handler);
 
   it("does not call the engine with a synthesized vector", () => {
     expect(

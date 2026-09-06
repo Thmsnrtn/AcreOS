@@ -53,6 +53,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -60,9 +61,7 @@ const GENERATOR = "server/services/periodicStatements/index.ts";
 
 /** Strip comments so prose about a symbol never reads as a call to it. */
 function code(rel: string): string {
-  return read(rel)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  return stripComments(read(rel));
 }
 
 describe("the refusal exists and is reachable from both loan loops", () => {

@@ -34,6 +34,7 @@ import { sanitizeEvidence as kriegerSanitize } from "../../server/services/krieg
 import { sanitizeEvidence as soleneSanitize } from "../../server/services/solene/constitutionalGuard";
 import { sanitizeCredentials as paxSanitize } from "../../server/services/pax/continuousAudit";
 import { sanitizeForVoyage } from "../../server/services/embeddings/voyageClient";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -122,10 +123,8 @@ describe("there is exactly one pattern list", () => {
         if (!/\.tsx?$/.test(e) || /\.(test|spec)\.tsx?$/.test(e)) continue;
         const rel = path.relative(ROOT, full);
         if (rel === "server/utils/redactCredentials.ts") continue;
-        const src = fs
-          .readFileSync(full, "utf8")
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .replace(/(^|[^:])\/\/.*$/gm, "$1");
+        const src = stripComments(fs
+          .readFileSync(full, "utf8"));
         if (/const\s+CREDENTIAL_PATTERNS/.test(src)) offenders.push(rel);
       }
     };

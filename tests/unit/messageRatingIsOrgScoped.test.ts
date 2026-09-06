@@ -34,12 +34,11 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const code = (rel: string) =>
-  fs.readFileSync(path.join(ROOT, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 
 const ROUTE = "server/routes-ai.ts";
 const LEARNING = "server/services/paxLearning.ts";

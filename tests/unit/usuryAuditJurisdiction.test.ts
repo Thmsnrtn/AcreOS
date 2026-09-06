@@ -32,6 +32,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { stripComments } from "../helpers/stripComments";
 
 type Row = {
   id: number;
@@ -150,7 +151,7 @@ describe("an unresolvable jurisdiction is refused, not assumed", () => {
       "utf8",
     );
     const body = src.slice(src.indexOf("export async function auditOrgUsury"));
-    const code = body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(body);
     expect(
       code,
       "the audit substitutes a default state again — a guessed jurisdiction is a " +

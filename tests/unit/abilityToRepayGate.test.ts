@@ -105,6 +105,7 @@ import {
 } from "../../server/services/atrSafeHarbor";
 import type { DatabaseStorage } from "../../server/storage";
 import type { InsertNote } from "@shared/schema";
+import { stripComments } from "../helpers/stripComments";
 
 const s = h.state;
 
@@ -488,17 +489,6 @@ describe("persistAtrDetermination — writes the defensive record", () => {
 // comment documenting a removed line can never satisfy a check.
 
 const ROOT = path.resolve(__dirname, "../..");
-
-function stripComments(src: string): string {
-  return (
-    src
-      // Line comments FIRST: routes-finance.ts:158 has "/*" INSIDE a "//"
-      // comment; stripping blocks first ate 700 lines of real code. The
-      // guard keeps "://" (URLs in strings) and quoted "//" intact.
-      .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-  );
-}
 
 function strippedSource(rel: string): string {
   return stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));

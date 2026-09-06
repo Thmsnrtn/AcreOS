@@ -32,10 +32,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 function stripped(rel: string): string {
   const raw = readFileSync(resolve(__dirname, "../..", rel), "utf8");
-  const code = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = stripComments(raw);
   expect(code.length, `${rel}: comment stripping removed the file`)
     .toBeGreaterThan(raw.length * 0.3);
   return code;

@@ -53,6 +53,7 @@ import { parseCalendarDate, isCalendarDate } from "@shared/dates/calendar";
 import { parseIsoDateUtc } from "../../server/services/notePaymentMath";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 import { expenseCreateSchema } from "../../server/routes-property-expenses";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -266,7 +267,7 @@ describe("every YYYY-MM-DD boundary in the repo checks validity, not shape", () 
     // requiring a validity refinement in the same statement. A fourth one added
     // later is caught without editing this test.
     const strip = (src: string) =>
-      src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+      stripComments(src);
     const walk = (dir: string, out: string[]) => {
       for (const e of fs.readdirSync(dir)) {
         if (e === "node_modules" || e === "dist" || e.startsWith(".")) continue;

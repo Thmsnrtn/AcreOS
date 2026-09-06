@@ -49,14 +49,13 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { SUPPORT_TOOL_SCOPES, supportScopeFor } from "../../server/ai/supportToolScopes";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 /** Strip comments so prose naming a symbol never reads as a use of it. */
 const code = (rel: string) =>
-  read(rel)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(read(rel));
 
 const SUPPORT = "server/ai/supportAgent.ts";
 const RESOLVER = "server/ai/paxSupportResolver.ts";

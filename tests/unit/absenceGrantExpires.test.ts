@@ -45,6 +45,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const getCurrent = vi.fn();
 const getByCodename = vi.fn();
@@ -151,9 +152,9 @@ describe("nothing writes the grant into the agent's own standing", () => {
     // behavioural cases above. It exists because the defect's whole shape was a
     // WRITE in one module observed by another, and the behavioural test cannot
     // see a write it does not stub.
-    const src = readFileSync(
+    const src = stripComments(readFileSync(
       resolve(__dirname, "../../server/services/ceoAbsenceMode.ts"), "utf8",
-    ).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    ));
     expect(src.length, "comment stripping removed the file").toBeGreaterThan(2000);
     const activateStart = src.indexOf("async activate(");
     const activateEnd = src.indexOf("async ", activateStart + 10);
@@ -182,7 +183,7 @@ describe("the authority readers consume the EFFECTIVE score", () => {
 
   function codeOf(rel: string): string {
     const raw = readFileSync(resolve(__dirname, "../..", rel), "utf8");
-    const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const stripped = stripComments(raw);
     expect(stripped.length, `${rel}: comment stripping removed the file`)
       .toBeGreaterThan(raw.length * 0.3);
     return stripped;

@@ -31,6 +31,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   subscriptionPeriod,
   subscriptionPeriodIso,
@@ -106,7 +107,7 @@ describe("every site that needs a period uses the accessor", () => {
   it("no server code reads the period off a subscription any more", () => {
     // Value-level across the whole surface: any cast form, any variable name.
     for (const rel of [...SITES, "server/services/founder-chat/tools/operations.ts"]) {
-      const code = read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const code = stripComments(read(rel));
       expect(
         code,
         `${rel} still casts a subscription to read current_period_* — the field is on the item`,
@@ -164,7 +165,7 @@ describe("an invoice's subscription comes from its parent", () => {
 
   it("neither payment_failed handler reads the removed field", () => {
     for (const rel of ["server/webhookHandlers.ts", "server/services/stripeConnect.ts"]) {
-      const code = read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const code = stripComments(read(rel));
       expect(code, `${rel} still casts an invoice to read .subscription`).not.toMatch(
         /invoice as any\s*\)\s*\.subscription/,
       );

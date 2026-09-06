@@ -44,6 +44,7 @@ import path from "node:path";
 import { calculateDealPnL as bookkeepingPnl } from "../../server/services/bookkeeping";
 import type { DealExpense } from "../../server/services/bookkeeping";
 import { calculateDealPnL as financialOsPnl } from "../../server/services/financialOSService";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -166,7 +167,7 @@ describe("there is one owner", () => {
 
   it("and it no longer defines the disputed figures itself", () => {
     const strip = (s: string) =>
-      s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+      stripComments(s);
     const code = strip(fin);
     expect(code, "financialOS is computing grossProfit again").not.toMatch(
       /const\s+grossProfit\s*=/,

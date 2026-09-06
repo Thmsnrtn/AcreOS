@@ -46,6 +46,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const EVALUATOR_PATH = path.join(ROOT, "scripts/check-tests-typecheck.mjs");
@@ -69,10 +70,6 @@ function stripJsonc(src: string): string {
 }
 
 /** Comments stripped so a note describing a defect never trips its own check. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };

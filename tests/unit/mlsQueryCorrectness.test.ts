@@ -40,6 +40,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { stripComments } from "../helpers/stripComments";
 
 const ORG = { id: 42 } as any;
 
@@ -187,7 +188,7 @@ describe("getMlsComps does not answer with the subject property", () => {
       path.resolve(__dirname, "../../server/services/connectors/executor.ts"),
       "utf8",
     );
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(src);
     expect(
       code,
       "an exact-address filter is back in the executor — that returns the subject " +

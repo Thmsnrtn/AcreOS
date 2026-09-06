@@ -50,6 +50,7 @@ import fs from "fs";
 import path from "path";
 import { WORKFLOW_TRIGGER_EVENTS } from "@shared/schema";
 import type { PaxControlsState } from "../../server/services/paxControls";
+import { stripComments } from "../helpers/stripComments";
 import {
   LIVE_WORKFLOW_TRIGGER_EVENTS,
   isLiveWorkflowTriggerEvent,
@@ -149,11 +150,6 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
  * permanently-red gate is one everybody learns to ignore. Strip comments
  * first so the ratchet means what it says.
  */
-const stripComments = (src: string) =>
-  src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-
 const ENGINE_SOURCE = read("server/services/workflow-engine.ts");
 const ENGINE_CODE = stripComments(ENGINE_SOURCE);
 

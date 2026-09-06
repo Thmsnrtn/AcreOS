@@ -33,15 +33,12 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const SRC = path.join(ROOT, "server/routes-rent-roll-import.ts");
 
 /** Comments stripped: a note describing this defect must not trip the check. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 const raw = fs.readFileSync(SRC, "utf8");
 const code = stripComments(raw);
 

@@ -45,14 +45,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { sanitizePromptInline, USER_DATA_OPEN, USER_DATA_CLOSE } from "../../server/utils/sanitizePrompt";
 import { sanitizePrompt as middlewareSanitize } from "../../server/middleware/promptInjection";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
 /** Comments stripped: this file names the retired module and its patterns. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 function productionFiles(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {

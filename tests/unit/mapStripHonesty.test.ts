@@ -25,6 +25,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { getTerm } from "../../client/src/lib/personaVocabulary";
+import { stripComments } from "../helpers/stripComments";
 
 const STRIP_PATH = path.resolve(
   __dirname,
@@ -36,9 +37,7 @@ const src = fs.readFileSync(STRIP_PATH, "utf-8");
  * Strip block + line comments: the honesty assertions govern what the strip
  * can RENDER, and comments are allowed to explain why a word is banned.
  */
-const code = src
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/\/\/[^\n]*/g, "");
+const code = stripComments(src);
 
 describe("PersonaMapStrip — persona dispatch honesty", () => {
   it("routes subdivider to SubdividerStrip, not the flipper InventoryStrip", () => {

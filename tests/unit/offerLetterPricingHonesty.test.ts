@@ -32,6 +32,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { stripComments } from "../helpers/stripComments";
 
 const createOfferLettersBatch = vi.fn(async (rows: unknown[]) => rows);
 const getLeads = vi.fn();
@@ -144,7 +145,7 @@ describe("offerLetterPricingIsWired", () => {
     const raw = readFileSync(
       resolve(__dirname, "../../server/routes-team-messaging.ts"), "utf8",
     );
-    const code = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(raw);
     expect(code.length, "comment stripping removed the file").toBeGreaterThan(raw.length * 0.3);
 
     const start = code.indexOf('"/api/offer-letters/batch"');
@@ -181,7 +182,7 @@ describe("the offer DOCUMENT never invents its own price", () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const raw = readFileSync(resolve(__dirname, "../..", rel), "utf8");
-    const code = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(raw);
     expect(code.length, `${rel}: comment stripping removed the file`)
       .toBeGreaterThan(raw.length * 0.3);
     return code;

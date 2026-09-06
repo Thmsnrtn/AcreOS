@@ -38,6 +38,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 process.env.FIELD_ENCRYPTION_KEY =
   "4242424242424242424242424242424242424242424242424242424242424242";
@@ -199,7 +200,7 @@ describe("the client speaks the same name", () => {
     // A source assertion because the defect WAS the identifier: no behaviour
     // test on the server can see the client calling the field something else.
     expect(page).toContain("isActive");
-    const code = page.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(page);
     expect(
       /\benabled\b/.test(code),
       "the page still uses `enabled` — the field the dispatcher does not read",
@@ -210,7 +211,7 @@ describe("the client speaks the same name", () => {
     // The doc comment on the interface mentions `enabled` on purpose, so the
     // assertion above depends on stripping comments — and would pass on an
     // empty string if stripping went wrong.
-    const code = page.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(page);
     expect(code).toContain("isActive: !e.isActive");
     expect(code.length).toBeGreaterThan(page.length / 2);
   });

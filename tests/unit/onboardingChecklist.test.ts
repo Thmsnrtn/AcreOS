@@ -30,6 +30,7 @@ import {
 } from "../../client/src/lib/onboarding-checklist";
 import { BUSINESS_TYPE_IDS } from "../../shared/business-types";
 import { BUSINESS_TYPE_TO_PERSONA } from "../../shared/models/persona-mapping";
+import { stripComments } from "../helpers/stripComments";
 
 const ALL_FALSE: ChecklistStatus = {
   hasLead: false,
@@ -224,9 +225,7 @@ describe("checklist visibility (audit fixes #1 + #4)", () => {
   it("ratchet: the component never keys on empty-state or skipped-onboarding", () => {
     const source = read("client/src/components/getting-started-checklist.tsx");
     // Guard identifiers as gating INPUTS (comments may mention them — strip those).
-    const code = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(source);
     expect(code).not.toMatch(/showEmptyState/);
     expect(code).not.toMatch(/hasAnyData/);
     expect(code).not.toMatch(/onboardingCompleted/);

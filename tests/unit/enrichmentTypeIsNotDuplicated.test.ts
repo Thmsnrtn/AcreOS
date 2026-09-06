@@ -31,6 +31,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -66,7 +67,7 @@ describe("EnrichmentData has one definition", () => {
   });
 
   it("the page no longer casts to reach the completeness fields", () => {
-    const code = read(PAGE).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(read(PAGE));
     expect(
       code,
       "a cast is back on a field the imported type already declares",
@@ -76,7 +77,7 @@ describe("EnrichmentData has one definition", () => {
   it("the optional score is narrowed once, not cast at each use", () => {
     // A cast cannot narrow. The guard must bind a local so TypeScript actually
     // checks the value that reaches a CSS width and an aria-valuenow.
-    const code = read(PAGE).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(read(PAGE));
     expect(code).toMatch(/const completenessScore = enrichmentData\?\.completenessScore;/);
     expect(code).toMatch(/completenessScore !== undefined &&/);
   });

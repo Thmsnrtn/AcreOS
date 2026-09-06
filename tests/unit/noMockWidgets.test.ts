@@ -21,6 +21,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
+import { stripComments } from "../helpers/stripComments";
 
 const CLIENT_SRC = path.resolve(__dirname, "../../client/src");
 const WIDGETS_PATH = path.join(
@@ -28,11 +29,6 @@ const WIDGETS_PATH = path.join(
   "components/dashboard/type-specific-widgets.tsx",
 );
 const widgetsSrc = fs.readFileSync(WIDGETS_PATH, "utf-8");
-
-/** Strip block + line comments so historical prose can't trip the ratchet. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir)) {

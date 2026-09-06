@@ -40,14 +40,10 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const ENGINE = "server/services/taxOptimizationEngine.ts";
-
-/** Comments stripped: a note describing the deleted defect must not trip a check. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 function productionFiles(): string[] {
   const out: string[] = [];

@@ -113,12 +113,10 @@ import { financeAgentService, REMINDER_STATUS } from "../../server/services/fina
 import type { PaxControlsState } from "../../server/services/paxControls";
 import type { PaxEffect } from "../../server/services/paxReceipts";
 import type { CommunicationOptions } from "../../server/services/communications";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-
 const ORG_ID = 7;
 const PAUSED_UNTIL = new Date(Date.now() + 6 * 60 * 60 * 1000);
 

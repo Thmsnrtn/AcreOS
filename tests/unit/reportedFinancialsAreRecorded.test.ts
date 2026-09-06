@@ -33,11 +33,12 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const src = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const code = (rel: string) =>
-  src(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  stripComments(src(rel));
 
 const REPORTING = "server/services/reportingEnhancements.ts";
 const PAX = "server/services/paxEnhancements.ts";

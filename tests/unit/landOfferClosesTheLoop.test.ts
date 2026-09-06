@@ -40,16 +40,28 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 function strippedRoute(): string {
   const raw = readFileSync(
     resolve(__dirname, "../../server/routes-team-messaging.ts"), "utf8",
   );
-  const code = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = stripComments(raw);
   expect(code.length, "comment stripping removed the file").toBeGreaterThan(raw.length * 0.3);
   const start = code.indexOf('"/api/offer-letters/batch"');
   expect(start, "the batch route moved or was renamed").toBeGreaterThan(-1);
-  const body = code.slice(start, start + 6000);
+  // A FIXED WINDOW, and the window is now mostly whitespace where the comments
+  // were: stripComments replaces them with spaces so every offset still matches
+  // the original file, where the two-regex idiom this replaced DELETED them and
+  // shortened the string. 6,000 characters used to reach the end of the
+  // handler; the same 6,000 now stop short of it, and the assertions below
+  // failed on code that is present.
+  //
+  // Widened, and bounded by the handler's own end rather than by a number: the
+  // next `app.` registration is where this one stops.
+  const rest = code.slice(start);
+  const nextRoute = rest.indexOf("app.post(", 1);
+  const body = nextRoute > 0 ? rest.slice(0, nextRoute) : rest.slice(0, 20_000);
   expect(body.length, "the route body is too short to be the real one").toBeGreaterThan(1500);
   return body;
 }

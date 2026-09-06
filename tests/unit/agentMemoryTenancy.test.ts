@@ -35,6 +35,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -96,7 +97,7 @@ const WRITERS = [
  * symbol named in a TODO. Strip first, then look.
  */
 function codeOnly(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  return stripComments(src);
 }
 
 /** The text of each `db.insert(agentMemory).values({ … })` call in a file. */

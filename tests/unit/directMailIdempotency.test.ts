@@ -191,22 +191,10 @@ import {
   __directMailChainClaimCountForTests,
 } from "../../server/services/communications";
 import { apiQueueService } from "../../server/services/apiQueue";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.join(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
-
-/**
- * Source ratchets below must assert on CODE, not on prose — the same trap
- * workflowActionHonesty.test.ts documents. The B6 comment at the removed
- * enqueue QUOTES the shape it forbids (`apiQueueService.enqueue('lob', …)`) so
- * a future reader knows what was taken out; matching raw source would fire the
- * ratchet on its own documentation and be permanently red. Strip comments
- * first, then assert.
- */
-const stripComments = (src: string) =>
-  src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const CONTENT = { subject: "We buy land", body: "Offer enclosed." };
 

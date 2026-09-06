@@ -47,13 +47,9 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { getDepositReturnRule } from "@shared/regulatory/depositReturnRules";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
-
-/** Comments stripped: this file names the retired symbols, and must not match them. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 function productionFiles(): string[] {
   const out: string[] = [];

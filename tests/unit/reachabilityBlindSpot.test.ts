@@ -78,6 +78,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const GATE = path.join(ROOT, "scripts/lint-reachability.mjs");
@@ -281,7 +282,7 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
     // is the point of the change, and what makes this fixture checkable against
     // the gate's own output rather than only against a grep.
     const strip = (s: string) =>
-      s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+      stripComments(s);
     const laundered = ["routeExtendedThinkingTask", "applyEvalQualityGate"];
     const walk = (dir: string, out: string[]) => {
       for (const e of fs.readdirSync(dir)) {

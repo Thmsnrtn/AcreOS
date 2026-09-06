@@ -38,12 +38,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { getTableColumns } from "drizzle-orm";
 import { campaigns } from "@shared/schema";
+import { stripComments } from "../helpers/stripComments";
 
 const SRC = fs.readFileSync(
   path.resolve(__dirname, "../../server/routes-campaigns.ts"),
   "utf8",
 );
-const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const CODE = stripComments(SRC);
 
 const GHOSTS = ["templateContent", "htmlContent", "textContent", "smsBody"] as const;
 
