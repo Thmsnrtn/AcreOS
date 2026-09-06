@@ -7,6 +7,8 @@
  * scanner that still does.
  */
 
+import ts from "typescript";
+
 /**
  * ── A COMMENT CANNOT IMPORT ANYTHING ────────────────────────────────────────
  *
@@ -39,41 +41,75 @@
  * every reported line number still points where it did. `verifyStripper()`
  * below is the self-test, and the banner prints its score: a stripper that
  * quietly returned "" would empty every scan and turn this whole gate green.
+ *
+ * ── AND IT PARSES, AS OF 2026-09-06 ────────────────────────────────────────
+ * The hand-written state machine this replaced knew about strings, templates
+ * and comments, and not about REGEX LITERALS. A regex holding a quote —
+ * `/[<>&'"]/g` — opened a string that ran to the next matching quote anywhere
+ * in the file, blanking live code and leaving comments intact. Measured with
+ * a sentinel canary: SIX of 2,543 source files ended the strip mid-token,
+ * among them dispatchToolExecutor.ts and client/src/lib/queryClient.ts.
+ *
+ * Its sibling on the tests side (tests/helpers/stripComments.ts) had the same
+ * class over 232 files. Teaching a hand-rolled lexer about regexes does not
+ * converge — `/` versus division, TypeScript's postfix `!`, `[/*]` character
+ * classes, nested `${}`, and JSX. TypeScript's parser has resolved all of it
+ * already in order to build a tree, so this asks the tree where the comments
+ * are. Prefer a parse to a scan.
  */
 export function stripCommentsPreservingLines(src) {
-  let out = "";
-  let i = 0;
-  const n = src.length;
-  // "code" | "line" | "block" | one of the three quote characters
-  let state = "code";
-  while (i < n) {
-    const c = src[i];
-    const d = src[i + 1];
-    if (state === "code") {
-      if (c === "/" && d === "/") { state = "line"; out += "  "; i += 2; continue; }
-      if (c === "/" && d === "*") { state = "block"; out += "  "; i += 2; continue; }
-      if (c === "'" || c === '"' || c === "`") { state = c; out += c; i++; continue; }
-      out += c; i++; continue;
-    }
-    if (state === "line") {
-      if (c === "\n") { state = "code"; out += c; } else out += " ";
-      i++; continue;
-    }
-    if (state === "block") {
-      if (c === "*" && d === "/") { state = "code"; out += "  "; i += 2; continue; }
-      out += c === "\n" ? "\n" : " ";
-      i++; continue;
-    }
-    // Inside a string/template literal.
-    if (c === "\\") { out += c + (d ?? ""); i += 2; continue; }
-    if (c === state) { state = "code"; out += c; i++; continue; }
-    // An unterminated ' or " cannot span a line; recover rather than swallow
-    // the rest of the file. Templates legitimately span lines, so they do not
-    // recover here.
-    if (state !== "`" && c === "\n") { state = "code"; out += c; i++; continue; }
-    out += c; i++;
+  const cached = MEMO.get(src);
+  if (cached !== undefined) return cached;
+  const result = stripUncached(src);
+  if (MEMO.size >= MEMO_LIMIT) {
+    const oldest = MEMO.keys().next();
+    if (!oldest.done) MEMO.delete(oldest.value);
   }
-  return out;
+  MEMO.set(src, result);
+  return result;
+}
+
+const MEMO = new Map();
+const MEMO_LIMIT = 4096;
+
+function stripUncached(src) {
+  const out = src.split("");
+  // Both kinds are tried and the one the parser had fewer diagnostics on wins:
+  // force TSX on a plain .ts and `db.select<Row>()` becomes an unclosed JSX
+  // element; force TS on a component and every `<Foo />` is a syntax error.
+  const parse = (kind, name) =>
+    ts.createSourceFile(name, src, ts.ScriptTarget.Latest, true, kind);
+  const errs = (sf) => (sf.parseDiagnostics ?? []).length;
+  const looksJsx = /<\/[A-Za-z]|\/>/.test(src);
+  const first = looksJsx ? parse(ts.ScriptKind.TSX, "s.tsx") : parse(ts.ScriptKind.TS, "s.ts");
+  let sf = first;
+  if (errs(first) > 0) {
+    const second = looksJsx ? parse(ts.ScriptKind.TS, "s.ts") : parse(ts.ScriptKind.TSX, "s.tsx");
+    if (errs(second) < errs(first)) sf = second;
+  }
+
+  const seen = new Set();
+  const take = (ranges) => {
+    if (!ranges) return;
+    for (const r of ranges) {
+      if (seen.has(r.pos)) continue;
+      seen.add(r.pos);
+      for (let j = r.pos; j < r.end && j < src.length; j += 1) {
+        if (src[j] !== "\n") out[j] = " ";
+      }
+    }
+  };
+  const visit = (node) => {
+    if (node.getChildCount(sf) === 0) {
+      take(ts.getLeadingCommentRanges(src, node.getFullStart()));
+      take(ts.getTrailingCommentRanges(src, node.getEnd()));
+    }
+    node.getChildren(sf).forEach(visit);
+  };
+  visit(sf);
+  take(ts.getLeadingCommentRanges(src, 0));
+  take(ts.getLeadingCommentRanges(src, sf.endOfFileToken.getFullStart()));
+  return out.join("");
 }
 
 /**

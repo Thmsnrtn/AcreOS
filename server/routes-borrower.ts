@@ -49,6 +49,7 @@ import {
   buildBorrowerCardCheckoutParams,
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -932,13 +933,38 @@ export function registerBorrowerRoutes(app: Express): void {
       const paymentDate = new Date();
       const dueDate = note.nextPaymentDate || new Date();
       const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
-      const gracePeriodDays = note.gracePeriodDays ?? 10;
-      const lateFeeAppliedCents = computeAppliedLateFeeCents({
-        dueDate,
-        paymentDate,
-        gracePeriodDays,
-        configuredLateFeeCents,
-      });
+      // WAS a hardcoded ten-day fallback. THIS ASSESSES A FEE AGAINST A
+      // BORROWER, so an invented term is money taken under a clause the note
+      // does not contain. Ten days was invented in the borrower's favour; zero
+      // would be invented against them. Neither is a term anyone agreed to.
+      //
+      // The repo already resolved this asymmetry deliberately, and this site
+      // was outside the population that enforced it: the aging sweep measures
+      // an unstated term as ZERO because an internal signal can be re-derived
+      // (acquiredNoteAging.ts:291, and it LOGS the assumption), while a
+      // generated instrument declines to state a term at all
+      // (routes-documents.ts:23). An APPLIED FEE is the second kind, not the
+      // first — money, recorded, shown to the borrower, not re-derivable — so
+      // when the record states no grace period there is no late fee to apply.
+      const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
+      const lateFeeAppliedCents =
+        statedGrace === null
+          ? 0
+          : computeAppliedLateFeeCents({
+              dueDate,
+              paymentDate,
+              gracePeriodDays: statedGrace,
+              configuredLateFeeCents,
+            });
+      if (statedGrace === null && configuredLateFeeCents > 0) {
+        logger.info("note_late_fee_skipped_grace_unstated", {
+          metadata: {
+            noteId: note.id,
+            organizationId: note.organizationId,
+            configuredLateFeeCents,
+          },
+        });
+      }
       const lateFeeAmount = lateFeeAppliedCents / 100;
 
       // Schedule mark-paid still uses the schedule index as before — the
@@ -1074,13 +1100,38 @@ export function registerBorrowerRoutes(app: Express): void {
       const paymentDate = new Date();
       const dueDate = note.nextPaymentDate || new Date();
       const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
-      const gracePeriodDays = note.gracePeriodDays ?? 10;
-      const lateFeeAppliedCents = computeAppliedLateFeeCents({
-        dueDate,
-        paymentDate,
-        gracePeriodDays,
-        configuredLateFeeCents,
-      });
+      // WAS a hardcoded ten-day fallback. THIS ASSESSES A FEE AGAINST A
+      // BORROWER, so an invented term is money taken under a clause the note
+      // does not contain. Ten days was invented in the borrower's favour; zero
+      // would be invented against them. Neither is a term anyone agreed to.
+      //
+      // The repo already resolved this asymmetry deliberately, and this site
+      // was outside the population that enforced it: the aging sweep measures
+      // an unstated term as ZERO because an internal signal can be re-derived
+      // (acquiredNoteAging.ts:291, and it LOGS the assumption), while a
+      // generated instrument declines to state a term at all
+      // (routes-documents.ts:23). An APPLIED FEE is the second kind, not the
+      // first — money, recorded, shown to the borrower, not re-derivable — so
+      // when the record states no grace period there is no late fee to apply.
+      const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
+      const lateFeeAppliedCents =
+        statedGrace === null
+          ? 0
+          : computeAppliedLateFeeCents({
+              dueDate,
+              paymentDate,
+              gracePeriodDays: statedGrace,
+              configuredLateFeeCents,
+            });
+      if (statedGrace === null && configuredLateFeeCents > 0) {
+        logger.info("note_late_fee_skipped_grace_unstated", {
+          metadata: {
+            noteId: note.id,
+            organizationId: note.organizationId,
+            configuredLateFeeCents,
+          },
+        });
+      }
       const lateFeeAmount = lateFeeAppliedCents / 100;
 
       const schedule = note.amortizationSchedule || [];

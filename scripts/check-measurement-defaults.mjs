@@ -58,6 +58,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 /**
@@ -407,14 +408,15 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** Blank comments without moving any line or column. */
-function maskComments(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
-}
+/**
+ * Blank comments without moving any line or column.
+ *
+ * Was the two-regex idiom. It disagrees with a correct strip on 42% of this
+ * repo's source files (measured 2026-09-06) in BOTH directions — deleting live
+ * code and leaving comments in — and either way a `not.toContain` style check
+ * over its output reports clean.
+ */
+const maskComments = stripCommentsPreservingLines;
 
 const files = walk(SERVER_DIR);
 const hits = [];

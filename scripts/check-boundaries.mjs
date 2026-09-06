@@ -74,6 +74,7 @@
 import { readFileSync, readdirSync, lstatSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, posix } from "node:path";
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -161,17 +162,12 @@ function walkSourceFiles(dir, out) {
 // ----------------------------------------------------------------------------
 // Strip block comments + pure comment lines so documentation that MENTIONS an
 // import path (e.g. the shared/schema.ts barrel note) doesn't register.
-function stripComments(source) {
-  const noBlocks = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  return noBlocks
-    .split("\n")
-    .map((line) => {
-      const t = line.trimStart();
-      if (t.startsWith("//") || t.startsWith("*")) return "";
-      return line;
-    })
-    .join("\n");
-}
+// Was a `.replace(/\/\*[\s\S]*?\*\//g, "")` plus a line filter — the idiom this
+// repo has been bitten by three times, most recently on 2026-09-06 when the
+// tests-side helper was found blanking live code in 232 of 3,692 files because
+// a REGEX LITERAL holding a quote opened a string. One shared, parser-based
+// stripper now, rather than a fourth hand-rolled copy.
+const stripComments = stripCommentsPreservingLines;
 
 // Matches: import … from "x" | export … from "x" | import "x" |
 //          import("x") | require("x")

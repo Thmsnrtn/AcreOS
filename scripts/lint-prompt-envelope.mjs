@@ -134,6 +134,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative } from "node:path";
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -308,10 +309,11 @@ function scopeStillOpen(src, from, to) {
  * the output. Newlines are preserved so line counting stays exact.
  */
 function stripComments(src) {
-  const blank = (s) => s.replace(/[^\n]/g, " ");
-  const out = src
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])(\/\/.*)$/gm, (_all, pre, comment) => pre + blank(comment));
+  // Was the two-regex idiom; now the one shared parser-based stripper. The
+  // vacuity guard below is UNCHANGED and still the thing that makes this
+  // trustworthy — it asserts byte-for-byte length preservation rather than
+  // taking the stripper's word for it.
+  const out = stripCommentsPreservingLines(src);
   // VACUITY GUARD (stripper integrity). A mispairing block-comment stripper
   // that blanks the very lines a scan counts reads as a clean bill of health —
   // this repo has been bitten by exactly that. The contract above is
