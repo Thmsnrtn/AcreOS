@@ -58,7 +58,14 @@ import { runAutoWitnessSweep, predictedCostUsdFromArgs, AUTO_WITNESS_GRANTEE } f
 
 const NOW = Date.parse("2026-07-03T12:00:00Z");
 
-function makeGrant(over: Partial<WitnessGrant> & { bounds?: Partial<WitnessGrant["bounds"]> } = {}): WitnessGrant {
+// `Partial<WitnessGrant>` makes `bounds` OPTIONAL but leaves its inner fields
+// required, so intersecting it with `{ bounds?: Partial<...> }` resolves to
+// `WitnessGrantBounds & Partial<WitnessGrantBounds>` — the full type. Every
+// call site here passes a subset, which is the helper's entire purpose. Omit
+// the key before intersecting so the partial actually applies.
+function makeGrant(
+  over: Omit<Partial<WitnessGrant>, "bounds"> & { bounds?: Partial<WitnessGrant["bounds"]> } = {},
+): WitnessGrant {
   return {
     id: over.id ?? "1",
     grantorId: over.grantorId ?? "founder-tom",

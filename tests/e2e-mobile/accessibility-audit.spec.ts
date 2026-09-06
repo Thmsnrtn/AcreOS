@@ -124,6 +124,29 @@ async function auditRoute(page: Page, route: string, testInfo: import("@playwrig
   const critical = results.violations.filter((v) => v.impact === "critical");
   const serious = results.violations.filter((v) => v.impact === "serious");
 
+  // Annotations do not reach the list reporter's output, and a finding nobody
+  // can read is a finding nobody fixes — the first run of this audit named six
+  // rules across eleven doors and not one element, which made it a report you
+  // could not act on. Everything goes to stdout, which CI keeps.
+  const line = (v: (typeof results.violations)[number]) =>
+    `    ${v.id} [${v.impact}] ×${v.nodes.length} — ${v.help}\n` +
+    v.nodes
+      .slice(0, 5)
+      .map(
+        (n) =>
+          `      at ${n.target.join(" ")}\n` +
+          `         ${(n.html ?? "").replace(/\s+/g, " ").slice(0, 200)}`,
+      )
+      .join("\n") +
+    (v.nodes.length > 5 ? `\n      …and ${v.nodes.length - 5} more nodes` : "");
+
+  // eslint-disable-next-line no-console -- test output, not server logging
+  console.log(
+    `[a11y] ${route} (${testInfo.project.name}): ${evaluated} rules · ` +
+      `${critical.length} critical · ${serious.length} serious\n` +
+      [...critical, ...serious].map(line).join("\n"),
+  );
+
   testInfo.annotations.push({
     type: "a11y",
     description:
@@ -131,19 +154,26 @@ async function auditRoute(page: Page, route: string, testInfo: import("@playwrig
       `${serious.length} serious · ${results.violations.length} total`,
   });
 
-  // Serious violations are recorded in full so the ratchet baseline can be read
-  // straight out of the run rather than guessed at.
-  if (serious.length > 0) {
-    testInfo.annotations.push({
-      type: "a11y-serious",
-      description: serious
-        .map((v) => `${v.id} ×${v.nodes.length}: ${v.help}`)
-        .join(" | "),
-    });
-  }
+  // The full JSON is attached so a baseline can be read out of the artifact
+  // rather than reconstructed by eye from a log.
+  await testInfo.attach(`axe-${route.replace(/\//g, "_")}.json`, {
+    contentType: "application/json",
+    body: Buffer.from(
+      JSON.stringify(
+        results.violations.map((v) => ({
+          id: v.id,
+          impact: v.impact,
+          help: v.help,
+          nodes: v.nodes.map((n) => ({ target: n.target, html: n.html })),
+        })),
+        null,
+        2,
+      ),
+    ),
+  });
 
   expect(
-    critical.map((v) => `${v.id} (${v.nodes.length} nodes): ${v.help} — ${v.helpUrl}`),
+    critical.map(line),
     `critical WCAG violations on ${route}. Critical means a user relying on ` +
       "assistive technology cannot complete the task at all.",
   ).toEqual([]);

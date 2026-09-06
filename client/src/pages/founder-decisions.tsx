@@ -723,11 +723,15 @@ function OpenAsksSection() {
     return Number.isFinite(n) && n > 0 ? n : null;
   });
   const [superseding, setSuperseding] = useState(false);
-  const { data: askDetail } = useQuery<{ ask: FounderAsk }>({
+  const { data: askDetail, isError: askFailed } = useQuery<{ ask: FounderAsk }>({
     queryKey: [`/api/founder/asks/${openAskId}`],
     enabled: openAskId != null,
   });
   const openAsk = askDetail?.ask ?? null;
+  // Both dialogs render null until the full ask arrives, so between the click
+  // and the response the button would otherwise do nothing visible — the exact
+  // dead-press this section was rebuilt to remove.
+  const pendingAskId = openAskId != null && !openAsk && !askFailed ? openAskId : null;
 
   const closeAsk = () => {
     setOpenAskId(null);
@@ -776,12 +780,13 @@ function OpenAsksSection() {
                 variant={ask.urgency === "urgent" ? "default" : "outline"}
                 aria-label={`Answer: ${ask.questionSummary}`}
                 data-testid={`decisions-answer-ask-${ask.id}`}
+                disabled={pendingAskId === ask.id}
                 onClick={() => {
                   setSuperseding(false);
                   setOpenAskId(ask.id);
                 }}
               >
-                Answer
+                {pendingAskId === ask.id && !superseding ? "Opening…" : "Answer"}
               </Button>
               {/* The second real outcome: the question stopped mattering. Without
                   it the only way to clear a stale ask is to wait for its timeout,
@@ -792,6 +797,7 @@ function OpenAsksSection() {
                 className="h-8 w-8 text-muted-foreground"
                 aria-label={`No longer relevant: ${ask.questionSummary}`}
                 data-testid={`decisions-supersede-ask-${ask.id}`}
+                disabled={pendingAskId === ask.id}
                 onClick={() => {
                   setSuperseding(true);
                   setOpenAskId(ask.id);
@@ -823,6 +829,12 @@ function OpenAsksSection() {
             null-safe on `ask`, so they render nothing until the detail query
             lands — the row click is instant and the dialog opens when the full
             ask arrives. */}
+        {askFailed && openAskId != null && (
+          <p className="text-xs text-destructive" role="alert" data-testid="decisions-ask-load-failed">
+            Could not load question #{openAskId}. Refresh and try again — the ask is
+            still open and the agent is still waiting.
+          </p>
+        )}
         <AnswerAskDialog
           ask={superseding ? null : openAsk}
           onClose={closeAsk}

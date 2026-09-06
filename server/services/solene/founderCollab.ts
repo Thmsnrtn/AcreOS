@@ -19,6 +19,11 @@
  *   - yes_no         — answerText must be 'yes' or 'no' (case-insensitive)
  *   - numeric        — answerText must parse as a number
  *
+ * Duplicate suppression: askFounder() returns the id of an already-open ask
+ * with the same (role, summary, body) rather than creating a second one, and
+ * fires no pager when it does. Reminding the founder about an unanswered ask
+ * is runAskEscalationLadder()'s job, on a per-urgency backoff.
+ *
  * Lifecycle closer: runAskEscalationLadder() (below), invoked on the
  * continuous loop's 30-minute tick (continuousLoop.ts). It re-pages open asks
  * and auto-resolves ONLY yes/no asks to timed_out — the safe side — at
@@ -64,6 +69,12 @@ export interface AskFounderResult {
   askId: number;
   pagerFired: boolean;
   pagerEventId: number | null;
+  /**
+   * True when this call matched an ask that is ALREADY OPEN and returned its
+   * id instead of creating a second one. The caller's contract is unchanged —
+   * it gets an askId it can poll — but no row was written and no pager fired.
+   */
+  deduped: boolean;
 }
 
 export interface AnswerFounderInput {
@@ -137,6 +148,55 @@ export async function askFounder(
   const askedAt = new Date();
   const timeoutAt = new Date(askedAt.getTime() + timeoutHours * 60 * 60 * 1000);
 
+  // ── Duplicate suppression, BEFORE the pager ──────────────────────────────
+  //
+  // The autopilot loop ticks every 30 minutes and re-selects the moves that
+  // are still pending. Three escalation paths in planAndAct call ask() with no
+  // memory of having asked: the risk-tier check, the pre-mortem veto, and the
+  // gate escalation. The ActContext idempotencyKey does not help — its own
+  // doc says it seals the OUTWARD EFFECT, and it is forwarded only to
+  // enqueue(), never consulted here. So one unanswered question became a new
+  // row and a new page to Tom's phone every half hour, and the Decisions door
+  // — the one door he is required to use — filled with copies of it.
+  //
+  // Re-paging an open ask is a real need, and it is already handled properly
+  // by runAskEscalationLadder(): "Still waiting on you", on a per-urgency
+  // backoff (REPAGE_HOURS), not every tick. Creating a duplicate row was never
+  // the mechanism for it.
+  //
+  // The key is (role, summary, body) among OPEN asks. All three are already
+  // stored, so this needs no column and no migration. It is deliberately
+  // exact rather than fuzzy: a repeated escalation reproduces its summary and
+  // body verbatim, because both are derived from the same move.
+  //
+  // HONEST LIMIT: this is read-then-insert, not an atomic seal. Two ticks
+  // racing could still both insert. The loop is single-tick and 30 minutes
+  // apart so that race is not the observed failure; closing it properly needs
+  // a unique index, which needs a migration. Stated rather than implied.
+  const [duplicate] = await db
+    .select({ id: soleneFounderAsks.id, askedAt: soleneFounderAsks.askedAt })
+    .from(soleneFounderAsks)
+    .where(
+      and(
+        eq(soleneFounderAsks.status, "open"),
+        eq(soleneFounderAsks.askingAgentRole, input.askingAgentRole),
+        eq(soleneFounderAsks.questionSummary, summary),
+        eq(soleneFounderAsks.questionBody, input.questionBody),
+      ),
+    )
+    .limit(1);
+
+  if (duplicate) {
+    logger.info("[founderCollab] ask deduped — identical question already open", {
+      metadata: {
+        askId: duplicate.id,
+        askingAgentRole: input.askingAgentRole,
+        openForHours: Math.floor((askedAt.getTime() - duplicate.askedAt.getTime()) / 3_600_000),
+      },
+    });
+    return { askId: duplicate.id, pagerFired: false, pagerEventId: null, deduped: true };
+  }
+
   // Fire pager first so we can persist its event id with the ask. urgency
   // 'low' skips paging entirely (just persists for review).
   let pagerFired = false;
@@ -199,6 +259,7 @@ export async function askFounder(
     askId: inserted.id,
     pagerFired,
     pagerEventId,
+    deduped: false,
   };
 }
 
