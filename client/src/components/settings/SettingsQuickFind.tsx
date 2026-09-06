@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useId } from "react";
 import { Search, ArrowRight, Command } from "lucide-react";
 import { useLocation } from "wouter";
 import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
@@ -70,6 +70,9 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // Stable across renders and unique per mount — the combobox's aria-controls
+  // and aria-activedescendant both have to point at real ids in this subtree.
+  const listboxId = useId();
 
   // Cmd+K / Ctrl+K focuses the input. /-press also focuses it, GitHub-style.
   useEffect(() => {
@@ -135,6 +138,13 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
     <div className="relative mb-4" data-testid="settings-quick-find">
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" aria-hidden="true" />
+        {/* This was a half-built combobox: aria-autocomplete and aria-expanded on
+            a plain textbox, with a role="listbox" popup below it. axe:
+            aria-allowed-attr, critical — aria-expanded is not permitted on a
+            textbox, so the attribute was ignored and the reader was never told
+            the list had opened. The missing half mattered as much: with no
+            aria-controls and no aria-activedescendant, nothing announced the
+            highlighted result as the user arrowed through it. */}
         <input
           ref={inputRef}
           type="text"
@@ -149,8 +159,13 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
           onKeyDown={onInputKey}
           placeholder="Find a setting… (Cmd+K, or press /)"
           aria-label="Search settings"
+          role="combobox"
+          aria-controls={listboxId}
           aria-autocomplete="list"
           aria-expanded={open && results.length > 0}
+          aria-activedescendant={
+            open && results.length > 0 ? `${listboxId}-option-${activeIndex}` : undefined
+          }
           className="w-full h-10 pl-9 pr-16 rounded-card border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-micro text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden sm:inline-flex items-center gap-0.5">
@@ -160,6 +175,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
       {open && query && (
         <ul
           ref={listRef}
+          id={listboxId}
           role="listbox"
           aria-label="Settings search results"
           className="absolute z-sticky mt-1 w-full bg-popover border border-border rounded-card shadow-lg overflow-hidden"
@@ -170,7 +186,12 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
             </li>
           ) : (
             results.map((entry, idx) => (
-              <li key={`${entry.tab}-${entry.label}`} role="option" aria-selected={idx === activeIndex}>
+              <li
+                key={`${entry.tab}-${entry.label}`}
+                id={`${listboxId}-option-${idx}`}
+                role="option"
+                aria-selected={idx === activeIndex}
+              >
                 <button
                   type="button"
                   onMouseDown={(e) => {

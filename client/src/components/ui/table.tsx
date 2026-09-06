@@ -6,7 +6,14 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  // The wrapper scrolls horizontally when the table is wider than its column,
+  // and a scrollable region that cannot take focus cannot be scrolled by
+  // keyboard at all — a keyboard-only user simply never sees the right-hand
+  // columns. axe: scrollable-region-focusable, serious. tabIndex makes it a
+  // tab stop, which is exactly the intended remedy; no role is added, because
+  // role="region" without an accessible name trades this for a different
+  // finding, and the name belongs to the table's own caption.
+  <div className="relative w-full overflow-auto" tabIndex={0}>
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}

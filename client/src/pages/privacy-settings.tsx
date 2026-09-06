@@ -339,7 +339,13 @@ export function PrivacyDataRights({
                 className="w-4 h-4 text-acr-warn shrink-0 mt-0.5"
                 aria-hidden="true"
               />
-              <div className="text-xs text-acr-warn dark:text-acr-warn space-y-1">
+              {/* text-acr-warn (#B97A1E) on bg-acr-warn-soft fails AA — axe:
+                  color-contrast, serious, on the copy that tells a customer
+                  their deletion cannot be undone. The design system already
+                  ships the pair: --acr-warn-soft-ink is annotated "AA on
+                  -soft: 4.53:1" and is what every other soft-background badge
+                  uses. No new colour, just the intended one. */}
+              <div className="text-xs text-acr-warn-soft-ink dark:text-acr-heat-warm space-y-1">
                 <p className="font-medium">This action can't be undone.</p>
                 <p>
                   Your email, name, and contact details will be replaced with

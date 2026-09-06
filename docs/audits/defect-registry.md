@@ -1821,7 +1821,281 @@ file says nothing about the code path that matters.
 
 Falsified: revert the resolver to hash-only -> RED (with the string still in the
 file); add a link to a tab that does not exist -> RED.
-Resolving commits: pending
+Resolving commits: 7c545fff
+
+---
+
+### DEFECT-0089
+Title: The founder's one required door could not answer the questions it listed
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census, 2026-09-06
+Description: FOUNDER_DOORS calls Decisions "the only routine place the founder
+is required to interact". It listed the questions agents were blocked on and
+offered no way to answer one. Four faults at once, and the API had been live the
+whole time:
+
+1. `AnswerAskDialog` and `SupersedeAskDialog` had ZERO importers. They lost
+   their only mount when the standalone /founder/asks page was deleted on
+   2026-07-27 for duplicating this door, and nothing picked them up.
+2. The per-row Answer button linked to `/founder/asks?id=N`, which App.tsx
+   redirects back to `/founder/decisions` — it navigated to the page it was on.
+3. `?id=` carried an ASK id (home.tsx sends `brief.decision.askId`) into a
+   handler matching DECISION-LOG ids: two tables, two key spaces, one param.
+4. `POST /api/founder/asks/:id/answer` and `/supersede` both existed and worked.
+
+**Why a grep said otherwise.** The only surviving reference to those two files
+was PROSE in route-redirects.ts describing the orphaning. A mention count
+answers "1 importer" for a component with no mounts — which is how this passed
+review.
+Evidence: `client/src/pages/founder-decisions.tsx:710` (before); `App.tsx`
+`<Route path="/founder/asks">` -> `<Redirect>`; `route-redirects.ts:121`.
+Remediation plan: Done. Asks open in place; they carry their own `?ask=` param;
+the legacy redirect translates the old `?id=` into it so existing bookmarks
+resolve. Gated by `founderAskLaneCanAnswer.test.ts`, whose mount check requires
+an import statement AND a JSX element, and which asserts the route-redirects.ts
+prose is still present so the check cannot decay into a mention count.
+Falsified: remove the mount -> RED; remove the import, keep the mount -> RED;
+restore the self-referential link -> RED; point the Letter's CTA back at `?id=`
+-> RED.
+Resolving commits: 2c687779
+
+### DEFECT-0090
+Title: A Today-door CTA discarded its payload and marked the work done anyway
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census, 2026-09-06
+Description: route-redirects.ts has documented its own removal protocol since
+2026-05-03 — "rewrite in-app links to the canonical path" — and that step had
+never once run. Eight in-app links across six files still pointed at routes
+that only redirect.
+
+The serious one was customer-facing. On the Today door, "Pax, draft the
+follow-up" linked to `/pax?intent=draft_follow_up&leadId=N`. `/pax` is a
+`<Redirect to="/ai">`, and wouter's Redirect DROPS the query string — and
+nothing anywhere read `intent`. Meanwhile its onClick resolved the decision as
+"done". The customer asked for a draft, watched the row complete, and no draft
+existed.
+
+Beyond the wasted navigation, a redirect that eats its query means the sunset
+can never happen: deleting the legacy `<Route>` would 404 a live control.
+Evidence: `client/src/components/today/DecisionQueue.tsx:666` (before);
+`App.tsx` `<Route path="/pax">`; `client/src/pages/pax.tsx` reads no params.
+Remediation plan: Done. The CTA uses `?prefill=`, the param command-center.tsx
+actually reads, carries a real instruction, and no longer marks work done that
+has not happened. `CanonicalSurfacesBanner` was deleted with its three mounts —
+it named /founder/now and /founder/cockpit as the canonical surfaces, both dead
+routes, under a two-surface doctrine the four doors replaced.
+Gated by `inAppLinksSkipRedirects.test.ts`; legacy paths are read out of
+ROUTE_REDIRECTS so a redirect added tomorrow is governed without editing it.
+**The resolve-before-effect probe first stayed GREEN**: the check sliced forward
+from the button's data-testid and onClick is declared above it — the file was in
+the population, the unit boundary was not.
+Falsified: restore a legacy link -> RED; restore the query-dropping href -> RED;
+re-add the premature onResolve -> RED.
+Resolving commits: 2c687779
+
+### DEFECT-0091
+Title: Repo-wide gates had no time budget, and the gate enforcing that missed 49 of them
+Severity: P1
+Status: FIXED
+Surfaced by lenses: main CI, 2026-09-06
+Description: `transactionsAreRealTransactions.test.ts` timed out at 30s under
+the coverage run and turned `main` red. The budget gate that exists to prevent
+exactly this was green: its population predicate was "imports the shared
+stripper AND walks a directory", and that test reaches the stripper with
+`await import(...)` inside the test body rather than a static `from "..."`. The
+rule keyed on the SYNTAX of an import.
+
+Both halves were wrong in the same direction. The stripper clause should not
+have existed: what costs time is walking the tree. Keyed on the helper, the rule
+described the implementation of 52 sweeps rather than the cost shared by 98.
+
+A timeout is not a bug report — it is the suite deciding a gate has stopped
+being worth waiting for, and a killed gate is indistinguishable from a clean one
+in a green run.
+
+**The first widening reported a false number.** 119 members, inflated by four
+SCP tests MOCKING `readdirSync` (`readdirSync: vi.fn()`) and sixteen tenancy
+tests whose local `walk()` recurses a drizzle SQL chunk tree and never touches
+disk. Requiring the call — `readdirSync(` — excludes both. Honest population:
+97 derived + 1 registered, the registered one being a sweep that delegates its
+walking to an imported helper, which no static predicate can see.
+Evidence: `tests/unit/repoSweepsDeclareTheirBudget.test.ts` (before);
+CI run 34053915409.
+Remediation plan: Done. REPO_SWEEP_TIMEOUT_MS moved to its own module so the
+budget is not a property of comment-stripping; 49 sweeps that had never declared
+one now do; two vacuity canaries pin the exclusions so the count stays true.
+Falsified: remove the budget from the dynamic-import sweep -> RED; lower the
+value to the suite default -> RED; define the constant twice -> RED.
+Resolving commits: 69e0dfce
+
+### DEFECT-0092
+Title: The CI job named "Accessibility Audit" had never audited accessibility
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census (QP-04), verified 2026-09-06
+Description: `tests/e2e/accessibility.spec.ts` was 262 lines titled
+"Accessibility Audit", run by a CI job of the same name, and it checked nothing.
+Six independent reasons — the notable part being that five different people
+could each have fixed one and the job would still have been a no-op:
+
+1. `@axe-core/playwright` was never installed, and the loader was
+   `import(...).catch(() => ({ checkA11y: null }))` — the missing dependency
+   returned null and every axe assertion was skipped silently. The file's own
+   header carried the install command nobody ran.
+2. No storageState in the CI invocation, so all nine "critical page" tests hit
+   the /auth redirect and early-returned BY DESIGN.
+3. The step ended in `|| true`.
+4. The job was absent from security-gate's `needs:`.
+5. `npm ci` + `playwright install`, no build and no database — `npm run start`
+   could not boot and the webServer timed out before any test ran.
+6. Two surviving assertions were `expect(true).toBe(true)`; the one named
+   "color contrast passes on auth page" asserted the body has text; and
+   checkFocusIndicators' evaluator ended `return true; // Default pass`.
+Evidence: `.github/workflows/security.yml:262` (before); the retired spec.
+Remediation plan: Done. Replaced by `tests/e2e-mobile/accessibility-audit.spec.ts`
+in the harness that already has a pgvector service, a real build and the seeded
+test-auth session. It asserts zero `critical` on the five customer and four
+founder doors, reports `serious` per route, treats a door that bounces to /auth
+as the finding rather than a skip, and asserts axe evaluated a real number of
+rules first — because axe finding nothing and axe never running produce the same
+empty array. `door-routes.ts` gives the audits one route list, pinned against
+nav-items.ts and App.tsx by `auditRoutesAreRealDoors.test.ts`, because the
+copies were the point of failure: mobile-feel-contracts.spec.ts audited "/map",
+which has no route, and measured the 404 page while reporting a healthy Map door.
+
+**Two of the honesty gate's own rules first passed with the defect reinstated.**
+The `|| true` rule read only steps spelling "playwright test" and was blind to
+`npm run test:e2e:mobile`, the alias that actually runs the spec; npm scripts
+are now expanded through package.json, with a canary on the expansion itself.
+Falsified: drop the dependency -> RED; `|| true` on the alias step -> RED;
+misspell a project name -> RED; delete the vacuity floor -> RED; restore the
+/auth early-return -> RED.
+Resolving commits: e223bb17, 165cb2eb
+
+### DEFECT-0093
+Title: One unanswered founder question became a new row and a phone page every 30 minutes
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census (E1-ASK-DEDUP), verified 2026-09-06
+Description: `askFounder()` had no duplicate suppression, and three of
+planAndAct's escalation paths call ask() with no memory of having asked — the
+risk-tier check, the pre-mortem veto, and the gate escalation. The autopilot
+loop re-enters planAndAct every 30 minutes with the moves still pending, so a
+move that escalated on one tick escalated again on the next and every tick
+after. Each repeat inserted a row AND fired a pager; urgency "normal" maps to
+pager severity "urgent", so it reached the founder's phone.
+
+`ActContext.idempotencyKey` looks like it prevents this. Its own doc says it
+seals the OUTWARD EFFECT; it is forwarded to enqueue() and never consulted on
+the ask path. Reading the field name instead of its one call site is how this
+survived.
+
+The cost lands where it hurts most — the door the founder is required to use,
+filling with copies of one question. Three callers had each built a private
+guard (runPolicyInduction, maybeProposeBudgetRamp, immuneResponse), which is the
+signal the guard belonged at the chokepoint.
+Evidence: `server/services/solene/founderCollab.ts:91` (before);
+`server/services/autopilot/act.ts:241,269,322`.
+Remediation plan: Done. Dedup on (role, summary, body) among OPEN asks — all
+three already stored, so no column and no migration — before the pager, since
+the pager is the expensive side effect. Reminding about an unanswered ask was
+never the missing piece: runAskEscalationLadder already does it on a per-urgency
+backoff. The read-then-insert race is stated in the code rather than implied.
+
+**founderCollab.test.ts passes with and without the fix**: its mock decodes only
+byId / byStatus / expireOverdue, so the four-clause select falls through to []
+and the mock agrees with any implementation of a query it cannot read. The new
+gate renders the predicate to real SQL instead.
+Falsified: drop the status clause -> RED; drop the body clause -> RED; move the
+check below the pager -> RED; disable it -> RED.
+Resolving commits: 165cb2eb
+
+### DEFECT-0094
+Title: A job lease was never renewed, so a long job lost its own lock
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census (REL-JOBLOCK-NO-RENEWAL),
+verified and RELOCATED 2026-09-06
+Description: The record named the scheduler, and the scheduler is fine — when
+job bodies moved out of transactions (Tier 1H) it gained a lease row with
+HEARTBEAT_MS at 3x the TTL expiry rate. The repair landed on ONE of two
+mutual-exclusion mechanisms. `withJobLock` — the one job bodies take out for
+themselves, across 185 call sites — kept the defect, and the scheduler's own
+comment names it in passing while explaining the `sched:` prefix that keeps the
+two from colliding.
+
+A body outliving its TTL simply lost the lock, and the next machine's tick
+acquired it and started the same job concurrently.
+
+**A measurement correction.** A first pass read the TTLs as seconds (60, 55, 30,
+a mail_flusher at 2) and concluded the exposure was severe. That was a truncated
+regex stopping at the first number: the real values are `60 * 60`, `55 * 60`,
+`23 * 60 * 60`. This was never the everyday failure. It is still not a lock, and
+the seconds-scale TTLs that do exist have no margin.
+Evidence: `server/utils/jobRuntime.ts:42` (before); `server/jobs/scheduler.ts:68-97`.
+Remediation plan: Done. acquireJobLock already re-extends when the caller is the
+current holder, so the heartbeat is the same call on a timer at TTL/3, floored
+at 5s and ceilinged at 15m, unref'd, cleared on both success and throw, and
+never started when the lock was not acquired.
+Falsified: remove the heartbeat -> RED; never clear the interval -> RED; make
+the period longer than the TTL -> RED; beat when the lock was lost -> RED.
+Resolving commits: 420cd6a9
+
+### DEFECT-0095
+Title: Critical WCAG violations on all eleven doors, under a green audit
+Severity: P1
+Status: FIXED (one registered, see below)
+Surfaced by lenses: DEFECT-0092's audit, first real run 2026-09-06
+Description: The moment the audit could fail, it did — on eleven of eleven
+customer and founder doors. Six root causes:
+
+- `/founder/decisions` — a bare `<select>` for the time window with no label.
+  (select-name)
+- `/settings`, `/deals` — four shadcn SelectTriggers whose only content is
+  `<SelectValue />`, rendering a role="combobox" button with no accessible name;
+  twelve nodes on /settings alone. (button-name)
+- `/today` — the activity filter renders `{compact ? "" : "Filter"}`, so in
+  compact mode the label collapses to an empty string. (button-name)
+- `/deals` — each kanban column was role="list" wrapping a skeleton, an
+  empty-state role="status", or DealCards; none are list items, so a reader
+  navigating by list landed in a list whose items did not exist. (
+  aria-required-children, x6)
+- `/inbox` — REGISTERED, not fixed. See below.
+
+**Why the existing static gate was green.** `tests/unit/accessibility.test.ts`
+asserts "EVERY icon-only button has an accessible name — all of them, not a
+sample". Its population is elements carrying the literal `size="icon"`. Raw
+`<button>` elements, shadcn primitives, and a label that disappears at a
+breakpoint are all outside it.
+Evidence: E2E Mobile run 34061942929, `[a11y]` lines with axe selectors.
+Remediation plan: Five fixed. The sixth — inbox.tsx drives two Radix `<Tabs>` as
+segmented FILTERS over one shared message list and renders zero `<TabsContent>`,
+so every trigger advertises aria-controls for a panel not in the document — is
+registered in KNOWN_CRITICAL with its exact (route, rule) and reason. The honest
+fix makes the list the actual panel, which means moving a `</Tabs>` past a
+~200-line conditional region on a 1,400-line customer door; ToggleGroup trades
+it for a visual regression and a hand-rolled radiogroup loses Radix's
+roving-tabindex keyboard behaviour. It wants a visual check.
+
+KNOWN_CRITICAL is deliberately not a threshold — a count-based baseline lets the
+next violation hide inside the allowance. It names the pair, and the spec FAILS
+an entry that stops reproducing, so a fix forces the entry out rather than
+leaving a stale exemption to cover the next regression.
+Falsified: grow the register -> RED; remove the self-expiry check -> RED.
+Resolving commits: 83498d66
+
+### REFUTED AT HEAD, 2026-09-06
+
+Two census entries were re-verified before acting and found obsolete. Recorded
+rather than "fixed", per the standing rule that a stale premise is corrected,
+not implemented against.
+
+| Entry | Finding |
+|-------|---------|
+| REACH-LATEFEES-UNWIRED | `lateFeeAssessable` is called by `acquiredNoteAging.ts:335`, whose job is registered at `runScheduledJobs.ts:4022`, derived on the notes list and detail routes, typed on the client, and rendered at `note-detail.tsx:713`. Fully wired end to end. |
+| REL-JOBLOCK-NO-RENEWAL (as written) | True of the mechanism, false of the named subject. The scheduler heartbeats correctly; the defect lives in `withJobLock`. Relocated and fixed as DEFECT-0094. |
 
 ---
 
@@ -1830,9 +2104,13 @@ Resolving commits: pending
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 11  | 11    |
-| FIXED  | 12  | 50  | 8   | 70    |
+| FIXED  | 12  | 57  | 8   | 77    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **53** | **20** | **85** |
+| **Total** | **12** | **60** | **20** | **92** |
+
+DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
+re-verified at HEAD and REFUTED rather than implemented against — see the
+"REFUTED AT HEAD" table above DEFECT-0089's section.
 
 All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).

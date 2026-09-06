@@ -179,7 +179,15 @@ export function GettingStartedChecklist() {
           <CardDescription>
             Complete these steps to get the most out of AcreOS
           </CardDescription>
-          <Progress value={progressPct} className="mt-3" data-testid="progress-checklist" />
+          {/* A role="progressbar" with no accessible name is announced as
+              "progress bar" and a percentage with no subject. axe:
+              aria-progressbar-name, serious. */}
+          <Progress
+            value={progressPct}
+            className="mt-3"
+            aria-label={`Getting started: ${completedCount} of ${requiredCount} steps complete`}
+            data-testid="progress-checklist"
+          />
         </CardHeader>
         <CardContent>
           <motion.div
