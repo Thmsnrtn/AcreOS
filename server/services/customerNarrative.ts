@@ -53,6 +53,7 @@ import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
 
+import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface CustomerMonthlySummary {
   monthKey: string;
   monthLabel: string;
@@ -354,6 +355,10 @@ async function buildSummary(
   start: Date,
   end: Date,
 ): Promise<CustomerMonthlySummary> {
+  // Derived from the canonical vocabulary and joined into the CASE lists
+  // below as bound parameters — no deal-status literal is spelled in SQL.
+  const closedStatuses = sql.join(CLOSED_DEAL_STATUSES.map((v) => sql`${v}`), sql`, `);
+  const activeStatuses = sql.join(ACTIVE_DEAL_STATUSES.map((v) => sql`${v}`), sql`, `);
   const [orgRow, leadStats, propStats, dealStats, campaignStats, paymentStats, churnRow] =
     await Promise.all([
       db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1),
@@ -373,9 +378,20 @@ async function buildSummary(
         .where(eq(properties.organizationId, orgId)),
       db
         .select({
-          won: sql<number>`sum(case when status = 'closed_won' and updated_at >= ${start} and updated_at < ${end} then 1 else 0 end)::int`,
-          lost: sql<number>`sum(case when status = 'closed_lost' and updated_at >= ${start} and updated_at < ${end} then 1 else 0 end)::int`,
-          active: sql<number>`sum(case when status not in ('closed_won', 'closed_lost') then 1 else 0 end)::int`,
+          // WAS `status = 'closed_won'` / `'closed_lost'` / `not in
+          // ('closed_won','closed_lost')`. NEITHER VALUE IS A DEAL STATUS —
+          // the canonical terminals are `closed` and `cancelled` — so every
+          // customer's monthly narrative said "Deals won: 0, lost: 0" and
+          // counted every deal ever, closed ones included, as "in pipeline".
+          // This copy is read BY THE CUSTOMER (see the narrative lines below),
+          // which makes a structurally-zero number the worst kind of wrong.
+          //
+          // These are aggregate CASE expressions, so they stay in SQL — but
+          // every value is interpolated from the vocabulary as a bound
+          // parameter rather than spelled, so the lists cannot drift again.
+          won: sql<number>`sum(case when status in (${closedStatuses}) and updated_at >= ${start} and updated_at < ${end} then 1 else 0 end)::int`,
+          lost: sql<number>`sum(case when status = ${"cancelled"} and updated_at >= ${start} and updated_at < ${end} then 1 else 0 end)::int`,
+          active: sql<number>`sum(case when status in (${activeStatuses}) then 1 else 0 end)::int`,
         })
         .from(deals)
         .where(eq(deals.organizationId, orgId)),

@@ -54,8 +54,13 @@ export const COUNTER_OFFER_TEMPLATES: Record<string, { name: string; tone: strin
  *
  * `avgOffersToClose` was also not what its name said: it was
  * `deals(status != 'new') / deals(status = 'closed_won')`, a deal-stage ratio
- * that never touched the offers table. It now counts offers per closed-won
- * deal.
+ * that never touched the offers table. It now counts offers per CLOSED deal.
+ *
+ * And a second correction, 2026-09-06: both of those deal predicates named
+ * values a deal cannot hold. `closed_won` is not in DEAL_STATUSES, so the
+ * numerator was structurally zero for every organization; `new` is a LEAD
+ * status, so `!= 'new'` was always true and the denominator swept in
+ * soft-deleted rows. Both are canonical projections now.
  */
 export async function getNegotiationAnalytics(orgId: number): Promise<{
   avgOffersToClose: number | null;

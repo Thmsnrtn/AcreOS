@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { leads, deals, properties, payments, notes, activityLog, goals, insertGoalSchema } from "@shared/schema";
 import { gte, lte, count as sqlCount } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
@@ -11,6 +11,7 @@ import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const serverStartTime = Date.now();
 
 export function registerDashboardRoutes(app: Express): void {
@@ -570,7 +571,9 @@ export function registerDashboardRoutes(app: Express): void {
           .from(leads)
           .where(and(
             eq(leads.organizationId, orgId),
-            sql`status NOT IN ('closed', 'dead', 'converted')`,
+            // Same inert `converted` term as routes-today, same bare-SQL
+            // spelling that hid it from the vocabulary scan.
+            notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),
             sql`(score IS NULL OR last_score_at IS NULL)`,
           )),
 
@@ -579,7 +582,9 @@ export function registerDashboardRoutes(app: Express): void {
           .from(leads)
           .where(and(
             eq(leads.organizationId, orgId),
-            sql`status NOT IN ('closed', 'dead', 'converted')`,
+            // Same inert `converted` term as routes-today, same bare-SQL
+            // spelling that hid it from the vocabulary scan.
+            notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),
             sql`(last_contacted_at IS NULL OR last_contacted_at < ${new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString()})`,
           )),
 

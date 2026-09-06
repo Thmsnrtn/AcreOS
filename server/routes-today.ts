@@ -29,7 +29,7 @@
  */
 
 import { Router, type Response } from "express";
-import { and, desc, eq, gte, gt, sql, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
@@ -40,6 +40,7 @@ import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
+import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const router = Router();
 
 const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -354,14 +355,20 @@ async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionIt
       .from(leadsTable)
       .where(and(
         eq(leadsTable.organizationId, orgId),
-        sql`status NOT IN ('closed', 'dead', 'converted')`,
+        // `converted` is not a lead status, so that term was inert; the
+        // terminals are `closed` and `dead`. Spelled BARE inside raw SQL,
+        // which is how it stayed invisible to a scan keyed on `leads.status`.
+        notInArray(leadsTable.status, [...TERMINAL_LEAD_STATUSES]),
         sql`(score IS NULL OR last_score_at IS NULL)`,
       )),
     db.select({ count: sql<number>`COUNT(*)` })
       .from(leadsTable)
       .where(and(
         eq(leadsTable.organizationId, orgId),
-        sql`status NOT IN ('closed', 'dead', 'converted')`,
+        // `converted` is not a lead status, so that term was inert; the
+        // terminals are `closed` and `dead`. Spelled BARE inside raw SQL,
+        // which is how it stayed invisible to a scan keyed on `leads.status`.
+        notInArray(leadsTable.status, [...TERMINAL_LEAD_STATUSES]),
         sql`(last_contacted_at IS NULL OR last_contacted_at < ${daysAgo(28, now).toISOString()})`,
       )),
     db.select({ lastSent: sql<string>`MAX(created_at)` })

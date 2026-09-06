@@ -21,6 +21,7 @@ import { db } from "../db";
 import { leads, deals, notesReceivable, payments } from "@shared/schema";
 import { eq, and, count, sum, sql } from "drizzle-orm";
 
+import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface KpiUpdate {
   type: "kpi.update";
   metric: string;
@@ -51,10 +52,19 @@ async function getDashboardSnapshot(orgId: number) {
     .from(leads)
     .where(eq(leads.organizationId, orgId));
 
+  // Bound parameters built from the vocabulary — no status literal in SQL.
+  const activeDealStatuses = sql.join(ACTIVE_DEAL_STATUSES.map((v) => sql`${v}`), sql`, `);
+  const closedDealStatuses = sql.join(CLOSED_DEAL_STATUSES.map((v) => sql`${v}`), sql`, `);
   const [dealCounts] = await db
     .select({
-      active: sql<number>`count(*) filter (where status not in ('closed','lost','cancelled'))`,
-      closed: sql<number>`count(*) filter (where status = 'closed')`,
+      // WAS `not in ('closed','lost','cancelled')`. `lost` is not a deal
+      // status so that term was inert — and, worse, SOFT-DELETED deals
+      // (`status = 'deleted'`) were counted as ACTIVE in the live KPI
+      // stream. Derived from ACTIVE_DEAL_STATUSES, which is DEAL_STATUSES
+      // minus the terminals and therefore excludes administrative values by
+      // construction.
+      active: sql<number>`count(*) filter (where status in (${activeDealStatuses}))`,
+      closed: sql<number>`count(*) filter (where status in (${closedDealStatuses}))`,
     })
     .from(deals)
     .where(eq(deals.organizationId, orgId));
