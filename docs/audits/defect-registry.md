@@ -1121,7 +1121,24 @@ logged (`note_late_fee_skipped_grace_unstated`) the way the aging sweep logs
 its assumption. The change can only ever REDUCE a fee charged, never increase
 one.
 
-Resolving commits: `3c95369a`.
+FOLLOW-UP, same class, three more sites — and both were already in the
+measurement-defaults BASELINE, registered as accepted rather than fixed:
+
+- `server/services/achAutopay.ts:1193` — the same invented ten-day clause, in
+  an UNATTENDED autopay settlement. Strictly worse than the two above, which at
+  least sit behind a request someone made.
+- `server/services/cashFlowForecaster.ts` ×3 — `note.gracePeriodDays || 10`,
+  where `||` fires on ZERO, so a note explicitly granting NO grace was forecast
+  as if it granted ten days.
+
+So the codebase held THREE answers to one question: 0 in the aging sweep,
+"decline to state" in the instruments, 10 in the fee paths and the forecaster.
+The forecaster is an internal signal and now takes the aging convention; the
+autopay path is money and now refuses. The two baseline entries are removed
+rather than kept — a register of accepted constants is only trustworthy if the
+things in it were examined.
+
+Resolving commits: `3c95369a`, `8192e1f8`.
 
 ---
 
