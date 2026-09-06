@@ -144,6 +144,11 @@ const LEGACY_TO_CANONICAL: Record<string, TabValue> = {
   developer: "integrations",
   ai: "integrations",
   "ai-tasks": "integrations",
+  // Query-string spellings that reached production in ?tab= links before the
+  // query form was read at all. They have no legacy HASH history — they are
+  // here because the links exist and must land somewhere true.
+  providers: "integrations",
+  org: "organization",
 };
 
 export default function Settings() {
@@ -171,16 +176,38 @@ export default function Settings() {
     return { hash, tier };
   };
 
+  /** Canonicalise one spelling, from either carrier. */
+  const toCanonicalTab = (raw: string | null | undefined): TabValue | null => {
+    if (!raw) return null;
+    if (raw in LEGACY_TO_CANONICAL) return LEGACY_TO_CANONICAL[raw];
+    if (VALID_TABS.includes(raw as TabValue)) return raw as TabValue;
+    return null;
+  };
+
+  /**
+   * THE QUERY STRING IS READ TOO, AND THAT IS THE WHOLE POINT.
+   *
+   * This resolved from the HASH only. Nineteen `/settings?tab=…` links existed
+   * across the app and the transactional emails — six of them `?tab=billing` —
+   * and every one landed on Account with no billing UI and no explanation. The
+   * comment above this block records that the same gap had already "misled the
+   * dunning-email link author into a broken recovery link"; the convention was
+   * documented and the links kept being written the other way, which is what a
+   * convention no code enforces does.
+   *
+   * Rewriting the nineteen call sites would not have been enough: renewal and
+   * dunning emails carrying `?tab=billing` are already in inboxes and cannot be
+   * edited. So both carriers resolve, hash first because it is the documented
+   * canonical form, and `settingsDeepLinksResolve.test.ts` fails on any link in
+   * the repo that resolves to a tab that does not exist.
+   */
   const getTabFromHash = (): TabValue => {
     const { hash } = getHashParts();
-    // Legacy hashes from the 17-tab era — rewrite to canonical bucket.
-    if (hash in LEGACY_TO_CANONICAL) {
-      return LEGACY_TO_CANONICAL[hash];
-    }
-    if (VALID_TABS.includes(hash as TabValue)) {
-      return hash as TabValue;
-    }
-    return "account";
+    return (
+      toCanonicalTab(hash) ??
+      toCanonicalTab(searchParams.get("tab")) ??
+      "account"
+    );
   };
 
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
@@ -189,8 +216,23 @@ export default function Settings() {
   // toast or a dunning email), highlighting the suggested tier when the
   // link carries one. Note: "billing" is now itself a canonical tab.
   const applyBillingIntent = () => {
-    const { hash, tier } = getHashParts();
-    if (hash === "billing" || hash === "payments") {
+    const { hash, tier: hashTier } = getHashParts();
+    // `?tier=` rides inside the hash on the upgrade-toast link and as a real
+    // query param on the email links; accept either, or arriving at billing
+    // through a query deep link shows the tab without the plan comparison the
+    // link was sent to open.
+    const queryTierRaw = searchParams.get("tier");
+    const queryTier: TierKey | null =
+      queryTierRaw === "free" || queryTierRaw === "starter" ||
+      queryTierRaw === "pro" || queryTierRaw === "scale"
+        ? queryTierRaw
+        : null;
+    const tier = hashTier ?? queryTier;
+    const queryTab = searchParams.get("tab");
+    if (
+      hash === "billing" || hash === "payments" ||
+      queryTab === "billing" || queryTab === "payments"
+    ) {
       if (tier) setPlanPickerHighlight(tier);
       setShowPlanComparison(true);
     }

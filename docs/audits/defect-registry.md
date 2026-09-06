@@ -1772,6 +1772,57 @@ a new dead export in `server/ai` -> RED (was invisible); the same in
 read -> RED (control, proving the existing behaviour is unchanged).
 Resolving commits: pending
 
+### DEFECT-0088
+Title: Nineteen /settings deep links landed on the wrong tab — including the renewal and upgrade funnel
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the Remaining Work Census, 2026-09-06 (two families found it independently)
+Description: `settings.tsx` resolved its active tab from the URL HASH only.
+Nineteen `/settings?tab=…` links existed across the app and the transactional
+emails — SIX of them `?tab=billing` — and every one landed on the Account tab:
+no billing UI, no explanation, and no way for the customer to tell a broken link
+from a redesigned page.
+
+Directly customer-visible and revenue-adjacent. A customer clicking "Manage
+subscription" in a Stripe renewal email, or "Upgrade plan" in the product,
+arrived somewhere that answered neither their question nor why not.
+
+**The convention was already documented, and documenting it was not enough.**
+`settings.tsx:112` states that only the hash is read, and records that an earlier
+version of that same comment had "misled the dunning-email link author into a
+broken recovery link". The comment was corrected; the links kept being written
+the other way. A convention no code enforces is a comment.
+
+The nineteen also included three spellings with no canonical entry at all —
+`?tab=team`, `?tab=providers`, `?tab=org`.
+
+Evidence: `client/src/pages/settings.tsx:173` (before) — `getTabFromHash` read
+`window.location.hash` and nothing else.
+Remediation plan: Done, and deliberately NOT by rewriting the nineteen call
+sites. Renewal and dunning emails carrying `?tab=billing` are already in
+customers' inboxes and cannot be edited, so the page now resolves from BOTH
+carriers — hash first, since it is the documented canonical form, then the query
+string — with `providers` and `org` added to `LEGACY_TO_CANONICAL`. The
+billing-intent path (which opens the plan comparison) accepts `?tier=` from
+either carrier for the same reason.
+
+Gated by `settingsDeepLinksResolve.test.ts`. The population is DERIVED — every
+`/settings` link is found by scanning client/ and server/, so a twentieth link is
+checked by existing — and `VALID_TABS` / `LEGACY_TO_CANONICAL` are read out of
+the page rather than restated, so the two cannot drift.
+
+**The gate's first version was itself the mention-trap.** It asserted
+`searchParams.get("tab")` appeared in `settings.tsx`, and reverting the resolver
+to hash-only left it GREEN: `applyBillingIntent` also reads that param, so the
+string was still present while the defect was fully restored. Scoped to the
+resolver's own function body, the same mutation now fails. Same shape as the
+mail-suppression gate's third falsification — a symbol appearing somewhere in a
+file says nothing about the code path that matters.
+
+Falsified: revert the resolver to hash-only -> RED (with the string still in the
+file); add a link to a tab that does not exist -> RED.
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
@@ -1779,9 +1830,9 @@ Resolving commits: pending
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 11  | 11    |
-| FIXED  | 12  | 49  | 8   | 69    |
+| FIXED  | 12  | 50  | 8   | 70    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **52** | **20** | **84** |
+| **Total** | **12** | **53** | **20** | **85** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
