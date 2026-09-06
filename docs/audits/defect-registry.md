@@ -1016,14 +1016,76 @@ Resolving commits: `30904f0a`, `dbf92a40`, `d69f5152`.
 
 ---
 
+### DEFECT-0077
+Title: `stripComments` — the helper 91 gates depend on — blanked live code in 232 of 3,692 files
+Severity: P1
+Status: FIXED
+Surfaced by lenses: gate self-audit (2026-09-06, autonomous session)
+Description: `tests/helpers/stripComments.ts` was written to end a specific
+class of bug — the two-regex idiom, which eats whole files when a line comment
+contains `/*`. Its replacement, a single left-to-right scan understanding
+strings, templates and comments, had the same class for a construct it did not
+know about: A REGEX LITERAL IS NOT A STRING.
+
+    return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+
+Three double quotes. The scan opened a string at the third and ran to the next
+`"` anywhere in the file — swallowing every comment marker it crossed (so
+comments SURVIVED unstripped) and treating live code as string (so it was never
+examined).
+
+Measured: 232 of 3,692 source files ended the strip mid-token.
+`server/ai/supportAgent.ts` — the 91-case dispatch switch CLAUDE.md names as a
+load-bearing population, driven by a model talking to a paying customer — lost
+15,762 characters. Ninety-one test files import this helper, so each was
+scanning a corrupted view of any target containing such a regex.
+
+CLAUDE.md already names this class and records that it was paid for once: "a
+REGEX LITERAL holding a quote did the same — and did it inside `maskComments`
+itself." The canonical replacement written to end that class had it too.
+
+HOW IT WAS FOUND: not by reading the helper. A new gate
+(`check-status-vocabulary.mjs`) reported two offenders that were the comment
+explaining the fix, and bisecting which line put the scanner into a bad state
+led to the regex at line 57 of that same gate.
+
+Evidence: canary measurement — append `\n// SENTINEL\n` to each source file and
+strip; if the sentinel survives, the scan finished inside a string, template,
+regex or comment. 232 files before, 0 after. File length is unchanged for all
+3,692 (comments become spaces, so offsets are preserved).
+
+Remediation plan (all applied):
+1. The helper PARSES with TypeScript rather than lexing by hand. Teaching the
+   scan about regexes was tried and abandoned after it refused 720 files: `/`
+   versus division needs the previous significant token; TypeScript's postfix
+   `!` (`cac.cacUsd! / n`) inverts that rule; `[...]` classes make `/[/*]/`
+   both a valid regex and a block comment; nested `${}` needs a depth stack;
+   and JSX is full of slashes no expression lexer gets right. The parser has
+   resolved all of it already in order to build a tree.
+2. Script kind is decided by parsing both ways and keeping whichever produced
+   fewer diagnostics — forcing TSX on a `.ts` turns `db.select<Row>()` into an
+   unclosed JSX element; forcing TS on a component breaks every `<Foo />`.
+3. Parsing costs 5.7ms per file against ~0.1ms. The helper memoizes (pure,
+   bounded at 4,096, oldest-first) and `orgScopedDbAdoption` — which swept
+   2,600 files five times and hit vitest's 30s ceiling — strips once. Second
+   pass over 2,543 files: 13.4s → 9ms.
+4. `tests/unit/stripCommentsIsALexer.test.ts` — one fixture per trap, plus two
+   repo-wide floors asserted at ZERO (never ends mid-token; never changes a
+   file's length). Falsified against the previous implementation: four red,
+   including the floor.
+
+Resolving commits: `c9220cb4`.
+
+---
+
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 38  | 1   | 51    |
+| FIXED  | 12  | 39  | 1   | 52    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **41** | **20** | **73** |
+| **Total** | **12** | **42** | **20** | **74** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
 (not blocking launch).
