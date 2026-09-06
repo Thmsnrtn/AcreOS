@@ -250,7 +250,15 @@ export function AppearancePanel() {
             value={themeConfig.density}
             onValueChange={(v) => setThemeConfig({ density: v as Density })}
           >
-            <SelectTrigger className="w-full max-w-sm" data-testid="select-density">
+            {/* SelectTrigger renders a role="combobox" button whose only content is
+                <SelectValue />. Before a value resolves — and to a reader
+                arriving at the control cold — that is a button with no name.
+                axe: button-name, critical. */}
+            <SelectTrigger
+              className="w-full max-w-sm"
+              aria-label="Interface density"
+              data-testid="select-density"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

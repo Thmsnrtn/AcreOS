@@ -1112,10 +1112,14 @@ export default function FounderDecisionsPage() {
             you, what got handled cleanly, and what a safety rule stopped from happening.
           </p>
         </div>
+        {/* A bare <select> with no <label> is announced as "combo box" and
+            nothing else — the reader is told there is a choice but not what it
+            changes. axe: select-name, critical. */}
         <select
           value={windowDays}
           onChange={(e) => setWindowDays(parseInt(e.target.value, 10))}
           className="h-9 px-3 rounded-md border bg-background text-sm"
+          aria-label="Time window for the decision log"
           data-testid="select-window"
         >
           <option value={7}>Last 7 days</option>

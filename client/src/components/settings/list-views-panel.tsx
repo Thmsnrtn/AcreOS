@@ -67,7 +67,11 @@ export function ListViewsPanel() {
                 value={current}
                 onValueChange={(v) => setView(type, v as ListView)}
               >
-                <SelectTrigger className="w-44" data-testid={`list-view-select-${type}`}>
+                <SelectTrigger
+                  className="w-44"
+                  aria-label={`Default view for ${meta.label}`}
+                  data-testid={`list-view-select-${type}`}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

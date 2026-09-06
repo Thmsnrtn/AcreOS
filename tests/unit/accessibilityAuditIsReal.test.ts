@@ -169,6 +169,26 @@ describe("the accessibility audit is capable of failing", () => {
     }
   });
 
+  it("the known-critical register is small, reasoned, and self-expiring", () => {
+    // The one way this audit could rot into its predecessor is a register that
+    // grows. So: bounded, every entry carries a real reason, and — the part
+    // that matters — the spec FAILS an entry that stops reproducing, which is
+    // what stops an exemption outliving its violation and covering the next one.
+    const entries = [...SPEC.matchAll(/route:\s*"([^"]+)",\s*\n?\s*rule:\s*"([^"]+)"/g)];
+    expect(
+      entries.length,
+      "the known-critical register has grown. Each entry is a critical WCAG " +
+        "violation shipping on a door; they are meant to leave, not accumulate.",
+    ).toBeLessThanOrEqual(1);
+
+    if (entries.length > 0) {
+      expect(SPEC).toMatch(/why:\s*\n?\s*"/);
+      // Self-expiry: without this the register is an ordinary suppression list.
+      expect(SPEC).toMatch(/no longer violates \$\{rule\}/);
+      expect(SPEC).toMatch(/critical\.some\(\(v\) => v\.id === rule\)/);
+    }
+  });
+
   it("the spec that never audited anything stays deleted", () => {
     expect(
       fs.existsSync(path.join(ROOT, "tests/e2e/accessibility.spec.ts")),

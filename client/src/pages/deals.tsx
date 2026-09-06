@@ -807,7 +807,11 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                         value={String(selectedStageIndex)} 
                         onValueChange={(val) => setSelectedStageIndex(Number(val))}
                       >
-                        <SelectTrigger className="min-w-[140px] min-h-[44px]" data-testid="select-mobile-stage">
+                        <SelectTrigger
+                          className="min-w-[140px] min-h-[44px]"
+                          aria-label="Pipeline stage to show"
+                          data-testid="select-mobile-stage"
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1120,9 +1124,18 @@ function KanbanColumn({
           </Badge>
         </div>
       </div>
+      {/* The drop zone was role="list" with three possible children: a
+          skeleton wrapper, an empty-state role="status", or DealCards — none
+          of them list items. axe: aria-required-children, critical, ×6 (one
+          per stage), because a role="list" may only contain listitems, and a
+          reader navigating by list lands in a list whose items do not exist.
+
+          The container keeps its label and stays the drag target; the list
+          semantics move to a wrapper that holds ONLY cards, so the loading and
+          empty states — which are genuinely not list items — sit outside it. */}
       <div
         ref={setNodeRef}
-        role="list"
+        role="group"
         aria-label={`${stage.label} drop zone`}
         aria-describedby={headingId}
         className={`bg-muted/30 rounded-b-card p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
@@ -1137,14 +1150,17 @@ function KanbanColumn({
             No deals in {stage.label}
           </div>
         ) : (
-          deals.map((deal) => (
-            <DealCard
-              key={deal.id}
-              deal={deal}
-              onSelect={() => onSelect(deal)}
-              isDragging={activeDragId === deal.id}
-            />
-          ))
+          <div role="list" aria-label={`Deals in ${stage.label}`} className="space-y-2">
+            {deals.map((deal) => (
+              <div role="listitem" key={deal.id}>
+                <DealCard
+                  deal={deal}
+                  onSelect={() => onSelect(deal)}
+                  isDragging={activeDragId === deal.id}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </section>

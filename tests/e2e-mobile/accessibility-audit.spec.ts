@@ -71,6 +71,38 @@ const MIN_RULES_EVALUATED = 20;
  */
 const AUDIT_PROJECTS = new Set(["iphone-14", "ipad-mini"]);
 
+/**
+ * KNOWN CRITICAL VIOLATIONS, registered rather than baselined.
+ *
+ * This is deliberately not a threshold. A count-based baseline lets any new
+ * violation hide inside the allowance; this names the exact (route, rule) pair,
+ * says why it is still here, and — crucially — FAILS IF IT STOPS REPRODUCING,
+ * so a fix forces the entry out instead of leaving a stale exemption that
+ * silently covers the next regression.
+ *
+ * Every other critical, on every other route, still fails.
+ */
+const KNOWN_CRITICAL: Array<{ route: string; rule: string; why: string }> = [
+  {
+    route: "/inbox",
+    rule: "aria-valid-attr-value",
+    why:
+      "inbox.tsx drives two Radix <Tabs> — channel and status — as segmented " +
+      "FILTERS over one shared message list, and renders zero <TabsContent>. " +
+      "Radix therefore emits aria-controls on every trigger pointing at a panel " +
+      "that does not exist, so a reader is told 'tab, controls panel X' for a " +
+      "panel that is not in the document. Two tablists owning one list is the " +
+      "tell: these are filters, not tabs. The honest fix is to make the message " +
+      "list the actual panel, which means moving a </Tabs> down past a ~200-line " +
+      "conditional content region on a 1,400-line customer door. Swapping to " +
+      "ToggleGroup instead trades it for a visual regression (different variants, " +
+      "data-state=on vs active), and hand-rolling a radiogroup loses Radix's " +
+      "roving-tabindex keyboard behaviour — one a11y defect for another. It wants " +
+      "a visual check, so it is registered here with its selector rather than " +
+      "guessed at blind.",
+  },
+];
+
 async function authenticate(page: Page, session: string) {
   await page.context().addCookies([
     {
@@ -172,8 +204,22 @@ async function auditRoute(page: Page, route: string, testInfo: import("@playwrig
     ),
   });
 
+  const registered = KNOWN_CRITICAL.filter((k) => k.route === route).map((k) => k.rule);
+  const unregistered = critical.filter((v) => !registered.includes(v.id));
+
+  // A register that outlives its violation is worse than no register: it
+  // silently covers the next one. So an entry that no longer reproduces fails
+  // here and has to be deleted.
+  for (const rule of registered) {
+    expect(
+      critical.some((v) => v.id === rule),
+      `${route} no longer violates ${rule} — remove its KNOWN_CRITICAL entry so ` +
+        "the exemption cannot go on covering a future regression",
+    ).toBe(true);
+  }
+
   expect(
-    critical.map(line),
+    unregistered.map(line),
     `critical WCAG violations on ${route}. Critical means a user relying on ` +
       "assistive technology cannot complete the task at all.",
   ).toEqual([]);

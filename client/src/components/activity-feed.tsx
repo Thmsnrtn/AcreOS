@@ -291,12 +291,19 @@ export function ActivityFeed({ className, maxHeight = "500px", compact = false }
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              {/* In compact mode the visible label collapses to "", leaving a
+                  button whose only content is an icon — announced as "button"
+                  and nothing else. axe: button-name, critical. A static scan
+                  cannot see this: the element is not size="icon", and its text
+                  disappears behind a ternary rather than being absent from the
+                  source. The label is unconditional so it holds in both modes. */}
               <Button 
                 variant="outline" 
                 size="sm"
+                aria-label="Filter activity by type"
                 data-testid="activity-feed-filter-button"
               >
-                <Filter className="w-4 h-4 mr-2" />
+                <Filter className="w-4 h-4 mr-2" aria-hidden="true" />
                 {compact ? "" : "Filter"}
                 {selectedEventTypes.size > 0 && (
                   <Badge variant="secondary" className="text-xs ml-2">
