@@ -921,14 +921,109 @@ Resolving commits: `17681ffa`.
 
 ---
 
+### DEFECT-0076
+Title: The status vocabulary was derived from filters, so it omitted four values production writes — and ~25 filters named values nothing writes
+Severity: P1
+Status: FIXED
+Surfaced by lenses: type-aware write analysis + vocabulary cross-check (2026-09-06, autonomous session)
+Description: `shared/lifecycle/pipeline-status.ts` was created (2026-07, W3.4)
+from an audit of FILTERS — "filters on deal status 'won' and lead status
+'active' that matched NOTHING, silently zeroing metrics." Reading filters tells
+you which values are USED; it cannot tell you which values EXIST. Walking every
+WRITE instead (49 `db.update(leads|deals).set()` / `.insert().values()` sites)
+found four the vocabulary had never heard of, one of which that file's own
+header asserts "is never written":
+
+| Value | Written by | Consequence |
+| --- | --- | --- |
+| `deleted` (leads) | `leadRepo` soft delete ×2 | outside every projection |
+| `deleted` (deals) | `dealRepo`, `propertyRepo` | counted as ACTIVE by the live KPI stream |
+| `archived` (leads) | `crmEnhancements` 90-day sweep | invisible to every funnel counter |
+| `active` (leads) | `autonomousDealMachine` Deal-Hunter enrolment | invisible to the stale-lead sweep, the funnel, and the transition table |
+
+THE WORST CONSEQUENCE WAS CUSTOMER-FACING. `customerNarrative.buildSummary`
+counted `status = 'closed_won'` / `'closed_lost'` — neither is a deal status —
+so every customer's monthly narrative read "Deals won: 0, lost: 0" while
+reporting every deal ever, closed ones included, as still "in pipeline". The
+copy renders those numbers verbatim.
+
+THE SECOND WORST WAS A CORRECTION TO MY OWN ANALYSIS.
+`sellerMotivationEngine.rescoreLeadsForOrg` selects `eq(leads.status,
+"active")`, which I first recorded as the documented "matched nothing" shape.
+It matched: `active` is what the Deal Hunter writes. So the function ran, on
+precisely the auto-enrolled leads, and overwrote the real motivation score the
+Deal Hunter had just computed with one derived from `isTaxDelinquent: false,
+assessedValue: 0, ownershipYears: 0` — every signal it needs lives on the
+lead's PROPERTY and it never joins. Not inert: actively replacing measurements
+with a constant.
+
+Approximately 25 further comparisons named values a row cannot hold. The ones
+that changed behaviour rather than merely reading wrong:
+
+- `agentInitiativeEngine` proposed "deal going cold" on deals that had CLOSED
+  a fortnight earlier (`NOT IN ('closed_won','closed_lost','cancelled')`).
+- `outcomeVerificationLoop` — which feeds agent trust evolution — could never
+  reach its "risk flag was premature" verdict, reported a closed deal as
+  "still active at closed", and scored a lead that REPLIED as unchanged
+  (its positive set named `offer_sent`, a deal status, while `responded` and
+  `negotiating` were absent).
+- `dealFeedEnhancements` "find similar to wins" had no wins to learn from and
+  returned `[]` for every organization.
+- `negotiationEnhancements` close-rate numerator was structurally zero; its
+  denominator (`!= 'new'`, a LEAD status) was always true.
+- `kpiStreamingService` counted soft-deleted deals as active.
+- `agent-skills` had an unreachable +20 "motivated seller" branch.
+- `leadScoring`'s prior-response check reduced to `contacted`, which means WE
+  reached out, not that they replied.
+- `cohortAnalysis` mislabelled a funnel tier "Offer Sent" — a lead has no
+  offer-sent state — and the tier's membership excluded `responded`,
+  `interested`, `qualified` and `accepted`.
+
+Evidence: 1,541 files / 49 lead-deal write sites / 63 off-vocabulary read
+literals before, 43 after (the remainder are false positives of a line scanner:
+`leadType: ["seller"]`, `outcome: "positive"`, a `deal_status` context key).
+Four values were also spelled BARE inside raw SQL (`status = 'closed_won'`
+without the table prefix) and were outside the first scan's population
+entirely — which is where `customerNarrative` and `kpiStreamingService` were
+hiding.
+
+Remediation plan (all applied):
+1. `autonomousDealMachine` writes `new`, the canonical status for a freshly
+   created lead. `archived` and `deleted` are enumerated as
+   `ADMINISTRATIVE_*_STATUSES` — deliberately OUT of the funnel lists, because
+   membership there means "a status change may target this" and nothing should
+   be able to PATCH a lead to `deleted`. `active` and `closing` are recorded as
+   legacy: readable so historical rows keep counting, never writable again.
+2. `rescoreLeadsForOrg` refuses (the route answers 501) until the property join
+   exists.
+3. All ~25 comparisons derive from canonical projections —
+   `TERMINAL_LEAD_STATUSES`, `ENGAGED_LEAD_STATUSES`,
+   `NEGOTIATING_LEAD_STATUSES`, `UNDER_CONTRACT_LEAD_STATUSES`,
+   `ACTIVE_DEAL_STATUSES`, `CLOSED_DEAL_STATUSES`, `RESOLVED_DEAL_STATUSES`,
+   `ALL_FUNNEL_DEAL_STATUSES`, `ADMINISTRATIVE_*` — each with real production
+   adoption. Aggregate CASE expressions keep their SQL but interpolate the
+   values as bound parameters via `sql.join`.
+4. `scripts/check-status-vocabulary.mjs`, wired into `npm run check`, holds the
+   WRITE side at zero. Only the write side is gated: the read side's false
+   positives would switch the gate off within a day.
+5. `tests/unit/agentStatusWritesUseTheVocabulary.test.ts` plus four existing
+   tests UPDATED to the new truth rather than deleted — including
+   `dealStatusVocabularyIsCanonical`, which already enforced part of this and
+   went red on the fix because its regex compared the SPREAD TEXT
+   `...CLOSED_DEAL_STATUSES` against the vocabulary.
+
+Resolving commits: `30904f0a`, `dbf92a40`, `d69f5152`.
+
+---
+
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 37  | 1   | 50    |
+| FIXED  | 12  | 38  | 1   | 51    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **40** | **20** | **72** |
+| **Total** | **12** | **41** | **20** | **73** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
 (not blocking launch).
